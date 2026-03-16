@@ -4,6 +4,17 @@ Alle wijzigingen in dit project worden hier bijgehouden.
 
 ---
 
+## [1.2.5]
+
+### Toegevoegd
+- WooCommerce koppeling: automatisch voorraad bijwerken in webshop bij uitslaan
+- Handmatige bidirectionele sync op de Voorraad pagina (↕ WC Sync knop): haalt verkopen op uit WooCommerce en verdeelt het verschil FIFO over uitslagen
+- WooCommerce API-instellingen in de Instellingen pagina (URL, Consumer Key, Consumer Secret, ingeschakeld-schakelaar, verbindingstest)
+- Hygiëne checklist per batch: configureerbare items met groepsindeling (Voorbereiding, Brouwen, Afvullen, etc.)
+- Hygiëne afvink-acties worden nu geregistreerd in het batch logboek
+
+---
+
 ## [1.2.0]
 
 ### Toegevoegd

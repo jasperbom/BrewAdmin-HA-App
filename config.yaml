@@ -1,6 +1,6 @@
 name: "BrewAdmin"
 description: "Nano brouwerij administratie — batches, ingrediënten, accijns en voorraad"
-version: "1.2.4"
+version: "1.2.5"
 slug: "brouwerij_admin"
 init: false
 
@@ -19,7 +19,7 @@ map:
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:beer
-panel_title: "BrouwAdmin"
+panel_title: "BrewAdmin"
 
 options: {}
 schema: {}

@@ -12,6 +12,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN apk add --no-cache su-exec \
  && adduser -D -H -s /sbin/nologin appuser \
  && mkdir -p /data \
+ && chmod 644 /app/server.py /app/static/index.html \
  && chmod +x /entrypoint.sh
 
 EXPOSE 8099

@@ -28,6 +28,12 @@ BF_API_BASE = 'https://api.brewfather.app/v2'
 BF_PROXY_PREFIX = '/api/brewfather/'
 BF_TEST_PATH = '/api/brewfather/test'
 
+WC_API_PATH    = '/wp-json/wc/v3'
+WC_PROXY_PREFIX = '/api/woocommerce/'
+WC_PING_PATH    = '/api/woocommerce/ping'
+WC_TEST_PATH    = '/api/woocommerce/test'
+WC_PUT_PREFIX   = '/api/woocommerce/put/'
+
 # Rate limiting: max requests per window per IP
 _RATE_WINDOW = 60   # seconds
 _RATE_MAX    = 120  # requests per window
@@ -84,6 +90,51 @@ def _valid_key(key: str) -> bool:
 def _valid_bf_path(path: str) -> bool:
     """Allow only safe characters in a Brewfather sub-path + query string."""
     return bool(path) and all(c.isalnum() or c in '-_/?=&.' for c in path)
+
+
+def _valid_wc_path(path: str) -> bool:
+    """Allow safe characters for a WooCommerce API sub-path + query string."""
+    return bool(path) and all(c.isalnum() or c in '-_/?=&.:%+' for c in path)
+
+
+def _load_wc_creds() -> dict | None:
+    """Read stored WooCommerce credentials; returns dict or None."""
+    creds_file = DATA_DIR / 'woocommerce_creds.json'
+    if not creds_file.exists():
+        return None
+    try:
+        creds = json.loads(creds_file.read_bytes())
+        url    = str(creds.get('storeUrl', '')).strip().rstrip('/')
+        key    = str(creds.get('consumerKey', '')).strip()
+        secret = str(creds.get('consumerSecret', '')).strip()
+        if not (url.startswith('https://') and key and secret):
+            return None
+        return {'url': url, 'key': key, 'secret': secret}
+    except Exception:
+        return None
+
+
+def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = None) -> tuple[int, bytes]:
+    """Make a GET or PUT request to the WooCommerce REST API."""
+    auth = base64.b64encode(f'{creds["key"]}:{creds["secret"]}'.encode()).decode()
+    url  = f'{creds["url"]}{WC_API_PATH}/{subpath}'
+    req  = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            'Authorization': f'Basic {auth}',
+            'Accept':        'application/json',
+            'Content-Type':  'application/json',
+        },
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or b'{}'
+    except Exception as ex:
+        return 502, json.dumps({'error': str(ex)}).encode()
 
 
 def extract_key(path: str) -> str | None:
@@ -189,6 +240,14 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._bf_proxy_get()
             return
 
+        if WC_PING_PATH in path:
+            self._json(200, {'ok': True, 'server': 'wc-ready'})
+            return
+
+        if WC_PROXY_PREFIX in path and WC_PUT_PREFIX not in path:
+            self._wc_proxy_get()
+            return
+
         key = extract_key(path)
         if key is not None:
             filepath = DATA_DIR / f'{key}.json'
@@ -225,6 +284,15 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         # Brewfather credential test endpoint
         if BF_TEST_PATH in path:
             self._bf_test()
+            return
+
+        # WooCommerce test + PUT proxy
+        if WC_TEST_PATH in path:
+            self._wc_test()
+            return
+
+        if WC_PUT_PREFIX in path:
+            self._wc_proxy_put()
             return
 
         key = extract_key(path)
@@ -298,6 +366,87 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         status, _ = _bf_request(uid, key, f'{BF_API_BASE}/batches?limit=1')
         self._json(200, {'ok': status == 200})
+
+    # ── WooCommerce proxy ──────────────────────────────────────────────────
+
+    def _wc_proxy_get(self):
+        """Proxy a GET request to the WooCommerce REST API."""
+        full = self.path
+        idx  = full.find(WC_PROXY_PREFIX)
+        wc_subpath = full[idx + len(WC_PROXY_PREFIX):]
+        if not _valid_wc_path(wc_subpath):
+            self._json(400, {'error': 'invalid path'})
+            return
+        creds = _load_wc_creds()
+        if creds is None:
+            self._json(401, {'error': 'no woocommerce credentials configured'})
+            return
+        status, data = _wc_request(creds, 'GET', wc_subpath)
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', len(data))
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _wc_proxy_put(self):
+        """Proxy a PUT request to WooCommerce, delivered as browser POST."""
+        full = self.path
+        idx  = full.find(WC_PUT_PREFIX)
+        wc_subpath = full[idx + len(WC_PUT_PREFIX):]
+        if not _valid_wc_path(wc_subpath):
+            self._json(400, {'error': 'invalid path'})
+            return
+        creds = _load_wc_creds()
+        if creds is None:
+            self._json(401, {'error': 'no woocommerce credentials configured'})
+            return
+        body = self._read_body()
+        if body is None:
+            return
+        try:
+            json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        status, data = _wc_request(creds, 'PUT', wc_subpath, body)
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', len(data))
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _wc_test(self):
+        """Test WooCommerce credentials from POST body."""
+        raw = self._read_body(max_len=4096)
+        if raw is None:
+            return
+        try:
+            body   = json.loads(raw)
+            url    = str(body.get('storeUrl', '')).strip().rstrip('/')
+            key    = str(body.get('consumerKey', '')).strip()
+            secret = str(body.get('consumerSecret', '')).strip()
+        except Exception:
+            self._json(400, {'error': 'invalid json'})
+            return
+        if not (url and key and secret):
+            self._json(400, {'error': 'missing credentials'})
+            return
+        if not url.startswith('https://') and not url.startswith('http://'):
+            self._json(400, {'error': 'storeUrl must start with https:// or http://'})
+            return
+        creds = {'url': url, 'key': key, 'secret': secret}
+        # Use products endpoint — works with any read-capable API key (no admin required)
+        status, body = _wc_request(creds, 'GET', 'products?per_page=1&_fields=id')
+        detail = ''
+        try:
+            parsed = json.loads(body)
+            if isinstance(parsed, dict) and parsed.get('message'):
+                detail = parsed['message']
+        except Exception:
+            pass
+        self._json(200, {'ok': status in (200, 201), 'status': status, 'detail': detail})
 
     # ── logging ────────────────────────────────────────────────────────────
 

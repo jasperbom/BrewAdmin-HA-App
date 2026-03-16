@@ -55,7 +55,7 @@ const verpKostenLabels = (type) => ({
 }[type] || {verpakking:'Verpakking', afsluiting:'Afsluiting'});
 
 // ===== STORAGE =====
-const lsGet = (k, d=[]) => { try { return JSON.parse(localStorage.getItem('craftery_'+k)) ?? d; } catch { return d; } };
+const lsGet = (k, d=[]) => { try { return JSON.parse(localStorage.getItem('craftery_'+k)) ?? d; } catch(e) { return d; } };
 const lsSet = (k, v) => localStorage.setItem('craftery_'+k, JSON.stringify(v));
 
 // API base URL — computed from current page URL so it works via direct access
@@ -178,6 +178,35 @@ const newId = (arr) => arr.length ? Math.max(0, ...arr.map(x=>x.id))+1 : 1;
 const BF_TO_APP = {Planning:'Gepland',Brewing:'Brouwen',Fermenting:'Vergisten',Conditioning:'Conditioneren',Completed:'Verpakt',Archived:'Gesloten'};
 const _BF_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/brewfather/'; })();
 const _BF_TEST  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/brewfather/test'; })();
+
+// ── WooCommerce proxy helpers ──────────────────────────────────────────────
+const _WC_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/'; })();
+const _WC_PUT   = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/put/'; })();
+const _WC_TEST  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/test'; })();
+const _WC_PING  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping'; })();
+
+const wcGet = async (subpath) => {
+  const r = await fetch(_WC_PROXY + subpath.replace(/^\//, ''));
+  if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.message || `WC ${r.status}`); }
+  return r.json();
+};
+const wcPut = async (subpath, data) => {
+  const r = await fetch(_WC_PUT + subpath.replace(/^\//, ''), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.message || `WC ${r.status}`); }
+  return r.json();
+};
+const wcTestCreds = async (body) => {
+  try {
+    const r = await fetch(_WC_TEST, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) return {ok: false, status: r.status, detail: d.error||''};
+    return {ok: d.ok === true, status: d.status, detail: d.detail||''};
+  } catch(e) { return {ok: false, status: 0, detail: e.message}; }
+};
 // bfFetch stuurt geen credentials mee — de backend leest ze zelf van schijf.
 const bfFetch = (path, opts={}) => fetch(_BF_PROXY + path.replace(/^\//, ''), opts);
 // bfTest POST'et de (nog niet opgeslagen) credentials naar onze eigen backend.
@@ -191,7 +220,7 @@ const bfTest = async (uid, key) => {
     if (!r.ok) return false;
     const d = await r.json();
     return d.ok === true;
-  } catch { return false; }
+  } catch(e) { return false; }
 };
 const bfGetBatches = async () => {
   const statuses = ['Planning','Brewing','Fermenting','Conditioning','Completed'];
@@ -1127,8 +1156,25 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   );
 }
 
+// ===== HYGIENE =====
+const DEFAULT_HYGIENE_GROUPS = [
+  {id:1, label:'Voorbereiding'},
+  {id:2, label:'Brouwen'},
+  {id:3, label:'Afvullen'},
+];
+const DEFAULT_HYGIENE_ITEMS = [
+  {id:1, label:'Receptuur en planning gecontroleerd',  group_id:1},
+  {id:2, label:'Apparatuur gereinigd',                 group_id:1},
+  {id:3, label:'Apparatuur gesaneerd (ontsmet)',        group_id:1},
+  {id:4, label:'Maischketel gereinigd en gesaneerd',   group_id:2},
+  {id:5, label:'Leidingen en slangen gespoeld',        group_id:2},
+  {id:6, label:'Fermentatievat gereinigd en gesaneerd',group_id:3},
+  {id:7, label:'Afvulapparatuur gereinigd',            group_id:3},
+  {id:8, label:'Pompen en fittingen gereinigd',        group_id:3},
+];
+
 // ===== BATCHES =====
-function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, setAv, uit, setUit, acc, setAcc, verpakkingen, setVerpakkingen, log, setLog, bfCreds, bfSync, tanks, accijnsInst}) {
+function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, setAv, uit, setUit, acc, setAcc, verpakkingen, setVerpakkingen, log, setLog, bfCreds, bfSync, tanks, accijnsInst, hygieneItems, hygieneGroups, wcCreds, artikelen}) {
   const [sel, setSel] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showBf, setShowBf] = useState(false);
@@ -1146,6 +1192,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
   const [infoIngeklapt, setInfoIngeklapt] = useState(false);
   const [bfSyncing, setBfSyncing] = useState(false);
   const [bfMsg, setBfMsg] = useState('');
+  const [hygieneIngeklapt, setHygieneIngeklapt] = useStore('batches_hygiene_ingeklapt', true);
   const [ingIngeklapt, setIngIngeklapt] = useStore('batches_ing_ingeklapt', false);
   const [ingFormOpen, setIngFormOpen] = useState(false);
   const [batchZoek, setBatchZoek] = useState('');
@@ -1154,6 +1201,37 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
   const [uitModal, setUitModal] = useState(null);
   const [uitAantal, setUitAantal] = useState('');
   const [uitDatum, setUitDatum] = useState(tod());
+
+  // ── WooCommerce auto-push helper ─────────────────────────────────────────
+  // Helper: is accijns betaald of is er geen accijns verschuldigd?
+  const wcAccijnsBetaald = (uitslag) => {
+    const records = (acc||[]).filter(ax => String(ax.uitslag_id) === String(uitslag.id));
+    if (records.length === 0) return Number(uitslag.accijns||0) === 0;
+    return records.every(a => a.betaald === true || Number(a.accijns||0) === 0);
+  };
+
+  const wcPushNaBatch = async (batchId, verpakkingType, nieuweUitslag) => {
+    if (!wcCreds?.enabled || !wcCreds?.storeUrl) return;
+    try {
+      const batch = bat.find(b=>b.id===batchId);
+      if (!batch) return;
+      const art = (artikelen||[]).find(a=>a.biernaam===batch.naam && a.verpakking_type===verpakkingType);
+      if (!art?.artikelnummer) return;
+      // Bestaande uitslagen: alleen meetellen als accijns betaald (of geen accijns)
+      const bestaand = (uit||[])
+        .filter(u=>bat.find(b=>b.id===u.batch_id)?.naam===art.biernaam && u.verpakking_type===verpakkingType)
+        .filter(u=>wcAccijnsBetaald(u))
+        .reduce((s,u)=>s+Math.max(0,Number(u.aantal||0)-Number(u.verkocht_stuks||0)),0);
+      // Nieuwe uitslag: accijns-record nog niet in state → check via uitslag.accijns
+      const nieuwBeschik = (nieuweUitslag && Number(nieuweUitslag.accijns||0)===0)
+        ? Math.max(0, Number(nieuweUitslag.aantal||0) - Number(nieuweUitslag.verkocht_stuks||0))
+        : 0;
+      const beschikbaar = bestaand + nieuwBeschik;
+      const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
+      if (!prods?.length) return;
+      await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
+    } catch(e) { console.warn('WC auto-push mislukt:', e.message); }
+  };
 
   const runBfSync = async () => {
     if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
@@ -1256,12 +1334,13 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
       setBat(p=>p.map(b=>b.id===editId?{...b,...bForm}:b));
       if (wijz.length>0) addLog({type:'gewijzigd', batch_id:editId, referentie:wijz.join(' | ')});
       setEditId(null);
+      setShowForm(false); setBForm(emptyB);
     } else {
       const nb = {id:newId(bat),...bForm};
       setBat(prev=>[...prev,nb]);
       addLog({type:'aangemaakt', batch_id:nb.id, referentie:nb.naam});
+      setShowForm(false); setBForm(emptyB);
     }
-    setShowForm(false); setBForm(emptyB);
   };
 
   const parseBfData = (raw) => {
@@ -1527,6 +1606,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
     addLog({type:'uitslaan', batch_id:sel, verpakking_type:uitModal.verpakking_type,
       hoeveelheid:n, eenheid:'stuks', referentie:`${liter.toFixed(1)}L`});
     setUitModal(null); setUitAantal(''); setUitDatum(tod());
+    wcPushNaBatch(sel, uitModal.verpakking_type, nu);
   };
   const delAv = (id) => {
     if ((uit||[]).some(u=>u.afvulling_id===id)) { alert('Kan niet verwijderen: er zijn al uitslagen.'); return; }
@@ -1721,6 +1801,91 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
               })()}
               </div>{/* /kosten */}
             </div>
+
+            {/* Hygiëne checklist */}
+            {(()=>{
+              const items = hygieneItems && hygieneItems.length ? hygieneItems : DEFAULT_HYGIENE_ITEMS;
+              const groups = hygieneGroups && hygieneGroups.length ? hygieneGroups : DEFAULT_HYGIENE_GROUPS;
+              const checks = selB.hygiene_checks || {};
+              const totaal = items.length;
+              const gedaan = items.filter(i=>checks[i.id]).length;
+              const alleOk = totaal > 0 && gedaan === totaal;
+              const toggleCheck = (itemId) => {
+                const wordtAangevinkt = !checks[itemId];
+                const nieuweChecks = {...checks, [itemId]: wordtAangevinkt};
+                setBat(prev=>prev.map(b=>b.id===selB.id ? {...b, hygiene_checks: nieuweChecks} : b));
+                const item = items.find(i=>i.id===itemId);
+                const groep = item?.group_id ? groups.find(g=>g.id===item.group_id) : null;
+                const label = groep ? `${groep.label} — ${item?.label}` : item?.label||`item ${itemId}`;
+                addLog({type:'hygiene', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`});
+              };
+              // Groepeer items
+              const ungrouped = items.filter(i=>!i.group_id);
+              const gegroepeerd = groups.map(g=>({
+                group: g,
+                items: items.filter(i=>i.group_id===g.id),
+              })).filter(g=>g.items.length>0);
+              return (
+                <div className="bg-white rounded-lg shadow-sm">
+                  <div className="px-4 py-2.5 bg-teal-700 text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:bg-teal-600 select-none"
+                    onClick={()=>setHygieneIngeklapt(p=>!p)}>
+                    <span className="flex items-center gap-2">
+                      <span className="text-teal-300 text-sm">{hygieneIngeklapt?'▶':'▼'}</span>
+                      🧹 Hygiëne
+                    </span>
+                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${alleOk ? 'bg-green-500 text-white' : gedaan>0 ? 'bg-amber-400 text-white' : 'bg-teal-600 text-teal-200'}`}>
+                      {totaal===0 ? 'Geen items' : `${gedaan}/${totaal}`}
+                    </span>
+                  </div>
+                  {!hygieneIngeklapt && (
+                    <div className="p-3 space-y-3">
+                      {totaal === 0 && (
+                        <p className="text-sm text-gray-400 italic">Geen checklistitems ingesteld. Ga naar Instellingen → Hygiëne checklist.</p>
+                      )}
+                      {gegroepeerd.map(({group, items:gItems})=>(
+                        <div key={group.id}>
+                          <div className="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-1.5 pb-1 border-b border-teal-100">{group.label}</div>
+                          <div className="space-y-0.5">
+                            {gItems.map(item=>(
+                              <label key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
+                                <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
+                                  className="w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
+                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item.label}</span>
+                                {checks[item.id] && <span className="ml-auto text-teal-500 text-xs">✓</span>}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {ungrouped.length>0 && (
+                        <div>
+                          {gegroepeerd.length>0 && <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5 pb-1 border-b border-gray-100">Overig</div>}
+                          <div className="space-y-0.5">
+                            {ungrouped.map(item=>(
+                              <label key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
+                                <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
+                                  className="w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
+                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item.label}</span>
+                                {checks[item.id] && <span className="ml-auto text-teal-500 text-xs">✓</span>}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {totaal>0 && (
+                        <div className={`text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                          {alleOk ? '✅ Alle punten afgevinkt' : `${gedaan} van ${totaal} afgevinkt`}
+                          {gedaan>0 && !alleOk && (
+                            <button onClick={()=>{ setBat(prev=>prev.map(b=>b.id===selB.id?{...b,hygiene_checks:{}}:b)); addLog({type:'hygiene', batch_id:selB.id, referentie:'Checklist gereset'}); }}
+                              className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">Reset</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
               <div className="px-4 py-2.5 bg-gray-700 text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:bg-gray-600 select-none"
@@ -2136,6 +2301,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                 status:      {icon:'🔄', label:'Status',       cls:'text-gray-700 bg-gray-100'},
                 aangemaakt:  {icon:'✨', label:'Aangemaakt',   cls:'text-indigo-700 bg-indigo-50'},
                 gewijzigd:   {icon:'✏️', label:'Gewijzigd',    cls:'text-amber-700 bg-amber-50'},
+                hygiene:     {icon:'🧹', label:'Hygiëne',      cls:'text-teal-700 bg-teal-50'},
               };
               const bLog = (log||[]).filter(l=>l.batch_id===selB.id).slice().reverse();
               if (!bLog.length) return null;
@@ -2574,8 +2740,10 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
 }
 
 // ===== VOORRAAD (uitgeslagen voorraad) =====
-function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslotenBieren, setGeslotenBieren, archiefIngeklapt, setArchiefIngeklapt, artikelen, setArtikelen}) {
+function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslotenBieren, setGeslotenBieren, archiefIngeklapt, setArchiefIngeklapt, artikelen, setArtikelen, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog}) {
   const [filterBatch, setFilterBatch] = useState('');
+  const [wcSyncing, setWcSyncing] = useState(false);
+  const [wcSyncMsg, setWcSyncMsg] = useState('');
 
   // ---- Artikelenstambestand modal ----
   const emptyArt = {artikelnummer:'', ean:'', verkoopprijs:'', btw:'21', omschrijving:''};
@@ -2641,6 +2809,122 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
 
   const getBatch = (bid) => bat.find(b=>b.id===bid);
 
+  // Helper: accijns betaald of geen accijns verschuldigd voor deze uitslag?
+  // Gebruikt filter+every zodat dubbele records (zelfde uitslag_id) allemaal betaald moeten zijn
+  const wcAccijnsBetaald = (u) => {
+    const records = (acc||[]).filter(ax => String(ax.uitslag_id) === String(u.id));
+    if (records.length === 0) return Number(u.accijns||0) === 0;
+    return records.every(a => a.betaald === true || Number(a.accijns||0) === 0);
+  };
+
+  // Debug helper
+  const wcAccijnsReden = (u) => {
+    const records = (acc||[]).filter(ax => String(ax.uitslag_id) === String(u.id));
+    if (records.length === 0) return Number(u.accijns||0) === 0 ? `✓ geen record, uitslag.accijns=0` : `✗ geen record, uitslag.accijns=${Number(u.accijns||0).toFixed(2)}`;
+    const ok = records.every(a => a.betaald === true || Number(a.accijns||0) === 0);
+    const detail = records.map(a => `acc.id=${a.id} betaald=${a.betaald} accijns=${Number(a.accijns||0).toFixed(2)}`).join(' & ');
+    return `${ok?'✓':'✗'} ${records.length} record(s): ${detail}`;
+  };
+
+  const addWcLog = (type, msg, details) => {
+    const entry = {id: Date.now(), ts: new Date().toISOString(), type, msg, details: details||''};
+    setWcSyncLog(prev => [entry, ...(prev||[])].slice(0, 100));
+  };
+
+  // Beschikbare WC-voorraad voor een artikel (alleen uitslagen met betaalde/geen accijns)
+  const wcBeschikbaarVoorArt = (art) =>
+    (uit||[])
+      .filter(u=>{ const b=bat.find(bx=>bx.id===u.batch_id); return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type; })
+      .filter(u=>wcAccijnsBetaald(u))
+      .reduce((s,u)=>s+Math.max(0,Number(u.aantal||0)-Number(u.verkocht_stuks||0)), 0);
+
+  // Push alle voorraad naar WooCommerce
+  const wcPushAll = async () => {
+    if (!wcCreds?.enabled || !wcCreds?.storeUrl) {
+      setWcSyncMsg('⚠ WooCommerce koppeling niet ingeschakeld'); return;
+    }
+    setWcSyncing(true); setWcSyncMsg('');
+    try {
+      let bijgewerkt = 0;
+      const combis = (artikelen||[]).filter(a=>a.artikelnummer);
+      for (const art of combis) {
+        const beschikbaar = wcBeschikbaarVoorArt(art);
+        // Debug: log per uitslag de accijns-beslissing
+        const uitslagenVoorArt = (uit||[]).filter(u=>{ const b=bat.find(bx=>bx.id===u.batch_id); return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type; });
+        const debugDetails = uitslagenVoorArt.map(u=>`id=${u.id} aantal=${u.aantal} accijns=${Number(u.accijns||0).toFixed(2)}: ${wcAccijnsReden(u)}`).join(' | ');
+        console.log(`WC push ${art.biernaam} ${art.verpakking_type}: beschikbaar=${beschikbaar}`, debugDetails);
+        addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, debugDetails || 'geen uitslagen');
+        const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
+        if (!prods?.length) continue;
+        await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
+        bijgewerkt++;
+      }
+      setWcCreds(prev=>({...prev, lastSync: new Date().toISOString()}));
+      const pushMsg = `${bijgewerkt} product${bijgewerkt!==1?'en':''} bijgewerkt`;
+      setWcSyncMsg(`✓ ${pushMsg}`);
+      addWcLog('push', `↑ Push voorraad — ${pushMsg}`, combis.filter(a=>a.artikelnummer).map(a=>`${a.biernaam} ${a.verpakking_type}: ${wcBeschikbaarVoorArt(a)}×`).join(', '));
+    } catch(e) {
+      setWcSyncMsg(`⚠ Push mislukt: ${e.message}`);
+      addWcLog('fout', `↑ Push mislukt — ${e.message}`);
+    }
+    setWcSyncing(false);
+    setTimeout(()=>setWcSyncMsg(''), 6000);
+  };
+
+  // Pull verkopen vanuit WooCommerce → verdeel diff FIFO over verkocht_stuks
+  const wcPullSales = async () => {
+    if (!wcCreds?.enabled || !wcCreds?.storeUrl) {
+      setWcSyncMsg('⚠ WooCommerce koppeling niet ingeschakeld'); return;
+    }
+    setWcSyncing(true); setWcSyncMsg('');
+    try {
+      let bijgewerkt = 0;
+      const combis = (artikelen||[]).filter(a=>a.artikelnummer);
+      for (const art of combis) {
+        const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
+        if (!prods?.length) continue;
+        const wcStock = Number(prods[0].stock_quantity||0);
+        const uitslagenVoorDitArtikel = (uit||[]).filter(u=>{
+          const b = bat.find(bx=>bx.id===u.batch_id);
+          return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type;
+        });
+        // Alleen accijns-vrije/betaalde uitslagen vergelijken met WC voorraad
+        const brewBeschikbaar = uitslagenVoorDitArtikel
+          .filter(u=>wcAccijnsBetaald(u))
+          .reduce((s,u)=>s+Math.max(0,Number(u.aantal||0)-Number(u.verkocht_stuks||0)),0);
+        const diff = brewBeschikbaar - wcStock;
+        if (diff <= 0) continue;
+        // FIFO: verdeel diff over uitslagen (oudste eerst), ook alleen betaalde accijns
+        const gesorteerd = [...uitslagenVoorDitArtikel]
+          .filter(u=>wcAccijnsBetaald(u))
+          .sort((a,b)=>a.id-b.id);
+        let teDelen = diff;
+        const updates = {};
+        for (const u of gesorteerd) {
+          if (teDelen <= 0) break;
+          const beschik = Math.max(0, Number(u.aantal||0) - Number(u.verkocht_stuks||0));
+          if (beschik <= 0) continue;
+          const extra = Math.min(beschik, teDelen);
+          updates[u.id] = Number(u.verkocht_stuks||0) + extra;
+          teDelen -= extra;
+        }
+        if (Object.keys(updates).length) {
+          setUit(prev=>prev.map(u=>updates[u.id]!==undefined ? {...u, verkocht_stuks: updates[u.id]} : u));
+          bijgewerkt += Object.keys(updates).length;
+        }
+      }
+      setWcCreds(prev=>({...prev, lastSync: new Date().toISOString()}));
+      const pullMsg = `${bijgewerkt} uitslag${bijgewerkt!==1?'en':''} bijgewerkt`;
+      setWcSyncMsg(`✓ Pull klaar — ${pullMsg}`);
+      addWcLog('pull', `↓ Pull verkopen — ${pullMsg}`);
+    } catch(e) {
+      setWcSyncMsg(`⚠ Pull mislukt: ${e.message}`);
+      addWcLog('fout', `↓ Pull mislukt — ${e.message}`);
+    }
+    setWcSyncing(false);
+    setTimeout(()=>setWcSyncMsg(''), 6000);
+  };
+
   // Summary cards: totals per verpakking_type — inclusief gearchiveerde (volledig verkocht)
   const allTypes = [...new Set([
     ...uit.map(u=>u.verpakking_type),
@@ -2690,10 +2974,27 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-lg font-semibold">Uitgeslagen Voorraad</h2>
-        <Sel value={filterBatch} onChange={setFilterBatch}
-          opts={bat.map(b=>({v:String(b.id),l:b.naam}))} ph="Alle bieren" cls="w-52" />
+        <div className="flex items-center gap-2 flex-wrap">
+          {wcCreds?.enabled && (
+            <>
+              <button onClick={wcPushAll} disabled={wcSyncing}
+                title="Stuur de huidige voorraad (alleen betaalde accijns) naar WooCommerce"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
+                {wcSyncing ? '⏳ Bezig…' : '↑ Push voorraad'}
+              </button>
+              <button onClick={wcPullSales} disabled={wcSyncing}
+                title="Haal verkopen op uit WooCommerce en verwerk ze als verkocht_stuks"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500 text-white rounded text-sm font-medium hover:bg-purple-600 transition-colors disabled:opacity-40">
+                {wcSyncing ? '⏳ Bezig…' : '↓ Pull verkopen'}
+              </button>
+            </>
+          )}
+          {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓')?'text-green-600':'text-red-500'}`}>{wcSyncMsg}</span>}
+          <Sel value={filterBatch} onChange={setFilterBatch}
+            opts={bat.map(b=>({v:String(b.id),l:b.naam}))} ph="Alle bieren" cls="w-52" />
+        </div>
       </div>
 
       {/* Summary cards per verpakkingstype (altijd over alle bieren) */}
@@ -3654,7 +3955,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, bfCreds, setBfCreds, tanks, setTanks}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog}) {
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -3683,6 +3984,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const [tankInput, setTankInput] = React.useState('');
+  const [nieuwHygieneItem, setNieuwHygieneItem] = React.useState('');
+  const [nieuwHygieneItemGroep, setNieuwHygieneItemGroep] = React.useState('');
+  const [nieuwGroep, setNieuwGroep] = React.useState('');
   const addTank = () => {
     const id = tankInput.trim().toUpperCase();
     if (!id) return;
@@ -3717,14 +4021,85 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setBfTesting(false);
   };
 
+  // WooCommerce form state
+  const [wcForm, setWcForm] = React.useState({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false});
+  const [wcTesting, setWcTesting] = React.useState(false);
+  const [wcMsg, setWcMsg] = React.useState('');
+  const wcFormInitialized = React.useRef(false);
+  React.useEffect(() => {
+    if (!wcFormInitialized.current && (wcCreds?.storeUrl || wcCreds?.consumerKey || wcCreds?.enabled)) {
+      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false});
+      wcFormInitialized.current = true;
+    }
+  }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
+  const saveWc = () => {
+    setWcCreds(prev => ({...prev, ...wcForm}));
+    setWcMsg('✓ Opgeslagen');
+    setTimeout(() => setWcMsg(''), 2000);
+  };
+  const testWc = async () => {
+    setWcTesting(true); setWcMsg('');
+    // Stap 1: ping om te controleren of server.py bereikbaar is en de nieuwe WC-code draait
+    try {
+      const ping = await fetch(_WC_PING, {signal: AbortSignal.timeout(4000)});
+      const pd = await ping.json().catch(()=>({}));
+      if (!ping.ok || pd.server !== 'wc-ready') {
+        setWcMsg('⚠ Server niet bereikbaar of verouderd — herstart de addon');
+        setWcTesting(false); return;
+      }
+    } catch(e) {
+      setWcMsg('⚠ Server niet bereikbaar — herstart de addon en probeer opnieuw');
+      setWcTesting(false); return;
+    }
+    // Stap 2: test de WooCommerce credentials
+    const res = await wcTestCreds({storeUrl: wcForm.storeUrl, consumerKey: wcForm.consumerKey, consumerSecret: wcForm.consumerSecret});
+    if (res.ok) {
+      setWcMsg('✓ Verbinding gelukt!');
+    } else {
+      const code = res.status ? ` (HTTP ${res.status})` : '';
+      const detail = res.detail ? ` — ${res.detail}` : '';
+      setWcMsg(`⚠ Verbinding mislukt${code}${detail}`);
+    }
+    setWcTesting(false);
+  };
+
   const inp = 'border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-amber-500';
-  const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6';
+  const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4';
+
+  const [activeSection, setActiveSection] = React.useState('brouwerij');
+  const navItems = [
+    {id:'brouwerij',   label:'Brouwerij',   icon:'🏭'},
+    {id:'brewfather',  label:'Brewfather',  icon:'🍺'},
+    {id:'woocommerce', label:'WooCommerce', icon:'🛒'},
+    {id:'accijns',     label:'Accijns',     icon:'💶'},
+    {id:'hygiene',     label:'Hygiëne',     icon:'🧹'},
+    {id:'data',        label:'Data',        icon:'📦'},
+  ];
+
+  const fmtTs = (ts) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Instellingen</h1>
+    <div className="flex gap-4 items-start">
 
-      <ServerStatusCard />
+      {/* ── Links navigatie ── */}
+      <div className="w-44 flex-shrink-0 bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="px-3 py-2 bg-gray-700 text-white text-xs font-semibold uppercase tracking-wide">Instellingen</div>
+        {navItems.map(n => (
+          <button key={n.id} onClick={()=>setActiveSection(n.id)}
+            className={`w-full text-left px-3 py-2.5 text-sm border-b border-gray-100 last:border-0 flex items-center gap-2 transition-colors ${activeSection===n.id ? 'bg-amber-50 text-amber-700 font-semibold border-l-[3px] border-l-amber-500 pl-2.5' : 'text-gray-600 hover:bg-gray-50'}`}>
+            <span className="text-base leading-none">{n.icon}</span>
+            <span>{n.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Rechts content ── */}
+      <div className="flex-1 min-w-0 max-w-2xl">
+
+      {/* BROUWERIJ */}
+      {activeSection==='brouwerij' && <>
+        <ServerStatusCard />
+
 
       {/* Logo */}
       <div className={card}>
@@ -3787,7 +4162,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </button>
         </div>
       </div>
+      </>}
 
+      {/* BREWFATHER */}
+      {activeSection==='brewfather' && <>
       {/* Brewfather koppeling */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">Brewfather koppeling</h2>
@@ -3834,9 +4212,86 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             ))}
           </div>
         </div>
-        {bfCreds?.lastSync && <p className="text-xs text-gray-400 mt-3">Laatste sync: {fmtD(bfCreds.lastSync)}</p>}
+        {bfCreds?.lastSync && <p className="text-xs text-gray-400 mt-3">Laatste sync: {fmtTs(bfCreds.lastSync)}</p>}
+      </div>
+      </>}
+
+      {/* WOOCOMMERCE */}
+      {activeSection==='woocommerce' && <>
+      {/* WooCommerce koppeling */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">WooCommerce koppeling</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Koppel met een WooCommerce webshop om voorraad automatisch bij te werken bij uitslaan en handmatig te synchroniseren vanuit de Voorraad pagina.<br/>
+          Maak een API-sleutel aan via <strong>WooCommerce → Instellingen → Geavanceerd → REST API</strong>.
+        </p>
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div className="relative">
+              <input type="checkbox" checked={wcForm.enabled} onChange={e=>setWcForm(f=>({...f,enabled:e.target.checked}))} className="sr-only peer" />
+              <div className="w-10 h-6 bg-gray-200 rounded-full peer peer-checked:bg-purple-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+            </div>
+            <span className="text-sm font-medium text-gray-700">Koppeling ingeschakeld</span>
+          </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Webshop URL</label>
+            <input type="url" value={wcForm.storeUrl} onChange={e=>setWcForm(f=>({...f,storeUrl:e.target.value}))}
+              placeholder="https://jouwwebshop.nl"
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-sm focus:outline-none focus:border-purple-500" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Consumer Key</label>
+              <input type="password" value={wcForm.consumerKey} onChange={e=>setWcForm(f=>({...f,consumerKey:e.target.value}))}
+                placeholder="ck_••••••••••••••••"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:border-purple-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Consumer Secret</label>
+              <input type="password" value={wcForm.consumerSecret} onChange={e=>setWcForm(f=>({...f,consumerSecret:e.target.value}))}
+                placeholder="cs_••••••••••••••••"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:border-purple-500" />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={saveWc} className="px-4 py-2 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors">Opslaan</button>
+            <button onClick={testWc} disabled={wcTesting||!wcForm.storeUrl||!wcForm.consumerKey||!wcForm.consumerSecret}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-40">
+              {wcTesting ? 'Testen…' : 'Test verbinding'}
+            </button>
+            {wcMsg && <span className={`text-sm font-medium ${wcMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{wcMsg}</span>}
+          </div>
+        </div>
+        {wcCreds?.lastSync && <p className="text-xs text-gray-400 mt-4">Laatste sync: {fmtTs(wcCreds.lastSync)}</p>}
       </div>
 
+      {/* WooCommerce Sync Log */}
+      <div className={card}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-700">Synchronisatie log</h2>
+          {(wcSyncLog||[]).length > 0 && (
+            <button onClick={()=>setWcSyncLog([])} className="text-xs text-gray-400 hover:text-red-500 transition-colors">Wissen</button>
+          )}
+        </div>
+        {(wcSyncLog||[]).length === 0
+          ? <p className="text-sm text-gray-400 italic">Nog geen synchronisaties uitgevoerd.</p>
+          : <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+              {(wcSyncLog||[]).map(e => (
+                <div key={e.id} className={`text-xs rounded-lg px-3 py-2 flex flex-col gap-0.5 ${e.type==='fout' ? 'bg-red-50 border border-red-100' : e.type==='push' ? 'bg-purple-50 border border-purple-100' : 'bg-blue-50 border border-blue-100'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`font-medium ${e.type==='fout'?'text-red-700':e.type==='push'?'text-purple-700':'text-blue-700'}`}>{e.msg}</span>
+                    <span className="text-gray-400 flex-shrink-0">{fmtTs(e.ts)}</span>
+                  </div>
+                  {e.details && <span className="text-gray-500 text-xs">{e.details}</span>}
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+      </>}
+
+      {/* ACCIJNS */}
+      {activeSection==='accijns' && <>
       {/* Accijns tarieven */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">Accijns tarieven</h2>
@@ -3881,7 +4336,144 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
         </div>
       </div>
+      </>}
 
+      {/* HYGIENE */}
+      {activeSection==='hygiene' && <>
+      {/* Hygiëne checklist */}
+      {(()=>{
+        const items  = hygieneItems  && hygieneItems.length  ? hygieneItems  : DEFAULT_HYGIENE_ITEMS;
+        const groups = hygieneGroups && hygieneGroups.length ? hygieneGroups : DEFAULT_HYGIENE_GROUPS;
+
+        // --- Groepen ---
+        const addGroep = () => {
+          const label = nieuwGroep.trim();
+          if (!label) return;
+          if (groups.find(g=>g.label.toLowerCase()===label.toLowerCase())) { alert('Groep bestaat al'); return; }
+          const maxId = groups.length ? Math.max(...groups.map(g=>g.id)) : 0;
+          setHygieneGroups([...groups, {id: maxId+1, label}]);
+          setNieuwGroep('');
+        };
+        const removeGroep = (id) => {
+          if (items.some(i=>i.group_id===id)) {
+            if (!confirm('Er zijn items gekoppeld aan deze groep. Ze worden naar "Geen groep" verplaatst.')) return;
+            setHygieneItems(items.map(i=>i.group_id===id ? {...i, group_id:null} : i));
+          }
+          setHygieneGroups(groups.filter(g=>g.id!==id));
+        };
+        const moveGroep = (id, dir) => {
+          const idx = groups.findIndex(g=>g.id===id);
+          if (idx<0) return;
+          const next = [...groups];
+          const swap = idx+dir;
+          if (swap<0||swap>=next.length) return;
+          [next[idx],next[swap]]=[next[swap],next[idx]];
+          setHygieneGroups(next);
+        };
+
+        // --- Items ---
+        const addItem = () => {
+          const label = nieuwHygieneItem.trim();
+          if (!label) return;
+          const maxId = items.length ? Math.max(...items.map(i=>i.id)) : 0;
+          const group_id = nieuwHygieneItemGroep ? Number(nieuwHygieneItemGroep) : null;
+          setHygieneItems([...items, {id: maxId+1, label, group_id}]);
+          setNieuwHygieneItem('');
+        };
+        const removeItem = (id) => setHygieneItems(items.filter(i=>i.id!==id));
+        const moveItem = (id, dir) => {
+          const idx = items.findIndex(i=>i.id===id);
+          if (idx<0) return;
+          const next = [...items];
+          const swap = idx+dir;
+          if (swap<0||swap>=next.length) return;
+          [next[idx],next[swap]]=[next[swap],next[idx]];
+          setHygieneItems(next);
+        };
+        const setItemGroep = (id, group_id) => setHygieneItems(items.map(i=>i.id===id?{...i,group_id:group_id?Number(group_id):null}:i));
+        const resetAlles = () => { if(confirm('Alles terugzetten naar standaard (groepen + items)?')) { setHygieneGroups(DEFAULT_HYGIENE_GROUPS); setHygieneItems(DEFAULT_HYGIENE_ITEMS); }};
+
+        return (
+          <div className={card}>
+            <h2 className="text-lg font-semibold text-gray-700 mb-1">🧹 Hygiëne checklist</h2>
+            <p className="text-sm text-gray-500 mb-5">
+              De checklist is zichtbaar per batch (ingeklapt). Maak groepen aan zoals "Voorbereiding" of "Afvullen" en wijs items toe aan een groep.
+            </p>
+
+            {/* Groepen beheer */}
+            <div className="mb-5">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Groepen</div>
+              <div className="space-y-1 mb-3">
+                {groups.length===0 && <p className="text-sm text-gray-400 italic">Geen groepen.</p>}
+                {groups.map((g, idx)=>(
+                  <div key={g.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
+                    <span className="flex-1 text-sm font-medium text-teal-800">{g.label}</span>
+                    <span className="text-xs text-teal-500">{items.filter(i=>i.group_id===g.id).length} items</span>
+                    <button onClick={()=>moveGroep(g.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
+                    <button onClick={()=>moveGroep(g.id,1)} disabled={idx===groups.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
+                    <button onClick={()=>removeGroep(g.id)} className="text-gray-400 hover:text-red-500 text-xs ml-1">✕</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="text" value={nieuwGroep} onChange={e=>setNieuwGroep(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&addGroep()}
+                  placeholder="Naam nieuwe groep…"
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-teal-500" />
+                <button onClick={addGroep}
+                  className="px-3 py-1.5 bg-teal-600 text-white rounded text-sm font-medium hover:bg-teal-700 transition-colors">
+                  + Groep
+                </button>
+              </div>
+            </div>
+
+            {/* Items beheer */}
+            <div className="mb-4">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Items</div>
+              <div className="space-y-1 mb-3">
+                {items.length===0 && <p className="text-sm text-gray-400 italic">Geen items.</p>}
+                {items.map((item, idx)=>(
+                  <div key={item.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                    <span className="flex-1 text-sm text-gray-700">{item.label}</span>
+                    <select value={item.group_id||''} onChange={e=>setItemGroep(item.id,e.target.value)}
+                      className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 bg-white focus:outline-none focus:border-teal-400 max-w-[130px]">
+                      <option value="">— Geen groep —</option>
+                      {groups.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                    <button onClick={()=>moveItem(item.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
+                    <button onClick={()=>moveItem(item.id,1)} disabled={idx===items.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
+                    <button onClick={()=>removeItem(item.id)} className="text-gray-400 hover:text-red-500 text-xs ml-1">✕</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input type="text" value={nieuwHygieneItem} onChange={e=>setNieuwHygieneItem(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&addItem()}
+                  placeholder="Nieuw item…"
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-amber-500" />
+                <select value={nieuwHygieneItemGroep} onChange={e=>setNieuwHygieneItemGroep(e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-amber-500">
+                  <option value="">— Groep —</option>
+                  {groups.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}
+                </select>
+                <button onClick={addItem}
+                  className="px-3 py-1.5 bg-amber-600 text-white rounded text-sm font-medium hover:bg-amber-700 transition-colors">
+                  + Item
+                </button>
+              </div>
+            </div>
+
+            <button onClick={resetAlles}
+              className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200 transition-colors">
+              Reset naar standaard
+            </button>
+          </div>
+        );
+      })()}
+      </>}
+
+      {/* DATA */}
+      {activeSection==='data' && <>
       {/* Excel import / export */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">Data import &amp; export</h2>
@@ -3913,8 +4505,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-xs text-gray-400 mt-2">Let op: dit kan niet ongedaan worden gemaakt.</p>
       </div>
 
-      <div className="pt-4 pb-2 text-center text-xs text-gray-400">
+      </>}
+
+      <div className="pt-2 pb-2 text-center text-xs text-gray-400">
         Gemaakt door: Jasper Bom — Craftery Brewing · <a href="mailto:info@craftery.nl" className="underline hover:text-gray-600">info@craftery.nl</a>
+      </div>
       </div>
     </div>
   );
@@ -3937,6 +4532,8 @@ function App() {
   const [accijnsInst, setAccijnsInst] = useStore('accijns_instellingen', {tarief_per_hl_abv:7.51,tarief_per_hl:24.17});
   const [logo, setLogo] = useStore('app_logo', null);
   const [bfCreds, setBfCreds] = useStore('brewfather_creds', {userId:'', apiKey:'', enabled:false, lastSync:null}, {secure:true});
+  const [wcCreds, setWcCreds] = useStore('woocommerce_creds', {storeUrl:'', consumerKey:'', consumerSecret:'', enabled:false, lastSync:null}, {secure:true});
+  const [wcSyncLog, setWcSyncLog] = useStore('wc_sync_log', []);
   const [recepten, setRecepten] = useStore('recepten', []);
   const [verborgen, setVerborgen] = useStore('recepten_verborgen', []);
   const [gearchiveerdeTags, setGearchiveerdeTags] = useStore('recepten_gearchiveerde_tags', []);
@@ -3944,6 +4541,8 @@ function App() {
   const [geslotenGroepen, setGeslotenGroepen] = useStore('recepten_gesloten_groepen', []);
   const [tanks, setTanks] = useStore('tanks', []);
   const [artikelen, setArtikelen] = useStore('artikelen', []);
+  const [hygieneItems, setHygieneItems] = useStore('hygiene_items', DEFAULT_HYGIENE_ITEMS);
+  const [hygieneGroups, setHygieneGroups] = useStore('hygiene_groups', DEFAULT_HYGIENE_GROUPS);
   const [page, setPage] = useState('dashboard');
   const importRef = useRef(null);
   const bfAutoSynced = React.useRef(false);
@@ -4052,11 +4651,11 @@ function App() {
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} log={log} setLog={setLog} bi={bi} bat={bat} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
-        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} />}
+        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
 
-        {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} />}
+        {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
       </main>
     </div>
   );
