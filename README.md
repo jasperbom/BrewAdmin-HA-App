@@ -1,6 +1,6 @@
 # 🍺 Brouwerij Admin — Home Assistant Addon
 
-Een Home Assistant addon voor het beheren van een kleine brouwerij. Registreer batches, beheer ingrediënten en voorraad, volg accijnsverplichtingen en synchroniseer met Brewfather — alles vanuit één overzichtelijke interface direct in je HA dashboard. 
+Een Home Assistant addon voor het beheren van een kleine brouwerij. Registreer batches, beheer ingrediënten en voorraad, volg accijnsverplichtingen en synchroniseer met Brewfather en WooCommerce — alles vanuit één overzichtelijke interface direct in je HA dashboard.
 
 ## Volledig gemaakt met Claude AI.
 
@@ -24,6 +24,7 @@ Een Home Assistant addon voor het beheren van een kleine brouwerij. Registreer b
 - Kostenoverzicht per batch (electra, water, schoonmaak, overig)
 - Ingrediënten koppelen met automatische voorraadaftrek
 - Afvullen en uitslaan van gereed bier
+- Hygiënechecklist per batch: aangepaste groepen en items, afvinkbaar per stap
 - Tankbezetting-validatie (dubbele bezetting wordt geblokkeerd)
 - Logboek per batch met alle mutaties
 
@@ -36,22 +37,28 @@ Een Home Assistant addon voor het beheren van een kleine brouwerij. Registreer b
 - Verkochte stuks bijhouden per uitslag
 - Artikelenstambestand met SKU, EAN, verkoopprijs en BTW-percentage
 - Rode markering voor uitslagen waarover accijns nog niet betaald is
+- Automatische WooCommerce voorraadupdate bij uitslaan
 - Archivering van volledig verkochte uitslagen
 
 ### Accijns
 - Automatische accijnsberekening bij uitslaan (liters × ABV × tarief)
 - Overzicht van open en betaalde aangiftes
 - Markeer accijns als betaald met één klik
+- Alleen voorraad met betaalde accijns telt mee in WooCommerce
 
 ### Instellingen
-- Tanks toevoegen en beheren
-- Brewfather API koppeling (User ID + API key)
-- Accijnstarieven instellen
-- Export en import van alle data (JSON backup)
+De instellingenpagina is ingedeeld met een zijbalk navigatie:
+
+- **Brouwerij** — brouwerijnaam, logo en tanks beheren
+- **Brewfather** — API koppeling (User ID + API key), handmatige sync
+- **WooCommerce** — webshop koppeling (store URL + consumer key/secret), handmatige voorraadpush, synchronisatielog
+- **Accijns** — tarieven instellen (per hl/ABV en per hl)
+- **Hygiëne** — checklist-items en groepen beheren die verschijnen per batch
+- **Data** — export en import van alle data (Excel backup), mutatielog
 
 
 ## Installatie
 
-Voeg deze repo toe aan je Home Assistant apps en installeren maar :) 
+Voeg deze repo toe aan je Home Assistant apps en installeren maar :)
 
 
