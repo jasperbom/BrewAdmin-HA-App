@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.3.1]
+
+### Fixed
+- Batch status dropdown in the detail header rendered raw Dutch values instead of the active language — now translated via lookup object
+- Dashboard tank status badge rendered raw Dutch status — now translated
+- Ingredient type column in the batch ingredient list rendered raw Dutch data keys — now translated
+- Status `<Badge>` component translated correctly across all pages (batch list, archive, detail info card)
+- Packaging type selectors on Ingredients and Batches pages now show translated labels
+- Unit selectors (EENHEDEN) on Ingredients and Batches pages now show translated labels
+- Ingredient type selectors (ING_TYPES) on Ingredients and Batches pages now show translated labels
+- Brewfather status mapping display translated to active language
+- HA server status labels and descriptions translated to active language
+- Settings: logo upload button, add-row buttons, Excel import/export, log count/clear, hygiene buttons, excise tariff fields and formula label all translated
+- Translation object syntax errors (double commas `,,`) fixed — caused all translations to fall back to raw keys
+
+---
+
 ## [1.3.0]
 
 ### Added
