@@ -12,12 +12,30 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script src="lang/nl.js"></script>
+  <script src="lang/en.js"></script>
+  <script src="lang/de.js"></script>
+  <script src="lang/fr.js"></script>
+  <script src="lang/es.js"></script>
   <style>body{margin:0;background:#f3f4f6;}</style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useRef } = React;
+const { useState, useRef, useEffect } = React;
+
+// ===== I18N =====
+const SUPPORTED_LANGS = ['nl', 'en', 'de', 'fr', 'es'];
+const detectLang = () => {
+  const browser = (navigator.language || navigator.userLanguage || 'en').toLowerCase().split('-')[0];
+  return SUPPORTED_LANGS.includes(browser) ? browser : 'en';
+};
+let _lang = 'nl';
+const t = (key) => {
+  const trans = window.BREW_TRANS;
+  if (!trans) return key;
+  return (trans[_lang] && trans[_lang][key]) || (trans['nl'] && trans['nl'][key]) || key;
+};
 
 // ===== CONSTANTS =====
 const BF_MAP = {"Planning":"Gepland","Brewing":"Brouwen","Fermenting":"Vergisten","Conditioning":"Conditioneren","Carbonating":"Conditioneren","Packaging":"Verpakt","Completed":"Gesloten","Archived":"Gesloten"};
@@ -312,7 +330,16 @@ const bfMapBis = (b, batchId, startId) => {
 const fmt = (v) => '€'+Number(v||0).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('nl-NL') : '';
 const tod = () => new Date().toISOString().split('T')[0];
-const accijnsCalc = (L, abv, r1=7.51, r2=24.17) => { const h=L/100; return Math.max(h*(abv||0)*r1, h*r2); };
+const accijnsCalc = (L, abv, r1=7.51, r2=24.17, inst=null) => {
+  const liter = L; const hl = L/100;
+  if (inst?.customFormulaEnabled && inst?.customFormula) {
+    try {
+      const result = new Function('liter','abv','hl','r1','r2', `"use strict"; return (${inst.customFormula});`)(liter,abv||0,hl,r1,r2);
+      if (typeof result === 'number' && !isNaN(result)) return result;
+    } catch(e) {}
+  }
+  return Math.max(hl*(abv||0)*r1, hl*r2);
+};
 
 // ===== EXCEL =====
 const excelExport = (ing,lots,bat,bi,av,uit,acc,verp) => {
@@ -595,17 +622,17 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           {tabBtn('verpakkingen',`Verpakkingen${verpakkingen.some(v=>Number(v.voorraad||0)===0)?' ⚠️':''}`)}
           {tabBtn('mutaties','Mutaties')}
         </div>
-        {tab==='ingredienten' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setShowO(true)}}>+ Ontvangst</Btn>}
-        {tab==='verpakkingen' && <Btn onClick={()=>{setVOntvForm(emptyVO);setShowVOntv(true)}}>+ Ontvangst</Btn>}
-        {tab==='mutaties' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setShowO(true)}}>+ Ontvangst</Btn>}
+        {tab==='ingredienten' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setShowO(true)}}>{t('btn_ontvangst')}</Btn>}
+        {tab==='verpakkingen' && <Btn onClick={()=>{setVOntvForm(emptyVO);setShowVOntv(true)}}>{t('btn_ontvangst')}</Btn>}
+        {tab==='mutaties' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setShowO(true)}}>{t('btn_ontvangst')}</Btn>}
       </div>
 
       {/* ======= INGREDIËNTEN TAB ======= */}
       {tab==='ingredienten' && (
-        <div className="flex gap-4 items-start">
-            <div className="w-60 flex-shrink-0">
+        <div className="flex flex-col md:flex-row gap-4 md:items-start">
+            <div className={`w-full md:w-60 md:flex-shrink-0${sel?' hidden md:block':''}`}>
               <div className="mb-2">
-                <input type="text" placeholder="🔍 Zoek ingrediënt…"
+                <input type="text" placeholder={t('search_ingredient')}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
                   value={ingZoek} onChange={e=>{setIngZoek(e.target.value);setSel(null);}} />
               </div>
@@ -615,7 +642,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   <tr><th className="px-3 py-1.5 text-left font-normal">Naam</th><th className="px-3 py-1.5 text-right font-normal">Voorraad</th></tr>
                 </thead>
                 {ing.length===0
-                  ? <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen ingrediënten. Gebruik '+ Ontvangst'.</td></tr></tbody>
+                  ? <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_no_ingredients')}</td></tr></tbody>
                   : (() => {
                       const zoek = ingZoek.trim().toLowerCase();
                       const filtered = zoek ? ing.filter(i=>i.naam.toLowerCase().includes(zoek)||i.type.toLowerCase().includes(zoek)) : ing;
@@ -650,7 +677,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               </table>
               </div>{/* /bg-white ing card */}
             </div>
-            {sel && selIng && (
+            {sel && selIng && (<>
+              <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 w-full" onClick={()=>setSel(null)}>{t('btn_back')}</button>
               <div className="flex-1 min-w-0 bg-white rounded-lg shadow-sm overflow-x-auto">
                 <div className="px-3 py-2 bg-gray-700 text-white flex items-center justify-between">
                   <span className="font-medium text-sm">{selIng.naam} — Lots</span>
@@ -661,7 +689,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                     <tr><th className="px-3 py-2 text-left">Lot#</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-left">THT</th><th className="px-3 py-2 text-right">€/E</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {activeLots(sel).length===0 && <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Geen actieve lots</td></tr>}
+                    {activeLots(sel).length===0 && <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">{t('msg_no_active_lots')}</td></tr>}
                     {activeLots(sel).map(lot => {
                       const days = lot.houdbaarheid ? Math.ceil((new Date(lot.houdbaarheid)-new Date())/86400000) : null;
                       const exp = days!==null&&days<0; const soon = days!==null&&days>=0&&days<=30;
@@ -698,7 +726,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   </tbody>
                 </table>
               </div>
-            )}
+            </>)}
         </div>
       )}
 
@@ -787,9 +815,9 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
               <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Factuurgegevens</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Inp label="Leverancier" value={factuurForm.leverancier} onChange={v=>setFactuurForm(f=>({...f,leverancier:v}))} placeholder="Bijv. HopZone" />
-                <Inp label="Factuurnummer" value={factuurForm.factuur} onChange={v=>setFactuurForm(f=>({...f,factuur:v}))} placeholder="F-2025-001" />
-                <Inp label="Aankoopdatum" type="date" value={factuurForm.datum} onChange={v=>setFactuurForm(f=>({...f,datum:v}))} />
+                <Inp label={t('lbl_supplier')} value={factuurForm.leverancier} onChange={v=>setFactuurForm(f=>({...f,leverancier:v}))} placeholder="Bijv. HopZone" />
+                <Inp label={t('lbl_invoice')} value={factuurForm.factuur} onChange={v=>setFactuurForm(f=>({...f,factuur:v}))} placeholder="F-2025-001" />
+                <Inp label={t('ing_buy_date')} type="date" value={factuurForm.datum} onChange={v=>setFactuurForm(f=>({...f,datum:v}))} />
               </div>
             </div>
 
@@ -817,18 +845,18 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   <Inp label="Of nieuw ingredient" value={productForm.nieuw} onChange={v=>setProductForm(f=>({...f,nieuw:v,ing_id:''}))} placeholder="Nieuwe naam" />
                 </div>
                 {!productForm.ing_id && productForm.nieuw && (
-                  <Inp label="Fabrikant" value={productForm.fabrikant} onChange={v=>setProductForm(f=>({...f,fabrikant:v}))} placeholder="Bijv. Weyermann" />
+                  <Inp label={t('ing_manufacturer')} value={productForm.fabrikant} onChange={v=>setProductForm(f=>({...f,fabrikant:v}))} placeholder="Bijv. Weyermann" />
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Inp label="Hoeveelheid *" type="number" value={productForm.qty} onChange={v=>setProductForm(f=>({...f,qty:v}))} placeholder="0" cls="col-span-2" />
+                  <Inp label={t('modal_qty_required')} type="number" value={productForm.qty} onChange={v=>setProductForm(f=>({...f,qty:v}))} placeholder="0" cls="col-span-2" />
                   <Sel label="Eenheid" value={productForm.eenh} onChange={v=>setProductForm(f=>({...f,eenh:v}))} opts={EENHEDEN} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Inp label="Lotnummer" value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
-                  <Inp label="THT datum" type="date" value={productForm.tht} onChange={v=>setProductForm(f=>({...f,tht:v}))} />
+                  <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
+                  <Inp label={t('batch_filling_tht')} type="date" value={productForm.tht} onChange={v=>setProductForm(f=>({...f,tht:v}))} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Inp label="Prijs per eenheid (€)" type="number" value={productForm.prijs} onChange={v=>setProductForm(f=>({...f,prijs:v}))} placeholder="0.00" />
+                  <Inp label={t('modal_price_per_unit')} type="number" value={productForm.prijs} onChange={v=>setProductForm(f=>({...f,prijs:v}))} placeholder="0.00" />
                 </div>
                 <div className="flex justify-end">
                   <Btn onClick={voegProductToe}>+ Voeg toe aan lijst</Btn>
@@ -844,7 +872,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Ingredient</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('log_ingredient')}</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Hoeveelheid</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lot</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Prijs/eenh</th>
@@ -873,8 +901,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             <div className="flex justify-between items-center pt-1">
               <span className="text-sm text-gray-500">{productLijst.length} product{productLijst.length!==1?'en':''} klaar om op te slaan</span>
               <div className="flex gap-2">
-                <Btn v="secondary" onClick={()=>setShowO(false)}>Annuleren</Btn>
-                <Btn onClick={saveOntvangst} disabled={productLijst.length===0}>Opslaan</Btn>
+                <Btn v="secondary" onClick={()=>setShowO(false)}>{t('btn_cancel')}</Btn>
+                <Btn onClick={saveOntvangst} disabled={productLijst.length===0}>{t('btn_save')}</Btn>
               </div>
             </div>
           </div>
@@ -895,10 +923,10 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             <div className="space-y-4 text-sm">
               {/* Bewerkbare velden */}
               <div className="grid grid-cols-2 gap-3">
-                <Inp label="Lotnummer" value={le('lotnummer')} onChange={v=>setLe('lotnummer',v)} placeholder="—" />
-                <Inp label="Leverancier" value={le('leverancier')} onChange={v=>setLe('leverancier',v)} placeholder="—" />
-                <Inp label="Factuurnummer" value={le('factuur_nummer')} onChange={v=>setLe('factuur_nummer',v)} placeholder="—" />
-                <Inp label="Aankoopdatum" type="date" value={le('aankoop_datum')} onChange={v=>setLe('aankoop_datum',v)} />
+                <Inp label={t('ing_lot_number')} value={le('lotnummer')} onChange={v=>setLe('lotnummer',v)} placeholder="—" />
+                <Inp label={t('lbl_supplier')} value={le('leverancier')} onChange={v=>setLe('leverancier',v)} placeholder="—" />
+                <Inp label={t('lbl_invoice')} value={le('factuur_nummer')} onChange={v=>setLe('factuur_nummer',v)} placeholder="—" />
+                <Inp label={t('ing_buy_date')} type="date" value={le('aankoop_datum')} onChange={v=>setLe('aankoop_datum',v)} />
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Hoeveelheid</label>
                   <div className="flex gap-2">
@@ -909,7 +937,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   </div>
                 </div>
                 <Inp label="THT" type="date" value={le('houdbaarheid')} onChange={v=>setLe('houdbaarheid',v)} />
-                <Inp label="Prijs per eenheid (€)" type="number" value={le('prijs_per_eenheid')} onChange={v=>setLe('prijs_per_eenheid',v)} placeholder="—" />
+                <Inp label={t('modal_price_per_unit')} type="number" value={le('prijs_per_eenheid')} onChange={v=>setLe('prijs_per_eenheid',v)} placeholder="—" />
                 {origQty>0 && (
                   <div>
                     <div className="text-xs text-gray-400">Oorspronkelijk ontvangen</div>
@@ -966,8 +994,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-1">
-                <Btn v="secondary" onClick={()=>setShowLot(null)}>Annuleren</Btn>
-                <Btn onClick={saveLot}>Opslaan</Btn>
+                <Btn v="secondary" onClick={()=>setShowLot(null)}>{t('btn_cancel')}</Btn>
+                <Btn onClick={saveLot}>{t('btn_save')}</Btn>
               </div>
             </div>
           </Modal>
@@ -986,7 +1014,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <p className="text-xs text-blue-600">= {convertEenheid(Number(afQty), afEenheid, showA.eenheid).toFixed(4).replace(/\.?0+$/,'')} {showA.eenheid}</p>
             )}
             <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setShowA(null)}>Annuleren</Btn>
+              <Btn v="secondary" onClick={()=>setShowA(null)}>{t('btn_cancel')}</Btn>
               <Btn v="danger" onClick={()=>doAfboeken(showA)}>Afboeken</Btn>
             </div>
           </div>
@@ -1005,8 +1033,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                 <Sel label="Standaard type kiezen" value={vOntvForm.preset} onChange={onPreset}
                   opts={VERPAKKING_DEFAULTS.map(d=>({v:d.naam,l:d.naam}))} ph="Selecteer standaard..." />
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Inp label="Naam *" value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v}))} placeholder="Bijv. Fles 33cL" />
-                  <Inp label="Inhoud (liter)" type="number" value={vOntvForm.inhoud_liter} onChange={v=>setVOntvForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
+                  <Inp label={t('lbl_name')+' *'} value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v}))} placeholder="Bijv. Fles 33cL" />
+                  <Inp label={t('packaging_content')} type="number" value={vOntvForm.inhoud_liter} onChange={v=>setVOntvForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
                   <Sel label="Type" value={vOntvForm.type} onChange={v=>setVOntvForm(f=>({...f,type:v}))}
                     opts={[{v:'fles',l:'Fles'},{v:'blik',l:'Blik'},{v:'fust',l:'Fust'},{v:'overig',l:'Overig'}]} ph="Kies type..." />
                 </div>
@@ -1035,16 +1063,16 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               </>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Inp label="Leverancier" value={vOntvForm.leverancier}
+              <Inp label={t('lbl_supplier')} value={vOntvForm.leverancier}
                 onChange={v=>setVOntvForm(f=>({...f,leverancier:v}))} placeholder="Bijv. Brouwland" />
-              <Inp label="Factuurnummer" value={vOntvForm.factuurnummer}
+              <Inp label={t('lbl_invoice')} value={vOntvForm.factuurnummer}
                 onChange={v=>setVOntvForm(f=>({...f,factuurnummer:v}))} placeholder="F-2025-001" />
             </div>
             <Inp label="Aantal stuks ontvangen *" type="number" value={vOntvForm.aantal}
               onChange={v=>setVOntvForm(f=>({...f,aantal:v}))} placeholder="24" />
             <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setShowVOntv(false)}>Annuleren</Btn>
-              <Btn onClick={saveVOntvangst}>Opslaan</Btn>
+              <Btn v="secondary" onClick={()=>setShowVOntv(false)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveVOntvangst}>{t('btn_save')}</Btn>
             </div>
           </div>
         </Modal>
@@ -1056,7 +1084,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             <p className="text-sm text-gray-600">Beschikbaar: <strong>{showVAfboek.voorraad||0} stuks</strong></p>
             <Inp label="Af te boeken stuks" type="number" value={vAfQty} onChange={setVAfQty} placeholder="0" />
             <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setShowVAfboek(null)}>Annuleren</Btn>
+              <Btn v="secondary" onClick={()=>setShowVAfboek(null)}>{t('btn_cancel')}</Btn>
               <Btn v="danger" onClick={doVAfboeken}>Afboeken</Btn>
             </div>
           </div>
@@ -1067,8 +1095,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
         <Modal title={`Bewerken: ${showVEdit.naam}`} onClose={()=>setShowVEdit(null)} wide>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Inp label="Naam *" value={vEditForm.naam} onChange={v=>setVEditForm(f=>({...f,naam:v}))} placeholder="Bijv. Fles 33cL" />
-              <Inp label="Inhoud (liter)" type="number" value={vEditForm.inhoud_liter} onChange={v=>setVEditForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
+              <Inp label={t('lbl_name')+' *'} value={vEditForm.naam} onChange={v=>setVEditForm(f=>({...f,naam:v}))} placeholder="Bijv. Fles 33cL" />
+              <Inp label={t('packaging_content')} type="number" value={vEditForm.inhoud_liter} onChange={v=>setVEditForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
               <Sel label="Type" value={vEditForm.type} onChange={v=>setVEditForm(f=>({...f,type:v}))}
                 opts={[{v:'fles',l:'Fles'},{v:'blik',l:'Blik'},{v:'fust',l:'Fust'},{v:'overig',l:'Overig'}]} ph="Kies type..." />
             </div>
@@ -1096,15 +1124,15 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             <div className="border-t pt-3">
               <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Leverancier</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Inp label="Leverancier" value={vEditForm.leverancier}
+                <Inp label={t('lbl_supplier')} value={vEditForm.leverancier}
                   onChange={v=>setVEditForm(f=>({...f,leverancier:v}))} placeholder="Bijv. Brouwland" />
-                <Inp label="Factuurnummer" value={vEditForm.factuurnummer}
+                <Inp label={t('lbl_invoice')} value={vEditForm.factuurnummer}
                   onChange={v=>setVEditForm(f=>({...f,factuurnummer:v}))} placeholder="F-2025-001" />
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setShowVEdit(null)}>Annuleren</Btn>
-              <Btn onClick={saveVEdit}>Opslaan</Btn>
+              <Btn v="secondary" onClick={()=>setShowVEdit(null)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveVEdit}>{t('btn_save')}</Btn>
             </div>
           </div>
         </Modal>
@@ -1118,7 +1146,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                 <tr>
                   <th className="px-3 py-2 text-left">Datum</th>
-                  <th className="px-3 py-2 text-left">Ingredient</th>
+                  <th className="px-3 py-2 text-left">{t('log_ingredient')}</th>
                   <th className="px-3 py-2 text-left">Lot #</th>
                   <th className="px-3 py-2 text-left">Type</th>
                   <th className="px-3 py-2 text-right">Hoeveelheid</th>
@@ -1126,7 +1154,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {(log||[]).length===0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">Nog geen mutaties. Ontvangsten en gebruik worden hier automatisch bijgehouden.</td></tr>}
+                {(log||[]).length===0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">{t('msg_no_mutations')}</td></tr>}
                 {[...(log||[])].reverse().map(entry => {
                   const isCorrPos = entry.type==='correctie' && Number(entry.hoeveelheid)>0;
                   const isIn = entry.type==='ontvangst'||entry.type==='terugboeking'||isCorrPos;
@@ -1596,7 +1624,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
     const liter = n * Number(uitModal.inhoud_per_eenheid||0);
     const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51);
     const r2 = Number(accijnsInst?.tarief_per_hl||24.17);
-    const accBed = accijnsCalc(liter, selB?.ABV||0, r1, r2);
+    const accBed = accijnsCalc(liter, selB?.ABV||0, r1, r2, accijnsInst);
     const nu = {id:newId(uit||[]),batch_id:sel,afvulling_id:uitModal.id,verpakking_type:uitModal.verpakking_type,
       inhoud_per_eenheid:uitModal.inhoud_per_eenheid,aantal:n,datum:uitDatum,liter,accijns:accBed,tht:uitModal.tht||null,verkocht_stuks:0};
     setUit(prev=>[...(prev||[]),nu]);
@@ -1618,7 +1646,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Batches</h2>
+        <h2 className="text-lg font-semibold">{t('nav_batches')}</h2>
         <div className="flex flex-wrap gap-2 items-center">
           {bfCreds?.enabled && (
             <Btn onClick={runBfSync} disabled={bfSyncing}>
@@ -1626,14 +1654,14 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
             </Btn>
           )}
           {bfMsg && <span className={`text-xs font-medium ${bfMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{bfMsg}</span>}
-          <Btn v="secondary" onClick={()=>setShowBf(true)}>Brewfather JSON</Btn>
-          <Btn onClick={()=>{setEditId(null);setBForm(emptyB);setShowForm(true)}}>+ Batch</Btn>
+          <Btn v="secondary" onClick={()=>setShowBf(true)}>{t('batch_import_json')}</Btn>
+          <Btn onClick={()=>{setEditId(null);setBForm(emptyB);setShowForm(true)}}>{t('batch_add_btn')}</Btn>
         </div>
       </div>
-      <div className="flex gap-4 items-start">
-        <div className="w-60 flex-shrink-0">
+      <div className="flex flex-col md:flex-row gap-4 md:items-start">
+        <div className={`w-full md:w-60 md:flex-shrink-0${sel?' hidden md:block':''}`}>
           <div className="mb-2">
-            <input type="text" placeholder="🔍 Zoek batch…"
+            <input type="text" placeholder={t('search_batch')}
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
               value={batchZoek} onChange={e=>{setBatchZoek(e.target.value);setSel(null);}} />
           </div>
@@ -1641,7 +1669,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
           <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 uppercase tracking-wide border-b">
             <span>Naam</span><span>Status</span>
           </div>
-          {bat.length===0 && <div className="p-6 text-center text-gray-400 text-sm">Geen batches</div>}
+          {bat.length===0 && <div className="p-6 text-center text-gray-400 text-sm">{t('msg_no_batches')}</div>}
           {bat.filter(b=>b.status!=='Gesloten' && (!batchZoek||b.naam?.toLowerCase().includes(batchZoek.toLowerCase())||String(b.batch_nummer||'').includes(batchZoek)||(b.stijl||'').toLowerCase().includes(batchZoek.toLowerCase()))).map(b=>(
             <div key={b.id} onClick={()=>setSel(b.id)}
               className={`px-3 py-2.5 border-b cursor-pointer hover:bg-amber-50 ${sel===b.id?'bg-amber-50 border-l-2 border-l-amber-500':''}`}>
@@ -1656,7 +1684,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
             <div>
               <div onClick={()=>setBatchArchiefIngeklapt(v=>!v)}
                 className="px-3 py-2 bg-gray-600 text-white flex items-center justify-between cursor-pointer hover:bg-gray-500 select-none">
-                <span className="text-xs font-medium text-gray-200 uppercase">Gearchiveerd ({bat.filter(b=>b.status==='Gesloten').length})</span>
+                <span className="text-xs font-medium text-gray-200 uppercase">{t('batch_archived')} ({bat.filter(b=>b.status==='Gesloten').length})</span>
                 <span className="text-gray-300 text-sm">{batchArchiefIngeklapt?'▶':'▼'}</span>
               </div>
               {!batchArchiefIngeklapt && bat.filter(b=>b.status==='Gesloten').map(b=>(
@@ -1674,7 +1702,8 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
           </div>{/* /bg-white batch card */}
         </div>
 
-        {selB && (
+        {selB && (<>
+          <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 w-full" onClick={()=>setSel(null)}>{t('btn_back')}</button>
           <div className="flex-1 min-w-0 space-y-4">
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <div className="px-4 py-3 bg-gray-800 text-white flex items-center justify-between">
@@ -1688,7 +1717,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                     className="border border-gray-600 rounded px-2 py-1 text-xs bg-gray-700 text-white focus:ring-1 focus:ring-amber-400 outline-none">
                     {STATUSSEN.map(s=><option key={s} value={s}>{s}</option>)}
                   </select>
-                  <Btn s="sm" v="secondary" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>Bewerken</Btn>
+                  <Btn s="sm" v="secondary" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
                   <Btn s="sm" v="danger" onClick={()=>removeBatch(selB.id)}>Verwijder</Btn>
                 </div>
               </div>
@@ -1736,7 +1765,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                   <div className="mt-3 pt-3 border-t space-y-2 text-sm">
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                       <div className="flex justify-between text-gray-600">
-                        <span className="text-xs">Ingrediënten</span>
+                        <span className="text-xs">{t('nav_ingredienten')}</span>
                         <span className={ingK>0?'':'text-gray-400'}>{ingK>0?fmt(ingK):'—'}</span>
                       </div>
                       <div className="flex justify-between text-gray-600">
@@ -1840,7 +1869,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                   {!hygieneIngeklapt && (
                     <div className="p-3 space-y-3">
                       {totaal === 0 && (
-                        <p className="text-sm text-gray-400 italic">Geen checklistitems ingesteld. Ga naar Instellingen → Hygiëne checklist.</p>
+                        <p className="text-sm text-gray-400 italic">{t('batch_hygiene_no_items')}</p>
                       )}
                       {gegroepeerd.map(({group, items:gItems})=>(
                         <div key={group.id}>
@@ -1877,7 +1906,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                           {alleOk ? '✅ Alle punten afgevinkt' : `${gedaan} van ${totaal} afgevinkt`}
                           {gedaan>0 && !alleOk && (
                             <button onClick={()=>{ setBat(prev=>prev.map(b=>b.id===selB.id?{...b,hygiene_checks:{}}:b)); addLog({type:'hygiene', batch_id:selB.id, referentie:'Checklist gereset'}); }}
-                              className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">Reset</button>
+                              className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">{t('batch_hygiene_reset')}</button>
                           )}
                         </div>
                       )}
@@ -2007,7 +2036,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                                 </span>
                               )}
                               {x.afgeboekt && !lot && (
-                                <span className="text-xs text-green-600 font-medium">✓ Afgeboekt</span>
+                                <span className="text-xs text-green-600 font-medium">{t('batch_ingredient_booked')}</span>
                               )}
                             </div>
                           );
@@ -2081,7 +2110,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                   </div>
                   <Inp type="number" value={iForm.kosten} onChange={v=>setIForm(f=>({...f,kosten:v}))} placeholder="€ kosten" />
                   <div />
-                  <Btn s="sm" onClick={()=>addIng(selB.id)}>+ Toevoegen</Btn>
+                  <Btn s="sm" onClick={()=>addIng(selB.id)}>{t('settings_tank_add_btn')}</Btn>
                 </div>
               </div>}
               </div>
@@ -2109,7 +2138,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
 
                   {/* Afvulling registreren */}
                   <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div className="px-4 py-2.5 bg-gray-700 text-white font-medium text-sm">Afvulling registreren</div>
+                    <div className="px-4 py-2.5 bg-gray-700 text-white font-medium text-sm">{t('batch_filling_register')}</div>
                     <div className="p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                       <div>
@@ -2133,13 +2162,13 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                           {avF.inhoud_per_eenheid ? `${avF.inhoud_per_eenheid}L` : <span className="text-gray-400 text-xs">auto</span>}
                         </div>
                       </div>
-                      <Inp label="Aantal stuks" type="number" value={avF.hoeveelheid} onChange={v=>setAvF(f=>({...f,hoeveelheid:v}))} placeholder="1" />
-                      <Inp label="Afvuldatum" type="date" value={avF.datum} onChange={v=>setAvF(f=>({...f,datum:v}))} />
-                      <Inp label="THT datum" type="date" value={avF.tht} onChange={v=>setAvF(f=>({...f,tht:v}))} />
+                      <Inp label={t('batch_filling_units')} type="number" value={avF.hoeveelheid} onChange={v=>setAvF(f=>({...f,hoeveelheid:v}))} placeholder="1" />
+                      <Inp label={t('batch_filling_date')} type="date" value={avF.datum} onChange={v=>setAvF(f=>({...f,datum:v}))} />
+                      <Inp label={t('batch_filling_tht')} type="date" value={avF.tht} onChange={v=>setAvF(f=>({...f,tht:v}))} />
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                       {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">Totaal: {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}
-                      <Btn onClick={doAfvullen} cls="ml-auto">Registreren</Btn>
+                      <Btn onClick={doAfvullen} cls="ml-auto">{t('batch_filling_register_btn')}</Btn>
                     </div>
                     </div>{/* /p-3 */}
                   </div>
@@ -2166,7 +2195,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                           <th className="px-3 py-2 text-left">Verpakking</th>
                           <th className="px-3 py-2 text-right">Inhoud</th>
                           <th className="px-3 py-2 text-right">Gevuld</th>
-                          <th className="px-3 py-2 text-right">Uitgeslagen</th>
+                          <th className="px-3 py-2 text-right">{t('filling_summary_released')}</th>
                           <th className="px-3 py-2 text-right font-semibold text-amber-700">Resterend</th>
                           <th className="px-3 py-2 text-left">Datum</th>
                           <th className="px-3 py-2 text-left">THT</th>
@@ -2189,7 +2218,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                               <td className="px-3 py-2 text-gray-500">{a.tht?fmtD(a.tht):'—'}</td>
                               <td className="px-3 py-2">
                                 <div className="flex gap-1">
-                                  {rest>0 && <Btn s="sm" v="blue" onClick={()=>{setUitModal(a);setUitAantal('');setUitDatum(tod());}}>Uitslaan</Btn>}
+                                  {rest>0 && <Btn s="sm" v="blue" onClick={()=>{setUitModal(a);setUitAantal('');setUitDatum(tod());}}>{t('log_release')}</Btn>}
                                   {uitg===0 && <button onClick={()=>delAv(a.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
                                 </div>
                               </td>
@@ -2233,20 +2262,20 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
               return (
                 <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
                   <div className="px-4 py-2.5 bg-amber-700 text-white font-medium text-sm flex items-center justify-between">
-                    <span className="text-white">Kostprijsoverzicht</span>
+                    <span className="text-white">{t('batch_costs_summary')}</span>
                     <span className="text-xs text-gray-400 font-normal">excl. BTW</span>
                   </div>
                   <div className="p-4 space-y-4 text-sm">
                     {/* Brouwkosten */}
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Brouwkosten</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{t('batch_costs_ingredients')}</p>
                       <div className="space-y-1">
-                        <div className="flex justify-between text-gray-600"><span>Ingrediënten</span><span>{fmt(ingKost)}</span></div>
+                        <div className="flex justify-between text-gray-600"><span>{t('nav_ingredienten')}</span><span>{fmt(ingKost)}</span></div>
                         {Number(selB.electra_kosten)>0 && <div className="flex justify-between text-gray-600"><span>Electra</span><span>{fmt(selB.electra_kosten)}</span></div>}
                         {Number(selB.water_kosten)>0 && <div className="flex justify-between text-gray-600"><span>Water</span><span>{fmt(selB.water_kosten)}</span></div>}
                         {Number(selB.schoonmaak_kosten)>0 && <div className="flex justify-between text-gray-600"><span>Schoonmaak</span><span>{fmt(selB.schoonmaak_kosten)}</span></div>}
                         {Number(selB.overige_kosten)>0 && <div className="flex justify-between text-gray-600"><span>Overig</span><span>{fmt(selB.overige_kosten)}</span></div>}
-                        <div className="flex justify-between font-medium border-t pt-1"><span>Subtotaal brouwkosten</span><span>{fmt(totBrouwkosten)}</span></div>
+                        <div className="flex justify-between font-medium border-t pt-1"><span>{t('batch_costs_subtotal')}</span><span>{fmt(totBrouwkosten)}</span></div>
                       </div>
                     </div>
                     {/* Per verpakkingstype */}
@@ -2262,7 +2291,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                             <span>Verpakking ({t.stuks}× @ {fmt(t.kPerStuk)})</span>
                             <span>{t.kPerStuk>0?fmt(t.totVerpK):<span className="text-gray-400">niet opgegeven</span>}</span>
                           </div>
-                          <div className="flex justify-between text-gray-600"><span>Accijns</span><span>{fmt(t.totAcc)}</span></div>
+                          <div className="flex justify-between text-gray-600"><span>{t('nav_accijns')}</span><span>{fmt(t.totAcc)}</span></div>
                           <div className="flex justify-between font-semibold border-t pt-1">
                             <span>Subtotaal</span><span className="text-amber-700">{fmt(t.totaal)}</span>
                           </div>
@@ -2276,10 +2305,10 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                     {/* Totaal */}
                     <div className="border-t-2 border-gray-200 pt-3 space-y-1">
                       <div className="flex justify-between text-gray-600"><span>Totaal brouwkosten</span><span>{fmt(totBrouwkosten)}</span></div>
-                      <div className="flex justify-between text-gray-600"><span>Totaal verpakkingskosten</span><span>{somVerpK>0?fmt(somVerpK):<span className="text-gray-400">niet opgegeven</span>}</span></div>
-                      <div className="flex justify-between text-gray-600"><span>Totaal accijns</span><span>{fmt(somAcc)}</span></div>
+                      <div className="flex justify-between text-gray-600"><span>{t('batch_costs_total_packaging')}</span><span>{somVerpK>0?fmt(somVerpK):<span className="text-gray-400">niet opgegeven</span>}</span></div>
+                      <div className="flex justify-between text-gray-600"><span>{t('batch_costs_total_excise')}</span><span>{fmt(somAcc)}</span></div>
                       <div className="flex justify-between font-bold text-base border-t pt-2 mt-1">
-                        <span>Totaal kostprijs</span><span className="text-amber-700">{fmt(totaalKostprijs)}</span>
+                        <span>{t('batch_costs_total')}</span><span className="text-amber-700">{fmt(totaalKostprijs)}</span>
                       </div>
                       <div className="flex gap-6 text-xs text-gray-500 pt-1">
                         {totLiter>0 && <span>Per liter: <strong className="text-gray-700">{fmt(totaalKostprijs/totLiter)}</strong></span>}
@@ -2307,7 +2336,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
               if (!bLog.length) return null;
               return (
                 <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-                  <div className="px-4 py-2.5 bg-gray-700 text-white font-medium text-sm">Logboek</div>
+                  <div className="px-4 py-2.5 bg-gray-700 text-white font-medium text-sm">{t('batch_log')}</div>
                   <table className="w-full text-sm">
                     <thead className="text-xs text-gray-500 bg-gray-50">
                       <tr>
@@ -2345,7 +2374,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
               );
             })()}
           </div>
-        )}
+        </>)}
       </div>
 
       {uitModal && (
@@ -2359,20 +2388,20 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Inp label="Aantal uit te slaan *" type="number" value={uitAantal} onChange={setUitAantal} placeholder={`max ${resterendAv(uitModal)}`} />
-              <Inp label="Datum" type="date" value={uitDatum} onChange={setUitDatum} />
+              <Inp label={t('lbl_date')} type="date" value={uitDatum} onChange={setUitDatum} />
             </div>
             {uitAantal && Number(uitAantal)>0 && (()=>{
               const liter = Number(uitAantal)*Number(uitModal.inhoud_per_eenheid||0);
               const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51);
               const r2 = Number(accijnsInst?.tarief_per_hl||24.17);
-              const ac = accijnsCalc(liter, selB?.ABV||0, r1, r2);
+              const ac = accijnsCalc(liter, selB?.ABV||0, r1, r2, accijnsInst);
               return <div className="p-2 bg-amber-50 rounded text-xs text-amber-800">
                 {liter.toFixed(1)}L → accijns: <strong>{fmt(ac)}</strong>
               </div>;
             })()}
             <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setUitModal(null)}>Annuleren</Btn>
-              <Btn v="blue" onClick={doUitslaan} disabled={!uitAantal||Number(uitAantal)<=0}>Uitslaan</Btn>
+              <Btn v="secondary" onClick={()=>setUitModal(null)}>{t('btn_cancel')}</Btn>
+              <Btn v="blue" onClick={doUitslaan} disabled={!uitAantal||Number(uitAantal)<=0}>{t('log_release')}</Btn>
             </div>
           </div>
         </Modal>
@@ -2382,11 +2411,11 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
         <Modal title={editId?'Batch bewerken':'Nieuwe batch'} onClose={()=>setShowForm(false)} wide>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Inp label="Batch #" value={bForm.batch_nummer} onChange={v=>setBForm(f=>({...f,batch_nummer:v}))} placeholder="B-2025-001" />
-              <Inp label="Naam *" value={bForm.naam} onChange={v=>setBForm(f=>({...f,naam:v}))} placeholder="Bier naam" />
+              <Inp label={t('lbl_batch_number')} value={bForm.batch_nummer} onChange={v=>setBForm(f=>({...f,batch_nummer:v}))} placeholder="B-2025-001" />
+              <Inp label={t('lbl_name')+' *'} value={bForm.naam} onChange={v=>setBForm(f=>({...f,naam:v}))} placeholder="Bier naam" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Inp label="Stijl" value={bForm.stijl} onChange={v=>setBForm(f=>({...f,stijl:v}))} placeholder="Bijv. IPA" />
+              <Inp label={t('lbl_style')} value={bForm.stijl} onChange={v=>setBForm(f=>({...f,stijl:v}))} placeholder="Bijv. IPA" />
               <Sel label="Status" value={bForm.status} onChange={v=>setBForm(f=>({...f,status:v}))} opts={STATUSSEN} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2404,34 +2433,34 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                       })}
                     </select>
                   </div>
-                : <Inp label="Tank" value={bForm.tank} onChange={v=>setBForm(f=>({...f,tank:v}))} placeholder="Bijv. FV1" />
+                : <Inp label={t('lbl_tank')} value={bForm.tank} onChange={v=>setBForm(f=>({...f,tank:v}))} placeholder="FV1" />
               }
-              <Inp label="Datum" type="date" value={bForm.datum} onChange={v=>setBForm(f=>({...f,datum:v}))} />
+              <Inp label={t('lbl_date')} type="date" value={bForm.datum} onChange={v=>setBForm(f=>({...f,datum:v}))} />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Inp label="Liters vergist" type="number" value={bForm.liter_vergist} onChange={v=>setBForm(f=>({...f,liter_vergist:v}))} placeholder="0" />
-              <Inp label="OG" type="number" value={bForm.OG} onChange={v=>setBForm(f=>({...f,OG:v}))} placeholder="1.050" />
-              <Inp label="FG" type="number" value={bForm.FG} onChange={v=>setBForm(f=>({...f,FG:v}))} placeholder="1.010" />
-              <Inp label="Alcohol gereed product (%)" type="number" value={bForm.ABV} onChange={v=>setBForm(f=>({...f,ABV:v}))} placeholder="5.0" />
+              <Inp label={t('lbl_og')} type="number" value={bForm.OG} onChange={v=>setBForm(f=>({...f,OG:v}))} placeholder="1.050" />
+              <Inp label={t('lbl_fg')} type="number" value={bForm.FG} onChange={v=>setBForm(f=>({...f,FG:v}))} placeholder="1.010" />
+              <Inp label={t('lbl_abv')} type="number" value={bForm.ABV} onChange={v=>setBForm(f=>({...f,ABV:v}))} placeholder="5.0" />
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <Inp label="Brouwzaal rendement (%)" type="number" value={bForm.brouwzaal_eff||''} onChange={v=>setBForm(f=>({...f,brouwzaal_eff:v}))} placeholder="75" />
-              <Inp label="Maisch rendement (%)" type="number" value={bForm.maisch_eff||''} onChange={v=>setBForm(f=>({...f,maisch_eff:v}))} placeholder="80" />
-              <Inp label="Maisch pH" type="number" value={bForm.maisch_ph||''} onChange={v=>setBForm(f=>({...f,maisch_ph:v}))} placeholder="5.4" />
-              <Inp label="Product pH" type="number" value={bForm.product_ph||''} onChange={v=>setBForm(f=>({...f,product_ph:v}))} placeholder="4.3" />
+              <Inp label={t('batch_info_brew_efficiency')} type="number" value={bForm.brouwzaal_eff||''} onChange={v=>setBForm(f=>({...f,brouwzaal_eff:v}))} placeholder="75" />
+              <Inp label={t('batch_info_mash_efficiency')} type="number" value={bForm.maisch_eff||''} onChange={v=>setBForm(f=>({...f,maisch_eff:v}))} placeholder="80" />
+              <Inp label={t('batch_info_mash_ph')} type="number" value={bForm.maisch_ph||''} onChange={v=>setBForm(f=>({...f,maisch_ph:v}))} placeholder="5.4" />
+              <Inp label={t('batch_info_product_ph')} type="number" value={bForm.product_ph||''} onChange={v=>setBForm(f=>({...f,product_ph:v}))} placeholder="4.3" />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Inp label="Electra (€)" type="number" value={bForm.electra_kosten} onChange={v=>setBForm(f=>({...f,electra_kosten:v}))} placeholder="0" />
-              <Inp label="Water (€)" type="number" value={bForm.water_kosten} onChange={v=>setBForm(f=>({...f,water_kosten:v}))} placeholder="0" />
-              <Inp label="Schoonmaak (€)" type="number" value={bForm.schoonmaak_kosten} onChange={v=>setBForm(f=>({...f,schoonmaak_kosten:v}))} placeholder="0" />
-              <Inp label="Overig (€)" type="number" value={bForm.overige_kosten} onChange={v=>setBForm(f=>({...f,overige_kosten:v}))} placeholder="0" />
+              <Inp label={t('batch_costs_electricity')+' (€)'} type="number" value={bForm.electra_kosten} onChange={v=>setBForm(f=>({...f,electra_kosten:v}))} placeholder="0" />
+              <Inp label={t('batch_costs_water')+' (€)'} type="number" value={bForm.water_kosten} onChange={v=>setBForm(f=>({...f,water_kosten:v}))} placeholder="0" />
+              <Inp label={t('batch_costs_cleaning')+' (€)'} type="number" value={bForm.schoonmaak_kosten} onChange={v=>setBForm(f=>({...f,schoonmaak_kosten:v}))} placeholder="0" />
+              <Inp label={t('batch_costs_other')+' (€)'} type="number" value={bForm.overige_kosten} onChange={v=>setBForm(f=>({...f,overige_kosten:v}))} placeholder="0" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-0.5">Notities</label>
               <textarea value={safeStr(bForm.notities)} onChange={e=>setBForm(f=>({...f,notities:e.target.value}))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={2} placeholder="Brouwnotities..." />
+                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={2} placeholder={t('lbl_notes')+'...'} />
             </div>
-            <div className="flex justify-end gap-2"><Btn v="secondary" onClick={()=>setShowForm(false)}>Annuleren</Btn><Btn onClick={saveBatch}>Opslaan</Btn></div>
+            <div className="flex justify-end gap-2"><Btn v="secondary" onClick={()=>setShowForm(false)}>{t('btn_cancel')}</Btn><Btn onClick={saveBatch}>{t('btn_save')}</Btn></div>
           </div>
         </Modal>
       )}
@@ -2466,7 +2495,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
             </details>
 
             <div className="flex justify-end">
-              <Btn v="secondary" onClick={()=>{setShowBf(false);setBfJson('');setBfFileName('');}}>Sluiten</Btn>
+              <Btn v="secondary" onClick={()=>{setShowBf(false);setBfJson('');setBfFileName('');}}>{t('btn_close')}</Btn>
             </div>
           </div>
         </Modal>
@@ -2524,7 +2553,7 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
     const rest = resterend(uitModal);
     if (n > rest) { alert(`Maximaal ${rest} stuks beschikbaar`); return; }
     const liter = n * Number(uitModal.inhoud_per_eenheid||0);
-    const accBed = accijnsCalc(liter, selB?.ABV||0, r1, r2);
+    const accBed = accijnsCalc(liter, selB?.ABV||0, r1, r2, accijnsInst);
     const nu = {
       id: newId(uit),
       batch_id: sel,
@@ -2563,12 +2592,12 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Afvullen</h2>
+        <h2 className="text-lg font-semibold">{t('nav_afvullen')}</h2>
       </div>
-      <div className="flex gap-4 items-start">
-        <div className="w-60 flex-shrink-0 bg-white rounded-lg shadow-sm overflow-x-auto">
-          <div className="px-3 py-2 bg-gray-700 text-white text-xs font-medium uppercase">Batches</div>
-          {activeBat.length===0 && <div className="p-4 text-sm text-gray-400 text-center">Geen batches in vergisting of conditionering</div>}
+      <div className="flex flex-col md:flex-row gap-4 md:items-start">
+        <div className={`w-full md:w-60 md:flex-shrink-0 bg-white rounded-lg shadow-sm overflow-x-auto${sel?' hidden md:block':''}`}>
+          <div className="px-3 py-2 bg-gray-700 text-white text-xs font-medium uppercase">{t('nav_batches')}</div>
+          {activeBat.length===0 && <div className="p-4 text-sm text-gray-400 text-center">{t('filling_no_active')}</div>}
           {activeBat.map(b=>(
             <div key={b.id} onClick={()=>setSel(b.id===sel?null:b.id)}
               className={`px-3 py-2.5 border-b cursor-pointer hover:bg-amber-50 ${sel===b.id?'bg-amber-50 border-l-2 border-l-amber-500':''}`}>
@@ -2578,7 +2607,8 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
           ))}
         </div>
 
-        {selB && (
+        {selB && (<>
+          <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 w-full" onClick={()=>setSel(null)}>{t('btn_back')}</button>
           <div className="flex-1 min-w-0 space-y-4">
             {/* Summary */}
             {(() => {
@@ -2603,7 +2633,7 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
 
             {/* Afvullen form */}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <div className="px-4 py-2.5 bg-gray-700 text-white font-medium text-sm">Afvulling registreren</div>
+              <div className="px-4 py-2.5 bg-gray-700 text-white font-medium text-sm">{t('batch_filling_register')}</div>
               <div className="p-3">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div>
@@ -2631,13 +2661,13 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
                     {avF.inhoud_per_eenheid ? `${avF.inhoud_per_eenheid}L` : <span className="text-gray-400 text-xs">auto</span>}
                   </div>
                 </div>
-                <Inp label="Aantal stuks" type="number" value={avF.hoeveelheid} onChange={v=>setAvF(f=>({...f,hoeveelheid:v}))} placeholder="1" />
-                <Inp label="Afvuldatum" type="date" value={avF.datum} onChange={v=>setAvF(f=>({...f,datum:v}))} />
-                <Inp label="THT datum" type="date" value={avF.tht} onChange={v=>setAvF(f=>({...f,tht:v}))} />
+                <Inp label={t('batch_filling_units')} type="number" value={avF.hoeveelheid} onChange={v=>setAvF(f=>({...f,hoeveelheid:v}))} placeholder="1" />
+                <Inp label={t('batch_filling_date')} type="date" value={avF.datum} onChange={v=>setAvF(f=>({...f,datum:v}))} />
+                <Inp label={t('batch_filling_tht')} type="date" value={avF.tht} onChange={v=>setAvF(f=>({...f,tht:v}))} />
               </div>
               <div className="mt-2 flex items-center justify-between">
                 {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">Totaal: {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}
-                <Btn onClick={doAfvullen} cls="ml-auto">Registreren</Btn>
+                <Btn onClick={doAfvullen} cls="ml-auto">{t('batch_filling_register_btn')}</Btn>
               </div>
               </div>{/* /p-3 */}
             </div>
@@ -2656,7 +2686,7 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
             )}
             {selB.status==='Verpakt' && (
               <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700 flex items-center gap-2">
-                <span>✓</span> <span>Afvullen gereed — bekijk het kostprijsoverzicht op de <strong>Batches</strong> pagina.</span>
+                <span>✓</span> <span>Afvullen gereed — bekijk het kostprijsoverzicht op de <strong>{t('nav_batches')}</strong> pagina.</span>
               </div>
             )}
 
@@ -2669,7 +2699,7 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
                     <th className="px-3 py-2 text-left">Verpakking</th>
                     <th className="px-3 py-2 text-right">Inhoud</th>
                     <th className="px-3 py-2 text-right">Totaal gevuld</th>
-                    <th className="px-3 py-2 text-right">Uitgeslagen</th>
+                    <th className="px-3 py-2 text-right">{t('filling_summary_released')}</th>
                     <th className="px-3 py-2 text-right font-semibold text-amber-700">Resterend</th>
                     <th className="px-3 py-2 text-left">Datum</th>
                     <th className="px-3 py-2 text-left">THT</th>
@@ -2692,7 +2722,7 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
                         <td className="px-3 py-2 text-gray-500">{a.tht ? fmtD(a.tht) : '—'}</td>
                         <td className="px-3 py-2">
                           <div className="flex gap-1">
-                            {rest>0 && <Btn s="sm" v="blue" onClick={()=>{setUitModal(a);setUitAantal('');setUitDatum(tod());}}>Uitslaan</Btn>}
+                            {rest>0 && <Btn s="sm" v="blue" onClick={()=>{setUitModal(a);setUitAantal('');setUitDatum(tod());}}>{t('log_release')}</Btn>}
                             {uitgeslagen===0 && <button onClick={()=>delAv(a.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
                           </div>
                         </td>
@@ -2703,7 +2733,7 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
               </table>
             </div>
           </div>
-        )}
+        </>)}
       </div>
 
       {/* Uitslaan modal */}
@@ -2718,19 +2748,19 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Inp label="Aantal uit te slaan *" type="number" value={uitAantal} onChange={setUitAantal} placeholder={`max ${resterend(uitModal)}`} />
-              <Inp label="Datum" type="date" value={uitDatum} onChange={setUitDatum} />
+              <Inp label={t('lbl_date')} type="date" value={uitDatum} onChange={setUitDatum} />
             </div>
             {uitAantal && Number(uitAantal)>0 && (()=>{
               const liter = Number(uitAantal)*Number(uitModal.inhoud_per_eenheid||0);
-              const ac = accijnsCalc(liter, selB?.ABV||0, r1, r2);
+              const ac = accijnsCalc(liter, selB?.ABV||0, r1, r2, accijnsInst);
               return <div className="p-2 bg-amber-50 rounded text-xs text-amber-800">
                 {liter.toFixed(1)}L → accijns: <strong>{fmt(ac)}</strong>
                 {selB?.ABV && <span className="ml-1 text-amber-600">(max({(liter/100).toFixed(3)}hL × {selB.ABV}% × €{r1.toFixed(2).replace('.',',')}, {(liter/100).toFixed(3)}hL × €{r2.toFixed(2).replace('.',',')}))</span>}
               </div>;
             })()}
             <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setUitModal(null)}>Annuleren</Btn>
-              <Btn v="blue" onClick={doUitslaan} disabled={!uitAantal||Number(uitAantal)<=0}>Uitslaan</Btn>
+              <Btn v="secondary" onClick={()=>setUitModal(null)}>{t('btn_cancel')}</Btn>
+              <Btn v="blue" onClick={doUitslaan} disabled={!uitAantal||Number(uitAantal)<=0}>{t('log_release')}</Btn>
             </div>
           </div>
         </Modal>
@@ -2964,7 +2994,7 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
           : <span className="text-xs font-medium text-green-600">✓ alles verkocht</span>
         }
         {verk > 0 && beschik > 0 && (
-          <button onClick={()=>setVerkocht(u.id, n)} className="text-xs text-gray-400 hover:text-green-600 underline ml-1">Alles verkopen</button>
+          <button onClick={()=>setVerkocht(u.id, n)} className="text-xs text-gray-400 hover:text-green-600 underline ml-1">{t('stock_sell_all')}</button>
         )}
       </div>
     );
@@ -2975,7 +3005,7 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold">Uitgeslagen Voorraad</h2>
+        <h2 className="text-lg font-semibold">{t('nav_voorraad')}</h2>
         <div className="flex items-center gap-2 flex-wrap">
           {wcCreds?.enabled && (
             <>
@@ -3006,9 +3036,9 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
               <div key={t} className="bg-white rounded-lg shadow-sm p-3 border-l-4 border-amber-400">
                 <div className="font-semibold text-sm text-gray-800 mb-2">{t}</div>
                 <div className="space-y-1 text-xs">
-                  <div className="flex justify-between"><span className="text-gray-500">Verkocht</span><span className="font-mono font-medium text-green-600">{s.totVerk}×</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">{t('stock_sold')}</span><span className="font-mono font-medium text-green-600">{s.totVerk}×</span></div>
                   <div className="flex justify-between pt-1 mt-1 border-t">
-                    <span className="font-medium text-gray-700">Beschikbaar</span>
+                    <span className="font-medium text-gray-700">{t('stock_available')}</span>
                     <span className={`font-mono font-bold ${s.beschikbaar>0?'text-amber-600':'text-gray-400'}`}>{s.beschikbaar}×</span>
                   </div>
                 </div>
@@ -3200,11 +3230,11 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
             </div>
             <div className="flex justify-between items-center pt-2 border-t">
               {(artikelen||[]).find(a=>a.key===artKey(artModal.biernaam, artModal.verpakking_type)) ? (
-                <button onClick={deleteArtikel} className="text-xs text-red-400 hover:text-red-600 underline">Artikel verwijderen</button>
+                <button onClick={deleteArtikel} className="text-xs text-red-400 hover:text-red-600 underline">{t('stock_article_delete')}</button>
               ) : <span />}
               <div className="flex gap-2">
-                <Btn v="secondary" onClick={()=>setArtModal(null)}>Annuleren</Btn>
-                <Btn onClick={saveArtikel}>Opslaan</Btn>
+                <Btn v="secondary" onClick={()=>setArtModal(null)}>{t('btn_cancel')}</Btn>
+                <Btn onClick={saveArtikel}>{t('btn_save')}</Btn>
               </div>
             </div>
           </div>
@@ -3225,14 +3255,14 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                 <tr>
-                  <th className="px-3 py-2 text-left">Gearchiveerd</th>
+                  <th className="px-3 py-2 text-left">{t('batch_archived')}</th>
                   <th className="px-3 py-2 text-left">Bier</th>
                   <th className="px-3 py-2 text-left">Batch</th>
                   <th className="px-3 py-2 text-left">Type</th>
                   <th className="px-3 py-2 text-right">Aantal</th>
                   <th className="px-3 py-2 text-right">Liter</th>
-                  <th className="px-3 py-2 text-right">Accijns</th>
-                  <th className="px-3 py-2 text-left">Uitgeslagen</th>
+                  <th className="px-3 py-2 text-right">{t('nav_accijns')}</th>
+                  <th className="px-3 py-2 text-left">{t('filling_summary_released')}</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
@@ -3282,7 +3312,7 @@ function AccijnsPage({bat, acc, setAcc}) {
     <div>
       {/* Header with totals */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Accijns</h2>
+        <h2 className="text-lg font-semibold">{t('nav_accijns')}</h2>
         <div className="flex gap-2">
           {totPaid > 0 && (
             <div className="px-3 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-700">
@@ -3314,7 +3344,7 @@ function AccijnsPage({bat, acc, setAcc}) {
                 <th className="px-3 py-2 text-right">Aantal</th>
                 <th className="px-3 py-2 text-right">Liters</th>
                 <th className="px-3 py-2 text-right">ABV</th>
-                <th className="px-3 py-2 text-right">Accijns</th>
+                <th className="px-3 py-2 text-right">{t('nav_accijns')}</th>
                 <th className="px-3 py-2 text-center">Status</th>
               </tr>
             </thead>
@@ -3334,9 +3364,9 @@ function AccijnsPage({bat, acc, setAcc}) {
                       ? <div>
                           <span className="text-xs text-green-700 font-medium">✓ betaald</span>
                           <div className="text-xs text-gray-400">{fmtD(a.betaal_datum)}</div>
-                          <button onClick={()=>toggle(a.id)} className="text-xs text-gray-400 hover:text-gray-600 underline">Herstel</button>
+                          <button onClick={()=>toggle(a.id)} className="text-xs text-gray-400 hover:text-gray-600 underline">{t('excise_restore')}</button>
                         </div>
-                      : <Btn s="sm" v="green" onClick={()=>toggle(a.id)}>Markeer betaald</Btn>
+                      : <Btn s="sm" v="green" onClick={()=>toggle(a.id)}>{t('excise_mark_paid')}</Btn>
                     }
                   </td>
                 </tr>
@@ -3482,10 +3512,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 text-xs text-gray-400 uppercase">
-                <th className="px-3 py-2 text-left font-medium">Ingredient</th>
+                <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
                 <th className="px-3 py-2 text-right font-medium">Benodigd</th>
                 <th className="px-3 py-2 text-left font-medium">Gebruik</th>
-                <th className="px-3 py-2 text-right font-medium">Beschikbaar</th>
+                <th className="px-3 py-2 text-right font-medium">{t('stock_available')}</th>
                 <th className="px-3 py-2 text-center font-medium w-8">●</th>
                 <th className="px-3 py-2 w-6"></th>
               </tr>
@@ -3513,7 +3543,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Recepten</h2>
+        <h2 className="text-lg font-semibold">{t('nav_recepten')}</h2>
         <div className="flex items-center gap-3">
           {msg && <span className={`text-sm ${msg.startsWith('✓')?'text-green-600':'text-amber-600'}`}>{msg}</span>}
           <Btn onClick={runSync} disabled={syncing||!bfCreds?.enabled}
@@ -3522,11 +3552,11 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           </Btn>
         </div>
       </div>
-      <div className="flex gap-4 items-start">
+      <div className="flex flex-col md:flex-row gap-4 md:items-start">
         {/* Lijst */}
-        <div className="w-60 flex-shrink-0">
+        <div className={`w-full md:w-60 md:flex-shrink-0${sel?' hidden md:block':''}`}>
           <div className="mb-2">
-            <input type="text" placeholder="🔍 Zoek recept…" value={zoek}
+            <input type="text" placeholder={t('search_recipe')} value={zoek}
               onChange={e=>setZoek(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"/>
           </div>
@@ -3653,7 +3683,8 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           </div>{/* /bg-white recept card */}
         </div>
         {/* Detail */}
-        {selRec ? (
+        {selRec ? (<>
+          <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 w-full" onClick={()=>setSel(null)}>{t('btn_back')}</button>
           <div className="flex-1 bg-white rounded-lg shadow-sm p-4 min-w-0">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
@@ -3688,7 +3719,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               </div>
             )}
           </div>
-        ):(
+        </>):(
           <div className="flex-1 flex items-center justify-center text-gray-300 text-sm py-24 bg-white rounded-lg shadow-sm">
             ← Selecteer een recept
           </div>
@@ -3772,7 +3803,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks}) {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">{t('nav_dashboard')}</h1>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         <StatCard label="Actieve batches"      value={actiefBatches.length} sub={`van ${bat.length} totaal`}                         color="blue"  onClick={()=>setPage('batches')} />
@@ -3955,25 +3986,46 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang}) {
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
   });
   const [saved, setSaved] = React.useState(false);
+  const [customFormulaEnabled, setCustomFormulaEnabled] = React.useState(accijnsInst?.customFormulaEnabled || false);
+  const [customFormula, setCustomFormula] = React.useState(accijnsInst?.customFormula || '');
+  const [formulaError, setFormulaError] = React.useState('');
+
+  const testFormula = (formula) => {
+    if (!formula.trim()) { setFormulaError(''); return true; }
+    try {
+      const liter = 100, abv = 5, hl = 1, r1 = 7.51, r2 = 24.17;
+      const result = new Function('liter','abv','hl','r1','r2', `"use strict"; return (${formula});`)(liter,abv,hl,r1,r2);
+      if (typeof result !== 'number' || isNaN(result)) throw new Error('geen getal');
+      setFormulaError('');
+      return true;
+    } catch(e) {
+      setFormulaError(`${t('settings_excise_custom_formula_error')}: ${e.message}`);
+      return false;
+    }
+  };
 
   const saveTarieven = () => {
     const r1 = parseFloat(tarieven.tarief_per_hl_abv);
     const r2 = parseFloat(tarieven.tarief_per_hl);
     if (isNaN(r1)||isNaN(r2)) { alert('Voer geldige getallen in.'); return; }
-    setAccijnsInst({tarief_per_hl_abv: r1, tarief_per_hl: r2});
+    if (customFormulaEnabled && !testFormula(customFormula)) return;
+    setAccijnsInst({tarief_per_hl_abv: r1, tarief_per_hl: r2, customFormulaEnabled, customFormula});
     setSaved(true);
     setTimeout(()=>setSaved(false), 2000);
   };
 
   const resetTarieven = () => {
     setTarieven({tarief_per_hl_abv:'7.51', tarief_per_hl:'24.17'});
-    setAccijnsInst({tarief_per_hl_abv:7.51, tarief_per_hl:24.17});
+    setCustomFormulaEnabled(false);
+    setCustomFormula('');
+    setFormulaError('');
+    setAccijnsInst({tarief_per_hl_abv:7.51, tarief_per_hl:24.17, customFormulaEnabled:false, customFormula:''});
     setSaved(true);
     setTimeout(()=>setSaved(false), 2000);
   };
@@ -4068,29 +4120,32 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
   const [activeSection, setActiveSection] = React.useState('brouwerij');
   const navItems = [
-    {id:'brouwerij',   label:'Brouwerij',   icon:'🏭'},
-    {id:'brewfather',  label:'Brewfather',  icon:'🍺'},
-    {id:'woocommerce', label:'WooCommerce', icon:'🛒'},
-    {id:'accijns',     label:'Accijns',     icon:'💶'},
-    {id:'hygiene',     label:'Hygiëne',     icon:'🧹'},
-    {id:'data',        label:'Data',        icon:'📦'},
+    {id:'brouwerij',   label:t('settings_brewery'),     icon:'🏭'},
+    {id:'brewfather',  label:'Brewfather',               icon:'🍺'},
+    {id:'woocommerce', label:'WooCommerce',              icon:'🛒'},
+    {id:'accijns',     label:t('settings_excise'),       icon:'💶'},
+    {id:'hygiene',     label:t('settings_hygiene'),      icon:'🧹'},
+    {id:'data',        label:t('settings_data'),         icon:'📦'},
+    {id:'taal',        label:t('settings_language'),     icon:'🌐'},
   ];
 
   const fmtTs = (ts) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
 
   return (
-    <div className="flex gap-4 items-start">
+    <div className="flex flex-col md:flex-row gap-4 md:items-start">
 
       {/* ── Links navigatie ── */}
-      <div className="w-44 flex-shrink-0 bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="px-3 py-2 bg-gray-700 text-white text-xs font-semibold uppercase tracking-wide">Instellingen</div>
-        {navItems.map(n => (
-          <button key={n.id} onClick={()=>setActiveSection(n.id)}
-            className={`w-full text-left px-3 py-2.5 text-sm border-b border-gray-100 last:border-0 flex items-center gap-2 transition-colors ${activeSection===n.id ? 'bg-amber-50 text-amber-700 font-semibold border-l-[3px] border-l-amber-500 pl-2.5' : 'text-gray-600 hover:bg-gray-50'}`}>
-            <span className="text-base leading-none">{n.icon}</span>
-            <span>{n.label}</span>
-          </button>
-        ))}
+      <div className="w-full md:w-44 md:flex-shrink-0 bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="hidden md:block px-3 py-2 bg-gray-700 text-white text-xs font-semibold uppercase tracking-wide">{t('nav_instellingen')}</div>
+        <div className="flex md:block overflow-x-auto">
+          {navItems.map(n => (
+            <button key={n.id} onClick={()=>setActiveSection(n.id)}
+              className={`flex-shrink-0 md:flex-shrink md:w-full text-left px-3 py-2.5 text-sm border-b border-gray-100 flex items-center gap-2 transition-colors whitespace-nowrap md:whitespace-normal ${activeSection===n.id ? 'bg-amber-50 text-amber-700 font-semibold md:border-l-[3px] md:border-l-amber-500 md:pl-2.5 border-b-2 border-b-amber-500' : 'text-gray-600 hover:bg-gray-50'}`}>
+              <span className="text-base leading-none">{n.icon}</span>
+              <span>{n.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Rechts content ── */}
@@ -4110,9 +4165,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <div className="w-24 h-16 bg-gray-900 rounded flex items-center justify-center overflow-hidden">
               {logo
                 ? <img src={logo} alt="Huidig logo" style={{maxHeight:'48px',maxWidth:'88px',objectFit:'contain'}} />
-                : <span className="text-gray-500 text-xs text-center px-1">Geen logo</span>}
+                : <span className="text-gray-500 text-xs text-center px-1">{t('settings_logo_none')}</span>}
             </div>
-            <p className="text-xs text-gray-400 mt-1 text-center">Voorbeeld</p>
+            <p className="text-xs text-gray-400 mt-1 text-center">{t('settings_logo_preview')}</p>
           </div>
           <div className="flex flex-col gap-3">
             <label className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded text-sm font-medium hover:bg-amber-700 transition-colors cursor-pointer w-fit">
@@ -4142,7 +4197,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <h2 className="text-lg font-semibold text-gray-700 mb-1">Tanks</h2>
         <p className="text-sm text-gray-500 mb-4">Voeg fermentatie- en lagertanks toe. Ze verschijnen als keuze bij batches en worden getoond op het dashboard.</p>
         <div className="flex flex-wrap gap-2 mb-4">
-          {tanks.length===0 && <p className="text-sm text-gray-400 italic">Nog geen tanks toegevoegd.</p>}
+          {tanks.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_tanks_none')}</p>}
           {tanks.map(t=>(
             <div key={t.id} className="flex items-center gap-1.5 bg-gray-100 border border-gray-200 rounded-lg px-3 py-1.5">
               <span className="text-sm font-medium text-gray-700 flex items-center gap-1"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAAUCAYAAABWMrcvAAADFUlEQVR42nVTS2wTVxQ97409nhmPP5AYO24bkyYNMGkRMiKqilpThJpFxdJLll2AkAptJSQWmYzIpgu2kbrspgtX3dCgRpEAW/0kaa2ShFQJqLIIjgN2QuMkY2c8n/dYRAlESe/u6J6je++5OsABlcvl5O9zuc4dfOdOUXmzT/eQb9+WKYB0Oh2iHr3EOfffHRu7Ovfk1wsAoOs6BQCyDTg1DMJGR0dPFWfmTwt+X8RznYtBVb3n2LZw85trw7quc8MwOAAuACDnzoHk83ny089jt1Kpzhufnc983pGIpwj4WcfxjvefzbSMwZtTuq7TQqHAhWw2K4yMjDAH/i8YMPjxRx+6H2jHnb/+fugFZZklk4nQxFTxwpXLlye/vv5lKZvLCbs3HYqGMoejEe66jghAqdc35NW1ugJwIsmizAj5FAC0WIz4dkTMYy0AoJQIM48emY2mWQswOWrbThSccwrS3Oeexz0hIEpkq2k9vDs2Xv7t94n19fX6hmW1apRQwsm2aQCwO4n6BHth8Z8Xi0uVJUJJvP9Mv+9Yb/dm6Wl5wy/644yx13/SNI3Pzc2JUTVMH88vTHcdfefkwPlPOo+m3hZmZmd5pD3Gw+GoZ1mWf896lUrFv7q2Geg40h1sNhtqz7upeKXy7ITdamrz00Xl5erKJhWELQBAHqB9fX1kYGCgcey9npGerrcSkxMTyrPyEmk1TbdWrfrK5cWOnu6u5VXT+nF7Tp7RbDbLAKAzGXssBgJVNaT+96Jamxal4BPHcZjjEhIKqU+Nr66UAMAwDLbrXqm0rLQdOlyWJKV278F9WZLl59WVNa+t/cisIklrmUzGt89yV2Su49htLcu6HwmrdWvLZI1GczKoyA8s2w4XCgVvnygVi7m26ypBVTUDovSn47inRUX5JRRSVc91D45GIpEAcz2STMaDZ9LpBUEI/Hvq/ZOLLdtu4xx+zvlr0c6bx8fHhVptJX/j+rVbpml+RyiGvx0e/GFyqqhXni//MTQ0JOxLq6ZpYkdvbzsAgHPyZugiqVR0J3v/V3sEB5FfAeeRVsZFp5mTAAAAAElFTkSuQmCC" style={{height:'16px',width:'auto',display:'inline'}} alt="tank" />{t.id}</span>
@@ -4196,7 +4251,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button onClick={saveBf} className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-medium hover:bg-amber-700 transition-colors">Opslaan</button>
+            <button onClick={saveBf} className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-medium hover:bg-amber-700 transition-colors">{t('btn_save')}</button>
             <button onClick={testBf} disabled={bfTesting||!bfForm.userId||!bfForm.apiKey}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-40">
               {bfTesting ? 'Testen…' : 'Test verbinding'}
@@ -4254,7 +4309,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button onClick={saveWc} className="px-4 py-2 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors">Opslaan</button>
+            <button onClick={saveWc} className="px-4 py-2 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors">{t('btn_save')}</button>
             <button onClick={testWc} disabled={wcTesting||!wcForm.storeUrl||!wcForm.consumerKey||!wcForm.consumerSecret}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-40">
               {wcTesting ? 'Testen…' : 'Test verbinding'}
@@ -4270,11 +4325,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-gray-700">Synchronisatie log</h2>
           {(wcSyncLog||[]).length > 0 && (
-            <button onClick={()=>setWcSyncLog([])} className="text-xs text-gray-400 hover:text-red-500 transition-colors">Wissen</button>
+            <button onClick={()=>setWcSyncLog([])} className="text-xs text-gray-400 hover:text-red-500 transition-colors">{t('settings_woocommerce_log_clear')}</button>
           )}
         </div>
         {(wcSyncLog||[]).length === 0
-          ? <p className="text-sm text-gray-400 italic">Nog geen synchronisaties uitgevoerd.</p>
+          ? <p className="text-sm text-gray-400 italic">{t('settings_woocommerce_log_empty')}</p>
           : <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
               {(wcSyncLog||[]).map(e => (
                 <div key={e.id} className={`text-xs rounded-lg px-3 py-2 flex flex-col gap-0.5 ${e.type==='fout' ? 'bg-red-50 border border-red-100' : e.type==='push' ? 'bg-purple-50 border border-purple-100' : 'bg-blue-50 border border-blue-100'}`}>
@@ -4308,7 +4363,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <input type="number" step="0.01" min="0" value={tarieven.tarief_per_hl_abv}
                 onChange={e=>setTarieven(t=>({...t,tarief_per_hl_abv:e.target.value}))}
                 className={inp} />
-              <span className="text-xs text-gray-400">(standaard: 7.51)</span>
+              <span className="text-xs text-gray-400">{t('settings_excise_tariff_1_default')}</span>
             </div>
           </div>
           <div>
@@ -4320,19 +4375,38 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <input type="number" step="0.01" min="0" value={tarieven.tarief_per_hl}
                 onChange={e=>setTarieven(t=>({...t,tarief_per_hl:e.target.value}))}
                 className={inp} />
-              <span className="text-xs text-gray-400">(standaard: 24.17)</span>
+              <span className="text-xs text-gray-400">{t('settings_excise_tariff_2_default')}</span>
             </div>
+          </div>
+          {/* Custom formula */}
+          <div className="border-t pt-4 mt-2">
+            <label className="flex items-center gap-2 cursor-pointer mb-3">
+              <input type="checkbox" checked={customFormulaEnabled} onChange={e=>{setCustomFormulaEnabled(e.target.checked);setFormulaError('');}}
+                className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+              <span className="text-sm font-medium text-gray-700">{t('settings_excise_custom_formula_enable')}</span>
+            </label>
+            {customFormulaEnabled && (
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-gray-600">{t('settings_excise_custom_formula_label')}</label>
+                <input type="text" value={customFormula}
+                  onChange={e=>{setCustomFormula(e.target.value); if(formulaError) testFormula(e.target.value);}}
+                  placeholder={t('settings_excise_custom_formula_placeholder')}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-amber-500" />
+                <p className="text-xs text-gray-400">{t('settings_excise_custom_formula_vars')}</p>
+                {formulaError && <p className="text-xs text-red-600">{formulaError}</p>}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3 pt-2">
             <button onClick={saveTarieven}
               className="px-4 py-2 bg-amber-600 text-white rounded text-sm font-medium hover:bg-amber-700 transition-colors">
-              Opslaan
+              {t('settings_excise_save')}
             </button>
             <button onClick={resetTarieven}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors">
-              Reset naar standaard
+              {t('btn_reset')}
             </button>
-            {saved && <span className="text-sm text-green-600 font-medium">✓ Opgeslagen</span>}
+            {saved && <span className="text-sm text-green-600 font-medium">{t('settings_excise_saved')}</span>}
           </div>
         </div>
       </div>
@@ -4395,7 +4469,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
         return (
           <div className={card}>
-            <h2 className="text-lg font-semibold text-gray-700 mb-1">🧹 Hygiëne checklist</h2>
+            <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_hygiene_title')}</h2>
             <p className="text-sm text-gray-500 mb-5">
               De checklist is zichtbaar per batch (ingeklapt). Maak groepen aan zoals "Voorbereiding" of "Afvullen" en wijs items toe aan een groep.
             </p>
@@ -4404,7 +4478,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <div className="mb-5">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Groepen</div>
               <div className="space-y-1 mb-3">
-                {groups.length===0 && <p className="text-sm text-gray-400 italic">Geen groepen.</p>}
+                {groups.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_groups_none')}</p>}
                 {groups.map((g, idx)=>(
                   <div key={g.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
                     <span className="flex-1 text-sm font-medium text-teal-800">{g.label}</span>
@@ -4418,7 +4492,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <div className="flex items-center gap-2">
                 <input type="text" value={nieuwGroep} onChange={e=>setNieuwGroep(e.target.value)}
                   onKeyDown={e=>e.key==='Enter'&&addGroep()}
-                  placeholder="Naam nieuwe groep…"
+                  placeholder={t('settings_hygiene_group_add_placeholder')}
                   className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-teal-500" />
                 <button onClick={addGroep}
                   className="px-3 py-1.5 bg-teal-600 text-white rounded text-sm font-medium hover:bg-teal-700 transition-colors">
@@ -4431,13 +4505,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <div className="mb-4">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Items</div>
               <div className="space-y-1 mb-3">
-                {items.length===0 && <p className="text-sm text-gray-400 italic">Geen items.</p>}
+                {items.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_items_none')}</p>}
                 {items.map((item, idx)=>(
                   <div key={item.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
                     <span className="flex-1 text-sm text-gray-700">{item.label}</span>
                     <select value={item.group_id||''} onChange={e=>setItemGroep(item.id,e.target.value)}
                       className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 bg-white focus:outline-none focus:border-teal-400 max-w-[130px]">
-                      <option value="">— Geen groep —</option>
+                      <option value="">{t('settings_hygiene_item_no_group')}</option>
                       {groups.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
                     <button onClick={()=>moveItem(item.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
@@ -4449,7 +4523,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <div className="flex items-center gap-2 flex-wrap">
                 <input type="text" value={nieuwHygieneItem} onChange={e=>setNieuwHygieneItem(e.target.value)}
                   onKeyDown={e=>e.key==='Enter'&&addItem()}
-                  placeholder="Nieuw item…"
+                  placeholder={t('settings_hygiene_item_add_placeholder')}
                   className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-amber-500" />
                 <select value={nieuwHygieneItemGroep} onChange={e=>setNieuwHygieneItemGroep(e.target.value)}
                   className="border border-gray-300 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-amber-500">
@@ -4488,7 +4562,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <input ref={importRef} type="file" accept=".xlsx" onChange={doImport} className="hidden" />
           </label>
         </div>
-        <p className="text-xs text-gray-400 mt-3">⚠ Importeren vervangt alle huidige data.</p>
+        <p className="text-xs text-gray-400 mt-3">{t('settings_data_import_warning')}</p>
       </div>
 
       {/* Mutaties log */}
@@ -4502,9 +4576,32 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
           Log wissen
         </button>
-        <p className="text-xs text-gray-400 mt-2">Let op: dit kan niet ongedaan worden gemaakt.</p>
+        <p className="text-xs text-gray-400 mt-2">{t('settings_log_warning')}</p>
       </div>
 
+      </>}
+
+      {activeSection==='taal' && <>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+          <h3 className="font-semibold text-gray-700 mb-1">{t('settings_language')}</h3>
+          <p className="text-xs text-gray-500 mb-4">{t('lbl_language')}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              {code:'nl', label:'Nederlands', flag:'🇳🇱'},
+              {code:'en', label:'English',    flag:'🇬🇧'},
+              {code:'de', label:'Deutsch',    flag:'🇩🇪'},
+              {code:'fr', label:'Français',   flag:'🇫🇷'},
+              {code:'es', label:'Español',    flag:'🇪🇸'},
+            ].map(lng => (
+              <button key={lng.code} onClick={()=>setLang(lng.code)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${lang===lng.code ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                <span className="text-xl">{lng.flag}</span>
+                <span>{lng.label}</span>
+                {lang===lng.code && <span className="ml-auto text-amber-500">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
       </>}
 
       <div className="pt-2 pb-2 text-center text-xs text-gray-400">
@@ -4543,6 +4640,8 @@ function App() {
   const [artikelen, setArtikelen] = useStore('artikelen', []);
   const [hygieneItems, setHygieneItems] = useStore('hygiene_items', DEFAULT_HYGIENE_ITEMS);
   const [hygieneGroups, setHygieneGroups] = useStore('hygiene_groups', DEFAULT_HYGIENE_GROUPS);
+  const [lang, setLang] = useStore('app_lang', detectLang());
+  _lang = lang; // update global for t() — called synchronously during render
   const [page, setPage] = useState('dashboard');
   const importRef = useRef(null);
   const bfAutoSynced = React.useRef(false);
@@ -4655,7 +4754,7 @@ function App() {
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} />}
       </main>
     </div>
   );

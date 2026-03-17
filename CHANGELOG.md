@@ -1,55 +1,75 @@
 # Changelog
 
-Alle wijzigingen in dit project worden hier bijgehouden.
+All notable changes to this project are documented here.
+
+---
+
+## [1.3.0]
+
+### Added
+- Internationalisation (i18n): full UI available in Dutch, English, German, French and Spanish
+- Separate language files (`lang/nl.js`, `lang/en.js`, `lang/de.js`, `lang/fr.js`, `lang/es.js`)
+- Automatic browser/system language detection on first launch — falls back to English if unsupported
+- Language selector in Settings → Language (flag buttons, preference stored persistently)
+- Custom excise duty formula: define a free-form JavaScript expression in Settings → Excise Duty
+  - Available variables: `liter`, `abv`, `hl` (= liter/100), `r1`, `r2`
+  - Formula is validated on save and highlighted inline on error
+- Mobile collapsible sidebars on Ingredients, Batches, Packaging and Recipes pages — list hides when an item is selected, "← Back to overview" button appears
+
+### Fixed
+- Blank page on startup caused by optional catch binding (`catch {}`) not supported by the Babel standalone version in use — fixed to `catch(e) {}`
+- "Invalid Date" shown for last sync timestamp — `fmtD` was incorrectly used for full ISO timestamps; switched to `fmtTs`
+- WooCommerce stock push incorrectly included releases with unpaid excise duty — now uses `filter` + `every` to check all excise records per release (handles duplicate records)
+- JSX fragment (`<>`) not closed correctly in BatchesPage and AfvullenPage after mobile refactor, causing parse errors
 
 ---
 
 ## [1.2.5]
 
-### Toegevoegd
-- WooCommerce koppeling: automatisch voorraad bijwerken in webshop bij uitslaan
-- Handmatige bidirectionele sync op de Voorraad pagina (↕ WC Sync knop): haalt verkopen op uit WooCommerce en verdeelt het verschil FIFO over uitslagen
-- WooCommerce API-instellingen in de Instellingen pagina (URL, Consumer Key, Consumer Secret, ingeschakeld-schakelaar, verbindingstest)
-- Hygiëne checklist per batch: configureerbare items met groepsindeling (Voorbereiding, Brouwen, Afvullen, etc.)
-- Hygiëne afvink-acties worden nu geregistreerd in het batch logboek
+### Added
+- WooCommerce integration: automatically update stock in the webshop on release
+- Manual bidirectional sync on the Stock page (↕ WC Sync button): pulls sales from WooCommerce and distributes the difference FIFO across releases
+- WooCommerce API settings in Settings (URL, Consumer Key, Consumer Secret, enabled toggle, connection test)
+- Hygiene checklist per batch: configurable items with group structure (Preparation, Brewing, Filling, etc.)
+- Hygiene check-off actions are now recorded in the batch log
 
 ---
 
 ## [1.2.0]
 
-### Toegevoegd
-- Artikelenstambestand per bier + verpakkingstype (SKU, EAN, verkoopprijs, BTW)
-- Rode markering in uitgeslagen voorraad voor onbetaalde accijns
-- Tankkaarten op dashboard vergroot voor betere leesbaarheid van statuslabels
-- Brewfather sync uitgebreid: brouwzaal- en maischrendement, pH-waarden, notities
-- Inklapbare "Batch info" sectie op de batches pagina
-- Logboek toont nu alle gewijzigde velden bij batch-bewerkingen
+### Added
+- Article master data per beer + packaging type (SKU, EAN, selling price, VAT)
+- Red indicator in released stock for unpaid excise duty
+- Tank cards on dashboard enlarged for better readability of status labels
+- Brewfather sync extended: brewhouse and mash efficiency, pH values, notes
+- Collapsible "Batch info" section on the batches page
+- Log now shows all changed fields on batch edits
 
-### Gewijzigd
-- Accijns wordt nu per uitslag bijgehouden (via `uitslag_id`)
-- Voorraad archief telt mee in de totalen op de voorraadpagina
+### Changed
+- Excise duty is now tracked per release (via `uitslag_id`)
+- Stock archive is included in totals on the stock page
 
 ---
 
 ## [1.1.0]
 
-### Toegevoegd
-- Uitgeslagen voorraad met verkoop-tracking per verpakkingstype
-- Accijnsberekening en -overzicht
-- Archivering van volledig verkochte uitslagen
-- THT-waarschuwingen op het dashboard (verlopen + binnen 30/90 dagen)
-- Brewfather recepten synchronisatie
+### Added
+- Released stock with sales tracking per packaging type
+- Excise duty calculation and overview
+- Archiving of fully sold releases
+- Best-before warnings on the dashboard (expired + within 30/90 days)
+- Brewfather recipe synchronisation
 
-### Gewijzigd
-- Navigatie uitgebreid met Voorraad en Accijns pagina's
+### Changed
+- Navigation extended with Stock and Excise Duty pages
 
 ---
 
 ## [1.0.0]
 
-### Eerste release
-- Batch beheer (aanmaken, bewerken, statuswijzigingen)
-- Ingrediënten en lots
-- Tankoverzicht en bezettingsvalidatie
-- Home Assistant ingress ondersteuning
-- Data synchronisatie via HA API + localStorage fallback
+### Initial release
+- Batch management (create, edit, status changes)
+- Ingredients and lots
+- Tank overview and occupancy validation
+- Home Assistant ingress support
+- Data synchronisation via HA API + localStorage fallback
