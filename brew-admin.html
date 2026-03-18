@@ -4706,7 +4706,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
           <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>
           <div className="flex-1 min-w-0 space-y-4">
             <div className="bg-white rounded-xl shadow-card overflow-hidden">
-              <div className="px-4 py-3 bg-gray-800 text-white flex items-center justify-between">
+              <div className="px-4 py-3 t-hdr text-white flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="text-base font-semibold leading-tight truncate">{selB.naam}</div>
                   {selB.batch_nummer && <div className="text-xs text-gray-400 mt-0.5">#{selB.batch_nummer}{selB.stijl ? ` · ${selB.stijl}` : ''}</div>}
@@ -4856,7 +4856,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
               })).filter(g=>g.items.length>0);
               return (
                 <div className="bg-white rounded-xl shadow-card">
-                  <div className="px-4 py-2.5 bg-teal-700 text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:bg-teal-600 select-none"
+                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none"
                     onClick={()=>setHygieneIngeklapt(p=>!p)}>
                     <span className="flex items-center gap-2">
                       <span className="text-teal-300 text-sm">{hygieneIngeklapt?'▶':'▼'}</span>
@@ -6082,7 +6082,7 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
             return (
               <div key={beerName} className="bg-white rounded-xl shadow-card overflow-x-auto">
                 {/* Biernaam-header */}
-                <div onClick={toggleBeer} className="px-4 py-3 bg-gray-800 text-white flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none">
+                <div onClick={toggleBeer} className="px-4 py-3 t-hdr text-white flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none">
                   <span className="flex items-center gap-2 font-bold text-base">
                     <span className="text-gray-400 text-sm">{beerGesloten?'▶':'▼'}</span>
                     {beerName}
