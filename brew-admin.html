@@ -6693,23 +6693,22 @@ function AccijnsPage({bat, acc, setAcc}) {
     return new Date(y, Number(m)-1, 1).toLocaleString('nl-NL', {month:'long', year:'numeric'});
   };
 
-  // Groepeer records per batch + verpakkingstype
+  // Groepeer records per batch (alle verpakkingstypen samengeteld)
   const groupRecords = (records) => {
     const g = {};
     records.forEach(a => {
-      const k = `${a.batch_id}__${a.verpakking_type||''}`;
+      const k = String(a.batch_id);
       if (!g[k]) g[k] = {
         key: k, batch_id: a.batch_id, naam: getNaam(a.batch_id),
         batch_nummer: a.batch_nummer, abv: a.abv,
-        verpakking_type: a.verpakking_type||'—', liter: 0, accijns: 0,
+        liter: 0, accijns: 0,
       };
       g[k].liter   += getLiter(a);
       g[k].accijns += getAccijns(a);
     });
-    // Sorteer: batch_nummer → verpakking_type
+    // Sorteer op batch_nummer
     return Object.values(g).sort((a,b) =>
       String(a.batch_nummer).localeCompare(String(b.batch_nummer), undefined, {numeric:true})
-      || a.verpakking_type.localeCompare(b.verpakking_type)
     );
   };
 
@@ -6736,7 +6735,6 @@ function AccijnsPage({bat, acc, setAcc}) {
             <tr>
               <th className="px-3 py-2 text-left">{t('excise_beer')}</th>
               <th className="px-3 py-2 text-left">{t('excise_batch')}</th>
-              <th className="px-3 py-2 text-left">{t('excise_packaging')}</th>
               <th className="px-3 py-2 text-right">{t('excise_abv')}</th>
               <th className="px-3 py-2 text-right">{t('excise_liters')}</th>
               <th className="px-3 py-2 text-right">{t('excise_rate_per_liter')}</th>
@@ -6748,7 +6746,6 @@ function AccijnsPage({bat, acc, setAcc}) {
               <tr key={r.key}>
                 <td className="px-3 py-2 font-medium text-gray-800">{r.naam}</td>
                 <td className="px-3 py-2 text-gray-500">{r.batch_nummer?`#${r.batch_nummer}`:'—'}</td>
-                <td className="px-3 py-2 text-gray-600">{r.verpakking_type}</td>
                 <td className="px-3 py-2 text-right">{r.abv?`${r.abv}%`:'—'}</td>
                 <td className="px-3 py-2 text-right">{r.liter.toFixed(1)}L</td>
                 <td className="px-3 py-2 text-right text-gray-500">{r.liter>0?`${fmt(r.accijns/r.liter)}/L`:'—'}</td>
@@ -6758,7 +6755,7 @@ function AccijnsPage({bat, acc, setAcc}) {
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-gray-200 bg-gray-50">
-              <td colSpan="4" className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('excise_month_total')}</td>
+              <td colSpan="3" className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('excise_month_total')}</td>
               <td className="px-3 py-2.5 text-right font-bold text-gray-700">{totLiter.toFixed(1)}L</td>
               <td></td>
               <td className="px-3 py-2.5 text-right font-bold text-lg text-amber-700">{fmt(monthTotal)}</td>
