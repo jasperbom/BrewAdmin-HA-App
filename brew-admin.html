@@ -3380,6 +3380,7 @@ const Btn = ({children,onClick,v='primary',s='md',cls='',disabled=false}) => {
     secondary:'bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-700 border border-gray-300 shadow-sm',
     danger:'bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border border-red-200',
     ghost:'hover:bg-gray-100 active:bg-gray-200 text-gray-600',
+    header:'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/40',
     green:'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm',
     blue:'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm'
   }[v];
@@ -3864,7 +3865,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl">
                 <span>{t('verpakking_components_section')}</span>
-                <Btn s="sm" v="ghost" onClick={()=>{setVtForm(emptyVT);setVtOnderdeel({onderdeel_id:'',aantal:'1'});setShowVEdit(null);setShowVTAdd(true)}}>{t('verpakking_add_btn')}</Btn>
+                <Btn s="sm" v="header" onClick={()=>{setVtForm(emptyVT);setVtOnderdeel({onderdeel_id:'',aantal:'1'});setShowVEdit(null);setShowVTAdd(true)}}>{t('verpakking_add_btn')}</Btn>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
@@ -3927,7 +3928,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl">
                 <span>{t('tab_onderdelen')}</span>
-                <Btn s="sm" v="ghost" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setOdTotaalprijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
+                <Btn s="sm" v="header" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setOdTotaalprijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
