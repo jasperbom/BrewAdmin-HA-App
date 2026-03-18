@@ -4057,7 +4057,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                 <div className="space-y-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_existing_ingredient')}</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Bestaand onderdeel</label>
                       <select className="w-full border rounded px-2 py-1.5 text-sm"
                         value={vOntvForm.od_id}
                         onChange={e=>{const od=onderdelen.find(o=>o.id===Number(e.target.value));od?setVOntvForm(f=>({...f,od_id:String(od.id),naam:od.naam,type:od.type||''})):setVOntvForm(f=>({...f,od_id:'',naam:'',type:''}));}}>
@@ -4080,7 +4080,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                     <Inp label={t('lbl_qty_received')+' *'} type="number" value={vOntvForm.aantal}
                       onChange={v=>setVOntvForm(f=>{const ps=f.prijs_per_stuk,tot=f.totaalprijs;if(ps&&v)return{...f,aantal:v,totaalprijs:String((Number(ps)*Number(v)).toFixed(2))};if(!ps&&tot&&v)return{...f,aantal:v,prijs_per_stuk:String((Number(tot)/Number(v)).toFixed(4))};return{...f,aantal:v};})}
                       placeholder="24" />
-                    <Inp label="Prijs per stuk ex BTW (€)" type="number" value={vOntvForm.prijs_per_stuk}
+                    <Inp label={t('modal_price_per_unit')} type="number" value={vOntvForm.prijs_per_stuk}
                       onChange={v=>setVOntvForm(f=>({...f,prijs_per_stuk:v,totaalprijs:v&&f.aantal?String((Number(v)*Number(f.aantal)).toFixed(2)):f.totaalprijs}))}
                       placeholder="0.00" />
                     <Inp label="Totaalprijs ex BTW (€)" type="number" value={vOntvForm.totaalprijs}
@@ -4309,7 +4309,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_existing_ingredient')}</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Bestaand onderdeel</label>
                 <select className="w-full border rounded px-2 py-1.5 text-sm"
                   value={odAddForm.od_id}
                   onChange={e=>{const od=onderdelen.find(o=>o.id===Number(e.target.value));od?setOdAddForm(f=>({...f,od_id:String(od.id),naam:od.naam,type:od.type||''})):setOdAddForm(f=>({...f,od_id:'',naam:'',type:''}));}}>
@@ -4332,7 +4332,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <Inp label={t('lbl_qty_received')+' *'} type="number" value={odQty}
                 onChange={v=>{if(odPrijs&&v){setOdQty(v);setOdTotaalprijs(String((Number(odPrijs)*Number(v)).toFixed(2)));}else if(!odPrijs&&odTotaalprijs&&v){setOdQty(v);setOdPrijs(String((Number(odTotaalprijs)/Number(v)).toFixed(4)));}else{setOdQty(v);}}}
                 placeholder="24" />
-              <Inp label="Prijs per stuk ex BTW (€)" type="number" value={odPrijs}
+              <Inp label={t('modal_price_per_unit')} type="number" value={odPrijs}
                 onChange={v=>{setOdPrijs(v);if(v&&odQty)setOdTotaalprijs(String((Number(v)*Number(odQty)).toFixed(2)));}}
                 placeholder="0.00" />
               <Inp label="Totaalprijs ex BTW (€)" type="number" value={odTotaalprijs}
