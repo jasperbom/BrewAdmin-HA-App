@@ -3493,7 +3493,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
   // --- Verpakkingen state ---
   const [showVOntv, setShowVOntv] = useState(false);
-  const emptyVO = {verpakking_id:'',naam:'',inhoud_liter:'',type:'',lotnr:'',aantal:'',preset:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:'',prijs_per_stuk:'',totaalprijs:''};
+  const emptyVO = {od_id:'',verpakking_id:'',naam:'',inhoud_liter:'',type:'',lotnr:'',aantal:'',preset:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:'',prijs_per_stuk:'',totaalprijs:''};
   const [vOntvForm, setVOntvForm] = useState(emptyVO);
   const [showVAfboek, setShowVAfboek] = useState(null);
   const [vAfQty, setVAfQty] = useState('');
@@ -3501,7 +3501,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const emptyVE = {naam:'',inhoud_liter:'',type:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:''};
   const [vEditForm, setVEditForm] = useState(emptyVE);
   // --- Onderdelen state ---
-  const emptyOD = {naam:'',type:'',lotnr:'',kosten_per_stuk:'',leverancier:'',factuurnummer:''};
+  const emptyOD = {od_id:'',naam:'',type:'',lotnr:'',kosten_per_stuk:'',leverancier:'',factuurnummer:''};
   const [showODEdit, setShowODEdit] = useState(null);
   const [odEditForm, setOdEditForm] = useState(emptyOD);
   const [showODAdd, setShowODAdd] = useState(false);
@@ -3536,10 +3536,10 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   };
 
   const voegVerpakkingToe = () => {
-    if (!vOntvForm.verpakking_id && !vOntvForm.naam.trim()) { alert(t('err_name_required')); return; }
+    if (!vOntvForm.od_id && !vOntvForm.naam.trim()) { alert(t('err_name_required')); return; }
     if (!vOntvForm.aantal) { alert(t('err_count_required')); return; }
-    const naam = vOntvForm.verpakking_id
-      ? (verpakkingen.find(v=>v.id===Number(vOntvForm.verpakking_id))?.naam||'')
+    const naam = vOntvForm.od_id
+      ? (onderdelen.find(o=>o.id===Number(vOntvForm.od_id))?.naam||vOntvForm.naam)
       : vOntvForm.naam.trim();
     setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
     setVOntvForm(emptyVO);
@@ -3574,8 +3574,10 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     // --- onderdelen (previously verpakkingen) ---
     verpakkingLijst.forEach(v => {
       const n = Number(v.aantal);
-      const naam = v.naam.trim();
-      const bestaand = onderdelen.find(o=>o.naam.toLowerCase()===naam.toLowerCase());
+      const naam = v._naam||v.naam.trim();
+      const bestaand = v.od_id
+        ? onderdelen.find(o=>o.id===Number(v.od_id))
+        : onderdelen.find(o=>o.naam.toLowerCase()===naam.toLowerCase());
       if (bestaand) {
         setOnderdelen(prev=>prev.map(o=>o.id===bestaand.id?{
           ...o, voorraad:Number(o.voorraad||0)+n,
@@ -3690,15 +3692,23 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     setShowODEdit(null);
   };
   const saveODAdd = () => {
-    if (!odAddForm.naam.trim()) { alert(t('err_name_required')); return; }
+    if (!odAddForm.od_id && !odAddForm.naam.trim()) { alert(t('err_name_required')); return; }
     if (!odQty || Number(odQty)<=0) { alert(t('err_qty_required')); return; }
-    setOnderdelen(prev=>[...prev,{
-      id:newId(prev), naam:odAddForm.naam.trim(), type:odAddForm.type||'overig',
-      lotnr:odAddForm.lotnr||'',
-      kosten_per_stuk:odPrijs?Number(odPrijs):0,
-      leverancier:odAddForm.leverancier||'', factuurnummer:odAddForm.factuurnummer||'',
-      voorraad: Number(odQty),
-    }]);
+    if (odAddForm.od_id) {
+      setOnderdelen(prev=>prev.map(o=>o.id===Number(odAddForm.od_id)?{
+        ...o, voorraad:Number(o.voorraad||0)+Number(odQty),
+        lotnr:odAddForm.lotnr||o.lotnr||'',
+        ...(odPrijs?{kosten_per_stuk:Number(odPrijs)}:{}),
+      }:o));
+    } else {
+      setOnderdelen(prev=>[...prev,{
+        id:newId(prev), naam:odAddForm.naam.trim(), type:odAddForm.type||'overig',
+        lotnr:odAddForm.lotnr||'',
+        kosten_per_stuk:odPrijs?Number(odPrijs):0,
+        leverancier:odAddForm.leverancier||'', factuurnummer:odAddForm.factuurnummer||'',
+        voorraad: Number(odQty),
+      }]);
+    }
     setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(false);
   };
   const saveVTAdd = () => {
@@ -4045,10 +4055,25 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <div className="border border-gray-200 rounded-lg p-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('onderdeel_add_btn')}</p>
                 <div className="space-y-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Inp label={t('lbl_name')+' *'} value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v}))} placeholder="Fles 33cL" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_existing_ingredient')}</label>
+                      <select className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={vOntvForm.od_id}
+                        onChange={e=>{const od=onderdelen.find(o=>o.id===Number(e.target.value));od?setVOntvForm(f=>({...f,od_id:String(od.id),naam:od.naam,type:od.type||''})):setVOntvForm(f=>({...f,od_id:'',naam:'',type:''}));}}>
+                        <option value="">— {t('lbl_or_new_ingredient')} —</option>
+                        {[...onderdelen].sort((a,b)=>a.naam.localeCompare(b.naam,'nl')).map(o=><option key={o.id} value={String(o.id)}>{o.naam}</option>)}
+                      </select>
+                    </div>
+                    {!vOntvForm.od_id && (
+                      <Inp label={t('lbl_or_new_ingredient')+' *'} value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v,od_id:''}))} placeholder="Fles 33cL" />
+                    )}
+                  </div>
+                  {!vOntvForm.od_id && (
                     <Sel label={t('onderdeel_type')} value={vOntvForm.type} onChange={v=>setVOntvForm(f=>({...f,type:v}))}
                       opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Inp label={t('ing_lot_number')} value={vOntvForm.lotnr} onChange={v=>setVOntvForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -4282,10 +4307,25 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
       {showODAdd && (
         <Modal title={t('onderdeel_add_btn')} onClose={()=>setShowODAdd(false)} wide>
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Inp label={t('lbl_name')+' *'} value={odAddForm.naam} onChange={v=>setOdAddForm(f=>({...f,naam:v}))} placeholder="Fles 33cL" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_existing_ingredient')}</label>
+                <select className="w-full border rounded px-2 py-1.5 text-sm"
+                  value={odAddForm.od_id}
+                  onChange={e=>{const od=onderdelen.find(o=>o.id===Number(e.target.value));od?setOdAddForm(f=>({...f,od_id:String(od.id),naam:od.naam,type:od.type||''})):setOdAddForm(f=>({...f,od_id:'',naam:'',type:''}));}}>
+                  <option value="">— {t('lbl_or_new_ingredient')} —</option>
+                  {[...onderdelen].sort((a,b)=>a.naam.localeCompare(b.naam,'nl')).map(o=><option key={o.id} value={String(o.id)}>{o.naam}</option>)}
+                </select>
+              </div>
+              {!odAddForm.od_id && (
+                <Inp label={t('lbl_or_new_ingredient')+' *'} value={odAddForm.naam} onChange={v=>setOdAddForm(f=>({...f,naam:v}))} placeholder="Fles 33cL" />
+              )}
+            </div>
+            {!odAddForm.od_id && (
               <Sel label={t('onderdeel_type')} value={odAddForm.type} onChange={v=>setOdAddForm(f=>({...f,type:v}))}
                 opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Inp label={t('ing_lot_number')} value={odAddForm.lotnr} onChange={v=>setOdAddForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
