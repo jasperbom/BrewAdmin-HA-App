@@ -4648,12 +4648,11 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-800">{t('nav_batches')}</h2>
         <div className="flex flex-wrap gap-2 items-center">
-          {bfCreds?.enabled && (
-            <Btn onClick={runBfSync} disabled={bfSyncing}>
-              {bfSyncing ? t('batch_syncing') : t('batch_sync_brewfather')}
-            </Btn>
-          )}
           {bfMsg && <span className={`text-xs font-medium ${bfMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{bfMsg}</span>}
+          <Btn onClick={runBfSync} disabled={bfSyncing||!bfCreds?.enabled}
+            cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
+            {bfSyncing ? t('batch_syncing') : t('batch_sync_brewfather')}
+          </Btn>
           <Btn v="secondary" onClick={()=>setShowBf(true)}>{t('batch_import_json')}</Btn>
           <Btn onClick={()=>{setEditId(null);setBForm(emptyB);setShowForm(true)}}>{t('batch_add_btn')}</Btn>
         </div>

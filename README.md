@@ -26,10 +26,12 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 - Fill and release finished beer
 - Hygiene checklist per batch: custom groups and items, checkable per step
 - Tank occupancy validation (double occupancy is blocked)
+- Brewfather sync button always accessible (disabled when not configured)
 - Log per batch with all mutations
 
 ### Recipes
 - Import and view Brewfather recipes
+- Sync recipes directly from Brewfather API
 - Stock status per recipe: see at a glance whether ingredients are available
 
 ### Released Stock
@@ -57,9 +59,13 @@ The settings page is organised with a sidebar navigation:
 - **Hygiene** — manage checklist items and groups that appear per batch
 - **Data** — export and import of all data (Excel backup), mutation log
 - **Language** — choose interface language (Dutch, English, German, French, Spanish)
+- **Appearance** — choose a colour theme (Amber, Green, Blue, Slate, Red, Purple)
 
 ### Internationalisation
 The interface supports five languages: Dutch, English, German, French and Spanish. The app automatically detects the browser/system language on first use and applies it if supported, falling back to English otherwise. The language can be changed at any time in Settings → Language.
+
+### Colour Themes
+Six colour themes are available and can be switched in Settings → Appearance. The active theme is applied to the navigation bar, section headers, buttons, modals and the page background. All theme colours are CSS-variable based, so switching is instant without a page reload.
 
 ## Installation
 

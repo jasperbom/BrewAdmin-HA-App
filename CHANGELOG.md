@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.4.0]
+
+### Added
+- Colour theme system: six themes (Amber, Green, Blue, Slate, Red, Purple) — select in Settings → Appearance
+- Subtle per-theme page background tint applied app-wide for a more cohesive feel
+- Beer stock page
+- Brewfather sync button always visible on the Batches page (disabled when Brewfather is not configured), consistent with the Recipes page
+- Clickable logo in the navigation bar (returns to Dashboard)
+
+### Changed
+- Complete UI restyle using modern Tailwind design: cards with shadows, rounded corners, improved spacing
+- Navigation renamed: "Brewery Admin" → "Dashboard"
+- Default header logo replaced with `logo.png` (brewery logo)
+- All section headers, modal headers and card tops now use the active theme colour palette
+- All hardcoded amber UI elements replaced with theme-aware CSS variables (`--t-accent`, `--t-light`, `--t-pale`, `--t-text`, `--t-btn`, etc.)
+- Ingredient and packaging receiving modals merged into one unified form
+
+### Fixed
+- Logo in navigation limited to 36 px height to prevent layout overflow
+- Page layout no longer shifts when a scrollbar appears (scrollbar-gutter: stable)
+- Responsive server-URL field, colour-theme spelling correction, missing translations
+
+---
+
 ## [1.3.1]
 
 ### Fixed
