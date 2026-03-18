@@ -3501,13 +3501,14 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const emptyVE = {naam:'',inhoud_liter:'',type:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:''};
   const [vEditForm, setVEditForm] = useState(emptyVE);
   // --- Onderdelen state ---
-  const emptyOD = {naam:'',type:'',kosten_per_stuk:'',leverancier:'',factuurnummer:''};
+  const emptyOD = {naam:'',type:'',lotnr:'',kosten_per_stuk:'',leverancier:'',factuurnummer:''};
   const [showODEdit, setShowODEdit] = useState(null);
   const [odEditForm, setOdEditForm] = useState(emptyOD);
   const [showODAdd, setShowODAdd] = useState(false);
   const [odAddForm, setOdAddForm] = useState(emptyOD);
   const [odQty, setOdQty] = useState('');
   const [odPrijs, setOdPrijs] = useState('');
+  const [odTotaalprijs, setOdTotaalprijs] = useState('');
   // --- Verpakking type state ---
   const emptyVT = {naam:'',inhoud_liter:'',type:'',onderdelen:[]}; // onderdelen: [{onderdeel_id, aantal}]
   const [showVTAdd, setShowVTAdd] = useState(false);
@@ -3688,16 +3689,17 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     setOnderdelen(prev=>prev.map(o=>o.id===showODEdit.id?{...o,...odEditForm,kosten_per_stuk:odEditForm.kosten_per_stuk?Number(odEditForm.kosten_per_stuk):0}:o));
     setShowODEdit(null);
   };
-  const saveODAdd = (qty, prijs) => {
+  const saveODAdd = () => {
     if (!odAddForm.naam.trim()) { alert(t('err_name_required')); return; }
-    if (!qty || Number(qty)<=0) { alert(t('err_qty_required')); return; }
+    if (!odQty || Number(odQty)<=0) { alert(t('err_qty_required')); return; }
     setOnderdelen(prev=>[...prev,{
       id:newId(prev), naam:odAddForm.naam.trim(), type:odAddForm.type||'overig',
-      kosten_per_stuk:odAddForm.kosten_per_stuk?Number(odAddForm.kosten_per_stuk):0,
+      lotnr:odAddForm.lotnr||'',
+      kosten_per_stuk:odPrijs?Number(odPrijs):0,
       leverancier:odAddForm.leverancier||'', factuurnummer:odAddForm.factuurnummer||'',
-      voorraad: Number(qty),
+      voorraad: Number(odQty),
     }]);
-    setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setShowODAdd(false);
+    setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(false);
   };
   const saveVTAdd = () => {
     if (!vtForm.naam.trim()) { alert(t('err_name_required')); return; }
@@ -3793,7 +3795,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <div className="flex-1 min-w-0 bg-white rounded-xl shadow-card overflow-x-auto">
                 <div className="px-4 py-2.5 t-hdr text-white flex items-center justify-between rounded-t-xl">
                   <span className="font-medium text-sm">{selIng.naam} — {t('ing_lots')}</span>
-                  <Btn s="sm" onClick={()=>{setFactuurForm(emptyFactuur);setProductForm({...emptyProduct,ing_id:String(sel)});setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('ingredienten');setShowO(true)}}>>{t('btn_add_lot')}</Btn>
+                  <Btn s="sm" onClick={()=>{setFactuurForm(emptyFactuur);setProductForm({...emptyProduct,ing_id:String(sel)});setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('ingredienten');setShowO(true)}}>{t('btn_add_lot')}</Btn>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="text-xs text-gray-500 bg-gray-50">
@@ -3849,7 +3851,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold t-text">{t('tab_onderdelen')}</h3>
-              <Btn s="sm" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
+              <Btn s="sm" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setOdTotaalprijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
             </div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <table className="w-full text-sm">
@@ -4284,15 +4286,22 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <Inp label={t('lbl_name')+' *'} value={odAddForm.naam} onChange={v=>setOdAddForm(f=>({...f,naam:v}))} placeholder="Fles 33cL" />
               <Sel label={t('onderdeel_type')} value={odAddForm.type} onChange={v=>setOdAddForm(f=>({...f,type:v}))}
                 opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
-              <Inp label={t('onderdeel_cost')} type="number" value={odAddForm.kosten_per_stuk} onChange={v=>setOdAddForm(f=>({...f,kosten_per_stuk:v}))} placeholder="0.00" />
+              <Inp label={t('ing_lot_number')} value={odAddForm.lotnr} onChange={v=>setOdAddForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Inp label={t('lbl_qty_received')+' *'} type="number" value={odQty} onChange={setOdQty} placeholder="24" />
-              <Inp label="Prijs per stuk ex BTW (€)" type="number" value={odPrijs} onChange={setOdPrijs} placeholder="0.00" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Inp label={t('lbl_qty_received')+' *'} type="number" value={odQty}
+                onChange={v=>{if(odPrijs&&v){setOdQty(v);setOdTotaalprijs(String((Number(odPrijs)*Number(v)).toFixed(2)));}else if(!odPrijs&&odTotaalprijs&&v){setOdQty(v);setOdPrijs(String((Number(odTotaalprijs)/Number(v)).toFixed(4)));}else{setOdQty(v);}}}
+                placeholder="24" />
+              <Inp label="Prijs per stuk ex BTW (€)" type="number" value={odPrijs}
+                onChange={v=>{setOdPrijs(v);if(v&&odQty)setOdTotaalprijs(String((Number(v)*Number(odQty)).toFixed(2)));}}
+                placeholder="0.00" />
+              <Inp label="Totaalprijs ex BTW (€)" type="number" value={odTotaalprijs}
+                onChange={v=>{setOdTotaalprijs(v);if(v&&odQty)setOdPrijs(String((Number(v)/Number(odQty)).toFixed(4)));}}
+                placeholder="0.00" />
             </div>
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={()=>setShowODAdd(false)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={()=>saveODAdd(odQty, odPrijs)}>{t('btn_save')}</Btn>
+              <Btn onClick={saveODAdd}>{t('btn_save')}</Btn>
             </div>
           </div>
         </Modal>
