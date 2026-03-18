@@ -3444,6 +3444,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [lotCorr, setLotCorr] = useState({delta:'', richting:'+', reden:'', eenheid:''});
   const [ingZoek, setIngZoek] = useState('');          // zoekfilter ingrediënten
   const [groepDicht, setGroepDicht] = useStore('ing_groep_dicht', {});   // {type: bool} ingeklapte groepen
+  const [vtIngeklapt, setVtIngeklapt] = useStore('verpakkingen_vt_ingeklapt', false);
+  const [odIngeklapt, setOdIngeklapt] = useStore('verpakkingen_od_ingeklapt', false);
 
   const openLot = (lot) => {
     setShowLot(lot);
@@ -3864,11 +3866,15 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           {/* --- Verpakkingstypes sectie --- */}
           <div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl">
-                <span>{t('verpakking_components_section')}</span>
-                <Btn s="sm" v="header" onClick={()=>{setVtForm(emptyVT);setVtOnderdeel({onderdeel_id:'',aantal:'1'});setShowVEdit(null);setShowVTAdd(true)}}>{t('verpakking_add_btn')}</Btn>
+              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl cursor-pointer select-none hover:opacity-90"
+                onClick={()=>setVtIngeklapt(v=>!v)}>
+                <span className="flex items-center gap-2">
+                  <span className="text-white/70 text-xs">{vtIngeklapt?'▶':'▼'}</span>
+                  {t('verpakking_components_section')}
+                </span>
+                <Btn s="sm" v="header" onClick={e=>{e.stopPropagation();setVtForm(emptyVT);setVtOnderdeel({onderdeel_id:'',aantal:'1'});setShowVEdit(null);setShowVTAdd(true)}}>{t('verpakking_add_btn')}</Btn>
               </div>
-              <table className="w-full text-sm">
+              {!vtIngeklapt && <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
@@ -3920,18 +3926,22 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                     );
                   })}
                 </tbody>
-              </table>
+              </table>}
             </div>
           </div>
 
           {/* --- Onderdelen sectie --- */}
           <div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl">
-                <span>{t('tab_onderdelen')}</span>
-                <Btn s="sm" v="header" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setOdTotaalprijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
+              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl cursor-pointer select-none hover:opacity-90"
+                onClick={()=>setOdIngeklapt(v=>!v)}>
+                <span className="flex items-center gap-2">
+                  <span className="text-white/70 text-xs">{odIngeklapt?'▶':'▼'}</span>
+                  {t('tab_onderdelen')}
+                </span>
+                <Btn s="sm" v="header" onClick={e=>{e.stopPropagation();setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setOdTotaalprijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
               </div>
-              <table className="w-full text-sm">
+              {!odIngeklapt && <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('lbl_onderdeel')}</th>
@@ -3972,7 +3982,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table>}
             </div>
           </div>
         </div>
