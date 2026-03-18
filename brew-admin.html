@@ -6722,11 +6722,6 @@ function AccijnsPage({bat, acc, setAcc}) {
     setIngeklapt(prev => ({...prev, [monthKey]: true}));
   };
 
-  const toggle = (id) => setAcc(prev=>prev.map(a=>a.id===id
-    ? {...a, betaald:!a.betaald, betaal_datum:!a.betaald?tod():null}
-    : a
-  ));
-
   const totOpen = (acc||[]).filter(a=>!a.betaald).reduce((s,a)=>s+getAccijns(a),0);
   const totPaid = (acc||[]).filter(a=>a.betaald).reduce((s,a)=>s+getAccijns(a),0);
 
@@ -6842,9 +6837,9 @@ function AccijnsPage({bat, acc, setAcc}) {
             {isOpen && (
               <div className="p-4">
                 {showSummary ? (
-                  <SummaryTable records={records} monthTotal={monthTotal} allPaid={allPaid} monthKey={!isCurrent ? monthKey : null} />
+                  <SummaryTable records={records} monthTotal={monthTotal} allPaid={allPaid} monthKey={monthKey} />
                 ) : (
-                  /* ── Lopende maand: individuele uitslagen met verpakkingstype ── */
+                  /* ── Lopende maand: individuele uitslagen (geen betaal per rij — betaling is per maand) ── */
                   (() => {
                     const sorted = [...records].sort((a,b) =>
                       String(a.batch_nummer).localeCompare(String(b.batch_nummer), undefined, {numeric:true})
@@ -6864,12 +6859,11 @@ function AccijnsPage({bat, acc, setAcc}) {
                               <th className="px-3 py-2 text-right">{t('excise_liters')}</th>
                               <th className="px-3 py-2 text-right">{t('excise_abv')}</th>
                               <th className="px-3 py-2 text-right">{t('excise_amount')}</th>
-                              <th className="px-3 py-2 text-center">{t('excise_status')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {sorted.map(a => (
-                              <tr key={a.id} className={a.betaald?'bg-green-50':''}>
+                              <tr key={a.id}>
                                 <td className="px-3 py-2 font-medium text-gray-800">{getNaam(a.batch_id)}</td>
                                 <td className="px-3 py-2 text-gray-500">{a.batch_nummer?`#${a.batch_nummer}`:'—'}</td>
                                 <td className="px-3 py-2 text-gray-600">{a.verpakking_type||'—'}</td>
@@ -6877,12 +6871,6 @@ function AccijnsPage({bat, acc, setAcc}) {
                                 <td className="px-3 py-2 text-right">{getLiter(a).toFixed(1)}L</td>
                                 <td className="px-3 py-2 text-right">{a.abv?`${a.abv}%`:'—'}</td>
                                 <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(getAccijns(a))}</td>
-                                <td className="px-3 py-2 text-center">
-                                  {a.betaald
-                                    ? <span className="text-xs text-green-700 font-medium">✓ {t('accijns_paid')}</span>
-                                    : <Btn s="sm" v="green" onClick={()=>toggle(a.id)}>{t('excise_mark_paid')}</Btn>
-                                  }
-                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -6892,7 +6880,6 @@ function AccijnsPage({bat, acc, setAcc}) {
                               <td className="px-3 py-2.5 text-right font-bold text-gray-700">{totLiter.toFixed(1)}L</td>
                               <td></td>
                               <td className="px-3 py-2.5 text-right font-bold text-lg text-amber-700">{fmt(monthTotal)}</td>
-                              <td></td>
                             </tr>
                           </tfoot>
                         </table>
