@@ -3338,10 +3338,12 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [showO, setShowO] = useState(false);
   const [showA, setShowA] = useState(null);
   const emptyFactuur = {leverancier:'',factuur:'',datum:tod()};
-  const emptyProduct = {ing_id:'',nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:''};
+  const emptyProduct = {ing_id:'',nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:''};
   const [factuurForm, setFactuurForm] = useState(emptyFactuur);
   const [productForm, setProductForm] = useState(emptyProduct);
   const [productLijst, setProductLijst] = useState([]);
+  const [ontvangstTab, setOntvangstTab] = useState('ingredienten');
+  const [verpakkingLijst, setVerpakkingLijst] = useState([]);
   const [afQty, setAfQty] = useState('');
   const [afEenheid, setAfEenheid] = useState('');
   const [showLot, setShowLot] = useState(null);       // lot detail modal
@@ -3401,7 +3403,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
   // --- Verpakkingen state ---
   const [showVOntv, setShowVOntv] = useState(false);
-  const emptyVO = {verpakking_id:'',naam:'',inhoud_liter:'',type:'',aantal:'',preset:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:''};
+  const emptyVO = {verpakking_id:'',naam:'',inhoud_liter:'',type:'',aantal:'',preset:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:'',prijs_per_stuk:'',totaalprijs:''};
   const [vOntvForm, setVOntvForm] = useState(emptyVO);
   const [showVAfboek, setShowVAfboek] = useState(null);
   const [vAfQty, setVAfQty] = useState('');
@@ -3429,8 +3431,18 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     setProductForm(emptyProduct);
   };
 
+  const voegVerpakkingToe = () => {
+    if (!vOntvForm.verpakking_id && !vOntvForm.naam.trim()) { alert(t('err_name_required')); return; }
+    if (!vOntvForm.aantal) { alert(t('err_count_required')); return; }
+    const naam = vOntvForm.verpakking_id
+      ? (verpakkingen.find(v=>v.id===Number(vOntvForm.verpakking_id))?.naam||'')
+      : vOntvForm.naam.trim();
+    setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
+    setVOntvForm(emptyVO);
+  };
+
   const saveOntvangst = () => {
-    if (productLijst.length===0) { alert(t('err_min_one_product')); return; }
+    if (productLijst.length===0 && verpakkingLijst.length===0) { alert(t('err_min_one_product')); return; }
     let updatedIng = [...ing];
     const newLots = [];
     productLijst.forEach(p => {
@@ -3455,7 +3467,28 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     });
     setIng(updatedIng);
     setLots(prev=>[...prev,...newLots]);
+    // --- verpakkingen ---
+    verpakkingLijst.forEach(v => {
+      const n = Number(v.aantal);
+      if (v.verpakking_id) {
+        setVerpakkingen(prev=>prev.map(vp=>vp.id===Number(v.verpakking_id)?{
+          ...vp, voorraad:Number(vp.voorraad||0)+n,
+          leverancier:factuurForm.leverancier||vp.leverancier||'',
+          factuurnummer:factuurForm.factuur||vp.factuurnummer||'',
+        }:vp));
+      } else {
+        setVerpakkingen(prev=>[...prev,{
+          id:newId(prev), naam:v.naam.trim(), inhoud_liter:Number(v.inhoud_liter||0),
+          type:v.type||'', voorraad:n,
+          kosten_verpakking:v.kosten_verpakking?Number(v.kosten_verpakking):0,
+          kosten_afsluiting:v.kosten_afsluiting?Number(v.kosten_afsluiting):0,
+          kosten_label:v.kosten_label?Number(v.kosten_label):0,
+          leverancier:factuurForm.leverancier||'', factuurnummer:factuurForm.factuur||'',
+        }]);
+      }
+    });
     setShowO(false); setFactuurForm(emptyFactuur); setProductForm(emptyProduct); setProductLijst([]);
+    setVerpakkingLijst([]); setVOntvForm(emptyVO);
   };
 
   const doAfboeken = (lot) => {
@@ -3550,9 +3583,9 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           {tabBtn('verpakkingen',`${t('ing_tab_packaging')}${verpakkingen.some(v=>Number(v.voorraad||0)===0)?' ⚠️':''}`)}
           {tabBtn('mutaties',t('ing_tab_mutations'))}
         </div>
-        {tab==='ingredienten' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setShowO(true)}}>{t('btn_ontvangst')}</Btn>}
-        {tab==='verpakkingen' && <Btn onClick={()=>{setVOntvForm(emptyVO);setShowVOntv(true)}}>{t('btn_ontvangst')}</Btn>}
-        {tab==='mutaties' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setShowO(true)}}>{t('btn_ontvangst')}</Btn>}
+        {tab==='ingredienten' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('ingredienten');setShowO(true)}}>{t('btn_ontvangst')}</Btn>}
+        {tab==='verpakkingen' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('verpakkingen');setShowO(true)}}>{t('btn_ontvangst')}</Btn>}
+        {tab==='mutaties' && <Btn onClick={()=>{setFactuurForm(emptyFactuur);setProductForm(emptyProduct);setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('ingredienten');setShowO(true)}}>{t('btn_ontvangst')}</Btn>}
       </div>
 
       {/* ======= INGREDIËNTEN TAB ======= */}
@@ -3610,7 +3643,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <div className="flex-1 min-w-0 bg-white rounded-xl shadow-card overflow-x-auto">
                 <div className="px-4 py-2.5 bg-gradient-to-r from-amber-800 to-amber-700 text-white flex items-center justify-between rounded-t-xl">
                   <span className="font-medium text-sm">{selIng.naam} — {t('ing_lots')}</span>
-                  <Btn s="sm" onClick={()=>{setFactuurForm(emptyFactuur);setProductForm({...emptyProduct,ing_id:String(sel)});setProductLijst([]);setShowO(true)}}>>{t('btn_add_lot')}</Btn>
+                  <Btn s="sm" onClick={()=>{setFactuurForm(emptyFactuur);setProductForm({...emptyProduct,ing_id:String(sel)});setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('ingredienten');setShowO(true)}}>>{t('btn_add_lot')}</Btn>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="text-xs text-gray-500 bg-gray-50">
@@ -3749,53 +3782,132 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               </div>
             </div>
 
-            {/* Product toevoegen */}
-            <div className="border border-gray-200 rounded-lg p-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_add_product')}</p>
-              <div className="space-y-2">
-                {/* Stap 1: kies type */}
-                <Sel label={t('lbl_ingredient_type')} value={productForm.type}
-                  onChange={v=>setProductForm(f=>({...f,type:v,ing_id:'',nieuw:''}))}
-                  opts={ING_TYPES.map(ty=>({v:ty,l:t('ing_type_'+ty.toLowerCase())}))} />
-                {/* Stap 2: bestaand of nieuw */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_existing_ingredient')}</label>
-                    <select className="w-full border rounded px-2 py-1.5 text-sm"
-                      value={productForm.ing_id}
-                      onChange={e=>setProductForm(f=>({...f,ing_id:e.target.value,nieuw:''}))}>
-                      <option value="">{t('modal_select_option')}</option>
-                      {[...ing].filter(i=>i.type===productForm.type)
-                        .sort((a,b)=>a.naam.localeCompare(b.naam,'nl'))
-                        .map(i=><option key={i.id} value={String(i.id)}>{i.naam}{i.fabrikant?` (${i.fabrikant})`:''}</option>)}
-                    </select>
-                  </div>
-                  <Inp label={t('lbl_or_new_ingredient')} value={productForm.nieuw} onChange={v=>setProductForm(f=>({...f,nieuw:v,ing_id:''}))} placeholder={t('ph_new_name')} />
-                </div>
-                {!productForm.ing_id && productForm.nieuw && (
-                  <Inp label={t('ing_manufacturer')} value={productForm.fabrikant} onChange={v=>setProductForm(f=>({...f,fabrikant:v}))} placeholder={t('ph_manufacturer')} />
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Inp label={t('modal_qty_required')} type="number" value={productForm.qty} onChange={v=>setProductForm(f=>({...f,qty:v}))} placeholder="0" cls="col-span-2" />
-                  <Sel label={t('lbl_unit')} value={productForm.eenh} onChange={v=>setProductForm(f=>({...f,eenh:v}))} opts={EENHEDEN.map(e=>({v:e,l:t('unit_'+e.toLowerCase())}))} />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
-                  <Inp label={t('batch_filling_tht')} type="date" value={productForm.tht} onChange={v=>setProductForm(f=>({...f,tht:v}))} />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Inp label={t('modal_price_per_unit')} type="number" value={productForm.prijs} onChange={v=>setProductForm(f=>({...f,prijs:v}))} placeholder="0.00" />
-                </div>
-                <div className="flex justify-end">
-                  <Btn onClick={voegProductToe}>{t('modal_add_to_list')}</Btn>
-                </div>
-              </div>
+            {/* Tabs: Ingrediënten / Verpakkingen */}
+            <div className="flex border-b border-gray-200">
+              <button onClick={()=>setOntvangstTab('ingredienten')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${ontvangstTab==='ingredienten'?'border-amber-600 text-amber-800 font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                {t('ing_tab_ingredients')}
+              </button>
+              <button onClick={()=>setOntvangstTab('verpakkingen')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${ontvangstTab==='verpakkingen'?'border-amber-600 text-amber-800 font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                {t('ing_tab_packaging')}
+              </button>
             </div>
 
-            {/* Toegevoegde producten */}
-            {productLijst.length > 0 && (
+            {/* Ingrediënten toevoegen */}
+            {ontvangstTab==='ingredienten' && (
+              <div className="border border-gray-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_add_product')}</p>
+                <div className="space-y-2">
+                  <Sel label={t('lbl_ingredient_type')} value={productForm.type}
+                    onChange={v=>setProductForm(f=>({...f,type:v,ing_id:'',nieuw:''}))}
+                    opts={ING_TYPES.map(ty=>({v:ty,l:t('ing_type_'+ty.toLowerCase())}))} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_existing_ingredient')}</label>
+                      <select className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={productForm.ing_id}
+                        onChange={e=>setProductForm(f=>({...f,ing_id:e.target.value,nieuw:''}))}>
+                        <option value="">{t('modal_select_option')}</option>
+                        {[...ing].filter(i=>i.type===productForm.type)
+                          .sort((a,b)=>a.naam.localeCompare(b.naam,'nl'))
+                          .map(i=><option key={i.id} value={String(i.id)}>{i.naam}{i.fabrikant?` (${i.fabrikant})`:''}</option>)}
+                      </select>
+                    </div>
+                    <Inp label={t('lbl_or_new_ingredient')} value={productForm.nieuw} onChange={v=>setProductForm(f=>({...f,nieuw:v,ing_id:''}))} placeholder={t('ph_new_name')} />
+                  </div>
+                  {!productForm.ing_id && productForm.nieuw && (
+                    <Inp label={t('ing_manufacturer')} value={productForm.fabrikant} onChange={v=>setProductForm(f=>({...f,fabrikant:v}))} placeholder={t('ph_manufacturer')} />
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Inp label={t('modal_qty_required')} type="number" value={productForm.qty}
+                      onChange={v=>setProductForm(f=>{const p=f.prijs;return{...f,qty:v,totaalprijs:p&&v?String((Number(p)*Number(v)).toFixed(2)):f.totaalprijs};})}
+                      placeholder="0" cls="col-span-2" />
+                    <Sel label={t('lbl_unit')} value={productForm.eenh} onChange={v=>setProductForm(f=>({...f,eenh:v}))} opts={EENHEDEN.map(e=>({v:e,l:t('unit_'+e.toLowerCase())}))} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
+                    <Inp label={t('batch_filling_tht')} type="date" value={productForm.tht} onChange={v=>setProductForm(f=>({...f,tht:v}))} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Inp label={t('modal_price_per_unit')} type="number" value={productForm.prijs}
+                      onChange={v=>setProductForm(f=>({...f,prijs:v,totaalprijs:v&&f.qty?String((Number(v)*Number(f.qty)).toFixed(2)):f.totaalprijs}))}
+                      placeholder="0.00" />
+                    <Inp label="Totaalprijs ex BTW (€)" type="number" value={productForm.totaalprijs}
+                      onChange={v=>setProductForm(f=>({...f,totaalprijs:v,prijs:v&&f.qty?String((Number(v)/Number(f.qty)).toFixed(4)):f.prijs}))}
+                      placeholder="0.00" />
+                  </div>
+                  <div className="flex justify-end">
+                    <Btn onClick={voegProductToe}>{t('modal_add_to_list')}</Btn>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Verpakkingen toevoegen */}
+            {ontvangstTab==='verpakkingen' && (
+              <div className="border border-gray-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Verpakking toevoegen</p>
+                <div className="space-y-2">
+                  <Sel label={t('lbl_add_existing_type')} value={vOntvForm.verpakking_id}
+                    onChange={v=>setVOntvForm(f=>({...f,verpakking_id:v,naam:'',inhoud_liter:'',preset:'',type:''}))}
+                    opts={verpakkingen.map(v=>({v:String(v.id),l:`${v.naam} (${v.voorraad||0} stuks)`}))}
+                    ph={t('packaging_or_new_type')} />
+                  {!vOntvForm.verpakking_id && (
+                    <>
+                      <Sel label={t('lbl_choose_standard_type')} value={vOntvForm.preset} onChange={onPreset}
+                        opts={VERPAKKING_DEFAULTS.map(d=>({v:d.naam,l:d.naam}))} ph={t('packaging_standard_choose')} />
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <Inp label={t('lbl_name')+' *'} value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v}))} placeholder={t('ph_packaging_name')} />
+                        <Inp label={t('packaging_content')} type="number" value={vOntvForm.inhoud_liter} onChange={v=>setVOntvForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
+                        <Sel label={t('lbl_type')} value={vOntvForm.type} onChange={v=>setVOntvForm(f=>({...f,type:v}))}
+                          opts={[{v:'fles',l:t('pkg_fles')},{v:'blik',l:t('pkg_blik')},{v:'fust',l:t('pkg_fust')},{v:'overig',l:t('ing_type_overig')}]} ph={t('packaging_choose_type')} />
+                      </div>
+                      <div className="border-t pt-3">
+                        <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_costs_per_unit')}</p>
+                        {(() => {
+                          const lbl = verpKostenLabels(vOntvForm.type);
+                          return (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <Inp label={`${lbl.verpakking} (€)`} type="number" value={vOntvForm.kosten_verpakking}
+                                onChange={v=>setVOntvForm(f=>({...f,kosten_verpakking:v}))} placeholder="0.00" />
+                              <Inp label={`${lbl.afsluiting} (€)`} type="number" value={vOntvForm.kosten_afsluiting}
+                                onChange={v=>setVOntvForm(f=>({...f,kosten_afsluiting:v}))} placeholder="0.00" />
+                              <Inp label={t('lbl_label_cost')} type="number" value={vOntvForm.kosten_label}
+                                onChange={v=>setVOntvForm(f=>({...f,kosten_label:v}))} placeholder="0.00" />
+                            </div>
+                          );
+                        })()}
+                        {(vOntvForm.kosten_verpakking||vOntvForm.kosten_afsluiting||vOntvForm.kosten_label) && (
+                          <p className="text-xs text-amber-700 mt-1.5">
+                            Totaal per stuk: <strong>{fmt(Number(vOntvForm.kosten_verpakking||0)+Number(vOntvForm.kosten_afsluiting||0)+Number(vOntvForm.kosten_label||0))}</strong>
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Inp label={t('lbl_qty_received')+' *'} type="number" value={vOntvForm.aantal}
+                      onChange={v=>setVOntvForm(f=>({...f,aantal:v,totaalprijs:f.prijs_per_stuk&&v?String((Number(f.prijs_per_stuk)*Number(v)).toFixed(2)):f.totaalprijs}))}
+                      placeholder="24" />
+                    <Inp label="Prijs per stuk ex BTW (€)" type="number" value={vOntvForm.prijs_per_stuk}
+                      onChange={v=>setVOntvForm(f=>({...f,prijs_per_stuk:v,totaalprijs:v&&f.aantal?String((Number(v)*Number(f.aantal)).toFixed(2)):f.totaalprijs}))}
+                      placeholder="0.00" />
+                    <Inp label="Totaalprijs ex BTW (€)" type="number" value={vOntvForm.totaalprijs}
+                      onChange={v=>setVOntvForm(f=>({...f,totaalprijs:v,prijs_per_stuk:v&&f.aantal?String((Number(v)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}))}
+                      placeholder="0.00" />
+                  </div>
+                  <div className="flex justify-end">
+                    <Btn onClick={voegVerpakkingToe}>Toevoegen aan lijst</Btn>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Gecombineerde productenlijst */}
+            {(productLijst.length > 0 || verpakkingLijst.length > 0) && (
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length})</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length})</p>
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
@@ -3804,6 +3916,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('lbl_quantity')}</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('lbl_lot')}</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('lbl_price_per_unit')}</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Totaal ex BTW</th>
                         <th className="px-2 py-2"></th>
                       </tr>
                     </thead>
@@ -3814,8 +3927,22 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                           <td className="px-3 py-2">{p.qty} {p.eenh}</td>
                           <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
                           <td className="px-3 py-2 text-gray-500">{p.prijs?`€${p.prijs}`:'—'}</td>
+                          <td className="px-3 py-2 text-gray-500">{p.totaalprijs?`€${p.totaalprijs}`:'—'}</td>
                           <td className="px-2 py-2 text-right">
                             <button onClick={()=>setProductLijst(prev=>prev.filter((_,j)=>j!==i))}
+                              className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {verpakkingLijst.map((v,i)=>(
+                        <tr key={v._id} className="bg-blue-50">
+                          <td className="px-3 py-2 font-medium">{v._naam} <span className="text-xs text-blue-400">(verpakking)</span></td>
+                          <td className="px-3 py-2">{v.aantal} stuks</td>
+                          <td className="px-3 py-2 text-gray-500">—</td>
+                          <td className="px-3 py-2 text-gray-500">{v.prijs_per_stuk?`€${v.prijs_per_stuk}`:'—'}</td>
+                          <td className="px-3 py-2 text-gray-500">{v.totaalprijs?`€${v.totaalprijs}`:'—'}</td>
+                          <td className="px-2 py-2 text-right">
+                            <button onClick={()=>setVerpakkingLijst(prev=>prev.filter((_,j)=>j!==i))}
                               className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                           </td>
                         </tr>
@@ -3827,10 +3954,10 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             )}
 
             <div className="flex justify-between items-center pt-1">
-              <span className="text-sm text-gray-500">{t('modal_products_ready').replace('{n}',productLijst.length)}</span>
+              <span className="text-sm text-gray-500">{t('modal_products_ready').replace('{n}',productLijst.length + verpakkingLijst.length)}</span>
               <div className="flex gap-2">
                 <Btn v="secondary" onClick={()=>setShowO(false)}>{t('btn_cancel')}</Btn>
-                <Btn onClick={saveOntvangst} disabled={productLijst.length===0}>{t('btn_save')}</Btn>
+                <Btn onClick={saveOntvangst} disabled={productLijst.length===0 && verpakkingLijst.length===0}>{t('btn_save')}</Btn>
               </div>
             </div>
           </div>
@@ -3949,62 +4076,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
         </Modal>
       )}
 
-      {showVOntv && (
-        <Modal title={t('modal_title_packaging_receipt')} onClose={()=>setShowVOntv(false)} wide>
-          <div className="space-y-3">
-            <Sel label={t('lbl_add_existing_type')} value={vOntvForm.verpakking_id}
-              onChange={v=>setVOntvForm(f=>({...f,verpakking_id:v,naam:'',inhoud_liter:'',preset:'',type:''}))}
-              opts={verpakkingen.map(v=>({v:String(v.id),l:`${v.naam} (${v.voorraad||0} stuks)`}))}
-              ph={t('packaging_or_new_type')} />
-            {!vOntvForm.verpakking_id && (
-              <>
-                <Sel label={t('lbl_choose_standard_type')} value={vOntvForm.preset} onChange={onPreset}
-                  opts={VERPAKKING_DEFAULTS.map(d=>({v:d.naam,l:d.naam}))} ph={t('packaging_standard_choose')} />
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Inp label={t('lbl_name')+' *'} value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v}))} placeholder={t('ph_packaging_name')} />
-                  <Inp label={t('packaging_content')} type="number" value={vOntvForm.inhoud_liter} onChange={v=>setVOntvForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
-                  <Sel label={t('lbl_type')} value={vOntvForm.type} onChange={v=>setVOntvForm(f=>({...f,type:v}))}
-                    opts={[{v:'fles',l:t('pkg_fles')},{v:'blik',l:t('pkg_blik')},{v:'fust',l:t('pkg_fust')},{v:'overig',l:t('ing_type_overig')}]} ph={t('packaging_choose_type')} />
-                </div>
-                {/* Kosten per stuk */}
-                <div className="border-t pt-3">
-                  <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_costs_per_unit')}</p>
-                  {(() => {
-                    const lbl = verpKostenLabels(vOntvForm.type);
-                    return (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <Inp label={`${lbl.verpakking} (€)`} type="number" value={vOntvForm.kosten_verpakking}
-                          onChange={v=>setVOntvForm(f=>({...f,kosten_verpakking:v}))} placeholder="0.00" />
-                        <Inp label={`${lbl.afsluiting} (€)`} type="number" value={vOntvForm.kosten_afsluiting}
-                          onChange={v=>setVOntvForm(f=>({...f,kosten_afsluiting:v}))} placeholder="0.00" />
-                        <Inp label={t('lbl_label_cost')} type="number" value={vOntvForm.kosten_label}
-                          onChange={v=>setVOntvForm(f=>({...f,kosten_label:v}))} placeholder="0.00" />
-                      </div>
-                    );
-                  })()}
-                  {(vOntvForm.kosten_verpakking||vOntvForm.kosten_afsluiting||vOntvForm.kosten_label) && (
-                    <p className="text-xs text-amber-700 mt-1.5">
-                      Totaal per stuk: <strong>{fmt(Number(vOntvForm.kosten_verpakking||0)+Number(vOntvForm.kosten_afsluiting||0)+Number(vOntvForm.kosten_label||0))}</strong>
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Inp label={t('lbl_supplier')} value={vOntvForm.leverancier}
-                onChange={v=>setVOntvForm(f=>({...f,leverancier:v}))} placeholder={t('ph_supplier')} />
-              <Inp label={t('lbl_invoice')} value={vOntvForm.factuurnummer}
-                onChange={v=>setVOntvForm(f=>({...f,factuurnummer:v}))} placeholder="F-2025-001" />
-            </div>
-            <Inp label={t('lbl_qty_received')+' *'} type="number" value={vOntvForm.aantal}
-              onChange={v=>setVOntvForm(f=>({...f,aantal:v}))} placeholder="24" />
-            <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setShowVOntv(false)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={saveVOntvangst}>{t('btn_save')}</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
+
 
       {showVAfboek && (
         <Modal title={`Afboeken: ${showVAfboek.naam}`} onClose={()=>setShowVAfboek(null)}>
