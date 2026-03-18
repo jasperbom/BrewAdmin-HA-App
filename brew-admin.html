@@ -6693,11 +6693,11 @@ function AccijnsPage({bat, acc, setAcc}) {
     return new Date(y, Number(m)-1, 1).toLocaleString('nl-NL', {month:'long', year:'numeric'});
   };
 
-  // Groepeer records per batch (alle verpakkingstypen samengeteld)
+  // Groepeer records per unieke batch (batch_id + batch_nummer), alle verpakkingen samengeteld
   const groupRecords = (records) => {
     const g = {};
     records.forEach(a => {
-      const k = String(a.batch_id);
+      const k = `${a.batch_id}__${a.batch_nummer||''}`;
       if (!g[k]) g[k] = {
         key: k, batch_id: a.batch_id, naam: getNaam(a.batch_id),
         batch_nummer: a.batch_nummer, abv: a.abv,
@@ -6706,7 +6706,7 @@ function AccijnsPage({bat, acc, setAcc}) {
       g[k].liter   += getLiter(a);
       g[k].accijns += getAccijns(a);
     });
-    // Sorteer op batch_nummer
+    // Sorteer op batch_nummer numeriek
     return Object.values(g).sort((a,b) =>
       String(a.batch_nummer).localeCompare(String(b.batch_nummer), undefined, {numeric:true})
     );
