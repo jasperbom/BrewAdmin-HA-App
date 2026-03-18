@@ -3866,7 +3866,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           {/* --- Verpakkingstypes sectie --- */}
           <div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl cursor-pointer select-none hover:opacity-90"
+              <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none hover:opacity-90 ${vtIngeklapt?'rounded-xl':'rounded-t-xl'}`}
                 onClick={()=>setVtIngeklapt(v=>!v)}>
                 <span className="flex items-center gap-2">
                   <span className="text-white/70 text-xs">{vtIngeklapt?'▶':'▼'}</span>
@@ -3933,7 +3933,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           {/* --- Onderdelen sectie --- */}
           <div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl cursor-pointer select-none hover:opacity-90"
+              <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none hover:opacity-90 ${odIngeklapt?'rounded-xl':'rounded-t-xl'}`}
                 onClick={()=>setOdIngeklapt(v=>!v)}>
                 <span className="flex items-center gap-2">
                   <span className="text-white/70 text-xs">{odIngeklapt?'▶':'▼'}</span>
@@ -5149,11 +5149,11 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                 items: items.filter(i=>i.group_id===g.id),
               })).filter(g=>g.items.length>0);
               return (
-                <div className="bg-white rounded-xl shadow-card">
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none"
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${hygieneIngeklapt?'rounded-xl':'rounded-t-xl'}`}
                     onClick={()=>setHygieneIngeklapt(p=>!p)}>
                     <span className="flex items-center gap-2">
-                      <span className="text-teal-300 text-sm">{hygieneIngeklapt?'▶':'▼'}</span>
+                      <span className="text-white/70 text-xs">{hygieneIngeklapt?'▶':'▼'}</span>
                       {t('batch_hygiene_title')}
                     </span>
                     <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${alleOk ? 'bg-green-500 text-white' : gedaan>0 ? 'bg-amber-400 text-white' : 'bg-teal-600 text-teal-200'}`}>
@@ -5211,10 +5211,10 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
             })()}
 
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none"
+              <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${ingIngeklapt?'rounded-xl':'rounded-t-xl'}`}
                 onClick={()=>setIngIngeklapt(p=>!p)}>
                 <span className="flex items-center gap-2">
-                  <span className="text-gray-300 text-sm">{ingIngeklapt?'▶':'▼'}</span>
+                  <span className="text-white/70 text-xs">{ingIngeklapt?'▶':'▼'}</span>
                   {t('batch_ingredient_header')}
                 </span>
                 <span className="text-xs font-normal text-gray-300">{getBi(selB.id).length} items</span>
