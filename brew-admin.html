@@ -3778,9 +3778,11 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                           <tbody key={ingTyp} className="divide-y divide-gray-100">
                             <tr className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100"
                               onClick={()=>setGroepDicht(p=>({...p,[ingTyp]:!p[ingTyp]}))}>
-                              <td colSpan={2} className="px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center">
-                                <span className="mr-1.5 text-gray-400">{dicht?'▶':'▼'}</span>{t('ing_type_'+ingTyp.toLowerCase())}
-                                <span className="ml-1.5 font-normal text-gray-400">({groep.length})</span>
+                              <td colSpan={2} className="px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                <div className="flex items-center">
+                                  <span className="mr-1.5 text-gray-400">{dicht?'▶':'▼'}</span>{t('ing_type_'+ingTyp.toLowerCase())}
+                                  <span className="ml-1.5 font-normal text-gray-400">({groep.length})</span>
+                                </div>
                               </td>
                             </tr>
                             {!dicht && groep.map(i => {
@@ -3859,11 +3861,11 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
           {/* --- Verpakkingstypes sectie --- */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-semibold t-text">{t('verpakking_components_section')}</h3>
-              <Btn s="sm" onClick={()=>{setVtForm(emptyVT);setVtOnderdeel({onderdeel_id:'',aantal:'1'});setShowVEdit(null);setShowVTAdd(true)}}>{t('verpakking_add_btn')}</Btn>
-            </div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
+              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl">
+                <span>{t('verpakking_components_section')}</span>
+                <Btn s="sm" v="ghost" onClick={()=>{setVtForm(emptyVT);setVtOnderdeel({onderdeel_id:'',aantal:'1'});setShowVEdit(null);setShowVTAdd(true)}}>{t('verpakking_add_btn')}</Btn>
+              </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                   <tr>
@@ -3922,11 +3924,11 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
           {/* --- Onderdelen sectie --- */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-semibold t-text">{t('tab_onderdelen')}</h3>
-              <Btn s="sm" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setOdTotaalprijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
-            </div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
+              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between rounded-t-xl">
+                <span>{t('tab_onderdelen')}</span>
+                <Btn s="sm" v="ghost" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setOdTotaalprijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
+              </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                   <tr>
