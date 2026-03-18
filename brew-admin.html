@@ -342,6 +342,8 @@ window.BREW_TRANS["nl"] = {
   "settings_hygiene": "Hygiëne",
   "settings_data": "Data",
   "settings_language": "Taal",
+  "settings_nav_color": "Navigatiekleur",
+  "settings_nav_color_desc": "Kies het kleurthema van de navigatiebalk.",
   "settings_server_sync": "Server synchronisatie",
   "settings_server_status": "Huidige status",
   "settings_server_synced": "Gesynchroniseerd",
@@ -919,6 +921,8 @@ window.BREW_TRANS["en"] = {
   "settings_hygiene": "Hygiene",
   "settings_data": "Data",
   "settings_language": "Language",
+  "settings_nav_color": "Navigation colour",
+  "settings_nav_color_desc": "Choose the colour theme of the navigation bar.",
   "settings_server_sync": "Server synchronisation",
   "settings_server_status": "Current status",
   "settings_server_synced": "Synchronised",
@@ -1496,6 +1500,8 @@ window.BREW_TRANS["de"] = {
   "settings_hygiene": "Hygiene",
   "settings_data": "Daten",
   "settings_language": "Sprache",
+  "settings_nav_color": "Navigationsfarbe",
+  "settings_nav_color_desc": "Wählen Sie das Farbthema der Navigationsleiste.",
   "settings_server_sync": "Server-Synchronisation",
   "settings_server_status": "Aktueller Status",
   "settings_server_synced": "Synchronisiert",
@@ -2071,6 +2077,8 @@ window.BREW_TRANS["fr"] = {
   "settings_woocommerce": "WooCommerce",
   "settings_excise": "Droits d'accise",
   "settings_hygiene": "Hygiène",
+  "settings_nav_color": "Couleur de navigation",
+  "settings_nav_color_desc": "Choisissez le thème de couleur de la barre de navigation.",
   "settings_data": "Données",
   "settings_language": "Langue",
   "settings_server_sync": "Synchronisation serveur",
@@ -2650,6 +2658,8 @@ window.BREW_TRANS["es"] = {
   "settings_hygiene": "Higiene",
   "settings_data": "Datos",
   "settings_language": "Idioma",
+  "settings_nav_color": "Color de navegación",
+  "settings_nav_color_desc": "Elija el tema de color de la barra de navegación.",
   "settings_server_sync": "Sincronización del servidor",
   "settings_server_status": "Estado actual",
   "settings_server_synced": "Sincronizado",
@@ -6892,7 +6902,7 @@ const ServerStatusCard = () => {
         <span>{t('settings_stores_loaded')}: <strong className="text-gray-600">{info.fetched}/{info.total}</strong></span>
         <span>{t('settings_stores_pending')}: <strong className="text-gray-600">{info.pending}</strong></span>
         {info.errors > 0 && <span className="text-red-500">{t('settings_stores_errors')}: <strong>{info.errors}</strong></span>}
-        <span className="text-gray-300 font-mono">{API_BASE}</span>
+        <span className="w-full text-gray-300 font-mono break-all text-xs mt-0.5">{API_BASE}</span>
       </div>
 
       {/* Uitleg alle statussen */}
@@ -7122,8 +7132,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* Navigatie kleur */}
       <div className={card}>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">Navigatieклeur</h2>
-        <p className="text-sm text-gray-500 mb-4">Kies het kleurthema van de navigatiebalk.</p>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_nav_color')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_nav_color_desc')}</p>
         <div className="flex flex-wrap gap-3">
           {[
             {id:'amber',  label:'Amber',   bg:'#7c2d12', to:'#92400e'},
