@@ -2938,7 +2938,7 @@ window.BREW_TRANS["es"] = {
   "hygiene_checked": "marcados"
 };
 </script>
-  <style>body{margin:0;background:#f3f4f6;}html{scrollbar-gutter:stable;}:root{--t-accent:#d97706;--t-light:#fde68a;--t-pale:#fffbeb;--t-text:#78350f;--t-btn:#d97706;--t-btn-h:#b45309;--t-btn-a:#78350f;}.tbtn{background-color:var(--t-btn);color:#fff;}.tbtn:hover:not(:disabled){background-color:var(--t-btn-h);}.tbtn:active:not(:disabled){background-color:var(--t-btn-a);}.t-tab{border-bottom-color:var(--t-accent)!important;color:var(--t-text)!important;}.t-sel{background-color:var(--t-light)!important;border-left-color:var(--t-accent)!important;}.t-hover:hover{background-color:var(--t-light);}.t-hdr{background:linear-gradient(to right,var(--t-btn-a),var(--t-btn-h));}.t-nav{background-color:var(--t-pale)!important;color:var(--t-text)!important;border-color:var(--t-accent)!important;}.t-panel{background-color:var(--t-pale);border-color:var(--t-accent);}.t-card-l{border-left-color:var(--t-accent)!important;}.t-back{color:var(--t-text);background-color:var(--t-pale);border-color:var(--t-accent);}.t-back:hover{filter:brightness(0.95);}.t-border{border-color:var(--t-accent)!important;}.t-input{outline:none;}.t-input:focus{box-shadow:0 0 0 2px var(--t-accent)!important;border-color:var(--t-accent)!important;}.t-checkbox{accent-color:var(--t-accent);}.peer:checked~.t-toggle{background-color:var(--t-accent)!important;}.t-icon-hover:hover{color:var(--t-accent);}</style>
+  <style>body{margin:0;background:#f3f4f6;}html{scrollbar-gutter:stable;}:root{--t-accent:#d97706;--t-light:#fde68a;--t-pale:#fffbeb;--t-text:#78350f;--t-btn:#d97706;--t-btn-h:#b45309;--t-btn-a:#78350f;}.tbtn{background-color:var(--t-btn);color:#fff;}.tbtn:hover:not(:disabled){background-color:var(--t-btn-h);}.tbtn:active:not(:disabled){background-color:var(--t-btn-a);}.t-tab{border-bottom-color:var(--t-accent)!important;color:var(--t-text)!important;}.t-sel{background-color:var(--t-light)!important;border-left-color:var(--t-accent)!important;}.t-hover:hover{background-color:var(--t-light);}.t-hdr{background:linear-gradient(to right,var(--t-btn-a),var(--t-btn-h));}.t-hdr-solid{background-color:var(--t-btn-a);}.t-nav{background-color:var(--t-pale)!important;color:var(--t-text)!important;border-color:var(--t-accent)!important;}.t-panel{background-color:var(--t-pale);border-color:var(--t-accent);}.t-card-l{border-left-color:var(--t-accent)!important;}.t-back{color:var(--t-text);background-color:var(--t-pale);border-color:var(--t-accent);}.t-back:hover{filter:brightness(0.95);}.t-border{border-color:var(--t-accent)!important;}.t-input{outline:none;}.t-input:focus{box-shadow:0 0 0 2px var(--t-accent)!important;border-color:var(--t-accent)!important;}.t-checkbox{accent-color:var(--t-accent);}.peer:checked~.t-toggle{background-color:var(--t-accent)!important;}.t-icon-hover:hover{color:var(--t-accent);}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -4706,7 +4706,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
           <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>
           <div className="flex-1 min-w-0 space-y-4">
             <div className="bg-white rounded-xl shadow-card overflow-hidden">
-              <div className="px-4 py-3 t-hdr text-white flex items-center justify-between">
+              <div className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="text-base font-semibold leading-tight truncate">{selB.naam}</div>
                   {selB.batch_nummer && <div className="text-xs text-gray-400 mt-0.5">#{selB.batch_nummer}{selB.stijl ? ` · ${selB.stijl}` : ''}</div>}
@@ -6082,7 +6082,7 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
             return (
               <div key={beerName} className="bg-white rounded-xl shadow-card overflow-x-auto">
                 {/* Biernaam-header */}
-                <div onClick={toggleBeer} className="px-4 py-3 t-hdr text-white flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none">
+                <div onClick={toggleBeer} className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none">
                   <span className="flex items-center gap-2 font-bold text-base">
                     <span className="text-gray-400 text-sm">{beerGesloten?'▶':'▼'}</span>
                     {beerName}
