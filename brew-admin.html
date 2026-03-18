@@ -742,6 +742,22 @@ window.BREW_TRANS["en"] = {
   "pkg_cap": "Cap",
   "pkg_default": "Packaging",
   "pkg_closure_default": "Closure",
+  "tab_onderdelen": "Components",
+  "lbl_onderdeel": "Component",
+  "onderdeel_add_btn": "+ Receive component",
+  "verpakking_add_btn": "+ New packaging type",
+  "packaging_components": "Components",
+  "packaging_no_components": "No components defined",
+  "packaging_add_component": "Add component",
+  "packaging_available": "Available",
+  "pkg_label_type": "Label",
+  "onderdeel_type": "Component type",
+  "onderdeel_cost": "Cost/unit (€)",
+  "onderdeel_none": "No components registered.",
+  "lbl_qty_needed": "Qty per unit",
+  "verpakking_components_section": "Packaging types",
+  "err_no_component_selected": "Select a component",
+  "modal_title_packaging_type": "Packaging type",
   "settings_server_connecting": "Connecting",
   "settings_server_connecting_desc": "The app is trying to connect to the Home Assistant server.",
   "settings_server_saving": "Saving",
@@ -1321,6 +1337,22 @@ window.BREW_TRANS["de"] = {
   "pkg_cap": "Kappe",
   "pkg_default": "Verpackung",
   "pkg_closure_default": "Verschluss",
+  "tab_onderdelen": "Komponenten",
+  "lbl_onderdeel": "Komponente",
+  "onderdeel_add_btn": "+ Komponente empfangen",
+  "verpakking_add_btn": "+ Neuer Verpackungstyp",
+  "packaging_components": "Zusammensetzung",
+  "packaging_no_components": "Keine Komponenten definiert",
+  "packaging_add_component": "Komponente hinzufügen",
+  "packaging_available": "Verfügbar",
+  "pkg_label_type": "Etikett",
+  "onderdeel_type": "Komponententyp",
+  "onderdeel_cost": "Kosten/Stück (€)",
+  "onderdeel_none": "Keine Komponenten verwaltet.",
+  "lbl_qty_needed": "Menge pro Stück",
+  "verpakking_components_section": "Verpackungstypen",
+  "err_no_component_selected": "Komponente auswählen",
+  "modal_title_packaging_type": "Verpackungstyp",
   "settings_server_connecting": "Verbinde",
   "settings_server_connecting_desc": "Die App versucht, sich mit dem Home Assistant Server zu verbinden.",
   "settings_server_saving": "Speichern",
@@ -1900,6 +1932,22 @@ window.BREW_TRANS["fr"] = {
   "pkg_cap": "Bouchon",
   "pkg_default": "Emballage",
   "pkg_closure_default": "Fermeture",
+  "tab_onderdelen": "Composants",
+  "lbl_onderdeel": "Composant",
+  "onderdeel_add_btn": "+ Recevoir composant",
+  "verpakking_add_btn": "+ Nouveau type d'emballage",
+  "packaging_components": "Composition",
+  "packaging_no_components": "Aucun composant défini",
+  "packaging_add_component": "Ajouter composant",
+  "packaging_available": "Disponible",
+  "pkg_label_type": "Étiquette",
+  "onderdeel_type": "Type de composant",
+  "onderdeel_cost": "Coût/unité (€)",
+  "onderdeel_none": "Aucun composant enregistré.",
+  "lbl_qty_needed": "Qté par unité",
+  "verpakking_components_section": "Types d'emballage",
+  "err_no_component_selected": "Sélectionner un composant",
+  "modal_title_packaging_type": "Type d'emballage",
   "settings_server_connecting": "Connexion",
   "settings_server_connecting_desc": "L'application tente de se connecter au serveur Home Assistant.",
   "settings_server_saving": "Enregistrement",
@@ -2479,6 +2527,22 @@ window.BREW_TRANS["es"] = {
   "pkg_cap": "Tapón",
   "pkg_default": "Envase",
   "pkg_closure_default": "Cierre",
+  "tab_onderdelen": "Componentes",
+  "lbl_onderdeel": "Componente",
+  "onderdeel_add_btn": "+ Recibir componente",
+  "verpakking_add_btn": "+ Nuevo tipo de envase",
+  "packaging_components": "Composición",
+  "packaging_no_components": "Sin componentes definidos",
+  "packaging_add_component": "Añadir componente",
+  "packaging_available": "Disponible",
+  "pkg_label_type": "Etiqueta",
+  "onderdeel_type": "Tipo de componente",
+  "onderdeel_cost": "Coste/ud (€)",
+  "onderdeel_none": "Sin componentes registrados.",
+  "lbl_qty_needed": "Cant. por unidad",
+  "verpakking_components_section": "Tipos de envase",
+  "err_no_component_selected": "Seleccionar componente",
+  "modal_title_packaging_type": "Tipo de envase",
   "settings_server_connecting": "Conectando",
   "settings_server_connecting_desc": "La aplicación está intentando conectarse al servidor de Home Assistant.",
   "settings_server_saving": "Guardando",
@@ -3002,6 +3066,16 @@ const VERPAKKING_DEFAULTS = [
   {naam:'Blik 33cL',inhoud_liter:0.33,type:'blik'},{naam:'Blik 50cL',inhoud_liter:0.50,type:'blik'},
   {naam:'Fust 10L',inhoud_liter:10,type:'fust'},{naam:'Fust 20L',inhoud_liter:20,type:'fust'},{naam:'Fust 30L',inhoud_liter:30,type:'fust'},{naam:'Fust 50L',inhoud_liter:50,type:'fust'},
 ];
+const ONDERDEEL_TYPES = [
+  {type:'fles',      label:'pkg_fles'},
+  {type:'blik',      label:'pkg_blik'},
+  {type:'fust',      label:'pkg_fust'},
+  {type:'kroonkurk', label:'pkg_kroonkurk'},
+  {type:'deksel',    label:'pkg_deksel'},
+  {type:'cap',       label:'pkg_cap'},
+  {type:'label',     label:'pkg_label_type'},
+  {type:'overig',    label:'ing_type_overig'},
+];
 // Labels voor kostencomponenten per verpakkingstype
 const verpKostenLabels = (type) => ({
   fles: {verpakking:t('pkg_fles'),   afsluiting:t('pkg_kroonkurk')},
@@ -3346,7 +3420,7 @@ const Modal = ({title,children,onClose,wide=false}) => (
 const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CLR[s]||'bg-gray-100 text-gray-600'}`}>{({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')})[s]||s}</span>;
 
 // ===== INGREDIËNTEN =====
-function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, log, setLog, bi=[], bat=[]}) {
+function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[]}) {
   const [tab, setTab] = useState('ingredienten');
 
   // --- Ingrediënten state ---
@@ -3426,6 +3500,19 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [showVEdit, setShowVEdit] = useState(null); // holds verpakking being edited
   const emptyVE = {naam:'',inhoud_liter:'',type:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:''};
   const [vEditForm, setVEditForm] = useState(emptyVE);
+  // --- Onderdelen state ---
+  const emptyOD = {naam:'',type:'',kosten_per_stuk:'',leverancier:'',factuurnummer:''};
+  const [showODEdit, setShowODEdit] = useState(null);
+  const [odEditForm, setOdEditForm] = useState(emptyOD);
+  const [showODAdd, setShowODAdd] = useState(false);
+  const [odAddForm, setOdAddForm] = useState(emptyOD);
+  const [odQty, setOdQty] = useState('');
+  const [odPrijs, setOdPrijs] = useState('');
+  // --- Verpakking type state ---
+  const emptyVT = {naam:'',inhoud_liter:'',type:'',onderdelen:[]}; // onderdelen: [{onderdeel_id, aantal}]
+  const [showVTAdd, setShowVTAdd] = useState(false);
+  const [vtForm, setVtForm] = useState(emptyVT);
+  const [vtOnderdeel, setVtOnderdeel] = useState({onderdeel_id:'',aantal:'1'});
 
   // --- Log helper ---
   const addLog = (entry) => setLog(prev=>[...prev,{id:newId(prev||[]),datum:tod(),...entry}]);
@@ -3483,23 +3570,23 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     });
     setIng(updatedIng);
     setLots(prev=>[...prev,...newLots]);
-    // --- verpakkingen ---
+    // --- onderdelen (previously verpakkingen) ---
     verpakkingLijst.forEach(v => {
       const n = Number(v.aantal);
-      if (v.verpakking_id) {
-        setVerpakkingen(prev=>prev.map(vp=>vp.id===Number(v.verpakking_id)?{
-          ...vp, voorraad:Number(vp.voorraad||0)+n,
-          leverancier:factuurForm.leverancier||vp.leverancier||'',
-          factuurnummer:factuurForm.factuur||vp.factuurnummer||'',
-        }:vp));
+      const naam = v.naam.trim();
+      const bestaand = onderdelen.find(o=>o.naam.toLowerCase()===naam.toLowerCase());
+      if (bestaand) {
+        setOnderdelen(prev=>prev.map(o=>o.id===bestaand.id?{
+          ...o, voorraad:Number(o.voorraad||0)+n,
+          leverancier:factuurForm.leverancier||o.leverancier||'',
+          factuurnummer:factuurForm.factuur||o.factuurnummer||'',
+        }:o));
       } else {
-        setVerpakkingen(prev=>[...prev,{
-          id:newId(prev), naam:v.naam.trim(), inhoud_liter:Number(v.inhoud_liter||0),
-          type:v.type||'', voorraad:n,
-          kosten_verpakking:v.kosten_verpakking?Number(v.kosten_verpakking):0,
-          kosten_afsluiting:v.kosten_afsluiting?Number(v.kosten_afsluiting):0,
-          kosten_label:v.kosten_label?Number(v.kosten_label):0,
+        setOnderdelen(prev=>[...prev,{
+          id:newId(prev), naam, type:v.type||'overig',
+          kosten_per_stuk:v.kosten_verpakking?Number(v.kosten_verpakking):0,
           leverancier:factuurForm.leverancier||'', factuurnummer:factuurForm.factuur||'',
+          voorraad:n,
         }]);
       }
     });
@@ -3521,7 +3608,22 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   };
 
   // --- Verpakkingen logic ---
-  const vKosten = (v) => Number(v.kosten_verpakking||0)+Number(v.kosten_afsluiting||0)+Number(v.kosten_label||0);
+  const vpVoorraad = (vp) => {
+    if (!vp.onderdelen?.length) return Number(vp.voorraad||0);
+    const stocks = vp.onderdelen.map(o => {
+      const od = onderdelen.find(d=>d.id===o.onderdeel_id);
+      return Math.floor(Number(od?.voorraad||0) / Number(o.aantal||1));
+    });
+    return stocks.length ? Math.min(...stocks) : 0;
+  };
+  const vpKosten = (vp) => {
+    if (!vp.onderdelen?.length) return Number(vp.kosten_verpakking||0)+Number(vp.kosten_afsluiting||0)+Number(vp.kosten_label||0);
+    return vp.onderdelen.reduce((s,o) => {
+      const od = onderdelen.find(d=>d.id===o.onderdeel_id);
+      return s + Number(od?.kosten_per_stuk||0) * Number(o.aantal||1);
+    }, 0);
+  };
+  const vKosten = (v) => vpKosten(v);
 
   const onPreset = (preset) => {
     if (!preset) { setVOntvForm(f=>({...f,preset:'',naam:'',inhoud_liter:'',type:''})); return; }
@@ -3577,6 +3679,36 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     if (!q||q<=0) { alert(t('err_valid_count')); return; }
     setVerpakkingen(prev=>prev.map(v=>v.id===showVAfboek.id?{...v,voorraad:Math.max(0,Number(v.voorraad||0)-q)}:v));
     setShowVAfboek(null); setVAfQty('');
+  };
+
+  const saveODEdit = () => {
+    if (!odEditForm.naam.trim()) { alert(t('err_name_required')); return; }
+    setOnderdelen(prev=>prev.map(o=>o.id===showODEdit.id?{...o,...odEditForm,kosten_per_stuk:odEditForm.kosten_per_stuk?Number(odEditForm.kosten_per_stuk):0}:o));
+    setShowODEdit(null);
+  };
+  const saveODAdd = (qty, prijs) => {
+    if (!odAddForm.naam.trim()) { alert(t('err_name_required')); return; }
+    if (!qty || Number(qty)<=0) { alert(t('err_qty_required')); return; }
+    setOnderdelen(prev=>[...prev,{
+      id:newId(prev), naam:odAddForm.naam.trim(), type:odAddForm.type||'overig',
+      kosten_per_stuk:odAddForm.kosten_per_stuk?Number(odAddForm.kosten_per_stuk):0,
+      leverancier:odAddForm.leverancier||'', factuurnummer:odAddForm.factuurnummer||'',
+      voorraad: Number(qty),
+    }]);
+    setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setShowODAdd(false);
+  };
+  const saveVTAdd = () => {
+    if (!vtForm.naam.trim()) { alert(t('err_name_required')); return; }
+    if (showVEdit) {
+      setVerpakkingen(prev=>prev.map(v=>v.id===showVEdit.id?{...v,naam:vtForm.naam.trim(),inhoud_liter:Number(vtForm.inhoud_liter||0),type:vtForm.type||'',onderdelen:vtForm.onderdelen}:v));
+    } else {
+      setVerpakkingen(prev=>[...prev,{id:newId(prev),naam:vtForm.naam.trim(),inhoud_liter:Number(vtForm.inhoud_liter||0),type:vtForm.type||'',onderdelen:vtForm.onderdelen,voorraad:0}]);
+    }
+    setVtForm(emptyVT); setVtOnderdeel({onderdeel_id:'',aantal:'1'}); setShowVTAdd(false); setShowVEdit(null);
+  };
+  const openVTEdit = (v) => {
+    setVtForm({naam:v.naam,inhoud_liter:String(v.inhoud_liter||''),type:v.type||'',onderdelen:v.onderdelen||[]});
+    setShowVEdit(v); setShowVTAdd(true);
   };
 
   const selIng = ing.find(i=>i.id===sel);
@@ -3709,77 +3841,121 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
       {/* ======= VERPAKKINGEN TAB ======= */}
       {tab==='verpakkingen' && (
-        <div>
-          <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                <tr>
-                  <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
-                  <th className="px-3 py-2 text-right">{t('lbl_content')}</th>
-                  <th className="px-3 py-2 text-right">{t('lbl_stock')}</th>
-                  <th className="px-3 py-2 text-right">{t('lbl_packaging')}</th>
-                  <th className="px-3 py-2 text-right">{t('packaging_cost_closure')}</th>
-                  <th className="px-3 py-2 text-right">{t('packaging_cost_label')}</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('packaging_cost_per_unit')}</th>
-                  <th className="px-3 py-2"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {verpakkingen.length===0 && (
-                  <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">
-                    {t('msg_no_packaging')}
-                  </td></tr>
-                )}
-                {verpakkingen.map(v => {
-                  const stock = Number(v.voorraad||0);
-                  const totk = vKosten(v);
-                  const lbl = verpKostenLabels(v.type);
-                  return (
-                    <tr key={v.id} className={stock===0?'bg-red-50':stock<=5?'bg-yellow-50':''}>
+        <div className="space-y-6">
+
+          {/* --- Onderdelen sectie --- */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold t-text">{t('tab_onderdelen')}</h3>
+              <Btn s="sm" onClick={()=>{setOdAddForm(emptyOD);setOdQty('');setOdPrijs('');setShowODAdd(true)}}>{t('onderdeel_add_btn')}</Btn>
+            </div>
+            <div className="bg-white rounded-xl shadow-card overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                  <tr>
+                    <th className="px-3 py-2 text-left">{t('lbl_onderdeel')}</th>
+                    <th className="px-3 py-2 text-left">{t('onderdeel_type')}</th>
+                    <th className="px-3 py-2 text-right">{t('lbl_stock')}</th>
+                    <th className="px-3 py-2 text-right">{t('onderdeel_cost')}</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {onderdelen.length===0 && (
+                    <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">{t('onderdeel_none')}</td></tr>
+                  )}
+                  {onderdelen.map(od => (
+                    <tr key={od.id} className={Number(od.voorraad||0)===0?'bg-red-50':''}>
                       <td className="px-3 py-2.5 font-medium">
-                        <div>{v.naam}{v.type && <span className="ml-1.5 text-xs text-gray-400 capitalize">{v.type}</span>}</div>
-                        {(v.leverancier||v.factuurnummer) && (
+                        {od.naam}
+                        {(od.leverancier||od.factuurnummer) && (
                           <div className="text-xs text-gray-400 font-normal mt-0.5">
-                            {v.leverancier && <span>{v.leverancier}</span>}
-                            {v.leverancier && v.factuurnummer && <span className="mx-1">·</span>}
-                            {v.factuurnummer && <span>F: {v.factuurnummer}</span>}
+                            {od.leverancier}{od.leverancier&&od.factuurnummer&&' · '}{od.factuurnummer&&`F: ${od.factuurnummer}`}
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-gray-500">{Number(v.inhoud_liter||0)}L</td>
+                      <td className="px-3 py-2.5 text-gray-500 text-xs capitalize">{od.type||'—'}</td>
                       <td className="px-3 py-2.5 text-right">
-                        <span className={`font-mono font-semibold ${stock===0?'text-red-600':stock<=5?'text-yellow-600':'text-gray-800'}`}>{stock}</span>
-                        {stock===0 && <span className="ml-1 text-xs text-red-400 font-normal">{t('packaging_empty')}</span>}
-                        {stock>0&&stock<=5 && <span className="ml-1 text-xs text-yellow-500 font-normal">{t('packaging_low')}</span>}
+                        <span className={`font-mono font-semibold ${Number(od.voorraad||0)===0?'text-red-600':'text-gray-800'}`}>{Number(od.voorraad||0)}</span>
+                        {Number(od.voorraad||0)===0 && <span className="ml-1 text-xs text-red-400">{t('packaging_empty')}</span>}
                       </td>
                       <td className="px-3 py-2.5 text-right text-xs text-gray-500">
-                        {v.kosten_verpakking ? fmt(v.kosten_verpakking) : <span className="text-gray-300">—</span>}
-                        <div className="text-gray-400">{lbl.verpakking}</div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-xs text-gray-500">
-                        {v.kosten_afsluiting ? fmt(v.kosten_afsluiting) : <span className="text-gray-300">—</span>}
-                        <div className="text-gray-400">{lbl.afsluiting}</div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-xs text-gray-500">
-                        {v.kosten_label ? fmt(v.kosten_label) : <span className="text-gray-300">—</span>}
-                        <div className="text-gray-400">{t('packaging_cost_label')}</div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-sm">
-                        {totk > 0 ? <span className="text-amber-700">{fmt(totk)}</span> : <span className="text-gray-300">—</span>}
+                        {Number(od.kosten_per_stuk||0)>0 ? fmt(od.kosten_per_stuk) : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1 justify-end">
-                          <Btn s="sm" v="ghost" onClick={()=>openVEdit(v)}>✏️</Btn>
-                          <Btn s="sm" v="secondary" onClick={()=>{setShowVAfboek(v);setVAfQty('');}}>{t('packaging_deduct_btn')}</Btn>
-                          <button onClick={()=>{if(confirm(t('error_confirm_delete_packaging')))setVerpakkingen(prev=>prev.filter(x=>x.id!==v.id))}}
-                            className="text-red-400 hover:text-red-600 text-xs px-1.5">✕</button>
+                          <Btn s="sm" v="ghost" onClick={()=>{setOdEditForm({naam:od.naam,type:od.type||'',kosten_per_stuk:String(od.kosten_per_stuk||''),leverancier:od.leverancier||'',factuurnummer:od.factuurnummer||''});setShowODEdit(od);}}>✏️</Btn>
+                          <button onClick={()=>{if(confirm(t('error_confirm_delete_packaging')))setOnderdelen(prev=>prev.filter(x=>x.id!==od.id))}} className="text-red-400 hover:text-red-600 text-xs px-1.5">✕</button>
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* --- Verpakkingstypes sectie --- */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold t-text">{t('verpakking_components_section')}</h3>
+              <Btn s="sm" onClick={()=>{setVtForm(emptyVT);setVtOnderdeel({onderdeel_id:'',aantal:'1'});setShowVEdit(null);setShowVTAdd(true)}}>{t('verpakking_add_btn')}</Btn>
+            </div>
+            <div className="bg-white rounded-xl shadow-card overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                  <tr>
+                    <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
+                    <th className="px-3 py-2 text-right">{t('lbl_content')}</th>
+                    <th className="px-3 py-2 text-left">{t('packaging_components')}</th>
+                    <th className="px-3 py-2 text-right">{t('packaging_available')}</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('packaging_cost_per_unit')}</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {verpakkingen.length===0 && (
+                    <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">{t('msg_no_packaging')}</td></tr>
+                  )}
+                  {verpakkingen.map(v => {
+                    const stock = vpVoorraad(v);
+                    const totk = vpKosten(v);
+                    return (
+                      <tr key={v.id} className={stock===0?'bg-red-50':stock<=5?'bg-yellow-50':''}>
+                        <td className="px-3 py-2.5 font-medium">
+                          {v.naam}{v.type && <span className="ml-1.5 text-xs text-gray-400 capitalize">{v.type}</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-gray-500">{Number(v.inhoud_liter||0)}L</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500">
+                          {(v.onderdelen||[]).length===0
+                            ? <span className="text-gray-300">{t('packaging_no_components')}</span>
+                            : (v.onderdelen||[]).map(o=>{
+                                const od=onderdelen.find(d=>d.id===o.onderdeel_id);
+                                return od ? <span key={o.onderdeel_id} className="inline-block mr-2">{o.aantal}× {od.naam}</span> : null;
+                              })
+                          }
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <span className={`font-mono font-semibold ${stock===0?'text-red-600':stock<=5?'text-yellow-600':'text-gray-800'}`}>{stock}</span>
+                          {stock===0 && <span className="ml-1 text-xs text-red-400 font-normal">{t('packaging_empty')}</span>}
+                          {stock>0&&stock<=5 && <span className="ml-1 text-xs text-yellow-500 font-normal">{t('packaging_low')}</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-sm">
+                          {totk > 0 ? <span className="text-amber-700">{fmt(totk)}</span> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex gap-1 justify-end">
+                            <Btn s="sm" v="ghost" onClick={()=>openVTEdit(v)}>✏️</Btn>
+                            <button onClick={()=>{if(confirm(t('error_confirm_delete_packaging')))setVerpakkingen(prev=>prev.filter(x=>x.id!==v.id))}}
+                              className="text-red-400 hover:text-red-600 text-xs px-1.5">✕</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -3806,7 +3982,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               </button>
               <button onClick={()=>setOntvangstTab('verpakkingen')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${ontvangstTab==='verpakkingen'?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {t('ing_tab_packaging')}
+                {t('tab_onderdelen')}
               </button>
             </div>
 
@@ -3863,45 +4039,15 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             {/* Verpakkingen toevoegen */}
             {ontvangstTab==='verpakkingen' && (
               <div className="border border-gray-200 rounded-lg p-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Verpakking toevoegen</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('onderdeel_add_btn')}</p>
                 <div className="space-y-2">
-                  <Sel label={t('lbl_add_existing_type')} value={vOntvForm.verpakking_id}
-                    onChange={v=>setVOntvForm(f=>({...f,verpakking_id:v,naam:'',inhoud_liter:'',preset:'',type:''}))}
-                    opts={verpakkingen.map(v=>({v:String(v.id),l:`${v.naam} (${v.voorraad||0} stuks)`}))}
-                    ph={t('packaging_or_new_type')} />
-                  {!vOntvForm.verpakking_id && (
-                    <>
-                      <Sel label={t('lbl_choose_standard_type')} value={vOntvForm.preset} onChange={onPreset}
-                        opts={VERPAKKING_DEFAULTS.map(d=>({v:d.naam,l:d.naam}))} ph={t('packaging_standard_choose')} />
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <Inp label={t('lbl_name')+' *'} value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v}))} placeholder={t('ph_packaging_name')} />
-                        <Inp label={t('packaging_content')} type="number" value={vOntvForm.inhoud_liter} onChange={v=>setVOntvForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
-                        <Sel label={t('lbl_type')} value={vOntvForm.type} onChange={v=>setVOntvForm(f=>({...f,type:v}))}
-                          opts={[{v:'fles',l:t('pkg_fles')},{v:'blik',l:t('pkg_blik')},{v:'fust',l:t('pkg_fust')},{v:'overig',l:t('ing_type_overig')}]} ph={t('packaging_choose_type')} />
-                      </div>
-                      <div className="border-t pt-3">
-                        <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_costs_per_unit')}</p>
-                        {(() => {
-                          const lbl = verpKostenLabels(vOntvForm.type);
-                          return (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              <Inp label={`${lbl.verpakking} (€)`} type="number" value={vOntvForm.kosten_verpakking}
-                                onChange={v=>setVOntvForm(f=>({...f,kosten_verpakking:v}))} placeholder="0.00" />
-                              <Inp label={`${lbl.afsluiting} (€)`} type="number" value={vOntvForm.kosten_afsluiting}
-                                onChange={v=>setVOntvForm(f=>({...f,kosten_afsluiting:v}))} placeholder="0.00" />
-                              <Inp label={t('lbl_label_cost')} type="number" value={vOntvForm.kosten_label}
-                                onChange={v=>setVOntvForm(f=>({...f,kosten_label:v}))} placeholder="0.00" />
-                            </div>
-                          );
-                        })()}
-                        {(vOntvForm.kosten_verpakking||vOntvForm.kosten_afsluiting||vOntvForm.kosten_label) && (
-                          <p className="text-xs text-amber-700 mt-1.5">
-                            Totaal per stuk: <strong>{fmt(Number(vOntvForm.kosten_verpakking||0)+Number(vOntvForm.kosten_afsluiting||0)+Number(vOntvForm.kosten_label||0))}</strong>
-                          </p>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Inp label={t('lbl_name')+' *'} value={vOntvForm.naam} onChange={v=>setVOntvForm(f=>({...f,naam:v}))} placeholder="Fles 33cL" />
+                    <Sel label={t('onderdeel_type')} value={vOntvForm.type} onChange={v=>setVOntvForm(f=>({...f,type:v}))}
+                      opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
+                    <Inp label={t('onderdeel_cost')} type="number" value={vOntvForm.kosten_verpakking}
+                      onChange={v=>setVOntvForm(f=>({...f,kosten_verpakking:v}))} placeholder="0.00" />
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <Inp label={t('lbl_qty_received')+' *'} type="number" value={vOntvForm.aantal}
                       onChange={v=>setVOntvForm(f=>({...f,aantal:v,totaalprijs:f.prijs_per_stuk&&v?String((Number(f.prijs_per_stuk)*Number(v)).toFixed(2)):f.totaalprijs}))}
@@ -3914,7 +4060,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                       placeholder="0.00" />
                   </div>
                   <div className="flex justify-end">
-                    <Btn onClick={voegVerpakkingToe}>Toevoegen aan lijst</Btn>
+                    <Btn onClick={voegVerpakkingToe}>{t('modal_add_to_list')}</Btn>
                   </div>
                 </div>
               </div>
@@ -4107,48 +4253,101 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
         </Modal>
       )}
 
-      {showVEdit && (
-        <Modal title={`Bewerken: ${showVEdit.naam}`} onClose={()=>setShowVEdit(null)} wide>
+      {/* Onderdeel bewerken */}
+      {showODEdit && (
+        <Modal title={`Onderdeel: ${showODEdit.naam}`} onClose={()=>setShowODEdit(null)} wide>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Inp label={t('lbl_name')+' *'} value={vEditForm.naam} onChange={v=>setVEditForm(f=>({...f,naam:v}))} placeholder={t('ph_packaging_name')} />
-              <Inp label={t('packaging_content')} type="number" value={vEditForm.inhoud_liter} onChange={v=>setVEditForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
-              <Sel label={t('lbl_type')} value={vEditForm.type} onChange={v=>setVEditForm(f=>({...f,type:v}))}
+              <Inp label={t('lbl_name')+' *'} value={odEditForm.naam} onChange={v=>setOdEditForm(f=>({...f,naam:v}))} />
+              <Sel label={t('onderdeel_type')} value={odEditForm.type} onChange={v=>setOdEditForm(f=>({...f,type:v}))}
+                opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
+              <Inp label={t('onderdeel_cost')} type="number" value={odEditForm.kosten_per_stuk} onChange={v=>setOdEditForm(f=>({...f,kosten_per_stuk:v}))} placeholder="0.00" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Inp label={t('lbl_supplier')} value={odEditForm.leverancier} onChange={v=>setOdEditForm(f=>({...f,leverancier:v}))} placeholder={t('ph_supplier')} />
+              <Inp label={t('lbl_invoice')} value={odEditForm.factuurnummer} onChange={v=>setOdEditForm(f=>({...f,factuurnummer:v}))} placeholder="F-2025-001" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Btn v="secondary" onClick={()=>setShowODEdit(null)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveODEdit}>{t('btn_save')}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Onderdeel ontvangen */}
+      {showODAdd && (
+        <Modal title={t('onderdeel_add_btn')} onClose={()=>setShowODAdd(false)} wide>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Inp label={t('lbl_name')+' *'} value={odAddForm.naam} onChange={v=>setOdAddForm(f=>({...f,naam:v}))} placeholder="Fles 33cL" />
+              <Sel label={t('onderdeel_type')} value={odAddForm.type} onChange={v=>setOdAddForm(f=>({...f,type:v}))}
+                opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
+              <Inp label={t('onderdeel_cost')} type="number" value={odAddForm.kosten_per_stuk} onChange={v=>setOdAddForm(f=>({...f,kosten_per_stuk:v}))} placeholder="0.00" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Inp label={t('lbl_qty_received')+' *'} type="number" value={odQty} onChange={setOdQty} placeholder="24" />
+              <Inp label="Prijs per stuk ex BTW (€)" type="number" value={odPrijs} onChange={setOdPrijs} placeholder="0.00" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Btn v="secondary" onClick={()=>setShowODAdd(false)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={()=>saveODAdd(odQty, odPrijs)}>{t('btn_save')}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Verpakkingstype aanmaken/bewerken */}
+      {showVTAdd && (
+        <Modal title={t('modal_title_packaging_type')} onClose={()=>{setShowVTAdd(false);setShowVEdit(null);}} wide>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Inp label={t('lbl_name')+' *'} value={vtForm.naam} onChange={v=>setVtForm(f=>({...f,naam:v}))} placeholder="Fles 33cL compleet" />
+              <Inp label={t('packaging_content')} type="number" value={vtForm.inhoud_liter} onChange={v=>setVtForm(f=>({...f,inhoud_liter:v}))} placeholder="0.33" />
+              <Sel label={t('lbl_type')} value={vtForm.type} onChange={v=>setVtForm(f=>({...f,type:v}))}
                 opts={[{v:'fles',l:t('pkg_fles')},{v:'blik',l:t('pkg_blik')},{v:'fust',l:t('pkg_fust')},{v:'overig',l:t('ing_type_overig')}]} ph={t('packaging_choose_type')} />
             </div>
             <div className="border-t pt-3">
-              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_cost_unit_title')}</p>
-              {(() => {
-                const lbl = verpKostenLabels(vEditForm.type);
-                return (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Inp label={`${lbl.verpakking} (€)`} type="number" value={vEditForm.kosten_verpakking}
-                      onChange={v=>setVEditForm(f=>({...f,kosten_verpakking:v}))} placeholder="0.00" />
-                    <Inp label={`${lbl.afsluiting} (€)`} type="number" value={vEditForm.kosten_afsluiting}
-                      onChange={v=>setVEditForm(f=>({...f,kosten_afsluiting:v}))} placeholder="0.00" />
-                    <Inp label={t('lbl_label_cost')} type="number" value={vEditForm.kosten_label}
-                      onChange={v=>setVEditForm(f=>({...f,kosten_label:v}))} placeholder="0.00" />
-                  </div>
-                );
-              })()}
-              {(Number(vEditForm.kosten_verpakking||0)+Number(vEditForm.kosten_afsluiting||0)+Number(vEditForm.kosten_label||0)) > 0 && (
-                <p className="text-xs text-amber-700 mt-1.5">
-                  Totaal per stuk: <strong>{fmt(Number(vEditForm.kosten_verpakking||0)+Number(vEditForm.kosten_afsluiting||0)+Number(vEditForm.kosten_label||0))}</strong>
-                </p>
+              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_components')}</p>
+              {vtForm.onderdelen.length > 0 && (
+                <div className="mb-3 space-y-1">
+                  {vtForm.onderdelen.map((o,i) => {
+                    const od = onderdelen.find(d=>d.id===o.onderdeel_id);
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-sm bg-gray-50 rounded px-2 py-1">
+                        <span className="flex-1">{o.aantal}× {od?.naam||'?'}</span>
+                        <button onClick={()=>setVtForm(f=>({...f,onderdelen:f.onderdelen.filter((_,j)=>j!==i)}))} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
-            </div>
-            <div className="border-t pt-3">
-              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_invoice_section')}</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Inp label={t('lbl_supplier')} value={vEditForm.leverancier}
-                  onChange={v=>setVEditForm(f=>({...f,leverancier:v}))} placeholder={t('ph_supplier')} />
-                <Inp label={t('lbl_invoice')} value={vEditForm.factuurnummer}
-                  onChange={v=>setVEditForm(f=>({...f,factuurnummer:v}))} placeholder="F-2025-001" />
-              </div>
+              {onderdelen.length === 0
+                ? <p className="text-sm text-gray-400">{t('onderdeel_none')}</p>
+                : (
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <Sel label={t('packaging_add_component')} value={vtOnderdeel.onderdeel_id}
+                        onChange={v=>setVtOnderdeel(f=>({...f,onderdeel_id:v}))}
+                        opts={onderdelen.map(o=>({v:String(o.id),l:o.naam}))} ph={t('err_no_component_selected')} />
+                    </div>
+                    <div className="w-24">
+                      <Inp label={t('lbl_qty_needed')} type="number" value={vtOnderdeel.aantal}
+                        onChange={v=>setVtOnderdeel(f=>({...f,aantal:v}))} placeholder="1" />
+                    </div>
+                    <Btn s="sm" onClick={()=>{
+                      if (!vtOnderdeel.onderdeel_id) return;
+                      const id = Number(vtOnderdeel.onderdeel_id);
+                      setVtForm(f=>({...f,onderdelen:[...f.onderdelen.filter(o=>o.onderdeel_id!==id),{onderdeel_id:id,aantal:Number(vtOnderdeel.aantal)||1}]}));
+                      setVtOnderdeel({onderdeel_id:'',aantal:'1'});
+                    }}>{t('packaging_add_component')}</Btn>
+                  </div>
+                )
+              }
             </div>
             <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={()=>setShowVEdit(null)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={saveVEdit}>{t('btn_save')}</Btn>
+              <Btn v="secondary" onClick={()=>{setShowVTAdd(false);setShowVEdit(null);}}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveVTAdd}>{t('btn_save')}</Btn>
             </div>
           </div>
         </Modal>
@@ -4218,7 +4417,7 @@ const DEFAULT_HYGIENE_ITEMS = [
 ];
 
 // ===== BATCHES =====
-function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, setAv, uit, setUit, acc, setAcc, verpakkingen, setVerpakkingen, log, setLog, bfCreds, bfSync, tanks, accijnsInst, hygieneItems, hygieneGroups, wcCreds, artikelen}) {
+function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, setAv, uit, setUit, acc, setAcc, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bfCreds, bfSync, tanks, accijnsInst, hygieneItems, hygieneGroups, wcCreds, artikelen}) {
   const [sel, setSel] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showBf, setShowBf] = useState(false);
@@ -4620,13 +4819,29 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
   const totAfgevuld  = bAv.reduce((s,a)=>s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0),0);
   const totUitgeslagen = bAv.reduce((s,a)=>s+uitgeslVanAv(a.id)*Number(a.inhoud_per_eenheid||0),0);
 
+  const vpVoorraadB = (vp) => {
+    if (!vp.onderdelen?.length) return Number(vp.voorraad||0);
+    const stocks = vp.onderdelen.map(o => {
+      const od = onderdelen.find(d=>d.id===o.onderdeel_id);
+      return Math.floor(Number(od?.voorraad||0) / Number(o.aantal||1));
+    });
+    return stocks.length ? Math.min(...stocks) : 0;
+  };
   const doAfvullen = () => {
     if (!avF.verpakking_id||!avF.hoeveelheid) { alert(t('err_select_packaging_qty')); return; }
     const n = Number(avF.hoeveelheid);
     const vp = (verpakkingen||[]).find(v=>v.id===Number(avF.verpakking_id));
     if (!vp) { alert(t('err_invalid_packaging')); return; }
-    if (Number(vp.voorraad||0) < n) { alert(t('err_insufficient_packaging_n').replace('{n}',vp.voorraad||0)); return; }
-    setVerpakkingen(prev=>prev.map(v=>v.id===Number(avF.verpakking_id)?{...v,voorraad:Number(v.voorraad||0)-n}:v));
+    const avail = vpVoorraadB(vp);
+    if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}',avail)); return; }
+    if (vp.onderdelen?.length) {
+      setOnderdelen(prev=>prev.map(od=>{
+        const usage=vp.onderdelen.find(o=>o.onderdeel_id===od.id);
+        return usage?{...od,voorraad:Math.max(0,Number(od.voorraad||0)-n*Number(usage.aantal||1))}:od;
+      }));
+    } else {
+      setVerpakkingen(prev=>prev.map(v=>v.id===Number(avF.verpakking_id)?{...v,voorraad:Number(v.voorraad||0)-n}:v));
+    }
     setAv(prev=>[...(prev||[]),{id:newId(prev||[]),batch_id:sel,...avF,verpakking_id:Number(avF.verpakking_id),inhoud_per_eenheid:Number(avF.inhoud_per_eenheid),hoeveelheid:n}]);
     addLog({type:'afvullen', batch_id:sel, verpakking_type:vp.naam||avF.verpakking_type,
       hoeveelheid:n, eenheid:'stuks', referentie:`${(n*Number(avF.inhoud_per_eenheid||0)).toFixed(1)}L`});
@@ -5164,8 +5379,8 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                               className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input bg-white">
                               <option value="">{t('batch_filling_select_ph')}</option>
                               {(verpakkingen||[]).map(vp=>(
-                                <option key={vp.id} value={vp.id} disabled={Number(vp.voorraad||0)===0}>
-                                  {vp.naam} — {Number(vp.voorraad||0)} stuks
+                                <option key={vp.id} value={vp.id} disabled={vpVoorraadB(vp)===0}>
+                                  {vp.naam} — {vpVoorraadB(vp)} stuks
                                 </option>
                               ))}
                             </select>
@@ -5523,7 +5738,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
 // Uitslagen schema: {id, batch_id, afvulling_id, verpakking_type, inhoud_per_eenheid,
 //                    aantal, datum, liter, accijns, status:'uitgeslagen'|'verkocht', verkocht_datum}
 
-function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakkingen, setVerpakkingen, accijnsInst}) {
+function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, accijnsInst}) {
   const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51);
   const r2 = Number(accijnsInst?.tarief_per_hl||24.17);
   const [sel, setSel] = useState(null);
@@ -5550,14 +5765,29 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
     return s + used * Number(a.inhoud_per_eenheid||0);
   },0);
 
+  const vpVoorraadA = (vp) => {
+    if (!vp.onderdelen?.length) return Number(vp.voorraad||0);
+    const stocks = vp.onderdelen.map(o => {
+      const od = onderdelen.find(d=>d.id===o.onderdeel_id);
+      return Math.floor(Number(od?.voorraad||0) / Number(o.aantal||1));
+    });
+    return stocks.length ? Math.min(...stocks) : 0;
+  };
   const doAfvullen = () => {
     if (!avF.verpakking_id||!avF.hoeveelheid) { alert(t('err_select_packaging_qty')); return; }
     const n = Number(avF.hoeveelheid);
     const vp = verpakkingen.find(v=>v.id===Number(avF.verpakking_id));
     if (!vp) { alert(t('err_invalid_packaging')); return; }
-    if (Number(vp.voorraad||0) < n) { alert(t('err_insufficient_packaging_n').replace('{n}',vp.voorraad||0)); return; }
-    // Afboeken van verpakkingen voorraad
-    setVerpakkingen(prev=>prev.map(v=>v.id===Number(avF.verpakking_id)?{...v,voorraad:Number(v.voorraad||0)-n}:v));
+    const avail = vpVoorraadA(vp);
+    if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}',avail)); return; }
+    if (vp.onderdelen?.length) {
+      setOnderdelen(prev=>prev.map(od=>{
+        const usage=vp.onderdelen.find(o=>o.onderdeel_id===od.id);
+        return usage?{...od,voorraad:Math.max(0,Number(od.voorraad||0)-n*Number(usage.aantal||1))}:od;
+      }));
+    } else {
+      setVerpakkingen(prev=>prev.map(v=>v.id===Number(avF.verpakking_id)?{...v,voorraad:Number(v.voorraad||0)-n}:v));
+    }
     setAv(prev=>[...prev,{id:newId(av),batch_id:sel,...avF,verpakking_id:Number(avF.verpakking_id),inhoud_per_eenheid:Number(avF.inhoud_per_eenheid),hoeveelheid:n}]);
     setAvF(emptyAv);
   };
@@ -5663,8 +5893,8 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
                       }} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input bg-white">
                         <option value="">{t('batch_filling_select_ph')}</option>
                         {verpakkingen.map(vp=>(
-                          <option key={vp.id} value={vp.id} disabled={Number(vp.voorraad||0)===0}>
-                            {vp.naam} — {Number(vp.voorraad||0)} stuks
+                          <option key={vp.id} value={vp.id} disabled={vpVoorraadA(vp)===0}>
+                            {vp.naam} — {vpVoorraadA(vp)} stuks
                           </option>
                         ))}
                       </select>
@@ -7671,6 +7901,7 @@ function App() {
   const [uit, setUit] = useStore('uitslagen');
   const [acc, setAcc] = useStore('accijns');
   const [verpakkingen, setVerpakkingen] = useStore('verpakkingen');
+  const [onderdelen, setOnderdelen] = useStore('onderdelen', []);
   const [log, setLog] = useStore('voorraad_log');
   const [archief, setArchief] = useStore('voorraad_archief');
   const [geslotenBieren, setGeslotenBieren] = useStore('voorraad_gesloten_bieren', []);
@@ -7828,9 +8059,9 @@ function App() {
       </nav>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
-        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} log={log} setLog={setLog} bi={bi} bat={bat} />}
+        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
-        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
+        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
