@@ -319,6 +319,12 @@ window.BREW_TRANS["nl"] = {
   "excise_status": "Status",
   "excise_mark_paid": "Markeer betaald",
   "excise_restore": "Herstel",
+  "excise_current_month": "Lopende maand",
+  "excise_month_total": "Maand totaal",
+  "excise_mark_month_paid": "Accijns betaald",
+  "excise_month_all_paid": "Alle accijns betaald",
+  "excise_rate_per_liter": "Tarief/liter",
+  "excise_collapse": "Invouwen",
   "recipe_page_title": "Recepten",
   "recipe_sync_brewfather": "⟳ Sync Brewfather",
   "recipe_sync_syncing": "⟳ Bezig…",
@@ -918,6 +924,12 @@ window.BREW_TRANS["en"] = {
   "excise_status": "Status",
   "excise_mark_paid": "Mark paid",
   "excise_restore": "Restore",
+  "excise_current_month": "Current month",
+  "excise_month_total": "Month total",
+  "excise_mark_month_paid": "Excise paid",
+  "excise_month_all_paid": "All excise paid",
+  "excise_rate_per_liter": "Rate/litre",
+  "excise_collapse": "Collapse",
   "recipe_page_title": "Recipes",
   "recipe_sync_brewfather": "⟳ Sync Brewfather",
   "recipe_sync_syncing": "⟳ Busy…",
@@ -1517,6 +1529,12 @@ window.BREW_TRANS["de"] = {
   "excise_status": "Status",
   "excise_mark_paid": "Als bezahlt markieren",
   "excise_restore": "Wiederherstellen",
+  "excise_current_month": "Laufender Monat",
+  "excise_month_total": "Monat gesamt",
+  "excise_mark_month_paid": "Steuer bezahlt",
+  "excise_month_all_paid": "Alle Steuer bezahlt",
+  "excise_rate_per_liter": "Satz/Liter",
+  "excise_collapse": "Einklappen",
   "recipe_page_title": "Rezepte",
   "recipe_sync_brewfather": "⟳ Brewfather sync",
   "recipe_sync_syncing": "⟳ Lädt…",
@@ -2116,6 +2134,12 @@ window.BREW_TRANS["fr"] = {
   "excise_status": "Statut",
   "excise_mark_paid": "Marquer payé",
   "excise_restore": "Restaurer",
+  "excise_current_month": "Mois en cours",
+  "excise_month_total": "Total du mois",
+  "excise_mark_month_paid": "Accise payée",
+  "excise_month_all_paid": "Toute accise payée",
+  "excise_rate_per_liter": "Taux/litre",
+  "excise_collapse": "Réduire",
   "recipe_page_title": "Recettes",
   "recipe_sync_brewfather": "⟳ Sync Brewfather",
   "recipe_sync_syncing": "⟳ Chargement…",
@@ -2715,6 +2739,12 @@ window.BREW_TRANS["es"] = {
   "excise_status": "Estado",
   "excise_mark_paid": "Marcar pagado",
   "excise_restore": "Restaurar",
+  "excise_current_month": "Mes actual",
+  "excise_month_total": "Total del mes",
+  "excise_mark_month_paid": "Impuesto pagado",
+  "excise_month_all_paid": "Todo impuesto pagado",
+  "excise_rate_per_liter": "Tasa/litro",
+  "excise_collapse": "Contraer",
   "recipe_page_title": "Recetas",
   "recipe_sync_brewfather": "⟳ Sync Brewfather",
   "recipe_sync_syncing": "⟳ Cargando…",
@@ -6623,23 +6653,57 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
 
 // ===== ACCIJNS =====
 function AccijnsPage({bat, acc, setAcc}) {
-  // acc records are now per-uitslag: {id, batch_id, batch_nummer, uitslag_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
-  // Support legacy records that use totaal_accijns/totaal_liter field names
+  const {useState, useMemo} = React;
+  // acc records: {id, batch_id, batch_nummer, uitslag_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
   const getAccijns = (a) => Number(a.accijns ?? a.totaal_accijns ?? 0);
   const getLiter   = (a) => Number(a.liter   ?? a.totaal_liter   ?? 0);
+  const getNaam    = (bid) => bat.find(b=>b.id===bid)?.naam||'—';
+
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+  // {YYYY-MM: true} = ingeklapt
+  const [ingeklapt, setIngeklapt] = useState({});
+
+  // Group records by month key
+  const byMonth = useMemo(() => {
+    const g = {};
+    (acc||[]).forEach(a => {
+      const d = new Date(a.datum);
+      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if (!g[k]) g[k] = [];
+      g[k].push(a);
+    });
+    return g;
+  }, [acc]);
+
+  const months = Object.keys(byMonth).sort((a,b)=>b.localeCompare(a));
+
+  const fmtMonth = (key) => {
+    const [y,m] = key.split('-');
+    return new Date(y, Number(m)-1, 1).toLocaleString('nl-NL', {month:'long', year:'numeric'});
+  };
+
+  const markMonthPaid = (monthKey) => {
+    setAcc(prev => prev.map(a => {
+      const d = new Date(a.datum);
+      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      return k === monthKey && !a.betaald ? {...a, betaald:true, betaal_datum:tod()} : a;
+    }));
+    setIngeklapt(prev => ({...prev, [monthKey]: true}));
+  };
 
   const toggle = (id) => setAcc(prev=>prev.map(a=>a.id===id
     ? {...a, betaald:!a.betaald, betaal_datum:!a.betaald?tod():null}
     : a
   ));
 
-  const totOpen = acc.filter(a=>!a.betaald).reduce((s,a)=>s+getAccijns(a),0);
-  const totPaid = acc.filter(a=>a.betaald).reduce((s,a)=>s+getAccijns(a),0);
-  const getNaam = (bid) => bat.find(b=>b.id===bid)?.naam||'—';
+  const totOpen = (acc||[]).filter(a=>!a.betaald).reduce((s,a)=>s+getAccijns(a),0);
+  const totPaid = (acc||[]).filter(a=>a.betaald).reduce((s,a)=>s+getAccijns(a),0);
 
   return (
     <div>
-      {/* Header with totals */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-800">{t('nav_accijns')}</h2>
         <div className="flex gap-2">
@@ -6654,56 +6718,139 @@ function AccijnsPage({bat, acc, setAcc}) {
         </div>
       </div>
 
-      {acc.length===0 && (
+      {months.length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">
           {t('excise_no_recorded')}
         </div>
       )}
 
-      {/* Platte tabel — naam + batch per rij */}
-      {acc.length > 0 && (
-        <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs text-gray-500 bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left">{t('stock_archive_beer')}</th>
-                <th className="px-3 py-2 text-left">{t('stock_archive_batch')}</th>
-                <th className="px-3 py-2 text-left">{t('excise_release_date')}</th>
-                <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
-                <th className="px-3 py-2 text-right">{t('stock_archive_qty')}</th>
-                <th className="px-3 py-2 text-right">{t('excise_liters')}</th>
-                <th className="px-3 py-2 text-right">{t('excise_abv')}</th>
-                <th className="px-3 py-2 text-right">{t('nav_accijns')}</th>
-                <th className="px-3 py-2 text-center">{t('lbl_status')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {acc.map(a => (
-                <tr key={a.id} className={a.betaald?'bg-green-50':''}>
-                  <td className="px-3 py-2 font-medium text-gray-800">{getNaam(a.batch_id)}</td>
-                  <td className="px-3 py-2 text-gray-500">{a.batch_nummer ? `#${a.batch_nummer}` : '—'}</td>
-                  <td className="px-3 py-2 text-gray-600">{fmtD(a.datum)}</td>
-                  <td className="px-3 py-2">{a.verpakking_type||'—'}</td>
-                  <td className="px-3 py-2 text-right">{a.aantal||'—'}×</td>
-                  <td className="px-3 py-2 text-right">{getLiter(a).toFixed(1)}L</td>
-                  <td className="px-3 py-2 text-right">{a.abv?`${a.abv}%`:'—'}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(getAccijns(a))}</td>
-                  <td className="px-3 py-2 text-center">
-                    {a.betaald
-                      ? <div>
-                          <span className="text-xs text-green-700 font-medium">{t('accijns_paid')}</span>
-                          <div className="text-xs text-gray-400">{fmtD(a.betaal_datum)}</div>
-                          <button onClick={()=>toggle(a.id)} className="text-xs text-gray-400 hover:text-gray-600 underline">{t('excise_restore')}</button>
-                        </div>
-                      : <Btn s="sm" v="green" onClick={()=>toggle(a.id)}>{t('excise_mark_paid')}</Btn>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {months.map(monthKey => {
+        const records  = byMonth[monthKey];
+        const isCurrent = monthKey === currentMonthKey;
+        const allPaid  = records.every(a => a.betaald);
+        const monthTotal = records.reduce((s,a) => s + getAccijns(a), 0);
+        // Past paid months are collapsed by default; current month and unpaid months are open
+        const isOpen   = ingeklapt[monthKey] !== undefined ? !ingeklapt[monthKey] : (!allPaid || isCurrent);
+
+        // Aggregate per batch for the summary view (past months)
+        const perBatch = {};
+        records.forEach(a => {
+          if (!perBatch[a.batch_id]) perBatch[a.batch_id] = {
+            batch_id: a.batch_id, naam: getNaam(a.batch_id),
+            batch_nummer: a.batch_nummer, abv: a.abv, liter: 0, accijns: 0,
+          };
+          perBatch[a.batch_id].liter   += getLiter(a);
+          perBatch[a.batch_id].accijns += getAccijns(a);
+        });
+        const batchRows = Object.values(perBatch);
+
+        return (
+          <div key={monthKey} className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
+            {/* Month header bar */}
+            <div
+              className={`px-4 py-3 flex items-center justify-between cursor-pointer select-none ${allPaid ? 'bg-green-50 border-b border-green-100' : isCurrent ? 't-hdr text-white' : 'bg-amber-50 border-b border-amber-100'}`}
+              onClick={() => setIngeklapt(prev => ({...prev, [monthKey]: isOpen}))}>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-bold transition-transform ${isOpen?'rotate-90':''}`} style={{display:'inline-block'}}>▶</span>
+                <span className={`font-semibold capitalize text-sm ${isCurrent?'text-white':'text-gray-800'}`}>{fmtMonth(monthKey)}</span>
+                {isCurrent && <span className={`text-xs px-1.5 py-0.5 rounded font-medium bg-white/20 ${isCurrent?'text-white':'text-amber-700'}`}>{t('excise_current_month')}</span>}
+                {!isCurrent && allPaid && <span className="text-xs text-green-700 font-medium">✓ {t('excise_month_all_paid')}</span>}
+                {!isCurrent && !allPaid && <span className="text-xs text-amber-700 font-medium">{t('excise_outstanding')}</span>}
+              </div>
+              <span className={`font-bold text-sm ${isCurrent?'text-white':allPaid?'text-green-700':'text-amber-700'}`}>{fmt(monthTotal)}</span>
+            </div>
+
+            {isOpen && (
+              <div className="p-4">
+                {isCurrent ? (
+                  /* ── Lopende maand: individuele uitslagen ── */
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-xs text-gray-500 bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">{t('excise_beer')}</th>
+                          <th className="px-3 py-2 text-left">{t('excise_batch')}</th>
+                          <th className="px-3 py-2 text-left">{t('excise_release_date')}</th>
+                          <th className="px-3 py-2 text-right">{t('excise_liters')}</th>
+                          <th className="px-3 py-2 text-right">{t('excise_abv')}</th>
+                          <th className="px-3 py-2 text-right">{t('excise_amount')}</th>
+                          <th className="px-3 py-2 text-center">{t('excise_status')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {records.map(a => (
+                          <tr key={a.id} className={a.betaald?'bg-green-50':''}>
+                            <td className="px-3 py-2 font-medium text-gray-800">{getNaam(a.batch_id)}</td>
+                            <td className="px-3 py-2 text-gray-500">{a.batch_nummer?`#${a.batch_nummer}`:'—'}</td>
+                            <td className="px-3 py-2 text-gray-600">{fmtD(a.datum)}</td>
+                            <td className="px-3 py-2 text-right">{getLiter(a).toFixed(1)}L</td>
+                            <td className="px-3 py-2 text-right">{a.abv?`${a.abv}%`:'—'}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(getAccijns(a))}</td>
+                            <td className="px-3 py-2 text-center">
+                              {a.betaald
+                                ? <span className="text-xs text-green-700 font-medium">✓ {t('accijns_paid')}</span>
+                                : <Btn s="sm" v="green" onClick={()=>toggle(a.id)}>{t('excise_mark_paid')}</Btn>
+                              }
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  /* ── Afgesloten maand: overzicht per batch ── */
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-xs text-gray-500 bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">{t('excise_beer')}</th>
+                          <th className="px-3 py-2 text-left">{t('excise_batch')}</th>
+                          <th className="px-3 py-2 text-right">{t('excise_abv')}</th>
+                          <th className="px-3 py-2 text-right">{t('excise_liters')}</th>
+                          <th className="px-3 py-2 text-right">{t('excise_rate_per_liter')}</th>
+                          <th className="px-3 py-2 text-right">{t('excise_amount')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {batchRows.map(b => (
+                          <tr key={b.batch_id}>
+                            <td className="px-3 py-2 font-medium text-gray-800">{b.naam}</td>
+                            <td className="px-3 py-2 text-gray-500">{b.batch_nummer?`#${b.batch_nummer}`:'—'}</td>
+                            <td className="px-3 py-2 text-right">{b.abv?`${b.abv}%`:'—'}</td>
+                            <td className="px-3 py-2 text-right">{b.liter.toFixed(1)}L</td>
+                            <td className="px-3 py-2 text-right text-gray-500">{b.liter>0 ? `${fmt(b.accijns/b.liter)}/L` : '—'}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(b.accijns)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-200">
+                          <td colSpan="5" className="px-3 py-3 text-right font-semibold text-gray-700">{t('excise_month_total')}</td>
+                          <td className="px-3 py-3 text-right font-bold text-lg text-amber-700">{fmt(monthTotal)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+
+                    <div className="mt-4 flex items-center justify-between">
+                      {allPaid ? (
+                        <span className="text-sm text-green-700 font-medium">✓ {t('excise_month_all_paid')}</span>
+                      ) : (
+                        <Btn v="green" onClick={()=>markMonthPaid(monthKey)}>
+                          ✓ {t('excise_mark_month_paid')}
+                        </Btn>
+                      )}
+                      <button onClick={()=>setIngeklapt(prev=>({...prev,[monthKey]:true}))}
+                        className="text-xs text-gray-400 hover:text-gray-600 underline">
+                        {t('excise_collapse')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
