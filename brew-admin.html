@@ -3347,11 +3347,11 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [afQty, setAfQty] = useState('');
   const [afEenheid, setAfEenheid] = useState('');
   const [showLot, setShowLot] = useState(null);       // lot detail modal
-  const [archiefOpen, setArchiefOpen] = useState({}); // {ingredientId: bool}
+  const [archiefOpen, setArchiefOpen] = useStore('ing_archief_open', {}); // {ingredientId: bool}
   const [lotEdit, setLotEdit] = useState({});          // editable fields of open lot
   const [lotCorr, setLotCorr] = useState({delta:'', richting:'+', reden:'', eenheid:''});
   const [ingZoek, setIngZoek] = useState('');          // zoekfilter ingrediënten
-  const [groepDicht, setGroepDicht] = useState({});   // {type: bool} ingeklapte groepen
+  const [groepDicht, setGroepDicht] = useStore('ing_groep_dicht', {});   // {type: bool} ingeklapte groepen
 
   const openLot = (lot) => {
     setShowLot(lot);
