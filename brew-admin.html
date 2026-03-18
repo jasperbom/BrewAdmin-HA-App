@@ -352,6 +352,8 @@ window.BREW_TRANS["nl"] = {
   "dashboard_all_ok": "Geen verlopen of bijna-verlopen THT — alles in orde!",
   "dashboard_active_batches": "Actieve batches",
   "settings_brewery": "Brouwerij",
+  "settings_app": "App",
+  "settings_webshop": "Webshop",
   "settings_brewfather": "Brewfather",
   "settings_woocommerce": "WooCommerce",
   "settings_excise": "Accijns",
@@ -949,6 +951,8 @@ window.BREW_TRANS["en"] = {
   "dashboard_all_ok": "No expired or near-expiry dates — all good!",
   "dashboard_active_batches": "Active batches",
   "settings_brewery": "Brewery",
+  "settings_app": "App",
+  "settings_webshop": "Webshop",
   "settings_brewfather": "Brewfather",
   "settings_woocommerce": "WooCommerce",
   "settings_excise": "Excise Duty",
@@ -1546,6 +1550,8 @@ window.BREW_TRANS["de"] = {
   "dashboard_all_ok": "Keine abgelaufenen oder bald ablaufenden MHDs — alles in Ordnung!",
   "dashboard_active_batches": "Aktive Chargen",
   "settings_brewery": "Brauerei",
+  "settings_app": "App",
+  "settings_webshop": "Webshop",
   "settings_brewfather": "Brewfather",
   "settings_woocommerce": "WooCommerce",
   "settings_excise": "Biersteuer",
@@ -2143,6 +2149,8 @@ window.BREW_TRANS["fr"] = {
   "dashboard_all_ok": "Aucune DLC expirée ou proche — tout est en ordre!",
   "dashboard_active_batches": "Brassins actifs",
   "settings_brewery": "Brasserie",
+  "settings_app": "App",
+  "settings_webshop": "Webshop",
   "settings_brewfather": "Brewfather",
   "settings_woocommerce": "WooCommerce",
   "settings_excise": "Droits d'accise",
@@ -2740,6 +2748,8 @@ window.BREW_TRANS["es"] = {
   "dashboard_all_ok": "Sin caducidades vencidas o próximas — ¡todo en orden!",
   "dashboard_active_batches": "Lotes activos",
   "settings_brewery": "Cervecería",
+  "settings_app": "App",
+  "settings_webshop": "Webshop",
   "settings_brewfather": "Brewfather",
   "settings_woocommerce": "WooCommerce",
   "settings_excise": "Impuesto especial",
@@ -7445,15 +7455,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const inp = 'border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none t-input shadow-sm transition-all';
   const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4';
 
-  const [activeSection, setActiveSection] = React.useState('brouwerij');
+  const [activeSection, setActiveSection] = React.useState('app');
   const navItems = [
+    {id:'app',         label:t('settings_app'),          icon:'⚙️'},
     {id:'brouwerij',   label:t('settings_brewery'),     icon:'🏭'},
     {id:'brewfather',  label:'Brewfather',               icon:'🍺'},
-    {id:'woocommerce', label:'WooCommerce',              icon:'🛒'},
+    {id:'woocommerce', label:t('settings_webshop'),      icon:'🛒'},
     {id:'accijns',     label:t('settings_excise'),       icon:'💶'},
     {id:'hygiene',     label:t('settings_hygiene'),      icon:'🧹'},
     {id:'data',        label:t('settings_data'),         icon:'📦'},
-    {id:'taal',        label:t('settings_language'),     icon:'🌐'},
   ];
 
   const fmtTs = (ts) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
@@ -7478,10 +7488,59 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* ── Rechts content ── */}
       <div className="flex-1 min-w-0 max-w-2xl">
 
-      {/* BROUWERIJ */}
-      {activeSection==='brouwerij' && <>
+      {/* APP */}
+      {activeSection==='app' && <>
         <ServerStatusCard />
 
+      {/* Navigatie kleur */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_nav_color')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_nav_color_desc')}</p>
+        <div className="flex flex-wrap gap-3">
+          {[
+            {id:'amber',  label:'Amber',  colors:['#451a03','#78350f','#d97706','#fde68a','#fffbeb']},
+            {id:'green',  label:'Groen',  colors:['#052e16','#14532d','#16a34a','#bbf7d0','#f0fdf4']},
+            {id:'blue',   label:'Blauw',  colors:['#172554','#1e3a8a','#2563eb','#bfdbfe','#eff6ff']},
+            {id:'slate',  label:'Donker', colors:['#020617','#1e293b','#64748b','#cbd5e1','#f8fafc']},
+            {id:'red',    label:'Rood',   colors:['#450a0a','#7f1d1d','#dc2626','#fecaca','#fef2f2']},
+            {id:'purple', label:'Paars',  colors:['#2e1065','#4c1d95','#7c3aed','#ddd6fe','#f5f3ff']},
+          ].map(c => (
+            <button key={c.id} onClick={()=>setNavTheme(c.id)}
+              className={`flex flex-col items-center gap-1.5 p-1 rounded-xl border-2 transition-all ${navTheme===c.id ? 't-border scale-105' : 'border-transparent hover:border-gray-300'}`}>
+              <div className="w-[70px] h-8 rounded-lg shadow-sm overflow-hidden flex">
+                {c.colors.map((col,i) => <div key={i} className="flex-1 h-full" style={{backgroundColor:col}} />)}
+              </div>
+              <span className="text-xs font-medium text-gray-600">{c.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Taal */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_language')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('lbl_language')}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {[
+            {code:'nl', label:'Nederlands', flag:'🇳🇱'},
+            {code:'en', label:'English',    flag:'🇬🇧'},
+            {code:'de', label:'Deutsch',    flag:'🇩🇪'},
+            {code:'fr', label:'Français',   flag:'🇫🇷'},
+            {code:'es', label:'Español',    flag:'🇪🇸'},
+          ].map(lng => (
+            <button key={lng.code} onClick={()=>setLang(lng.code)}
+              className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${lang===lng.code ? 't-nav' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+              <span className="text-xl">{lng.flag}</span>
+              <span>{lng.label}</span>
+              {lang===lng.code && <span className="ml-auto" style={{color:'var(--t-accent)'}}>✓</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      </>}
+
+      {/* BROUWERIJ */}
+      {activeSection==='brouwerij' && <>
 
       {/* Branding */}
       <div className={card}>
@@ -7523,30 +7582,6 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-3">{t('settings_logo_formats')}</p>
-      </div>
-
-      {/* Navigatie kleur */}
-      <div className={card}>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_nav_color')}</h2>
-        <p className="text-sm text-gray-500 mb-4">{t('settings_nav_color_desc')}</p>
-        <div className="flex flex-wrap gap-3">
-          {[
-            {id:'amber',  label:'Amber',  colors:['#451a03','#78350f','#d97706','#fde68a','#fffbeb']},
-            {id:'green',  label:'Groen',  colors:['#052e16','#14532d','#16a34a','#bbf7d0','#f0fdf4']},
-            {id:'blue',   label:'Blauw',  colors:['#172554','#1e3a8a','#2563eb','#bfdbfe','#eff6ff']},
-            {id:'slate',  label:'Donker', colors:['#020617','#1e293b','#64748b','#cbd5e1','#f8fafc']},
-            {id:'red',    label:'Rood',   colors:['#450a0a','#7f1d1d','#dc2626','#fecaca','#fef2f2']},
-            {id:'purple', label:'Paars',  colors:['#2e1065','#4c1d95','#7c3aed','#ddd6fe','#f5f3ff']},
-          ].map(c => (
-            <button key={c.id} onClick={()=>setNavTheme(c.id)}
-              className={`flex flex-col items-center gap-1.5 p-1 rounded-xl border-2 transition-all ${navTheme===c.id ? 't-border scale-105' : 'border-transparent hover:border-gray-300'}`}>
-              <div className="w-[70px] h-8 rounded-lg shadow-sm overflow-hidden flex">
-                {c.colors.map((col,i) => <div key={i} className="flex-1 h-full" style={{backgroundColor:col}} />)}
-              </div>
-              <span className="text-xs font-medium text-gray-600">{c.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Tanks */}
@@ -7936,29 +7971,6 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-xs text-gray-400 mt-2">{t('settings_log_warning')}</p>
       </div>
 
-      </>}
-
-      {activeSection==='taal' && <>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-1">{t('settings_language')}</h3>
-          <p className="text-xs text-gray-500 mb-4">{t('lbl_language')}</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {[
-              {code:'nl', label:'Nederlands', flag:'🇳🇱'},
-              {code:'en', label:'English',    flag:'🇬🇧'},
-              {code:'de', label:'Deutsch',    flag:'🇩🇪'},
-              {code:'fr', label:'Français',   flag:'🇫🇷'},
-              {code:'es', label:'Español',    flag:'🇪🇸'},
-            ].map(lng => (
-              <button key={lng.code} onClick={()=>setLang(lng.code)}
-                className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${lang===lng.code ? 't-nav' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-                <span className="text-xl">{lng.flag}</span>
-                <span>{lng.label}</span>
-                {lang===lng.code && <span className="ml-auto" style={{color:'var(--t-accent)'}}>✓</span>}
-              </button>
-            ))}
-          </div>
-        </div>
       </>}
 
       <div className="pt-2 pb-2 text-center text-xs text-gray-400">
