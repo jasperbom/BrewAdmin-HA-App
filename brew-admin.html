@@ -3381,6 +3381,7 @@ const Btn = ({children,onClick,v='primary',s='md',cls='',disabled=false}) => {
     danger:'bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border border-red-200',
     ghost:'hover:bg-gray-100 active:bg-gray-200 text-gray-600',
     header:'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border border-white/40',
+    'header-danger':'bg-red-500/30 hover:bg-red-500/50 active:bg-red-500/60 text-white border border-red-300/50',
     green:'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm',
     blue:'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm'
   }[v];
@@ -3808,7 +3809,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <div className="flex-1 min-w-0 bg-white rounded-xl shadow-card overflow-x-auto">
                 <div className="px-4 py-2.5 t-hdr text-white flex items-center justify-between rounded-t-xl">
                   <span className="font-medium text-sm">{selIng.naam} — {t('ing_lots')}</span>
-                  <Btn s="sm" onClick={()=>{setFactuurForm(emptyFactuur);setProductForm({...emptyProduct,ing_id:String(sel)});setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('ingredienten');setShowO(true)}}>{t('btn_add_lot')}</Btn>
+                  <Btn s="sm" v="header" onClick={()=>{setFactuurForm(emptyFactuur);setProductForm({...emptyProduct,ing_id:String(sel)});setProductLijst([]);setVOntvForm(emptyVO);setVerpakkingLijst([]);setOntvangstTab('ingredienten');setShowO(true)}}>{t('btn_add_lot')}</Btn>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="text-xs text-gray-500 bg-gray-50">
@@ -5000,8 +5001,8 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                     className="border border-gray-600 rounded px-2 py-1 text-xs bg-gray-700 text-white t-input">
                     {STATUSSEN.map(s=><option key={s} value={s}>{({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')})[s]||s}</option>)}
                   </select>
-                  <Btn s="sm" v="secondary" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
-                  <Btn s="sm" v="danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
+                  <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
+                  <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                 </div>
               </div>
               <div className="px-4 py-2 flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
