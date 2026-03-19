@@ -3421,10 +3421,16 @@ const accijnsCalc = (L, abv, r1=7.51, r2=24.17, inst=null) => {
 };
 
 // ===== EXCEL =====
-const excelExport = (ing,lots,bat,bi,av,uit,acc,verp) => {
+const excelExport = (ing,lots,bat,bi,av,uit,acc,verp,ond,log,archief,geslotenBieren,recepten,tanks,artikelen,hygieneItems,hygieneGroups,inkoopFacturen,verkoopFacturen) => {
   const wb = XLSX.utils.book_new();
-  [['Ingredienten',ing],['Lots',lots],['Batches',bat],['BatchIngredienten',bi],['Afvullingen',av],['Uitslagen',uit],['Accijns',acc],['Verpakkingen',verp||[]]]
-    .forEach(([n,d]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(d.length?d:[{}]), n));
+  const toRow = o => { const r={}; for(const [k,v] of Object.entries(o)) r[k]=(v!==null&&typeof v==='object')?JSON.stringify(v):v; return r; };
+  const prep = d => (d||[]).length ? d.map(toRow) : [{}];
+  [['Ingredienten',ing],['Lots',lots],['Batches',bat],['BatchIngredienten',bi],['Afvullingen',av],['Uitslagen',uit],['Accijns',acc],['Verpakkingen',verp||[]],
+   ['Onderdelen',ond||[]],['VoorraadLog',log||[]],['VoorraadArchief',archief||[]],['GeslotenBieren',geslotenBieren||[]],
+   ['Recepten',recepten||[]],['Tanks',tanks||[]],['Artikelen',artikelen||[]],
+   ['HygieneItems',hygieneItems||[]],['HygieneGroups',hygieneGroups||[]],
+   ['InkoopFacturen',inkoopFacturen||[]],['VerkoopFacturen',verkoopFacturen||[]]]
+    .forEach(([n,d]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(prep(d)), n));
   XLSX.writeFile(wb, 'craftery_data.xlsx');
 };
 
@@ -3432,10 +3438,16 @@ const excelImport = (file, cb) => {
   const r = new FileReader();
   r.onload = e => {
     const wb = XLSX.read(e.target.result, {type:'array'});
-    const gs = (n) => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n]) : [];
+    const gs = n => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n]) : [];
+    const fromRow = o => { const r={}; for(const [k,v] of Object.entries(o)){ if(typeof v==='string'&&(v.startsWith('[')||v.startsWith('{'))){try{r[k]=JSON.parse(v);}catch{r[k]=v;}}else{r[k]=v;} } return r; };
+    const parse = n => gs(n).map(fromRow);
     cb({ ingredienten:gs('Ingredienten'), lots:gs('Lots'), batches:gs('Batches'),
          batchIngredienten:gs('BatchIngredienten'), afvullingen:gs('Afvullingen'),
-         uitslagen:gs('Uitslagen'), accijns:gs('Accijns'), verpakkingen:gs('Verpakkingen') });
+         uitslagen:gs('Uitslagen'), accijns:gs('Accijns'), verpakkingen:gs('Verpakkingen'),
+         onderdelen:parse('Onderdelen'), voorraadLog:parse('VoorraadLog'), voorraadArchief:parse('VoorraadArchief'),
+         geslotenBieren:gs('GeslotenBieren'), recepten:parse('Recepten'), tanks:gs('Tanks'),
+         artikelen:parse('Artikelen'), hygieneItems:parse('HygieneItems'), hygieneGroups:parse('HygieneGroups'),
+         inkoopFacturen:parse('InkoopFacturen'), verkoopFacturen:parse('VerkoopFacturen') });
   };
   r.readAsArrayBuffer(file);
 };
@@ -9395,6 +9407,7 @@ function App() {
   const [hygieneGroups, setHygieneGroups] = useStore('hygiene_groups', DEFAULT_HYGIENE_GROUPS);
   const [lang, setLang] = useStore('app_lang', detectLang());
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
+  const [verkoopFacturen, setVerkoopFacturen] = useStore('verkoop_facturen', []);
   const [btwInst, setBtwInst] = useStore('btw_instellingen', {periode: 'kwartaal'});
   _lang = lang; // update global for t() — called synchronously during render
   const [page, setPage] = useState('dashboard');
@@ -9445,7 +9458,7 @@ function App() {
     })();
   }, [bfCreds?.enabled, bfCreds?.userId]);
 
-  const doExport = () => excelExport(ing,lots,bat,bi,av,uit,acc,verpakkingen);
+  const doExport = () => excelExport(ing,lots,bat,bi,av,uit,acc,verpakkingen,onderdelen,log,archief,geslotenBieren,recepten,tanks,artikelen,hygieneItems,hygieneGroups,inkoopFacturen,verkoopFacturen);
 
   const doImport = (e) => {
     const f = e.target.files?.[0];
@@ -9455,6 +9468,17 @@ function App() {
         setIng(d.ingredienten); setLots(d.lots); setBat(d.batches);
         setBi(d.batchIngredienten); setAv(d.afvullingen); setUit(d.uitslagen); setAcc(d.accijns);
         if (d.verpakkingen?.length) setVerpakkingen(d.verpakkingen);
+        if (d.onderdelen?.length) setOnderdelen(d.onderdelen);
+        if (d.voorraadLog?.length) setLog(d.voorraadLog);
+        if (d.voorraadArchief?.length) setArchief(d.voorraadArchief);
+        if (d.geslotenBieren?.length) setGeslotenBieren(d.geslotenBieren);
+        if (d.recepten?.length) setRecepten(d.recepten);
+        if (d.tanks?.length) setTanks(d.tanks);
+        if (d.artikelen?.length) setArtikelen(d.artikelen);
+        if (d.hygieneItems?.length) setHygieneItems(d.hygieneItems);
+        if (d.hygieneGroups?.length) setHygieneGroups(d.hygieneGroups);
+        if (d.inkoopFacturen?.length) setInkoopFacturen(d.inkoopFacturen);
+        if (d.verkoopFacturen?.length) setVerkoopFacturen(d.verkoopFacturen);
       }
     });
     e.target.value = '';
