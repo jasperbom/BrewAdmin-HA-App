@@ -3720,12 +3720,13 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
       const ingId = item.useNieuw ? '' : item.selectedIngId;
       const nieuwNaam = item.useNieuw ? (item.naam || '') : '';
       const naam = ingId ? (ing.find(i => i.id === Number(ingId))?.naam || '') : nieuwNaam;
+      const parseQty = v => { const s = String(v??'').replace(',','.'); const n = parseFloat(s); return isNaN(n) ? '' : String(n); };
       if (item.type === 'Verpakking') {
         // Route packaging items to verpakkingLijst (onderdelen), not ingrediënten
         if (!naam.trim()) return;
         setVerpakkingLijst(prev => [...prev, {
           od_id: '', naam, type: '', lotnr: item.lotnr || '',
-          aantal: String(item.qty ?? ''),
+          aantal: parseQty(item.qty),
           prijs_per_stuk: String(item.prijs ?? ''),
           totaalprijs: String(item.totaalprijs ?? ''),
           btw_tarief: String(item.btw_tarief ?? '21'),
@@ -3742,7 +3743,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
           type,
           fabrikant: '',
           lotnr: item.lotnr || '',
-          qty: String(item.qty ?? ''),
+          qty: parseQty(item.qty),
           eenh: item.eenh || 'kg',
           tht: item.tht || '',
           prijs: String(item.prijs ?? ''),
@@ -3879,11 +3880,21 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800 truncate">{item.naam}</p>
-                        <p className="text-xs text-gray-400">
-                          {item.qty && item.eenh ? `${item.qty} ${item.eenh}` : ''}
-                          {item.totaalprijs ? ` · €${item.totaalprijs}` : ''}
-                          {item.type ? ` · ${item.type}` : ''}
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <input type="number" value={item.qty ?? ''}
+                            onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,qty:e.target.value}:x))}
+                            className="w-20 border border-gray-200 rounded px-2 py-0.5 text-xs t-input"
+                            placeholder="Aantal" />
+                          {item.type !== 'Verpakking' && (
+                            <select value={item.eenh||'kg'}
+                              onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,eenh:e.target.value}:x))}
+                              className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input">
+                              {EENHEDEN.map(e=><option key={e} value={e}>{e}</option>)}
+                            </select>
+                          )}
+                          {item.totaalprijs ? <span className="text-xs text-gray-400">· €{item.totaalprijs}</span> : null}
+                          {item.type ? <span className="text-xs text-gray-400">· {item.type}</span> : null}
+                        </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         {badge}
