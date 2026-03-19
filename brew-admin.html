@@ -3258,8 +3258,10 @@ function parseFactuurTekstLokaal(text) {
     if (skipRE.test(line) || line.length < 8) continue;
     const tokens = line.split(/\s+/);
 
-    // Check for combined token like "25kg" and split it
+    // Check for combined token like "25kg" or "2x25kg" and split it
     for (let i = 0; i < tokens.length; i++) {
+      const cm2 = tokens[i].match(/^(\d+)[x×](\d+(?:[.,]\d+)?)(kg|g|l|liter|ml|stuks?|stk|pcs?|pkg|zakken?|bag)$/i);
+      if (cm2) { tokens.splice(i, 1, cm2[1], '×', cm2[2], cm2[3]); break; }
       const cm = tokens[i].match(/^(\d+(?:[.,]\d+)?)(kg|g|l|liter|ml|stuks?|stk|pcs?|pkg|zakken?|bag)$/i);
       if (cm) { tokens.splice(i, 1, cm[1], cm[2]); break; }
     }
@@ -3287,7 +3289,34 @@ function parseFactuurTekstLokaal(text) {
     const pm = afterUnit.match(/(\d+[.,]\d{2})\s*$/);
     const totaalprijs = pm ? parseNum(pm[1]) : null;
 
-    result.regels.push({ naam, type: classifyType(naam), qty, eenh, lotnr: null, tht: null, prijs: null, totaalprijs, btw_tarief: 9 });
+    // Detect aantal_stuks × inhoud_per_stuk pattern in the naam
+    // Case A: naam starts with "[number] [optional container word] ..."
+    // e.g., "2 zak Pilsner Mout" (qty=25) → aantal_stuks=2, inhoud_per_stuk=25, totalqty=50
+    // Case B: naam ends with "[number] ×" (from "2x25kg" token split)
+    // e.g., "Pilsner Mout 2 ×" (qty=25) → aantal_stuks=2, inhoud_per_stuk=25
+    let aantal_stuks = null;
+    let inhoud_per_stuk = null;
+    let finalQty = qty;
+    let finalNaam = naam;
+    const mStart = naam.match(/^(\d+(?:[.,]\d+)?)\s*(?:zakken?|bags?|zak|colli|pakketten?|stuks?|stk|pcs?|x)?\s+/i);
+    const mEnd   = naam.match(/^(.+?)\s+(\d+(?:[.,]\d+)?)\s*[×x]\s*$/i);
+    if (mStart) {
+      const stuksNum = parseNum(mStart[1]);
+      const rest = naam.slice(mStart[0].length).trim();
+      if (rest.length >= 3 && !/^[\d\s.,€\-]+$/.test(rest) && stuksNum > 0 && stuksNum !== qty) {
+        aantal_stuks = stuksNum; inhoud_per_stuk = qty;
+        finalQty = stuksNum * qty; finalNaam = rest;
+      }
+    } else if (mEnd) {
+      const stuksNum = parseNum(mEnd[2]);
+      const rest = mEnd[1].trim();
+      if (rest.length >= 3 && stuksNum > 0 && stuksNum !== qty) {
+        aantal_stuks = stuksNum; inhoud_per_stuk = qty;
+        finalQty = stuksNum * qty; finalNaam = rest;
+      }
+    }
+
+    result.regels.push({ naam: finalNaam, type: classifyType(finalNaam), qty: finalQty, eenh, lotnr: null, tht: null, prijs: null, totaalprijs, aantal_stuks, inhoud_per_stuk, btw_tarief: 9 });
   }
   return result;
 }
@@ -3842,6 +3871,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         setVerpakkingLijst(prev => [...prev, {
           od_id: '', naam, type: '', lotnr: item.lotnr || '',
           aantal: parseQty(item.qty),
+          inhoud_liter: item.inhoud_per_stuk ? String(item.inhoud_per_stuk) : '',
           prijs_per_stuk: String(item.prijs ?? ''),
           totaalprijs: String(item.totaalprijs ?? ''),
           btw_tarief: String(item.btw_tarief ?? '21'),
@@ -4015,7 +4045,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                           <input type="number" value={item.qty ?? ''}
                             onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,qty:e.target.value}:x))}
                             className="w-20 border border-gray-200 rounded px-2 py-0.5 text-xs t-input"
-                            placeholder="Aantal" />
+                            placeholder="Totaal" />
                           {item.type !== 'Verpakking' && (
                             <select value={item.eenh||'kg'}
                               onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,eenh:e.target.value}:x))}
@@ -4025,6 +4055,19 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                           )}
                           {item.totaalprijs ? <span className="text-xs text-gray-400">· €{item.totaalprijs}</span> : null}
                           {item.type ? <span className="text-xs text-gray-400">· {item.type}</span> : null}
+                        </div>
+                        {/* Stuks × inhoud per stuk */}
+                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                          <input type="number" value={item.aantal_stuks ?? ''}
+                            onChange={e=>{const v=e.target.value;setLinkItems(prev=>prev.map((x,i)=>{if(i!==idx)return x;const inhoud=x.inhoud_per_stuk;const newQty=v&&inhoud?String(parseFloat(v)*parseFloat(inhoud)):x.qty;return{...x,aantal_stuks:v,qty:newQty};}));}}
+                            className="w-14 border border-gray-200 rounded px-2 py-0.5 text-xs t-input"
+                            placeholder="stuks" />
+                          <span className="text-xs text-gray-400">×</span>
+                          <input type="number" value={item.inhoud_per_stuk ?? ''}
+                            onChange={e=>{const v=e.target.value;setLinkItems(prev=>prev.map((x,i)=>{if(i!==idx)return x;const aantal=x.aantal_stuks;const newQty=v&&aantal?String(parseFloat(aantal)*parseFloat(v)):x.qty;return{...x,inhoud_per_stuk:v,qty:newQty};}));}}
+                            className="w-14 border border-gray-200 rounded px-2 py-0.5 text-xs t-input"
+                            placeholder={item.type==='Verpakking'?'L/stuk':'inhoud/stuk'} />
+                          <span className="text-xs text-gray-400">{item.type==='Verpakking'?'L/stuk':(item.eenh||'kg')+'/stuk'}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
