@@ -7627,7 +7627,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[]}) {
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -7762,6 +7762,18 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [activeSection, setActiveSection] = React.useState('app');
   const [bijlagenJaar, setBijlagenJaar] = React.useState(new Date().getFullYear());
   const [bijlagenStatus, setBijlagenStatus] = React.useState('');
+  const bijlagenPerJaar = React.useMemo(() => {
+    const map = {};
+    inkoopFacturen.forEach(f => {
+      if (!f.bijlage?.bestand) return;
+      const year = (f.datum||'').slice(0,4);
+      if (year) map[year] = (map[year]||0) + 1;
+    });
+    return map;
+  }, [inkoopFacturen]);
+  const bijlagenJaren = React.useMemo(() =>
+    [...new Set([new Date().getFullYear(), ...Object.keys(bijlagenPerJaar).map(Number)])].sort((a,b)=>b-a).slice(0,5)
+  , [bijlagenPerJaar]);
   const navItems = [
     {id:'app',         label:t('settings_app'),          icon:'⚙️'},
     {id:'brouwerij',   label:t('settings_brewery'),     icon:'🏭'},
@@ -8286,35 +8298,38 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Jaar</label>
             <select value={bijlagenJaar} onChange={e=>setBijlagenJaar(Number(e.target.value))}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none t-input shadow-sm">
-              {Array.from({length:5},(_,i)=>new Date().getFullYear()-i).map(y=>(
-                <option key={y} value={y}>{y}</option>
+              {bijlagenJaren.map(y=>(
+                <option key={y} value={y}>{y}{bijlagenPerJaar[y] ? ` (${bijlagenPerJaar[y]} bijlage${bijlagenPerJaar[y]>1?'n':''})` : ' (geen bijlagen)'}</option>
               ))}
             </select>
           </div>
-          <button onClick={async()=>{
-            setBijlagenStatus('Bezig…');
-            try {
-              const resp = await fetch(`/api/download_bijlagen/${bijlagenJaar}`);
-              if (!resp.ok) {
-                const err = await resp.json().catch(()=>({}));
-                setBijlagenStatus(err.error==='no attachments found for this year'
-                  ? `Geen bijlagen gevonden voor ${bijlagenJaar}.`
-                  : 'Download mislukt.');
+          <button
+            disabled={!bijlagenPerJaar[bijlagenJaar] || bijlagenStatus==='Bezig…'}
+            onClick={async()=>{
+              setBijlagenStatus('Bezig…');
+              try {
+                const resp = await fetch(`/api/download_bijlagen/${bijlagenJaar}`);
+                const ct = resp.headers.get('content-type')||'';
+                if (ct.includes('zip')) {
+                  const blob = await resp.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `bijlagen_${bijlagenJaar}.zip`; a.click();
+                  URL.revokeObjectURL(url);
+                  setBijlagenStatus('');
+                } else {
+                  const err = await resp.json().catch(()=>({}));
+                  setBijlagenStatus(err.error==='no_bijlagen'
+                    ? `Geen bijlagen gevonden voor ${bijlagenJaar}.`
+                    : 'Download mislukt.');
+                  setTimeout(()=>setBijlagenStatus(''),4000);
+                }
+              } catch(e) {
+                setBijlagenStatus('Download mislukt.');
                 setTimeout(()=>setBijlagenStatus(''),4000);
-                return;
               }
-              const blob = await resp.blob();
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url; a.download = `bijlagen_${bijlagenJaar}.zip`; a.click();
-              URL.revokeObjectURL(url);
-              setBijlagenStatus('');
-            } catch(e) {
-              setBijlagenStatus('Download mislukt.');
-              setTimeout(()=>setBijlagenStatus(''),4000);
-            }
-          }}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-700 text-white rounded text-sm font-medium hover:bg-amber-800 transition-colors">
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-700 text-white rounded text-sm font-medium hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             ⬇ ZIP downloaden
           </button>
           {bijlagenStatus && <span className="text-sm text-gray-500">{bijlagenStatus}</span>}
@@ -8371,6 +8386,32 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [vrijeRegels, setVrijeRegels] = React.useState([{naam:'', netto:'', btw_tarief:21}]);
   const [vrijeFile, setVrijeFile] = React.useState(null);
   const [vrijeUploading, setVrijeUploading] = React.useState(false);
+  const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
+
+  const uploadBijlageVoorFactuur = async (factuurId, file) => {
+    setBijlageUploading(factuurId);
+    try {
+      const ext = (file.name.split('.').pop()||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const filename = `${factuurId}_${Date.now()}.${ext||'bin'}`;
+      const b64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(',')[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const resp = await fetch(`/api/upload/${filename}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({data: b64}),
+      });
+      if (resp.ok) {
+        setInkoopFacturen(prev => prev.map(f =>
+          f.id === factuurId ? {...f, bijlage: {naam: file.name, bestand: filename}} : f
+        ));
+      }
+    } catch(e) { console.error('Upload mislukt', e); }
+    setBijlageUploading(null);
+  };
 
   const knownLeveranciers = React.useMemo(() =>
     [...new Set(inkoopFacturen.map(f=>f.leverancier).filter(Boolean))].sort(), [inkoopFacturen]);
@@ -9064,17 +9105,35 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 ))}
                               </tbody>
                             </table>
-                            {f.bijlage?.bestand && (
-                              <div className="mt-3 pt-3 border-t border-gray-200">
-                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Bijlage</p>
-                                <a href={`/api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors group">
-                                  <span className="text-base">📎</span>
-                                  <span className="text-sm text-gray-700 group-hover:text-blue-700 font-medium">{f.bijlage.naam}</span>
-                                  <span className="text-xs text-gray-400 group-hover:text-blue-500 ml-1">↗ Openen</span>
-                                </a>
-                              </div>
-                            )}
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Bijlage</p>
+                              {f.bijlage?.bestand ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <a href={`/api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors group">
+                                    <span className="text-base">📎</span>
+                                    <span className="text-sm text-gray-700 group-hover:text-blue-700 font-medium">{f.bijlage.naam}</span>
+                                    <span className="text-xs text-gray-400 group-hover:text-blue-500 ml-1">↗ Openen</span>
+                                  </a>
+                                  <label className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 cursor-pointer px-2 py-1 rounded hover:bg-gray-100 transition-colors" title="Bijlage vervangen">
+                                    ↩ Vervangen
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
+                                      className="hidden"
+                                      onChange={e=>e.target.files?.[0] && uploadBijlageVoorFactuur(f.id, e.target.files[0])} />
+                                  </label>
+                                </div>
+                              ) : bijlageUploading===f.id ? (
+                                <span className="text-xs text-gray-500 italic">Uploaden…</span>
+                              ) : (
+                                <label className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer transition-colors">
+                                  <span>📎</span>
+                                  <span>Bijlage toevoegen</span>
+                                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
+                                    className="hidden"
+                                    onChange={e=>e.target.files?.[0] && uploadBijlageVoorFactuur(f.id, e.target.files[0])} />
+                                </label>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -9487,7 +9546,7 @@ function App() {
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} btwInst={btwInst} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} />}
       </main>
     </div>
   );

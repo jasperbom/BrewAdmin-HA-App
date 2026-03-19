@@ -608,7 +608,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 count += 1
 
         if count == 0:
-            self._json(404, {'error': 'no attachments found for this year'})
+            self._json(200, {'ok': False, 'error': 'no_bijlagen'})
             return
 
         body = buf.getvalue()
