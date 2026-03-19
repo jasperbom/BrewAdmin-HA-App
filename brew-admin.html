@@ -3497,6 +3497,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const emptyFactuur = {leverancier:'',factuur:'',datum:tod()};
   const emptyProduct = {ing_id:'',nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
   const [factuurForm, setFactuurForm] = useState(emptyFactuur);
+  const [ontvangstBijlage, setOntvangstBijlage] = useState(null);
+  const [ontvangstUploading, setOntvangstUploading] = useState(false);
   const [productForm, setProductForm] = useState(emptyProduct);
   const [productLijst, setProductLijst] = useState([]);
   const [ontvangstTab, setOntvangstTab] = useState('ingredienten');
@@ -3614,7 +3616,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     setVOntvForm(emptyVO);
   };
 
-  const saveOntvangst = () => {
+  const saveOntvangst = async () => {
     if (productLijst.length===0 && verpakkingLijst.length===0) { alert(t('err_min_one_product')); return; }
     let updatedIng = [...ing];
     const newLots = [];
@@ -3684,6 +3686,27 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     if (factuurRegels.length > 0) {
       const totaal_netto = factuurRegels.reduce((s,r)=>s+r.netto, 0);
       const totaal_btw   = factuurRegels.reduce((s,r)=>s+r.btw_bedrag, 0);
+      let bijlage = null;
+      if (ontvangstBijlage) {
+        setOntvangstUploading(true);
+        try {
+          const ext = (ontvangstBijlage.name.split('.').pop()||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+          const filename = `ontvangst_${Date.now()}.${ext||'bin'}`;
+          const b64 = await new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = () => res(reader.result.split(',')[1]);
+            reader.onerror = rej;
+            reader.readAsDataURL(ontvangstBijlage);
+          });
+          const resp = await fetch(`/api/upload/${filename}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({data: b64}),
+          });
+          if (resp.ok) bijlage = {naam: ontvangstBijlage.name, bestand: filename};
+        } catch(e) { console.error('Upload mislukt', e); }
+        setOntvangstUploading(false);
+      }
       setInkoopFacturen(prev=>[...prev, {
         id: newId(prev),
         datum: factuurForm.datum||tod(),
@@ -3691,10 +3714,11 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
         leverancier: factuurForm.leverancier||'',
         regels: factuurRegels,
         totaal_netto, totaal_btw, totaal_bruto: totaal_netto+totaal_btw,
+        bijlage,
       }]);
     }
     setShowO(false); setFactuurForm(emptyFactuur); setProductForm(emptyProduct); setProductLijst([]);
-    setVerpakkingLijst([]); setVOntvForm(emptyVO);
+    setVerpakkingLijst([]); setVOntvForm(emptyVO); setOntvangstBijlage(null);
   };
 
   const doAfboeken = (lot) => {
@@ -4094,6 +4118,21 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                 <Inp label={t('lbl_invoice')} value={factuurForm.factuur} onChange={v=>setFactuurForm(f=>({...f,factuur:v}))} placeholder="F-2025-001" />
                 <Inp label={t('ing_buy_date')} type="date" value={factuurForm.datum} onChange={v=>setFactuurForm(f=>({...f,datum:v}))} />
               </div>
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Bijlage (optioneel)</label>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer">
+                    <span>📎</span>
+                    <span>{ontvangstBijlage ? ontvangstBijlage.name : 'Bestand kiezen…'}</span>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
+                      className="hidden"
+                      onChange={e=>setOntvangstBijlage(e.target.files?.[0]||null)} />
+                  </label>
+                  {ontvangstBijlage && (
+                    <button onClick={()=>setOntvangstBijlage(null)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Tabs: Ingrediënten / Verpakkingen */}
@@ -4273,7 +4312,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <span className="text-sm text-gray-500">{t('modal_products_ready').replace('{n}',productLijst.length + verpakkingLijst.length)}</span>
               <div className="flex gap-2">
                 <Btn v="secondary" onClick={()=>setShowO(false)}>{t('btn_cancel')}</Btn>
-                <Btn onClick={saveOntvangst} disabled={productLijst.length===0 && verpakkingLijst.length===0}>{t('btn_save')}</Btn>
+                <Btn onClick={saveOntvangst} disabled={(productLijst.length===0 && verpakkingLijst.length===0)||ontvangstUploading}>{ontvangstUploading?'Uploaden…':t('btn_save')}</Btn>
               </div>
             </div>
           </div>
@@ -8278,6 +8317,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
   const [vrijeForm, setVrijeForm] = React.useState({leverancier:'', factuurnummer:'', datum: now.toISOString().slice(0,10)});
   const [vrijeRegels, setVrijeRegels] = React.useState([{naam:'', netto:'', btw_tarief:21}]);
+  const [vrijeFile, setVrijeFile] = React.useState(null);
+  const [vrijeUploading, setVrijeUploading] = React.useState(false);
 
   const totals = React.useMemo(() => orders.reduce((acc, o) => {
     acc.omzet  += parseFloat(o.total||0) - parseFloat(o.total_tax||0);
@@ -8387,11 +8428,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   const deleteFactuur = (id) => {
     if (!confirm('Inkoop factuur verwijderen?')) return;
+    const f = inkoopFacturen.find(x=>x.id===id);
+    if (f?.bijlage?.bestand) {
+      fetch(`/api/delete_upload/${f.bijlage.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
+    }
     setInkoopFacturen(prev => prev.filter(f=>f.id!==id));
     if (expandedFactuur===id) setExpandedFactuur(null);
   };
 
-  const saveVrijeFactuur = () => {
+  const saveVrijeFactuur = async () => {
     const regels = vrijeRegels
       .filter(r => r.naam.trim() && parseFloat(r.netto) > 0)
       .map(r => {
@@ -8403,8 +8448,30 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     if (!regels.length) return;
     const totaal_netto = regels.reduce((s,r)=>s+r.netto, 0);
     const totaal_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    const invoiceId = newId(inkoopFacturen);
+    let bijlage = null;
+    if (vrijeFile) {
+      setVrijeUploading(true);
+      try {
+        const ext = (vrijeFile.name.split('.').pop()||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+        const filename = `${invoiceId}_${Date.now()}.${ext||'bin'}`;
+        const b64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result.split(',')[1]);
+          r.onerror = rej;
+          r.readAsDataURL(vrijeFile);
+        });
+        const resp = await fetch(`/api/upload/${filename}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({data: b64}),
+        });
+        if (resp.ok) bijlage = {naam: vrijeFile.name, bestand: filename};
+      } catch(e) { console.error('Upload mislukt', e); }
+      setVrijeUploading(false);
+    }
     setInkoopFacturen(prev => [...prev, {
-      id: newId(prev),
+      id: invoiceId,
       datum: vrijeForm.datum || now.toISOString().slice(0,10),
       factuurnummer: vrijeForm.factuurnummer || '',
       leverancier: vrijeForm.leverancier || '',
@@ -8412,10 +8479,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       totaal_netto,
       totaal_btw,
       totaal_bruto: totaal_netto + totaal_btw,
+      bijlage,
     }]);
     setShowVrijeFactuur(false);
     setVrijeForm({leverancier:'', factuurnummer:'', datum: now.toISOString().slice(0,10)});
     setVrijeRegels([{naam:'', netto:'', btw_tarief:21}]);
+    setVrijeFile(null);
   };
 
   // ── Aangiftes helpers ──────────────────────────────────────────────────────
@@ -8796,17 +8865,35 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   );
                 })()}
               </div>
-              <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
-                <button onClick={()=>setShowVrijeFactuur(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium">Annuleren</button>
-                <button onClick={saveVrijeFactuur}
-                  disabled={!vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0)}
-                  className="px-5 py-2 tbtn rounded-xl text-sm font-semibold disabled:opacity-40 transition-colors">
-                  Opslaan
-                </button>
+
+              {/* Bijlage toevoegen */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Bijlage (optioneel)</label>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 cursor-pointer">
+                    <span>📎</span>
+                    <span>{vrijeFile ? vrijeFile.name : 'Bestand kiezen…'}</span>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
+                      className="hidden"
+                      onChange={e=>setVrijeFile(e.target.files?.[0]||null)} />
+                  </label>
+                  {vrijeFile && (
+                    <button onClick={()=>setVrijeFile(null)} className="text-gray-400 hover:text-red-500 text-sm">✕</button>
+                  )}
+                </div>
               </div>
             </div>
+            <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={()=>{setShowVrijeFactuur(false);setVrijeFile(null);}}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium">Annuleren</button>
+              <button onClick={saveVrijeFactuur}
+                disabled={vrijeUploading||!vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0)}
+                className="px-5 py-2 tbtn rounded-xl text-sm font-semibold disabled:opacity-40 transition-colors">
+                {vrijeUploading ? 'Uploaden…' : 'Opslaan'}
+              </button>
+            </div>
           </div>
+        </div>
         )}
 
         {/* Samenvattingskaartjes inkoop */}
@@ -8867,7 +8954,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.totaal_netto||0)}</td>
                       <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.totaal_btw||0)}</td>
                       <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.totaal_bruto||0)}</td>
-                      <td className="py-2 text-right">
+                      <td className="py-2 text-right whitespace-nowrap">
+                        {f.bijlage?.bestand && (
+                          <a href={`/api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
+                            onClick={e=>e.stopPropagation()}
+                            title={f.bijlage.naam}
+                            className="text-gray-400 hover:text-blue-600 text-sm transition-colors px-1">📎</a>
+                        )}
                         <button onClick={e=>{e.stopPropagation();deleteFactuur(f.id);}}
                           className="text-gray-300 hover:text-red-500 text-xs transition-colors px-1">✕</button>
                       </td>
@@ -8913,6 +9006,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 ))}
                               </tbody>
                             </table>
+                            {f.bijlage?.bestand && (
+                              <div className="mt-2 pt-2 border-t border-gray-200">
+                                <a href={`/api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium">
+                                  <span>📎</span>
+                                  <span>{f.bijlage.naam}</span>
+                                </a>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
