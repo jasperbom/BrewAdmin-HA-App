@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.5.0]
+
+### Added
+- **Boekhouding (Accounting) page** — new navigation item and module for purchase invoice management
+- **Purchase invoice attachments** — upload PDF or image files (JPG, PNG, WEBP, GIF, TIFF, BMP, HEIC) to individual invoices; download all attachments for a given year as a ZIP
+- **Packaging components** — define and manage individual packaging components (bottle, cap, label, etc.) with type, cost per unit and available quantity; assign components with qty-per-unit to packaging types
+- **Excise duty declaration view** — grouped month view with month totals, rate per litre display, one-click mark-all-paid per month and collapse/expand per month
+- **App branding settings** — customise the app name shown in the navigation bar alongside the logo
+- Separate **Webshop** tab in Settings sidebar for WooCommerce configuration
+- New server endpoints: `POST /api/upload/<filename>`, `GET /api/file/<filename>`, `POST /api/delete_upload/<filename>`, `GET /api/download_bijlagen/<year>`
+
+### Changed
+- Settings → Logo section renamed to **Branding**; now also exposes the app-name field
+- Settings sidebar split: WooCommerce moved to its own **Webshop** tab, separate from **Brewery**
+
+---
+
 ## [1.4.0]
 
 ### Added
