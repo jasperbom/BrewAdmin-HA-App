@@ -3195,12 +3195,101 @@ async function extractPdfText(file) {
     for (let p = 1; p <= pages; p++) {
       const page = await pdf.getPage(p);
       const content = await page.getTextContent();
-      text += content.items.map(item => item.str).join(' ') + '\n';
+      // Group items by y-coordinate to reconstruct lines
+      const byLine = {};
+      for (const item of content.items) {
+        const y = Math.round(item.transform[5]);
+        if (!byLine[y]) byLine[y] = [];
+        byLine[y].push(item);
+      }
+      // Sort lines top-to-bottom (desc y), items left-to-right (asc x)
+      const sortedYs = Object.keys(byLine).map(Number).sort((a, b) => b - a);
+      for (const y of sortedYs) {
+        const lineText = byLine[y]
+          .sort((a, b) => a.transform[4] - b.transform[4])
+          .map(i => i.str).join(' ').trim();
+        if (lineText) text += lineText + '\n';
+      }
     }
     return text.trim();
   } catch(e) {
     return '';
   }
+}
+
+function parseFactuurTekstLokaal(text) {
+  const result = { leverancier: null, factuurnummer: null, datum: null, regels: [], _source: 'lokaal' };
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // Datum
+  for (const line of lines) {
+    const m = line.match(/\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b/);
+    if (m) { result.datum = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; break; }
+    const m2 = line.match(/\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b/);
+    if (m2) { result.datum = `${m2[1]}-${m2[2]}-${m2[3]}`; break; }
+  }
+
+  // Factuurnummer
+  const fnm = text.match(/(?:factuur\s*(?:nr\.?|nummer|no\.?)\s*[:\s]+|invoice\s*(?:no\.?|nr\.?|#)\s*)([A-Z0-9][A-Z0-9\-\/\.]{2,20})/i);
+  if (fnm) result.factuurnummer = fnm[1].trim();
+
+  const UNIT_LIST = ['kg','kilogram','g','gr','gram','l','liter','litre','ltr','ml','mL','milliliter','stuks','stuk','st','stk','pcs','pkg','zakken','zak','bags','bag','colli'];
+  const normUnit = raw => {
+    const r = raw.toLowerCase();
+    if (['kg','kilogram'].includes(r)) return 'kg';
+    if (['g','gr','gram'].includes(r)) return 'g';
+    if (['l','liter','litre','ltr'].includes(r)) return 'L';
+    if (['ml','mL','milliliter'].includes(r)) return 'mL';
+    return 'stuks';
+  };
+  const classifyType = naam => {
+    const n = naam.toLowerCase();
+    if (/\b(mout|malt|pilsner|munich|cara|crystal|wheat|tarwe|gerst|barley|biscuit|amber|vienna|chocolate|roast|pale ale|base malt)\b/.test(n)) return 'Mout';
+    if (/\b(hop\b|hops\b|pellets|cascade|hallertau|saaz|citra|centennial|simcoe|amarillo|fuggles|goldings|magnum|perle|chinook|mosaic)\b/.test(n)) return 'Hop';
+    if (/\b(gist|yeast|saccharomyces|kveik|fermentis|safale|saflager)\b/.test(n)) return 'Gist';
+    if (/\b(suiker|sugar|kandij|dextrose|glucose|fructose|stroop|invert)\b/.test(n)) return 'Suiker';
+    if (/\b(fles|bottle|keg|vat|doos|cap|kroon|crown|etiket|label|sluiting|closure|can|blik)\b/.test(n)) return 'Verpakking';
+    return 'Overig';
+  };
+  const parseNum = s => parseFloat(String(s).replace(/\./g,'').replace(',','.'));
+  const skipRE = /^(omschr|beschr|product|artikel|totaal|subtotaal|btw|vat\b|tax\b|porto|verzend|transport|korting|discount|betalings|iban|kvk|bank\b|reken|saldo|afger|te betalen|pagina|page\b|datum\b|date\b|lever|klant|adres|e-mail|telefoon|fax|debiteur)/i;
+
+  for (const line of lines) {
+    if (skipRE.test(line) || line.length < 8) continue;
+    const tokens = line.split(/\s+/);
+
+    // Check for combined token like "25kg" and split it
+    for (let i = 0; i < tokens.length; i++) {
+      const cm = tokens[i].match(/^(\d+(?:[.,]\d+)?)(kg|g|l|liter|ml|stuks?|stk|pcs?|pkg|zakken?|bag)$/i);
+      if (cm) { tokens.splice(i, 1, cm[1], cm[2]); break; }
+    }
+
+    // Find rightmost unit token with a numeric token directly before it
+    let unitIdx = -1;
+    for (let i = tokens.length - 1; i >= 1; i--) {
+      if (UNIT_LIST.includes(tokens[i].toLowerCase()) && /^\d+(?:[.,]\d+)?$/.test(tokens[i-1])) {
+        unitIdx = i; break;
+      }
+    }
+    if (unitIdx === -1) continue;
+
+    const qty = parseNum(tokens[unitIdx - 1]);
+    const eenh = normUnit(tokens[unitIdx]);
+
+    // Name: tokens before qty, strip leading article-code (pure number)
+    const nameParts = tokens.slice(0, unitIdx - 1);
+    if (nameParts.length > 1 && /^\d+\.?$/.test(nameParts[0])) nameParts.shift();
+    const naam = nameParts.join(' ').replace(/[€\-\s]+$/, '').trim();
+    if (naam.length < 3 || /^[\d\s€\.,\-]+$/.test(naam) || skipRE.test(naam)) continue;
+
+    // Total price: last number with 2 decimals after the unit
+    const afterUnit = tokens.slice(unitIdx + 1).join(' ');
+    const pm = afterUnit.match(/(\d+[.,]\d{2})\s*$/);
+    const totaalprijs = pm ? parseNum(pm[1]) : null;
+
+    result.regels.push({ naam, type: classifyType(naam), qty, eenh, lotnr: null, tht: null, prijs: null, totaalprijs, btw_tarief: 9 });
+  }
+  return result;
 }
 
 async function fileToBase64(file) {
@@ -3250,16 +3339,20 @@ Analyseer de factuur en geef ALLEEN een JSON object terug (geen uitleg, geen mar
 Neem alleen regels op met ingrediënten of producten (geen verzendkosten, btw-regels, etc.).`;
 
 async function scanFactuurBestand(file, claudeApiKey) {
-  if (!claudeApiKey) throw new Error('Geen Claude API-sleutel ingesteld (Instellingen → Claude AI)');
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   let messages;
   if (isPdf) {
     const text = await extractPdfText(file);
     if (text.length > 120) {
-      // Searchable PDF — send as text
+      // First try local parsing — no Claude needed
+      const local = parseFactuurTekstLokaal(text);
+      if (local.regels.length > 0) return local;
+      // Local parse yielded no products → fall back to Claude with the extracted text
+      if (!claudeApiKey) throw new Error('Geen productregels gevonden in de PDF. Voeg een Claude API-sleutel toe voor AI-scanning (Instellingen → Claude AI).');
       messages = [{role: 'user', content: `${CLAUDE_INVOICE_PROMPT}\n\nFactuurtekst:\n${text.slice(0, 8000)}`}];
     } else {
-      // Scanned PDF — send as document to Claude
+      // Scanned/image PDF — Claude with document vision
+      if (!claudeApiKey) throw new Error('Dit is een gescande PDF zonder leesbare tekst. Claude AI is nodig om afbeeldingen te lezen (Instellingen → Claude AI).');
       const b64 = await fileToBase64(file);
       messages = [{role: 'user', content: [
         {type: 'document', source: {type: 'base64', media_type: 'application/pdf', data: b64}},
@@ -3267,7 +3360,8 @@ async function scanFactuurBestand(file, claudeApiKey) {
       ]}];
     }
   } else {
-    // Image file — send as vision
+    // Image file — Claude vision only
+    if (!claudeApiKey) throw new Error('Geen Claude API-sleutel ingesteld (Instellingen → Claude AI).');
     const b64 = await fileToBase64(file);
     const mt = file.type || 'image/jpeg';
     messages = [{role: 'user', content: [
@@ -3283,7 +3377,7 @@ async function scanFactuurBestand(file, claudeApiKey) {
   const raw = result.content?.[0]?.text || '';
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('Geen JSON in Claude respons');
-  return JSON.parse(m[0]);
+  return { ...JSON.parse(m[0]), _source: 'claude' };
 }
 
 // Sync state — use Sets so re-renders don't inflate counters
@@ -3655,6 +3749,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   // Factuur scan state
   const [scanStap, setScanStap] = useState('idle'); // 'idle' | 'scannen' | 'koppelen'
   const [scanFout, setScanFout] = useState(null);
+  const [scanBron, setScanBron] = useState(''); // 'lokaal' | 'claude'
   const [linkItems, setLinkItems] = useState([]); // [{...extractedRegel, matchType, matchIng, suggestions, selectedIngId, useNieuw}]
 
   const leverancier = leverancierSel === '__nieuw__' ? leverancierNieuw.trim() : leverancierSel;
@@ -3704,9 +3799,10 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
           useNieuw: match.type === 'new',
         };
       });
+      setScanBron(data._source === 'lokaal' ? 'lokaal' : 'claude');
       setLinkItems(items);
       setScanStap(items.length ? 'koppelen' : 'idle');
-      if (!items.length) setScanFout('Claude heeft geen productregels gevonden in de factuur.');
+      if (!items.length) setScanFout(data._source === 'lokaal' ? 'Geen productregels gevonden in de PDF. Probeer Claude AI (Instellingen → Claude AI).' : 'Claude heeft geen productregels gevonden in de factuur.');
     } catch(e) {
       setScanFout(e.message || 'Scan mislukt');
       setScanStap('idle');
@@ -3836,15 +3932,18 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   className="hidden" onChange={e=>setBijlageFile(e.target.files?.[0]||null)} />
               </label>
               {bijlageFile && <button onClick={()=>setBijlageFile(null)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
-              {bijlageFile && claudeCreds?.enabled && claudeCreds?.apiKey && scanStap === 'idle' && (
-                <button onClick={doScanFactuur}
-                  className="flex items-center gap-1.5 px-3 py-1.5 tbtn rounded-lg text-xs font-medium">
-                  🤖 Scan factuur
-                </button>
-              )}
-              {bijlageFile && (!claudeCreds?.enabled || !claudeCreds?.apiKey) && (
-                <span className="text-xs text-gray-400 italic">Claude AI niet ingesteld (Instellingen → Claude AI)</span>
-              )}
+              {bijlageFile && scanStap === 'idle' && (() => {
+                const isPdf = bijlageFile.type === 'application/pdf' || bijlageFile.name.toLowerCase().endsWith('.pdf');
+                const hasClaude = claudeCreds?.enabled && claudeCreds?.apiKey;
+                if (isPdf || hasClaude) return (
+                  <button onClick={doScanFactuur}
+                    className="flex items-center gap-1.5 px-3 py-1.5 tbtn rounded-lg text-xs font-medium"
+                    title={isPdf ? 'Probeert eerst lokale PDF-extractie, daarna Claude AI als fallback' : 'Scan met Claude AI'}>
+                    {isPdf ? '📄' : '🤖'} Scan factuur
+                  </button>
+                );
+                return <span className="text-xs text-gray-400 italic">Claude AI niet ingesteld (Instellingen → Claude AI)</span>;
+              })()}
             </div>
             {scanStap === 'scannen' && (
               <div className="mt-2 flex items-center gap-2 text-sm text-amber-700">
@@ -3862,8 +3961,10 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         {scanStap === 'koppelen' && linkItems.length > 0 && (
           <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide flex items-center gap-2">
                 🔗 Producten koppelen ({linkItems.length} gevonden)
+                {scanBron === 'lokaal' && <span className="font-normal normal-case text-green-700">· 📄 lokaal geparst</span>}
+                {scanBron === 'claude' && <span className="font-normal normal-case text-blue-700">· 🤖 Claude AI</span>}
               </p>
               <button onClick={()=>{setScanStap('idle');setLinkItems([]);}} className="text-gray-400 hover:text-gray-600 text-xs">✕ Annuleren</button>
             </div>
