@@ -39,6 +39,7 @@
     };
   </script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
 <script>
 // BrewAdmin — Translations (inlined)
 window.BREW_TRANS = {};
@@ -3163,6 +3164,128 @@ const API_BASE = (() => {
 // Must be relative so it works both directly and via HA Ingress.
 const ADDON_BASE = API_BASE.replace('api/data/', '');
 
+// ── PDF.js worker init ──────────────────────────────────────────────────────
+if (window.pdfjsLib) {
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+}
+
+// ── Claude / PDF helpers ────────────────────────────────────────────────────
+
+async function callClaudeProxy(body) {
+  const r = await fetch(`${ADDON_BASE}api/claude/messages`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+async function extractPdfText(file) {
+  if (!window.pdfjsLib) return '';
+  try {
+    const ab = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({data: ab}).promise;
+    let text = '';
+    const pages = Math.min(pdf.numPages, 6);
+    for (let p = 1; p <= pages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(' ') + '\n';
+    }
+    return text.trim();
+  } catch(e) {
+    return '';
+  }
+}
+
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = e => res(e.target.result.split(',')[1]);
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+function matchIngredient(naam, ingList) {
+  const norm = s => s.toLowerCase().trim().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
+  const n = norm(naam);
+  const exact = ingList.find(i => norm(i.naam) === n);
+  if (exact) return {type: 'exact', ing: exact};
+  const scored = ingList.map(i => {
+    const iw = norm(i.naam).split(' ');
+    const nw = n.split(' ');
+    const overlap = nw.filter(w => w.length > 2 && iw.some(iw2 => iw2.includes(w) || w.includes(iw2))).length;
+    return {ing: i, score: overlap / Math.max(nw.length, iw.length, 1)};
+  }).filter(x => x.score > 0.3).sort((a, b) => b.score - a.score);
+  if (scored.length) return {type: 'fuzzy', ing: scored[0].ing, suggestions: scored.slice(0, 4).map(x => x.ing)};
+  return {type: 'new'};
+}
+
+const CLAUDE_INVOICE_PROMPT = `Je bent een assistent die factuurgegevens extraheert voor een brouwerij.
+Analyseer de factuur en geef ALLEEN een JSON object terug (geen uitleg, geen markdown):
+{
+  "leverancier": "naam leverancier of null",
+  "factuurnummer": "factuurnummer of null",
+  "datum": "YYYY-MM-DD of null",
+  "regels": [
+    {
+      "naam": "productnaam",
+      "type": "Mout of Hop of Gist of Suiker of Chemisch of Verpakking of Overig",
+      "qty": nummer of null,
+      "eenh": "kg of g of L of mL of stuks",
+      "lotnr": "lotnummer of null",
+      "tht": "YYYY-MM-DD of null",
+      "prijs": prijs_per_eenheid_excl_btw of null,
+      "totaalprijs": totaal_excl_btw of null,
+      "btw_tarief": 9 of 21 of 0
+    }
+  ]
+}
+Neem alleen regels op met ingrediënten of producten (geen verzendkosten, btw-regels, etc.).`;
+
+async function scanFactuurBestand(file, claudeApiKey) {
+  if (!claudeApiKey) throw new Error('Geen Claude API-sleutel ingesteld (Instellingen → Claude AI)');
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  let messages;
+  if (isPdf) {
+    const text = await extractPdfText(file);
+    if (text.length > 120) {
+      // Searchable PDF — send as text
+      messages = [{role: 'user', content: `${CLAUDE_INVOICE_PROMPT}\n\nFactuurtekst:\n${text.slice(0, 8000)}`}];
+    } else {
+      // Scanned PDF — send as document to Claude
+      const b64 = await fileToBase64(file);
+      messages = [{role: 'user', content: [
+        {type: 'document', source: {type: 'base64', media_type: 'application/pdf', data: b64}},
+        {type: 'text', text: CLAUDE_INVOICE_PROMPT},
+      ]}];
+    }
+  } else {
+    // Image file — send as vision
+    const b64 = await fileToBase64(file);
+    const mt = file.type || 'image/jpeg';
+    messages = [{role: 'user', content: [
+      {type: 'image', source: {type: 'base64', media_type: mt, data: b64}},
+      {type: 'text', text: CLAUDE_INVOICE_PROMPT},
+    ]}];
+  }
+  const result = await callClaudeProxy({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 2000,
+    messages,
+  });
+  const raw = result.content?.[0]?.text || '';
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Geen JSON in Claude respons');
+  return JSON.parse(m[0]);
+}
+
 // Sync state — use Sets so re-renders don't inflate counters
 const _allKeys     = new Set(); // all store keys registered (deduped)
 const _fetchedKeys = new Set(); // keys whose initial server fetch has resolved
@@ -3505,7 +3628,7 @@ const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-m
 // ═══════════════════════════════════════════════════════════════
 // Gedeeld Inkoop Factuur formulier — gebruikt op Ingrediënten- én Administratiepagina
 // ═══════════════════════════════════════════════════════════════
-function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='' }) {
+function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='', claudeCreds=null }) {
   const emptyProduct = {ing_id:initialIngId,nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
   const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'};
 
@@ -3529,6 +3652,11 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   // Vrije regels tab
   const [vrijeRegels, setVrijeRegels] = useState([{naam:'', netto:'', btw_tarief:21}]);
 
+  // Factuur scan state
+  const [scanStap, setScanStap] = useState('idle'); // 'idle' | 'scannen' | 'koppelen'
+  const [scanFout, setScanFout] = useState(null);
+  const [linkItems, setLinkItems] = useState([]); // [{...extractedRegel, matchType, matchIng, suggestions, selectedIngId, useNieuw}]
+
   const leverancier = leverancierSel === '__nieuw__' ? leverancierNieuw.trim() : leverancierSel;
   const factuurForm = {leverancier, factuur: factuurNr, datum};
 
@@ -3548,6 +3676,69 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
       : vOntvForm.naam.trim();
     setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
     setVOntvForm(emptyVO);
+  };
+
+  const doScanFactuur = async () => {
+    if (!bijlageFile) return;
+    setScanStap('scannen'); setScanFout(null);
+    try {
+      const data = await scanFactuurBestand(bijlageFile, claudeCreds?.apiKey);
+      // Auto-fill invoice fields if still empty
+      if (data.leverancier && !leverancierNieuw && leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
+        const known = knownLeveranciers.find(l => l.toLowerCase() === data.leverancier.toLowerCase());
+        if (known) setLeverancierSel(known);
+        else { setLeverancierSel('__nieuw__'); setLeverancierNieuw(data.leverancier); }
+      }
+      if (data.factuurnummer && !factuurNr) setFactuurNr(data.factuurnummer);
+      if (data.datum && datum === tod()) setDatum(data.datum);
+      // Build link items
+      const ingFiltered = ing.filter(i => i.beschikbaar !== false);
+      const items = (data.regels || []).map(r => {
+        const match = matchIngredient(r.naam || '', ingFiltered.filter(i => !r.type || i.type === r.type));
+        return {
+          ...r,
+          matchType: match.type,
+          matchIng: match.ing || null,
+          suggestions: match.suggestions || [],
+          selectedIngId: match.type !== 'new' ? String(match.ing.id) : '',
+          useNieuw: match.type === 'new',
+        };
+      });
+      setLinkItems(items);
+      setScanStap(items.length ? 'koppelen' : 'idle');
+      if (!items.length) setScanFout('Claude heeft geen productregels gevonden in de factuur.');
+    } catch(e) {
+      setScanFout(e.message || 'Scan mislukt');
+      setScanStap('idle');
+    }
+  };
+
+  const bevestigKoppeling = () => {
+    linkItems.forEach(item => {
+      const ingId = item.useNieuw ? '' : item.selectedIngId;
+      const nieuwNaam = item.useNieuw ? (item.naam || '') : '';
+      const naam = ingId ? (ing.find(i => i.id === Number(ingId))?.naam || '') : nieuwNaam;
+      const prod = {
+        ing_id: ingId,
+        nieuw: nieuwNaam,
+        type: item.type || 'Mout',
+        fabrikant: '',
+        lotnr: item.lotnr || '',
+        qty: String(item.qty ?? ''),
+        eenh: item.eenh || 'kg',
+        tht: item.tht || '',
+        prijs: String(item.prijs ?? ''),
+        totaalprijs: String(item.totaalprijs ?? ''),
+        btw_tarief: String(item.btw_tarief ?? '9'),
+        _naam: naam,
+        _id: Date.now() + Math.random(),
+      };
+      if (!prod.ing_id && !prod.nieuw.trim()) return; // skip invalid
+      setProductLijst(prev => [...prev, prod]);
+    });
+    setLinkItems([]);
+    setScanStap('idle');
+    setTab('ingredienten');
   };
 
   const handleSave = async () => {
@@ -3624,9 +3815,97 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   className="hidden" onChange={e=>setBijlageFile(e.target.files?.[0]||null)} />
               </label>
               {bijlageFile && <button onClick={()=>setBijlageFile(null)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
+              {bijlageFile && claudeCreds?.enabled && claudeCreds?.apiKey && scanStap === 'idle' && (
+                <button onClick={doScanFactuur}
+                  className="flex items-center gap-1.5 px-3 py-1.5 tbtn rounded-lg text-xs font-medium">
+                  🤖 Scan factuur
+                </button>
+              )}
+              {bijlageFile && (!claudeCreds?.enabled || !claudeCreds?.apiKey) && (
+                <span className="text-xs text-gray-400 italic">Claude AI niet ingesteld (Instellingen → Claude AI)</span>
+              )}
             </div>
+            {scanStap === 'scannen' && (
+              <div className="mt-2 flex items-center gap-2 text-sm text-amber-700">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                Factuur wordt gescand…
+              </div>
+            )}
+            {scanFout && (
+              <p className="mt-2 text-xs text-red-600">⚠ {scanFout}</p>
+            )}
           </div>
         </div>
+
+        {/* ── Koppeling stap (na scan) ── */}
+        {scanStap === 'koppelen' && linkItems.length > 0 && (
+          <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+                🔗 Ingrediënten koppelen ({linkItems.length} gevonden)
+              </p>
+              <button onClick={()=>{setScanStap('idle');setLinkItems([]);}} className="text-gray-400 hover:text-gray-600 text-xs">✕ Annuleren</button>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {linkItems.map((item, idx) => {
+                const badge = item.useNieuw
+                  ? <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">Nieuw</span>
+                  : item.matchType === 'exact'
+                    ? <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Exact</span>
+                    : <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Suggestie</span>;
+                const ingOptions = ing.filter(i => !item.type || i.type === item.type);
+                return (
+                  <div key={idx} className="bg-white rounded-lg border border-amber-100 p-2 flex flex-col gap-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{item.naam}</p>
+                        <p className="text-xs text-gray-400">
+                          {item.qty && item.eenh ? `${item.qty} ${item.eenh}` : ''}
+                          {item.totaalprijs ? ` · €${item.totaalprijs}` : ''}
+                          {item.type ? ` · ${item.type}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {badge}
+                        <button
+                          onClick={()=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,useNieuw:!x.useNieuw,selectedIngId:x.useNieuw&&x.matchIng?String(x.matchIng.id):''}:x))}
+                          className="text-xs text-blue-600 hover:text-blue-800 underline">
+                          {item.useNieuw ? 'Koppel aan bestaand' : 'Als nieuw'}
+                        </button>
+                        <button onClick={()=>setLinkItems(prev=>prev.filter((_,i)=>i!==idx))}
+                          className="text-gray-300 hover:text-red-500 text-xs">✕</button>
+                      </div>
+                    </div>
+                    {!item.useNieuw && (
+                      <select
+                        value={item.selectedIngId}
+                        onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,selectedIngId:e.target.value,useNieuw:!e.target.value}:x))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input">
+                        <option value="">— Kies bestaand ingrediënt —</option>
+                        {[...ingOptions].sort((a,b)=>a.naam.localeCompare(b.naam,'nl')).map(i=>(
+                          <option key={i.id} value={String(i.id)}>{i.naam}{i.fabrikant?` (${i.fabrikant})`:''}</option>
+                        ))}
+                      </select>
+                    )}
+                    {item.useNieuw && (
+                      <input type="text" value={item.naam}
+                        onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,naam:e.target.value}:x))}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input"
+                        placeholder="Naam nieuw ingrediënt" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-2 border-t border-amber-200">
+              <p className="text-xs text-amber-700">Controleer de koppelingen en klik op Verwerken.</p>
+              <button onClick={bevestigKoppeling}
+                className="px-4 py-1.5 tbtn rounded text-xs font-semibold">
+                ✓ Verwerken ({linkItems.length})
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Tabs ── */}
         <div className="flex border-b border-gray-200">
@@ -3860,7 +4139,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
 }
 
 // ===== INGREDIËNTEN =====
-function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}}) {
+function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}, claudeCreds=null}) {
   const [tab, setTab] = useState('ingredienten');
 
   // --- Ingrediënten state ---
@@ -4449,6 +4728,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           initialIngId={ontvangstInitIngId}
           onSave={saveOntvangst}
           onClose={()=>setShowO(false)}
+          claudeCreds={claudeCreds}
         />
       )}
 
@@ -7754,7 +8034,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[]}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}}) {
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -7901,11 +8181,28 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const bijlagenJaren = React.useMemo(() =>
     [...new Set([new Date().getFullYear(), ...Object.keys(bijlagenPerJaar).map(Number)])].sort((a,b)=>b-a).slice(0,5)
   , [bijlagenPerJaar]);
+  // Claude AI settings state
+  const [claudeForm, setClaudeForm] = React.useState({apiKey: claudeCreds?.apiKey||'', enabled: claudeCreds?.enabled||false});
+  const claudeFormInit = React.useRef(false);
+  React.useEffect(() => {
+    if (!claudeFormInit.current && (claudeCreds?.apiKey || claudeCreds?.enabled)) {
+      setClaudeForm({apiKey: claudeCreds.apiKey||'', enabled: claudeCreds.enabled||false});
+      claudeFormInit.current = true;
+    }
+  }, [claudeCreds?.apiKey, claudeCreds?.enabled]);
+  const [claudeMsg, setClaudeMsg] = React.useState('');
+  const saveClaude = () => {
+    setClaudeCreds(prev => ({...prev, ...claudeForm}));
+    setClaudeMsg('✓ Opgeslagen');
+    setTimeout(() => setClaudeMsg(''), 2000);
+  };
+
   const navItems = [
     {id:'app',         label:t('settings_app'),          icon:'⚙️'},
     {id:'brouwerij',   label:t('settings_brewery'),     icon:'🏭'},
     {id:'brewfather',  label:'Brewfather',               icon:'🍺'},
     {id:'woocommerce', label:t('settings_webshop'),      icon:'🛒'},
+    {id:'claude',      label:'Claude AI',                icon:'🤖'},
     {id:'accijns',     label:t('settings_excise'),       icon:'💶'},
     {id:'hygiene',     label:t('settings_hygiene'),      icon:'🧹'},
     {id:'data',        label:t('settings_data'),         icon:'📦'},
@@ -8179,6 +8476,41 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               ))}
             </div>
         }
+      </div>
+      </>}
+
+      {/* CLAUDE AI */}
+      {activeSection==='claude' && <>
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">Claude AI — factuur scannen</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Voer je Anthropic API-sleutel in om automatisch facturen te scannen (PDF tekst + vision als fallback).<br/>
+          De sleutel wordt veilig opgeslagen op de server. Gebruik een sleutel die begint met <code className="bg-gray-100 px-1 rounded text-xs">sk-ant-</code>.
+        </p>
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div className="relative">
+              <input type="checkbox" checked={claudeForm.enabled} onChange={e=>setClaudeForm(f=>({...f,enabled:e.target.checked}))} className="sr-only peer" />
+              <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+            </div>
+            <span className="text-sm font-medium text-gray-700">Factuur scannen ingeschakeld</span>
+          </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Anthropic API-sleutel</label>
+            <input type="password" value={claudeForm.apiKey} onChange={e=>setClaudeForm(f=>({...f,apiKey:e.target.value}))}
+              placeholder="sk-ant-api03-••••••••••••••••"
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-sm t-input" />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={saveClaude} className="px-4 py-2 tbtn rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
+            {claudeMsg && <span className={`text-sm font-medium ${claudeMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{claudeMsg}</span>}
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
+          <p>📄 Bij PDF's met ingebedde tekst wordt de tekst geëxtraheerd (goedkoop, snel).</p>
+          <p>🖼️ Bij gescande PDF's of afbeeldingen gebruikt de app Claude Vision (document-API).</p>
+          <p>💡 Geadviseerd model: <code className="bg-gray-100 px-1 rounded">claude-haiku-4-5</code> — snel en voordelig.</p>
+        </div>
       </div>
       </>}
 
@@ -8488,7 +8820,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 }
 
 // ===== BOEKHOUDING =====
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], onderdelen=[], btwInst={}}) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], onderdelen=[], btwInst={}, claudeCreds=null}) {
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -8999,6 +9331,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             initialTab="vrije"
             onSave={saveVrijeFactuur}
             onClose={()=>setShowVrijeFactuur(false)}
+            claudeCreds={claudeCreds}
           />
         )}
 
@@ -9395,6 +9728,7 @@ function App() {
   const [navTheme, setNavTheme] = useStore('nav_theme', 'amber');
   const [bfCreds, setBfCreds] = useStore('brewfather_creds', {userId:'', apiKey:'', enabled:false, lastSync:null}, {secure:true});
   const [wcCreds, setWcCreds] = useStore('woocommerce_creds', {storeUrl:'', consumerKey:'', consumerSecret:'', enabled:false, lastSync:null}, {secure:true});
+  const [claudeCreds, setClaudeCreds] = useStore('claude_creds', {apiKey:'', enabled:false}, {secure:true});
   const [wcSyncLog, setWcSyncLog] = useStore('wc_sync_log', []);
   const [recepten, setRecepten] = useStore('recepten', []);
   const [verborgen, setVerborgen] = useStore('recepten_verborgen', []);
@@ -9558,14 +9892,14 @@ function App() {
       </nav>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
-        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} />}
+        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} onderdelen={onderdelen} btwInst={btwInst} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} onderdelen={onderdelen} btwInst={btwInst} claudeCreds={claudeCreds} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} />}
       </main>
     </div>
   );
