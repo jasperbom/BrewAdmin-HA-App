@@ -3453,10 +3453,11 @@ const Btn = ({children,onClick,v='primary',s='md',cls='',disabled=false}) => {
   return <button onClick={onClick} disabled={disabled} className={`rounded-lg font-medium transition-all duration-150 ${sz} ${vr} ${disabled?'opacity-50 cursor-not-allowed':''} ${cls}`}>{children}</button>;
 };
 
-const Inp = ({label,value,onChange,type='text',placeholder='',req=false,cls=''}) => (
+const Inp = ({label,value,onChange,type='text',placeholder='',req=false,cls='',list=''}) => (
   <div className={cls}>
     {label && <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}{req&&<span className="text-red-500 ml-0.5">*</span>}</label>}
     <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+      list={list||undefined}
       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-300" />
   </div>
 );
@@ -3496,6 +3497,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [showA, setShowA] = useState(null);
   const emptyFactuur = {leverancier:'',factuur:'',datum:tod()};
   const emptyProduct = {ing_id:'',nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
+  const knownLeveranciers = React.useMemo(() =>
+    [...new Set(lots.map(l=>l.leverancier).filter(Boolean))].sort(), [lots]);
   const [factuurForm, setFactuurForm] = useState(emptyFactuur);
   const [ontvangstBijlage, setOntvangstBijlage] = useState(null);
   const [ontvangstUploading, setOntvangstUploading] = useState(false);
@@ -4113,8 +4116,11 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
             {/* Factuur / leverancier — gedeeld voor alle producten */}
             <div className="t-panel border rounded-lg p-3">
               <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">{t('modal_invoice_details')}</p>
+              <datalist id="ing-leveranciers-list">
+                {knownLeveranciers.map(l=><option key={l} value={l}/>)}
+              </datalist>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Inp label={t('lbl_supplier')} value={factuurForm.leverancier} onChange={v=>setFactuurForm(f=>({...f,leverancier:v}))} placeholder={t('ph_brewery_name')} />
+                <Inp label={t('lbl_supplier')} value={factuurForm.leverancier} onChange={v=>setFactuurForm(f=>({...f,leverancier:v}))} placeholder={t('ph_brewery_name')} list="ing-leveranciers-list" />
                 <Inp label={t('lbl_invoice')} value={factuurForm.factuur} onChange={v=>setFactuurForm(f=>({...f,factuur:v}))} placeholder="F-2025-001" />
                 <Inp label={t('ing_buy_date')} type="date" value={factuurForm.datum} onChange={v=>setFactuurForm(f=>({...f,datum:v}))} />
               </div>
@@ -8320,6 +8326,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [vrijeFile, setVrijeFile] = React.useState(null);
   const [vrijeUploading, setVrijeUploading] = React.useState(false);
 
+  const knownLeveranciers = React.useMemo(() =>
+    [...new Set(inkoopFacturen.map(f=>f.leverancier).filter(Boolean))].sort(), [inkoopFacturen]);
+
   const totals = React.useMemo(() => orders.reduce((acc, o) => {
     acc.omzet  += parseFloat(o.total||0) - parseFloat(o.total_tax||0);
     acc.btw    += parseFloat(o.total_tax||0);
@@ -8798,11 +8807,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               </div>
               <div className="p-5 space-y-4">
                 {/* Factuurgegevens */}
+                <datalist id="boek-leveranciers-list">
+                  {knownLeveranciers.map(l=><option key={l} value={l}/>)}
+                </datalist>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Leverancier</label>
                     <input type="text" value={vrijeForm.leverancier} onChange={e=>setVrijeForm(f=>({...f, leverancier:e.target.value}))}
                       placeholder="Naam leverancier"
+                      list="boek-leveranciers-list"
                       className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                   </div>
                   <div>
@@ -9006,11 +9019,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                               </tbody>
                             </table>
                             {f.bijlage?.bestand && (
-                              <div className="mt-2 pt-2 border-t border-gray-200">
+                              <div className="mt-3 pt-3 border-t border-gray-200">
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Bijlage</p>
                                 <a href={`/api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium">
-                                  <span>📎</span>
-                                  <span>{f.bijlage.naam}</span>
+                                  className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors group">
+                                  <span className="text-base">📎</span>
+                                  <span className="text-sm text-gray-700 group-hover:text-blue-700 font-medium">{f.bijlage.naam}</span>
+                                  <span className="text-xs text-gray-400 group-hover:text-blue-500 ml-1">↗ Openen</span>
                                 </a>
                               </div>
                             )}
