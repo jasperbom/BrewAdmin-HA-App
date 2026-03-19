@@ -49,6 +49,7 @@ window.BREW_TRANS["nl"] = {
   "nav_afvullen": "Afvullen",
   "nav_voorraad": "Bier Voorraad",
   "nav_accijns": "Accijns",
+  "nav_boekhouding": "Boekhouding",
   "nav_recepten": "Recepten",
   "nav_instellingen": "Instellingen",
   "nav_dashboard": "Dashboard",
@@ -656,6 +657,7 @@ window.BREW_TRANS["en"] = {
   "nav_afvullen": "Packaging",
   "nav_voorraad": "Beer Stock",
   "nav_accijns": "Excise Duty",
+  "nav_boekhouding": "Accounting",
   "nav_recepten": "Recipes",
   "nav_instellingen": "Settings",
   "nav_dashboard": "Dashboard",
@@ -1263,6 +1265,7 @@ window.BREW_TRANS["de"] = {
   "nav_afvullen": "Abfüllung",
   "nav_voorraad": "Bierbestand",
   "nav_accijns": "Biersteuer",
+  "nav_boekhouding": "Buchhaltung",
   "nav_recepten": "Rezepte",
   "nav_instellingen": "Einstellungen",
   "nav_dashboard": "Dashboard",
@@ -1870,6 +1873,7 @@ window.BREW_TRANS["fr"] = {
   "nav_afvullen": "Embouteillage",
   "nav_voorraad": "Stock Bière",
   "nav_accijns": "Droits d'accise",
+  "nav_boekhouding": "Comptabilité",
   "nav_recepten": "Recettes",
   "nav_instellingen": "Paramètres",
   "nav_dashboard": "Tableau de bord",
@@ -2477,6 +2481,7 @@ window.BREW_TRANS["es"] = {
   "nav_afvullen": "Envasado",
   "nav_voorraad": "Stock Cerveza",
   "nav_accijns": "Impuesto especial",
+  "nav_boekhouding": "Contabilidad",
   "nav_recepten": "Recetas",
   "nav_instellingen": "Ajustes",
   "nav_dashboard": "Panel",
@@ -8188,6 +8193,311 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   );
 }
 
+// ===== BOEKHOUDING =====
+function BoekhoudingPage({wcCreds}) {
+  const [orders, setOrders] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const [dateFrom, setDateFrom] = React.useState(firstOfMonth);
+  const [dateTo, setDateTo] = React.useState(now.toISOString().slice(0,10));
+  const [statusFilter, setStatusFilter] = React.useState('completed');
+  const [activeView, setActiveView] = React.useState('orders');
+
+  const totals = React.useMemo(() => orders.reduce((acc, o) => {
+    acc.omzet  += parseFloat(o.total||0) - parseFloat(o.total_tax||0);
+    acc.btw    += parseFloat(o.total_tax||0);
+    acc.totaal += parseFloat(o.total||0);
+    acc.korting    += parseFloat(o.discount_total||0);
+    acc.verzending += parseFloat(o.shipping_total||0);
+    return acc;
+  }, {omzet:0, btw:0, totaal:0, korting:0, verzending:0}), [orders]);
+
+  const productTotals = React.useMemo(() => {
+    const map = {};
+    orders.forEach(o => (o.line_items||[]).forEach(item => {
+      const key = item.sku || item.name;
+      if (!map[key]) map[key] = {naam:item.name, sku:item.sku||'', stuks:0, omzet:0, btw:0};
+      map[key].stuks += Number(item.quantity||0);
+      map[key].omzet += parseFloat(item.total||0);
+      map[key].btw   += parseFloat(item.total_tax||0);
+    }));
+    return Object.values(map).sort((a,b) => b.omzet - a.omzet);
+  }, [orders]);
+
+  const fetchOrders = async () => {
+    if (!wcCreds?.enabled || !wcCreds.storeUrl) {
+      setError('WooCommerce is niet ingesteld. Ga naar Instellingen om de koppeling te activeren.');
+      return;
+    }
+    setLoading(true); setError('');
+    try {
+      const all = [];
+      let pg = 1;
+      while (true) {
+        const qs = `orders?per_page=100&page=${pg}&status=${statusFilter}&after=${dateFrom}T00:00:00&before=${dateTo}T23:59:59&orderby=date&order=desc`;
+        const batch = await wcGet(qs);
+        all.push(...batch);
+        if (batch.length < 100) break;
+        pg++;
+      }
+      setOrders(all);
+    } catch(e) { setError('Fout bij ophalen: ' + e.message); }
+    finally { setLoading(false); }
+  };
+
+  const exportCSV = () => {
+    const hdr = ['Bestellingsnr.','Datum','Klant','E-mail','Bedrijf','Status','Betaalmethode','Excl. BTW','BTW','Verzending','Korting','Totaal'];
+    const rows = orders.map(o => [
+      o.number,
+      (o.date_paid||o.date_created||'').slice(0,10),
+      `${o.billing?.first_name||''} ${o.billing?.last_name||''}`.trim(),
+      o.billing?.email||'',
+      o.billing?.company||'',
+      o.status,
+      o.payment_method_title||'',
+      (parseFloat(o.total||0)-parseFloat(o.total_tax||0)).toFixed(2),
+      parseFloat(o.total_tax||0).toFixed(2),
+      parseFloat(o.shipping_total||0).toFixed(2),
+      parseFloat(o.discount_total||0).toFixed(2),
+      parseFloat(o.total||0).toFixed(2),
+    ]);
+    const csv = [hdr,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`bestellingen_${dateFrom}_${dateTo}.csv`});
+    a.click();
+  };
+
+  const fmt = n => '€\u00a0' + Number(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  const fmtDate = s => s ? s.slice(0,10) : '';
+  const STATUS_LABELS = {completed:'Afgerond',processing:'In behandeling','on-hold':'In de wacht',cancelled:'Geannuleerd',refunded:'Terugbetaald',failed:'Mislukt',pending:'In afwachting'};
+  const STATUS_COLORS = {completed:'bg-green-100 text-green-700',processing:'bg-blue-100 text-blue-700','on-hold':'bg-yellow-100 text-yellow-700',cancelled:'bg-gray-100 text-gray-500',refunded:'bg-orange-100 text-orange-700',failed:'bg-red-100 text-red-600',pending:'bg-purple-100 text-purple-600'};
+  const card = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-5';
+
+  if (!wcCreds?.enabled) return (
+    <div className="max-w-7xl mx-auto px-4 py-10 text-center">
+      <div className={card + ' py-14'}>
+        <div className="text-5xl mb-4">🧾</div>
+        <h2 className="text-lg font-semibold text-gray-700 mb-2">WooCommerce niet actief</h2>
+        <p className="text-sm text-gray-500">Activeer de WooCommerce-koppeling in <strong>Instellingen</strong> om bestellingen op te halen.</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold text-gray-800">{t('nav_boekhouding')}</h2>
+        {orders.length > 0 && (
+          <button onClick={exportCSV} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+            ↓ Export CSV ({orders.length})
+          </button>
+        )}
+      </div>
+
+      {/* Filter */}
+      <div className={card}>
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Van</label>
+            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tot</label>
+            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+            <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none">
+              <option value="any">Alle statussen</option>
+              <option value="completed">Afgerond</option>
+              <option value="processing">In behandeling</option>
+              <option value="on-hold">In de wacht</option>
+              <option value="refunded">Terugbetaald</option>
+              <option value="cancelled">Geannuleerd</option>
+            </select>
+          </div>
+          <button onClick={fetchOrders} disabled={loading}
+            className="px-5 py-1.5 tbtn rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
+            {loading ? 'Ophalen…' : 'Ophalen'}
+          </button>
+        </div>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      </div>
+
+      {/* Samenvattingskaartjes */}
+      {orders.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            {label:'Omzet excl. BTW', val:totals.omzet,      cls:'text-green-700 font-bold'},
+            {label:'BTW',             val:totals.btw,         cls:'text-blue-700'},
+            {label:'Verzending',      val:totals.verzending,  cls:'text-gray-700'},
+            {label:'Korting',         val:-totals.korting,    cls:'text-orange-600'},
+            {label:'Totaal incl. BTW',val:totals.totaal,      cls:'text-gray-900 font-bold'},
+          ].map(s => (
+            <div key={s.label} className={card + ' text-center py-4'}>
+              <div className={`text-base font-semibold ${s.cls}`}>{fmt(s.val)}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
+              <div className="text-xs text-gray-300 mt-0.5">{orders.length} bestellingen</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {orders.length > 0 && (
+        <>
+          {/* Subtabs */}
+          <div className="flex gap-2 flex-wrap">
+            {[{id:'orders',l:'Bestellingen'},{id:'producten',l:'Per product'},{id:'betaling',l:'Per betaalmethode'}].map(v=>(
+              <button key={v.id} onClick={()=>setActiveView(v.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeView===v.id?'tbtn':'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {v.l}
+              </button>
+            ))}
+          </div>
+
+          {/* Bestellingen */}
+          {activeView==='orders' && (
+            <div className={card + ' overflow-x-auto'}>
+              <table className="w-full text-sm min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-2 pr-3 text-left font-medium">#</th>
+                    <th className="py-2 pr-3 text-left font-medium">Datum</th>
+                    <th className="py-2 pr-3 text-left font-medium">Klant</th>
+                    <th className="py-2 pr-3 text-left font-medium">Betaalmethode</th>
+                    <th className="py-2 pr-3 text-left font-medium">Status</th>
+                    <th className="py-2 pr-3 text-right font-medium">Excl. BTW</th>
+                    <th className="py-2 pr-3 text-right font-medium">BTW</th>
+                    <th className="py-2 text-right font-medium">Totaal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map(o => (
+                    <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-2 pr-3 text-gray-400 text-xs">#{o.number}</td>
+                      <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{fmtDate(o.date_paid||o.date_created)}</td>
+                      <td className="py-2 pr-3">
+                        <div className="font-medium text-gray-800">{(`${o.billing?.first_name||''} ${o.billing?.last_name||''}`).trim()||'—'}</div>
+                        {o.billing?.company && <div className="text-xs text-gray-400">{o.billing.company}</div>}
+                      </td>
+                      <td className="py-2 pr-3 text-gray-500 text-xs whitespace-nowrap">{o.payment_method_title||'—'}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[o.status]||'bg-gray-100 text-gray-500'}`}>
+                          {STATUS_LABELS[o.status]||o.status}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(parseFloat(o.total||0)-parseFloat(o.total_tax||0))}</td>
+                      <td className="py-2 pr-3 text-right text-gray-500 whitespace-nowrap">{fmt(o.total_tax||0)}</td>
+                      <td className="py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{fmt(o.total||0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200">
+                    <td colSpan={5} className="py-2 pr-3 text-right text-xs font-semibold text-gray-500 uppercase">Totaal ({orders.length})</td>
+                    <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(totals.omzet)}</td>
+                    <td className="py-2 pr-3 text-right font-semibold text-gray-600">{fmt(totals.btw)}</td>
+                    <td className="py-2 text-right font-bold text-gray-900">{fmt(totals.totaal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Per product */}
+          {activeView==='producten' && (
+            <div className={card + ' overflow-x-auto'}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-2 pr-3 text-left font-medium">Product</th>
+                    <th className="py-2 pr-3 text-left font-medium">SKU</th>
+                    <th className="py-2 pr-3 text-right font-medium">Stuks</th>
+                    <th className="py-2 pr-3 text-right font-medium">Omzet excl. BTW</th>
+                    <th className="py-2 text-right font-medium">BTW</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productTotals.map((p,i) => (
+                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-2 pr-3 font-medium text-gray-800">{p.naam}</td>
+                      <td className="py-2 pr-3 text-gray-400 text-xs font-mono">{p.sku||'—'}</td>
+                      <td className="py-2 pr-3 text-right text-gray-700">{p.stuks}×</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-gray-800">{fmt(p.omzet)}</td>
+                      <td className="py-2 text-right text-gray-500">{fmt(p.btw)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200">
+                    <td colSpan={2} className="py-2 pr-3 text-right text-xs font-semibold text-gray-500 uppercase">Totaal</td>
+                    <td className="py-2 pr-3 text-right font-bold text-gray-700">{productTotals.reduce((s,p)=>s+p.stuks,0)}×</td>
+                    <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(productTotals.reduce((s,p)=>s+p.omzet,0))}</td>
+                    <td className="py-2 text-right font-semibold text-gray-600">{fmt(productTotals.reduce((s,p)=>s+p.btw,0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Per betaalmethode */}
+          {activeView==='betaling' && (()=>{
+            const byMethod = {};
+            orders.forEach(o => {
+              const m = o.payment_method_title||'Onbekend';
+              if (!byMethod[m]) byMethod[m] = {label:m, aantal:0, totaal:0};
+              byMethod[m].aantal++;
+              byMethod[m].totaal += parseFloat(o.total||0);
+            });
+            const rows = Object.values(byMethod).sort((a,b)=>b.totaal-a.totaal);
+            return (
+              <div className={card + ' overflow-x-auto'}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="py-2 pr-3 text-left font-medium">Betaalmethode</th>
+                      <th className="py-2 pr-3 text-right font-medium">Bestellingen</th>
+                      <th className="py-2 text-right font-medium">Totaal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r,i)=>(
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 pr-3 font-medium text-gray-800">{r.label}</td>
+                        <td className="py-2 pr-3 text-right text-gray-600">{r.aantal}</td>
+                        <td className="py-2 text-right font-semibold text-gray-800">{fmt(r.totaal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-200">
+                      <td className="py-2 pr-3 text-right text-xs font-semibold text-gray-500 uppercase">Totaal</td>
+                      <td className="py-2 pr-3 text-right font-bold text-gray-700">{rows.reduce((s,r)=>s+r.aantal,0)}</td>
+                      <td className="py-2 text-right font-bold text-gray-900">{fmt(rows.reduce((s,r)=>s+r.totaal,0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            );
+          })()}
+        </>
+      )}
+
+      {!loading && orders.length===0 && !error && (
+        <div className={card + ' text-center py-14'}>
+          <p className="text-gray-400 text-sm">Stel een periode in en klik op <strong>Ophalen</strong> om bestellingen te laden.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ===== APP =====
 function App() {
   const [ing, setIng] = useStore('ingredienten');
@@ -8294,7 +8604,8 @@ function App() {
     {id:'recepten',l:t('nav_recepten')},
 
     {id:'voorraad',l:t('nav_voorraad')},
-    {id:'accijns',l:t('nav_accijns')}
+    {id:'accijns',l:t('nav_accijns')},
+    {id:'boekhouding',l:t('nav_boekhouding')}
   ];
 
   // THT badges voor nav
@@ -8363,6 +8674,7 @@ function App() {
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} />}
         {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} />}
       </main>
     </div>
