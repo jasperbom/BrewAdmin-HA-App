@@ -9,19 +9,24 @@ The server strips any prefix and looks for /api/data/<key> anywhere in the path.
 """
 import base64
 import http.server
+import io
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 
 DATA_DIR = Path('/data')
 STATIC_FILE = Path('/app/static/index.html')
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — bescherming tegen DoS via grote requests
+UPLOAD_DIR = DATA_DIR / 'inkoop_facturen'
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 API_DATA_PREFIX = '/api/data/'
 BF_API_BASE = 'https://api.brewfather.app/v2'
@@ -33,6 +38,25 @@ WC_PROXY_PREFIX = '/api/woocommerce/'
 WC_PING_PATH    = '/api/woocommerce/ping'
 WC_TEST_PATH    = '/api/woocommerce/test'
 WC_PUT_PREFIX   = '/api/woocommerce/put/'
+
+UPLOAD_PREFIX            = '/api/upload/'
+FILE_PREFIX              = '/api/file/'
+DELETE_UPLOAD_PREFIX     = '/api/delete_upload/'
+DOWNLOAD_BIJLAGEN_PREFIX = '/api/download_bijlagen/'
+
+_ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'bmp', 'heic', 'heif'}
+_CONTENT_TYPES = {
+    'pdf':  'application/pdf',
+    'jpg':  'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png':  'image/png',
+    'gif':  'image/gif',
+    'webp': 'image/webp',
+    'tiff': 'image/tiff',
+    'bmp':  'image/bmp',
+    'heic': 'image/heic',
+    'heif': 'image/heif',
+}
 
 # Rate limiting: max requests per window per IP
 _RATE_WINDOW = 60   # seconds
@@ -85,6 +109,28 @@ def _trusted_origin(origin: str) -> str | None:
 
 def _valid_key(key: str) -> bool:
     return bool(key) and all(c.isalnum() or c == '_' for c in key)
+
+
+def _valid_upload_filename(name: str) -> bool:
+    """Allow only safe characters in upload filenames; extension must be allowed."""
+    if not name or len(name) > 200 or name.startswith('.'):
+        return False
+    if '.' not in name:
+        return False
+    base, ext = name.rsplit('.', 1)
+    ext = ext.lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        return False
+    return bool(base) and all(c.isalnum() or c in '-_.' for c in name)
+
+
+def _extract_upload_filename(path: str, prefix: str) -> str | None:
+    """Extract and validate filename from an upload/file/delete_upload path."""
+    idx = path.find(prefix)
+    if idx < 0:
+        return None
+    filename = path[idx + len(prefix):].strip('/')
+    return filename if _valid_upload_filename(filename) else None
 
 
 def _valid_bf_path(path: str) -> bool:
@@ -248,6 +294,14 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._wc_proxy_get()
             return
 
+        if FILE_PREFIX in path:
+            self._serve_upload()
+            return
+
+        if DOWNLOAD_BIJLAGEN_PREFIX in path:
+            self._serve_bijlagen_zip()
+            return
+
         key = extract_key(path)
         if key is not None:
             filepath = DATA_DIR / f'{key}.json'
@@ -293,6 +347,14 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if WC_PUT_PREFIX in path:
             self._wc_proxy_put()
+            return
+
+        if UPLOAD_PREFIX in path:
+            self._handle_upload()
+            return
+
+        if DELETE_UPLOAD_PREFIX in path:
+            self._handle_delete_upload()
             return
 
         key = extract_key(path)
@@ -447,6 +509,117 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             pass
         self._json(200, {'ok': status in (200, 201), 'status': status, 'detail': detail})
+
+    # ── Bijlagen (file uploads) ────────────────────────────────────────────
+
+    def _serve_upload(self):
+        """Serve an uploaded attachment from UPLOAD_DIR."""
+        filename = _extract_upload_filename(self.path.split('?')[0], FILE_PREFIX)
+        if filename is None:
+            self._json(400, {'error': 'invalid filename'})
+            return
+        filepath = UPLOAD_DIR / filename
+        if not filepath.exists():
+            self._json(404, {'error': 'not found'})
+            return
+        body = filepath.read_bytes()
+        ext = filename.rsplit('.', 1)[-1].lower()
+        ct = _CONTENT_TYPES.get(ext, 'application/octet-stream')
+        self.send_response(200)
+        self.send_header('Content-Type', ct)
+        self.send_header('Content-Length', len(body))
+        self.send_header('Content-Disposition', f'inline; filename="{filename}"')
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_upload(self):
+        """Accept a base64-encoded file upload and save it to UPLOAD_DIR."""
+        filename = _extract_upload_filename(self.path.split('?')[0], UPLOAD_PREFIX)
+        if filename is None:
+            self._json(400, {'error': 'invalid filename'})
+            return
+        body = self._read_body(max_len=MAX_CONTENT_LENGTH)
+        if body is None:
+            return
+        try:
+            data = json.loads(body)
+            b64 = data.get('data', '')
+            content = base64.b64decode(b64)
+        except Exception:
+            self._json(400, {'error': 'invalid data'})
+            return
+        (UPLOAD_DIR / filename).write_bytes(content)
+        self._json(200, {'ok': True})
+
+    def _handle_delete_upload(self):
+        """Delete an uploaded attachment from UPLOAD_DIR."""
+        filename = _extract_upload_filename(self.path.split('?')[0], DELETE_UPLOAD_PREFIX)
+        if filename is None:
+            self._json(400, {'error': 'invalid filename'})
+            return
+        body = self._read_body(max_len=256)
+        if body is None:
+            return
+        filepath = UPLOAD_DIR / filename
+        if filepath.exists():
+            filepath.unlink()
+        self._json(200, {'ok': True})
+
+    def _serve_bijlagen_zip(self):
+        """Serve a ZIP of all invoice attachments for the requested year."""
+        path = self.path.split('?')[0]
+        idx = path.find(DOWNLOAD_BIJLAGEN_PREFIX)
+        year_str = path[idx + len(DOWNLOAD_BIJLAGEN_PREFIX):].strip('/')
+        if not re.match(r'^\d{4}$', year_str):
+            self._json(400, {'error': 'invalid year'})
+            return
+
+        facturen_file = DATA_DIR / 'inkoop_facturen.json'
+        try:
+            facturen = json.loads(facturen_file.read_bytes()) if facturen_file.exists() else []
+        except Exception:
+            self._json(500, {'error': 'failed to read facturen'})
+            return
+
+        buf = io.BytesIO()
+        count = 0
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in facturen:
+                datum = str(f.get('datum', ''))
+                if not datum.startswith(year_str):
+                    continue
+                bijlage = f.get('bijlage')
+                if not bijlage or not bijlage.get('bestand'):
+                    continue
+                bestand = bijlage['bestand']
+                if not _valid_upload_filename(bestand):
+                    continue
+                filepath = UPLOAD_DIR / bestand
+                if not filepath.exists():
+                    continue
+                # Build a human-readable name inside the zip
+                leverancier = re.sub(r'[^\w\s-]', '', str(f.get('leverancier', ''))).strip()[:40]
+                factuur_nr  = re.sub(r'[^\w\s-]', '', str(f.get('factuurnummer', ''))).strip()[:30]
+                ext = bestand.rsplit('.', 1)[-1] if '.' in bestand else 'bin'
+                parts = [p for p in [datum, leverancier, factuur_nr] if p]
+                zip_name = '_'.join(parts) + '.' + ext
+                zf.write(filepath, zip_name)
+                count += 1
+
+        if count == 0:
+            self._json(200, {'ok': False, 'error': 'no_bijlagen'})
+            return
+
+        body = buf.getvalue()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/zip')
+        self.send_header('Content-Length', len(body))
+        self.send_header('Content-Disposition',
+                         f'attachment; filename="bijlagen_{year_str}.zip"')
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
     # ── logging ────────────────────────────────────────────────────────────
 

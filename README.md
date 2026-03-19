@@ -1,6 +1,6 @@
 # 🍺 BrewAdmin — Home Assistant Addon
 
-A Home Assistant addon for managing a small brewery. Register batches, manage ingredients and stock, track excise duty obligations, and synchronise with Brewfather and WooCommerce — all from one clear interface directly in your HA dashboard.
+A Home Assistant addon for managing a small brewery. Register batches, manage ingredients and stock, track excise duty obligations, handle purchase invoices and accounting, and synchronise with Brewfather and WooCommerce — all from one clear interface directly in your HA dashboard.
 
 ## Fully built with Claude AI.
 
@@ -49,12 +49,20 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 - Mark excise duty as paid with one click
 - Only stock with paid excise duty is included in WooCommerce
 
+### Accounting (Boekhouding)
+- Purchase invoice management with supplier, date, amount and VAT fields
+- Upload PDF or image attachments per invoice (JPG, PNG, WEBP, GIF, TIFF, BMP, HEIC)
+- Download all attachments for a given year as a ZIP archive
+- Excise duty declaration view: grouped by month with totals, rate per litre, and one-click mark-all-paid
+- Aangiftes (declarations) sub-page for excise duty overview
+
 ### Settings
 The settings page is organised with a sidebar navigation:
 
-- **Brewery** — manage brewery name, logo and tanks
+- **Branding** — manage brewery name, app name shown in the navigation bar, and logo
+- **Brewery** — manage tanks
 - **Brewfather** — API integration (User ID + API key), manual sync
-- **WooCommerce** — shop integration (store URL + consumer key/secret), manual stock push, sync log
+- **Webshop** — WooCommerce shop integration (store URL + consumer key/secret), manual stock push, sync log
 - **Excise Duty** — set rates (per hL/ABV and per hL), optional custom formula
 - **Hygiene** — manage checklist items and groups that appear per batch
 - **Data** — export and import of all data (Excel backup), mutation log
