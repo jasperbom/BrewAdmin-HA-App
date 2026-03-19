@@ -7582,7 +7582,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst}) {
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -8061,6 +8061,20 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
         </div>
       </div>
+
+      {/* BTW aangifte periode */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">BTW aangifte periode</h2>
+        <p className="text-sm text-gray-500 mb-4">Kies of je BTW-aangifte per maand of per kwartaal wordt ingediend. Dit bepaalt de weergave op de Aangiftes pagina.</p>
+        <div className="flex gap-3">
+          {[{id:'kwartaal', label:'Per kwartaal'}, {id:'maand', label:'Per maand'}].map(opt => (
+            <button key={opt.id} onClick={()=>setBtwInst(prev=>({...prev, periode:opt.id}))}
+              className={`px-5 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${(btwInst?.periode||'kwartaal')===opt.id ? 'tbtn border-transparent shadow' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
       </>}
 
       {/* HYGIENE */}
@@ -8241,7 +8255,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 }
 
 // ===== BOEKHOUDING =====
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[]}) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], btwInst={}}) {
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -8255,6 +8269,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [inkoopView, setInkoopView] = React.useState('facturen');
   const [inkoopSortDesc, setInkoopSortDesc] = React.useState(true);
   const [expandedFactuur, setExpandedFactuur] = React.useState(null);
+  // Aangiftes tab state
+  const [aangifteYear, setAangifteYear] = React.useState(new Date().getFullYear());
+  const [aangifteOrders, setAangifteOrders] = React.useState([]);
+  const [aangifteLoading, setAangifteLoading] = React.useState(false);
+  const [aangifteError, setAangifteError] = React.useState('');
+  const [aangifteFetched, setAangifteFetched] = React.useState(false);
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
   const [vrijeForm, setVrijeForm] = React.useState({leverancier:'', factuurnummer:'', datum: now.toISOString().slice(0,10)});
   const [vrijeRegels, setVrijeRegels] = React.useState([{naam:'', netto:'', btw_tarief:21}]);
@@ -8398,6 +8418,43 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setVrijeRegels([{naam:'', netto:'', btw_tarief:21}]);
   };
 
+  // ── Aangiftes helpers ──────────────────────────────────────────────────────
+  const getPeriodes = (year, periode) => {
+    if (periode === 'maand') {
+      const namen = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+      return Array.from({length:12}, (_,i) => {
+        const m = String(i+1).padStart(2,'0');
+        const lastDay = new Date(year, i+1, 0).getDate();
+        return {label: namen[i], from:`${year}-${m}-01`, to:`${year}-${m}-${String(lastDay).padStart(2,'0')}`, key:`${year}-M${m}`};
+      });
+    }
+    return [
+      {label:'Q1', from:`${year}-01-01`, to:`${year}-03-31`, key:`${year}-Q1`},
+      {label:'Q2', from:`${year}-04-01`, to:`${year}-06-30`, key:`${year}-Q2`},
+      {label:'Q3', from:`${year}-07-01`, to:`${year}-09-30`, key:`${year}-Q3`},
+      {label:'Q4', from:`${year}-10-01`, to:`${year}-12-31`, key:`${year}-Q4`},
+    ];
+  };
+
+  const fetchJaarordrers = async (year) => {
+    if (!wcCreds?.enabled || !wcCreds.storeUrl) { setAangifteError('WooCommerce niet actief — zie Instellingen.'); return; }
+    setAangifteLoading(true); setAangifteError('');
+    try {
+      const all = [];
+      let pg = 1;
+      while (true) {
+        const qs = `orders?per_page=100&page=${pg}&status=any&after=${year}-01-01T00:00:00&before=${year}-12-31T23:59:59&orderby=date&order=desc`;
+        const batch = await wcGet(qs);
+        all.push(...batch);
+        if (batch.length < 100) break;
+        pg++;
+      }
+      setAangifteOrders(all);
+      setAangifteFetched(true);
+    } catch(e) { setAangifteError('Fout bij ophalen: ' + e.message); }
+    finally { setAangifteLoading(false); }
+  };
+
   const fmt = n => '€\u00a0' + Number(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
   const fmtDate = s => s ? s.slice(0,10) : '';
   const STATUS_LABELS = {completed:'Afgerond',processing:'In behandeling','on-hold':'In de wacht',cancelled:'Geannuleerd',refunded:'Terugbetaald',failed:'Mislukt',pending:'In afwachting'};
@@ -8411,9 +8468,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
       {/* Header + hoofd-tabs */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold text-gray-800">{t('nav_boekhouding')}</h2>
+        <h2 className="text-xl font-bold text-gray-800">
+          {t('nav_boekhouding')}
+          {mainTab==='aangiftes' && <span className="ml-2 text-base font-normal text-gray-400">{aangifteYear}</span>}
+        </h2>
         <div className="flex gap-2">
-          {[{id:'verkoop',l:'Verkoop'},{id:'inkoop',l:'Inkoop'}].map(tab=>(
+          {[{id:'verkoop',l:'Verkoop'},{id:'inkoop',l:'Inkoop'},{id:'aangiftes',l:'Aangiftes'}].map(tab=>(
             <button key={tab.id} onClick={()=>setMainTab(tab.id)}
               className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${mainTab===tab.id?'tbtn shadow':'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
               {tab.l}
@@ -8948,6 +9008,140 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         )}
       </>)}
 
+      {/* ══════════════════════ AANGIFTES ══════════════════════ */}
+      {mainTab==='aangiftes' && (()=>{
+        const periode = btwInst?.periode || 'kwartaal';
+        const periodes = getPeriodes(aangifteYear, periode);
+        const today = now.toISOString().slice(0,10);
+
+        return (<>
+          {/* Jaar-selector + ophaalknop */}
+          <div className={card}>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button onClick={()=>{setAangifteYear(y=>y-1); setAangifteFetched(false); setAangifteOrders([]);}}
+                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg leading-none transition-colors">‹</button>
+                <span className="text-lg font-bold text-gray-800 w-14 text-center">{aangifteYear}</span>
+                <button onClick={()=>{setAangifteYear(y=>y+1); setAangifteFetched(false); setAangifteOrders([]);}}
+                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg leading-none transition-colors">›</button>
+              </div>
+              <div className="text-xs text-gray-400 italic">
+                {periode==='kwartaal' ? 'Kwartaalaangifte' : 'Maandaangifte'} · wijzig via Instellingen → Accijns
+              </div>
+              {wcCreds?.enabled
+                ? <button onClick={()=>fetchJaarordrers(aangifteYear)} disabled={aangifteLoading}
+                    className="ml-auto px-4 py-1.5 tbtn rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
+                    {aangifteLoading ? 'Ophalen…' : aangifteFetched ? '↺ Vernieuwen' : '↓ Verkoop ophalen'}
+                  </button>
+                : <span className="ml-auto text-xs text-orange-600 italic">WooCommerce niet actief — verkoop BTW niet beschikbaar</span>
+              }
+            </div>
+            {aangifteError && <p className="mt-2 text-sm text-red-600">{aangifteError}</p>}
+            {aangifteFetched && <p className="mt-2 text-xs text-green-600">✓ {aangifteOrders.length} bestellingen geladen voor {aangifteYear}</p>}
+          </div>
+
+          {/* Periode-kaarten */}
+          <div className={`grid gap-4 ${periode==='maand' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'}`}>
+            {periodes.map(p => {
+              // Verkoop BTW voor deze periode
+              const pOrders = aangifteOrders.filter(o => {
+                const d = (o.date_paid||o.date_created||'').slice(0,10);
+                return d >= p.from && d <= p.to && ['completed','processing'].includes(o.status);
+              });
+              const verkoopBtw   = pOrders.reduce((s,o)=>s+parseFloat(o.total_tax||0), 0);
+              const verkoopNetto = pOrders.reduce((s,o)=>s+parseFloat(o.total||0)-parseFloat(o.total_tax||0), 0);
+
+              // Inkoop voorbelasting
+              const pFacturen = inkoopFacturen.filter(f => f.datum >= p.from && f.datum <= p.to);
+              const voorbelasting = pFacturen.reduce((s,f)=>s+(f.totaal_btw||0), 0);
+              const inkoopNetto   = pFacturen.reduce((s,f)=>s+(f.totaal_netto||0), 0);
+
+              const teBetalen = verkoopBtw - voorbelasting;
+
+              // Periode status
+              const isFuture  = p.from > today;
+              const isCurrent = p.from <= today && p.to >= today;
+              const isPast    = p.to < today;
+
+              const statusCls = isFuture
+                ? 'bg-gray-50 border-gray-100'
+                : isCurrent
+                  ? 'bg-blue-50 border-blue-100'
+                  : isPast
+                    ? 'bg-white border-gray-100'
+                    : 'bg-white border-gray-100';
+
+              const badgeCls = isFuture
+                ? 'bg-gray-100 text-gray-400'
+                : isCurrent
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-500';
+
+              const badgeLabel = isFuture ? 'Toekomstig' : isCurrent ? 'Lopend' : 'Afgesloten';
+
+              return (
+                <div key={p.key} className={`rounded-2xl border shadow-sm p-5 space-y-3 ${statusCls}`}>
+                  {/* Header */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-lg font-bold text-gray-800">{p.label} <span className="text-sm font-normal text-gray-400">{aangifteYear}</span></div>
+                      <div className="text-xs text-gray-400">{p.from} t/m {p.to}</div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${badgeCls}`}>{badgeLabel}</span>
+                  </div>
+
+                  {/* Cijfers */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-white/70 rounded-xl p-2">
+                      <div className="text-xs text-gray-400 mb-0.5">Omzet-BTW</div>
+                      <div className={`text-sm font-bold ${aangifteFetched ? 'text-gray-800' : 'text-gray-300'}`}>
+                        {aangifteFetched ? fmt(verkoopBtw) : '—'}
+                      </div>
+                      {aangifteFetched && <div className="text-xs text-gray-400">{pOrders.length} best.</div>}
+                    </div>
+                    <div className="bg-white/70 rounded-xl p-2">
+                      <div className="text-xs text-gray-400 mb-0.5">Voorbelasting</div>
+                      <div className="text-sm font-bold text-blue-700">{fmt(voorbelasting)}</div>
+                      <div className="text-xs text-gray-400">{pFacturen.length} fact.</div>
+                    </div>
+                    <div className="bg-white/70 rounded-xl p-2">
+                      <div className="text-xs text-gray-400 mb-0.5">Te betalen</div>
+                      {aangifteFetched
+                        ? <div className={`text-sm font-bold ${teBetalen >= 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            {fmt(Math.abs(teBetalen))}
+                          </div>
+                        : <div className="text-sm font-bold text-gray-300">—</div>
+                      }
+                      {aangifteFetched && (
+                        <div className={`text-xs font-medium ${teBetalen >= 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                          {teBetalen >= 0 ? 'te betalen' : 'terug'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Detail inkoop */}
+                  {pFacturen.length > 0 && (
+                    <div className="text-xs text-gray-400 border-t border-gray-100 pt-2">
+                      Inkoop netto: <span className="font-medium text-gray-600">{fmt(inkoopNetto)}</span>
+                      {aangifteFetched && <> · Verkoop netto: <span className="font-medium text-gray-600">{fmt(verkoopNetto)}</span></>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {!wcCreds?.enabled && inkoopFacturen.length === 0 && (
+            <div className={card + ' text-center py-14'}>
+              <div className="text-4xl mb-3">📋</div>
+              <p className="text-gray-600 font-medium mb-1">Nog geen aangifte-data</p>
+              <p className="text-gray-400 text-sm">Voeg inkoop facturen toe via de Inkoop tab, of koppel WooCommerce voor verkoopcijfers.</p>
+            </div>
+          )}
+        </>);
+      })()}
+
     </div>
   );
 }
@@ -8985,6 +9179,7 @@ function App() {
   const [hygieneGroups, setHygieneGroups] = useStore('hygiene_groups', DEFAULT_HYGIENE_GROUPS);
   const [lang, setLang] = useStore('app_lang', detectLang());
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
+  const [btwInst, setBtwInst] = useStore('btw_instellingen', {periode: 'kwartaal'});
   _lang = lang; // update global for t() — called synchronously during render
   const [page, setPage] = useState('dashboard');
   const importRef = useRef(null);
@@ -9129,8 +9324,8 @@ function App() {
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} btwInst={btwInst} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} />}
       </main>
     </div>
   );
