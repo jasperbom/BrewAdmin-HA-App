@@ -3714,31 +3714,51 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   };
 
   const bevestigKoppeling = () => {
+    let hasIngredients = false;
+    let hasVerpakkingen = false;
     linkItems.forEach(item => {
       const ingId = item.useNieuw ? '' : item.selectedIngId;
       const nieuwNaam = item.useNieuw ? (item.naam || '') : '';
       const naam = ingId ? (ing.find(i => i.id === Number(ingId))?.naam || '') : nieuwNaam;
-      const prod = {
-        ing_id: ingId,
-        nieuw: nieuwNaam,
-        type: item.type || 'Mout',
-        fabrikant: '',
-        lotnr: item.lotnr || '',
-        qty: String(item.qty ?? ''),
-        eenh: item.eenh || 'kg',
-        tht: item.tht || '',
-        prijs: String(item.prijs ?? ''),
-        totaalprijs: String(item.totaalprijs ?? ''),
-        btw_tarief: String(item.btw_tarief ?? '9'),
-        _naam: naam,
-        _id: Date.now() + Math.random(),
-      };
-      if (!prod.ing_id && !prod.nieuw.trim()) return; // skip invalid
-      setProductLijst(prev => [...prev, prod]);
+      if (item.type === 'Verpakking') {
+        // Route packaging items to verpakkingLijst (onderdelen), not ingrediënten
+        if (!naam.trim()) return;
+        setVerpakkingLijst(prev => [...prev, {
+          od_id: '', naam, type: '', lotnr: item.lotnr || '',
+          aantal: String(item.qty ?? ''),
+          prijs_per_stuk: String(item.prijs ?? ''),
+          totaalprijs: String(item.totaalprijs ?? ''),
+          btw_tarief: String(item.btw_tarief ?? '21'),
+          _naam: naam, _id: Date.now() + Math.random(),
+        }]);
+        hasVerpakkingen = true;
+      } else {
+        // Normalize type: if not a valid ING_TYPE, fall back to 'Overig'
+        const validTypes = ['Mout', 'Hop', 'Gist', 'Suiker', 'Overig'];
+        const type = validTypes.includes(item.type) ? item.type : 'Overig';
+        const prod = {
+          ing_id: ingId,
+          nieuw: nieuwNaam,
+          type,
+          fabrikant: '',
+          lotnr: item.lotnr || '',
+          qty: String(item.qty ?? ''),
+          eenh: item.eenh || 'kg',
+          tht: item.tht || '',
+          prijs: String(item.prijs ?? ''),
+          totaalprijs: String(item.totaalprijs ?? ''),
+          btw_tarief: String(item.btw_tarief ?? '9'),
+          _naam: naam,
+          _id: Date.now() + Math.random(),
+        };
+        if (!prod.ing_id && !prod.nieuw.trim()) return; // skip invalid
+        setProductLijst(prev => [...prev, prod]);
+        hasIngredients = true;
+      }
     });
     setLinkItems([]);
     setScanStap('idle');
-    setTab('ingredienten');
+    setTab(hasIngredients || !hasVerpakkingen ? 'ingredienten' : 'verpakkingen');
   };
 
   const handleSave = async () => {
@@ -3842,7 +3862,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
           <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
-                🔗 Ingrediënten koppelen ({linkItems.length} gevonden)
+                🔗 Producten koppelen ({linkItems.length} gevonden)
               </p>
               <button onClick={()=>{setScanStap('idle');setLinkItems([]);}} className="text-gray-400 hover:text-gray-600 text-xs">✕ Annuleren</button>
             </div>
@@ -4502,7 +4522,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   ? <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_no_ingredients')}</td></tr></tbody>
                   : (() => {
                       const zoek = ingZoek.trim().toLowerCase();
-                      const filtered = zoek ? ing.filter(i=>i.naam.toLowerCase().includes(zoek)||i.type.toLowerCase().includes(zoek)) : ing;
+                      const filtered = zoek ? ing.filter(i=>i.naam.toLowerCase().includes(zoek)||(i.type||'').toLowerCase().includes(zoek)) : ing;
                       if (filtered.length===0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen resultaten voor "{ingZoek}"</td></tr></tbody>;
                       return ING_TYPES.map(ingTyp => {
                         const groep = [...filtered.filter(i => i.type === ingTyp)].sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));
