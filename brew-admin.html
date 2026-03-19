@@ -4561,6 +4561,8 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
   const [bfMsg, setBfMsg] = useState('');
   const [hygieneIngeklapt, setHygieneIngeklapt] = useStore('batches_hygiene_ingeklapt', true);
   const [ingIngeklapt, setIngIngeklapt] = useStore('batches_ing_ingeklapt', false);
+  const [afvullenIngeklapt, setAfvullenIngeklapt] = useStore('batches_afvullen_ingeklapt', false);
+  const [voorraadIngeklapt, setVoorraadIngeklapt] = useStore('batches_voorraad_ingeklapt', false);
   const [ingFormOpen, setIngFormOpen] = useState(false);
   const [batchZoek, setBatchZoek] = useState('');
   const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:''};
@@ -5489,8 +5491,11 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
 
                   {/* Afvulling registreren */}
                   <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('batch_filling_register')}</div>
-                    <div className="p-3">
+                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none" onClick={() => setAfvullenIngeklapt(v => !v)}>
+                      <span>{t('batch_filling_register')}</span>
+                      <span className={`text-xs font-bold ${!afvullenIngeklapt ? 'rotate-90' : ''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
+                    </div>
+                    {!afvullenIngeklapt && <div className="p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_packaging')} <span className="text-red-500">*</span></label>
@@ -5521,7 +5526,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                       {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}
                       <Btn onClick={doAfvullen} cls="ml-auto">{t('batch_filling_register_btn')}</Btn>
                     </div>
-                    </div>{/* /p-3 */}
+                    </div>}{/* /p-3 */}
                   </div>
 
                   {/* Klaar-knop: zet batch op Verpakt */}
@@ -5538,8 +5543,12 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                   )}
 
                   {/* Afgevulde voorraad tabel */}
-                  <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('batch_filled_stock')}</div>
+                  <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none" onClick={() => setVoorraadIngeklapt(v => !v)}>
+                      <span>{t('batch_filled_stock')}</span>
+                      <span className={`text-xs font-bold ${!voorraadIngeklapt ? 'rotate-90' : ''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
+                    </div>
+                    {!voorraadIngeklapt && <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="text-xs text-gray-500 bg-gray-50">
                         <tr>
@@ -5578,6 +5587,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                         })}
                       </tbody>
                     </table>
+                    </div>}
                   </div>
                 </div>
               );
@@ -6706,10 +6716,11 @@ function AccijnsPage({bat, acc, setAcc}) {
       if (!g[k]) g[k] = {
         key: k, batch_id: a.batch_id, naam: getNaam(a.batch_id),
         batch_nummer: a.batch_nummer, abv: a.abv,
-        liter: 0, accijns: 0,
+        liter: 0, accijns: 0, allPaid: true,
       };
       g[k].liter   += getLiter(a);
       g[k].accijns += getAccijns(a);
+      if (!a.betaald) g[k].allPaid = false;
     });
     // Sorteer op batch_nummer numeriek
     return Object.values(g).sort((a,b) =>
@@ -6749,7 +6760,10 @@ function AccijnsPage({bat, acc, setAcc}) {
           <tbody className="divide-y divide-gray-100">
             {rows.map(r => (
               <tr key={r.key}>
-                <td className="px-3 py-2 font-medium text-gray-800">{r.naam}</td>
+                <td className="px-3 py-2 font-medium text-gray-800">
+                  <span className={`inline-block w-2 h-2 rounded-full mr-2 flex-shrink-0 ${r.allPaid ? 'bg-green-500' : 'bg-red-500'}`} style={{verticalAlign:'middle'}}></span>
+                  {r.naam}
+                </td>
                 <td className="px-3 py-2 text-gray-500">{r.batch_nummer?`#${r.batch_nummer}`:'—'}</td>
                 <td className="px-3 py-2 text-right">{r.abv?`${r.abv}%`:'—'}</td>
                 <td className="px-3 py-2 text-right">{r.liter.toFixed(1)}L</td>
@@ -6866,7 +6880,10 @@ function AccijnsPage({bat, acc, setAcc}) {
                           <tbody className="divide-y divide-gray-100">
                             {sorted.map(a => (
                               <tr key={a.id}>
-                                <td className="px-3 py-2 font-medium text-gray-800">{getNaam(a.batch_id)}</td>
+                                <td className="px-3 py-2 font-medium text-gray-800">
+                                  <span className={`inline-block w-2 h-2 rounded-full mr-2 flex-shrink-0 ${a.betaald ? 'bg-green-500' : 'bg-red-500'}`} style={{verticalAlign:'middle'}}></span>
+                                  {getNaam(a.batch_id)}
+                                </td>
                                 <td className="px-3 py-2 text-gray-500">{a.batch_nummer?`#${a.batch_nummer}`:'—'}</td>
                                 <td className="px-3 py-2 text-gray-600">{a.verpakking_type||'—'}</td>
                                 <td className="px-3 py-2 text-gray-600">{fmtD(a.datum)}</td>
