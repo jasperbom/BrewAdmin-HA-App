@@ -8255,6 +8255,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [inkoopView, setInkoopView] = React.useState('facturen');
   const [inkoopSortDesc, setInkoopSortDesc] = React.useState(true);
   const [expandedFactuur, setExpandedFactuur] = React.useState(null);
+  const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
+  const [vrijeForm, setVrijeForm] = React.useState({leverancier:'', factuurnummer:'', datum: now.toISOString().slice(0,10)});
+  const [vrijeRegels, setVrijeRegels] = React.useState([{naam:'', netto:'', btw_tarief:21}]);
 
   const totals = React.useMemo(() => orders.reduce((acc, o) => {
     acc.omzet  += parseFloat(o.total||0) - parseFloat(o.total_tax||0);
@@ -8366,6 +8369,33 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     if (!confirm('Inkoop factuur verwijderen?')) return;
     setInkoopFacturen(prev => prev.filter(f=>f.id!==id));
     if (expandedFactuur===id) setExpandedFactuur(null);
+  };
+
+  const saveVrijeFactuur = () => {
+    const regels = vrijeRegels
+      .filter(r => r.naam.trim() && parseFloat(r.netto) > 0)
+      .map(r => {
+        const netto = parseFloat(r.netto)||0;
+        const btw_tarief = Number(r.btw_tarief)||0;
+        const btw_bedrag = +(netto * btw_tarief / 100).toFixed(2);
+        return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag};
+      });
+    if (!regels.length) return;
+    const totaal_netto = regels.reduce((s,r)=>s+r.netto, 0);
+    const totaal_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    setInkoopFacturen(prev => [...prev, {
+      id: newId(prev),
+      datum: vrijeForm.datum || now.toISOString().slice(0,10),
+      factuurnummer: vrijeForm.factuurnummer || '',
+      leverancier: vrijeForm.leverancier || '',
+      regels,
+      totaal_netto,
+      totaal_btw,
+      totaal_bruto: totaal_netto + totaal_btw,
+    }]);
+    setShowVrijeFactuur(false);
+    setVrijeForm({leverancier:'', factuurnummer:'', datum: now.toISOString().slice(0,10)});
+    setVrijeRegels([{naam:'', netto:'', btw_tarief:21}]);
   };
 
   const fmt = n => '€\u00a0' + Number(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
@@ -8617,6 +8647,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
             </div>
             <div className="text-xs text-gray-400 italic self-end pb-2">{inkoopGefilterd.length} facturen in periode</div>
+            <button onClick={()=>setShowVrijeFactuur(true)}
+              className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
+              + Vrije factuur
+            </button>
             {inkoopGefilterd.length > 0 && (
               <button onClick={exportInkoopCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
                 ↓ CSV ({inkoopGefilterd.length})
@@ -8624,6 +8658,96 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             )}
           </div>
         </div>
+
+        {/* Vrije factuur modal */}
+        {showVrijeFactuur && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={()=>setShowVrijeFactuur(false)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-base font-bold text-gray-800">Vrije factuur toevoegen</h3>
+                <button onClick={()=>setShowVrijeFactuur(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Factuurgegevens */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Leverancier</label>
+                    <input type="text" value={vrijeForm.leverancier} onChange={e=>setVrijeForm(f=>({...f, leverancier:e.target.value}))}
+                      placeholder="Naam leverancier"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Factuurnummer</label>
+                    <input type="text" value={vrijeForm.factuurnummer} onChange={e=>setVrijeForm(f=>({...f, factuurnummer:e.target.value}))}
+                      placeholder="Bijv. 2024-001"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Datum</label>
+                    <input type="date" value={vrijeForm.datum} onChange={e=>setVrijeForm(f=>({...f, datum:e.target.value}))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  </div>
+                </div>
+
+                {/* Regelitems */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Regelitems</label>
+                    <button onClick={()=>setVrijeRegels(r=>[...r, {naam:'', netto:'', btw_tarief:21}])}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Regel toevoegen</button>
+                  </div>
+                  <div className="space-y-2">
+                    {vrijeRegels.map((r,i)=>(
+                      <div key={i} className="flex gap-2 items-center">
+                        <input type="text" value={r.naam} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,naam:e.target.value}:x))}
+                          placeholder="Omschrijving"
+                          className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">€</span>
+                          <input type="number" value={r.netto} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,netto:e.target.value}:x))}
+                            placeholder="0.00" min="0" step="0.01"
+                            className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                        </div>
+                        <select value={r.btw_tarief} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,btw_tarief:Number(e.target.value)}:x))}
+                          className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                          <option value={0}>0% BTW</option>
+                          <option value={9}>9% BTW</option>
+                          <option value={21}>21% BTW</option>
+                        </select>
+                        {vrijeRegels.length > 1 && (
+                          <button onClick={()=>setVrijeRegels(prev=>prev.filter((_,j)=>j!==i))}
+                            className="text-gray-300 hover:text-red-500 transition-colors text-sm px-1">✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Totaal preview */}
+                {vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0) && (()=>{
+                  const totNetto = vrijeRegels.reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
+                  const totBtw   = vrijeRegels.reduce((s,r)=>s+((parseFloat(r.netto)||0)*Number(r.btw_tarief)/100), 0);
+                  return (
+                    <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between">
+                      <span className="text-gray-500">Netto <span className="font-medium text-gray-800">{fmt(totNetto)}</span></span>
+                      <span className="text-gray-500">BTW <span className="font-medium text-blue-700">{fmt(totBtw)}</span></span>
+                      <span className="text-gray-500">Bruto <span className="font-bold text-gray-900">{fmt(totNetto+totBtw)}</span></span>
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
+                <button onClick={()=>setShowVrijeFactuur(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium">Annuleren</button>
+                <button onClick={saveVrijeFactuur}
+                  disabled={!vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0)}
+                  className="px-5 py-2 tbtn rounded-xl text-sm font-semibold disabled:opacity-40 transition-colors">
+                  Opslaan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Samenvattingskaartjes inkoop */}
         {inkoopGefilterd.length > 0 && (
@@ -8709,17 +8833,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                   <tr key={i} className="border-b border-gray-100">
                                     <td className="py-1 pr-3 text-gray-700 font-medium">{r.naam}</td>
                                     <td className="py-1 pr-3 text-gray-400">
-                                      <span className={`px-1.5 py-0.5 rounded text-xs ${r.type==='ingredient'?'bg-green-50 text-green-700':'bg-purple-50 text-purple-700'}`}>
-                                        {r.type==='ingredient'?'Ingrediënt':'Verpakking'}
+                                      <span className={`px-1.5 py-0.5 rounded text-xs ${r.type==='ingredient'?'bg-green-50 text-green-700':r.type==='overig'?'bg-gray-100 text-gray-600':'bg-purple-50 text-purple-700'}`}>
+                                        {r.type==='ingredient'?'Ingrediënt':r.type==='overig'?'Overig':'Verpakking'}
                                       </span>
                                     </td>
                                     <td className="py-1 pr-3 text-right text-gray-600">
                                       {r.type==='ingredient'
                                         ? `${r.hoeveelheid} ${r.eenheid}`
+                                        : r.type==='overig' ? '—'
                                         : `${r.aantal}×`}
                                     </td>
                                     <td className="py-1 pr-3 text-right text-gray-500">
-                                      {r.type==='ingredient' && r.prijs_per_eenheid ? fmt(r.prijs_per_eenheid) : r.prijs_per_stuk ? fmt(r.prijs_per_stuk) : '—'}
+                                      {r.type==='overig' ? '—' : r.type==='ingredient' && r.prijs_per_eenheid ? fmt(r.prijs_per_eenheid) : r.prijs_per_stuk ? fmt(r.prijs_per_stuk) : '—'}
                                     </td>
                                     <td className="py-1 pr-3 text-right text-gray-700">{fmt(r.netto||0)}</td>
                                     <td className="py-1 pr-3 text-right text-gray-500">{r.btw_tarief}%</td>
@@ -8813,7 +8938,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           <div className={card + ' text-center py-14'}>
             <div className="text-4xl mb-3">🧾</div>
             <p className="text-gray-600 font-medium mb-1">Nog geen inkoop facturen</p>
-            <p className="text-gray-400 text-sm">Registreer een ontvangst via <strong>Ingrediënten → Ontvangst registreren</strong>.<br/>Elke opgeslagen ontvangst wordt automatisch hier als factuur toegevoegd.</p>
+            <p className="text-gray-400 text-sm">Registreer een ontvangst via <strong>Ingrediënten → Ontvangst registreren</strong>, of klik op <strong>+ Vrije factuur</strong> om een factuur handmatig toe te voegen.<br/>Elke opgeslagen ontvangst wordt automatisch hier als factuur toegevoegd.</p>
           </div>
         )}
         {inkoopFacturen.length>0 && inkoopGefilterd.length===0 && (
