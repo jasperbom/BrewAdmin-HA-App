@@ -3326,7 +3326,9 @@ Analyseer de factuur en geef ALLEEN een JSON object terug (geen uitleg, geen mar
     {
       "naam": "productnaam",
       "type": "Mout of Hop of Gist of Suiker of Chemisch of Verpakking of Overig",
-      "qty": nummer of null,
+      "aantal_stuks": aantal fysieke verpakkingen/zakken/eenheden of null,
+      "inhoud_per_stuk": inhoud per verpakking in de opgegeven eenheid (bijv. 25 voor een zak van 25 kg) of null,
+      "qty": totale hoeveelheid (aantal_stuks * inhoud_per_stuk) of null,
       "eenh": "kg of g of L of mL of stuks",
       "lotnr": "lotnummer of null",
       "tht": "YYYY-MM-DD of null",
@@ -3336,6 +3338,7 @@ Analyseer de factuur en geef ALLEEN een JSON object terug (geen uitleg, geen mar
     }
   ]
 }
+Voorbeeld: "2 zak Pilsner Mout 25kg" → aantal_stuks:2, inhoud_per_stuk:25, qty:50, eenh:"kg"
 Neem alleen regels op met ingrediënten of producten (geen verzendkosten, btw-regels, etc.).`;
 
 async function scanFactuurBestand(file, claudeApiKey) {
@@ -3723,7 +3726,7 @@ const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-m
 // Gedeeld Inkoop Factuur formulier — gebruikt op Ingrediënten- én Administratiepagina
 // ═══════════════════════════════════════════════════════════════
 function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='', claudeCreds=null }) {
-  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
+  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:'Mout',fabrikant:'',lotnr:'',aantal_stuks:'',inhoud_per_stuk:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
   const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'};
 
   // Leverancier: selecteer uit bekende of voer nieuwe in
@@ -3839,6 +3842,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
           type,
           fabrikant: '',
           lotnr: item.lotnr || '',
+          aantal_stuks: item.aantal_stuks ? String(item.aantal_stuks) : '',
+          inhoud_per_stuk: item.inhoud_per_stuk ? String(item.inhoud_per_stuk) : '',
           qty: parseQty(item.qty),
           eenh: item.eenh || 'kg',
           tht: item.tht || '',
@@ -4078,11 +4083,43 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
               {!productForm.ing_id && productForm.nieuw && (
                 <Inp label={t('ing_manufacturer')} value={productForm.fabrikant} onChange={v=>setProductForm(f=>({...f,fabrikant:v}))} placeholder={t('ph_manufacturer')} />
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Inp label={t('modal_qty_required')} type="number" value={productForm.qty}
-                  onChange={v=>setProductForm(f=>{const p=f.prijs,tot=f.totaalprijs;if(p&&v)return{...f,qty:v,totaalprijs:String((Number(p)*Number(v)).toFixed(2))};if(!p&&tot&&v)return{...f,qty:v,prijs:String((Number(tot)/Number(v)).toFixed(4))};return{...f,qty:v};})}
-                  placeholder="0" cls="col-span-2" />
-                <Sel label={t('lbl_unit')} value={productForm.eenh} onChange={v=>setProductForm(f=>({...f,eenh:v}))} opts={EENHEDEN.map(e=>({v:e,l:t('unit_'+e.toLowerCase())}))} />
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <Inp label="Aantal stuks" type="number" value={productForm.aantal_stuks}
+                  onChange={v=>setProductForm(f=>{
+                    const inhoud=f.inhoud_per_stuk;
+                    if(v&&inhoud){const qty=String(Number(v)*Number(inhoud));const totaalprijs=f.prijs?String((Number(f.prijs)*Number(qty)).toFixed(2)):f.totaalprijs;return{...f,aantal_stuks:v,qty,totaalprijs};}
+                    return{...f,aantal_stuks:v};
+                  })}
+                  placeholder="2" />
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Inhoud per stuk</label>
+                  <div className="flex gap-1">
+                    <input type="number" value={productForm.inhoud_per_stuk}
+                      onChange={e=>{const v=e.target.value;setProductForm(f=>{
+                        const aantal=f.aantal_stuks;
+                        if(aantal&&v){const qty=String(Number(aantal)*Number(v));const totaalprijs=f.prijs?String((Number(f.prijs)*Number(qty)).toFixed(2)):f.totaalprijs;return{...f,inhoud_per_stuk:v,qty,totaalprijs};}
+                        return{...f,inhoud_per_stuk:v};
+                      });}}
+                      placeholder="25"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                    <select value={productForm.eenh} onChange={e=>setProductForm(f=>({...f,eenh:e.target.value}))}
+                      className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white t-input outline-none shadow-sm">
+                      {EENHEDEN.map(e=><option key={e} value={e}>{t('unit_'+e.toLowerCase())}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {t('modal_qty_required')}
+                    {productForm.aantal_stuks && productForm.inhoud_per_stuk && (
+                      <span className="ml-1 text-amber-600 font-normal">({productForm.aantal_stuks} × {productForm.inhoud_per_stuk} {productForm.eenh})</span>
+                    )}
+                  </label>
+                  <input type="number" value={productForm.qty}
+                    onChange={e=>{const v=e.target.value;setProductForm(f=>{const p=f.prijs,tot=f.totaalprijs;if(p&&v)return{...f,qty:v,totaalprijs:String((Number(p)*Number(v)).toFixed(2))};if(!p&&tot&&v)return{...f,qty:v,prijs:String((Number(tot)/Number(v)).toFixed(4))};return{...f,qty:v};});}}
+                    placeholder="0"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
@@ -4228,7 +4265,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   {productLijst.map((p,i)=>(
                     <tr key={p._id} className="bg-white">
                       <td className="px-3 py-2 font-medium">{p._naam}</td>
-                      <td className="px-3 py-2">{p.qty} {p.eenh}</td>
+                      <td className="px-3 py-2">{p.aantal_stuks && p.inhoud_per_stuk ? `${p.aantal_stuks}× ${p.inhoud_per_stuk} ${p.eenh} (${p.qty} ${p.eenh})` : `${p.qty} ${p.eenh}`}</td>
                       <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.prijs?`€${p.prijs}`:'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.totaalprijs?`€${p.totaalprijs}`:'—'}</td>
@@ -4433,7 +4470,10 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
       const netto = pn * Number(p.qty||0);
       const tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find(i=>i.id===Number(p.ing_id))?.naam||p.nieuw.trim()) : p.nieuw.trim();
-      factuurRegels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+      factuurRegels.push({type:'ingredient', naam,
+        aantal_stuks: p.aantal_stuks ? Number(p.aantal_stuks) : null,
+        inhoud_per_stuk: p.inhoud_per_stuk ? Number(p.inhoud_per_stuk) : null,
+        hoeveelheid:Number(p.qty), eenheid:p.eenh,
         prijs_per_eenheid:pn||null, netto, btw_tarief:tarief, btw_bedrag:netto*tarief/100});
     });
     verpakkingLijst.forEach(v => {
@@ -9563,7 +9603,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                     </td>
                                     <td className="py-1 pr-3 text-right text-gray-600">
                                       {r.type==='ingredient'
-                                        ? `${r.hoeveelheid} ${r.eenheid}`
+                                        ? r.aantal_stuks && r.inhoud_per_stuk
+                                          ? `${r.aantal_stuks}× ${r.inhoud_per_stuk} ${r.eenheid} = ${r.hoeveelheid} ${r.eenheid}`
+                                          : `${r.hoeveelheid} ${r.eenheid}`
                                         : r.type==='overig' ? '—'
                                         : `${r.aantal}×`}
                                     </td>
