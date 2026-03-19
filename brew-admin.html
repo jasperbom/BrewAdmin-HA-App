@@ -3467,12 +3467,12 @@ const Sel = ({label,value,onChange,opts,ph,cls=''}) => (
   </div>
 );
 
-const Modal = ({title,children,onClose,wide=false}) => (
+const Modal = ({title,children,onClose,wide=false,hideClose=false}) => (
   <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto">
     <div className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${wide?'max-w-2xl':'max-w-lg'}`}>
       <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
         <h3 className="font-semibold text-gray-800 text-base">{title}</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors">&times;</button>
+        {!hideClose && <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors">&times;</button>}
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -4568,14 +4568,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
   const [uitModal, setUitModal] = useState(null);
   const [uitAantal, setUitAantal] = useState('');
   const [uitDatum, setUitDatum] = useState(tod());
+  const [agpModal, setAgpModal] = useState(null); // AGP bevestiging na uitslaan
 
   // ── WooCommerce auto-push helper ─────────────────────────────────────────
-  // Helper: is accijns betaald of is er geen accijns verschuldigd?
-  const wcAccijnsBetaald = (uitslag) => {
-    const records = (acc||[]).filter(ax => String(ax.uitslag_id) === String(uitslag.id));
-    if (records.length === 0) return Number(uitslag.accijns||0) === 0;
-    return records.every(a => a.betaald === true || Number(a.accijns||0) === 0);
-  };
 
   const wcPushNaBatch = async (batchId, verpakkingType, nieuweUitslag) => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) return;
@@ -4584,13 +4579,11 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
       if (!batch) return;
       const art = (artikelen||[]).find(a=>a.biernaam===batch.naam && a.verpakking_type===verpakkingType);
       if (!art?.artikelnummer) return;
-      // Bestaande uitslagen: alleen meetellen als accijns betaald (of geen accijns)
+      // Alle uitslagen meetellen (uitgeslagen = beschikbaar, ongeacht accijns-betaalstatus)
       const bestaand = (uit||[])
         .filter(u=>bat.find(b=>b.id===u.batch_id)?.naam===art.biernaam && u.verpakking_type===verpakkingType)
-        .filter(u=>wcAccijnsBetaald(u))
         .reduce((s,u)=>s+Math.max(0,Number(u.aantal||0)-Number(u.verkocht_stuks||0)),0);
-      // Nieuwe uitslag: accijns-record nog niet in state → check via uitslag.accijns
-      const nieuwBeschik = (nieuweUitslag && Number(nieuweUitslag.accijns||0)===0)
+      const nieuwBeschik = nieuweUitslag
         ? Math.max(0, Number(nieuweUitslag.aantal||0) - Number(nieuweUitslag.verkocht_stuks||0))
         : 0;
       const beschikbaar = bestaand + nieuwBeschik;
@@ -4988,8 +4981,12 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
       abv:selB?.ABV||0,accijns:accBed,betaald:false,betaal_datum:null}]);
     addLog({type:'uitslaan', batch_id:sel, verpakking_type:uitModal.verpakking_type,
       hoeveelheid:n, eenheid:'stuks', referentie:`${liter.toFixed(1)}L`});
+    const agpInfo = {
+      label: `${selB?.naam||''}${selB?.batch_nummer ? ` — #${selB.batch_nummer}` : ''} · ${uitModal.verpakking_type} (${n} stuks)`
+    };
     setUitModal(null); setUitAantal(''); setUitDatum(tod());
     wcPushNaBatch(sel, uitModal.verpakking_type, nu);
+    setAgpModal(agpInfo);
   };
   const delAv = (id) => {
     if ((uit||[]).some(u=>u.afvulling_id===id)) { alert(t('err_cannot_delete_has_releases')); return; }
@@ -5731,6 +5728,19 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
         </>)}
       </div>
 
+      {agpModal && (
+        <Modal title="Accijns Goederen Plaats" hideClose>
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-sm leading-relaxed">
+              Verplaats deze <strong>{agpModal.label}</strong> voorraad uit de Accijns Goederen Plaats.
+            </div>
+            <div className="flex justify-end">
+              <Btn v="green" onClick={()=>setAgpModal(null)}>✓ Gedaan</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {uitModal && (
         <Modal title={`Uitslaan: ${uitModal.verpakking_type}`} onClose={()=>setUitModal(null)}>
           <div className="space-y-3">
@@ -5869,6 +5879,7 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
   const [uitModal, setUitModal] = useState(null); // holds afvulling being uitgeslagen
   const [uitAantal, setUitAantal] = useState('');
   const [uitDatum, setUitDatum] = useState(tod());
+  const [agpModal, setAgpModal] = useState(null); // AGP bevestiging na uitslaan
   const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:''};
   const [avF, setAvF] = useState(emptyAv);
 
@@ -5950,7 +5961,11 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
       betaald: false,
       betaal_datum: null
     }]);
+    const agpInfo = {
+      label: `${selB?.naam||''}${selB?.batch_nummer ? ` — #${selB.batch_nummer}` : ''} · ${uitModal.verpakking_type} (${n} stuks)`
+    };
     setUitModal(null); setUitAantal(''); setUitDatum(tod());
+    setAgpModal(agpInfo);
   };
 
   const delAv = (id) => {
@@ -6105,6 +6120,19 @@ function AfvullenPage({bat, setBat, av, setAv, uit, setUit, acc, setAcc, verpakk
         </>)}
       </div>
 
+      {agpModal && (
+        <Modal title="Accijns Goederen Plaats" hideClose>
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-sm leading-relaxed">
+              Verplaats deze <strong>{agpModal.label}</strong> voorraad uit de Accijns Goederen Plaats.
+            </div>
+            <div className="flex justify-end">
+              <Btn v="green" onClick={()=>setAgpModal(null)}>✓ Gedaan</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Uitslaan modal */}
       {uitModal && (
         <Modal title={`Uitslaan: ${uitModal.verpakking_type}`} onClose={()=>setUitModal(null)}>
@@ -6208,33 +6236,16 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
 
   const getBatch = (bid) => bat.find(b=>b.id===bid);
 
-  // Helper: accijns betaald of geen accijns verschuldigd voor deze uitslag?
-  // Gebruikt filter+every zodat dubbele records (zelfde uitslag_id) allemaal betaald moeten zijn
-  const wcAccijnsBetaald = (u) => {
-    const records = (acc||[]).filter(ax => String(ax.uitslag_id) === String(u.id));
-    if (records.length === 0) return Number(u.accijns||0) === 0;
-    return records.every(a => a.betaald === true || Number(a.accijns||0) === 0);
-  };
-
-  // Debug helper
-  const wcAccijnsReden = (u) => {
-    const records = (acc||[]).filter(ax => String(ax.uitslag_id) === String(u.id));
-    if (records.length === 0) return Number(u.accijns||0) === 0 ? `✓ geen record, uitslag.accijns=0` : `✗ geen record, uitslag.accijns=${Number(u.accijns||0).toFixed(2)}`;
-    const ok = records.every(a => a.betaald === true || Number(a.accijns||0) === 0);
-    const detail = records.map(a => `acc.id=${a.id} betaald=${a.betaald} accijns=${Number(a.accijns||0).toFixed(2)}`).join(' & ');
-    return `${ok?'✓':'✗'} ${records.length} record(s): ${detail}`;
-  };
 
   const addWcLog = (type, msg, details) => {
     const entry = {id: Date.now(), ts: new Date().toISOString(), type, msg, details: details||''};
     setWcSyncLog(prev => [entry, ...(prev||[])].slice(0, 100));
   };
 
-  // Beschikbare WC-voorraad voor een artikel (alleen uitslagen met betaalde/geen accijns)
+  // Beschikbare WC-voorraad voor een artikel (alle uitgeslagen items, ongeacht accijns-betaalstatus)
   const wcBeschikbaarVoorArt = (art) =>
     (uit||[])
       .filter(u=>{ const b=bat.find(bx=>bx.id===u.batch_id); return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type; })
-      .filter(u=>wcAccijnsBetaald(u))
       .reduce((s,u)=>s+Math.max(0,Number(u.aantal||0)-Number(u.verkocht_stuks||0)), 0);
 
   // Push alle voorraad naar WooCommerce
@@ -6248,11 +6259,7 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
       const combis = (artikelen||[]).filter(a=>a.artikelnummer);
       for (const art of combis) {
         const beschikbaar = wcBeschikbaarVoorArt(art);
-        // Debug: log per uitslag de accijns-beslissing
-        const uitslagenVoorArt = (uit||[]).filter(u=>{ const b=bat.find(bx=>bx.id===u.batch_id); return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type; });
-        const debugDetails = uitslagenVoorArt.map(u=>`id=${u.id} aantal=${u.aantal} accijns=${Number(u.accijns||0).toFixed(2)}: ${wcAccijnsReden(u)}`).join(' | ');
-        console.log(`WC push ${art.biernaam} ${art.verpakking_type}: beschikbaar=${beschikbaar}`, debugDetails);
-        addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, debugDetails || 'geen uitslagen');
+        addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, '');
         const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
         if (!prods?.length) continue;
         await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
@@ -6287,15 +6294,13 @@ function VoorraadPage({bat, uit, setUit, acc, setAcc, archief, setArchief, geslo
           const b = bat.find(bx=>bx.id===u.batch_id);
           return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type;
         });
-        // Alleen accijns-vrije/betaalde uitslagen vergelijken met WC voorraad
+        // Alle uitgeslagen items vergelijken met WC voorraad (ongeacht accijns-betaalstatus)
         const brewBeschikbaar = uitslagenVoorDitArtikel
-          .filter(u=>wcAccijnsBetaald(u))
           .reduce((s,u)=>s+Math.max(0,Number(u.aantal||0)-Number(u.verkocht_stuks||0)),0);
         const diff = brewBeschikbaar - wcStock;
         if (diff <= 0) continue;
-        // FIFO: verdeel diff over uitslagen (oudste eerst), ook alleen betaalde accijns
+        // FIFO: verdeel diff over uitslagen (oudste eerst)
         const gesorteerd = [...uitslagenVoorDitArtikel]
-          .filter(u=>wcAccijnsBetaald(u))
           .sort((a,b)=>a.id-b.id);
         let teDelen = diff;
         const updates = {};
