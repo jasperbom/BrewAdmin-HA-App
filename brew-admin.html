@@ -3487,7 +3487,7 @@ const Modal = ({title,children,onClose,wide=false,hideClose=false}) => (
 const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CLR[s]||'bg-gray-100 text-gray-600'}`}>{({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')})[s]||s}</span>;
 
 // ===== INGREDIËNTEN =====
-function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[]}) {
+function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}}) {
   const [tab, setTab] = useState('ingredienten');
 
   // --- Ingrediënten state ---
@@ -3495,7 +3495,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [showO, setShowO] = useState(false);
   const [showA, setShowA] = useState(null);
   const emptyFactuur = {leverancier:'',factuur:'',datum:tod()};
-  const emptyProduct = {ing_id:'',nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:''};
+  const emptyProduct = {ing_id:'',nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
   const [factuurForm, setFactuurForm] = useState(emptyFactuur);
   const [productForm, setProductForm] = useState(emptyProduct);
   const [productLijst, setProductLijst] = useState([]);
@@ -3562,7 +3562,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
   // --- Verpakkingen state ---
   const [showVOntv, setShowVOntv] = useState(false);
-  const emptyVO = {od_id:'',verpakking_id:'',naam:'',inhoud_liter:'',type:'',lotnr:'',aantal:'',preset:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:'',prijs_per_stuk:'',totaalprijs:''};
+  const emptyVO = {od_id:'',verpakking_id:'',naam:'',inhoud_liter:'',type:'',lotnr:'',aantal:'',preset:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'};
   const [vOntvForm, setVOntvForm] = useState(emptyVO);
   const [showVAfboek, setShowVAfboek] = useState(null);
   const [vAfQty, setVAfQty] = useState('');
@@ -3632,7 +3632,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
       const lot = {id:newId([...lots,...newLots]), ingredient_id:iid, hoeveelheid:Number(p.qty), eenheid:p.eenh,
         houdbaarheid:p.tht||null, lotnummer:p.lotnr||'', leverancier:factuurForm.leverancier||'',
         prijs_per_eenheid:p.prijs?Number(p.prijs):null, factuur_nummer:factuurForm.factuur||'',
-        aankoop_datum:factuurForm.datum||tod(), beschikbaar:true};
+        aankoop_datum:factuurForm.datum||tod(), btw_tarief:Number(p.btw_tarief)||0, beschikbaar:true};
       newLots.push(lot);
       addLog({ingredient_id:iid, ingredient_naam:updatedIng.find(i=>i.id===iid)?.naam||p.nieuw.trim(),
         lot_id:lot.id, lotnummer:lot.lotnummer||'', type:'ontvangst',
@@ -3664,6 +3664,35 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
         }]);
       }
     });
+    // --- inkoop_factuur record aanmaken ---
+    const factuurRegels = [];
+    productLijst.forEach(p => {
+      const pn = p.prijs ? Number(p.prijs) : 0;
+      const netto = pn * Number(p.qty||0);
+      const tarief = Number(p.btw_tarief)||0;
+      const naam = p.ing_id ? (ing.find(i=>i.id===Number(p.ing_id))?.naam||p.nieuw.trim()) : p.nieuw.trim();
+      factuurRegels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+        prijs_per_eenheid:pn||null, netto, btw_tarief:tarief, btw_bedrag:netto*tarief/100});
+    });
+    verpakkingLijst.forEach(v => {
+      const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
+      const netto = ps * Number(v.aantal||0);
+      const tarief = Number(v.btw_tarief)||0;
+      factuurRegels.push({type:'verpakking', naam:v._naam||v.naam.trim(), aantal:Number(v.aantal),
+        prijs_per_stuk:ps||null, netto, btw_tarief:tarief, btw_bedrag:netto*tarief/100});
+    });
+    if (factuurRegels.length > 0) {
+      const totaal_netto = factuurRegels.reduce((s,r)=>s+r.netto, 0);
+      const totaal_btw   = factuurRegels.reduce((s,r)=>s+r.btw_bedrag, 0);
+      setInkoopFacturen(prev=>[...prev, {
+        id: newId(prev),
+        datum: factuurForm.datum||tod(),
+        factuurnummer: factuurForm.factuur||'',
+        leverancier: factuurForm.leverancier||'',
+        regels: factuurRegels,
+        totaal_netto, totaal_btw, totaal_bruto: totaal_netto+totaal_btw,
+      }]);
+    }
     setShowO(false); setFactuurForm(emptyFactuur); setProductForm(emptyProduct); setProductLijst([]);
     setVerpakkingLijst([]); setVOntvForm(emptyVO);
   };
@@ -4114,13 +4143,22 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                     <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
                     <Inp label={t('batch_filling_tht')} type="date" value={productForm.tht} onChange={v=>setProductForm(f=>({...f,tht:v}))} />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <Inp label={t('modal_price_per_unit')} type="number" value={productForm.prijs}
                       onChange={v=>setProductForm(f=>({...f,prijs:v,totaalprijs:v&&f.qty?String((Number(v)*Number(f.qty)).toFixed(2)):f.totaalprijs}))}
                       placeholder="0.00" />
                     <Inp label="Totaalprijs ex BTW (€)" type="number" value={productForm.totaalprijs}
                       onChange={v=>setProductForm(f=>({...f,totaalprijs:v,prijs:v&&f.qty?String((Number(v)/Number(f.qty)).toFixed(4)):f.prijs}))}
                       placeholder="0.00" />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
+                      <select value={productForm.btw_tarief} onChange={e=>setProductForm(f=>({...f,btw_tarief:e.target.value}))}
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
+                        <option value="0">0%</option>
+                        <option value="9">9%</option>
+                        <option value="21">21%</option>
+                      </select>
+                    </div>
                   </div>
                   <div className="flex justify-end">
                     <Btn onClick={voegProductToe}>{t('modal_add_to_list')}</Btn>
@@ -4155,7 +4193,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Inp label={t('ing_lot_number')} value={vOntvForm.lotnr} onChange={v=>setVOntvForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <Inp label={t('lbl_qty_received')+' *'} type="number" value={vOntvForm.aantal}
                       onChange={v=>setVOntvForm(f=>{const ps=f.prijs_per_stuk,tot=f.totaalprijs;if(ps&&v)return{...f,aantal:v,totaalprijs:String((Number(ps)*Number(v)).toFixed(2))};if(!ps&&tot&&v)return{...f,aantal:v,prijs_per_stuk:String((Number(tot)/Number(v)).toFixed(4))};return{...f,aantal:v};})}
                       placeholder="24" />
@@ -4165,6 +4203,15 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                     <Inp label="Totaalprijs ex BTW (€)" type="number" value={vOntvForm.totaalprijs}
                       onChange={v=>setVOntvForm(f=>({...f,totaalprijs:v,prijs_per_stuk:v&&f.aantal?String((Number(v)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}))}
                       placeholder="0.00" />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
+                      <select value={vOntvForm.btw_tarief} onChange={e=>setVOntvForm(f=>({...f,btw_tarief:e.target.value}))}
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
+                        <option value="0">0%</option>
+                        <option value="9">9%</option>
+                        <option value="21">21%</option>
+                      </select>
+                    </div>
                   </div>
                   <div className="flex justify-end">
                     <Btn onClick={voegVerpakkingToe}>{t('modal_add_to_list')}</Btn>
@@ -8194,7 +8241,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 }
 
 // ===== BOEKHOUDING =====
-function BoekhoudingPage({wcCreds}) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[]}) {
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -8204,6 +8251,10 @@ function BoekhoudingPage({wcCreds}) {
   const [dateTo, setDateTo] = React.useState(now.toISOString().slice(0,10));
   const [statusFilter, setStatusFilter] = React.useState('completed');
   const [activeView, setActiveView] = React.useState('orders');
+  const [mainTab, setMainTab] = React.useState('verkoop');
+  const [inkoopView, setInkoopView] = React.useState('facturen');
+  const [inkoopSortDesc, setInkoopSortDesc] = React.useState(true);
+  const [expandedFactuur, setExpandedFactuur] = React.useState(null);
 
   const totals = React.useMemo(() => orders.reduce((acc, o) => {
     acc.omzet  += parseFloat(o.total||0) - parseFloat(o.total_tax||0);
@@ -8268,90 +8319,144 @@ function BoekhoudingPage({wcCreds}) {
     a.click();
   };
 
+  // ── Inkoop computed values ──────────────────────────────────────────────
+  const inkoopGefilterd = React.useMemo(() =>
+    inkoopFacturen
+      .filter(f => f.datum >= dateFrom && f.datum <= dateTo)
+      .sort((a,b) => inkoopSortDesc ? b.datum.localeCompare(a.datum) : a.datum.localeCompare(b.datum)),
+    [inkoopFacturen, dateFrom, dateTo, inkoopSortDesc]
+  );
+
+  const inkoopTotals = React.useMemo(() =>
+    inkoopGefilterd.reduce((s,f) => ({
+      netto: s.netto + (f.totaal_netto||0),
+      btw:   s.btw   + (f.totaal_btw||0),
+      bruto: s.bruto + (f.totaal_bruto||0),
+    }), {netto:0, btw:0, bruto:0}),
+    [inkoopGefilterd]
+  );
+
+  const btwPerTarief = React.useMemo(() => {
+    const map = {};
+    inkoopGefilterd.forEach(f => (f.regels||[]).forEach(r => {
+      const k = r.btw_tarief ?? 0;
+      if (!map[k]) map[k] = {tarief:k, netto:0, btw:0};
+      map[k].netto += r.netto||0;
+      map[k].btw   += r.btw_bedrag||0;
+    }));
+    return Object.values(map).sort((a,b)=>a.tarief-b.tarief);
+  }, [inkoopGefilterd]);
+
+  const exportInkoopCSV = () => {
+    const hdr = ['Datum','Factuurnummer','Leverancier','Netto excl. BTW','BTW%','BTW bedrag','Bruto incl. BTW'];
+    const rows = [];
+    inkoopGefilterd.forEach(f => {
+      (f.regels||[]).forEach(r => rows.push([
+        f.datum, f.factuurnummer, f.leverancier,
+        r.netto.toFixed(2), r.btw_tarief, r.btw_bedrag.toFixed(2),
+        (r.netto+r.btw_bedrag).toFixed(2),
+      ]));
+    });
+    const csv = [hdr,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`inkoop_${dateFrom}_${dateTo}.csv`});
+    a.click();
+  };
+
+  const deleteFactuur = (id) => {
+    if (!confirm('Inkoop factuur verwijderen?')) return;
+    setInkoopFacturen(prev => prev.filter(f=>f.id!==id));
+    if (expandedFactuur===id) setExpandedFactuur(null);
+  };
+
   const fmt = n => '€\u00a0' + Number(n).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
   const fmtDate = s => s ? s.slice(0,10) : '';
   const STATUS_LABELS = {completed:'Afgerond',processing:'In behandeling','on-hold':'In de wacht',cancelled:'Geannuleerd',refunded:'Terugbetaald',failed:'Mislukt',pending:'In afwachting'};
   const STATUS_COLORS = {completed:'bg-green-100 text-green-700',processing:'bg-blue-100 text-blue-700','on-hold':'bg-yellow-100 text-yellow-700',cancelled:'bg-gray-100 text-gray-500',refunded:'bg-orange-100 text-orange-700',failed:'bg-red-100 text-red-600',pending:'bg-purple-100 text-purple-600'};
   const card = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-5';
 
-  if (!wcCreds?.enabled) return (
-    <div className="max-w-7xl mx-auto px-4 py-10 text-center">
-      <div className={card + ' py-14'}>
-        <div className="text-5xl mb-4">🧾</div>
-        <h2 className="text-lg font-semibold text-gray-700 mb-2">WooCommerce niet actief</h2>
-        <p className="text-sm text-gray-500">Activeer de WooCommerce-koppeling in <strong>Instellingen</strong> om bestellingen op te halen.</p>
-      </div>
-    </div>
-  );
+  // (no early return — Inkoop tab is always available)
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
 
-      {/* Header */}
+      {/* Header + hoofd-tabs */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-bold text-gray-800">{t('nav_boekhouding')}</h2>
-        {orders.length > 0 && (
-          <button onClick={exportCSV} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
-            ↓ Export CSV ({orders.length})
-          </button>
-        )}
-      </div>
-
-      {/* Filter */}
-      <div className={card}>
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Van</label>
-            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Tot</label>
-            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
-            <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none">
-              <option value="any">Alle statussen</option>
-              <option value="completed">Afgerond</option>
-              <option value="processing">In behandeling</option>
-              <option value="on-hold">In de wacht</option>
-              <option value="refunded">Terugbetaald</option>
-              <option value="cancelled">Geannuleerd</option>
-            </select>
-          </div>
-          <button onClick={fetchOrders} disabled={loading}
-            className="px-5 py-1.5 tbtn rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
-            {loading ? 'Ophalen…' : 'Ophalen'}
-          </button>
-        </div>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      </div>
-
-      {/* Samenvattingskaartjes */}
-      {orders.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            {label:'Omzet excl. BTW', val:totals.omzet,      cls:'text-green-700 font-bold'},
-            {label:'BTW',             val:totals.btw,         cls:'text-blue-700'},
-            {label:'Verzending',      val:totals.verzending,  cls:'text-gray-700'},
-            {label:'Korting',         val:-totals.korting,    cls:'text-orange-600'},
-            {label:'Totaal incl. BTW',val:totals.totaal,      cls:'text-gray-900 font-bold'},
-          ].map(s => (
-            <div key={s.label} className={card + ' text-center py-4'}>
-              <div className={`text-base font-semibold ${s.cls}`}>{fmt(s.val)}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
-              <div className="text-xs text-gray-300 mt-0.5">{orders.length} bestellingen</div>
-            </div>
+        <div className="flex gap-2">
+          {[{id:'verkoop',l:'Verkoop'},{id:'inkoop',l:'Inkoop'}].map(tab=>(
+            <button key={tab.id} onClick={()=>setMainTab(tab.id)}
+              className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${mainTab===tab.id?'tbtn shadow':'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              {tab.l}
+            </button>
           ))}
         </div>
-      )}
+      </div>
 
-      {orders.length > 0 && (
-        <>
-          {/* Subtabs */}
+      {/* ══════════════════════ VERKOOP ══════════════════════ */}
+      {mainTab==='verkoop' && (<>
+
+        {/* Filter */}
+        <div className={card}>
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Van</label>
+              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Tot</label>
+              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+              <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none">
+                <option value="any">Alle statussen</option>
+                <option value="completed">Afgerond</option>
+                <option value="processing">In behandeling</option>
+                <option value="on-hold">In de wacht</option>
+                <option value="refunded">Terugbetaald</option>
+                <option value="cancelled">Geannuleerd</option>
+              </select>
+            </div>
+            {wcCreds?.enabled
+              ? <button onClick={fetchOrders} disabled={loading}
+                  className="px-5 py-1.5 tbtn rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
+                  {loading ? 'Ophalen…' : 'Ophalen'}
+                </button>
+              : <span className="text-xs text-orange-600 italic">WooCommerce niet actief — zie Instellingen</span>
+            }
+            {orders.length > 0 && (
+              <button onClick={exportCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                ↓ CSV ({orders.length})
+              </button>
+            )}
+          </div>
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        </div>
+
+        {/* Samenvattingskaartjes */}
+        {orders.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              {label:'Omzet excl. BTW', val:totals.omzet,      cls:'text-green-700 font-bold'},
+              {label:'BTW',             val:totals.btw,         cls:'text-blue-700'},
+              {label:'Verzending',      val:totals.verzending,  cls:'text-gray-700'},
+              {label:'Korting',         val:-totals.korting,    cls:'text-orange-600'},
+              {label:'Totaal incl. BTW',val:totals.totaal,      cls:'text-gray-900 font-bold'},
+            ].map(s => (
+              <div key={s.label} className={card + ' text-center py-4'}>
+                <div className={`text-base font-semibold ${s.cls}`}>{fmt(s.val)}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
+                <div className="text-xs text-gray-300 mt-0.5">{orders.length} bestellingen</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {orders.length > 0 && (<>
+          {/* Subtabs verkoop */}
           <div className="flex gap-2 flex-wrap">
             {[{id:'orders',l:'Bestellingen'},{id:'producten',l:'Per product'},{id:'betaling',l:'Per betaalmethode'}].map(v=>(
               <button key={v.id} onClick={()=>setActiveView(v.id)}
@@ -8455,7 +8560,7 @@ function BoekhoudingPage({wcCreds}) {
               byMethod[m].aantal++;
               byMethod[m].totaal += parseFloat(o.total||0);
             });
-            const rows = Object.values(byMethod).sort((a,b)=>b.totaal-a.totaal);
+            const pmRows = Object.values(byMethod).sort((a,b)=>b.totaal-a.totaal);
             return (
               <div className={card + ' overflow-x-auto'}>
                 <table className="w-full text-sm">
@@ -8467,7 +8572,7 @@ function BoekhoudingPage({wcCreds}) {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r,i)=>(
+                    {pmRows.map((r,i)=>(
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="py-2 pr-3 font-medium text-gray-800">{r.label}</td>
                         <td className="py-2 pr-3 text-right text-gray-600">{r.aantal}</td>
@@ -8478,22 +8583,246 @@ function BoekhoudingPage({wcCreds}) {
                   <tfoot>
                     <tr className="border-t-2 border-gray-200">
                       <td className="py-2 pr-3 text-right text-xs font-semibold text-gray-500 uppercase">Totaal</td>
-                      <td className="py-2 pr-3 text-right font-bold text-gray-700">{rows.reduce((s,r)=>s+r.aantal,0)}</td>
-                      <td className="py-2 text-right font-bold text-gray-900">{fmt(rows.reduce((s,r)=>s+r.totaal,0))}</td>
+                      <td className="py-2 pr-3 text-right font-bold text-gray-700">{pmRows.reduce((s,r)=>s+r.aantal,0)}</td>
+                      <td className="py-2 text-right font-bold text-gray-900">{fmt(pmRows.reduce((s,r)=>s+r.totaal,0))}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
             );
           })()}
-        </>
-      )}
+        </>)}
 
-      {!loading && orders.length===0 && !error && (
-        <div className={card + ' text-center py-14'}>
-          <p className="text-gray-400 text-sm">Stel een periode in en klik op <strong>Ophalen</strong> om bestellingen te laden.</p>
+        {!loading && orders.length===0 && !error && (
+          <div className={card + ' text-center py-14'}>
+            <p className="text-gray-400 text-sm">Stel een periode in en klik op <strong>Ophalen</strong> om bestellingen te laden.</p>
+          </div>
+        )}
+      </>)}
+
+      {/* ══════════════════════ INKOOP ══════════════════════ */}
+      {mainTab==='inkoop' && (<>
+
+        {/* Filter */}
+        <div className={card}>
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Van</label>
+              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Tot</label>
+              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div className="text-xs text-gray-400 italic self-end pb-2">{inkoopGefilterd.length} facturen in periode</div>
+            {inkoopGefilterd.length > 0 && (
+              <button onClick={exportInkoopCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                ↓ CSV ({inkoopGefilterd.length})
+              </button>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Samenvattingskaartjes inkoop */}
+        {inkoopGefilterd.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              {label:'Netto inkoop excl. BTW', val:inkoopTotals.netto, cls:'text-gray-800 font-bold'},
+              {label:'Voorbelasting (BTW)',     val:inkoopTotals.btw,   cls:'text-blue-700 font-bold'},
+              {label:'Bruto inkoop incl. BTW',  val:inkoopTotals.bruto, cls:'text-gray-900 font-bold'},
+            ].map(s=>(
+              <div key={s.label} className={card + ' text-center py-4'}>
+                <div className={`text-lg font-semibold ${s.cls}`}>{fmt(s.val)}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {inkoopGefilterd.length > 0 && (<>
+          {/* Subtabs inkoop */}
+          <div className="flex gap-2 flex-wrap">
+            {[{id:'facturen',l:'Facturen'},{id:'btwtarief',l:'BTW per tarief (aangifte)'}].map(v=>(
+              <button key={v.id} onClick={()=>setInkoopView(v.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${inkoopView===v.id?'tbtn':'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {v.l}
+              </button>
+            ))}
+          </div>
+
+          {/* Facturen tabel */}
+          {inkoopView==='facturen' && (
+            <div className={card + ' overflow-x-auto'}>
+              <table className="w-full text-sm min-w-[600px]">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-2 pr-2 text-left font-medium w-6"></th>
+                    <th className="py-2 pr-3 text-left font-medium cursor-pointer select-none" onClick={()=>setInkoopSortDesc(d=>!d)}>
+                      Datum {inkoopSortDesc?'↓':'↑'}
+                    </th>
+                    <th className="py-2 pr-3 text-left font-medium">Factuurnummer</th>
+                    <th className="py-2 pr-3 text-left font-medium">Leverancier</th>
+                    <th className="py-2 pr-3 text-right font-medium">Netto</th>
+                    <th className="py-2 pr-3 text-right font-medium">BTW</th>
+                    <th className="py-2 pr-3 text-right font-medium">Bruto</th>
+                    <th className="py-2 text-right font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inkoopGefilterd.map(f => (<React.Fragment key={f.id}>
+                    <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
+                        onClick={()=>setExpandedFactuur(expandedFactuur===f.id?null:f.id)}>
+                      <td className="py-2 pr-2 text-gray-400 text-xs text-center">
+                        {expandedFactuur===f.id?'▾':'▸'}
+                      </td>
+                      <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
+                      <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
+                      <td className="py-2 pr-3 font-medium text-gray-800">{f.leverancier||'—'}</td>
+                      <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.totaal_netto||0)}</td>
+                      <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.totaal_btw||0)}</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.totaal_bruto||0)}</td>
+                      <td className="py-2 text-right">
+                        <button onClick={e=>{e.stopPropagation();deleteFactuur(f.id);}}
+                          className="text-gray-300 hover:text-red-500 text-xs transition-colors px-1">✕</button>
+                      </td>
+                    </tr>
+                    {expandedFactuur===f.id && (
+                      <tr>
+                        <td colSpan={8} className="pb-3 pt-0 px-6">
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-gray-400 uppercase tracking-wide border-b border-gray-200">
+                                  <th className="py-1 pr-3 text-left font-medium">Omschrijving</th>
+                                  <th className="py-1 pr-3 text-left font-medium">Type</th>
+                                  <th className="py-1 pr-3 text-right font-medium">Aantal</th>
+                                  <th className="py-1 pr-3 text-right font-medium">Prijs/eenh.</th>
+                                  <th className="py-1 pr-3 text-right font-medium">Netto</th>
+                                  <th className="py-1 pr-3 text-right font-medium">BTW%</th>
+                                  <th className="py-1 text-right font-medium">BTW</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(f.regels||[]).map((r,i)=>(
+                                  <tr key={i} className="border-b border-gray-100">
+                                    <td className="py-1 pr-3 text-gray-700 font-medium">{r.naam}</td>
+                                    <td className="py-1 pr-3 text-gray-400">
+                                      <span className={`px-1.5 py-0.5 rounded text-xs ${r.type==='ingredient'?'bg-green-50 text-green-700':'bg-purple-50 text-purple-700'}`}>
+                                        {r.type==='ingredient'?'Ingrediënt':'Verpakking'}
+                                      </span>
+                                    </td>
+                                    <td className="py-1 pr-3 text-right text-gray-600">
+                                      {r.type==='ingredient'
+                                        ? `${r.hoeveelheid} ${r.eenheid}`
+                                        : `${r.aantal}×`}
+                                    </td>
+                                    <td className="py-1 pr-3 text-right text-gray-500">
+                                      {r.type==='ingredient' && r.prijs_per_eenheid ? fmt(r.prijs_per_eenheid) : r.prijs_per_stuk ? fmt(r.prijs_per_stuk) : '—'}
+                                    </td>
+                                    <td className="py-1 pr-3 text-right text-gray-700">{fmt(r.netto||0)}</td>
+                                    <td className="py-1 pr-3 text-right text-gray-500">{r.btw_tarief}%</td>
+                                    <td className="py-1 text-right text-blue-600">{fmt(r.btw_bedrag||0)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200">
+                    <td colSpan={4} className="py-2 pr-3 text-right text-xs font-semibold text-gray-500 uppercase">Totaal ({inkoopGefilterd.length} facturen)</td>
+                    <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(inkoopTotals.netto)}</td>
+                    <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(inkoopTotals.btw)}</td>
+                    <td className="py-2 pr-3 text-right font-bold text-gray-900">{fmt(inkoopTotals.bruto)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* BTW per tarief — aangifte-hulp */}
+          {inkoopView==='btwtarief' && (
+            <div className="space-y-4">
+              <div className={card}>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Voorbelasting per BTW-tarief</h3>
+                <p className="text-xs text-gray-400 mb-4">Gebruik deze tabel voor rubriek 5b van je BTW-aangifte (voorbelasting).</p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="py-2 pr-3 text-left font-medium">BTW-tarief</th>
+                      <th className="py-2 pr-3 text-right font-medium">Netto grondslag</th>
+                      <th className="py-2 pr-3 text-right font-medium">BTW bedrag</th>
+                      <th className="py-2 text-right font-medium">Bruto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {btwPerTarief.map(r=>(
+                      <tr key={r.tarief} className="border-b border-gray-50">
+                        <td className="py-2 pr-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${r.tarief===0?'bg-gray-100 text-gray-500':r.tarief===9?'bg-amber-50 text-amber-700':'bg-blue-50 text-blue-700'}`}>
+                            {r.tarief}%
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-right text-gray-700">{fmt(r.netto)}</td>
+                        <td className="py-2 pr-3 text-right font-semibold text-blue-700">{fmt(r.btw)}</td>
+                        <td className="py-2 text-right text-gray-800">{fmt(r.netto+r.btw)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-200">
+                      <td className="py-2 pr-3 text-xs font-semibold text-gray-500 uppercase">Totaal</td>
+                      <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(btwPerTarief.reduce((s,r)=>s+r.netto,0))}</td>
+                      <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(btwPerTarief.reduce((s,r)=>s+r.btw,0))}</td>
+                      <td className="py-2 text-right font-bold text-gray-900">{fmt(btwPerTarief.reduce((s,r)=>s+r.netto+r.btw,0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div className={card + ' bg-blue-50 border-blue-100'}>
+                <h3 className="text-xs font-semibold text-blue-800 mb-2 uppercase tracking-wide">BTW-aangifte hulp</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs text-gray-500 mb-1">Rubriek 1a/1b — Omzet-BTW (verkoop)</div>
+                    <div className="text-xs text-gray-400 italic">Haal op via Verkoop-tab voor dezelfde periode</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs text-gray-500 mb-1">Rubriek 5b — Voorbelasting (inkoop)</div>
+                    <div className="font-bold text-blue-700 text-base">{fmt(btwPerTarief.reduce((s,r)=>s+r.btw,0))}</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs text-gray-500 mb-1">Periode</div>
+                    <div className="font-medium text-gray-700">{dateFrom} t/m {dateTo}</div>
+                    <div className="text-xs text-gray-400">{inkoopGefilterd.length} facturen</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>)}
+
+        {inkoopFacturen.length===0 && (
+          <div className={card + ' text-center py-14'}>
+            <div className="text-4xl mb-3">🧾</div>
+            <p className="text-gray-600 font-medium mb-1">Nog geen inkoop facturen</p>
+            <p className="text-gray-400 text-sm">Registreer een ontvangst via <strong>Ingrediënten → Ontvangst registreren</strong>.<br/>Elke opgeslagen ontvangst wordt automatisch hier als factuur toegevoegd.</p>
+          </div>
+        )}
+        {inkoopFacturen.length>0 && inkoopGefilterd.length===0 && (
+          <div className={card + ' text-center py-10'}>
+            <p className="text-gray-400 text-sm">Geen facturen in de geselecteerde periode. Pas het datumfilter aan.</p>
+          </div>
+        )}
+      </>)}
+
     </div>
   );
 }
@@ -8530,6 +8859,7 @@ function App() {
   const [hygieneItems, setHygieneItems] = useStore('hygiene_items', DEFAULT_HYGIENE_ITEMS);
   const [hygieneGroups, setHygieneGroups] = useStore('hygiene_groups', DEFAULT_HYGIENE_GROUPS);
   const [lang, setLang] = useStore('app_lang', detectLang());
+  const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
   _lang = lang; // update global for t() — called synchronously during render
   const [page, setPage] = useState('dashboard');
   const importRef = useRef(null);
@@ -8668,13 +8998,13 @@ function App() {
       </nav>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
-        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} />}
+        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} />}
         {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} />}
       </main>
     </div>
