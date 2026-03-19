@@ -3191,7 +3191,7 @@ async function extractPdfText(file) {
     const ab = await file.arrayBuffer();
     const pdf = await window.pdfjsLib.getDocument({data: ab}).promise;
     let text = '';
-    const pages = Math.min(pdf.numPages, 6);
+    const pages = pdf.numPages; // scan all pages
     for (let p = 1; p <= pages; p++) {
       const page = await pdf.getPage(p);
       const content = await page.getTextContent();
@@ -3772,6 +3772,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   // Ingrediënten-tab form
   const [productForm, setProductForm]   = useState(emptyProduct);
   const [productLijst, setProductLijst] = useState([]);
+  const [productLotNrs, setProductLotNrs] = useState(['']); // per-piece lot numbers when aantal_stuks > 1
 
   // Verpakkingen-tab form
   const [vOntvForm, setVOntvForm]             = useState(emptyVO);
@@ -3793,8 +3794,22 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     if (!productForm.ing_id && !productForm.nieuw.trim()) { alert(t('err_select_ingredient')); return; }
     if (!productForm.qty) { alert(t('err_qty_required')); return; }
     const naam = productForm.ing_id ? (ing.find(i=>i.id===Number(productForm.ing_id))?.naam||'') : productForm.nieuw.trim();
-    setProductLijst(prev=>[...prev, {...productForm, _naam:naam, _id:Date.now()}]);
+    const stuks = parseInt(productForm.aantal_stuks) || 0;
+    // If multiple pieces, create one entry per piece using per-piece lot numbers
+    if (stuks > 1 && productLotNrs.length > 1 && productForm.inhoud_per_stuk) {
+      productLotNrs.forEach((lr, si) => {
+        setProductLijst(prev=>[...prev, {
+          ...productForm, lotnr: lr,
+          aantal_stuks: '1',
+          qty: String(productForm.inhoud_per_stuk),
+          _naam: naam, _id: Date.now() + si,
+        }]);
+      });
+    } else {
+      setProductLijst(prev=>[...prev, {...productForm, lotnr: productLotNrs[0] || productForm.lotnr, _naam:naam, _id:Date.now()}]);
+    }
     setProductForm(emptyProduct);
+    setProductLotNrs(['']);
   };
 
   const voegVerpakkingToe = () => {
@@ -3818,6 +3833,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     const ingFiltered = ing.filter(i => i.beschikbaar !== false);
     const items = (data.regels || []).map(r => {
       const match = matchIngredient(r.naam || '', ingFiltered.filter(i => !r.type || i.type === r.type));
+      const stuks = r.aantal_stuks && r.type !== 'Verpakking' ? Math.max(1, parseInt(r.aantal_stuks) || 1) : 1;
       return {
         ...r,
         matchType: match.type,
@@ -3825,6 +3841,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         suggestions: match.suggestions || [],
         selectedIngId: match.type !== 'new' ? String(match.ing.id) : '',
         useNieuw: match.type === 'new',
+        lotnrs: stuks > 1 ? Array(stuks).fill(r.lotnr || '') : undefined,
       };
     });
     setScanBron(data._source === 'lokaal' ? 'lokaal' : 'claude');
@@ -3882,25 +3899,37 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         // Normalize type: if not a valid ING_TYPE, fall back to 'Overig'
         const validTypes = ['Mout', 'Hop', 'Gist', 'Suiker', 'Overig'];
         const type = validTypes.includes(item.type) ? item.type : 'Overig';
-        const prod = {
-          ing_id: ingId,
-          nieuw: nieuwNaam,
-          type,
-          fabrikant: '',
-          lotnr: item.lotnr || '',
-          aantal_stuks: item.aantal_stuks ? String(item.aantal_stuks) : '',
-          inhoud_per_stuk: item.inhoud_per_stuk ? String(item.inhoud_per_stuk) : '',
-          qty: parseQty(item.qty),
-          eenh: item.eenh || 'kg',
-          tht: item.tht || '',
-          prijs: String(item.prijs ?? ''),
-          totaalprijs: String(item.totaalprijs ?? ''),
-          btw_tarief: String(item.btw_tarief ?? '9'),
-          _naam: naam,
-          _id: Date.now() + Math.random(),
-        };
-        if (!prod.ing_id && !prod.nieuw.trim()) return; // skip invalid
-        setProductLijst(prev => [...prev, prod]);
+        if (!ingId && !nieuwNaam.trim()) return; // skip invalid
+        // If per-piece lot numbers are set and there are multiple pieces, create one entry per piece
+        const lotnrs = item.lotnrs;
+        const stuks = lotnrs && lotnrs.length > 1 ? lotnrs.length : 0;
+        if (stuks > 0 && item.inhoud_per_stuk) {
+          const inhoud = parseQty(item.inhoud_per_stuk);
+          const stukPrijs = item.prijs ? String(item.prijs) : (item.totaalprijs && stuks ? String((parseFloat(item.totaalprijs||0)/stuks).toFixed(4)) : '');
+          const stukTotaal = inhoud && item.prijs ? String((parseFloat(item.prijs||0)*parseFloat(inhoud||0)).toFixed(2)) : (item.totaalprijs && stuks ? String((parseFloat(item.totaalprijs||0)/stuks).toFixed(2)) : '');
+          lotnrs.forEach((lr, si) => {
+            setProductLijst(prev => [...prev, {
+              ing_id: ingId, nieuw: nieuwNaam, type, fabrikant: '',
+              lotnr: lr,
+              aantal_stuks: '1', inhoud_per_stuk: String(item.inhoud_per_stuk),
+              qty: inhoud, eenh: item.eenh || 'kg', tht: item.tht || '',
+              prijs: stukPrijs, totaalprijs: stukTotaal,
+              btw_tarief: String(item.btw_tarief ?? '9'),
+              _naam: naam, _id: Date.now() + Math.random() + si,
+            }]);
+          });
+        } else {
+          setProductLijst(prev => [...prev, {
+            ing_id: ingId, nieuw: nieuwNaam, type, fabrikant: '',
+            lotnr: item.lotnr || '',
+            aantal_stuks: item.aantal_stuks ? String(item.aantal_stuks) : '',
+            inhoud_per_stuk: item.inhoud_per_stuk ? String(item.inhoud_per_stuk) : '',
+            qty: parseQty(item.qty), eenh: item.eenh || 'kg', tht: item.tht || '',
+            prijs: String(item.prijs ?? ''), totaalprijs: String(item.totaalprijs ?? ''),
+            btw_tarief: String(item.btw_tarief ?? '9'),
+            _naam: naam, _id: Date.now() + Math.random(),
+          }]);
+        }
         hasIngredients = true;
       }
     });
@@ -4055,11 +4084,20 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                           )}
                           {item.totaalprijs ? <span className="text-xs text-gray-400">· €{item.totaalprijs}</span> : null}
                           {item.type ? <span className="text-xs text-gray-400">· {item.type}</span> : null}
+                          {/* BTW tarief per regel */}
+                          <select value={item.btw_tarief ?? 9}
+                            onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,btw_tarief:Number(e.target.value)}:x))}
+                            className="border border-gray-200 rounded px-1 py-0.5 text-xs t-input"
+                            title="BTW tarief">
+                            <option value={0}>0% BTW</option>
+                            <option value={9}>9% BTW</option>
+                            <option value={21}>21% BTW</option>
+                          </select>
                         </div>
                         {/* Stuks × inhoud per stuk */}
                         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                           <input type="number" value={item.aantal_stuks ?? ''}
-                            onChange={e=>{const v=e.target.value;setLinkItems(prev=>prev.map((x,i)=>{if(i!==idx)return x;const inhoud=x.inhoud_per_stuk;const newQty=v&&inhoud?String(parseFloat(v)*parseFloat(inhoud)):x.qty;return{...x,aantal_stuks:v,qty:newQty};}));}}
+                            onChange={e=>{const v=e.target.value;setLinkItems(prev=>prev.map((x,i)=>{if(i!==idx)return x;const inhoud=x.inhoud_per_stuk;const newQty=v&&inhoud?String(parseFloat(v)*parseFloat(inhoud)):x.qty;const stuks=parseInt(v)||1;const newLotnrs=x.type!=='Verpakking'&&stuks>1?Array(stuks).fill(x.lotnr||''):undefined;return{...x,aantal_stuks:v,qty:newQty,lotnrs:newLotnrs};}));}}
                             className="w-14 border border-gray-200 rounded px-2 py-0.5 text-xs t-input"
                             placeholder="stuks" />
                           <span className="text-xs text-gray-400">×</span>
@@ -4069,6 +4107,30 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                             placeholder={item.type==='Verpakking'?'L/stuk':'inhoud/stuk'} />
                           <span className="text-xs text-gray-400">{item.type==='Verpakking'?'L/stuk':(item.eenh||'kg')+'/stuk'}</span>
                         </div>
+                        {/* Lot nummer(s): één per stuk voor ingrediënten/onderdelen */}
+                        {item.type !== 'Verpakking' && (
+                          item.lotnrs && item.lotnrs.length > 1 ? (
+                            <div className="mt-1">
+                              <p className="text-xs text-gray-400 mb-0.5">Lot nummers ({item.lotnrs.length} stuks):</p>
+                              <div className="grid grid-cols-2 gap-1">
+                                {item.lotnrs.map((ln, si) => (
+                                  <input key={si} type="text" value={ln}
+                                    onChange={e=>{const v=e.target.value;setLinkItems(prev=>prev.map((x,i)=>{if(i!==idx)return x;const newLotnrs=[...x.lotnrs];newLotnrs[si]=v;return{...x,lotnrs:newLotnrs};}));}}
+                                    className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input"
+                                    placeholder={`Stuk ${si+1} lot`} />
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <input type="text" value={item.lotnr ?? ''}
+                                onChange={e=>setLinkItems(prev=>prev.map((x,i)=>i===idx?{...x,lotnr:e.target.value}:x))}
+                                className="w-32 border border-gray-200 rounded px-2 py-0.5 text-xs t-input"
+                                placeholder="Lot nummer" />
+                              <span className="text-xs text-gray-400">lot</span>
+                            </div>
+                          )
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         {badge}
@@ -4153,11 +4215,15 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
               )}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <Inp label="Aantal stuks" type="number" value={productForm.aantal_stuks}
-                  onChange={v=>setProductForm(f=>{
-                    const inhoud=f.inhoud_per_stuk;
-                    if(v&&inhoud){const qty=String(Number(v)*Number(inhoud));const totaalprijs=f.prijs?String((Number(f.prijs)*Number(qty)).toFixed(2)):f.totaalprijs;return{...f,aantal_stuks:v,qty,totaalprijs};}
-                    return{...f,aantal_stuks:v};
-                  })}
+                  onChange={v=>{
+                    setProductForm(f=>{
+                      const inhoud=f.inhoud_per_stuk;
+                      if(v&&inhoud){const qty=String(Number(v)*Number(inhoud));const totaalprijs=f.prijs?String((Number(f.prijs)*Number(qty)).toFixed(2)):f.totaalprijs;return{...f,aantal_stuks:v,qty,totaalprijs};}
+                      return{...f,aantal_stuks:v};
+                    });
+                    const n=parseInt(v)||1;
+                    setProductLotNrs(prev=>{const a=[...prev];while(a.length<n)a.push('');return a.slice(0,n);});
+                  }}
                   placeholder="2" />
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Inhoud per stuk</label>
@@ -4190,7 +4256,25 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
+                {/* Lot nummer(s): één per stuk als er meerdere stuks zijn */}
+                {parseInt(productForm.aantal_stuks) > 1 ? (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      {t('ing_lot_number')} <span className="font-normal text-amber-600">({parseInt(productForm.aantal_stuks)} stuks — elk eigen lot)</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {Array.from({length: parseInt(productForm.aantal_stuks)}).map((_,si)=>(
+                        <input key={si} type="text"
+                          value={productLotNrs[si] ?? ''}
+                          onChange={e=>{const v=e.target.value;setProductLotNrs(prev=>{const a=[...prev];a[si]=v;return a;});}}
+                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm t-input outline-none"
+                          placeholder={`Stuk ${si+1}: L-2025-001`} />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <Inp label={t('ing_lot_number')} value={productLotNrs[0] ?? ''} onChange={v=>setProductLotNrs([v])} placeholder="L-2025-001" />
+                )}
                 <Inp label={t('batch_filling_tht')} type="date" value={productForm.tht} onChange={v=>setProductForm(f=>({...f,tht:v}))} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
