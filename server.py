@@ -9,11 +9,14 @@ The server strips any prefix and looks for /api/data/<key> anywhere in the path.
 """
 import base64
 import http.server
+import io
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -36,9 +39,10 @@ WC_PING_PATH    = '/api/woocommerce/ping'
 WC_TEST_PATH    = '/api/woocommerce/test'
 WC_PUT_PREFIX   = '/api/woocommerce/put/'
 
-UPLOAD_PREFIX        = '/api/upload/'
-FILE_PREFIX          = '/api/file/'
-DELETE_UPLOAD_PREFIX = '/api/delete_upload/'
+UPLOAD_PREFIX            = '/api/upload/'
+FILE_PREFIX              = '/api/file/'
+DELETE_UPLOAD_PREFIX     = '/api/delete_upload/'
+DOWNLOAD_BIJLAGEN_PREFIX = '/api/download_bijlagen/'
 
 _ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'bmp', 'heic', 'heif'}
 _CONTENT_TYPES = {
@@ -292,6 +296,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if FILE_PREFIX in path:
             self._serve_upload()
+            return
+
+        if DOWNLOAD_BIJLAGEN_PREFIX in path:
+            self._serve_bijlagen_zip()
             return
 
         key = extract_key(path)
@@ -557,6 +565,61 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if filepath.exists():
             filepath.unlink()
         self._json(200, {'ok': True})
+
+    def _serve_bijlagen_zip(self):
+        """Serve a ZIP of all invoice attachments for the requested year."""
+        path = self.path.split('?')[0]
+        idx = path.find(DOWNLOAD_BIJLAGEN_PREFIX)
+        year_str = path[idx + len(DOWNLOAD_BIJLAGEN_PREFIX):].strip('/')
+        if not re.match(r'^\d{4}$', year_str):
+            self._json(400, {'error': 'invalid year'})
+            return
+
+        facturen_file = DATA_DIR / 'inkoop_facturen.json'
+        try:
+            facturen = json.loads(facturen_file.read_bytes()) if facturen_file.exists() else []
+        except Exception:
+            self._json(500, {'error': 'failed to read facturen'})
+            return
+
+        buf = io.BytesIO()
+        count = 0
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in facturen:
+                datum = str(f.get('datum', ''))
+                if not datum.startswith(year_str):
+                    continue
+                bijlage = f.get('bijlage')
+                if not bijlage or not bijlage.get('bestand'):
+                    continue
+                bestand = bijlage['bestand']
+                if not _valid_upload_filename(bestand):
+                    continue
+                filepath = UPLOAD_DIR / bestand
+                if not filepath.exists():
+                    continue
+                # Build a human-readable name inside the zip
+                leverancier = re.sub(r'[^\w\s-]', '', str(f.get('leverancier', ''))).strip()[:40]
+                factuur_nr  = re.sub(r'[^\w\s-]', '', str(f.get('factuurnummer', ''))).strip()[:30]
+                ext = bestand.rsplit('.', 1)[-1] if '.' in bestand else 'bin'
+                parts = [p for p in [datum, leverancier, factuur_nr] if p]
+                zip_name = '_'.join(parts) + '.' + ext
+                zf.write(filepath, zip_name)
+                count += 1
+
+        if count == 0:
+            self._json(404, {'error': 'no attachments found for this year'})
+            return
+
+        body = buf.getvalue()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/zip')
+        self.send_header('Content-Length', len(body))
+        self.send_header('Content-Disposition',
+                         f'attachment; filename="bijlagen_{year_str}.zip"')
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
     # ── logging ────────────────────────────────────────────────────────────
 
