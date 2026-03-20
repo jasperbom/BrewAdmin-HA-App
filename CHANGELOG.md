@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.6.0]
+## [1.5.1]
 
 ### Added
 - **Invoice scanning with Claude AI** — upload a PDF or image of a purchase invoice and let Claude AI extract the supplier, date, invoice number and all line items (with VAT per line) automatically; a local PDF text-extraction step runs first so no API call is needed for plain-text PDFs
