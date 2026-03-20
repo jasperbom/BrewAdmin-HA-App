@@ -3763,13 +3763,17 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   const [verpakkingLijst, setVerpakkingLijst] = useState([]);
 
   // Vrije regels tab
-  const [vrijeRegels, setVrijeRegels] = useState([{naam:'', netto:'', btw_tarief:21}]);
+  const emptyVrije = {naam:'', netto:'', btw_tarief:21};
+  const [vrijeForm, setVrijeForm]   = useState(emptyVrije);
+  const [vrijeList, setVrijeList]   = useState([]);
 
   // BTW toggle voor totaalprijs velden
   const [productTotInclBtw, setProductTotInclBtw] = useState(false);
   const [productBrutoStr, setProductBrutoStr] = useState('');
   const [verpakTotInclBtw, setVerpakTotInclBtw] = useState(false);
   const [verpakBrutoStr, setVerpakBrutoStr] = useState('');
+  const [vrijeTotInclBtw, setVrijeTotInclBtw] = useState(false);
+  const [vrijeBrutoStr,   setVrijeBrutoStr]   = useState('');
 
   // Factuur scan state
   const [isScanning, setIsScanning] = useState(false);
@@ -3796,6 +3800,15 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     setVOntvForm(emptyVO);
   };
 
+  const voegVrijeToe = () => {
+    if (!vrijeForm.naam.trim())       { alert('Vul een omschrijving in'); return; }
+    if (!parseFloat(vrijeForm.netto)) { alert('Vul een bedrag in'); return; }
+    setVrijeList(prev=>[...prev, {...vrijeForm, _id:Date.now()}]);
+    setVrijeForm(emptyVrije);
+    setVrijeTotInclBtw(false);
+    setVrijeBrutoStr('');
+  };
+
   const verwerkScanData = (data) => {
     if (data.leverancier && !leverancierNieuw && leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
       const known = knownLeveranciers.find(l => l.toLowerCase() === data.leverancier.toLowerCase());
@@ -3820,8 +3833,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   };
 
   const handleSave = async () => {
-    const geldigeVrijeRegels = vrijeRegels.filter(r=>r.naam.trim()&&parseFloat(r.netto)>0);
-    if (productLijst.length===0 && verpakkingLijst.length===0 && geldigeVrijeRegels.length===0) {
+    if (productLijst.length===0 && verpakkingLijst.length===0 && vrijeList.length===0) {
       alert(t('err_min_one_product')); return;
     }
     let bijlage = null;
@@ -3844,18 +3856,18 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
       } catch(e) { console.error('Upload mislukt', e); }
       setUploading(false);
     }
-    onSave({factuurForm, productLijst, verpakkingLijst, vrijeRegels: geldigeVrijeRegels, bijlage});
+    onSave({factuurForm, productLijst, verpakkingLijst, vrijeRegels: vrijeList, bijlage});
   };
 
-  const totVrijeNetto = vrijeRegels.reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
-  const totVrijeBtw   = vrijeRegels.reduce((s,r)=>s+((parseFloat(r.netto)||0)*Number(r.btw_tarief)/100), 0);
+  const totVrijeNetto = vrijeList.reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
+  const totVrijeBtw   = vrijeList.reduce((s,r)=>s+((parseFloat(r.netto)||0)*Number(r.btw_tarief)/100), 0);
 
   const totaalNetto = productLijst.reduce((s,p)=>s+(parseFloat(p.totaalprijs)||0), 0)
     + verpakkingLijst.reduce((s,v)=>s+(parseFloat(v.totaalprijs)||0), 0)
-    + vrijeRegels.filter(r=>r.naam.trim()).reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
+    + vrijeList.reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
   const totaalBtw = productLijst.reduce((s,p)=>s+(parseFloat(p.totaalprijs)||0)*(Number(p.btw_tarief)||0)/100, 0)
     + verpakkingLijst.reduce((s,v)=>s+(parseFloat(v.totaalprijs)||0)*(Number(v.btw_tarief)||0)/100, 0)
-    + vrijeRegels.filter(r=>r.naam.trim()).reduce((s,r)=>s+(parseFloat(r.netto)||0)*(Number(r.btw_tarief)||0)/100, 0);
+    + vrijeList.reduce((s,r)=>s+(parseFloat(r.netto)||0)*(Number(r.btw_tarief)||0)/100, 0);
 
   return (
     <Modal title={t('modal_title_receipt')} onClose={onClose} wide={!showPdfViewer} ultrawide={showPdfViewer}>
@@ -4105,39 +4117,73 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
 
         {/* ── Vrije regels tab ── */}
         {tab==='vrije' && (
-          <div className="border border-gray-200 rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vrije regelitems</p>
-              <button onClick={()=>setVrijeRegels(r=>[...r,{naam:'',netto:'',btw_tarief:21}])}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Regel toevoegen</button>
+          <div className="border border-gray-200 rounded-lg p-3 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Omschrijving</label>
+              <input type="text" value={vrijeForm.naam}
+                onChange={e=>setVrijeForm(f=>({...f,naam:e.target.value}))}
+                placeholder="Omschrijving vrije regel"
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none w-full" />
             </div>
-            <div className="space-y-2">
-              {vrijeRegels.map((r,i)=>(
-                <div key={i} className="flex gap-2 items-center">
-                  <input type="text" value={r.naam} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,naam:e.target.value}:x))}
-                    placeholder="Omschrijving"
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm t-input outline-none" />
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-400">€</span>
-                    <input type="number" value={r.netto} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,netto:e.target.value}:x))}
-                      placeholder="0.00" min="0" step="0.01"
-                      className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right t-input outline-none" />
-                  </div>
-                  <select value={r.btw_tarief} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,btw_tarief:Number(e.target.value)}:x))}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm t-input outline-none">
-                    <option value={0}>0% BTW</option>
-                    <option value={9}>9% BTW</option>
-                    <option value={21}>21% BTW</option>
-                  </select>
-                  {vrijeRegels.length > 1 && (
-                    <button onClick={()=>setVrijeRegels(prev=>prev.filter((_,j)=>j!==i))}
-                      className="text-gray-300 hover:text-red-500 text-sm px-1">✕</button>
-                  )}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-xs font-medium text-gray-600">Bedrag (€)</label>
+                  <button type="button"
+                    onClick={()=>{
+                      const ni=!vrijeTotInclBtw;
+                      setVrijeTotInclBtw(ni);
+                      if(!ni){ setVrijeBrutoStr(''); }
+                      else if(vrijeForm.netto){
+                        const b=Number(vrijeForm.btw_tarief||0);
+                        setVrijeBrutoStr(String((Number(vrijeForm.netto)*(1+b/100)).toFixed(2)));
+                      }
+                    }}
+                    className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
+                    {vrijeTotInclBtw ? 'incl. BTW' : 'excl. BTW'}
+                  </button>
                 </div>
-              ))}
+                <input type="number"
+                  value={vrijeTotInclBtw ? vrijeBrutoStr : vrijeForm.netto}
+                  onChange={e=>{
+                    const v=e.target.value;
+                    if(vrijeTotInclBtw){
+                      setVrijeBrutoStr(v);
+                      const b=Number(vrijeForm.btw_tarief||0);
+                      const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';
+                      setVrijeForm(f=>({...f,netto:n}));
+                    } else {
+                      setVrijeForm(f=>({...f,netto:v}));
+                    }
+                  }}
+                  placeholder="0.00" min="0" step="0.01"
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none w-full text-right" />
+              </div>
+              <div className="w-28">
+                <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
+                <select value={vrijeForm.btw_tarief}
+                  onChange={e=>{
+                    const nb=e.target.value;
+                    setVrijeForm(f=>{
+                      if(vrijeTotInclBtw && vrijeBrutoStr){
+                        const n=String((Number(vrijeBrutoStr)/(1+Number(nb)/100)).toFixed(2));
+                        return {...f,btw_tarief:Number(nb),netto:n};
+                      }
+                      return {...f,btw_tarief:Number(nb)};
+                    });
+                  }}
+                  className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
+                  <option value={0}>0%</option>
+                  <option value={9}>9%</option>
+                  <option value={21}>21%</option>
+                </select>
+              </div>
             </div>
-            {vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0) && (
-              <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between mt-3">
+            <div className="flex justify-end">
+              <Btn onClick={voegVrijeToe}>+ Regel toevoegen</Btn>
+            </div>
+            {vrijeList.length > 0 && (
+              <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between mt-1">
                 <span className="text-gray-500">Netto <span className="font-medium text-gray-800">{fmt(totVrijeNetto)}</span></span>
                 <span className="text-gray-500">BTW <span className="font-medium text-blue-700">{fmt(totVrijeBtw)}</span></span>
                 <span className="text-gray-500">Bruto <span className="font-bold text-gray-900">{fmt(totVrijeNetto+totVrijeBtw)}</span></span>
@@ -4147,9 +4193,9 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         )}
 
         {/* ── Gecombineerde productenlijst ── */}
-        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0)) && (
+        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeList.length > 0) && (
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length + vrijeRegels.filter(r=>r.naam.trim()&&parseFloat(r.netto)>0).length})</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length + vrijeList.length})</p>
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
@@ -4191,20 +4237,20 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                       </td>
                     </tr>
                   ))}
-                  {vrijeRegels.map((r,i)=>r.naam.trim()&&parseFloat(r.netto)>0?(
-                    <tr key={i} title="Klik om te bewerken" className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
-                      onClick={()=>setTab('vrije')}>
+                  {vrijeList.map((r,i)=>(
+                    <tr key={r._id} title="Klik om te bewerken" className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
+                      onClick={()=>{setVrijeList(prev=>prev.filter((_,j)=>j!==i));setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief});setTab('vrije');}}>
                       <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">(vrij)</span></td>
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-500">€{parseFloat(r.netto).toFixed(2)}</td>
                       <td className="px-2 py-2 text-right">
-                        <button onClick={e=>{e.stopPropagation();setVrijeRegels(prev=>prev.filter((_,j)=>j!==i).length?prev.filter((_,j)=>j!==i):[{naam:'',netto:'',btw_tarief:21}]);}}
+                        <button onClick={e=>{e.stopPropagation();setVrijeList(prev=>prev.filter((_,j)=>j!==i));}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>
-                  ):null)}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -4212,7 +4258,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         )}
 
         {/* ── Totalen ── */}
-        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0)) && (
+        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeList.length > 0) && (
           <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between">
             <span className="text-gray-500">Netto excl. BTW <span className="font-semibold text-gray-800">{fmt(totaalNetto)}</span></span>
             <span className="text-gray-500">BTW <span className="font-semibold text-blue-700">{fmt(totaalBtw)}</span></span>
