@@ -3722,7 +3722,7 @@ const Sel = ({label,value,onChange,opts,ph,cls=''}) => (
 );
 
 const Modal = ({title,children,onClose,wide=false,ultrawide=false,hideClose=false}) => (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto">
+  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[200] p-4 overflow-y-auto">
     <div className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${ultrawide?'max-w-7xl':wide?'max-w-2xl':'max-w-lg'}`}>
       <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
         <h3 className="font-semibold text-gray-800 text-base">{title}</h3>
@@ -3738,8 +3738,9 @@ const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-m
 // ═══════════════════════════════════════════════════════════════
 // Gedeeld Inkoop Factuur formulier — gebruikt op Ingrediënten- én Administratiepagina
 // ═══════════════════════════════════════════════════════════════
-function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='', claudeCreds=null }) {
-  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
+function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='', claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={} }) {
+  const defaultType = ingTypes[0] || 'Mout';
+  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:defaultType,fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:ingTypeBtw[defaultType]!=null?String(ingTypeBtw[defaultType]):'9'};
   const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'};
 
   // Leverancier: selecteer uit bekende of voer nieuwe in
@@ -3781,6 +3782,11 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   const [manualBtw,   setManualBtw]   = useState(null);
   const [manualBruto, setManualBruto] = useState(null);
 
+  // Bewerk-indices voor inline aanpassen van lijst-items
+  const [editingProductIdx, setEditingProductIdx] = useState(null);
+  const [editingVerpakkingIdx, setEditingVerpakkingIdx] = useState(null);
+  const [editingVrijeIdx, setEditingVrijeIdx] = useState(null);
+
   // Factuur scan state
   const [isScanning, setIsScanning] = useState(false);
   const [scanFout, setScanFout] = useState(null);
@@ -3796,7 +3802,12 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     if (!productForm.ing_id && !productForm.nieuw.trim()) { alert(t('err_select_ingredient')); return; }
     if (!productForm.qty) { alert(t('err_qty_required')); return; }
     const naam = productForm.ing_id ? (ing.find(i=>i.id===Number(productForm.ing_id))?.naam||'') : productForm.nieuw.trim();
-    setProductLijst(prev=>[...prev, {...productForm, _naam:naam, _id:Date.now()}]);
+    if (editingProductIdx !== null) {
+      setProductLijst(prev=>prev.map((p,i)=>i===editingProductIdx ? {...productForm, _naam:naam, _id:p._id} : p));
+      setEditingProductIdx(null);
+    } else {
+      setProductLijst(prev=>[...prev, {...productForm, _naam:naam, _id:Date.now()}]);
+    }
     setProductForm(emptyProduct);
   };
 
@@ -3806,14 +3817,24 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     const naam = vOntvForm.od_id
       ? (onderdelen.find(o=>o.id===Number(vOntvForm.od_id))?.naam||vOntvForm.naam)
       : vOntvForm.naam.trim();
-    setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
+    if (editingVerpakkingIdx !== null) {
+      setVerpakkingLijst(prev=>prev.map((v,i)=>i===editingVerpakkingIdx ? {...vOntvForm, _naam:naam, _id:v._id} : v));
+      setEditingVerpakkingIdx(null);
+    } else {
+      setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
+    }
     setVOntvForm(emptyVO);
   };
 
   const voegVrijeToe = () => {
     if (!vrijeForm.naam.trim())       { alert('Vul een omschrijving in'); return; }
     if (!parseFloat(vrijeForm.netto)) { alert('Vul een bedrag in'); return; }
-    setVrijeList(prev=>[...prev, {...vrijeForm, _id:Date.now()}]);
+    if (editingVrijeIdx !== null) {
+      setVrijeList(prev=>prev.map((r,i)=>i===editingVrijeIdx ? {...vrijeForm, _id:r._id} : r));
+      setEditingVrijeIdx(null);
+    } else {
+      setVrijeList(prev=>[...prev, {...vrijeForm, _id:Date.now()}]);
+    }
     setVrijeForm(emptyVrije);
     setVrijeTotInclBtw(false);
     setVrijeBrutoStr('');
@@ -3885,6 +3906,21 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   const totaalBtw = productLijst.reduce((s,p)=>s+(parseFloat(p.totaalprijs)||0)*(Number(p.btw_tarief)||0)/100, 0)
     + verpakkingLijst.reduce((s,v)=>s+(parseFloat(v.totaalprijs)||0)*(Number(v.btw_tarief)||0)/100, 0)
     + vrijeList.reduce((s,r)=>s+(parseFloat(r.netto)||0)*(Number(r.btw_tarief)||0)/100, 0);
+
+  const btwTarieven = (() => {
+    const map = {};
+    [...productLijst,...verpakkingLijst].forEach(p=>{
+      const k = Number(p.btw_tarief||0);
+      if (!map[k]) map[k] = 0;
+      map[k] += (parseFloat(p.totaalprijs)||0) * k / 100;
+    });
+    vrijeList.forEach(r=>{
+      const k = Number(r.btw_tarief||0);
+      if (!map[k]) map[k] = 0;
+      map[k] += (parseFloat(r.netto)||0) * k / 100;
+    });
+    return Object.entries(map).filter(([,v])=>v>0).sort(([a],[b])=>Number(a)-Number(b));
+  })();
 
   return (
     <Modal title={t('modal_title_receipt')} onClose={onClose} wide={!showPdfViewer} ultrawide={showPdfViewer}>
@@ -3995,8 +4031,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_add_product')}</p>
             <div className="space-y-2">
               <Sel label={t('lbl_ingredient_type')} value={productForm.type}
-                onChange={v=>setProductForm(f=>({...f,type:v,ing_id:'',nieuw:''}))}
-                opts={ING_TYPES.map(ty=>({v:ty,l:t('ing_type_'+ty.toLowerCase())}))} />
+                onChange={v=>setProductForm(f=>({...f,type:v,ing_id:'',nieuw:'',btw_tarief:ingTypeBtw[v]!=null?String(ingTypeBtw[v]):f.btw_tarief}))}
+                opts={ingTypes.map(ty=>({v:ty,l:BUILTIN_ING_TYPES.includes(ty)?t('ing_type_'+ty.toLowerCase()):ty}))} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('modal_existing_ingredient')}</label>
@@ -4060,8 +4096,11 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   </select>
                 </div>
               </div>
-              <div className="flex justify-end">
-                <Btn onClick={voegProductToe}>{t('modal_add_to_list')}</Btn>
+              <div className="flex justify-end gap-2">
+                {editingProductIdx !== null && (
+                  <Btn v="secondary" onClick={()=>{setEditingProductIdx(null);setProductForm(emptyProduct);}}>Annuleer</Btn>
+                )}
+                <Btn onClick={voegProductToe}>{editingProductIdx !== null ? 'Pas aan' : t('modal_add_to_list')}</Btn>
               </div>
             </div>
           </div>
@@ -4125,8 +4164,11 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   </select>
                 </div>
               </div>
-              <div className="flex justify-end">
-                <Btn onClick={voegVerpakkingToe}>{t('modal_add_to_list')}</Btn>
+              <div className="flex justify-end gap-2">
+                {editingVerpakkingIdx !== null && (
+                  <Btn v="secondary" onClick={()=>{setEditingVerpakkingIdx(null);setVOntvForm(emptyVO);}}>Annuleer</Btn>
+                )}
+                <Btn onClick={voegVerpakkingToe}>{editingVerpakkingIdx !== null ? 'Pas aan' : t('modal_add_to_list')}</Btn>
               </div>
             </div>
           </div>
@@ -4194,8 +4236,11 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   </select>
                 </div>
               </div>
-              <div className="flex justify-end">
-                <Btn onClick={voegVrijeToe}>+ Regel toevoegen</Btn>
+              <div className="flex justify-end gap-2">
+                {editingVrijeIdx !== null && (
+                  <Btn v="secondary" onClick={()=>{setEditingVrijeIdx(null);setVrijeForm(emptyVrije);}}>Annuleer</Btn>
+                )}
+                <Btn onClick={voegVrijeToe}>{editingVrijeIdx !== null ? 'Pas aan' : '+ Regel toevoegen'}</Btn>
               </div>
             </div>
           </div>
@@ -4219,8 +4264,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {productLijst.map((p,i)=>(
-                    <tr key={p._id} title="Klik om te bewerken" className="bg-white cursor-pointer hover:bg-gray-50"
-                      onClick={()=>{setProductLijst(prev=>prev.filter((_,j)=>j!==i));setProductForm({...p});setTab('ingredienten');}}>
+                    <tr key={p._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingProductIdx===i ? 'bg-amber-50 ring-1 ring-amber-300' : 'bg-white hover:bg-gray-50'}`}
+                      onClick={()=>{setProductForm({...p});setTab('ingredienten');setEditingProductIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{p._naam}</td>
                       <td className="px-3 py-2">{p.qty} {p.eenh}</td>
                       <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
@@ -4233,8 +4278,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                     </tr>
                   ))}
                   {verpakkingLijst.map((v,i)=>(
-                    <tr key={v._id} title="Klik om te bewerken" className="bg-blue-50 cursor-pointer hover:bg-blue-100"
-                      onClick={()=>{setVerpakkingLijst(prev=>prev.filter((_,j)=>j!==i));setVOntvForm({...v});setTab('verpakkingen');}}>
+                    <tr key={v._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingVerpakkingIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-blue-50 hover:bg-blue-100'}`}
+                      onClick={()=>{setVOntvForm({...v});setTab('verpakkingen');setEditingVerpakkingIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{v._naam} <span className="text-xs text-blue-400">(verpakking)</span></td>
                       <td className="px-3 py-2">{v.aantal} stuks</td>
                       <td className="px-3 py-2 text-gray-500">{v.lotnr||'—'}</td>
@@ -4247,8 +4292,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                     </tr>
                   ))}
                   {vrijeList.map((r,i)=>(
-                    <tr key={r._id} title="Klik om te bewerken" className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
-                      onClick={()=>{setVrijeList(prev=>prev.filter((_,j)=>j!==i));setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief});setTab('vrije');}}>
+                    <tr key={r._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingVrijeIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-yellow-50 hover:bg-yellow-100'}`}
+                      onClick={()=>{setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief});setTab('vrije');setEditingVrijeIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">(vrij)</span></td>
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
@@ -4278,7 +4323,14 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-gray-800 bg-white focus:outline-none focus:border-amber-400" />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-gray-500 whitespace-nowrap">BTW</span>
+                <div>
+                  <span className="text-gray-500 whitespace-nowrap">BTW</span>
+                  {btwTarieven.length > 0 && (
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {btwTarieven.map(([k,v])=><span key={k} className="mr-2">{k}%: €{v.toFixed(2)}</span>)}
+                    </div>
+                  )}
+                </div>
                 <input type="number" step="0.01"
                   value={manualBtw !== null ? manualBtw : totaalBtw.toFixed(2)}
                   onChange={e=>setManualBtw(e.target.value)}
@@ -4318,7 +4370,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
 }
 
 // ===== INGREDIËNTEN =====
-function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES}) {
+function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}}) {
   const [tab, setTab] = useState('ingredienten');
 
   // --- Ingrediënten state ---
@@ -4940,6 +4992,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           onSave={saveOntvangst}
           onClose={()=>setShowO(false)}
           claudeCreds={claudeCreds}
+          ingTypes={ingTypes}
+          ingTypeBtw={ingTypeBtw}
         />
       )}
 
@@ -8264,7 +8318,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ing=[]}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[]}) {
   const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
@@ -8837,19 +8891,29 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <div key={idx} className="flex items-center gap-2">
                 <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input"
                   value={typ}
-                  onBlur={e=>{const val=e.target.value.trim();if(val&&val!==typ)setIngTypes(prev=>prev.map((tp,i)=>i===idx?val:tp));}}
+                  onBlur={e=>{const val=e.target.value.trim();if(val&&val!==typ){setIngTypes(prev=>prev.map((tp,i)=>i===idx?val:tp));setIngTypeBtw(prev=>{const next={...prev};if(prev[typ]!=null){next[val]=prev[typ];delete next[typ];}return next;})}}}
                   onChange={e=>setIngTypes(prev=>prev.map((tp,i)=>i===idx?e.target.value:tp))} />
+                <select value={ingTypeBtw[typ]??''} onChange={e=>{const v=e.target.value;setIngTypeBtw(prev=>v===''?{...prev,[typ]:undefined}:{...prev,[typ]:Number(v)});}}
+                  title="Standaard BTW%"
+                  className="border rounded px-2 py-1.5 text-sm t-input w-28">
+                  <option value="">BTW%</option>
+                  <option value="0">0%</option>
+                  <option value="9">9%</option>
+                  <option value="21">21%</option>
+                </select>
                 <button
                   title={ing.some(i=>i.type===typ)?`Type "${typ}" is in gebruik`:'Verwijderen'}
                   onClick={()=>{
                     if(ing.some(i=>i.type===typ)){alert(`Type "${typ}" is in gebruik door ingrediënten en kan niet worden verwijderd.`);return;}
                     if(!confirm(`Type "${typ}" verwijderen?`))return;
                     setIngTypes(prev=>prev.filter((_,i)=>i!==idx));
+                    setIngTypeBtw(prev=>{const next={...prev};delete next[typ];return next;});
                   }}
                   className={`text-sm px-2 py-1.5 rounded transition-colors ${ing.some(i=>i.type===typ)?'text-gray-300 cursor-not-allowed':'text-red-400 hover:text-red-600 hover:bg-red-50'}`}>✕</button>
               </div>
             ))}
           </div>
+          <p className="text-xs text-gray-400 mb-3">Stel een standaard BTW% in per type. Dit wordt vooraf ingevuld bij inkoop boeken, maar blijft aanpasbaar.</p>
           <div className="flex gap-2">
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder="Nieuw type..." value={newIngType} onChange={e=>setNewIngType(e.target.value)}
               onKeyDown={e=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert('Type bestaat al.');return;}setIngTypes(prev=>[...prev,val]);setNewIngType('');}}} />
@@ -9083,7 +9147,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 }
 
 // ===== BOEKHOUDING =====
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null}) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}}) {
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -9632,7 +9696,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             <div className="text-xs text-gray-400 italic self-end pb-2">{inkoopGefilterd.length} facturen in periode</div>
             <button onClick={()=>setShowVrijeFactuur(true)}
               className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
-              + Vrije factuur
+              + Inkoop boeken
             </button>
             {inkoopGefilterd.length > 0 && (
               <button onClick={exportInkoopCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
@@ -9652,6 +9716,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onSave={saveVrijeFactuur}
             onClose={()=>setShowVrijeFactuur(false)}
             claudeCreds={claudeCreds}
+            ingTypes={ingTypes}
+            ingTypeBtw={ingTypeBtw}
           />
         )}
 
@@ -9881,7 +9947,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           <div className={card + ' text-center py-14'}>
             <div className="text-4xl mb-3">🧾</div>
             <p className="text-gray-600 font-medium mb-1">Nog geen inkoop facturen</p>
-            <p className="text-gray-400 text-sm">Boek een inkoop via <strong>Ingrediënten → Inkoop boeken</strong>, of klik op <strong>+ Vrije factuur</strong> om een factuur handmatig toe te voegen.<br/>Elke opgeslagen inkoop wordt automatisch hier als factuur toegevoegd.</p>
+            <p className="text-gray-400 text-sm">Boek een inkoop via <strong>Ingrediënten → Inkoop boeken</strong>, of klik op <strong>+ Inkoop boeken</strong> hierboven om een factuur handmatig toe te voegen.<br/>Elke opgeslagen inkoop wordt automatisch hier als factuur toegevoegd.</p>
           </div>
         )}
         {inkoopFacturen.length>0 && inkoopGefilterd.length===0 && (
@@ -10066,6 +10132,7 @@ function App() {
   const [verkoopFacturen, setVerkoopFacturen] = useStore('verkoop_facturen', []);
   const [btwInst, setBtwInst] = useStore('btw_instellingen', {periode: 'kwartaal'});
   const [ingTypes, setIngTypes] = useStore('ing_types', ["Mout","Hop","Gist","Suiker","Overig"]);
+  const [ingTypeBtw, setIngTypeBtw] = useStore('ing_type_btw', {});
   _lang = lang; // update global for t() — called synchronously during render
   const [page, setPage] = useState('dashboard');
   const importRef = useRef(null);
@@ -10215,14 +10282,14 @@ function App() {
       </nav>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
-        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} />}
+        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ing={ing} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} />}
       </main>
     </div>
   );
