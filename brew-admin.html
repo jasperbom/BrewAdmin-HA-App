@@ -3109,6 +3109,7 @@ const BF_MAP = {"Planning":"Gepland","Brewing":"Brouwen","Fermenting":"Vergisten
 const STATUS_CLR = {"Gepland":"bg-slate-100 text-slate-600 ring-1 ring-slate-200","Brouwen":"bg-blue-100 text-blue-700 ring-1 ring-blue-200","Vergisten":"bg-amber-100 text-amber-700 ring-1 ring-amber-200","Vergisting":"bg-amber-100 text-amber-700 ring-1 ring-amber-200","Conditioneren":"bg-purple-100 text-purple-700 ring-1 ring-purple-200","Lagering":"bg-purple-100 text-purple-700 ring-1 ring-purple-200","Verpakt":"bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200","Gesloten":"bg-gray-100 text-gray-500 ring-1 ring-gray-200"};
 const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Verpakt","Gesloten"];
 const ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"];
+const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"];
 const EENHEDEN = ["kg","g","L","mL","pkg","stuks"];
 
 // Eenheden-conversie: zet hoeveelheid om van 'van' naar 'naar' eenheid.
@@ -4317,7 +4318,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
 }
 
 // ===== INGREDIËNTEN =====
-function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}, claudeCreds=null}) {
+function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES}) {
   const [tab, setTab] = useState('ingredienten');
 
   // --- Ingrediënten state ---
@@ -4336,6 +4337,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [lotCorr, setLotCorr] = useState({delta:'', richting:'+', reden:'', eenheid:''});
   const [ingZoek, setIngZoek] = useState('');          // zoekfilter ingrediënten
   const [groepDicht, setGroepDicht] = useStore('ing_groep_dicht', {});   // {type: bool} ingeklapte groepen
+  const [showIngEdit, setShowIngEdit] = useState(false);
+  const [ingEditForm, setIngEditForm] = useState({naam:'', type:'', fabrikant:''});
   const [vtIngeklapt, setVtIngeklapt] = useStore('verpakkingen_vt_ingeklapt', false);
   const [odIngeklapt, setOdIngeklapt] = useStore('verpakkingen_od_ingeklapt', false);
 
@@ -4397,7 +4400,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const emptyVE = {naam:'',inhoud_liter:'',type:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:''};
   const [vEditForm, setVEditForm] = useState(emptyVE);
   // --- Onderdelen state ---
-  const emptyOD = {od_id:'',naam:'',type:'',lotnr:'',kosten_per_stuk:'',leverancier:'',factuurnummer:''};
+  const emptyOD = {od_id:'',naam:'',type:'',lotnr:'',kosten_per_stuk:'',leverancier:'',factuurnummer:'',voorraad:''};
   const [showODEdit, setShowODEdit] = useState(null);
   const [odEditForm, setOdEditForm] = useState(emptyOD);
   const [showODAdd, setShowODAdd] = useState(false);
@@ -4603,7 +4606,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
   const saveODEdit = () => {
     if (!odEditForm.naam.trim()) { alert(t('err_name_required')); return; }
-    setOnderdelen(prev=>prev.map(o=>o.id===showODEdit.id?{...o,...odEditForm,kosten_per_stuk:odEditForm.kosten_per_stuk?Number(odEditForm.kosten_per_stuk):0}:o));
+    setOnderdelen(prev=>prev.map(o=>o.id===showODEdit.id?{...o,...odEditForm,kosten_per_stuk:odEditForm.kosten_per_stuk?Number(odEditForm.kosten_per_stuk):0,voorraad:odEditForm.voorraad!==''?Number(odEditForm.voorraad):Number(o.voorraad||0)}:o));
     setShowODEdit(null);
   };
   const saveODAdd = () => {
@@ -4641,6 +4644,26 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   };
 
   const selIng = ing.find(i=>i.id===sel);
+
+  const openIngEdit = () => {
+    if (!selIng) return;
+    setIngEditForm({naam:selIng.naam, type:selIng.type||'', fabrikant:selIng.fabrikant||''});
+    setShowIngEdit(true);
+  };
+  const saveIngEdit = () => {
+    if (!ingEditForm.naam.trim()) { alert(t('err_name_required')); return; }
+    setIng(prev=>prev.map(i=>i.id===sel?{...i,naam:ingEditForm.naam.trim(),type:ingEditForm.type,fabrikant:ingEditForm.fabrikant}:i));
+    setShowIngEdit(false);
+  };
+  const deleteIng = () => {
+    if (!selIng) return;
+    if (activeLots(sel).length>0) { alert('Kan niet verwijderen: er zijn nog actieve lots.'); return; }
+    if (!confirm(`Ingrediënt "${selIng.naam}" en alle bijbehorende lots verwijderen?`)) return;
+    setIng(prev=>prev.filter(i=>i.id!==sel));
+    setLots(prev=>prev.filter(l=>l.ingredient_id!==sel));
+    setSel(null);
+  };
+
   const tabBtn = (t,l) => (
     <button onClick={()=>setTab(t)}
       className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab===t?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -4685,17 +4708,20 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                       const zoek = ingZoek.trim().toLowerCase();
                       const filtered = zoek ? ing.filter(i=>i.naam.toLowerCase().includes(zoek)||(i.type||'').toLowerCase().includes(zoek)) : ing;
                       if (filtered.length===0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen resultaten voor "{ingZoek}"</td></tr></tbody>;
-                      return ING_TYPES.map(ingTyp => {
-                        const groep = [...filtered.filter(i => i.type === ingTyp)].sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));
+                      // Alle types in ingTypes + eventuele wees-types die niet meer in ingTypes staan
+                      const allTypes = [...ingTypes, ...filtered.map(i=>i.type||'Overig').filter(tp=>!ingTypes.includes(tp)).filter((tp,i,a)=>a.indexOf(tp)===i)];
+                      return allTypes.map(ingTyp => {
+                        const groep = [...filtered.filter(i => (i.type||'Overig') === ingTyp)].sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));
                         if (groep.length === 0) return null;
                         const dicht = groepDicht[ingTyp] && !zoek; // zoeken forceert open
+                        const typeLabel = BUILTIN_ING_TYPES.includes(ingTyp) ? t('ing_type_'+ingTyp.toLowerCase()) : ingTyp;
                         return (
                           <tbody key={ingTyp} className="divide-y divide-gray-100">
                             <tr className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100"
                               onClick={()=>setGroepDicht(p=>({...p,[ingTyp]:!p[ingTyp]}))}>
                               <td colSpan={2} className="px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
                                 <div className="flex items-center">
-                                  <span className="mr-1.5 text-gray-400">{dicht?'▶':'▼'}</span>{t('ing_type_'+ingTyp.toLowerCase())}
+                                  <span className="mr-1.5 text-gray-400">{dicht?'▶':'▼'}</span>{typeLabel}
                                   <span className="ml-1.5 font-normal text-gray-400">({groep.length})</span>
                                 </div>
                               </td>
@@ -4721,8 +4747,12 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>
               <div className="flex-1 min-w-0 bg-white rounded-xl shadow-card overflow-x-auto">
                 <div className="px-4 py-2.5 t-hdr text-white flex items-center justify-between rounded-t-xl">
-                  <span className="font-medium text-sm">{selIng.naam} — {t('ing_lots')}</span>
-                  <Btn s="sm" v="header" onClick={()=>{setOntvangstInitTab('ingredienten');setOntvangstInitIngId(String(sel));setShowO(true)}}>{t('btn_add_lot')}</Btn>
+                  <span className="font-medium text-sm">{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</span>
+                  <div className="flex items-center gap-1">
+                    <Btn s="sm" v="header" onClick={openIngEdit}>✏️</Btn>
+                    <button title={activeLots(sel).length>0?'Verwijderen niet mogelijk: er zijn actieve lots':'Ingrediënt verwijderen'} onClick={deleteIng} disabled={activeLots(sel).length>0} className={`text-xs px-2 py-1 rounded transition-colors ${activeLots(sel).length>0?'opacity-40 cursor-not-allowed text-white/60':'text-white/80 hover:text-white hover:bg-white/20'}`}>🗑</button>
+                    <Btn s="sm" v="header" onClick={()=>{setOntvangstInitTab('ingredienten');setOntvangstInitIngId(String(sel));setShowO(true)}}>{t('btn_add_lot')}</Btn>
+                  </div>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="text-xs text-gray-500 bg-gray-50">
@@ -4886,7 +4916,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1 justify-end">
-                          <Btn s="sm" v="ghost" onClick={()=>{setOdEditForm({naam:od.naam,type:od.type||'',kosten_per_stuk:String(od.kosten_per_stuk||''),leverancier:od.leverancier||'',factuurnummer:od.factuurnummer||''});setShowODEdit(od);}}>✏️</Btn>
+                          <Btn s="sm" v="ghost" onClick={()=>{setOdEditForm({naam:od.naam,type:od.type||'',kosten_per_stuk:String(od.kosten_per_stuk||''),leverancier:od.leverancier||'',factuurnummer:od.factuurnummer||'',voorraad:String(od.voorraad||0)});setShowODEdit(od);}}>✏️</Btn>
                           <button onClick={()=>{if(confirm(t('error_confirm_delete_packaging')))setOnderdelen(prev=>prev.filter(x=>x.id!==od.id))}} className="text-red-400 hover:text-red-600 text-xs px-1.5">✕</button>
                         </div>
                       </td>
@@ -5040,14 +5070,33 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
         </Modal>
       )}
 
+      {/* Ingrediënt bewerken */}
+      {showIngEdit && selIng && (
+        <Modal title={`Ingrediënt bewerken: ${selIng.naam}`} onClose={()=>setShowIngEdit(false)} wide>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Inp label={t('lbl_name')+' *'} value={ingEditForm.naam} onChange={v=>setIngEditForm(f=>({...f,naam:v}))} />
+              <Sel label={t('lbl_type')} value={ingEditForm.type} onChange={v=>setIngEditForm(f=>({...f,type:v}))}
+                opts={ingTypes.map(tp=>({v:tp,l:BUILTIN_ING_TYPES.includes(tp)?t('ing_type_'+tp.toLowerCase()):tp}))} ph="— kies type —" />
+              <Inp label="Fabrikant" value={ingEditForm.fabrikant} onChange={v=>setIngEditForm(f=>({...f,fabrikant:v}))} placeholder="bijv. Weyermann" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Btn v="secondary" onClick={()=>setShowIngEdit(false)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveIngEdit}>{t('btn_save')}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Onderdeel bewerken */}
       {showODEdit && (
         <Modal title={`Onderdeel: ${showODEdit.naam}`} onClose={()=>setShowODEdit(null)} wide>
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <Inp label={t('lbl_name')+' *'} value={odEditForm.naam} onChange={v=>setOdEditForm(f=>({...f,naam:v}))} />
               <Sel label={t('onderdeel_type')} value={odEditForm.type} onChange={v=>setOdEditForm(f=>({...f,type:v}))}
                 opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
+              <Inp label={t('lbl_stock')} type="number" value={odEditForm.voorraad} onChange={v=>setOdEditForm(f=>({...f,voorraad:v}))} placeholder="0" />
               <Inp label={t('onderdeel_cost')} type="number" value={odEditForm.kosten_per_stuk} onChange={v=>setOdEditForm(f=>({...f,kosten_per_stuk:v}))} placeholder="0.00" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -8215,7 +8264,8 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ing=[]}) {
+  const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -8379,14 +8429,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const navItems = [
-    {id:'app',         label:t('settings_app'),          icon:'⚙️'},
-    {id:'brouwerij',   label:t('settings_brewery'),     icon:'🏭'},
-    {id:'brewfather',  label:'Brewfather',               icon:'🍺'},
-    {id:'woocommerce', label:t('settings_webshop'),      icon:'🛒'},
-    {id:'claude',      label:'Claude AI',                icon:'🤖'},
-    {id:'accijns',     label:t('settings_excise'),       icon:'💶'},
-    {id:'hygiene',     label:t('settings_hygiene'),      icon:'🧹'},
-    {id:'data',        label:t('settings_data'),         icon:'📦'},
+    {id:'app',           label:t('settings_app'),        icon:'⚙️'},
+    {id:'brouwerij',     label:t('settings_brewery'),    icon:'🏭'},
+    {id:'brewfather',    label:'Brewfather',              icon:'🍺'},
+    {id:'woocommerce',   label:t('settings_webshop'),    icon:'🛒'},
+    {id:'claude',        label:'Claude AI',               icon:'🤖'},
+    {id:'accijns',       label:t('settings_excise'),     icon:'💶'},
+    {id:'ingredienten',  label:'Ingrediënten',            icon:'🌾'},
+    {id:'hygiene',       label:t('settings_hygiene'),    icon:'🧹'},
+    {id:'data',          label:t('settings_data'),       icon:'📦'},
   ];
 
   const fmtTs = (ts) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
@@ -8775,6 +8826,37 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       </div>
       </>}
+
+      {/* INGREDIËNTEN TYPES */}
+      {activeSection==='ingredienten' && (
+        <div className={card}>
+          <h2 className="text-lg font-semibold text-gray-700 mb-1">Ingredient-types</h2>
+          <p className="text-sm text-gray-500 mb-4">Beheer de categorieën voor ingrediënten. Verwijderen is alleen mogelijk als er geen ingrediënten aan het type gekoppeld zijn.</p>
+          <div className="space-y-2 mb-4">
+            {ingTypes.map((typ, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input"
+                  value={typ}
+                  onBlur={e=>{const val=e.target.value.trim();if(val&&val!==typ)setIngTypes(prev=>prev.map((tp,i)=>i===idx?val:tp));}}
+                  onChange={e=>setIngTypes(prev=>prev.map((tp,i)=>i===idx?e.target.value:tp))} />
+                <button
+                  title={ing.some(i=>i.type===typ)?`Type "${typ}" is in gebruik`:'Verwijderen'}
+                  onClick={()=>{
+                    if(ing.some(i=>i.type===typ)){alert(`Type "${typ}" is in gebruik door ingrediënten en kan niet worden verwijderd.`);return;}
+                    if(!confirm(`Type "${typ}" verwijderen?`))return;
+                    setIngTypes(prev=>prev.filter((_,i)=>i!==idx));
+                  }}
+                  className={`text-sm px-2 py-1.5 rounded transition-colors ${ing.some(i=>i.type===typ)?'text-gray-300 cursor-not-allowed':'text-red-400 hover:text-red-600 hover:bg-red-50'}`}>✕</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder="Nieuw type..." value={newIngType} onChange={e=>setNewIngType(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert('Type bestaat al.');return;}setIngTypes(prev=>[...prev,val]);setNewIngType('');}}} />
+            <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert('Type bestaat al.');return;}setIngTypes(prev=>[...prev,val]);setNewIngType('');}}>Toevoegen</Btn>
+          </div>
+        </div>
+      )}
 
       {/* HYGIENE */}
       {activeSection==='hygiene' && <>
@@ -9983,6 +10065,7 @@ function App() {
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
   const [verkoopFacturen, setVerkoopFacturen] = useStore('verkoop_facturen', []);
   const [btwInst, setBtwInst] = useStore('btw_instellingen', {periode: 'kwartaal'});
+  const [ingTypes, setIngTypes] = useStore('ing_types', ["Mout","Hop","Gist","Suiker","Overig"]);
   _lang = lang; // update global for t() — called synchronously during render
   const [page, setPage] = useState('dashboard');
   const importRef = useRef(null);
@@ -10132,14 +10215,14 @@ function App() {
       </nav>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
-        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} />}
+        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ing={ing} />}
       </main>
     </div>
   );
