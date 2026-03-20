@@ -3809,6 +3809,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
       setProductLijst(prev=>[...prev, {...productForm, _naam:naam, _id:Date.now()}]);
     }
     setProductForm(emptyProduct);
+    setProductTotInclBtw(false);
+    setProductBrutoStr('');
   };
 
   const voegVerpakkingToe = () => {
@@ -3824,6 +3826,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
       setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
     }
     setVOntvForm(emptyVO);
+    setVerpakTotInclBtw(false);
+    setVerpakBrutoStr('');
   };
 
   const voegVrijeToe = () => {
@@ -4098,7 +4102,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
               </div>
               <div className="flex justify-end gap-2">
                 {editingProductIdx !== null && (
-                  <Btn v="secondary" onClick={()=>{setEditingProductIdx(null);setProductForm(emptyProduct);}}>Annuleer</Btn>
+                  <Btn v="secondary" onClick={()=>{setEditingProductIdx(null);setProductForm(emptyProduct);setProductTotInclBtw(false);setProductBrutoStr('');}}>Annuleer</Btn>
                 )}
                 <Btn onClick={voegProductToe}>{editingProductIdx !== null ? 'Pas aan' : t('modal_add_to_list')}</Btn>
               </div>
@@ -4166,7 +4170,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
               </div>
               <div className="flex justify-end gap-2">
                 {editingVerpakkingIdx !== null && (
-                  <Btn v="secondary" onClick={()=>{setEditingVerpakkingIdx(null);setVOntvForm(emptyVO);}}>Annuleer</Btn>
+                  <Btn v="secondary" onClick={()=>{setEditingVerpakkingIdx(null);setVOntvForm(emptyVO);setVerpakTotInclBtw(false);setVerpakBrutoStr('');}}>Annuleer</Btn>
                 )}
                 <Btn onClick={voegVerpakkingToe}>{editingVerpakkingIdx !== null ? 'Pas aan' : t('modal_add_to_list')}</Btn>
               </div>
@@ -4265,7 +4269,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 <tbody className="divide-y divide-gray-100">
                   {productLijst.map((p,i)=>(
                     <tr key={p._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingProductIdx===i ? 'bg-amber-50 ring-1 ring-amber-300' : 'bg-white hover:bg-gray-50'}`}
-                      onClick={()=>{setProductForm({...p});setTab('ingredienten');setEditingProductIdx(i);}}>
+                      onClick={()=>{setProductForm({...p});setProductTotInclBtw(false);setProductBrutoStr('');setTab('ingredienten');setEditingProductIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{p._naam}</td>
                       <td className="px-3 py-2">{p.qty} {p.eenh}</td>
                       <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
@@ -4279,7 +4283,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   ))}
                   {verpakkingLijst.map((v,i)=>(
                     <tr key={v._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingVerpakkingIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-blue-50 hover:bg-blue-100'}`}
-                      onClick={()=>{setVOntvForm({...v});setTab('verpakkingen');setEditingVerpakkingIdx(i);}}>
+                      onClick={()=>{setVOntvForm({...v});setVerpakTotInclBtw(false);setVerpakBrutoStr('');setTab('verpakkingen');setEditingVerpakkingIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{v._naam} <span className="text-xs text-blue-400">(verpakking)</span></td>
                       <td className="px-3 py-2">{v.aantal} stuks</td>
                       <td className="px-3 py-2 text-gray-500">{v.lotnr||'—'}</td>
