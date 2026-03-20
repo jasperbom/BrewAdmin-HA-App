@@ -57,7 +57,7 @@ window.BREW_TRANS["nl"] = {
   "tab_ingredienten": "Ingrediënten",
   "tab_verpakkingen": "Verpakkingen",
   "tab_mutaties": "Mutaties",
-  "btn_ontvangst": "+ Ontvangst",
+  "btn_ontvangst": "+ Inkoop boeken",
   "btn_save": "Opslaan",
   "btn_cancel": "Annuleren",
   "btn_delete": "Verwijderen",
@@ -100,9 +100,9 @@ window.BREW_TRANS["nl"] = {
   "msg_saving": "Opslaan...",
   "msg_synced": "Gesynchroniseerd met server",
   "msg_connection_failed": "Verbinding mislukt — data alleen lokaal",
-  "msg_no_ingredients": "Geen ingrediënten. Gebruik '+ Ontvangst'.",
+  "msg_no_ingredients": "Geen ingrediënten. Gebruik '+ Inkoop boeken'.",
   "msg_no_batches": "Geen batches",
-  "msg_no_packaging": "Geen verpakkingen beheerd. Klik '+ Ontvangst' om te starten.",
+  "msg_no_packaging": "Geen verpakkingen beheerd. Klik '+ Inkoop boeken' om te starten.",
   "msg_no_mutations": "Nog geen mutaties. Ontvangsten en gebruik worden hier automatisch bijgehouden.",
   "msg_no_active_lots": "Geen actieve lots",
   "msg_no_results": "Geen resultaten",
@@ -136,7 +136,7 @@ window.BREW_TRANS["nl"] = {
   "ing_tab_mutations": "Mutaties",
   "ing_lots": "Lots",
   "ing_archived_lots": "{n} gearchiveerde lots",
-  "mut_receipt": "Ontvangst",
+  "mut_receipt": "Inkoop",
   "mut_usage": "Gebruik",
   "mut_booking": "Afboeking",
   "mut_return": "Terugboeking",
@@ -184,7 +184,7 @@ window.BREW_TRANS["nl"] = {
   "packaging_or_new_type": "Of maak nieuw type aan...",
   "packaging_existing_type": "Aanvullen bestaand type",
   "packaging_standard_choose": "Selecteer standaard...",
-  "modal_title_receipt": "Ontvangst registreren",
+  "modal_title_receipt": "Inkoop boeken",
   "modal_title_packaging_receipt": "Verpakkingen ontvangst",
   "modal_title_packaging_unbook": "Afboeken",
   "modal_title_packaging_edit": "Bewerken",
@@ -3765,6 +3765,12 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   // Vrije regels tab
   const [vrijeRegels, setVrijeRegels] = useState([{naam:'', netto:'', btw_tarief:21}]);
 
+  // BTW toggle voor totaalprijs velden
+  const [productTotInclBtw, setProductTotInclBtw] = useState(false);
+  const [productBrutoStr, setProductBrutoStr] = useState('');
+  const [verpakTotInclBtw, setVerpakTotInclBtw] = useState(false);
+  const [verpakBrutoStr, setVerpakBrutoStr] = useState('');
+
   // Factuur scan state
   const [isScanning, setIsScanning] = useState(false);
   const [scanFout, setScanFout] = useState(null);
@@ -4000,12 +4006,24 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 <Inp label={t('modal_price_per_unit')} type="number" value={productForm.prijs}
                   onChange={v=>setProductForm(f=>({...f,prijs:v,totaalprijs:v&&f.qty?String((Number(v)*Number(f.qty)).toFixed(2)):f.totaalprijs}))}
                   placeholder="0.00" />
-                <Inp label="Totaalprijs ex BTW (€)" type="number" value={productForm.totaalprijs}
-                  onChange={v=>setProductForm(f=>({...f,totaalprijs:v,prijs:v&&f.qty?String((Number(v)/Number(f.qty)).toFixed(4)):f.prijs}))}
-                  placeholder="0.00" />
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-gray-600">Totaalprijs (€)</label>
+                    <button type="button"
+                      onClick={()=>{const ni=!productTotInclBtw;setProductTotInclBtw(ni);if(ni){const n=parseFloat(productForm.totaalprijs||0);const b=Number(productForm.btw_tarief||0);setProductBrutoStr(n?(n*(1+b/100)).toFixed(2):'');}}}
+                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
+                      {productTotInclBtw ? 'incl. BTW' : 'excl. BTW'}
+                    </button>
+                  </div>
+                  <input type="number"
+                    value={productTotInclBtw ? productBrutoStr : productForm.totaalprijs}
+                    onChange={e=>{const v=e.target.value;if(productTotInclBtw){setProductBrutoStr(v);const b=Number(productForm.btw_tarief||0);const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';setProductForm(f=>({...f,totaalprijs:n,prijs:n&&f.qty?String((Number(n)/Number(f.qty)).toFixed(4)):f.prijs}));}else{setProductForm(f=>({...f,totaalprijs:v,prijs:v&&f.qty?String((Number(v)/Number(f.qty)).toFixed(4)):f.prijs}));}}}
+                    placeholder="0.00"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
-                  <select value={productForm.btw_tarief} onChange={e=>setProductForm(f=>({...f,btw_tarief:e.target.value}))}
+                  <select value={productForm.btw_tarief} onChange={e=>{const nb=e.target.value;setProductForm(f=>{if(productTotInclBtw&&productBrutoStr){const n=String((Number(productBrutoStr)/(1+Number(nb)/100)).toFixed(2));return{...f,btw_tarief:nb,totaalprijs:n,prijs:n&&f.qty?String((Number(n)/Number(f.qty)).toFixed(4)):f.prijs};}return{...f,btw_tarief:nb};});}}
                     className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
                     <option value="0">0%</option>
                     <option value="9">9%</option>
@@ -4053,12 +4071,24 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 <Inp label={t('modal_price_per_unit')} type="number" value={vOntvForm.prijs_per_stuk}
                   onChange={v=>setVOntvForm(f=>({...f,prijs_per_stuk:v,totaalprijs:v&&f.aantal?String((Number(v)*Number(f.aantal)).toFixed(2)):f.totaalprijs}))}
                   placeholder="0.00" />
-                <Inp label="Totaalprijs ex BTW (€)" type="number" value={vOntvForm.totaalprijs}
-                  onChange={v=>setVOntvForm(f=>({...f,totaalprijs:v,prijs_per_stuk:v&&f.aantal?String((Number(v)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}))}
-                  placeholder="0.00" />
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-gray-600">Totaalprijs (€)</label>
+                    <button type="button"
+                      onClick={()=>{const ni=!verpakTotInclBtw;setVerpakTotInclBtw(ni);if(ni){const n=parseFloat(vOntvForm.totaalprijs||0);const b=Number(vOntvForm.btw_tarief||0);setVerpakBrutoStr(n?(n*(1+b/100)).toFixed(2):'');}}}
+                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
+                      {verpakTotInclBtw ? 'incl. BTW' : 'excl. BTW'}
+                    </button>
+                  </div>
+                  <input type="number"
+                    value={verpakTotInclBtw ? verpakBrutoStr : vOntvForm.totaalprijs}
+                    onChange={e=>{const v=e.target.value;if(verpakTotInclBtw){setVerpakBrutoStr(v);const b=Number(vOntvForm.btw_tarief||0);const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';setVOntvForm(f=>({...f,totaalprijs:n,prijs_per_stuk:n&&f.aantal?String((Number(n)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}));}else{setVOntvForm(f=>({...f,totaalprijs:v,prijs_per_stuk:v&&f.aantal?String((Number(v)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}));}}}
+                    placeholder="0.00"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
-                  <select value={vOntvForm.btw_tarief} onChange={e=>setVOntvForm(f=>({...f,btw_tarief:e.target.value}))}
+                  <select value={vOntvForm.btw_tarief} onChange={e=>{const nb=e.target.value;setVOntvForm(f=>{if(verpakTotInclBtw&&verpakBrutoStr){const n=String((Number(verpakBrutoStr)/(1+Number(nb)/100)).toFixed(2));return{...f,btw_tarief:nb,totaalprijs:n,prijs_per_stuk:n&&f.aantal?String((Number(n)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk};}return{...f,btw_tarief:nb};});}}
                     className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
                     <option value="0">0%</option>
                     <option value="9">9%</option>
@@ -4117,9 +4147,9 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         )}
 
         {/* ── Gecombineerde productenlijst ── */}
-        {(productLijst.length > 0 || verpakkingLijst.length > 0) && (
+        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0)) && (
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length})</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length + vrijeRegels.filter(r=>r.naam.trim()&&parseFloat(r.netto)>0).length})</p>
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
@@ -4134,31 +4164,47 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {productLijst.map((p,i)=>(
-                    <tr key={p._id} className="bg-white">
+                    <tr key={p._id} title="Klik om te bewerken" className="bg-white cursor-pointer hover:bg-gray-50"
+                      onClick={()=>{setProductLijst(prev=>prev.filter((_,j)=>j!==i));setProductForm({...p});setTab('ingredienten');}}>
                       <td className="px-3 py-2 font-medium">{p._naam}</td>
                       <td className="px-3 py-2">{p.qty} {p.eenh}</td>
                       <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.prijs?`€${p.prijs}`:'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.totaalprijs?`€${p.totaalprijs}`:'—'}</td>
                       <td className="px-2 py-2 text-right">
-                        <button onClick={()=>setProductLijst(prev=>prev.filter((_,j)=>j!==i))}
+                        <button onClick={e=>{e.stopPropagation();setProductLijst(prev=>prev.filter((_,j)=>j!==i));}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>
                   ))}
                   {verpakkingLijst.map((v,i)=>(
-                    <tr key={v._id} className="bg-blue-50">
+                    <tr key={v._id} title="Klik om te bewerken" className="bg-blue-50 cursor-pointer hover:bg-blue-100"
+                      onClick={()=>{setVerpakkingLijst(prev=>prev.filter((_,j)=>j!==i));setVOntvForm({...v});setTab('verpakkingen');}}>
                       <td className="px-3 py-2 font-medium">{v._naam} <span className="text-xs text-blue-400">(verpakking)</span></td>
                       <td className="px-3 py-2">{v.aantal} stuks</td>
                       <td className="px-3 py-2 text-gray-500">{v.lotnr||'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{v.prijs_per_stuk?`€${v.prijs_per_stuk}`:'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{v.totaalprijs?`€${v.totaalprijs}`:'—'}</td>
                       <td className="px-2 py-2 text-right">
-                        <button onClick={()=>setVerpakkingLijst(prev=>prev.filter((_,j)=>j!==i))}
+                        <button onClick={e=>{e.stopPropagation();setVerpakkingLijst(prev=>prev.filter((_,j)=>j!==i));}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>
                   ))}
+                  {vrijeRegels.map((r,i)=>r.naam.trim()&&parseFloat(r.netto)>0?(
+                    <tr key={i} title="Klik om te bewerken" className="bg-yellow-50 cursor-pointer hover:bg-yellow-100"
+                      onClick={()=>setTab('vrije')}>
+                      <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">(vrij)</span></td>
+                      <td className="px-3 py-2 text-gray-400">—</td>
+                      <td className="px-3 py-2 text-gray-400">—</td>
+                      <td className="px-3 py-2 text-gray-400">—</td>
+                      <td className="px-3 py-2 text-gray-500">€{parseFloat(r.netto).toFixed(2)}</td>
+                      <td className="px-2 py-2 text-right">
+                        <button onClick={e=>{e.stopPropagation();setVrijeRegels(prev=>prev.filter((_,j)=>j!==i).length?prev.filter((_,j)=>j!==i):[{naam:'',netto:'',btw_tarief:21}]);}}
+                          className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
+                      </td>
+                    </tr>
+                  ):null)}
                 </tbody>
               </table>
             </div>
@@ -9671,7 +9717,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           <div className={card + ' text-center py-14'}>
             <div className="text-4xl mb-3">🧾</div>
             <p className="text-gray-600 font-medium mb-1">Nog geen inkoop facturen</p>
-            <p className="text-gray-400 text-sm">Registreer een ontvangst via <strong>Ingrediënten → Ontvangst registreren</strong>, of klik op <strong>+ Vrije factuur</strong> om een factuur handmatig toe te voegen.<br/>Elke opgeslagen ontvangst wordt automatisch hier als factuur toegevoegd.</p>
+            <p className="text-gray-400 text-sm">Boek een inkoop via <strong>Ingrediënten → Inkoop boeken</strong>, of klik op <strong>+ Vrije factuur</strong> om een factuur handmatig toe te voegen.<br/>Elke opgeslagen inkoop wordt automatisch hier als factuur toegevoegd.</p>
           </div>
         )}
         {inkoopFacturen.length>0 && inkoopGefilterd.length===0 && (
