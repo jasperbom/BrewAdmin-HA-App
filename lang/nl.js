@@ -524,7 +524,7 @@ window.BREW_TRANS["nl"] = {
   "btn_tag_restore": "Tag terugzetten",
   "btn_import_json": "Importeer geplakte JSON",
   "btn_test_connection": "Test verbinding",
-  "wc_push_stock_title": "Stuur de huidige voorraad (alleen betaalde accijns) naar WooCommerce",
+  "wc_push_stock_title": "Stuur de huidige voorraad naar WooCommerce",
   "wc_pull_sales_title": "Haal verkopen op uit WooCommerce en verwerk ze als verkocht_stuks",
   "lbl_last_sync": "Laatste sync: ",
   "settings_wc_connect_desc": "Koppel met een WooCommerce webshop om voorraad automatisch bij te werken bij uitslaan en handmatig te synchroniseren vanuit de Voorraad pagina.",

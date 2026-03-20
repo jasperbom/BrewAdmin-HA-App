@@ -524,7 +524,7 @@ window.BREW_TRANS["de"] = {
   "btn_tag_restore": "Tag wiederherstellen",
   "btn_import_json": "Eingefügtes JSON importieren",
   "btn_test_connection": "Verbindung testen",
-  "wc_push_stock_title": "Aktuellen Bestand (nur bezahlte Biersteuer) an WooCommerce senden",
+  "wc_push_stock_title": "Aktuellen Bestand an WooCommerce senden",
   "wc_pull_sales_title": "Verkäufe aus WooCommerce abrufen und als verkaufte Stücke verarbeiten",
   "lbl_last_sync": "Letzter Sync: ",
   "settings_wc_connect_desc": "Verbinden Sie sich mit einem WooCommerce-Shop, um den Bestand beim Auslagern automatisch zu aktualisieren und manuell von der Bestandsseite zu synchronisieren.",
