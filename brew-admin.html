@@ -3740,16 +3740,23 @@ const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-m
 // ═══════════════════════════════════════════════════════════════
 // Gedeeld Inkoop Factuur formulier — gebruikt op Ingrediënten- én Administratiepagina
 // ═══════════════════════════════════════════════════════════════
-function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='', claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={} }) {
+function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='', claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null }) {
   const defaultType = ingTypes[0] || 'Mout';
   const emptyProduct = {ing_id:initialIngId,nieuw:'',type:defaultType,fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:ingTypeBtw[defaultType]!=null?String(ingTypeBtw[defaultType]):'9'};
   const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'};
 
   // Leverancier: selecteer uit bekende of voer nieuwe in
-  const [leverancierSel, setLeverancierSel]     = useState(knownLeveranciers.length ? '' : '__nieuw__');
-  const [leverancierNieuw, setLeverancierNieuw] = useState('');
-  const [factuurNr, setFactuurNr]   = useState('');
-  const [datum, setDatum]           = useState(tod());
+  const [leverancierSel, setLeverancierSel] = useState(() => {
+    if (initialData?.leverancier) return knownLeveranciers.includes(initialData.leverancier) ? initialData.leverancier : '__nieuw__';
+    return knownLeveranciers.length ? '' : '__nieuw__';
+  });
+  const [leverancierNieuw, setLeverancierNieuw] = useState(() => {
+    if (initialData?.leverancier && !knownLeveranciers.includes(initialData.leverancier)) return initialData.leverancier;
+    return '';
+  });
+  const [factuurNr, setFactuurNr] = useState(initialData?.factuurnummer || '');
+  const [datum, setDatum]         = useState(initialData?.datum || tod());
+  const [existingBijlage, setExistingBijlage] = useState(initialData?.bijlage || null);
   const [bijlageFile, setBijlageFile] = useState(null);
   const [uploading, setUploading]   = useState(false);
   const [tab, setTab]               = useState(initialTab);
@@ -3759,17 +3766,54 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   React.useEffect(() => () => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); }, []);
 
   // Ingrediënten-tab form
-  const [productForm, setProductForm]   = useState(emptyProduct);
-  const [productLijst, setProductLijst] = useState([]);
+  const [productForm, setProductForm] = useState(emptyProduct);
+  const [productLijst, setProductLijst] = useState(() => {
+    if (!initialData?.regels) return [];
+    return initialData.regels.filter(r=>r.type==='ingredient').map((r,i)=>{
+      const ingItem = ing.find(x=>x.naam===r.naam);
+      return {
+        ing_id: ingItem ? String(ingItem.id) : '',
+        nieuw: ingItem ? '' : r.naam,
+        type: ingItem?.type || defaultType,
+        fabrikant: '', lotnr: '',
+        qty: String(r.hoeveelheid||''), eenh: r.eenheid||'kg', tht: '',
+        prijs: String(r.prijs_per_eenheid||''),
+        totaalprijs: String(r.netto||''),
+        btw_tarief: String(r.btw_tarief??0),
+        _naam: r.naam, _id: Date.now()+i,
+      };
+    });
+  });
 
   // Verpakkingen-tab form
-  const [vOntvForm, setVOntvForm]             = useState(emptyVO);
-  const [verpakkingLijst, setVerpakkingLijst] = useState([]);
+  const [vOntvForm, setVOntvForm] = useState(emptyVO);
+  const [verpakkingLijst, setVerpakkingLijst] = useState(() => {
+    if (!initialData?.regels) return [];
+    return initialData.regels.filter(r=>r.type==='verpakking').map((r,i)=>{
+      const od = onderdelen.find(x=>x.naam===r.naam);
+      return {
+        od_id: od ? String(od.id) : '',
+        naam: r.naam, type: od?.type||'', lotnr: '',
+        aantal: String(r.aantal||''),
+        prijs_per_stuk: String(r.prijs_per_stuk||''),
+        totaalprijs: String(r.netto||''),
+        btw_tarief: String(r.btw_tarief??21),
+        _naam: r.naam, _id: Date.now()+i+1000,
+      };
+    });
+  });
 
   // Vrije regels tab
   const emptyVrije = {naam:'', netto:'', btw_tarief:21};
-  const [vrijeForm, setVrijeForm]   = useState(emptyVrije);
-  const [vrijeList, setVrijeList]   = useState([]);
+  const [vrijeForm, setVrijeForm] = useState(emptyVrije);
+  const [vrijeList, setVrijeList] = useState(() => {
+    if (!initialData?.regels) return [];
+    return initialData.regels.filter(r=>r.type==='overig').map((r,i)=>({
+      naam: r.naam, netto: String(r.netto||''),
+      btw_tarief: Number(r.btw_tarief??21),
+      _id: Date.now()+i+2000,
+    }));
+  });
 
   // BTW toggle voor totaalprijs velden
   const [productTotInclBtw, setProductTotInclBtw] = useState(false);
@@ -3873,7 +3917,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     if (productLijst.length===0 && verpakkingLijst.length===0 && vrijeList.length===0) {
       alert(t('err_min_one_product')); return;
     }
-    let bijlage = null;
+    let bijlage = existingBijlage;
     if (bijlageFile) {
       setUploading(true);
       try {
@@ -3929,7 +3973,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
   })();
 
   return (
-    <Modal title={t('modal_title_receipt')} onClose={onClose} wide={!showPdfViewer} ultrawide={showPdfViewer}>
+    <Modal title={initialData ? 'Factuur bewerken' : t('modal_title_receipt')} onClose={onClose} wide={!showPdfViewer} ultrawide={showPdfViewer}>
       <div className={showPdfViewer ? 'grid grid-cols-2 gap-4' : ''}>
       {showPdfViewer && (
         <div className="order-2">
@@ -3975,7 +4019,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer">
                 <span>📎</span>
-                <span>{bijlageFile ? bijlageFile.name : 'Bestand kiezen…'}</span>
+                <span>{bijlageFile ? bijlageFile.name : existingBijlage ? '↩ Vervangen…' : 'Bestand kiezen…'}</span>
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                   className="hidden" onChange={e=>{
                     const f=e.target.files?.[0]||null;
@@ -3985,6 +4029,13 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                     else{setPdfBlobUrl(null);setShowPdfViewer(false);}
                   }} />
               </label>
+              {!bijlageFile && existingBijlage?.bestand && (
+                <a href={`${ADDON_BASE}api/file/${existingBijlage.bestand}`} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1">📎 {existingBijlage.naam}</a>
+              )}
+              {!bijlageFile && existingBijlage && (
+                <button onClick={()=>setExistingBijlage(null)} className="text-gray-400 hover:text-red-500 text-xs" title="Bijlage verwijderen">✕</button>
+              )}
               {bijlageFile && <button onClick={()=>{setBijlageFile(null);if(pdfBlobUrl){URL.revokeObjectURL(pdfBlobUrl);setPdfBlobUrl(null);}setShowPdfViewer(false);}} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
               {bijlageFile && !isScanning && (() => {
                 const isPdf = bijlageFile.type === 'application/pdf' || bijlageFile.name.toLowerCase().endsWith('.pdf');
@@ -4366,7 +4417,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
           <span className="text-sm text-gray-500">{t('modal_products_ready').replace('{n}', productLijst.length + verpakkingLijst.length)}</span>
           <div className="flex gap-2">
             <Btn v="secondary" onClick={onClose}>{t('btn_cancel')}</Btn>
-            <Btn onClick={handleSave} disabled={uploading}>{uploading ? 'Uploaden…' : t('btn_save')}</Btn>
+            <Btn onClick={handleSave} disabled={uploading}>{uploading ? 'Uploaden…' : initialData ? 'Wijzigingen opslaan' : t('btn_save')}</Btn>
           </div>
         </div>
       </div>
@@ -9161,8 +9212,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-  const [dateFrom, setDateFrom] = React.useState(firstOfMonth);
+  const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
+  const [dateFrom, setDateFrom] = React.useState(firstOfYear);
   const [dateTo, setDateTo] = React.useState(now.toISOString().slice(0,10));
   const [statusFilter, setStatusFilter] = React.useState('completed');
   const [activeView, setActiveView] = React.useState('orders');
@@ -9177,6 +9228,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [aangifteError, setAangifteError] = React.useState('');
   const [aangifteFetched, setAangifteFetched] = React.useState(false);
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
+  const [editingFactuur, setEditingFactuur] = React.useState(null);
   const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
 
   const addLog = (entry) => setLog(prev=>[...prev,{id:newId(prev||[]),datum:tod(),...entry}]);
@@ -9415,6 +9467,46 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       bijlage,
     }]);
     setShowVrijeFactuur(false);
+  };
+
+  const updateFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}) => {
+    if (!editingFactuur) return;
+    const regels = [];
+    productLijst.forEach(p => {
+      const pn = p.prijs ? Number(p.prijs) : 0;
+      const netto = parseFloat(p.totaalprijs) || (pn * Number(p.qty||0));
+      const btw_tarief = Number(p.btw_tarief)||0;
+      const naam = p.ing_id ? (ing.find(i=>i.id===Number(p.ing_id))?.naam||p._naam||p.nieuw.trim()) : (p._naam||p.nieuw.trim());
+      regels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+    });
+    verpakkingLijst.forEach(v => {
+      const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
+      const netto = parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0));
+      const btw_tarief = Number(v.btw_tarief)||0;
+      regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+    });
+    vrijeRegels.forEach(r => {
+      const netto = parseFloat(r.netto)||0;
+      const btw_tarief = Number(r.btw_tarief)||0;
+      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+    });
+    const calc_netto = regels.reduce((s,r)=>s+r.netto, 0);
+    const calc_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
+    const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
+    const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
+    setInkoopFacturen(prev => prev.map(f => f.id !== editingFactuur.id ? f : {
+      ...f,
+      datum: factuurForm.datum || f.datum,
+      factuurnummer: factuurForm.factuur ?? f.factuurnummer,
+      leverancier: factuurForm.leverancier || f.leverancier,
+      regels,
+      totaal_netto, totaal_btw, totaal_bruto,
+      bijlage: bijlage || f.bijlage,
+    }));
+    setEditingFactuur(null);
   };
 
   // ── Aangiftes helpers ──────────────────────────────────────────────────────
@@ -9732,6 +9824,21 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             ingTypeBtw={ingTypeBtw}
           />
         )}
+        {/* Factuur bewerken modal */}
+        {editingFactuur && (
+          <InkoopFactuurModal
+            knownLeveranciers={knownLeveranciers}
+            ing={ing}
+            onderdelen={onderdelen}
+            initialTab="ingredienten"
+            initialData={editingFactuur}
+            onSave={updateFactuur}
+            onClose={()=>setEditingFactuur(null)}
+            claudeCreds={claudeCreds}
+            ingTypes={ingTypes}
+            ingTypeBtw={ingTypeBtw}
+          />
+        )}
 
         {/* Samenvattingskaartjes inkoop */}
         {inkoopGefilterd.length > 0 && (
@@ -9780,11 +9887,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 </thead>
                 <tbody>
                   {inkoopGefilterd.map(f => (<React.Fragment key={f.id}>
-                    <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={()=>setExpandedFactuur(expandedFactuur===f.id?null:f.id)}>
-                      <td className="py-2 pr-2 text-gray-400 text-xs text-center">
-                        {expandedFactuur===f.id?'▾':'▸'}
-                      </td>
+                    <tr className="border-b border-gray-50 hover:bg-amber-50 transition-colors cursor-pointer"
+                        onClick={()=>setEditingFactuur(f)}>
+                      <td className="py-2 pr-2 text-gray-400 text-xs text-center">✎</td>
                       <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                       <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
                       <td className="py-2 pr-3 font-medium text-gray-800">{f.leverancier||'—'}</td>
@@ -9802,82 +9907,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           className="text-gray-300 hover:text-red-500 text-xs transition-colors px-1">✕</button>
                       </td>
                     </tr>
-                    {expandedFactuur===f.id && (
-                      <tr>
-                        <td colSpan={8} className="pb-3 pt-0 px-6">
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 uppercase tracking-wide border-b border-gray-200">
-                                  <th className="py-1 pr-3 text-left font-medium">Omschrijving</th>
-                                  <th className="py-1 pr-3 text-left font-medium">Type</th>
-                                  <th className="py-1 pr-3 text-right font-medium">Aantal</th>
-                                  <th className="py-1 pr-3 text-right font-medium">Prijs/eenh.</th>
-                                  <th className="py-1 pr-3 text-right font-medium">Netto</th>
-                                  <th className="py-1 pr-3 text-right font-medium">BTW%</th>
-                                  <th className="py-1 text-right font-medium">BTW</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(f.regels||[]).map((r,i)=>(
-                                  <tr key={i} className="border-b border-gray-100">
-                                    <td className="py-1 pr-3 text-gray-700 font-medium">{r.naam}</td>
-                                    <td className="py-1 pr-3 text-gray-400">
-                                      <span className={`px-1.5 py-0.5 rounded text-xs ${r.type==='ingredient'?'bg-green-50 text-green-700':r.type==='overig'?'bg-gray-100 text-gray-600':'bg-purple-50 text-purple-700'}`}>
-                                        {r.type==='ingredient'?'Ingrediënt':r.type==='overig'?'Overig':'Verpakking'}
-                                      </span>
-                                    </td>
-                                    <td className="py-1 pr-3 text-right text-gray-600">
-                                      {r.type==='ingredient'
-                                        ? r.aantal_stuks && r.inhoud_per_stuk
-                                          ? `${r.aantal_stuks}× ${r.inhoud_per_stuk} ${r.eenheid} = ${r.hoeveelheid} ${r.eenheid}`
-                                          : `${r.hoeveelheid} ${r.eenheid}`
-                                        : r.type==='overig' ? '—'
-                                        : `${r.aantal}×`}
-                                    </td>
-                                    <td className="py-1 pr-3 text-right text-gray-500">
-                                      {r.type==='overig' ? '—' : r.type==='ingredient' && r.prijs_per_eenheid ? fmt(r.prijs_per_eenheid) : r.prijs_per_stuk ? fmt(r.prijs_per_stuk) : '—'}
-                                    </td>
-                                    <td className="py-1 pr-3 text-right text-gray-700">{fmt(r.netto||0)}</td>
-                                    <td className="py-1 pr-3 text-right text-gray-500">{r.btw_tarief}%</td>
-                                    <td className="py-1 text-right text-blue-600">{fmt(r.btw_bedrag||0)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            <div className="mt-3 pt-3 border-t border-gray-200">
-                              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Bijlage</p>
-                              {f.bijlage?.bestand ? (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <a href={`${ADDON_BASE}api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors group">
-                                    <span className="text-base">📎</span>
-                                    <span className="text-sm text-gray-700 group-hover:text-blue-700 font-medium">{f.bijlage.naam}</span>
-                                    <span className="text-xs text-gray-400 group-hover:text-blue-500 ml-1">↗ Openen</span>
-                                  </a>
-                                  <label className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 cursor-pointer px-2 py-1 rounded hover:bg-gray-100 transition-colors" title="Bijlage vervangen">
-                                    ↩ Vervangen
-                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
-                                      className="hidden"
-                                      onChange={e=>e.target.files?.[0] && uploadBijlageVoorFactuur(f.id, e.target.files[0])} />
-                                  </label>
-                                </div>
-                              ) : bijlageUploading===f.id ? (
-                                <span className="text-xs text-gray-500 italic">Uploaden…</span>
-                              ) : (
-                                <label className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer transition-colors">
-                                  <span>📎</span>
-                                  <span>Bijlage toevoegen</span>
-                                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
-                                    className="hidden"
-                                    onChange={e=>e.target.files?.[0] && uploadBijlageVoorFactuur(f.id, e.target.files[0])} />
-                                </label>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>))}
                 </tbody>
                 <tfoot>
