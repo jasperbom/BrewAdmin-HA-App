@@ -3721,17 +3721,19 @@ const Sel = ({label,value,onChange,opts,ph,cls=''}) => (
   </div>
 );
 
-const Modal = ({title,children,onClose,wide=false,ultrawide=false,hideClose=false}) => (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[200] p-4 overflow-y-auto">
-    <div className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${ultrawide?'max-w-7xl':wide?'max-w-2xl':'max-w-lg'}`}>
-      <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
-        <h3 className="font-semibold text-gray-800 text-base">{title}</h3>
-        {!hideClose && <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors">&times;</button>}
+const Modal = ({title,children,onClose,wide=false,ultrawide=false,hideClose=false}) =>
+  ReactDOM.createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[200] p-4 overflow-y-auto">
+      <div className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${ultrawide?'max-w-7xl':wide?'max-w-2xl':'max-w-lg'}`}>
+        <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
+          <h3 className="font-semibold text-gray-800 text-base">{title}</h3>
+          {!hideClose && <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors">&times;</button>}
+        </div>
+        <div className="p-5">{children}</div>
       </div>
-      <div className="p-5">{children}</div>
-    </div>
-  </div>
-);
+    </div>,
+    document.body
+  );
 
 const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CLR[s]||'bg-gray-100 text-gray-600'}`}>{({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')})[s]||s}</span>;
 
@@ -4482,7 +4484,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     return usages.map(x=>({ ...x, batch: bat.find(b=>b.id===x.batch_id) }));
   };
 
-  const saveOntvangst = async ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage}) => {
+  const saveOntvangst = async ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}) => {
     let updatedIng = [...ing];
     const newLots = [];
     productLijst.forEach(p => {
@@ -4558,15 +4560,18 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
       factuurRegels.push({type:'overig', naam:r.naam.trim(), netto, btw_tarief:tarief, btw_bedrag:+(netto*tarief/100).toFixed(2)});
     });
     if (factuurRegels.length > 0) {
-      const totaal_netto = factuurRegels.reduce((s,r)=>s+r.netto, 0);
-      const totaal_btw   = factuurRegels.reduce((s,r)=>s+r.btw_bedrag, 0);
+      const calc_netto = factuurRegels.reduce((s,r)=>s+r.netto, 0);
+      const calc_btw   = factuurRegels.reduce((s,r)=>s+r.btw_bedrag, 0);
+      const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
+      const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
+      const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
       setInkoopFacturen(prev=>[...prev, {
         id: newId(prev),
         datum: factuurForm.datum||tod(),
         factuurnummer: factuurForm.factuur||'',
         leverancier: factuurForm.leverancier||'',
         regels: factuurRegels,
-        totaal_netto, totaal_btw, totaal_bruto: totaal_netto+totaal_btw,
+        totaal_netto, totaal_btw, totaal_bruto,
         bijlage,
       }]);
     }
@@ -9320,7 +9325,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     if (expandedFactuur===id) setExpandedFactuur(null);
   };
 
-  const saveVrijeFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage}) => {
+  const saveVrijeFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}) => {
     // Update ingredient lots (mirrors saveOntvangst in IngredientenPage)
     let updatedIng = [...ing];
     const newLots = [];
@@ -9393,8 +9398,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2)});
     });
     if (!regels.length) return;
-    const totaal_netto = regels.reduce((s,r)=>s+r.netto, 0);
-    const totaal_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    const calc_netto = regels.reduce((s,r)=>s+r.netto, 0);
+    const calc_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
+    const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
+    const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
     setInkoopFacturen(prev => [...prev, {
       id: newId(prev),
       datum: factuurForm.datum || now.toISOString().slice(0,10),
@@ -9403,7 +9411,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       regels,
       totaal_netto,
       totaal_btw,
-      totaal_bruto: totaal_netto + totaal_btw,
+      totaal_bruto,
       bijlage,
     }]);
     setShowVrijeFactuur(false);
