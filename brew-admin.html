@@ -5891,9 +5891,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
           {bat.filter(b=>b.status==='Gesloten').length>0 && (
             <div>
               <div onClick={()=>setBatchArchiefIngeklapt(v=>!v)}
-                className="px-3 py-2 bg-gray-600 text-white flex items-center justify-between cursor-pointer hover:bg-gray-500 select-none">
-                <span className="text-xs font-medium text-gray-200 uppercase">{t('batch_archived')} ({bat.filter(b=>b.status==='Gesloten').length})</span>
+                className="px-3 py-2 bg-gray-600 text-white flex items-center gap-2 cursor-pointer hover:bg-gray-500 select-none">
                 <span className="text-gray-300 text-sm">{batchArchiefIngeklapt?'▶':'▼'}</span>
+                <span className="text-xs font-medium text-gray-200 uppercase">{t('batch_archived')} ({bat.filter(b=>b.status==='Gesloten').length})</span>
               </div>
               {!batchArchiefIngeklapt && bat.filter(b=>b.status==='Gesloten').map(b=>(
                 <div key={b.id} onClick={()=>setSel(b.id)}
@@ -5929,9 +5929,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                   <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                 </div>
               </div>
-              <div className="px-4 py-2 flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t('batch_info_label')}</span>
+              <div className="px-4 py-2 flex items-center gap-2 cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
                 <span className="text-gray-400 text-xs">{infoIngeklapt ? '▶' : '▼'}</span>
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t('batch_info_label')}</span>
               </div>
               {!infoIngeklapt && (
               <div className="p-4">
@@ -6346,9 +6346,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
 
                   {/* Afvulling registreren */}
                   <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none" onClick={() => setAfvullenIngeklapt(v => !v)}>
-                      <span>{t('batch_filling_register')}</span>
+                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none" onClick={() => setAfvullenIngeklapt(v => !v)}>
                       <span className={`text-xs font-bold ${!afvullenIngeklapt ? 'rotate-90' : ''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
+                      <span>{t('batch_filling_register')}</span>
                     </div>
                     {!afvullenIngeklapt && <div className="p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -6399,9 +6399,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
 
                   {/* Afgevulde voorraad tabel */}
                   <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none" onClick={() => setVoorraadIngeklapt(v => !v)}>
-                      <span>{t('batch_filled_stock')}</span>
+                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none" onClick={() => setVoorraadIngeklapt(v => !v)}>
                       <span className={`text-xs font-bold ${!voorraadIngeklapt ? 'rotate-90' : ''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
+                      <span>{t('batch_filled_stock')}</span>
                     </div>
                     {!voorraadIngeklapt && <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -8041,9 +8041,9 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 {archiefTags.length>0 && (
                   <div className="border-t">
                     <button onClick={()=>setGearchiveerdTagsOpen(o=>!o)}
-                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                      <span>{t('lbl_archived_tags')} ({archiefTags.length})</span>
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
                       <span className="text-gray-400 text-sm">{gearchiveerdTagsOpen?'▼':'▶'}</span>
+                      <span>{t('lbl_archived_tags')} ({archiefTags.length})</span>
                     </button>
                     {gearchiveerdTagsOpen&&archiefTags.map(tag=><TagGroep key={tag} tag={tag} gearchiveerd={true}/>)}
                   </div>
@@ -8054,9 +8054,9 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           {verborgenLijst.length>0&&(
             <div className="border-t">
               <button onClick={()=>setVerborgenOpen(o=>!o)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
                 <span className="text-gray-400 text-sm">{verborgenOpen?'▼':'▶'}</span>
+                <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
               </button>
               {verborgenOpen&&verborgenLijst.map(r=>(
                 <div key={r.id} onClick={()=>setSel(sel===r.id?null:r.id)}
