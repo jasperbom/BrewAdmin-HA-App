@@ -15,7 +15,9 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 
 ### Ingredients
 - Manage ingredients with lots, quantities and best-before dates
+- Edit and delete existing ingredients directly from the list
 - Support for multiple units and packaging types
+- Configurable ingredient types — add or remove types (Mout, Hop, Gist, etc.) in Settings
 - Mutation log per ingredient
 
 ### Batches
@@ -47,13 +49,17 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 - Custom formula support: define your own JavaScript expression with variables `liter`, `abv`, `hl`, `r1`, `r2`
 - Overview of outstanding and paid declarations
 - Mark excise duty as paid with one click
-- Only stock with paid excise duty is included in WooCommerce
 
 ### Accounting (Boekhouding)
 - Purchase invoice management with supplier, date, amount and VAT fields
+- **Invoice scanning** — upload a PDF or image and let Claude AI extract supplier, date, invoice number and all line items including VAT per line automatically; local PDF text extraction runs first
+- **PDF viewer** — preview the uploaded attachment side by side with the entry form
+- Inline editing of line items (ingredients, packaging, free-form); BTW toggle to enter prices including or excluding VAT
+- Editable end totals (netto / BTW / bruto) for rounding adjustments
+- Click any invoice row to re-open the full edit form; all fields and line items are pre-filled
+- Date filter defaults to the full current year
 - Upload PDF or image attachments per invoice (JPG, PNG, WEBP, GIF, TIFF, BMP, HEIC)
 - Download all attachments for a given year as a ZIP archive
-- Excise duty declaration view: grouped by month with totals, rate per litre, and one-click mark-all-paid
 - Aangiftes (declarations) sub-page for excise duty overview
 
 ### Settings
