@@ -94,6 +94,7 @@ _CSP = (
     "worker-src blob: https://unpkg.com; "
     "connect-src 'self' https://unpkg.com; "
     "img-src 'self' data: blob:; "
+    "frame-src blob: 'self'; "
     "font-src 'self' data:; "
     "base-uri 'self'; "
     "form-action 'self'"
