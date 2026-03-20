@@ -39,6 +39,7 @@
     };
   </script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
 <script>
 // BrewAdmin — Translations (inlined)
 window.BREW_TRANS = {};
@@ -56,7 +57,7 @@ window.BREW_TRANS["nl"] = {
   "tab_ingredienten": "Ingrediënten",
   "tab_verpakkingen": "Verpakkingen",
   "tab_mutaties": "Mutaties",
-  "btn_ontvangst": "+ Ontvangst",
+  "btn_ontvangst": "+ Inkoop boeken",
   "btn_save": "Opslaan",
   "btn_cancel": "Annuleren",
   "btn_delete": "Verwijderen",
@@ -99,9 +100,9 @@ window.BREW_TRANS["nl"] = {
   "msg_saving": "Opslaan...",
   "msg_synced": "Gesynchroniseerd met server",
   "msg_connection_failed": "Verbinding mislukt — data alleen lokaal",
-  "msg_no_ingredients": "Geen ingrediënten. Gebruik '+ Ontvangst'.",
+  "msg_no_ingredients": "Geen ingrediënten. Gebruik '+ Inkoop boeken'.",
   "msg_no_batches": "Geen batches",
-  "msg_no_packaging": "Geen verpakkingen beheerd. Klik '+ Ontvangst' om te starten.",
+  "msg_no_packaging": "Geen verpakkingen beheerd. Klik '+ Inkoop boeken' om te starten.",
   "msg_no_mutations": "Nog geen mutaties. Ontvangsten en gebruik worden hier automatisch bijgehouden.",
   "msg_no_active_lots": "Geen actieve lots",
   "msg_no_results": "Geen resultaten",
@@ -135,7 +136,7 @@ window.BREW_TRANS["nl"] = {
   "ing_tab_mutations": "Mutaties",
   "ing_lots": "Lots",
   "ing_archived_lots": "{n} gearchiveerde lots",
-  "mut_receipt": "Ontvangst",
+  "mut_receipt": "Inkoop",
   "mut_usage": "Gebruik",
   "mut_booking": "Afboeking",
   "mut_return": "Terugboeking",
@@ -183,7 +184,7 @@ window.BREW_TRANS["nl"] = {
   "packaging_or_new_type": "Of maak nieuw type aan...",
   "packaging_existing_type": "Aanvullen bestaand type",
   "packaging_standard_choose": "Selecteer standaard...",
-  "modal_title_receipt": "Ontvangst registreren",
+  "modal_title_receipt": "Inkoop boeken",
   "modal_title_packaging_receipt": "Verpakkingen ontvangst",
   "modal_title_packaging_unbook": "Afboeken",
   "modal_title_packaging_edit": "Bewerken",
@@ -639,7 +640,7 @@ window.BREW_TRANS["nl"] = {
   "btn_tag_restore": "Tag terugzetten",
   "btn_import_json": "Importeer geplakte JSON",
   "btn_test_connection": "Test verbinding",
-  "wc_push_stock_title": "Stuur de huidige voorraad (alleen betaalde accijns) naar WooCommerce",
+  "wc_push_stock_title": "Stuur de huidige voorraad naar WooCommerce",
   "wc_pull_sales_title": "Haal verkopen op uit WooCommerce en verwerk ze als verkocht_stuks",
   "lbl_last_sync": "Laatste sync: ",
   "settings_wc_connect_desc": "Koppel met een WooCommerce webshop om voorraad automatisch bij te werken bij uitslaan en handmatig te synchroniseren vanuit de Voorraad pagina.",
@@ -1247,7 +1248,7 @@ window.BREW_TRANS["en"] = {
   "btn_tag_restore": "Restore tag",
   "btn_import_json": "Import pasted JSON",
   "btn_test_connection": "Test connection",
-  "wc_push_stock_title": "Send current stock (paid excise only) to WooCommerce",
+  "wc_push_stock_title": "Send current stock to WooCommerce",
   "wc_pull_sales_title": "Fetch sales from WooCommerce and process as sold units",
   "lbl_last_sync": "Last sync: ",
   "settings_wc_connect_desc": "Connect to a WooCommerce store to automatically update stock when releasing and to manually synchronize from the Stock page.",
@@ -1855,7 +1856,7 @@ window.BREW_TRANS["de"] = {
   "btn_tag_restore": "Tag wiederherstellen",
   "btn_import_json": "Eingefügtes JSON importieren",
   "btn_test_connection": "Verbindung testen",
-  "wc_push_stock_title": "Aktuellen Bestand (nur bezahlte Biersteuer) an WooCommerce senden",
+  "wc_push_stock_title": "Aktuellen Bestand an WooCommerce senden",
   "wc_pull_sales_title": "Verkäufe aus WooCommerce abrufen und als verkaufte Stücke verarbeiten",
   "lbl_last_sync": "Letzter Sync: ",
   "settings_wc_connect_desc": "Verbinden Sie sich mit einem WooCommerce-Shop, um den Bestand beim Auslagern automatisch zu aktualisieren und manuell von der Bestandsseite zu synchronisieren.",
@@ -2463,7 +2464,7 @@ window.BREW_TRANS["fr"] = {
   "btn_tag_restore": "Restaurer le tag",
   "btn_import_json": "Importer le JSON collé",
   "btn_test_connection": "Tester la connexion",
-  "wc_push_stock_title": "Envoyer le stock actuel (accise payée uniquement) vers WooCommerce",
+  "wc_push_stock_title": "Envoyer le stock actuel vers WooCommerce",
   "wc_pull_sales_title": "Récupérer les ventes de WooCommerce et les traiter comme unités vendues",
   "lbl_last_sync": "Dernière sync : ",
   "settings_wc_connect_desc": "Connectez-vous à une boutique WooCommerce pour mettre à jour automatiquement le stock lors des sorties et synchroniser manuellement depuis la page Stock.",
@@ -3071,7 +3072,7 @@ window.BREW_TRANS["es"] = {
   "btn_tag_restore": "Restaurar etiqueta",
   "btn_import_json": "Importar JSON pegado",
   "btn_test_connection": "Probar conexión",
-  "wc_push_stock_title": "Enviar stock actual (solo impuesto pagado) a WooCommerce",
+  "wc_push_stock_title": "Enviar stock actual a WooCommerce",
   "wc_pull_sales_title": "Obtener ventas de WooCommerce y procesarlas como unidades vendidas",
   "lbl_last_sync": "Última sincronización: ",
   "settings_wc_connect_desc": "Conecta con una tienda WooCommerce para actualizar automáticamente el stock al distribuir y sincronizar manualmente desde la página de Stock.",
@@ -3108,6 +3109,7 @@ const BF_MAP = {"Planning":"Gepland","Brewing":"Brouwen","Fermenting":"Vergisten
 const STATUS_CLR = {"Gepland":"bg-slate-100 text-slate-600 ring-1 ring-slate-200","Brouwen":"bg-blue-100 text-blue-700 ring-1 ring-blue-200","Vergisten":"bg-amber-100 text-amber-700 ring-1 ring-amber-200","Vergisting":"bg-amber-100 text-amber-700 ring-1 ring-amber-200","Conditioneren":"bg-purple-100 text-purple-700 ring-1 ring-purple-200","Lagering":"bg-purple-100 text-purple-700 ring-1 ring-purple-200","Verpakt":"bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200","Gesloten":"bg-gray-100 text-gray-500 ring-1 ring-gray-200"};
 const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Verpakt","Gesloten"];
 const ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"];
+const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"];
 const EENHEDEN = ["kg","g","L","mL","pkg","stuks"];
 
 // Eenheden-conversie: zet hoeveelheid om van 'van' naar 'naar' eenheid.
@@ -3162,6 +3164,237 @@ const API_BASE = (() => {
 // Base path for all addon API endpoints (upload, file, etc.)
 // Must be relative so it works both directly and via HA Ingress.
 const ADDON_BASE = API_BASE.replace('api/data/', '');
+
+// ── PDF.js worker init ──────────────────────────────────────────────────────
+if (window.pdfjsLib) {
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+}
+
+// ── Claude / PDF helpers ────────────────────────────────────────────────────
+
+async function callClaudeProxy(body) {
+  const r = await fetch(`${ADDON_BASE}api/claude/messages`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+async function extractPdfText(file) {
+  if (!window.pdfjsLib) return '';
+  try {
+    const ab = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({data: ab}).promise;
+    let text = '';
+    const pages = pdf.numPages; // scan all pages
+    for (let p = 1; p <= pages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      // Group items by y-coordinate to reconstruct lines
+      const byLine = {};
+      for (const item of content.items) {
+        const y = Math.round(item.transform[5]);
+        if (!byLine[y]) byLine[y] = [];
+        byLine[y].push(item);
+      }
+      // Sort lines top-to-bottom (desc y), items left-to-right (asc x)
+      const sortedYs = Object.keys(byLine).map(Number).sort((a, b) => b - a);
+      for (const y of sortedYs) {
+        const lineText = byLine[y]
+          .sort((a, b) => a.transform[4] - b.transform[4])
+          .map(i => i.str).join(' ').trim();
+        if (lineText) text += lineText + '\n';
+      }
+    }
+    return text.trim();
+  } catch(e) {
+    return '';
+  }
+}
+
+function parseFactuurTekstLokaal(text) {
+  const result = { leverancier: null, factuurnummer: null, datum: null, regels: [], _source: 'lokaal' };
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // Datum
+  for (const line of lines) {
+    const m = line.match(/\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b/);
+    if (m) { result.datum = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; break; }
+    const m2 = line.match(/\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b/);
+    if (m2) { result.datum = `${m2[1]}-${m2[2]}-${m2[3]}`; break; }
+  }
+
+  // Factuurnummer
+  const fnm = text.match(/(?:factuur\s*(?:nr\.?|nummer|no\.?)\s*[:\s]+|invoice\s*(?:no\.?|nr\.?|#)\s*)([A-Z0-9][A-Z0-9\-\/\.]{2,20})/i);
+  if (fnm) result.factuurnummer = fnm[1].trim();
+
+  const UNIT_LIST = ['kg','kilogram','g','gr','gram','l','liter','litre','ltr','ml','mL','milliliter','stuks','stuk','st','stk','pcs','pkg','zakken','zak','bags','bag','colli'];
+  const normUnit = raw => {
+    const r = raw.toLowerCase();
+    if (['kg','kilogram'].includes(r)) return 'kg';
+    if (['g','gr','gram'].includes(r)) return 'g';
+    if (['l','liter','litre','ltr'].includes(r)) return 'L';
+    if (['ml','mL','milliliter'].includes(r)) return 'mL';
+    return 'stuks';
+  };
+  const classifyType = naam => {
+    const n = naam.toLowerCase();
+    if (/\b(mout|malt|pilsner|munich|cara|crystal|wheat|tarwe|gerst|barley|biscuit|amber|vienna|chocolate|roast|pale ale|base malt)\b/.test(n)) return 'Mout';
+    if (/\b(hop\b|hops\b|pellets|cascade|hallertau|saaz|citra|centennial|simcoe|amarillo|fuggles|goldings|magnum|perle|chinook|mosaic)\b/.test(n)) return 'Hop';
+    if (/\b(gist|yeast|saccharomyces|kveik|fermentis|safale|saflager)\b/.test(n)) return 'Gist';
+    if (/\b(suiker|sugar|kandij|dextrose|glucose|fructose|stroop|invert)\b/.test(n)) return 'Suiker';
+    if (/\b(fles|bottle|keg|vat|doos|cap|kroon|crown|etiket|label|sluiting|closure|can|blik)\b/.test(n)) return 'Verpakking';
+    return 'Overig';
+  };
+  const parseNum = s => parseFloat(String(s).replace(/\./g,'').replace(',','.'));
+  const skipRE = /^(omschr|beschr|product|artikel|totaal|subtotaal|btw|vat\b|tax\b|porto|verzend|transport|korting|discount|betalings|iban|kvk|bank\b|reken|saldo|afger|te betalen|pagina|page\b|datum\b|date\b|lever|klant|adres|e-mail|telefoon|fax|debiteur)/i;
+
+  for (const line of lines) {
+    if (skipRE.test(line) || line.length < 8) continue;
+    const tokens = line.split(/\s+/);
+
+    // Check for combined token like "25kg" or "2x25kg" and split it
+    for (let i = 0; i < tokens.length; i++) {
+      const cm2 = tokens[i].match(/^(\d+)[x×](\d+(?:[.,]\d+)?)(kg|g|l|liter|ml|stuks?|stk|pcs?|pkg|zakken?|bag)$/i);
+      if (cm2) { tokens.splice(i, 1, cm2[1], '×', cm2[2], cm2[3]); break; }
+      const cm = tokens[i].match(/^(\d+(?:[.,]\d+)?)(kg|g|l|liter|ml|stuks?|stk|pcs?|pkg|zakken?|bag)$/i);
+      if (cm) { tokens.splice(i, 1, cm[1], cm[2]); break; }
+    }
+
+    // Find rightmost unit token with a numeric token directly before it
+    let unitIdx = -1;
+    for (let i = tokens.length - 1; i >= 1; i--) {
+      if (UNIT_LIST.includes(tokens[i].toLowerCase()) && /^\d+(?:[.,]\d+)?$/.test(tokens[i-1])) {
+        unitIdx = i; break;
+      }
+    }
+    if (unitIdx === -1) continue;
+
+    const qty = parseNum(tokens[unitIdx - 1]);
+    const eenh = normUnit(tokens[unitIdx]);
+
+    // Name: tokens before qty, strip leading article-code (pure number)
+    const nameParts = tokens.slice(0, unitIdx - 1);
+    if (nameParts.length > 1 && /^\d+\.?$/.test(nameParts[0])) nameParts.shift();
+    const naam = nameParts.join(' ').replace(/[€\-\s]+$/, '').trim();
+    if (naam.length < 3 || /^[\d\s€\.,\-]+$/.test(naam) || skipRE.test(naam)) continue;
+
+    // Total price: last number with 2 decimals after the unit
+    const afterUnit = tokens.slice(unitIdx + 1).join(' ');
+    const pm = afterUnit.match(/(\d+[.,]\d{2})\s*$/);
+    const totaalprijs = pm ? parseNum(pm[1]) : null;
+
+    // Detect aantal_stuks × inhoud_per_stuk pattern in the naam
+    // Case A: naam starts with "[number] [optional container word] ..."
+    // e.g., "2 zak Pilsner Mout" (qty=25) → aantal_stuks=2, inhoud_per_stuk=25, totalqty=50
+    // Case B: naam ends with "[number] ×" (from "2x25kg" token split)
+    // e.g., "Pilsner Mout 2 ×" (qty=25) → aantal_stuks=2, inhoud_per_stuk=25
+    let aantal_stuks = null;
+    let inhoud_per_stuk = null;
+    let finalQty = qty;
+    let finalNaam = naam;
+    const mStart = naam.match(/^(\d+(?:[.,]\d+)?)\s*(?:zakken?|bags?|zak|colli|pakketten?|stuks?|stk|pcs?|x)?\s+/i);
+    const mEnd   = naam.match(/^(.+?)\s+(\d+(?:[.,]\d+)?)\s*[×x]\s*$/i);
+    if (mStart) {
+      const stuksNum = parseNum(mStart[1]);
+      const rest = naam.slice(mStart[0].length).trim();
+      if (rest.length >= 3 && !/^[\d\s.,€\-]+$/.test(rest) && stuksNum > 0 && stuksNum !== qty) {
+        aantal_stuks = stuksNum; inhoud_per_stuk = qty;
+        finalQty = stuksNum * qty; finalNaam = rest;
+      }
+    } else if (mEnd) {
+      const stuksNum = parseNum(mEnd[2]);
+      const rest = mEnd[1].trim();
+      if (rest.length >= 3 && stuksNum > 0 && stuksNum !== qty) {
+        aantal_stuks = stuksNum; inhoud_per_stuk = qty;
+        finalQty = stuksNum * qty; finalNaam = rest;
+      }
+    }
+
+    result.regels.push({ naam: finalNaam, type: classifyType(finalNaam), qty: finalQty, eenh, lotnr: null, tht: null, prijs: null, totaalprijs, aantal_stuks, inhoud_per_stuk, btw_tarief: 9 });
+  }
+  return result;
+}
+
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = e => res(e.target.result.split(',')[1]);
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+function matchIngredient(naam, ingList) {
+  const norm = s => s.toLowerCase().trim().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
+  const n = norm(naam);
+  const exact = ingList.find(i => norm(i.naam) === n);
+  if (exact) return {type: 'exact', ing: exact};
+  const scored = ingList.map(i => {
+    const iw = norm(i.naam).split(' ');
+    const nw = n.split(' ');
+    const overlap = nw.filter(w => w.length > 2 && iw.some(iw2 => iw2.includes(w) || w.includes(iw2))).length;
+    return {ing: i, score: overlap / Math.max(nw.length, iw.length, 1)};
+  }).filter(x => x.score > 0.3).sort((a, b) => b.score - a.score);
+  if (scored.length) return {type: 'fuzzy', ing: scored[0].ing, suggestions: scored.slice(0, 4).map(x => x.ing)};
+  return {type: 'new'};
+}
+
+const CLAUDE_FACTUUR_META_PROMPT = `Je bent een assistent die factuurmetadata extraheert voor een brouwerij.
+Analyseer de factuur en geef ALLEEN een JSON object terug (geen uitleg, geen markdown):
+{
+  "leverancier": "naam leverancier of null",
+  "factuurnummer": "factuurnummer of null",
+  "datum": "YYYY-MM-DD of null"
+}`;
+
+async function scanFactuurBestand(file, claudeApiKey, forceClaudeAI = false) {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  let messages;
+  if (isPdf) {
+    const text = await extractPdfText(file);
+    if (text.length > 120) {
+      if (!forceClaudeAI && !claudeApiKey) {
+        // Local only: extract datum + factuurnummer from text
+        const local = parseFactuurTekstLokaal(text);
+        return { leverancier: null, datum: local.datum, factuurnummer: local.factuurnummer, _source: 'lokaal' };
+      }
+      if (!claudeApiKey) throw new Error('Geen Claude API-sleutel ingesteld (Instellingen → Claude AI).');
+      messages = [{role: 'user', content: `${CLAUDE_FACTUUR_META_PROMPT}\n\nFactuurtekst:\n${text.slice(0, 8000)}`}];
+    } else {
+      if (!claudeApiKey) throw new Error('Dit is een gescande PDF zonder leesbare tekst. Claude AI is nodig om afbeeldingen te lezen (Instellingen → Claude AI).');
+      const b64 = await fileToBase64(file);
+      messages = [{role: 'user', content: [
+        {type: 'document', source: {type: 'base64', media_type: 'application/pdf', data: b64}},
+        {type: 'text', text: CLAUDE_FACTUUR_META_PROMPT},
+      ]}];
+    }
+  } else {
+    if (!claudeApiKey) throw new Error('Geen Claude API-sleutel ingesteld (Instellingen → Claude AI).');
+    const b64 = await fileToBase64(file);
+    const mt = file.type || 'image/jpeg';
+    messages = [{role: 'user', content: [
+      {type: 'image', source: {type: 'base64', media_type: mt, data: b64}},
+      {type: 'text', text: CLAUDE_FACTUUR_META_PROMPT},
+    ]}];
+  }
+  const result = await callClaudeProxy({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 500,
+    messages,
+  });
+  const raw = result.content?.[0]?.text || '';
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Geen JSON in Claude respons');
+  const parsed = JSON.parse(m[0]);
+  return { leverancier: parsed.leverancier || null, datum: parsed.datum || null, factuurnummer: parsed.factuurnummer || null, _source: 'claude' };
+}
 
 // Sync state — use Sets so re-renders don't inflate counters
 const _allKeys     = new Set(); // all store keys registered (deduped)
@@ -3488,46 +3721,125 @@ const Sel = ({label,value,onChange,opts,ph,cls=''}) => (
   </div>
 );
 
-const Modal = ({title,children,onClose,wide=false,hideClose=false}) => (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto">
-    <div className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${wide?'max-w-2xl':'max-w-lg'}`}>
-      <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
-        <h3 className="font-semibold text-gray-800 text-base">{title}</h3>
-        {!hideClose && <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors">&times;</button>}
+const Modal = ({title,children,onClose,wide=false,ultrawide=false,hideClose=false}) =>
+  ReactDOM.createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[200] p-4 overflow-y-auto">
+      <div className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${ultrawide?'max-w-7xl':wide?'max-w-2xl':'max-w-lg'}`}>
+        <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
+          <h3 className="font-semibold text-gray-800 text-base">{title}</h3>
+          {!hideClose && <button onClick={onClose} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors">&times;</button>}
+        </div>
+        <div className="p-5">{children}</div>
       </div>
-      <div className="p-5">{children}</div>
-    </div>
-  </div>
-);
+    </div>,
+    document.body
+  );
 
 const Badge = ({s}) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CLR[s]||'bg-gray-100 text-gray-600'}`}>{({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')})[s]||s}</span>;
 
 // ═══════════════════════════════════════════════════════════════
 // Gedeeld Inkoop Factuur formulier — gebruikt op Ingrediënten- én Administratiepagina
 // ═══════════════════════════════════════════════════════════════
-function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='' }) {
-  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:'Mout',fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:'9'};
+function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose, initialTab='ingredienten', initialIngId='', claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null }) {
+  const defaultType = ingTypes[0] || 'Mout';
+  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:defaultType,fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:ingTypeBtw[defaultType]!=null?String(ingTypeBtw[defaultType]):'9'};
   const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'};
 
   // Leverancier: selecteer uit bekende of voer nieuwe in
-  const [leverancierSel, setLeverancierSel]     = useState(knownLeveranciers.length ? '' : '__nieuw__');
-  const [leverancierNieuw, setLeverancierNieuw] = useState('');
-  const [factuurNr, setFactuurNr]   = useState('');
-  const [datum, setDatum]           = useState(tod());
+  const [leverancierSel, setLeverancierSel] = useState(() => {
+    if (initialData?.leverancier) return knownLeveranciers.includes(initialData.leverancier) ? initialData.leverancier : '__nieuw__';
+    return knownLeveranciers.length ? '' : '__nieuw__';
+  });
+  const [leverancierNieuw, setLeverancierNieuw] = useState(() => {
+    if (initialData?.leverancier && !knownLeveranciers.includes(initialData.leverancier)) return initialData.leverancier;
+    return '';
+  });
+  const [factuurNr, setFactuurNr] = useState(initialData?.factuurnummer || '');
+  const [datum, setDatum]         = useState(initialData?.datum || tod());
+  const [existingBijlage, setExistingBijlage] = useState(initialData?.bijlage || null);
   const [bijlageFile, setBijlageFile] = useState(null);
   const [uploading, setUploading]   = useState(false);
   const [tab, setTab]               = useState(initialTab);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [showPdfViewer, setShowPdfViewer] = useState(false);
+
+  React.useEffect(() => () => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); }, []);
 
   // Ingrediënten-tab form
-  const [productForm, setProductForm]   = useState(emptyProduct);
-  const [productLijst, setProductLijst] = useState([]);
+  const [productForm, setProductForm] = useState(emptyProduct);
+  const [productLijst, setProductLijst] = useState(() => {
+    if (!initialData?.regels) return [];
+    return initialData.regels.filter(r=>r.type==='ingredient').map((r,i)=>{
+      const ingItem = ing.find(x=>x.naam===r.naam);
+      return {
+        ing_id: ingItem ? String(ingItem.id) : '',
+        nieuw: ingItem ? '' : r.naam,
+        type: ingItem?.type || defaultType,
+        fabrikant: '', lotnr: '',
+        qty: String(r.hoeveelheid||''), eenh: r.eenheid||'kg', tht: '',
+        prijs: String(r.prijs_per_eenheid||''),
+        totaalprijs: String(r.netto||''),
+        btw_tarief: String(r.btw_tarief??0),
+        _naam: r.naam, _id: Date.now()+i,
+      };
+    });
+  });
 
   // Verpakkingen-tab form
-  const [vOntvForm, setVOntvForm]             = useState(emptyVO);
-  const [verpakkingLijst, setVerpakkingLijst] = useState([]);
+  const [vOntvForm, setVOntvForm] = useState(emptyVO);
+  const [verpakkingLijst, setVerpakkingLijst] = useState(() => {
+    if (!initialData?.regels) return [];
+    return initialData.regels.filter(r=>r.type==='verpakking').map((r,i)=>{
+      const od = onderdelen.find(x=>x.naam===r.naam);
+      return {
+        od_id: od ? String(od.id) : '',
+        naam: r.naam, type: od?.type||'', lotnr: '',
+        aantal: String(r.aantal||''),
+        prijs_per_stuk: String(r.prijs_per_stuk||''),
+        totaalprijs: String(r.netto||''),
+        btw_tarief: String(r.btw_tarief??21),
+        _naam: r.naam, _id: Date.now()+i+1000,
+      };
+    });
+  });
 
   // Vrije regels tab
-  const [vrijeRegels, setVrijeRegels] = useState([{naam:'', netto:'', btw_tarief:21}]);
+  const emptyVrije = {naam:'', netto:'', btw_tarief:21};
+  const [vrijeForm, setVrijeForm] = useState(emptyVrije);
+  const [vrijeList, setVrijeList] = useState(() => {
+    if (!initialData?.regels) return [];
+    return initialData.regels.filter(r=>r.type==='overig').map((r,i)=>({
+      naam: r.naam, netto: String(r.netto||''),
+      btw_tarief: Number(r.btw_tarief??21),
+      _id: Date.now()+i+2000,
+    }));
+  });
+
+  // BTW toggle voor totaalprijs velden
+  const [productTotInclBtw, setProductTotInclBtw] = useState(false);
+  const [productBrutoStr, setProductBrutoStr] = useState('');
+  const [verpakTotInclBtw, setVerpakTotInclBtw] = useState(false);
+  const [verpakBrutoStr, setVerpakBrutoStr] = useState('');
+  const [vrijeTotInclBtw, setVrijeTotInclBtw] = useState(false);
+  const [vrijeBrutoStr,   setVrijeBrutoStr]   = useState('');
+
+  // Handmatige totaaloverrides (voor afrondingsverschillen)
+  const [manualNetto, setManualNetto] = useState(null);
+  const [manualBtw,   setManualBtw]   = useState(null);
+  const [manualBruto, setManualBruto] = useState(null);
+
+  // Bewerk-indices voor inline aanpassen van lijst-items
+  const [editingProductIdx, setEditingProductIdx] = useState(null);
+  const [editingVerpakkingIdx, setEditingVerpakkingIdx] = useState(null);
+  const [editingVrijeIdx, setEditingVrijeIdx] = useState(null);
+
+  // Factuur scan state
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanFout, setScanFout] = useState(null);
+
+  // Reset handmatige totaaloverrides zodra het aantal regels wijzigt
+  React.useEffect(() => { setManualNetto(null); setManualBtw(null); setManualBruto(null); },
+    [productLijst.length, verpakkingLijst.length, vrijeList.length]);
 
   const leverancier = leverancierSel === '__nieuw__' ? leverancierNieuw.trim() : leverancierSel;
   const factuurForm = {leverancier, factuur: factuurNr, datum};
@@ -3536,8 +3848,15 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     if (!productForm.ing_id && !productForm.nieuw.trim()) { alert(t('err_select_ingredient')); return; }
     if (!productForm.qty) { alert(t('err_qty_required')); return; }
     const naam = productForm.ing_id ? (ing.find(i=>i.id===Number(productForm.ing_id))?.naam||'') : productForm.nieuw.trim();
-    setProductLijst(prev=>[...prev, {...productForm, _naam:naam, _id:Date.now()}]);
+    if (editingProductIdx !== null) {
+      setProductLijst(prev=>prev.map((p,i)=>i===editingProductIdx ? {...productForm, _naam:naam, _id:p._id} : p));
+      setEditingProductIdx(null);
+    } else {
+      setProductLijst(prev=>[...prev, {...productForm, _naam:naam, _id:Date.now()}]);
+    }
     setProductForm(emptyProduct);
+    setProductTotInclBtw(false);
+    setProductBrutoStr('');
   };
 
   const voegVerpakkingToe = () => {
@@ -3546,16 +3865,59 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
     const naam = vOntvForm.od_id
       ? (onderdelen.find(o=>o.id===Number(vOntvForm.od_id))?.naam||vOntvForm.naam)
       : vOntvForm.naam.trim();
-    setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
+    if (editingVerpakkingIdx !== null) {
+      setVerpakkingLijst(prev=>prev.map((v,i)=>i===editingVerpakkingIdx ? {...vOntvForm, _naam:naam, _id:v._id} : v));
+      setEditingVerpakkingIdx(null);
+    } else {
+      setVerpakkingLijst(prev=>[...prev, {...vOntvForm, _naam:naam, _id:Date.now()}]);
+    }
     setVOntvForm(emptyVO);
+    setVerpakTotInclBtw(false);
+    setVerpakBrutoStr('');
+  };
+
+  const voegVrijeToe = () => {
+    if (!vrijeForm.naam.trim())       { alert('Vul een omschrijving in'); return; }
+    if (!parseFloat(vrijeForm.netto)) { alert('Vul een bedrag in'); return; }
+    if (editingVrijeIdx !== null) {
+      setVrijeList(prev=>prev.map((r,i)=>i===editingVrijeIdx ? {...vrijeForm, _id:r._id} : r));
+      setEditingVrijeIdx(null);
+    } else {
+      setVrijeList(prev=>[...prev, {...vrijeForm, _id:Date.now()}]);
+    }
+    setVrijeForm(emptyVrije);
+    setVrijeTotInclBtw(false);
+    setVrijeBrutoStr('');
+  };
+
+  const verwerkScanData = (data) => {
+    if (data.leverancier && !leverancierNieuw && leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
+      const known = knownLeveranciers.find(l => l.toLowerCase() === data.leverancier.toLowerCase());
+      if (known) setLeverancierSel(known);
+      else { setLeverancierSel('__nieuw__'); setLeverancierNieuw(data.leverancier); }
+    }
+    if (data.factuurnummer && !factuurNr) setFactuurNr(data.factuurnummer);
+    if (data.datum && datum === tod()) setDatum(data.datum);
+  };
+
+  const doScanFactuur = async () => {
+    if (!bijlageFile) return;
+    setIsScanning(true); setScanFout(null);
+    try {
+      const data = await scanFactuurBestand(bijlageFile, claudeCreds?.apiKey);
+      verwerkScanData(data);
+    } catch(e) {
+      setScanFout(e.message || 'Scan mislukt');
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handleSave = async () => {
-    const geldigeVrijeRegels = vrijeRegels.filter(r=>r.naam.trim()&&parseFloat(r.netto)>0);
-    if (productLijst.length===0 && verpakkingLijst.length===0 && geldigeVrijeRegels.length===0) {
+    if (productLijst.length===0 && verpakkingLijst.length===0 && vrijeList.length===0) {
       alert(t('err_min_one_product')); return;
     }
-    let bijlage = null;
+    let bijlage = existingBijlage;
     if (bijlageFile) {
       setUploading(true);
       try {
@@ -3575,15 +3937,60 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
       } catch(e) { console.error('Upload mislukt', e); }
       setUploading(false);
     }
-    onSave({factuurForm, productLijst, verpakkingLijst, vrijeRegels: geldigeVrijeRegels, bijlage});
+    onSave({
+      factuurForm, productLijst, verpakkingLijst, vrijeRegels: vrijeList, bijlage,
+      totaalManual: (manualNetto !== null || manualBtw !== null || manualBruto !== null)
+        ? { netto:  parseFloat(manualNetto ?? totaalNetto),
+            btw:   parseFloat(manualBtw   ?? totaalBtw),
+            bruto: parseFloat(manualBruto ?? (totaalNetto + totaalBtw)) }
+        : null,
+    });
   };
 
-  const totVrijeNetto = vrijeRegels.reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
-  const totVrijeBtw   = vrijeRegels.reduce((s,r)=>s+((parseFloat(r.netto)||0)*Number(r.btw_tarief)/100), 0);
+  const totVrijeNetto = vrijeList.reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
+  const totVrijeBtw   = vrijeList.reduce((s,r)=>s+((parseFloat(r.netto)||0)*Number(r.btw_tarief)/100), 0);
+
+  const totaalNetto = productLijst.reduce((s,p)=>s+(parseFloat(p.totaalprijs)||0), 0)
+    + verpakkingLijst.reduce((s,v)=>s+(parseFloat(v.totaalprijs)||0), 0)
+    + vrijeList.reduce((s,r)=>s+(parseFloat(r.netto)||0), 0);
+  const totaalBtw = productLijst.reduce((s,p)=>s+(parseFloat(p.totaalprijs)||0)*(Number(p.btw_tarief)||0)/100, 0)
+    + verpakkingLijst.reduce((s,v)=>s+(parseFloat(v.totaalprijs)||0)*(Number(v.btw_tarief)||0)/100, 0)
+    + vrijeList.reduce((s,r)=>s+(parseFloat(r.netto)||0)*(Number(r.btw_tarief)||0)/100, 0);
+
+  const btwTarieven = (() => {
+    const map = {};
+    [...productLijst,...verpakkingLijst].forEach(p=>{
+      const k = Number(p.btw_tarief||0);
+      if (!map[k]) map[k] = 0;
+      map[k] += (parseFloat(p.totaalprijs)||0) * k / 100;
+    });
+    vrijeList.forEach(r=>{
+      const k = Number(r.btw_tarief||0);
+      if (!map[k]) map[k] = 0;
+      map[k] += (parseFloat(r.netto)||0) * k / 100;
+    });
+    return Object.entries(map).filter(([,v])=>v>0).sort(([a],[b])=>Number(a)-Number(b));
+  })();
 
   return (
-    <Modal title={t('modal_title_receipt')} onClose={onClose} wide>
-      <div className="space-y-4">
+    <Modal title={initialData ? 'Factuur bewerken' : t('modal_title_receipt')} onClose={onClose} wide={!showPdfViewer} ultrawide={showPdfViewer}>
+      <div className={showPdfViewer ? 'grid grid-cols-2 gap-4' : ''}>
+      {showPdfViewer && (
+        <div className="order-2">
+          {bijlageFile && (bijlageFile.type === 'application/pdf' || bijlageFile.name.toLowerCase().endsWith('.pdf'))
+            ? <iframe src={pdfBlobUrl} className="w-full rounded-lg border border-gray-200" style={{height:'80vh'}} title="Factuur" />
+            : <img src={pdfBlobUrl} alt="Factuur" className="w-full rounded-lg border border-gray-200 object-contain" style={{maxHeight:'80vh'}} />
+          }
+        </div>
+      )}
+      <div className={`space-y-4 ${showPdfViewer ? 'order-1 overflow-y-auto' : ''}`} style={showPdfViewer ? {maxHeight:'85vh'} : {}}>
+
+        {initialData && (
+          <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+            <span className="mt-0.5 flex-shrink-0">⚠️</span>
+            <span>Het aanpassen van een factuur past de voorraadbewegingen <strong>niet</strong> opnieuw aan. Eerder ingeboekte hoeveelheden blijven staan in de voorraad.</span>
+          </div>
+        )}
 
         {/* ── Factuurgegevens ── */}
         <div className="t-panel border rounded-lg p-3">
@@ -3619,12 +4026,52 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer">
                 <span>📎</span>
-                <span>{bijlageFile ? bijlageFile.name : 'Bestand kiezen…'}</span>
+                <span>{bijlageFile ? bijlageFile.name : existingBijlage ? '↩ Vervangen…' : 'Bestand kiezen…'}</span>
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
-                  className="hidden" onChange={e=>setBijlageFile(e.target.files?.[0]||null)} />
+                  className="hidden" onChange={e=>{
+                    const f=e.target.files?.[0]||null;
+                    if(pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+                    setBijlageFile(f);
+                    if(f){const url=URL.createObjectURL(f);setPdfBlobUrl(url);}
+                    else{setPdfBlobUrl(null);setShowPdfViewer(false);}
+                  }} />
               </label>
-              {bijlageFile && <button onClick={()=>setBijlageFile(null)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
+              {!bijlageFile && existingBijlage?.bestand && (
+                <a href={`${ADDON_BASE}api/file/${existingBijlage.bestand}`} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1">📎 {existingBijlage.naam}</a>
+              )}
+              {!bijlageFile && existingBijlage && (
+                <button onClick={()=>setExistingBijlage(null)} className="text-gray-400 hover:text-red-500 text-xs" title="Bijlage verwijderen">✕</button>
+              )}
+              {bijlageFile && <button onClick={()=>{setBijlageFile(null);if(pdfBlobUrl){URL.revokeObjectURL(pdfBlobUrl);setPdfBlobUrl(null);}setShowPdfViewer(false);}} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
+              {bijlageFile && !isScanning && (() => {
+                const isPdf = bijlageFile.type === 'application/pdf' || bijlageFile.name.toLowerCase().endsWith('.pdf');
+                const hasClaude = claudeCreds?.enabled && claudeCreds?.apiKey;
+                if (isPdf || hasClaude) return (
+                  <button onClick={doScanFactuur}
+                    className="flex items-center gap-1.5 px-3 py-1.5 tbtn rounded-lg text-xs font-medium"
+                    title="Scan factuur voor leverancier, datum en factuurnummer">
+                    {isPdf ? '📄' : '🤖'} Scan factuur
+                  </button>
+                );
+                return null;
+              })()}
+              {bijlageFile && pdfBlobUrl && (
+                <button onClick={()=>setShowPdfViewer(v=>!v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-xs font-medium text-gray-700">
+                  {showPdfViewer ? '✕ Sluiten' : '📄 Bekijken'}
+                </button>
+              )}
             </div>
+            {isScanning && (
+              <div className="mt-2 flex items-center gap-2 text-sm text-amber-700">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                Factuur wordt gescand…
+              </div>
+            )}
+            {scanFout && (
+              <p className="mt-2 text-xs text-red-600">⚠ {scanFout}</p>
+            )}
           </div>
         </div>
 
@@ -3648,8 +4095,8 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_add_product')}</p>
             <div className="space-y-2">
               <Sel label={t('lbl_ingredient_type')} value={productForm.type}
-                onChange={v=>setProductForm(f=>({...f,type:v,ing_id:'',nieuw:''}))}
-                opts={ING_TYPES.map(ty=>({v:ty,l:t('ing_type_'+ty.toLowerCase())}))} />
+                onChange={v=>setProductForm(f=>({...f,type:v,ing_id:'',nieuw:'',btw_tarief:ingTypeBtw[v]!=null?String(ingTypeBtw[v]):f.btw_tarief}))}
+                opts={ingTypes.map(ty=>({v:ty,l:BUILTIN_ING_TYPES.includes(ty)?t('ing_type_'+ty.toLowerCase()):ty}))} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('modal_existing_ingredient')}</label>
@@ -3668,12 +4115,19 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 <Inp label={t('ing_manufacturer')} value={productForm.fabrikant} onChange={v=>setProductForm(f=>({...f,fabrikant:v}))} placeholder={t('ph_manufacturer')} />
               )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Inp label={t('modal_qty_required')} type="number" value={productForm.qty}
-                  onChange={v=>setProductForm(f=>{const p=f.prijs,tot=f.totaalprijs;if(p&&v)return{...f,qty:v,totaalprijs:String((Number(p)*Number(v)).toFixed(2))};if(!p&&tot&&v)return{...f,qty:v,prijs:String((Number(tot)/Number(v)).toFixed(4))};return{...f,qty:v};})}
-                  placeholder="0" cls="col-span-2" />
-                <Sel label={t('lbl_unit')} value={productForm.eenh} onChange={v=>setProductForm(f=>({...f,eenh:v}))} opts={EENHEDEN.map(e=>({v:e,l:t('unit_'+e.toLowerCase())}))} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_qty_required')} *</label>
+                  <div className="flex gap-1">
+                    <input type="number" value={productForm.qty}
+                      onChange={e=>{const v=e.target.value;setProductForm(f=>{const p=f.prijs,tot=f.totaalprijs;if(p&&v)return{...f,qty:v,totaalprijs:String((Number(p)*Number(v)).toFixed(2))};if(!p&&tot&&v)return{...f,qty:v,prijs:String((Number(tot)/Number(v)).toFixed(4))};return{...f,qty:v};});}}
+                      placeholder="0"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                    <select value={productForm.eenh} onChange={e=>setProductForm(f=>({...f,eenh:e.target.value}))}
+                      className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white t-input outline-none shadow-sm">
+                      {EENHEDEN.map(e=><option key={e} value={e}>{t('unit_'+e.toLowerCase())}</option>)}
+                    </select>
+                  </div>
+                </div>
                 <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v=>setProductForm(f=>({...f,lotnr:v}))} placeholder="L-2025-001" />
                 <Inp label={t('batch_filling_tht')} type="date" value={productForm.tht} onChange={v=>setProductForm(f=>({...f,tht:v}))} />
               </div>
@@ -3681,12 +4135,24 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 <Inp label={t('modal_price_per_unit')} type="number" value={productForm.prijs}
                   onChange={v=>setProductForm(f=>({...f,prijs:v,totaalprijs:v&&f.qty?String((Number(v)*Number(f.qty)).toFixed(2)):f.totaalprijs}))}
                   placeholder="0.00" />
-                <Inp label="Totaalprijs ex BTW (€)" type="number" value={productForm.totaalprijs}
-                  onChange={v=>setProductForm(f=>({...f,totaalprijs:v,prijs:v&&f.qty?String((Number(v)/Number(f.qty)).toFixed(4)):f.prijs}))}
-                  placeholder="0.00" />
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-gray-600">Totaalprijs (€)</label>
+                    <button type="button"
+                      onClick={()=>{const ni=!productTotInclBtw;setProductTotInclBtw(ni);if(ni){const n=parseFloat(productForm.totaalprijs||0);const b=Number(productForm.btw_tarief||0);setProductBrutoStr(n?(n*(1+b/100)).toFixed(2):'');}}}
+                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
+                      {productTotInclBtw ? 'incl. BTW' : 'excl. BTW'}
+                    </button>
+                  </div>
+                  <input type="number"
+                    value={productTotInclBtw ? productBrutoStr : productForm.totaalprijs}
+                    onChange={e=>{const v=e.target.value;if(productTotInclBtw){setProductBrutoStr(v);const b=Number(productForm.btw_tarief||0);const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';setProductForm(f=>({...f,totaalprijs:n,prijs:n&&f.qty?String((Number(n)/Number(f.qty)).toFixed(4)):f.prijs}));}else{setProductForm(f=>({...f,totaalprijs:v,prijs:v&&f.qty?String((Number(v)/Number(f.qty)).toFixed(4)):f.prijs}));}}}
+                    placeholder="0.00"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
-                  <select value={productForm.btw_tarief} onChange={e=>setProductForm(f=>({...f,btw_tarief:e.target.value}))}
+                  <select value={productForm.btw_tarief} onChange={e=>{const nb=e.target.value;setProductForm(f=>{if(productTotInclBtw&&productBrutoStr){const n=String((Number(productBrutoStr)/(1+Number(nb)/100)).toFixed(2));return{...f,btw_tarief:nb,totaalprijs:n,prijs:n&&f.qty?String((Number(n)/Number(f.qty)).toFixed(4)):f.prijs};}return{...f,btw_tarief:nb};});}}
                     className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
                     <option value="0">0%</option>
                     <option value="9">9%</option>
@@ -3694,8 +4160,11 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   </select>
                 </div>
               </div>
-              <div className="flex justify-end">
-                <Btn onClick={voegProductToe}>{t('modal_add_to_list')}</Btn>
+              <div className="flex justify-end gap-2">
+                {editingProductIdx !== null && (
+                  <Btn v="secondary" onClick={()=>{setEditingProductIdx(null);setProductForm(emptyProduct);setProductTotInclBtw(false);setProductBrutoStr('');}}>Annuleer</Btn>
+                )}
+                <Btn onClick={voegProductToe}>{editingProductIdx !== null ? 'Pas aan' : t('modal_add_to_list')}</Btn>
               </div>
             </div>
           </div>
@@ -3734,12 +4203,24 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 <Inp label={t('modal_price_per_unit')} type="number" value={vOntvForm.prijs_per_stuk}
                   onChange={v=>setVOntvForm(f=>({...f,prijs_per_stuk:v,totaalprijs:v&&f.aantal?String((Number(v)*Number(f.aantal)).toFixed(2)):f.totaalprijs}))}
                   placeholder="0.00" />
-                <Inp label="Totaalprijs ex BTW (€)" type="number" value={vOntvForm.totaalprijs}
-                  onChange={v=>setVOntvForm(f=>({...f,totaalprijs:v,prijs_per_stuk:v&&f.aantal?String((Number(v)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}))}
-                  placeholder="0.00" />
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-gray-600">Totaalprijs (€)</label>
+                    <button type="button"
+                      onClick={()=>{const ni=!verpakTotInclBtw;setVerpakTotInclBtw(ni);if(ni){const n=parseFloat(vOntvForm.totaalprijs||0);const b=Number(vOntvForm.btw_tarief||0);setVerpakBrutoStr(n?(n*(1+b/100)).toFixed(2):'');}}}
+                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
+                      {verpakTotInclBtw ? 'incl. BTW' : 'excl. BTW'}
+                    </button>
+                  </div>
+                  <input type="number"
+                    value={verpakTotInclBtw ? verpakBrutoStr : vOntvForm.totaalprijs}
+                    onChange={e=>{const v=e.target.value;if(verpakTotInclBtw){setVerpakBrutoStr(v);const b=Number(vOntvForm.btw_tarief||0);const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';setVOntvForm(f=>({...f,totaalprijs:n,prijs_per_stuk:n&&f.aantal?String((Number(n)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}));}else{setVOntvForm(f=>({...f,totaalprijs:v,prijs_per_stuk:v&&f.aantal?String((Number(v)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}));}}}
+                    placeholder="0.00"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
-                  <select value={vOntvForm.btw_tarief} onChange={e=>setVOntvForm(f=>({...f,btw_tarief:e.target.value}))}
+                  <select value={vOntvForm.btw_tarief} onChange={e=>{const nb=e.target.value;setVOntvForm(f=>{if(verpakTotInclBtw&&verpakBrutoStr){const n=String((Number(verpakBrutoStr)/(1+Number(nb)/100)).toFixed(2));return{...f,btw_tarief:nb,totaalprijs:n,prijs_per_stuk:n&&f.aantal?String((Number(n)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk};}return{...f,btw_tarief:nb};});}}
                     className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
                     <option value="0">0%</option>
                     <option value="9">9%</option>
@@ -3747,8 +4228,11 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                   </select>
                 </div>
               </div>
-              <div className="flex justify-end">
-                <Btn onClick={voegVerpakkingToe}>{t('modal_add_to_list')}</Btn>
+              <div className="flex justify-end gap-2">
+                {editingVerpakkingIdx !== null && (
+                  <Btn v="secondary" onClick={()=>{setEditingVerpakkingIdx(null);setVOntvForm(emptyVO);setVerpakTotInclBtw(false);setVerpakBrutoStr('');}}>Annuleer</Btn>
+                )}
+                <Btn onClick={voegVerpakkingToe}>{editingVerpakkingIdx !== null ? 'Pas aan' : t('modal_add_to_list')}</Btn>
               </div>
             </div>
           </div>
@@ -3757,50 +4241,79 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
         {/* ── Vrije regels tab ── */}
         {tab==='vrije' && (
           <div className="border border-gray-200 rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vrije regelitems</p>
-              <button onClick={()=>setVrijeRegels(r=>[...r,{naam:'',netto:'',btw_tarief:21}])}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Regel toevoegen</button>
-            </div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vrije regel toevoegen</p>
             <div className="space-y-2">
-              {vrijeRegels.map((r,i)=>(
-                <div key={i} className="flex gap-2 items-center">
-                  <input type="text" value={r.naam} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,naam:e.target.value}:x))}
-                    placeholder="Omschrijving"
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm t-input outline-none" />
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-400">€</span>
-                    <input type="number" value={r.netto} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,netto:e.target.value}:x))}
-                      placeholder="0.00" min="0" step="0.01"
-                      className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right t-input outline-none" />
+              <Inp label="Omschrijving" value={vrijeForm.naam}
+                onChange={v=>setVrijeForm(f=>({...f,naam:v}))}
+                placeholder="Omschrijving vrije regel" />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-gray-600">Bedrag (€)</label>
+                    <button type="button"
+                      onClick={()=>{
+                        const ni=!vrijeTotInclBtw;
+                        setVrijeTotInclBtw(ni);
+                        if(!ni){ setVrijeBrutoStr(''); }
+                        else if(vrijeForm.netto){
+                          const b=Number(vrijeForm.btw_tarief||0);
+                          setVrijeBrutoStr(String((Number(vrijeForm.netto)*(1+b/100)).toFixed(2)));
+                        }
+                      }}
+                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
+                      {vrijeTotInclBtw ? 'incl. BTW' : 'excl. BTW'}
+                    </button>
                   </div>
-                  <select value={r.btw_tarief} onChange={e=>setVrijeRegels(prev=>prev.map((x,j)=>j===i?{...x,btw_tarief:Number(e.target.value)}:x))}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm t-input outline-none">
-                    <option value={0}>0% BTW</option>
-                    <option value={9}>9% BTW</option>
-                    <option value={21}>21% BTW</option>
-                  </select>
-                  {vrijeRegels.length > 1 && (
-                    <button onClick={()=>setVrijeRegels(prev=>prev.filter((_,j)=>j!==i))}
-                      className="text-gray-300 hover:text-red-500 text-sm px-1">✕</button>
-                  )}
+                  <input type="number"
+                    value={vrijeTotInclBtw ? vrijeBrutoStr : vrijeForm.netto}
+                    onChange={e=>{
+                      const v=e.target.value;
+                      if(vrijeTotInclBtw){
+                        setVrijeBrutoStr(v);
+                        const b=Number(vrijeForm.btw_tarief||0);
+                        const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';
+                        setVrijeForm(f=>({...f,netto:n}));
+                      } else {
+                        setVrijeForm(f=>({...f,netto:v}));
+                      }
+                    }}
+                    placeholder="0.00" min="0" step="0.01"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
                 </div>
-              ))}
-            </div>
-            {vrijeRegels.some(r=>r.naam.trim()&&parseFloat(r.netto)>0) && (
-              <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between mt-3">
-                <span className="text-gray-500">Netto <span className="font-medium text-gray-800">{fmt(totVrijeNetto)}</span></span>
-                <span className="text-gray-500">BTW <span className="font-medium text-blue-700">{fmt(totVrijeBtw)}</span></span>
-                <span className="text-gray-500">Bruto <span className="font-bold text-gray-900">{fmt(totVrijeNetto+totVrijeBtw)}</span></span>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">BTW%</label>
+                  <select value={vrijeForm.btw_tarief}
+                    onChange={e=>{
+                      const nb=e.target.value;
+                      setVrijeForm(f=>{
+                        if(vrijeTotInclBtw && vrijeBrutoStr){
+                          const n=String((Number(vrijeBrutoStr)/(1+Number(nb)/100)).toFixed(2));
+                          return {...f,btw_tarief:Number(nb),netto:n};
+                        }
+                        return {...f,btw_tarief:Number(nb)};
+                      });
+                    }}
+                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
+                    <option value={0}>0%</option>
+                    <option value={9}>9%</option>
+                    <option value={21}>21%</option>
+                  </select>
+                </div>
               </div>
-            )}
+              <div className="flex justify-end gap-2">
+                {editingVrijeIdx !== null && (
+                  <Btn v="secondary" onClick={()=>{setEditingVrijeIdx(null);setVrijeForm(emptyVrije);}}>Annuleer</Btn>
+                )}
+                <Btn onClick={voegVrijeToe}>{editingVrijeIdx !== null ? 'Pas aan' : '+ Regel toevoegen'}</Btn>
+              </div>
+            </div>
           </div>
         )}
 
         {/* ── Gecombineerde productenlijst ── */}
-        {(productLijst.length > 0 || verpakkingLijst.length > 0) && (
+        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeList.length > 0) && (
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length})</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length + vrijeList.length})</p>
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
@@ -3815,27 +4328,43 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {productLijst.map((p,i)=>(
-                    <tr key={p._id} className="bg-white">
+                    <tr key={p._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingProductIdx===i ? 'bg-amber-50 ring-1 ring-amber-300' : 'bg-white hover:bg-gray-50'}`}
+                      onClick={()=>{setProductForm({...p});setProductTotInclBtw(false);setProductBrutoStr('');setTab('ingredienten');setEditingProductIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{p._naam}</td>
                       <td className="px-3 py-2">{p.qty} {p.eenh}</td>
                       <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.prijs?`€${p.prijs}`:'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.totaalprijs?`€${p.totaalprijs}`:'—'}</td>
                       <td className="px-2 py-2 text-right">
-                        <button onClick={()=>setProductLijst(prev=>prev.filter((_,j)=>j!==i))}
+                        <button onClick={e=>{e.stopPropagation();setProductLijst(prev=>prev.filter((_,j)=>j!==i));}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>
                   ))}
                   {verpakkingLijst.map((v,i)=>(
-                    <tr key={v._id} className="bg-blue-50">
+                    <tr key={v._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingVerpakkingIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-blue-50 hover:bg-blue-100'}`}
+                      onClick={()=>{setVOntvForm({...v});setVerpakTotInclBtw(false);setVerpakBrutoStr('');setTab('verpakkingen');setEditingVerpakkingIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{v._naam} <span className="text-xs text-blue-400">(verpakking)</span></td>
                       <td className="px-3 py-2">{v.aantal} stuks</td>
                       <td className="px-3 py-2 text-gray-500">{v.lotnr||'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{v.prijs_per_stuk?`€${v.prijs_per_stuk}`:'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{v.totaalprijs?`€${v.totaalprijs}`:'—'}</td>
                       <td className="px-2 py-2 text-right">
-                        <button onClick={()=>setVerpakkingLijst(prev=>prev.filter((_,j)=>j!==i))}
+                        <button onClick={e=>{e.stopPropagation();setVerpakkingLijst(prev=>prev.filter((_,j)=>j!==i));}}
+                          className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {vrijeList.map((r,i)=>(
+                    <tr key={r._id} title="Klik om te bewerken" className={`cursor-pointer transition-colors ${editingVrijeIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-yellow-50 hover:bg-yellow-100'}`}
+                      onClick={()=>{setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief});setTab('vrije');setEditingVrijeIdx(i);}}>
+                      <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">(vrij)</span></td>
+                      <td className="px-3 py-2 text-gray-400">—</td>
+                      <td className="px-3 py-2 text-gray-400">—</td>
+                      <td className="px-3 py-2 text-gray-400">—</td>
+                      <td className="px-3 py-2 text-gray-500">€{parseFloat(r.netto).toFixed(2)}</td>
+                      <td className="px-2 py-2 text-right">
+                        <button onClick={e=>{e.stopPropagation();setVrijeList(prev=>prev.filter((_,j)=>j!==i));}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>
@@ -3846,21 +4375,66 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
           </div>
         )}
 
+        {/* ── Totalen ── */}
+        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeList.length > 0) && (
+          <div className="bg-gray-50 rounded-xl p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 whitespace-nowrap">Netto excl. BTW</span>
+                <input type="number" step="0.01"
+                  value={manualNetto !== null ? manualNetto : totaalNetto.toFixed(2)}
+                  onChange={e=>setManualNetto(e.target.value)}
+                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-gray-800 bg-white focus:outline-none focus:border-amber-400" />
+              </div>
+              <div className="flex items-center gap-2">
+                <div>
+                  <span className="text-gray-500 whitespace-nowrap">BTW</span>
+                  {btwTarieven.length > 0 && (
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {btwTarieven.map(([k,v])=><span key={k} className="mr-2">{k}%: €{v.toFixed(2)}</span>)}
+                    </div>
+                  )}
+                </div>
+                <input type="number" step="0.01"
+                  value={manualBtw !== null ? manualBtw : totaalBtw.toFixed(2)}
+                  onChange={e=>setManualBtw(e.target.value)}
+                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-blue-700 bg-white focus:outline-none focus:border-amber-400" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 whitespace-nowrap">Totaal incl. BTW</span>
+                <input type="number" step="0.01"
+                  value={manualBruto !== null ? manualBruto : (totaalNetto+totaalBtw).toFixed(2)}
+                  onChange={e=>setManualBruto(e.target.value)}
+                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-bold text-gray-900 bg-white focus:outline-none focus:border-amber-400" />
+                {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
+                  <button type="button" title="Herbereken"
+                    onClick={()=>{setManualNetto(null);setManualBtw(null);setManualBruto(null);}}
+                    className="text-sm text-gray-400 hover:text-amber-600 transition-colors">↺</button>
+                )}
+              </div>
+            </div>
+            {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
+              <p className="text-xs text-amber-600 mt-1.5">Handmatig aangepast – klik ↺ om te herbereken</p>
+            )}
+          </div>
+        )}
+
         {/* ── Footer ── */}
         <div className="flex justify-between items-center pt-1">
           <span className="text-sm text-gray-500">{t('modal_products_ready').replace('{n}', productLijst.length + verpakkingLijst.length)}</span>
           <div className="flex gap-2">
             <Btn v="secondary" onClick={onClose}>{t('btn_cancel')}</Btn>
-            <Btn onClick={handleSave} disabled={uploading}>{uploading ? 'Uploaden…' : t('btn_save')}</Btn>
+            <Btn onClick={handleSave} disabled={uploading}>{uploading ? 'Uploaden…' : initialData ? 'Wijzigingen opslaan' : t('btn_save')}</Btn>
           </div>
         </div>
+      </div>
       </div>
     </Modal>
   );
 }
 
 // ===== INGREDIËNTEN =====
-function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}}) {
+function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen, log, setLog, bi=[], bat=[], setInkoopFacturen=()=>{}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}}) {
   const [tab, setTab] = useState('ingredienten');
 
   // --- Ingrediënten state ---
@@ -3879,6 +4453,8 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const [lotCorr, setLotCorr] = useState({delta:'', richting:'+', reden:'', eenheid:''});
   const [ingZoek, setIngZoek] = useState('');          // zoekfilter ingrediënten
   const [groepDicht, setGroepDicht] = useStore('ing_groep_dicht', {});   // {type: bool} ingeklapte groepen
+  const [showIngEdit, setShowIngEdit] = useState(false);
+  const [ingEditForm, setIngEditForm] = useState({naam:'', type:'', fabrikant:''});
   const [vtIngeklapt, setVtIngeklapt] = useStore('verpakkingen_vt_ingeklapt', false);
   const [odIngeklapt, setOdIngeklapt] = useStore('verpakkingen_od_ingeklapt', false);
 
@@ -3940,7 +4516,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   const emptyVE = {naam:'',inhoud_liter:'',type:'',kosten_verpakking:'',kosten_afsluiting:'',kosten_label:'',leverancier:'',factuurnummer:''};
   const [vEditForm, setVEditForm] = useState(emptyVE);
   // --- Onderdelen state ---
-  const emptyOD = {od_id:'',naam:'',type:'',lotnr:'',kosten_per_stuk:'',leverancier:'',factuurnummer:''};
+  const emptyOD = {od_id:'',naam:'',type:'',lotnr:'',kosten_per_stuk:'',leverancier:'',factuurnummer:'',voorraad:''};
   const [showODEdit, setShowODEdit] = useState(null);
   const [odEditForm, setOdEditForm] = useState(emptyOD);
   const [showODAdd, setShowODAdd] = useState(false);
@@ -3966,7 +4542,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
     return usages.map(x=>({ ...x, batch: bat.find(b=>b.id===x.batch_id) }));
   };
 
-  const saveOntvangst = async ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage}) => {
+  const saveOntvangst = async ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}) => {
     let updatedIng = [...ing];
     const newLots = [];
     productLijst.forEach(p => {
@@ -4022,7 +4598,10 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
       const netto = pn * Number(p.qty||0);
       const tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find(i=>i.id===Number(p.ing_id))?.naam||p.nieuw.trim()) : p.nieuw.trim();
-      factuurRegels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+      factuurRegels.push({type:'ingredient', naam,
+        aantal_stuks: p.aantal_stuks ? Number(p.aantal_stuks) : null,
+        inhoud_per_stuk: p.inhoud_per_stuk ? Number(p.inhoud_per_stuk) : null,
+        hoeveelheid:Number(p.qty), eenheid:p.eenh,
         prijs_per_eenheid:pn||null, netto, btw_tarief:tarief, btw_bedrag:netto*tarief/100});
     });
     verpakkingLijst.forEach(v => {
@@ -4039,15 +4618,18 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
       factuurRegels.push({type:'overig', naam:r.naam.trim(), netto, btw_tarief:tarief, btw_bedrag:+(netto*tarief/100).toFixed(2)});
     });
     if (factuurRegels.length > 0) {
-      const totaal_netto = factuurRegels.reduce((s,r)=>s+r.netto, 0);
-      const totaal_btw   = factuurRegels.reduce((s,r)=>s+r.btw_bedrag, 0);
+      const calc_netto = factuurRegels.reduce((s,r)=>s+r.netto, 0);
+      const calc_btw   = factuurRegels.reduce((s,r)=>s+r.btw_bedrag, 0);
+      const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
+      const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
+      const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
       setInkoopFacturen(prev=>[...prev, {
         id: newId(prev),
         datum: factuurForm.datum||tod(),
         factuurnummer: factuurForm.factuur||'',
         leverancier: factuurForm.leverancier||'',
         regels: factuurRegels,
-        totaal_netto, totaal_btw, totaal_bruto: totaal_netto+totaal_btw,
+        totaal_netto, totaal_btw, totaal_bruto,
         bijlage,
       }]);
     }
@@ -4143,7 +4725,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
 
   const saveODEdit = () => {
     if (!odEditForm.naam.trim()) { alert(t('err_name_required')); return; }
-    setOnderdelen(prev=>prev.map(o=>o.id===showODEdit.id?{...o,...odEditForm,kosten_per_stuk:odEditForm.kosten_per_stuk?Number(odEditForm.kosten_per_stuk):0}:o));
+    setOnderdelen(prev=>prev.map(o=>o.id===showODEdit.id?{...o,...odEditForm,kosten_per_stuk:odEditForm.kosten_per_stuk?Number(odEditForm.kosten_per_stuk):0,voorraad:odEditForm.voorraad!==''?Number(odEditForm.voorraad):Number(o.voorraad||0)}:o));
     setShowODEdit(null);
   };
   const saveODAdd = () => {
@@ -4181,6 +4763,26 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
   };
 
   const selIng = ing.find(i=>i.id===sel);
+
+  const openIngEdit = () => {
+    if (!selIng) return;
+    setIngEditForm({naam:selIng.naam, type:selIng.type||'', fabrikant:selIng.fabrikant||''});
+    setShowIngEdit(true);
+  };
+  const saveIngEdit = () => {
+    if (!ingEditForm.naam.trim()) { alert(t('err_name_required')); return; }
+    setIng(prev=>prev.map(i=>i.id===sel?{...i,naam:ingEditForm.naam.trim(),type:ingEditForm.type,fabrikant:ingEditForm.fabrikant}:i));
+    setShowIngEdit(false);
+  };
+  const deleteIng = () => {
+    if (!selIng) return;
+    if (activeLots(sel).length>0) { alert('Kan niet verwijderen: er zijn nog actieve lots.'); return; }
+    if (!confirm(`Ingrediënt "${selIng.naam}" en alle bijbehorende lots verwijderen?`)) return;
+    setIng(prev=>prev.filter(i=>i.id!==sel));
+    setLots(prev=>prev.filter(l=>l.ingredient_id!==sel));
+    setSel(null);
+  };
+
   const tabBtn = (t,l) => (
     <button onClick={()=>setTab(t)}
       className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab===t?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -4223,19 +4825,22 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                   ? <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_no_ingredients')}</td></tr></tbody>
                   : (() => {
                       const zoek = ingZoek.trim().toLowerCase();
-                      const filtered = zoek ? ing.filter(i=>i.naam.toLowerCase().includes(zoek)||i.type.toLowerCase().includes(zoek)) : ing;
+                      const filtered = zoek ? ing.filter(i=>i.naam.toLowerCase().includes(zoek)||(i.type||'').toLowerCase().includes(zoek)) : ing;
                       if (filtered.length===0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen resultaten voor "{ingZoek}"</td></tr></tbody>;
-                      return ING_TYPES.map(ingTyp => {
-                        const groep = [...filtered.filter(i => i.type === ingTyp)].sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));
+                      // Alle types in ingTypes + eventuele wees-types die niet meer in ingTypes staan
+                      const allTypes = [...ingTypes, ...filtered.map(i=>i.type||'Overig').filter(tp=>!ingTypes.includes(tp)).filter((tp,i,a)=>a.indexOf(tp)===i)];
+                      return allTypes.map(ingTyp => {
+                        const groep = [...filtered.filter(i => (i.type||'Overig') === ingTyp)].sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));
                         if (groep.length === 0) return null;
                         const dicht = groepDicht[ingTyp] && !zoek; // zoeken forceert open
+                        const typeLabel = BUILTIN_ING_TYPES.includes(ingTyp) ? t('ing_type_'+ingTyp.toLowerCase()) : ingTyp;
                         return (
                           <tbody key={ingTyp} className="divide-y divide-gray-100">
                             <tr className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100"
                               onClick={()=>setGroepDicht(p=>({...p,[ingTyp]:!p[ingTyp]}))}>
                               <td colSpan={2} className="px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
                                 <div className="flex items-center">
-                                  <span className="mr-1.5 text-gray-400">{dicht?'▶':'▼'}</span>{t('ing_type_'+ingTyp.toLowerCase())}
+                                  <span className="mr-1.5 text-gray-400">{dicht?'▶':'▼'}</span>{typeLabel}
                                   <span className="ml-1.5 font-normal text-gray-400">({groep.length})</span>
                                 </div>
                               </td>
@@ -4261,8 +4866,12 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
               <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>
               <div className="flex-1 min-w-0 bg-white rounded-xl shadow-card overflow-x-auto">
                 <div className="px-4 py-2.5 t-hdr text-white flex items-center justify-between rounded-t-xl">
-                  <span className="font-medium text-sm">{selIng.naam} — {t('ing_lots')}</span>
-                  <Btn s="sm" v="header" onClick={()=>{setOntvangstInitTab('ingredienten');setOntvangstInitIngId(String(sel));setShowO(true)}}>{t('btn_add_lot')}</Btn>
+                  <span className="font-medium text-sm">{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</span>
+                  <div className="flex items-center gap-1">
+                    <Btn s="sm" v="header" onClick={openIngEdit}>✏️</Btn>
+                    <button title={activeLots(sel).length>0?'Verwijderen niet mogelijk: er zijn actieve lots':'Ingrediënt verwijderen'} onClick={deleteIng} disabled={activeLots(sel).length>0} className={`text-xs px-2 py-1 rounded transition-colors ${activeLots(sel).length>0?'opacity-40 cursor-not-allowed text-white/60':'text-white/80 hover:text-white hover:bg-white/20'}`}>🗑</button>
+                    <Btn s="sm" v="header" onClick={()=>{setOntvangstInitTab('ingredienten');setOntvangstInitIngId(String(sel));setShowO(true)}}>{t('btn_add_lot')}</Btn>
+                  </div>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="text-xs text-gray-500 bg-gray-50">
@@ -4426,7 +5035,7 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1 justify-end">
-                          <Btn s="sm" v="ghost" onClick={()=>{setOdEditForm({naam:od.naam,type:od.type||'',kosten_per_stuk:String(od.kosten_per_stuk||''),leverancier:od.leverancier||'',factuurnummer:od.factuurnummer||''});setShowODEdit(od);}}>✏️</Btn>
+                          <Btn s="sm" v="ghost" onClick={()=>{setOdEditForm({naam:od.naam,type:od.type||'',kosten_per_stuk:String(od.kosten_per_stuk||''),leverancier:od.leverancier||'',factuurnummer:od.factuurnummer||'',voorraad:String(od.voorraad||0)});setShowODEdit(od);}}>✏️</Btn>
                           <button onClick={()=>{if(confirm(t('error_confirm_delete_packaging')))setOnderdelen(prev=>prev.filter(x=>x.id!==od.id))}} className="text-red-400 hover:text-red-600 text-xs px-1.5">✕</button>
                         </div>
                       </td>
@@ -4449,6 +5058,9 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
           initialIngId={ontvangstInitIngId}
           onSave={saveOntvangst}
           onClose={()=>setShowO(false)}
+          claudeCreds={claudeCreds}
+          ingTypes={ingTypes}
+          ingTypeBtw={ingTypeBtw}
         />
       )}
 
@@ -4579,14 +5191,33 @@ function IngredientenPage({ing, setIng, lots, setLots, verpakkingen, setVerpakki
         </Modal>
       )}
 
+      {/* Ingrediënt bewerken */}
+      {showIngEdit && selIng && (
+        <Modal title={`Ingrediënt bewerken: ${selIng.naam}`} onClose={()=>setShowIngEdit(false)} wide>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Inp label={t('lbl_name')+' *'} value={ingEditForm.naam} onChange={v=>setIngEditForm(f=>({...f,naam:v}))} />
+              <Sel label={t('lbl_type')} value={ingEditForm.type} onChange={v=>setIngEditForm(f=>({...f,type:v}))}
+                opts={ingTypes.map(tp=>({v:tp,l:BUILTIN_ING_TYPES.includes(tp)?t('ing_type_'+tp.toLowerCase()):tp}))} ph="— kies type —" />
+              <Inp label="Fabrikant" value={ingEditForm.fabrikant} onChange={v=>setIngEditForm(f=>({...f,fabrikant:v}))} placeholder="bijv. Weyermann" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Btn v="secondary" onClick={()=>setShowIngEdit(false)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveIngEdit}>{t('btn_save')}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Onderdeel bewerken */}
       {showODEdit && (
         <Modal title={`Onderdeel: ${showODEdit.naam}`} onClose={()=>setShowODEdit(null)} wide>
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <Inp label={t('lbl_name')+' *'} value={odEditForm.naam} onChange={v=>setOdEditForm(f=>({...f,naam:v}))} />
               <Sel label={t('onderdeel_type')} value={odEditForm.type} onChange={v=>setOdEditForm(f=>({...f,type:v}))}
                 opts={ONDERDEEL_TYPES.map(ot=>({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
+              <Inp label={t('lbl_stock')} type="number" value={odEditForm.voorraad} onChange={v=>setOdEditForm(f=>({...f,voorraad:v}))} placeholder="0" />
               <Inp label={t('onderdeel_cost')} type="number" value={odEditForm.kosten_per_stuk} onChange={v=>setOdEditForm(f=>({...f,kosten_per_stuk:v}))} placeholder="0.00" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -5260,9 +5891,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
           {bat.filter(b=>b.status==='Gesloten').length>0 && (
             <div>
               <div onClick={()=>setBatchArchiefIngeklapt(v=>!v)}
-                className="px-3 py-2 bg-gray-600 text-white flex items-center justify-between cursor-pointer hover:bg-gray-500 select-none">
-                <span className="text-xs font-medium text-gray-200 uppercase">{t('batch_archived')} ({bat.filter(b=>b.status==='Gesloten').length})</span>
+                className="px-3 py-2 bg-gray-600 text-white flex items-center gap-2 cursor-pointer hover:bg-gray-500 select-none">
                 <span className="text-gray-300 text-sm">{batchArchiefIngeklapt?'▶':'▼'}</span>
+                <span className="text-xs font-medium text-gray-200 uppercase">{t('batch_archived')} ({bat.filter(b=>b.status==='Gesloten').length})</span>
               </div>
               {!batchArchiefIngeklapt && bat.filter(b=>b.status==='Gesloten').map(b=>(
                 <div key={b.id} onClick={()=>setSel(b.id)}
@@ -5298,9 +5929,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                   <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                 </div>
               </div>
-              <div className="px-4 py-2 flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t('batch_info_label')}</span>
+              <div className="px-4 py-2 flex items-center gap-2 cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
                 <span className="text-gray-400 text-xs">{infoIngeklapt ? '▶' : '▼'}</span>
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t('batch_info_label')}</span>
               </div>
               {!infoIngeklapt && (
               <div className="p-4">
@@ -5715,9 +6346,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
 
                   {/* Afvulling registreren */}
                   <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none" onClick={() => setAfvullenIngeklapt(v => !v)}>
-                      <span>{t('batch_filling_register')}</span>
+                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none" onClick={() => setAfvullenIngeklapt(v => !v)}>
                       <span className={`text-xs font-bold ${!afvullenIngeklapt ? 'rotate-90' : ''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
+                      <span>{t('batch_filling_register')}</span>
                     </div>
                     {!afvullenIngeklapt && <div className="p-3">
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -5768,9 +6399,9 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
 
                   {/* Afgevulde voorraad tabel */}
                   <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none" onClick={() => setVoorraadIngeklapt(v => !v)}>
-                      <span>{t('batch_filled_stock')}</span>
+                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none" onClick={() => setVoorraadIngeklapt(v => !v)}>
                       <span className={`text-xs font-bold ${!voorraadIngeklapt ? 'rotate-90' : ''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
+                      <span>{t('batch_filled_stock')}</span>
                     </div>
                     {!voorraadIngeklapt && <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -7410,9 +8041,9 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 {archiefTags.length>0 && (
                   <div className="border-t">
                     <button onClick={()=>setGearchiveerdTagsOpen(o=>!o)}
-                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                      <span>{t('lbl_archived_tags')} ({archiefTags.length})</span>
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
                       <span className="text-gray-400 text-sm">{gearchiveerdTagsOpen?'▼':'▶'}</span>
+                      <span>{t('lbl_archived_tags')} ({archiefTags.length})</span>
                     </button>
                     {gearchiveerdTagsOpen&&archiefTags.map(tag=><TagGroep key={tag} tag={tag} gearchiveerd={true}/>)}
                   </div>
@@ -7423,9 +8054,9 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           {verborgenLijst.length>0&&(
             <div className="border-t">
               <button onClick={()=>setVerborgenOpen(o=>!o)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
                 <span className="text-gray-400 text-sm">{verborgenOpen?'▼':'▶'}</span>
+                <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
               </button>
               {verborgenOpen&&verborgenLijst.map(r=>(
                 <div key={r.id} onClick={()=>setSel(sel===r.id?null:r.id)}
@@ -7754,7 +8385,8 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[]}) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[]}) {
+  const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -7901,14 +8533,32 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const bijlagenJaren = React.useMemo(() =>
     [...new Set([new Date().getFullYear(), ...Object.keys(bijlagenPerJaar).map(Number)])].sort((a,b)=>b-a).slice(0,5)
   , [bijlagenPerJaar]);
+  // Claude AI settings state
+  const [claudeForm, setClaudeForm] = React.useState({apiKey: claudeCreds?.apiKey||'', enabled: claudeCreds?.enabled||false});
+  const claudeFormInit = React.useRef(false);
+  React.useEffect(() => {
+    if (!claudeFormInit.current && (claudeCreds?.apiKey || claudeCreds?.enabled)) {
+      setClaudeForm({apiKey: claudeCreds.apiKey||'', enabled: claudeCreds.enabled||false});
+      claudeFormInit.current = true;
+    }
+  }, [claudeCreds?.apiKey, claudeCreds?.enabled]);
+  const [claudeMsg, setClaudeMsg] = React.useState('');
+  const saveClaude = () => {
+    setClaudeCreds(prev => ({...prev, ...claudeForm}));
+    setClaudeMsg('✓ Opgeslagen');
+    setTimeout(() => setClaudeMsg(''), 2000);
+  };
+
   const navItems = [
-    {id:'app',         label:t('settings_app'),          icon:'⚙️'},
-    {id:'brouwerij',   label:t('settings_brewery'),     icon:'🏭'},
-    {id:'brewfather',  label:'Brewfather',               icon:'🍺'},
-    {id:'woocommerce', label:t('settings_webshop'),      icon:'🛒'},
-    {id:'accijns',     label:t('settings_excise'),       icon:'💶'},
-    {id:'hygiene',     label:t('settings_hygiene'),      icon:'🧹'},
-    {id:'data',        label:t('settings_data'),         icon:'📦'},
+    {id:'app',           label:t('settings_app'),        icon:'⚙️'},
+    {id:'brouwerij',     label:t('settings_brewery'),    icon:'🏭'},
+    {id:'brewfather',    label:'Brewfather',              icon:'🍺'},
+    {id:'woocommerce',   label:t('settings_webshop'),    icon:'🛒'},
+    {id:'claude',        label:'Claude AI',               icon:'🤖'},
+    {id:'accijns',       label:t('settings_excise'),     icon:'💶'},
+    {id:'ingredienten',  label:'Ingrediënten',            icon:'🌾'},
+    {id:'hygiene',       label:t('settings_hygiene'),    icon:'🧹'},
+    {id:'data',          label:t('settings_data'),       icon:'📦'},
   ];
 
   const fmtTs = (ts) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
@@ -8182,6 +8832,41 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
+      {/* CLAUDE AI */}
+      {activeSection==='claude' && <>
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">Claude AI — factuur scannen</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Voer je Anthropic API-sleutel in om automatisch facturen te scannen (PDF tekst + vision als fallback).<br/>
+          De sleutel wordt veilig opgeslagen op de server. Gebruik een sleutel die begint met <code className="bg-gray-100 px-1 rounded text-xs">sk-ant-</code>.
+        </p>
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div className="relative">
+              <input type="checkbox" checked={claudeForm.enabled} onChange={e=>setClaudeForm(f=>({...f,enabled:e.target.checked}))} className="sr-only peer" />
+              <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+            </div>
+            <span className="text-sm font-medium text-gray-700">Factuur scannen ingeschakeld</span>
+          </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Anthropic API-sleutel</label>
+            <input type="password" value={claudeForm.apiKey} onChange={e=>setClaudeForm(f=>({...f,apiKey:e.target.value}))}
+              placeholder="sk-ant-api03-••••••••••••••••"
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-sm t-input" />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={saveClaude} className="px-4 py-2 tbtn rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
+            {claudeMsg && <span className={`text-sm font-medium ${claudeMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{claudeMsg}</span>}
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
+          <p>📄 Bij PDF's met ingebedde tekst wordt de tekst geëxtraheerd (goedkoop, snel).</p>
+          <p>🖼️ Bij gescande PDF's of afbeeldingen gebruikt de app Claude Vision (document-API).</p>
+          <p>💡 Geadviseerd model: <code className="bg-gray-100 px-1 rounded">claude-haiku-4-5</code> — snel en voordelig.</p>
+        </div>
+      </div>
+      </>}
+
       {/* ACCIJNS */}
       {activeSection==='accijns' && <>
       {/* Accijns tarieven */}
@@ -8262,6 +8947,47 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       </div>
       </>}
+
+      {/* INGREDIËNTEN TYPES */}
+      {activeSection==='ingredienten' && (
+        <div className={card}>
+          <h2 className="text-lg font-semibold text-gray-700 mb-1">Ingredient-types</h2>
+          <p className="text-sm text-gray-500 mb-4">Beheer de categorieën voor ingrediënten. Verwijderen is alleen mogelijk als er geen ingrediënten aan het type gekoppeld zijn.</p>
+          <div className="space-y-2 mb-4">
+            {ingTypes.map((typ, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input"
+                  value={typ}
+                  onBlur={e=>{const val=e.target.value.trim();if(val&&val!==typ){setIngTypes(prev=>prev.map((tp,i)=>i===idx?val:tp));setIngTypeBtw(prev=>{const next={...prev};if(prev[typ]!=null){next[val]=prev[typ];delete next[typ];}return next;})}}}
+                  onChange={e=>setIngTypes(prev=>prev.map((tp,i)=>i===idx?e.target.value:tp))} />
+                <select value={ingTypeBtw[typ]??''} onChange={e=>{const v=e.target.value;setIngTypeBtw(prev=>v===''?{...prev,[typ]:undefined}:{...prev,[typ]:Number(v)});}}
+                  title="Standaard BTW%"
+                  className="border rounded px-2 py-1.5 text-sm t-input w-28">
+                  <option value="">BTW%</option>
+                  <option value="0">0%</option>
+                  <option value="9">9%</option>
+                  <option value="21">21%</option>
+                </select>
+                <button
+                  title={ing.some(i=>i.type===typ)?`Type "${typ}" is in gebruik`:'Verwijderen'}
+                  onClick={()=>{
+                    if(ing.some(i=>i.type===typ)){alert(`Type "${typ}" is in gebruik door ingrediënten en kan niet worden verwijderd.`);return;}
+                    if(!confirm(`Type "${typ}" verwijderen?`))return;
+                    setIngTypes(prev=>prev.filter((_,i)=>i!==idx));
+                    setIngTypeBtw(prev=>{const next={...prev};delete next[typ];return next;});
+                  }}
+                  className={`text-sm px-2 py-1.5 rounded transition-colors ${ing.some(i=>i.type===typ)?'text-gray-300 cursor-not-allowed':'text-red-400 hover:text-red-600 hover:bg-red-50'}`}>✕</button>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mb-3">Stel een standaard BTW% in per type. Dit wordt vooraf ingevuld bij inkoop boeken, maar blijft aanpasbaar.</p>
+          <div className="flex gap-2">
+            <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder="Nieuw type..." value={newIngType} onChange={e=>setNewIngType(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert('Type bestaat al.');return;}setIngTypes(prev=>[...prev,val]);setNewIngType('');}}} />
+            <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert('Type bestaat al.');return;}setIngTypes(prev=>[...prev,val]);setNewIngType('');}}>Toevoegen</Btn>
+          </div>
+        </div>
+      )}
 
       {/* HYGIENE */}
       {activeSection==='hygiene' && <>
@@ -8488,13 +9214,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 }
 
 // ===== BOEKHOUDING =====
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], onderdelen=[], btwInst={}}) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}}) {
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-  const [dateFrom, setDateFrom] = React.useState(firstOfMonth);
+  const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
+  const [dateFrom, setDateFrom] = React.useState(firstOfYear);
   const [dateTo, setDateTo] = React.useState(now.toISOString().slice(0,10));
   const [statusFilter, setStatusFilter] = React.useState('completed');
   const [activeView, setActiveView] = React.useState('orders');
@@ -8509,7 +9235,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [aangifteError, setAangifteError] = React.useState('');
   const [aangifteFetched, setAangifteFetched] = React.useState(false);
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
+  const [editingFactuur, setEditingFactuur] = React.useState(null);
   const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
+
+  const addLog = (entry) => setLog(prev=>[...prev,{id:newId(prev||[]),datum:tod(),...entry}]);
 
   const uploadBijlageVoorFactuur = async (factuurId, file) => {
     setBijlageUploading(factuurId);
@@ -8655,17 +9384,72 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     if (expandedFactuur===id) setExpandedFactuur(null);
   };
 
-  const saveVrijeFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage}) => {
+  const saveVrijeFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}) => {
+    // Update ingredient lots (mirrors saveOntvangst in IngredientenPage)
+    let updatedIng = [...ing];
+    const newLots = [];
+    productLijst.forEach(p => {
+      let iid;
+      if (p.ing_id) { iid = Number(p.ing_id); }
+      else {
+        const existing = updatedIng.find(i=>i.naam.toLowerCase()===p.nieuw.trim().toLowerCase());
+        if (existing) { iid = existing.id; }
+        else {
+          const n = {id:newId(updatedIng), naam:p.nieuw.trim(), type:p.type, fabrikant:p.fabrikant||''};
+          updatedIng = [...updatedIng, n]; iid = n.id;
+        }
+      }
+      const lot = {id:newId([...lots,...newLots]), ingredient_id:iid, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+        houdbaarheid:p.tht||null, lotnummer:p.lotnr||'', leverancier:factuurForm.leverancier||'',
+        prijs_per_eenheid:p.prijs?Number(p.prijs):null, factuur_nummer:factuurForm.factuur||'',
+        aankoop_datum:factuurForm.datum||tod(), btw_tarief:Number(p.btw_tarief)||0, beschikbaar:true};
+      newLots.push(lot);
+      addLog({ingredient_id:iid, ingredient_naam:updatedIng.find(i=>i.id===iid)?.naam||p.nieuw.trim(),
+        lot_id:lot.id, lotnummer:lot.lotnummer||'', type:'ontvangst',
+        hoeveelheid:Number(p.qty), eenheid:p.eenh, referentie:factuurForm.factuur||factuurForm.leverancier||''});
+    });
+    setIng(updatedIng);
+    setLots(prev=>[...prev,...newLots]);
+    // Update onderdelen stock
+    verpakkingLijst.forEach(v => {
+      const n = Number(v.aantal);
+      const naam = v._naam||v.naam.trim();
+      const bestaand = v.od_id
+        ? onderdelen.find(o=>o.id===Number(v.od_id))
+        : onderdelen.find(o=>o.naam.toLowerCase()===naam.toLowerCase());
+      if (bestaand) {
+        setOnderdelen(prev=>prev.map(o=>o.id===bestaand.id?{
+          ...o, voorraad:Number(o.voorraad||0)+n,
+          lotnr:v.lotnr||o.lotnr||'',
+          leverancier:factuurForm.leverancier||o.leverancier||'',
+          factuurnummer:factuurForm.factuur||o.factuurnummer||'',
+        }:o));
+      } else {
+        setOnderdelen(prev=>[...prev,{
+          id:newId(prev), naam, type:v.type||'overig',
+          lotnr:v.lotnr||'',
+          kosten_per_stuk:v.prijs_per_stuk?Number(v.prijs_per_stuk):0,
+          leverancier:factuurForm.leverancier||'', factuurnummer:factuurForm.factuur||'',
+          voorraad:n,
+        }]);
+      }
+    });
+    // Build factuur regels and save
     const regels = [];
     productLijst.forEach(p => {
-      const netto = parseFloat(p.totaalprijs) || (Number(p.prijs||0) * Number(p.qty||0));
+      const pn = p.prijs ? Number(p.prijs) : 0;
+      const netto = parseFloat(p.totaalprijs) || (pn * Number(p.qty||0));
       const btw_tarief = Number(p.btw_tarief)||0;
-      regels.push({naam: p._naam||p.nieuw||'', type: 'ingredient', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2)});
+      const naam = p.ing_id ? (ing.find(i=>i.id===Number(p.ing_id))?.naam||p.nieuw||'') : (p.nieuw||'');
+      regels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
     });
     verpakkingLijst.forEach(v => {
-      const netto = parseFloat(v.totaalprijs) || (Number(v.prijs_per_stuk||0) * Number(v.aantal||0));
+      const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
+      const netto = parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0));
       const btw_tarief = Number(v.btw_tarief)||0;
-      regels.push({naam: v._naam||v.naam||'', type: 'verpakking', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2)});
+      regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
     });
     vrijeRegels.forEach(r => {
       const netto = parseFloat(r.netto)||0;
@@ -8673,8 +9457,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2)});
     });
     if (!regels.length) return;
-    const totaal_netto = regels.reduce((s,r)=>s+r.netto, 0);
-    const totaal_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    const calc_netto = regels.reduce((s,r)=>s+r.netto, 0);
+    const calc_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
+    const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
+    const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
     setInkoopFacturen(prev => [...prev, {
       id: newId(prev),
       datum: factuurForm.datum || now.toISOString().slice(0,10),
@@ -8683,10 +9470,50 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       regels,
       totaal_netto,
       totaal_btw,
-      totaal_bruto: totaal_netto + totaal_btw,
+      totaal_bruto,
       bijlage,
     }]);
     setShowVrijeFactuur(false);
+  };
+
+  const updateFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}) => {
+    if (!editingFactuur) return;
+    const regels = [];
+    productLijst.forEach(p => {
+      const pn = p.prijs ? Number(p.prijs) : 0;
+      const netto = parseFloat(p.totaalprijs) || (pn * Number(p.qty||0));
+      const btw_tarief = Number(p.btw_tarief)||0;
+      const naam = p.ing_id ? (ing.find(i=>i.id===Number(p.ing_id))?.naam||p._naam||p.nieuw.trim()) : (p._naam||p.nieuw.trim());
+      regels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+    });
+    verpakkingLijst.forEach(v => {
+      const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
+      const netto = parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0));
+      const btw_tarief = Number(v.btw_tarief)||0;
+      regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+    });
+    vrijeRegels.forEach(r => {
+      const netto = parseFloat(r.netto)||0;
+      const btw_tarief = Number(r.btw_tarief)||0;
+      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+    });
+    const calc_netto = regels.reduce((s,r)=>s+r.netto, 0);
+    const calc_btw = regels.reduce((s,r)=>s+r.btw_bedrag, 0);
+    const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
+    const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
+    const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
+    setInkoopFacturen(prev => prev.map(f => f.id !== editingFactuur.id ? f : {
+      ...f,
+      datum: factuurForm.datum || f.datum,
+      factuurnummer: factuurForm.factuur ?? f.factuurnummer,
+      leverancier: factuurForm.leverancier || f.leverancier,
+      regels,
+      totaal_netto, totaal_btw, totaal_bruto,
+      bijlage: bijlage || f.bijlage,
+    }));
+    setEditingFactuur(null);
   };
 
   // ── Aangiftes helpers ──────────────────────────────────────────────────────
@@ -8980,7 +9807,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             <div className="text-xs text-gray-400 italic self-end pb-2">{inkoopGefilterd.length} facturen in periode</div>
             <button onClick={()=>setShowVrijeFactuur(true)}
               className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
-              + Vrije factuur
+              + Inkoop boeken
             </button>
             {inkoopGefilterd.length > 0 && (
               <button onClick={exportInkoopCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
@@ -8996,9 +9823,27 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             knownLeveranciers={knownLeveranciers}
             ing={ing}
             onderdelen={onderdelen}
-            initialTab="vrije"
+            initialTab="ingredienten"
             onSave={saveVrijeFactuur}
             onClose={()=>setShowVrijeFactuur(false)}
+            claudeCreds={claudeCreds}
+            ingTypes={ingTypes}
+            ingTypeBtw={ingTypeBtw}
+          />
+        )}
+        {/* Factuur bewerken modal */}
+        {editingFactuur && (
+          <InkoopFactuurModal
+            knownLeveranciers={knownLeveranciers}
+            ing={ing}
+            onderdelen={onderdelen}
+            initialTab="ingredienten"
+            initialData={editingFactuur}
+            onSave={updateFactuur}
+            onClose={()=>setEditingFactuur(null)}
+            claudeCreds={claudeCreds}
+            ingTypes={ingTypes}
+            ingTypeBtw={ingTypeBtw}
           />
         )}
 
@@ -9049,11 +9894,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 </thead>
                 <tbody>
                   {inkoopGefilterd.map(f => (<React.Fragment key={f.id}>
-                    <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={()=>setExpandedFactuur(expandedFactuur===f.id?null:f.id)}>
-                      <td className="py-2 pr-2 text-gray-400 text-xs text-center">
-                        {expandedFactuur===f.id?'▾':'▸'}
-                      </td>
+                    <tr className="border-b border-gray-50 hover:bg-amber-50 transition-colors cursor-pointer"
+                        onClick={()=>setEditingFactuur(f)}>
+                      <td className="py-2 pr-2 text-gray-400 text-xs text-center">✎</td>
                       <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                       <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
                       <td className="py-2 pr-3 font-medium text-gray-800">{f.leverancier||'—'}</td>
@@ -9071,80 +9914,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           className="text-gray-300 hover:text-red-500 text-xs transition-colors px-1">✕</button>
                       </td>
                     </tr>
-                    {expandedFactuur===f.id && (
-                      <tr>
-                        <td colSpan={8} className="pb-3 pt-0 px-6">
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 uppercase tracking-wide border-b border-gray-200">
-                                  <th className="py-1 pr-3 text-left font-medium">Omschrijving</th>
-                                  <th className="py-1 pr-3 text-left font-medium">Type</th>
-                                  <th className="py-1 pr-3 text-right font-medium">Aantal</th>
-                                  <th className="py-1 pr-3 text-right font-medium">Prijs/eenh.</th>
-                                  <th className="py-1 pr-3 text-right font-medium">Netto</th>
-                                  <th className="py-1 pr-3 text-right font-medium">BTW%</th>
-                                  <th className="py-1 text-right font-medium">BTW</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(f.regels||[]).map((r,i)=>(
-                                  <tr key={i} className="border-b border-gray-100">
-                                    <td className="py-1 pr-3 text-gray-700 font-medium">{r.naam}</td>
-                                    <td className="py-1 pr-3 text-gray-400">
-                                      <span className={`px-1.5 py-0.5 rounded text-xs ${r.type==='ingredient'?'bg-green-50 text-green-700':r.type==='overig'?'bg-gray-100 text-gray-600':'bg-purple-50 text-purple-700'}`}>
-                                        {r.type==='ingredient'?'Ingrediënt':r.type==='overig'?'Overig':'Verpakking'}
-                                      </span>
-                                    </td>
-                                    <td className="py-1 pr-3 text-right text-gray-600">
-                                      {r.type==='ingredient'
-                                        ? `${r.hoeveelheid} ${r.eenheid}`
-                                        : r.type==='overig' ? '—'
-                                        : `${r.aantal}×`}
-                                    </td>
-                                    <td className="py-1 pr-3 text-right text-gray-500">
-                                      {r.type==='overig' ? '—' : r.type==='ingredient' && r.prijs_per_eenheid ? fmt(r.prijs_per_eenheid) : r.prijs_per_stuk ? fmt(r.prijs_per_stuk) : '—'}
-                                    </td>
-                                    <td className="py-1 pr-3 text-right text-gray-700">{fmt(r.netto||0)}</td>
-                                    <td className="py-1 pr-3 text-right text-gray-500">{r.btw_tarief}%</td>
-                                    <td className="py-1 text-right text-blue-600">{fmt(r.btw_bedrag||0)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            <div className="mt-3 pt-3 border-t border-gray-200">
-                              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Bijlage</p>
-                              {f.bijlage?.bestand ? (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <a href={`${ADDON_BASE}api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors group">
-                                    <span className="text-base">📎</span>
-                                    <span className="text-sm text-gray-700 group-hover:text-blue-700 font-medium">{f.bijlage.naam}</span>
-                                    <span className="text-xs text-gray-400 group-hover:text-blue-500 ml-1">↗ Openen</span>
-                                  </a>
-                                  <label className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 cursor-pointer px-2 py-1 rounded hover:bg-gray-100 transition-colors" title="Bijlage vervangen">
-                                    ↩ Vervangen
-                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
-                                      className="hidden"
-                                      onChange={e=>e.target.files?.[0] && uploadBijlageVoorFactuur(f.id, e.target.files[0])} />
-                                  </label>
-                                </div>
-                              ) : bijlageUploading===f.id ? (
-                                <span className="text-xs text-gray-500 italic">Uploaden…</span>
-                              ) : (
-                                <label className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer transition-colors">
-                                  <span>📎</span>
-                                  <span>Bijlage toevoegen</span>
-                                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
-                                    className="hidden"
-                                    onChange={e=>e.target.files?.[0] && uploadBijlageVoorFactuur(f.id, e.target.files[0])} />
-                                </label>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>))}
                 </tbody>
                 <tfoot>
@@ -9226,7 +9995,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           <div className={card + ' text-center py-14'}>
             <div className="text-4xl mb-3">🧾</div>
             <p className="text-gray-600 font-medium mb-1">Nog geen inkoop facturen</p>
-            <p className="text-gray-400 text-sm">Registreer een ontvangst via <strong>Ingrediënten → Ontvangst registreren</strong>, of klik op <strong>+ Vrije factuur</strong> om een factuur handmatig toe te voegen.<br/>Elke opgeslagen ontvangst wordt automatisch hier als factuur toegevoegd.</p>
+            <p className="text-gray-400 text-sm">Boek een inkoop via <strong>Ingrediënten → Inkoop boeken</strong>, of klik op <strong>+ Inkoop boeken</strong> hierboven om een factuur handmatig toe te voegen.<br/>Elke opgeslagen inkoop wordt automatisch hier als factuur toegevoegd.</p>
           </div>
         )}
         {inkoopFacturen.length>0 && inkoopGefilterd.length===0 && (
@@ -9395,6 +10164,7 @@ function App() {
   const [navTheme, setNavTheme] = useStore('nav_theme', 'amber');
   const [bfCreds, setBfCreds] = useStore('brewfather_creds', {userId:'', apiKey:'', enabled:false, lastSync:null}, {secure:true});
   const [wcCreds, setWcCreds] = useStore('woocommerce_creds', {storeUrl:'', consumerKey:'', consumerSecret:'', enabled:false, lastSync:null}, {secure:true});
+  const [claudeCreds, setClaudeCreds] = useStore('claude_creds', {apiKey:'', enabled:false}, {secure:true});
   const [wcSyncLog, setWcSyncLog] = useStore('wc_sync_log', []);
   const [recepten, setRecepten] = useStore('recepten', []);
   const [verborgen, setVerborgen] = useStore('recepten_verborgen', []);
@@ -9409,6 +10179,8 @@ function App() {
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
   const [verkoopFacturen, setVerkoopFacturen] = useStore('verkoop_facturen', []);
   const [btwInst, setBtwInst] = useStore('btw_instellingen', {periode: 'kwartaal'});
+  const [ingTypes, setIngTypes] = useStore('ing_types', ["Mout","Hop","Gist","Suiker","Overig"]);
+  const [ingTypeBtw, setIngTypeBtw] = useStore('ing_type_btw', {});
   _lang = lang; // update global for t() — called synchronously during render
   const [page, setPage] = useState('dashboard');
   const importRef = useRef(null);
@@ -9558,14 +10330,14 @@ function App() {
       </nav>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
-        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} />}
+        {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
 
         {page==='voorraad' && <VoorraadPage bat={bat} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} archief={archief} setArchief={setArchief} geslotenBieren={geslotenBieren} setGeslotenBieren={setGeslotenBieren} archiefIngeklapt={archiefIngeklapt} setArchiefIngeklapt={setArchiefIngeklapt} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} onderdelen={onderdelen} btwInst={btwInst} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} />}
       </main>
     </div>
   );

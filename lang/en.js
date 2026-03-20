@@ -524,7 +524,7 @@ window.BREW_TRANS["en"] = {
   "btn_tag_restore": "Restore tag",
   "btn_import_json": "Import pasted JSON",
   "btn_test_connection": "Test connection",
-  "wc_push_stock_title": "Send current stock (paid excise only) to WooCommerce",
+  "wc_push_stock_title": "Send current stock to WooCommerce",
   "wc_pull_sales_title": "Fetch sales from WooCommerce and process as sold units",
   "lbl_last_sync": "Last sync: ",
   "settings_wc_connect_desc": "Connect to a WooCommerce store to automatically update stock when releasing and to manually synchronize from the Stock page.",

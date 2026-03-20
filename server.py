@@ -43,6 +43,9 @@ UPLOAD_PREFIX            = '/api/upload/'
 FILE_PREFIX              = '/api/file/'
 DELETE_UPLOAD_PREFIX     = '/api/delete_upload/'
 DOWNLOAD_BIJLAGEN_PREFIX = '/api/download_bijlagen/'
+CLAUDE_PROXY_PREFIX      = '/api/claude/'
+ANTHROPIC_API_BASE       = 'https://api.anthropic.com'
+CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be large
 
 _ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'bmp', 'heic', 'heif'}
 _CONTENT_TYPES = {
@@ -88,8 +91,10 @@ _CSP = (
     "script-src 'unsafe-inline' 'unsafe-eval' "
         "https://unpkg.com https://cdn.tailwindcss.com https://cdn.sheetjs.com; "
     "style-src 'unsafe-inline'; "
-    "connect-src 'self'; "
+    "worker-src blob: https://unpkg.com; "
+    "connect-src 'self' https://unpkg.com; "
     "img-src 'self' data: blob:; "
+    "frame-src blob: 'self'; "
     "font-src 'self' data:; "
     "base-uri 'self'; "
     "form-action 'self'"
@@ -191,6 +196,19 @@ def extract_key(path: str) -> str | None:
         return None
     key = path[idx + len(API_DATA_PREFIX):].strip('/')
     return key if _valid_key(key) else None
+
+
+def _load_claude_creds() -> str | None:
+    """Read stored Claude/Anthropic API key; returns the key string or None."""
+    creds_file = DATA_DIR / 'claude_creds.json'
+    if not creds_file.exists():
+        return None
+    try:
+        creds = json.loads(creds_file.read_bytes())
+        key = str(creds.get('apiKey', '')).strip()
+        return key if key.startswith('sk-ant-') else None
+    except Exception:
+        return None
 
 
 def _load_bf_creds() -> tuple[str, str] | None:
@@ -347,6 +365,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if WC_PUT_PREFIX in path:
             self._wc_proxy_put()
+            return
+
+        if CLAUDE_PROXY_PREFIX in path:
+            self._claude_proxy()
             return
 
         if UPLOAD_PREFIX in path:
@@ -565,6 +587,46 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if filepath.exists():
             filepath.unlink()
         self._json(200, {'ok': True})
+
+    def _claude_proxy(self):
+        """Proxy a POST request to the Anthropic Claude messages API."""
+        api_key = _load_claude_creds()
+        if api_key is None:
+            self._json(401, {'error': 'no Claude credentials configured'})
+            return
+        body = self._read_body(max_len=CLAUDE_MAX_CONTENT)
+        if body is None:
+            return
+        try:
+            json.loads(body)  # validate JSON
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        req = urllib.request.Request(
+            f'{ANTHROPIC_API_BASE}/v1/messages',
+            data=body,
+            headers={
+                'x-api-key': api_key,
+                'anthropic-version': '2023-06-01',
+                'anthropic-beta': 'pdfs-2024-09-25',
+                'content-type': 'application/json',
+            },
+            method='POST',
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                data = resp.read()
+                status = resp.status
+        except urllib.error.HTTPError as e:
+            status, data = e.code, e.read() or b'{}'
+        except Exception as ex:
+            status, data = 502, json.dumps({'error': str(ex)}).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', len(data))
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_bijlagen_zip(self):
         """Serve a ZIP of all invoice attachments for the requested year."""
