@@ -3,7 +3,7 @@ FROM python:3.12-alpine
 WORKDIR /app
 
 COPY server.py .
-COPY brew-admin.html ./static/index.html
+COPY dist/index.html ./static/index.html
 COPY entrypoint.sh /entrypoint.sh
 
 # su-exec: lichtgewicht tool om na rechten-fix naar non-root te wisselen.
