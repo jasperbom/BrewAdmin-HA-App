@@ -647,5 +647,17 @@ window.BREW_TRANS["fr"] = {
   "title_herbereken": "Recalculer",
   "msg_manual_adjusted": "Ajusté manuellement – cliquer ↺ pour recalculer",
   "btn_uploading": "Téléchargement…",
-  "btn_save_changes": "Enregistrer les modifications"
+  "btn_save_changes": "Enregistrer les modifications",
+  "settings_bijlagen_title": "Pièces jointes achats",
+  "settings_bijlagen_desc": "Téléchargez toutes les pièces jointes de factures d'une année donnée sous forme de fichier ZIP.",
+  "lbl_jaar": "Année",
+  "lbl_bijlage_single": "pièce jointe",
+  "lbl_bijlagen_plural": "pièces jointes",
+  "lbl_geen_bijlagen": "aucune pièce jointe",
+  "lbl_bezig": "En cours…",
+  "btn_zip_download": "⬇ Télécharger ZIP",
+  "msg_no_bijlagen": "Aucune pièce jointe trouvée pour {year}.",
+  "msg_download_failed": "Échec du téléchargement.",
+  "btn_wc_push_stock": "↑ Pousser le stock",
+  "btn_wc_pull_sales": "↓ Récupérer les ventes"
 };

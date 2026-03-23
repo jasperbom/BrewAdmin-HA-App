@@ -647,5 +647,17 @@ window.BREW_TRANS["es"] = {
   "title_herbereken": "Recalcular",
   "msg_manual_adjusted": "Ajustado manualmente – clic ↺ para recalcular",
   "btn_uploading": "Subiendo…",
-  "btn_save_changes": "Guardar cambios"
+  "btn_save_changes": "Guardar cambios",
+  "settings_bijlagen_title": "Adjuntos de compras",
+  "settings_bijlagen_desc": "Descarga todos los adjuntos de facturas de un año determinado como archivo ZIP.",
+  "lbl_jaar": "Año",
+  "lbl_bijlage_single": "adjunto",
+  "lbl_bijlagen_plural": "adjuntos",
+  "lbl_geen_bijlagen": "sin adjuntos",
+  "lbl_bezig": "En proceso…",
+  "btn_zip_download": "⬇ Descargar ZIP",
+  "msg_no_bijlagen": "No se encontraron adjuntos para {year}.",
+  "msg_download_failed": "Error en la descarga.",
+  "btn_wc_push_stock": "↑ Empujar stock",
+  "btn_wc_pull_sales": "↓ Obtener ventas"
 };

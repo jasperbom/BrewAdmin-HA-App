@@ -655,5 +655,17 @@ window.BREW_TRANS["de"] = {
   "title_herbereken": "Neu berechnen",
   "msg_manual_adjusted": "Manuell angepasst – ↺ klicken zum Neuberechnen",
   "btn_uploading": "Hochladen…",
-  "btn_save_changes": "Änderungen speichern"
+  "btn_save_changes": "Änderungen speichern",
+  "settings_bijlagen_title": "Einkauf-Anhänge",
+  "settings_bijlagen_desc": "Lade alle hochgeladenen Rechnungsanhänge eines bestimmten Jahres als ZIP-Datei herunter.",
+  "lbl_jaar": "Jahr",
+  "lbl_bijlage_single": "Anhang",
+  "lbl_bijlagen_plural": "Anhänge",
+  "lbl_geen_bijlagen": "keine Anhänge",
+  "lbl_bezig": "Bitte warten…",
+  "btn_zip_download": "⬇ ZIP herunterladen",
+  "msg_no_bijlagen": "Keine Anhänge für {year} gefunden.",
+  "msg_download_failed": "Download fehlgeschlagen.",
+  "btn_wc_push_stock": "↑ Bestand pushen",
+  "btn_wc_pull_sales": "↓ Verkäufe holen"
 };

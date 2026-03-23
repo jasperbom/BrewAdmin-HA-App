@@ -655,5 +655,17 @@ window.BREW_TRANS["nl"] = {
   "title_herbereken": "Herbereken",
   "msg_manual_adjusted": "Handmatig aangepast – klik ↺ om te herbereken",
   "btn_uploading": "Uploaden…",
-  "btn_save_changes": "Wijzigingen opslaan"
+  "btn_save_changes": "Wijzigingen opslaan",
+  "settings_bijlagen_title": "Inkoop bijlagen",
+  "settings_bijlagen_desc": "Download alle geüploade factuur­bijlagen van een bepaald jaar als ZIP-bestand.",
+  "lbl_jaar": "Jaar",
+  "lbl_bijlage_single": "bijlage",
+  "lbl_bijlagen_plural": "bijlagen",
+  "lbl_geen_bijlagen": "geen bijlagen",
+  "lbl_bezig": "Bezig…",
+  "btn_zip_download": "⬇ ZIP downloaden",
+  "msg_no_bijlagen": "Geen bijlagen gevonden voor {year}.",
+  "msg_download_failed": "Download mislukt.",
+  "btn_wc_push_stock": "↑ Push voorraad",
+  "btn_wc_pull_sales": "↓ Pull verkopen"
 };

@@ -655,5 +655,17 @@ window.BREW_TRANS["en"] = {
   "title_herbereken": "Recalculate",
   "msg_manual_adjusted": "Manually adjusted – click ↺ to recalculate",
   "btn_uploading": "Uploading…",
-  "btn_save_changes": "Save changes"
+  "btn_save_changes": "Save changes",
+  "settings_bijlagen_title": "Purchase attachments",
+  "settings_bijlagen_desc": "Download all uploaded invoice attachments for a specific year as a ZIP file.",
+  "lbl_jaar": "Year",
+  "lbl_bijlage_single": "attachment",
+  "lbl_bijlagen_plural": "attachments",
+  "lbl_geen_bijlagen": "no attachments",
+  "lbl_bezig": "Busy…",
+  "btn_zip_download": "⬇ Download ZIP",
+  "msg_no_bijlagen": "No attachments found for {year}.",
+  "msg_download_failed": "Download failed.",
+  "btn_wc_push_stock": "↑ Push stock",
+  "btn_wc_pull_sales": "↓ Pull sales"
 };
