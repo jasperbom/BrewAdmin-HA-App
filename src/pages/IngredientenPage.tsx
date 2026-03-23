@@ -387,7 +387,7 @@ const IngredientenPage: React.FC<Props> = ({
                 <span className="font-medium text-sm">{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</span>
                 <div className="flex items-center gap-1">
                   <Btn s="sm" v="header" onClick={openIngEdit}>✏️</Btn>
-                  <button title={activeLots(sel).length > 0 ? 'Verwijderen niet mogelijk: er zijn actieve lots' : 'Ingrediënt verwijderen'} onClick={deleteIng} disabled={activeLots(sel).length > 0} className={`text-xs px-2 py-1 rounded transition-colors ${activeLots(sel).length > 0 ? 'opacity-40 cursor-not-allowed text-white/60' : 'text-white/80 hover:text-white hover:bg-white/20'}`}>🗑</button>
+                  <button title={activeLots(sel).length > 0 ? t('err_delete_has_active_lots') : t('title_delete_ingredient')} onClick={deleteIng} disabled={activeLots(sel).length > 0} className={`text-xs px-2 py-1 rounded transition-colors ${activeLots(sel).length > 0 ? 'opacity-40 cursor-not-allowed text-white/60' : 'text-white/80 hover:text-white hover:bg-white/20'}`}>🗑</button>
                   <Btn s="sm" v="header" onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(String(sel)); setShowO(true) }}>{t('btn_add_lot')}</Btn>
                 </div>
               </div>

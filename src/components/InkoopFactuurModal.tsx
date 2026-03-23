@@ -237,8 +237,8 @@ function InkoopFactuurModal({
   }
 
   const voegVrijeToe = () => {
-    if (!vrijeForm.naam.trim()) { alert('Vul een omschrijving in'); return }
-    if (!parseFloat(vrijeForm.netto)) { alert('Vul een bedrag in'); return }
+    if (!vrijeForm.naam.trim()) { alert(t('err_fill_description')); return }
+    if (!parseFloat(vrijeForm.netto)) { alert(t('err_fill_amount')); return }
     if (editingVrijeIdx !== null) {
       setVrijeList(prev => prev.map((r: any, i: number) => i===editingVrijeIdx ? {...vrijeForm, _id:r._id} : r))
       setEditingVrijeIdx(null)

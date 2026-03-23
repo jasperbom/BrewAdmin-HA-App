@@ -662,8 +662,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p className="text-xs text-gray-400 mb-3">Stel een standaard BTW% in per type. Dit wordt vooraf ingevuld bij inkoop boeken, maar blijft aanpasbaar.</p>
           <div className="flex gap-2">
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder="Nieuw type..." value={newIngType} onChange={(e: any)=>setNewIngType(e.target.value)}
-              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert('Type bestaat al.');return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}} />
-            <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert('Type bestaat al.');return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}>Toevoegen</Btn>
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}} />
+            <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}>{t('btn_add')}</Btn>
           </div>
         </div>
       )}
