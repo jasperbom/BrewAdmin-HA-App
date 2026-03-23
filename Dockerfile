@@ -1,9 +1,24 @@
+# ── Stage 1: frontend build ──────────────────────────────────────────────────
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /build
+
+# Installeer dependencies eerst (betere Docker cache)
+COPY package.json ./
+RUN npm install
+
+# Kopieer broncode en bouw
+COPY vite.config.ts tsconfig.json tailwind.config.js postcss.config.js index.html ./
+COPY src/ ./src/
+RUN npm run build
+
+# ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.12-alpine
 
 WORKDIR /app
 
 COPY server.py .
-COPY dist/index.html ./static/index.html
+COPY --from=frontend-builder /build/dist/index.html ./static/index.html
 COPY entrypoint.sh /entrypoint.sh
 
 # su-exec: lichtgewicht tool om na rechten-fix naar non-root te wisselen.
