@@ -1,5 +1,5 @@
 import React from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 
@@ -31,7 +31,9 @@ function AccijnsPage({bat, acc, setAcc}: any) {
 
   const fmtMonth = (key: string) => {
     const [y,m] = key.split('-');
-    return new Date(Number(y), Number(m)-1, 1).toLocaleString('nl-NL', {month:'long', year:'numeric'});
+    const localeMap: Record<string,string> = {nl:'nl-NL',en:'en-GB',de:'de-DE',fr:'fr-FR',es:'es-ES'};
+    const locale = localeMap[getLang()] || 'nl-NL';
+    return new Date(Number(y), Number(m)-1, 1).toLocaleString(locale, {month:'long', year:'numeric'});
   };
 
   // Groepeer records per unieke batch (batch_id + batch_nummer), alle verpakkingen samengeteld

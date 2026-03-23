@@ -275,12 +275,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('settings_nav_color_desc')}</p>
         <div className="flex flex-wrap gap-3">
           {[
-            {id:'amber',  label:'Amber',  colors:['#451a03','#78350f','#d97706','#fde68a','#fffbeb']},
-            {id:'green',  label:'Groen',  colors:['#052e16','#14532d','#16a34a','#bbf7d0','#f0fdf4']},
-            {id:'blue',   label:'Blauw',  colors:['#172554','#1e3a8a','#2563eb','#bfdbfe','#eff6ff']},
-            {id:'slate',  label:'Donker', colors:['#020617','#1e293b','#64748b','#cbd5e1','#f8fafc']},
-            {id:'red',    label:'Rood',   colors:['#450a0a','#7f1d1d','#dc2626','#fecaca','#fef2f2']},
-            {id:'purple', label:'Paars',  colors:['#2e1065','#4c1d95','#7c3aed','#ddd6fe','#f5f3ff']},
+            {id:'amber',  label:t('nav_color_amber'),  colors:['#451a03','#78350f','#d97706','#fde68a','#fffbeb']},
+            {id:'green',  label:t('nav_color_green'),  colors:['#052e16','#14532d','#16a34a','#bbf7d0','#f0fdf4']},
+            {id:'blue',   label:t('nav_color_blue'),   colors:['#172554','#1e3a8a','#2563eb','#bfdbfe','#eff6ff']},
+            {id:'slate',  label:t('nav_color_dark'),   colors:['#020617','#1e293b','#64748b','#cbd5e1','#f8fafc']},
+            {id:'red',    label:t('nav_color_red'),    colors:['#450a0a','#7f1d1d','#dc2626','#fecaca','#fef2f2']},
+            {id:'purple', label:t('nav_color_purple'), colors:['#2e1065','#4c1d95','#7c3aed','#ddd6fe','#f5f3ff']},
           ].map(c => (
             <button key={c.id} onClick={()=>setNavTheme(c.id)}
               className={`flex flex-col items-center gap-1.5 p-1 rounded-xl border-2 transition-all ${navTheme===c.id ? 't-border scale-105' : 'border-transparent hover:border-gray-300'}`}>
@@ -614,10 +614,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* BTW aangifte periode */}
       <div className={card}>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">BTW aangifte periode</h2>
-        <p className="text-sm text-gray-500 mb-4">Kies of je BTW-aangifte per maand of per kwartaal wordt ingediend. Dit bepaalt de weergave op de Aangiftes pagina.</p>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_btw_period_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_btw_period_desc')}</p>
         <div className="flex gap-3">
-          {[{id:'kwartaal', label:'Per kwartaal'}, {id:'maand', label:'Per maand'}].map(opt => (
+          {[{id:'kwartaal', label:t('settings_btw_period_quarterly')}, {id:'maand', label:t('settings_btw_period_monthly')}].map(opt => (
             <button key={opt.id} onClick={()=>setBtwInst((prev: any)=>({...prev, periode:opt.id}))}
               className={`px-5 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${(btwInst?.periode||'kwartaal')===opt.id ? 'tbtn border-transparent shadow' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
               {opt.label}
@@ -630,8 +630,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* INGREDIËNTEN TYPES */}
       {activeSection==='ingredienten' && (
         <div className={card}>
-          <h2 className="text-lg font-semibold text-gray-700 mb-1">Ingredient-types</h2>
-          <p className="text-sm text-gray-500 mb-4">Beheer de categorieën voor ingrediënten. Verwijderen is alleen mogelijk als er geen ingrediënten aan het type gekoppeld zijn.</p>
+          <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ingredient_types_title')}</h2>
+          <p className="text-sm text-gray-500 mb-4">{t('settings_ingredient_types_desc')}</p>
           <div className="space-y-2 mb-4">
             {ingTypes.map((typ: any, idx: number) => (
               <div key={idx} className="flex items-center gap-2">
@@ -640,18 +640,18 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   onBlur={(e: any)=>{const val=e.target.value.trim();if(val&&val!==typ){setIngTypes((prev: any)=>prev.map((tp: any,i: number)=>i===idx?val:tp));setIngTypeBtw((prev: any)=>{const next={...prev};if(prev[typ]!=null){next[val]=prev[typ];delete next[typ];}return next;})}}}
                   onChange={(e: any)=>setIngTypes((prev: any)=>prev.map((tp: any,i: number)=>i===idx?e.target.value:tp))} />
                 <select value={ingTypeBtw[typ]??''} onChange={(e: any)=>{const v=e.target.value;setIngTypeBtw((prev: any)=>v===''?{...prev,[typ]:undefined}:{...prev,[typ]:Number(v)});}}
-                  title="Standaard BTW%"
+                  title={t('settings_ingredient_btw_label')}
                   className="border rounded px-2 py-1.5 text-sm t-input w-28">
-                  <option value="">BTW%</option>
+                  <option value="">{t('settings_ingredient_btw_option')}</option>
                   <option value="0">0%</option>
                   <option value="9">9%</option>
                   <option value="21">21%</option>
                 </select>
                 <button
-                  title={ing.some((i: any)=>i.type===typ)?`Type "${typ}" is in gebruik`:'Verwijderen'}
+                  title={ing.some((i: any)=>i.type===typ)?t('err_ingredient_type_in_use').replace('{typ}',typ):t('btn_delete')}
                   onClick={()=>{
-                    if(ing.some((i: any)=>i.type===typ)){alert(`Type "${typ}" is in gebruik door ingrediënten en kan niet worden verwijderd.`);return;}
-                    if(!confirm(`Type "${typ}" verwijderen?`))return;
+                    if(ing.some((i: any)=>i.type===typ)){alert(t('err_ingredient_type_in_use_detail').replace('{typ}',typ));return;}
+                    if(!confirm(t('confirm_ingredient_type_delete').replace('{typ}',typ)))return;
                     setIngTypes((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
                     setIngTypeBtw((prev: any)=>{const next={...prev};delete next[typ];return next;});
                   }}
@@ -659,9 +659,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-400 mb-3">Stel een standaard BTW% in per type. Dit wordt vooraf ingevuld bij inkoop boeken, maar blijft aanpasbaar.</p>
+          <p className="text-xs text-gray-400 mb-3">{t('settings_ingredient_btw_desc')}</p>
           <div className="flex gap-2">
-            <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder="Nieuw type..." value={newIngType} onChange={(e: any)=>setNewIngType(e.target.value)}
+            <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_new_ingredient_type')} value={newIngType} onChange={(e: any)=>setNewIngType(e.target.value)}
               onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}} />
             <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}>{t('btn_add')}</Btn>
           </div>
