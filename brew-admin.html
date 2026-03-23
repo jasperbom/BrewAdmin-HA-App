@@ -3783,7 +3783,6 @@ const t = (key) => {
 const BF_MAP = {"Planning":"Gepland","Brewing":"Brouwen","Fermenting":"Vergisten","Conditioning":"Conditioneren","Carbonating":"Conditioneren","Packaging":"Verpakt","Completed":"Gesloten","Archived":"Gesloten"};
 const STATUS_CLR = {"Gepland":"bg-slate-100 text-slate-600 ring-1 ring-slate-200","Brouwen":"bg-blue-100 text-blue-700 ring-1 ring-blue-200","Vergisten":"bg-amber-100 text-amber-700 ring-1 ring-amber-200","Vergisting":"bg-amber-100 text-amber-700 ring-1 ring-amber-200","Conditioneren":"bg-purple-100 text-purple-700 ring-1 ring-purple-200","Lagering":"bg-purple-100 text-purple-700 ring-1 ring-purple-200","Verpakt":"bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200","Gesloten":"bg-gray-100 text-gray-500 ring-1 ring-gray-200"};
 const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Verpakt","Gesloten"];
-const ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"];
 const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"];
 const EENHEDEN = ["kg","g","L","mL","pkg","stuks"];
 
@@ -4609,7 +4608,7 @@ function InkoopFactuurModal({ knownLeveranciers=[], ing=[], onderdelen=[], onSav
           body: JSON.stringify({data: b64}),
         });
         if (resp.ok) bijlage = {naam: bijlageFile.name, bestand: filename};
-      } catch(e) { console.error('Upload mislukt', e); }
+      } catch(e) { /* upload failed silently */ }
       setUploading(false);
     }
     onSave({
@@ -6122,7 +6121,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
       const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
       if (!prods?.length) return;
       await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
-    } catch(e) { console.warn('WC auto-push mislukt:', e.message); }
+    } catch(e) { /* WC auto-push failed silently */ }
   };
 
   const runBfSync = async () => {
@@ -6959,7 +6958,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                       setIForm(f=>({...f,ingredient_id:id,ingredient_naam:o?o.naam:'',ingredient_type:o?o.type:f.ingredient_type,lot_id:'',kosten:''}));
                     }} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
                       <option value="">{t('ing_choose_ingredient_opt')}</option>
-                      {ING_TYPES.map(ingTyp=>{const r=[...ing.filter(i=>i.type===ingTyp)].sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));return r.length?<optgroup key={ingTyp} label={t('ing_type_'+ingTyp.toLowerCase())}>{r.map(i=><option key={i.id} value={i.id}>{i.naam}</option>)}</optgroup>:null;})}
+                      {BUILTIN_ING_TYPES.map(ingTyp=>{const r=[...ing.filter(i=>i.type===ingTyp)].sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));return r.length?<optgroup key={ingTyp} label={t('ing_type_'+ingTyp.toLowerCase())}>{r.map(i=><option key={i.id} value={i.id}>{i.naam}</option>)}</optgroup>:null;})}
                       <option value="custom">{t('ing_free_fill')}</option>
                     </select>
                   </div>
@@ -7239,7 +7238,7 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {bLog.map(l=>{
-                        const t = TYPE[l.type] || {icon:'•', label:l.type||'—', cls:'text-gray-600 bg-gray-100'};
+                        const typeInfo = TYPE[l.type] || {icon:'•', label:l.type||'—', cls:'text-gray-600 bg-gray-100'};
                         const omschr = l.ingredient_naam
                           ? l.ingredient_naam + (l.lotnummer ? ` · lot: ${l.lotnummer}` : '')
                           : l.verpakking_type || l.referentie || '—';
@@ -7250,8 +7249,8 @@ function BatchesPage({ing, setIng, lots, setLots, bat, setBat, bi, setBi, av, se
                           <tr key={l.id} className="hover:bg-gray-50">
                             <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{l.datum||'—'}</td>
                             <td className="px-3 py-1.5">
-                              <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${t.cls}`}>
-                                {t.icon} {t.label}
+                              <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${typeInfo.cls}`}>
+                                {typeInfo.icon} {typeInfo.label}
                               </span>
                             </td>
                             <td className="px-3 py-1.5 text-xs">{omschr}</td>
@@ -9936,7 +9935,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           f.id === factuurId ? {...f, bijlage: {naam: file.name, bestand: filename}} : f
         ));
       }
-    } catch(e) { console.error('Upload mislukt', e); }
+    } catch(e) { /* upload failed silently */ }
     setBijlageUploading(null);
   };
 
@@ -10970,16 +10969,16 @@ function App() {
   const nt = NAV_THEMES[navTheme] || NAV_THEMES.amber;
   const navStyle = {background:`linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`, borderBottomColor: nt.accent};
   React.useEffect(() => {
-    const t = NAV_THEMES[navTheme] || NAV_THEMES.amber;
+    const th = NAV_THEMES[navTheme] || NAV_THEMES.amber;
     const r = document.documentElement.style;
-    r.setProperty('--t-accent', t.accent);
-    r.setProperty('--t-light',  t.light);
-    r.setProperty('--t-pale',   t.pale);
-    r.setProperty('--t-text',   t.text);
-    r.setProperty('--t-btn',    t.btn);
-    r.setProperty('--t-btn-h',  t.btnH);
-    r.setProperty('--t-btn-a',  t.btnA);
-    r.setProperty('--t-bg',     t.bg);
+    r.setProperty('--t-accent', th.accent);
+    r.setProperty('--t-light',  th.light);
+    r.setProperty('--t-pale',   th.pale);
+    r.setProperty('--t-text',   th.text);
+    r.setProperty('--t-btn',    th.btn);
+    r.setProperty('--t-btn-h',  th.btnH);
+    r.setProperty('--t-btn-a',  th.btnA);
+    r.setProperty('--t-bg',     th.bg);
   }, [navTheme]);
 
   return (
