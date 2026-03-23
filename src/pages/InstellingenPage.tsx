@@ -353,7 +353,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             {logo && (
               <button onClick={()=>{ if(confirm(t('settings_logo_reset_confirm'))) setLogo(null); }}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors w-fit">
-                Reset naar standaard
+                {t('settings_logo_reset')}
               </button>
             )}
           </div>
