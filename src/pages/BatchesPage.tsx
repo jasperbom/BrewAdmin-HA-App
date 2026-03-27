@@ -571,6 +571,39 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     }
   }
 
+  // Compute open state at component level for auto-fetch effect
+  const grafiekIsOpen = !!(grafiekOpen && typeof grafiekOpen === 'object' && !Array.isArray(grafiekOpen)
+    ? (grafiekOpen as any)[sel as any] : false)
+
+  // HA temperature fetch — defined at component level so useEffect can reference it
+  const doHaFetch = React.useCallback(async () => {
+    if (!haInst?.enabled || !sel) return
+    const curBatch = (bat||[]).find((b: any) => b.id === sel)
+    const sensors: any[] = haInst?.sensors || []
+    const sensor = curBatch?.tank ? sensors.find((s: any) => s.tank === curBatch.tank) : null
+    const entityId = sensor?.entity || (haInst as any)?.sensorEntity || ''
+    if (!entityId) return
+    setHaSyncing(true)
+    try {
+      const d = await haGetState(entityId)
+      const val = parseFloat(d.state)
+      if (!isNaN(val)) setMetingForm((f: any) => ({...f, temp: String(val)}))
+    } catch(_e) {}
+    setHaSyncing(false)
+  }, [sel, haInst, bat])
+
+  // Auto-fetch temperature every 10 minutes when grafiek is open and sensor configured
+  React.useEffect(() => {
+    if (!grafiekIsOpen || !haInst?.enabled || !sel) return
+    const sensors: any[] = haInst?.sensors || []
+    const curBatch = (bat||[]).find((b: any) => b.id === sel)
+    const sensor = curBatch?.tank ? sensors.find((s: any) => s.tank === curBatch.tank) : null
+    const entityId = sensor?.entity || (haInst as any)?.sensorEntity || ''
+    if (!entityId) return
+    const id = setInterval(doHaFetch, 10 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [grafiekIsOpen, sel, haInst?.enabled])
+
   const selB = bat.find((b: any) => b.id === sel)
   const bAv = sel ? (av||[]).filter((a: any) => a.batch_id === sel) : []
   const uitgeslVanAv = (avId: number) => (uit||[]).filter((u: any) => u.afvulling_id===avId).reduce((s: number, u: any) => s+Number(u.aantal||0), 0)
@@ -830,7 +863,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   const kb = (b.datum||'') + 'T' + (b.tijd||'00:00')
                   return ka.localeCompare(kb)
                 })
-              const isOpen = !!(grafiekOpen && typeof grafiekOpen === 'object' && !Array.isArray(grafiekOpen) ? grafiekOpen[selB.id] : false)
+              const isOpen = grafiekIsOpen
 
               const addMeting = () => {
                 if (!metingForm.sg && !metingForm.ph && !metingForm.temp) return
@@ -850,22 +883,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
               const deleteMeting = (id: number) => {
                 setGistMetingen((prev: any[]) => (prev||[]).filter((m: any) => m.id !== id))
-              }
-
-              const fetchHaTemp = async () => {
-                if (!haInst?.enabled) return
-                const sensors: any[] = haInst?.sensors || []
-                const sensor = selB.tank ? sensors.find((s: any) => s.tank === selB.tank) : null
-                // fall back to legacy single-sensor format
-                const entityId = sensor?.entity || haInst?.sensorEntity || ''
-                if (!entityId) return
-                setHaSyncing(true)
-                try {
-                  const d = await haGetState(entityId)
-                  const val = parseFloat(d.state)
-                  if (!isNaN(val)) setMetingForm((f: any) => ({...f, temp: String(val)}))
-                } catch(_e) { /* negeer */ }
-                setHaSyncing(false)
               }
 
               return (
@@ -903,7 +920,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         onChange={e => setMetingForm((f: any) => ({...f, temp: e.target.value}))}
                         className="border border-gray-200 rounded px-2 py-1 text-xs t-input w-20" />
                       {haInst?.enabled && (
-                        <Btn s="sm" v="secondary" onClick={fetchHaTemp} disabled={haSyncing}>
+                        <Btn s="sm" v="secondary" onClick={doHaFetch} disabled={haSyncing}>
                           {haSyncing ? '…' : '🌡 HA'}
                         </Btn>
                       )}

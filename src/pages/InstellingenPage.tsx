@@ -743,16 +743,27 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <div key={sensor.id} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50/50">
               <div className="flex items-center gap-2 flex-wrap">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-0.5">Tank ID</label>
-                  <input type="text" placeholder="FV1" value={sensor.tank}
-                    onChange={e => updateSensor(sensor.id, 'tank', e.target.value)}
-                    className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input" />
+                  <label className="block text-xs font-medium text-gray-500 mb-0.5">Tank</label>
+                  {tanks && tanks.length > 0 ? (
+                    <select value={sensor.tank} onChange={e => updateSensor(sensor.id, 'tank', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-32 t-input bg-white">
+                      <option value="">— selecteer —</option>
+                      {tanks.map((tk: any) => (
+                        <option key={tk.id} value={tk.id}>{tk.naam ? `${tk.id} (${tk.naam})` : tk.id}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="text" placeholder="FV1" value={sensor.tank}
+                      onChange={e => updateSensor(sensor.id, 'tank', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-48">
                   <label className="block text-xs font-medium text-gray-500 mb-0.5">Entity ID</label>
-                  <input type="text" placeholder="sensor.vergistingstank_temperatuur" value={sensor.entity}
+                  <input type="text" placeholder="sensor.vergistingstank_temp" value={sensor.entity}
                     onChange={e => updateSensor(sensor.id, 'entity', e.target.value)}
                     className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+                  <p className="text-xs text-gray-400 mt-0.5">Alleen kleine letters, cijfers, underscores. Bijv. <code className="bg-gray-100 px-0.5 rounded">sensor.tank1_temp</code></p>
                 </div>
                 <div className="flex items-end gap-1 pt-4">
                   <Btn v="secondary" s="sm" onClick={() => testSensor(sensor.id, sensor.entity)} disabled={sensorTesting === sensor.id || !sensor.entity}>

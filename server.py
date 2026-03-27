@@ -569,6 +569,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not entity_id:
             self._json(400, {'error': 'entity_id required'})
             return
+        if not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9_]+$', entity_id):
+            self._json(400, {'error': f'Ongeldig entity_id formaat. Gebruik bijv. sensor.tank1_temperatuur (alleen kleine letters, cijfers en underscores, met een punt als scheiding)'})
+            return
         token = os.environ.get('SUPERVISOR_TOKEN', '')
         if not token:
             self._json(503, {'error': 'SUPERVISOR_TOKEN not available — app must run as HA addon'})

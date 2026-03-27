@@ -16,6 +16,22 @@ import ReceptenPage from './pages/ReceptenPage'
 import BoekhoudingPage from './pages/BoekhoudingPage'
 import InstellingenPage from './pages/InstellingenPage'
 
+class PageErrorBoundary extends React.Component<{children: React.ReactNode, page: string}, {err: string|null}> {
+  state = { err: null as string|null }
+  static getDerivedStateFromError(e: Error) { return { err: e?.message || String(e) } }
+  componentDidUpdate(pp: any) { if (pp.page !== this.props.page) this.setState({ err: null }) }
+  render() {
+    if (this.state.err) return (
+      <div className="max-w-lg mx-auto mt-16 p-6 bg-red-50 rounded-xl border border-red-200">
+        <div className="font-semibold text-red-700 mb-1">Er is een onverwachte fout opgetreden</div>
+        <div className="text-xs text-red-500 font-mono break-all mb-3">{this.state.err}</div>
+        <button onClick={() => this.setState({err:null})} className="text-sm text-red-600 underline hover:text-red-800">Probeer opnieuw</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
+
 function App() {
   const [ing, setIng] = useStore('ingredienten');
   const [lots, setLots] = useStore('lots');
@@ -220,6 +236,7 @@ function App() {
           </div>
         </div>
       </nav>
+      <PageErrorBoundary page={page}>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
@@ -231,6 +248,7 @@ function App() {
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} />}
         {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} />}
       </main>
+      </PageErrorBoundary>
     </div>
   );
 }
