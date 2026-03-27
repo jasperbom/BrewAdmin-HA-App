@@ -271,7 +271,7 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
           const m = inView[idx]; if (!m) return null
           const x = toX(mkTs(m))
           return <text key={idx} x={x} y={H-8} textAnchor="middle" fontSize="9" fill="#6b7280">
-            {m.datum.slice(5)}{m.tijd?` ${m.tijd.slice(0,5)}`:''}
+            {m.datum.slice(5)}
           </text>
         })}
 
