@@ -612,7 +612,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const totUitgeslagen = bAv.reduce((s: number, a: any) => s + uitgeslVanAv(a.id)*Number(a.inhoud_per_eenheid||0), 0)
 
   const vpVoorraadB = (vp: any) => {
-    if (!vp.onderdelen?.length) return Number(vp.voorraad||0)
+    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad||0)
     const stocks = vp.onderdelen.map((o: any) => {
       const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
       return Math.floor(Number(od?.voorraad||0) / Number(o.aantal||1))
