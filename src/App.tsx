@@ -135,13 +135,13 @@ function App() {
     })();
   }, [bfCreds?.enabled, bfCreds?.userId]);
 
-  // Global HA auto-fetch: record temperature every 10 min for fermenting batches
+  // Global HA auto-fetch: record temperature every 10 min for all batches with a tank
   const haAutoFetch = React.useCallback(async () => {
     if (!haInst?.enabled) return
     const sensors: any[] = haInst?.sensors || []
     if (!sensors.length) return
-    const fermenting = (bat||[]).filter((b: any) => b.status === 'Vergisten' && b.tank)
-    for (const batch of fermenting) {
+    const activeBatches = (bat||[]).filter((b: any) => b.tank && b.status !== 'Gesloten' && b.status !== 'Verpakt')
+    for (const batch of activeBatches) {
       const sensor = sensors.find((s: any) => s.tank === batch.tank)
       if (!sensor?.entity) continue
       try {
