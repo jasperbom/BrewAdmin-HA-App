@@ -323,6 +323,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._serve_bijlagen_zip()
             return
 
+        if HA_PROXY_PREFIX in path:
+            self._ha_proxy(path)
+            return
+
         key = extract_key(path)
         if key is not None:
             filepath = DATA_DIR / f'{key}.json'
@@ -569,7 +573,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not entity_id:
             self._json(400, {'error': 'entity_id required'})
             return
-        if not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9_]+$', entity_id):
+        if not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$', entity_id):
             self._json(400, {'error': f'Ongeldig entity_id formaat. Gebruik bijv. sensor.tank1_temperatuur (alleen kleine letters, cijfers en underscores, met een punt als scheiding)'})
             return
         token = os.environ.get('SUPERVISOR_TOKEN', '')
@@ -585,7 +589,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 data = json.loads(r.read())
                 self._json(200, {'state': data.get('state'), 'unit': data.get('attributes', {}).get('unit_of_measurement', ''), 'attributes': data.get('attributes', {})})
         except urllib.error.HTTPError as e:
-            self._json(e.code, {'error': f'HA API returned {e.code}'})
+            try:
+                err_body = json.loads(e.read().decode())
+                msg = err_body.get('message') or err_body.get('error') or f'HA API returned {e.code}'
+            except Exception:
+                msg = f'HA API returned {e.code}'
+            self._json(e.code, {'error': msg})
         except Exception as e:
             self._json(502, {'error': str(e)})
 
