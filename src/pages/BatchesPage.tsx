@@ -38,6 +38,7 @@ interface BatchesPageProps {
   gistMetingen?: any[]
   setGistMetingen?: any
   haInst?: any
+  acc?: any[]
 }
 
 // ── Catmull-Rom spline helper ──────────────────────────────────────────────
@@ -185,7 +186,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
   log, setLog, bfCreds, bfSync, tanks, accijnsInst,
   hygieneItems, hygieneGroups, wcCreds, artikelen,
-  gistMetingen=[], setGistMetingen=()=>{}, haInst
+  gistMetingen=[], setGistMetingen=()=>{}, haInst,
+  acc=[]
 }) => {
   const [sel, setSel] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
