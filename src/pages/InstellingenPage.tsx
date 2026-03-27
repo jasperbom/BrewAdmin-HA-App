@@ -72,7 +72,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={sensorEntity:'',enabled:false}, setHaInst=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
@@ -225,19 +225,34 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     }
   }, [claudeCreds?.apiKey, claudeCreds?.enabled]);
   const [claudeMsg, setClaudeMsg] = React.useState('');
-  const [haTestMsg, setHaTestMsg] = React.useState('');
-  const [haTesting, setHaTesting] = React.useState(false);
+  const [sensorTests, setSensorTests] = React.useState<Record<number,string>>({});
+  const [sensorTesting, setSensorTesting] = React.useState<number|null>(null);
 
-  const testHaSensor = async () => {
-    if (!haInst?.sensorEntity) { setHaTestMsg('Vul een entity ID in.'); return }
-    setHaTesting(true); setHaTestMsg('');
+  const testSensor = async (id: number, entity: string) => {
+    if (!entity) return
+    setSensorTesting(id); setSensorTests((t: any) => ({...t, [id]: ''}))
     try {
-      const d = await haGetState(haInst.sensorEntity)
-      setHaTestMsg(`✓ Waarde: ${d.state}${d.unit ? ' ' + d.unit : ''}`)
+      const d = await haGetState(entity)
+      setSensorTests((t: any) => ({...t, [id]: `✓ ${d.state}${d.unit ? ' '+d.unit : ''}`}))
     } catch(e: any) {
-      setHaTestMsg(`⚠ Fout: ${e.message}`)
+      setSensorTests((t: any) => ({...t, [id]: `⚠ Fout: ${e.message}`}))
     }
-    setHaTesting(false)
+    setSensorTesting(null)
+  }
+
+  const addSensor = () => {
+    const sensors = Array.isArray(haInst?.sensors) ? haInst.sensors : []
+    const nextId = sensors.length ? Math.max(...sensors.map((s: any) => s.id)) + 1 : 1
+    setHaInst((p: any) => ({...p, sensors: [...sensors, {id: nextId, tank: '', entity: ''}]}))
+  }
+
+  const removeSensor = (id: number) => {
+    setHaInst((p: any) => ({...p, sensors: (p?.sensors||[]).filter((s: any) => s.id !== id)}))
+    setSensorTests((t: any) => { const n = {...t}; delete n[id]; return n })
+  }
+
+  const updateSensor = (id: number, field: string, value: string) => {
+    setHaInst((p: any) => ({...p, sensors: (p?.sensors||[]).map((s: any) => s.id === id ? {...s, [field]: value} : s)}))
   }
   const saveClaude = () => {
     setClaudeCreds((prev: any) => ({...prev, ...claudeForm}));
@@ -706,40 +721,62 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* HOME ASSISTANT */}
       {activeSection==='homeassistant' && <>
       <div className={card}>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">🏠 Home Assistant Temperatuursensor</h2>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">🏠 Home Assistant Sensoren</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Koppel een HA-sensor entity aan de gistgrafiek in de batchenpagina.
-          De knop <strong>🌡 HA</strong> in de gistgrafiek haalt automatisch de huidige waarde op.
-          Werkt alleen als de app als HA-addon draait.
+          Koppel HA-temperatuursensoren aan vergistingstanks. De <strong>🌡 HA</strong> knop in de gistgrafiek haalt
+          automatisch de waarde op voor de tank van de geselecteerde batch. Werkt alleen als de app als HA-addon draait.
         </p>
-        <div className="space-y-4">
-          <label className="flex items-center gap-3 cursor-pointer w-fit">
-            <div className="relative">
-              <input type="checkbox" checked={haInst?.enabled||false}
-                onChange={e => setHaInst((p: any) => ({...p, enabled: e.target.checked}))} className="sr-only peer" />
-              <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+
+        {/* Global enable toggle */}
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={haInst?.enabled||false}
+              onChange={e => setHaInst((p: any) => ({...p, enabled: e.target.checked}))} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">Ingeschakeld</span>
+        </label>
+
+        {/* Sensor list */}
+        <div className="space-y-2 mb-3">
+          {(Array.isArray(haInst?.sensors) ? haInst.sensors : []).map((sensor: any) => (
+            <div key={sensor.id} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50/50">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-0.5">Tank ID</label>
+                  <input type="text" placeholder="FV1" value={sensor.tank}
+                    onChange={e => updateSensor(sensor.id, 'tank', e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input" />
+                </div>
+                <div className="flex-1 min-w-48">
+                  <label className="block text-xs font-medium text-gray-500 mb-0.5">Entity ID</label>
+                  <input type="text" placeholder="sensor.vergistingstank_temperatuur" value={sensor.entity}
+                    onChange={e => updateSensor(sensor.id, 'entity', e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+                </div>
+                <div className="flex items-end gap-1 pt-4">
+                  <Btn v="secondary" s="sm" onClick={() => testSensor(sensor.id, sensor.entity)} disabled={sensorTesting === sensor.id || !sensor.entity}>
+                    {sensorTesting === sensor.id ? 'Testen…' : 'Test'}
+                  </Btn>
+                  <Btn v="danger" s="sm" onClick={() => removeSensor(sensor.id)}>×</Btn>
+                </div>
+              </div>
+              {sensorTests[sensor.id] && (
+                <span className={`text-sm font-medium ${sensorTests[sensor.id].startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                  {sensorTests[sensor.id]}
+                </span>
+              )}
             </div>
-            <span className="text-sm font-medium text-gray-700">Ingeschakeld</span>
-          </label>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Entity ID</label>
-            <input type="text"
-              value={haInst?.sensorEntity||''}
-              onChange={e => setHaInst((p: any) => ({...p, sensorEntity: e.target.value}))}
-              placeholder="sensor.vergistingstank_temperatuur"
-              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-sm t-input" />
-            <p className="text-xs text-gray-400 mt-1">Bijv. <code className="bg-gray-100 px-1 rounded">sensor.fermentation_tank_temperature</code></p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Btn v="secondary" onClick={testHaSensor} disabled={haTesting}>
-              {haTesting ? 'Testen…' : 'Test verbinding'}
-            </Btn>
-            {haTestMsg && <span className={`text-sm font-medium ${haTestMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{haTestMsg}</span>}
-          </div>
+          ))}
+          {(!Array.isArray(haInst?.sensors) || haInst.sensors.length === 0) && (
+            <p className="text-sm text-gray-400 italic py-1">Geen sensoren geconfigureerd.</p>
+          )}
         </div>
+        <Btn v="secondary" s="sm" onClick={addSensor}>+ Sensor toevoegen</Btn>
+
         <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
-          <p>De app communiceert via de Home Assistant Supervisor API (<code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code>).</p>
-          <p>Als de app niet als HA-addon draait, zal de test een foutmelding geven.</p>
+          <p>Communiceert via <code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code>.</p>
+          {tanks && tanks.length > 0 && <p>Geconfigureerde tanks: <strong className="text-gray-500">{tanks.map((tk: any) => tk.id).join(', ')}</strong></p>}
         </div>
       </div>
       </>}

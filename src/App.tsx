@@ -60,7 +60,7 @@ function App() {
   const [breweryDetails, setBreweryDetails] = useStore('brewery_details', {naam:'',straat:'',huisnummer:'',postcode:'',stad:'',btw_nummer:'',kvk_nummer:'',iban:'',betalingstermijn:14});
   const [factuurCounter, setFactuurCounter] = useStore('factuur_counter', {jaar:0,nr:0});
   const [gistMetingen, setGistMetingen] = useStore('gist_metingen', []);
-  const [haInst, setHaInst] = useStore('ha_instellingen', {sensorEntity: '', enabled: false});
+  const [haInst, setHaInst] = useStore('ha_instellingen', {enabled: false, sensors: []});
 
   // Sync lang to i18n module on each render (equivalent to _lang = lang in source)
   i18nSetLang(lang);

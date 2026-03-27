@@ -393,9 +393,15 @@ export interface GistMeting {
   opmerking?: string
 }
 
+export interface HaSensor {
+  id: number
+  tank: string
+  entity: string
+}
+
 export interface HaInst {
-  sensorEntity: string
   enabled: boolean
+  sensors: HaSensor[]
 }
 
 export type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'

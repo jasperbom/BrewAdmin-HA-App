@@ -180,6 +180,21 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
+class BatchErrorBoundary extends React.Component<{children: React.ReactNode}, {error: string|null}> {
+  state = { error: null as string|null }
+  static getDerivedStateFromError(e: Error) { return { error: e?.message || String(e) } }
+  render() {
+    if (this.state.error) return (
+      <div className="bg-red-50 rounded-xl p-4 text-sm border border-red-200">
+        <div className="font-medium text-red-700">Er is een fout opgetreden bij het laden van de batchdetails.</div>
+        <div className="mt-1 text-xs text-red-500 font-mono">{this.state.error}</div>
+        <button onClick={() => this.setState({error:null})} className="mt-2 text-xs text-red-600 underline hover:text-red-800">Probeer opnieuw</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
+
 const BatchesPage: React.FC<BatchesPageProps> = ({
   ing, setIng, lots, setLots, bat, setBat, bi, setBi,
   av, setAv, uit,
@@ -670,6 +685,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         {/* Batch detail */}
         {selB && (<>
           <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>
+          <BatchErrorBoundary key={selB.id}>
           <div className="flex-1 min-w-0 space-y-4">
             {/* Header card */}
             <div className="bg-white rounded-xl shadow-card overflow-hidden">
@@ -814,7 +830,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   const kb = (b.datum||'') + 'T' + (b.tijd||'00:00')
                   return ka.localeCompare(kb)
                 })
-              const isOpen = !!grafiekOpen[selB.id]
+              const isOpen = !!(grafiekOpen && typeof grafiekOpen === 'object' && !Array.isArray(grafiekOpen) ? grafiekOpen[selB.id] : false)
 
               const addMeting = () => {
                 if (!metingForm.sg && !metingForm.ph && !metingForm.temp) return
@@ -837,13 +853,18 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               }
 
               const fetchHaTemp = async () => {
-                if (!haInst?.sensorEntity) return
+                if (!haInst?.enabled) return
+                const sensors: any[] = haInst?.sensors || []
+                const sensor = selB.tank ? sensors.find((s: any) => s.tank === selB.tank) : null
+                // fall back to legacy single-sensor format
+                const entityId = sensor?.entity || haInst?.sensorEntity || ''
+                if (!entityId) return
                 setHaSyncing(true)
                 try {
-                  const d = await haGetState(haInst.sensorEntity)
+                  const d = await haGetState(entityId)
                   const val = parseFloat(d.state)
                   if (!isNaN(val)) setMetingForm((f: any) => ({...f, temp: String(val)}))
-                } catch { /* negeer */ }
+                } catch(_e) { /* negeer */ }
                 setHaSyncing(false)
               }
 
@@ -1456,6 +1477,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
           </div>
+          </BatchErrorBoundary>
         </>)}
       </div>
 
