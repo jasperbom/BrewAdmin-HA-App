@@ -179,7 +179,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
                       {(() => {
                         const ids = (bat||[]).filter((b: any) => b.tank === tk.id).map((b: any) => b.id)
                         const last = (gistMetingen||[]).filter((m: any) => ids.includes(m.batch_id) && m.temp != null).sort((a: any, b: any) => (b.datum+(b.tijd||'')).localeCompare(a.datum+(a.tijd||'')))[0]
-                        return last ? <div className="text-xs text-gray-500 font-mono mt-1">{last.temp}°C</div> : null
+                        return last ? <div className="text-sm font-bold text-gray-700 mt-1">{last.temp}°C</div> : null
                       })()}
                     </div>
                   </div>
