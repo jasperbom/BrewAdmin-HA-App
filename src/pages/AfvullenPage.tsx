@@ -62,7 +62,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
     if (!vp) { alert(t('err_invalid_packaging')); return }
     const avail = vpVoorraadA(vp)
     if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}',String(avail))); return }
-    if (vp.onderdelen?.length) {
+    if (Array.isArray(vp.onderdelen) && vp.onderdelen.length) {
       setOnderdelen((prev: any[]) => prev.map((od: any) => {
         const usage = vp.onderdelen.find((o: any) => o.onderdeel_id===od.id)
         return usage ? {...od, voorraad:Math.max(0,Number(od.voorraad||0)-n*Number(usage.aantal||1))} : od

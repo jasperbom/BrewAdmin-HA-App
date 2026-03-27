@@ -461,7 +461,7 @@ const IngredientenPage: React.FC<Props> = ({
                         <td className="px-3 py-2.5 font-medium">{v.naam}{v.type && <span className="ml-1.5 text-xs text-gray-400 capitalize">{v.type}</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-500">{Number(v.inhoud_liter || 0)}L</td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">
-                          {(v.onderdelen || []).length === 0 ? <span className="text-gray-300">{t('packaging_no_components')}</span> : (v.onderdelen || []).map((o: any) => { const od = onderdelen.find((d: any) => d.id === o.onderdeel_id); return od ? <span key={o.onderdeel_id} className="inline-block mr-2">{o.aantal}× {od.naam}</span> : null })}
+                          {(Array.isArray(v.onderdelen) ? v.onderdelen : []).length === 0 ? <span className="text-gray-300">{t('packaging_no_components')}</span> : (Array.isArray(v.onderdelen) ? v.onderdelen : []).map((o: any) => { const od = onderdelen.find((d: any) => d.id === o.onderdeel_id); return od ? <span key={o.onderdeel_id} className="inline-block mr-2">{o.aantal}× {od.naam}</span> : null })}
                         </td>
                         <td className="px-3 py-2.5 text-right">
                           <span className={`font-mono font-semibold ${stock === 0 ? 'text-red-600' : stock <= 5 ? 'text-yellow-600' : 'text-gray-800'}`}>{stock}</span>
