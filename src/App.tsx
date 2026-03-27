@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe } from './utils/api'
+import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
@@ -15,6 +15,22 @@ import AccijnsPage from './pages/AccijnsPage'
 import ReceptenPage from './pages/ReceptenPage'
 import BoekhoudingPage from './pages/BoekhoudingPage'
 import InstellingenPage from './pages/InstellingenPage'
+
+class PageErrorBoundary extends React.Component<{children: React.ReactNode, page: string}, {err: string|null}> {
+  state = { err: null as string|null }
+  static getDerivedStateFromError(e: Error) { return { err: e?.message || String(e) } }
+  componentDidUpdate(pp: any) { if (pp.page !== this.props.page) this.setState({ err: null }) }
+  render() {
+    if (this.state.err) return (
+      <div className="max-w-lg mx-auto mt-16 p-6 bg-red-50 rounded-xl border border-red-200">
+        <div className="font-semibold text-red-700 mb-1">Er is een onverwachte fout opgetreden</div>
+        <div className="text-xs text-red-500 font-mono break-all mb-3">{this.state.err}</div>
+        <button onClick={() => this.setState({err:null})} className="text-sm text-red-600 underline hover:text-red-800">Probeer opnieuw</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
 
 function App() {
   const [ing, setIng] = useStore('ingredienten');
@@ -59,6 +75,8 @@ function App() {
   const [afboekingen, setAfboekingen] = useStore('afboekingen', []);
   const [breweryDetails, setBreweryDetails] = useStore('brewery_details', {naam:'',straat:'',huisnummer:'',postcode:'',stad:'',btw_nummer:'',kvk_nummer:'',iban:'',betalingstermijn:14});
   const [factuurCounter, setFactuurCounter] = useStore('factuur_counter', {jaar:0,nr:0});
+  const [gistMetingen, setGistMetingen] = useStore('gist_metingen', []);
+  const [haInst, setHaInst] = useStore('ha_instellingen', {enabled: false, sensors: []});
 
   // Sync lang to i18n module on each render (equivalent to _lang = lang in source)
   i18nSetLang(lang);
@@ -116,6 +134,37 @@ function App() {
       } catch(e) { /* silent */ }
     })();
   }, [bfCreds?.enabled, bfCreds?.userId]);
+
+  // Global HA auto-fetch: record temperature every 10 min for fermenting batches
+  const haAutoFetch = React.useCallback(async () => {
+    if (!haInst?.enabled) return
+    const sensors: any[] = haInst?.sensors || []
+    if (!sensors.length) return
+    const fermenting = (bat||[]).filter((b: any) => b.status === 'Vergisten' && b.tank)
+    for (const batch of fermenting) {
+      const sensor = sensors.find((s: any) => s.tank === batch.tank)
+      if (!sensor?.entity) continue
+      try {
+        const d = await haGetState(sensor.entity)
+        const val = parseFloat(d.state)
+        if (isNaN(val)) continue
+        const now = new Date()
+        const datum = now.toISOString().split('T')[0]
+        const tijd = now.toTimeString().slice(0, 5)
+        setGistMetingen((prev: any[]) => {
+          const all = prev || []
+          const id = all.length ? Math.max(0, ...all.map((m: any) => Number(m.id)||0)) + 1 : 1
+          return [...all, { id, batch_id: batch.id, datum, tijd, temp: val, auto: true }]
+        })
+      } catch {}
+    }
+  }, [bat, haInst])
+
+  React.useEffect(() => {
+    if (!haInst?.enabled) return
+    const id = setInterval(haAutoFetch, 10 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [haInst?.enabled, haAutoFetch])
 
   const doExport = () => excelExport(ing,lots,bat,bi,av,uit,acc,verpakkingen,onderdelen,log,archief,geslotenBieren,recepten,tanks,artikelen,hygieneItems,hygieneGroups,inkoopFacturen,verkoopFacturen,bestellingen,bestellingPicks,afboekingen);
 
@@ -218,17 +267,19 @@ function App() {
           </div>
         </div>
       </nav>
+      <PageErrorBoundary page={page}>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
+        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} gistMetingen={gistMetingen} haInst={haInst} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
-        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} />}
+        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} acc={acc} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} />}
         {page==='voorraad' && <BierVoorraadPage bat={bat} av={av} uit={uit} bestellingPicks={bestellingPicks} bestellingen={bestellingen} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} />}
       </main>
+      </PageErrorBoundary>
     </div>
   );
 }

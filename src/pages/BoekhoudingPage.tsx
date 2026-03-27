@@ -318,22 +318,26 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   // (no early return — Inkoop tab is always available)
 
+  const tabBtn = (tabId: string, label: string) => (
+    <button onClick={() => setMainTab(tabId)}
+      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${mainTab === tabId ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+      {label}
+    </button>
+  )
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+    <div className="space-y-5">
 
       {/* Header + hoofd-tabs */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold text-gray-800">
-          {t('nav_boekhouding')}
-          {mainTab==='aangiftes' && <span className="ml-2 text-base font-normal text-gray-400">{aangifteYear}</span>}
-        </h2>
-        <div className="flex gap-2">
-          {[{id:'verkoop',l:t('tab_verkoop')},{id:'inkoop',l:t('tab_inkoop')},{id:'aangiftes',l:t('tab_aangiftes')}].map((tab: any)=>(
-            <button key={tab.id} onClick={()=>setMainTab(tab.id)}
-              className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${mainTab===tab.id?'tbtn shadow':'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {tab.l}
-            </button>
-          ))}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-1">
+          <h2 className="text-xl font-bold text-gray-800 mr-4">
+            {t('nav_boekhouding')}
+            {mainTab === 'aangiftes' && <span className="ml-2 text-base font-normal text-gray-400">{aangifteYear}</span>}
+          </h2>
+          {tabBtn('verkoop', t('tab_verkoop'))}
+          {tabBtn('inkoop', t('tab_inkoop'))}
+          {tabBtn('aangiftes', t('tab_aangiftes'))}
         </div>
       </div>
 

@@ -13,6 +13,13 @@ export const _WC_PROXY = (() => { const p = window.location.pathname; return p.r
 export const _WC_PUT   = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/put/' })()
 export const _WC_TEST  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/test' })()
 export const _WC_PING  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping' })()
+export const _HA_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/homeassistant/' })()
+
+export const haGetState = async (entityId: string): Promise<{state: string, unit: string, attributes: any}> => {
+  const r = await fetch(_HA_PROXY + entityId)
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
+  return r.json()
+}
 
 // Sync state
 export const _allKeys     = new Set<string>()

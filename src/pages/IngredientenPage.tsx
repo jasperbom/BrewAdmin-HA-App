@@ -142,7 +142,7 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const vpVoorraad = (vp: any) => {
-    if (!vp.onderdelen?.length) return Number(vp.voorraad || 0)
+    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad || 0)
     const stocks = vp.onderdelen.map((o: any) => {
       const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
       return Math.floor(Number(od?.voorraad || 0) / Number(o.aantal || 1))
@@ -150,7 +150,7 @@ const IngredientenPage: React.FC<Props> = ({
     return stocks.length ? Math.min(...stocks) : 0
   }
   const vpKosten = (vp: any) => {
-    if (!vp.onderdelen?.length) return Number(vp.kosten_verpakking || 0) + Number(vp.kosten_afsluiting || 0) + Number(vp.kosten_label || 0)
+    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.kosten_verpakking || 0) + Number(vp.kosten_afsluiting || 0) + Number(vp.kosten_label || 0)
     return vp.onderdelen.reduce((s: number, o: any) => {
       const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
       return s + Number(od?.kosten_per_stuk || 0) * Number(o.aantal || 1)
@@ -317,7 +317,7 @@ const IngredientenPage: React.FC<Props> = ({
     <div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-1">
-          <h2 className="text-lg font-semibold mr-4">
+          <h2 className="text-xl font-bold text-gray-800 mr-4">
             {tab === 'verpakkingen' ? `${t('ing_tab_packaging')}${verpakkingen.some((v: any) => Number(v.voorraad || 0) === 0) ? ' ⚠️' : ''}` : tab === 'mutaties' ? t('ing_tab_mutations') : t('ing_tab_ingredients')}
           </h2>
           {tabBtn('ingredienten', t('ing_tab_ingredients'))}
@@ -461,7 +461,7 @@ const IngredientenPage: React.FC<Props> = ({
                         <td className="px-3 py-2.5 font-medium">{v.naam}{v.type && <span className="ml-1.5 text-xs text-gray-400 capitalize">{v.type}</span>}</td>
                         <td className="px-3 py-2.5 text-right text-gray-500">{Number(v.inhoud_liter || 0)}L</td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">
-                          {(v.onderdelen || []).length === 0 ? <span className="text-gray-300">{t('packaging_no_components')}</span> : (v.onderdelen || []).map((o: any) => { const od = onderdelen.find((d: any) => d.id === o.onderdeel_id); return od ? <span key={o.onderdeel_id} className="inline-block mr-2">{o.aantal}× {od.naam}</span> : null })}
+                          {(Array.isArray(v.onderdelen) ? v.onderdelen : []).length === 0 ? <span className="text-gray-300">{t('packaging_no_components')}</span> : (Array.isArray(v.onderdelen) ? v.onderdelen : []).map((o: any) => { const od = onderdelen.find((d: any) => d.id === o.onderdeel_id); return od ? <span key={o.onderdeel_id} className="inline-block mr-2">{o.aantal}× {od.naam}</span> : null })}
                         </td>
                         <td className="px-3 py-2.5 text-right">
                           <span className={`font-mono font-semibold ${stock === 0 ? 'text-red-600' : stock <= 5 ? 'text-yellow-600' : 'text-gray-800'}`}>{stock}</span>

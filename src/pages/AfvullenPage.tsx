@@ -47,7 +47,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
   }, 0)
 
   const vpVoorraadA = (vp: any) => {
-    if (!vp.onderdelen?.length) return Number(vp.voorraad||0)
+    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad||0)
     const stocks = vp.onderdelen.map((o: any) => {
       const od = onderdelen.find((d: any) => d.id===o.onderdeel_id)
       return Math.floor(Number(od?.voorraad||0) / Number(o.aantal||1))
@@ -62,7 +62,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
     if (!vp) { alert(t('err_invalid_packaging')); return }
     const avail = vpVoorraadA(vp)
     if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}',String(avail))); return }
-    if (vp.onderdelen?.length) {
+    if (Array.isArray(vp.onderdelen) && vp.onderdelen.length) {
       setOnderdelen((prev: any[]) => prev.map((od: any) => {
         const usage = vp.onderdelen.find((o: any) => o.onderdeel_id===od.id)
         return usage ? {...od, voorraad:Math.max(0,Number(od.voorraad||0)-n*Number(usage.aantal||1))} : od
