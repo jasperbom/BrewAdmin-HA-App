@@ -47,7 +47,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
   }, 0)
 
   const vpVoorraadA = (vp: any) => {
-    if (!vp.onderdelen?.length) return Number(vp.voorraad||0)
+    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad||0)
     const stocks = vp.onderdelen.map((o: any) => {
       const od = onderdelen.find((d: any) => d.id===o.onderdeel_id)
       return Math.floor(Number(od?.voorraad||0) / Number(o.aantal||1))

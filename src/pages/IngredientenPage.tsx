@@ -142,7 +142,7 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const vpVoorraad = (vp: any) => {
-    if (!vp.onderdelen?.length) return Number(vp.voorraad || 0)
+    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad || 0)
     const stocks = vp.onderdelen.map((o: any) => {
       const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
       return Math.floor(Number(od?.voorraad || 0) / Number(o.aantal || 1))
@@ -150,7 +150,7 @@ const IngredientenPage: React.FC<Props> = ({
     return stocks.length ? Math.min(...stocks) : 0
   }
   const vpKosten = (vp: any) => {
-    if (!vp.onderdelen?.length) return Number(vp.kosten_verpakking || 0) + Number(vp.kosten_afsluiting || 0) + Number(vp.kosten_label || 0)
+    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.kosten_verpakking || 0) + Number(vp.kosten_afsluiting || 0) + Number(vp.kosten_label || 0)
     return vp.onderdelen.reduce((s: number, o: any) => {
       const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
       return s + Number(od?.kosten_per_stuk || 0) * Number(o.aantal || 1)
