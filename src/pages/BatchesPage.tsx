@@ -592,17 +592,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     setHaSyncing(false)
   }, [sel, haInst, bat])
 
-  // Auto-fetch temperature every 10 minutes when grafiek is open and sensor configured
-  React.useEffect(() => {
-    if (!grafiekIsOpen || !haInst?.enabled || !sel) return
-    const sensors: any[] = haInst?.sensors || []
-    const curBatch = (bat||[]).find((b: any) => b.id === sel)
-    const sensor = curBatch?.tank ? sensors.find((s: any) => s.tank === curBatch.tank) : null
-    const entityId = sensor?.entity || (haInst as any)?.sensorEntity || ''
-    if (!entityId) return
-    const id = setInterval(doHaFetch, 10 * 60 * 1000)
-    return () => clearInterval(id)
-  }, [grafiekIsOpen, sel, haInst?.enabled])
+  // Auto-fetch (global interval) is handled in App.tsx; doHaFetch is used for the manual 🌡 HA button only
 
   const selB = bat.find((b: any) => b.id === sel)
   const bAv = sel ? (av||[]).filter((a: any) => a.batch_id === sel) : []
@@ -954,7 +944,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                              {batchMetingen.map((m: any) => (
+                              {batchMetingen.filter((m: any) => !m.auto).map((m: any) => (
                                 <tr key={m.id} className="hover:bg-gray-50">
                                   <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}</td>
                                   <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg != null ? m.sg.toFixed(3) : '—'}</td>

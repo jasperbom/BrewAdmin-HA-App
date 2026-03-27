@@ -391,6 +391,7 @@ export interface GistMeting {
   ph?: number
   temp?: number
   opmerking?: string
+  auto?: boolean
 }
 
 export interface HaSensor {

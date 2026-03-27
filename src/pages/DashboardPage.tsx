@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
 import { STATUS_CLR } from '../utils/constants'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMetingen=[], haInst}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -172,6 +172,10 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks}: any) {
                           <div className="text-sm font-medium text-gray-800 truncate">{batch.naam}</div>
                           {batch.batch_nummer && <div className="text-xs text-gray-400">#{batch.batch_nummer}</div>}
                           {batch.liter_vergist && <div className="text-xs text-gray-500 mt-0.5">{batch.liter_vergist}L</div>}
+                          {(() => {
+                            const last = (gistMetingen||[]).filter((m: any) => m.batch_id === batch.id && m.temp != null).sort((a: any, b: any) => (b.datum+(b.tijd||'')).localeCompare(a.datum+(a.tijd||'')))[0]
+                            return last ? <div className="text-xs text-red-500 font-mono mt-0.5">🌡 {last.temp}°C</div> : null
+                          })()}
                         </div>
                       ) : (
                         <div className="text-xs text-gray-400 italic">{t('lbl_empty')}</div>

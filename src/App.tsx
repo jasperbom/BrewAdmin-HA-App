@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe } from './utils/api'
+import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
@@ -135,6 +135,37 @@ function App() {
     })();
   }, [bfCreds?.enabled, bfCreds?.userId]);
 
+  // Global HA auto-fetch: record temperature every 10 min for fermenting batches
+  const haAutoFetch = React.useCallback(async () => {
+    if (!haInst?.enabled) return
+    const sensors: any[] = haInst?.sensors || []
+    if (!sensors.length) return
+    const fermenting = (bat||[]).filter((b: any) => b.status === 'Vergisten' && b.tank)
+    for (const batch of fermenting) {
+      const sensor = sensors.find((s: any) => s.tank === batch.tank)
+      if (!sensor?.entity) continue
+      try {
+        const d = await haGetState(sensor.entity)
+        const val = parseFloat(d.state)
+        if (isNaN(val)) continue
+        const now = new Date()
+        const datum = now.toISOString().split('T')[0]
+        const tijd = now.toTimeString().slice(0, 5)
+        setGistMetingen((prev: any[]) => {
+          const all = prev || []
+          const id = all.length ? Math.max(0, ...all.map((m: any) => Number(m.id)||0)) + 1 : 1
+          return [...all, { id, batch_id: batch.id, datum, tijd, temp: val, auto: true }]
+        })
+      } catch {}
+    }
+  }, [bat, haInst])
+
+  React.useEffect(() => {
+    if (!haInst?.enabled) return
+    const id = setInterval(haAutoFetch, 10 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [haInst?.enabled, haAutoFetch])
+
   const doExport = () => excelExport(ing,lots,bat,bi,av,uit,acc,verpakkingen,onderdelen,log,archief,geslotenBieren,recepten,tanks,artikelen,hygieneItems,hygieneGroups,inkoopFacturen,verkoopFacturen,bestellingen,bestellingPicks,afboekingen);
 
   const doImport = (e: any) => {
@@ -238,7 +269,7 @@ function App() {
       </nav>
       <PageErrorBoundary page={page}>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} />}
+        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} gistMetingen={gistMetingen} haInst={haInst} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} acc={acc} />}
