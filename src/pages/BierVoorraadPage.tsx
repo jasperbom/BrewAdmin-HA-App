@@ -50,6 +50,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
 }) => {
   const [filterBatch, setFilterBatch] = useState('')
   const [logView, setLogView] = useState<'overzicht' | 'logboek'>('overzicht')
+  const [logFilter, setLogFilter] = useState<'alle' | 'voorraad' | 'woocommerce'>('alle')
   const [wcSyncing, setWcSyncing] = useState(false)
   const [wcSyncMsg, setWcSyncMsg] = useState('')
   const [geslotenBieren, setGeslotenBieren] = useState<string[]>([])
@@ -266,34 +267,50 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
     afboeking: {icon:'🗑️', cls:'text-red-700 bg-red-50',      label: t('log_type_afboeking')},
   }
 
+  const tabBtn = (viewId: 'overzicht' | 'logboek', label: React.ReactNode) => (
+    <button
+      onClick={() => setLogView(viewId)}
+      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${logView === viewId ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+      {label}
+    </button>
+  )
+
+  const logBadge = beerLogEntries.length > 0
+    ? <span className="ml-1.5 bg-gray-200 text-gray-600 rounded-full px-1.5 text-xs font-normal">{beerLogEntries.length}</span>
+    : null
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-gray-800">{t('nav_voorraad')}</h2>
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
-            <button onClick={() => setLogView('overzicht')}
-              className={`px-3 py-1 font-medium transition-colors ${logView==='overzicht' ? 't-hdr text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              {t('tab_overzicht')}
-            </button>
-            <button onClick={() => setLogView('logboek')}
-              className={`px-3 py-1 font-medium transition-colors ${logView==='logboek' ? 't-hdr text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              {t('tab_logboek')} {beerLogEntries.length > 0 && <span className="ml-1 bg-gray-200 text-gray-700 rounded-full px-1.5 text-xs">{beerLogEntries.length}</span>}
-            </button>
-          </div>
+      {/* Header: titel + tabs + WC-knop */}
+      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-semibold mr-4">{t('nav_voorraad')}</h2>
+          {tabBtn('overzicht', t('tab_overzicht'))}
+          {tabBtn('logboek', <>{t('tab_logboek')}{logBadge}</>)}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           {wcCreds?.enabled && (
-            <button onClick={wcPushAll} disabled={wcSyncing}
-              title={t('wc_push_stock_title')}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
+            <Btn onClick={wcPushAll} disabled={wcSyncing} s="sm"
+              cls="bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-40">
               {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
-            </button>
+            </Btn>
           )}
-          {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓')?'text-green-600':'text-red-500'}`}>{wcSyncMsg}</span>}
-          <Sel value={filterBatch} onChange={setFilterBatch}
-            opts={bat.map((b: any) => ({v:String(b.id),l:b.naam}))} ph={t('stock_filter_all_beers')} cls="w-52" />
+          {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</span>}
         </div>
+      </div>
+
+      {/* Filterbalk */}
+      <div className="flex items-center gap-3 mb-4 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Batch:</span>
+        <Sel value={filterBatch} onChange={setFilterBatch}
+          opts={bat.map((b: any) => ({v: String(b.id), l: b.naam}))}
+          ph={t('stock_filter_all_beers')} cls="w-52" />
+        {filterBatch && (
+          <button onClick={() => setFilterBatch('')}
+            className="text-xs text-gray-400 hover:text-gray-600 underline whitespace-nowrap">
+            Wis filter
+          </button>
+        )}
       </div>
 
       {/* Statistieken per verpakkingstype */}
@@ -321,54 +338,112 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
       )}
 
       {/* Logboek tab */}
-      {logView === 'logboek' && (
-        <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between">
-            <span>{t('tab_logboek')}</span>
-            <span className="text-xs opacity-70">{beerLogEntries.length} {t('lbl_mutations')}</span>
+      {logView === 'logboek' && (() => {
+        const WC_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
+          push:  {icon: '↑', cls: 'text-purple-700 bg-purple-50', label: 'WC Push'},
+          pull:  {icon: '↓', cls: 'text-blue-700 bg-blue-50',   label: 'WC Pull'},
+          fout:  {icon: '⚠', cls: 'text-red-700 bg-red-50',     label: 'WC Fout'},
+          debug: {icon: '·', cls: 'text-gray-500 bg-gray-100',  label: 'WC Debug'},
+        }
+
+        const wcEntries = (wcSyncLog || []).map((l: any) => ({
+          _src: 'wc' as const,
+          id: l.id,
+          datum: l.ts ? l.ts.slice(0, 10) : '—',
+          sortKey: l.ts || '',
+          type: l.type,
+          msg: l.msg,
+          details: l.details,
+        }))
+
+        const voorraadEntries = beerLogEntries.map((l: any) => ({
+          _src: 'voorraad' as const,
+          ...l,
+          sortKey: (l.datum || '') + (l.id ? String(l.id).padStart(10, '0') : ''),
+        }))
+
+        const combined = logFilter === 'voorraad'
+          ? voorraadEntries
+          : logFilter === 'woocommerce'
+            ? wcEntries
+            : [...voorraadEntries, ...wcEntries].sort((a, b) => b.sortKey.localeCompare(a.sortKey))
+
+        const logSubBtn = (f: typeof logFilter, label: string) => (
+          <button
+            onClick={() => setLogFilter(f)}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${logFilter === f ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+            {label}
+          </button>
+        )
+
+        return (
+          <div className="bg-white rounded-xl shadow-card overflow-x-auto">
+            <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between flex-wrap gap-2">
+              <span>{t('tab_logboek')}</span>
+              <div className="flex items-center gap-1 bg-white/20 rounded-lg p-0.5">
+                {logSubBtn('alle', 'Alle')}
+                {logSubBtn('voorraad', `Voorraad (${beerLogEntries.length})`)}
+                {wcCreds?.enabled && logSubBtn('woocommerce', `WooCommerce (${(wcSyncLog||[]).length})`)}
+              </div>
+            </div>
+            {combined.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
+                    <th className="px-3 py-2 text-left font-medium">Omschrijving</th>
+                    <th className="px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {combined.map((l: any) => {
+                    if (l._src === 'wc') {
+                      const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug
+                      return (
+                        <tr key={`wc-${l.id}`} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum}</td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ws.cls}`}>
+                              {ws.icon} {ws.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-600 max-w-sm">
+                            <div>{l.msg}</div>
+                            {l.details && <div className="text-gray-400 truncate" title={l.details}>{l.details}</div>}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
+                        </tr>
+                      )
+                    }
+                    const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type}
+                    const qty = l.hoeveelheid != null
+                      ? `${l.type === 'afboeking' ? '−' : '+'}${l.hoeveelheid} ${l.eenheid || 'stuks'}`
+                      : '—'
+                    return (
+                      <tr key={`v-${l.id}`} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum || '—'}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ts.cls}`}>
+                            {ts.icon} {ts.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-600 max-w-sm">
+                          <div className="font-medium text-gray-700">{l.batch_naam || '—'}{l.verpakking_type ? ` · ${l.verpakking_type}` : ''}</div>
+                          {(l.omschrijving || l.referentie) && <div className="text-gray-400 truncate" title={l.omschrijving || l.referentie}>{l.omschrijving || l.referentie}</div>}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : 'text-green-600'}`}>{qty}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
-          {beerLogEntries.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-500 bg-gray-50">
-                <tr>
-                  <th className="px-3 py-1.5 text-left">{t('lbl_date')}</th>
-                  <th className="px-3 py-1.5 text-left">{t('lbl_type')}</th>
-                  <th className="px-3 py-1.5 text-left">{t('nav_batches')}</th>
-                  <th className="px-3 py-1.5 text-left">{t('lbl_packaging')}</th>
-                  <th className="px-3 py-1.5 text-right">{t('lbl_quantity')}</th>
-                  <th className="px-3 py-1.5 text-left">{t('lbl_remark')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {beerLogEntries.map((l: any) => {
-                  const ts = LOG_TYPE_STYLES[l.type] || {icon:'•', cls:'text-gray-600 bg-gray-100', label: l.type}
-                  const qty = l.hoeveelheid != null
-                    ? `${l.type==='afboeking' ? '−' : '+'}${l.hoeveelheid} ${l.eenheid||'stuks'}`
-                    : '—'
-                  return (
-                    <tr key={l.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{l.datum||'—'}</td>
-                      <td className="px-3 py-1.5">
-                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ts.cls}`}>
-                          {ts.icon} {ts.label}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-gray-700">{l.batch_naam||'—'}</td>
-                      <td className="px-3 py-1.5 text-xs text-gray-600">{l.verpakking_type||'—'}</td>
-                      <td className={`px-3 py-1.5 text-right font-mono text-xs font-medium ${l.type==='afboeking'?'text-red-600':l.type==='uitslaan'?'text-purple-600':'text-green-600'}`}>{qty}</td>
-                      <td className="px-3 py-1.5 text-xs text-gray-500 max-w-xs truncate" title={l.omschrijving||l.referentie||''}>
-                        {l.omschrijving || l.referentie || '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+        )
+      })()}
 
       {logView === 'overzicht' && (av||[]).length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">
@@ -469,28 +544,36 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                             const afboekLogs = (afboekingen||[]).filter((ab: any) => ab.afvulling_id === a.id)
                             return (
                               <div key={a.id} className="px-4 py-3 border-b last:border-b-0">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                                    <span>{t('lbl_date')}: <strong className="text-gray-700">{fmtD(a.datum)}</strong></span>
-                                    {a.tht
-                                      ? <span className={thtExp ? 'text-red-600 font-medium' : thtSoon ? 'text-yellow-600 font-medium' : 'text-gray-600'}>
-                                          {t('lbl_tht')}: <strong>{fmtD(a.tht)}</strong>
-                                          {thtExp ? ' ⚠️ ' + t('stock_expired') : thtSoon ? ` (${thtDays}d)` : ''}
-                                        </span>
-                                      : <span className="text-gray-400">{t('lbl_tht')}: —</span>
-                                    }
-                                    <span className="text-gray-500">{t('voorraad_afgevuld')}: <strong>{a.hoeveelheid}×</strong> · {Number(a.inhoud_per_eenheid||0).toFixed(1)}L/stuk</span>
-                                    {gepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>{gepickt}×</strong></span>}
-                                    {uitgeslagen > 0 && <span className="text-blue-500">{t('voorraad_uitgeslagen')}: <strong>{uitgeslagen}×</strong></span>}
-                                    {afgeboekt > 0 && <span className="text-red-400">Afgeboekt: <strong>{afgeboekt}×</strong></span>}
-                                    <span className={`font-semibold ${beschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {t('voorraad_beschikbaar')}: <strong>{beschikbaar}×</strong>
-                                    </span>
+                                {/* Rij 1: basisinfo + afboek-knop */}
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="space-y-1 min-w-0">
+                                    {/* Regel 1: datum, THT, inhoud */}
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                                      <span>{t('lbl_date')}: <strong className="text-gray-700">{fmtD(a.datum)}</strong></span>
+                                      {a.tht
+                                        ? <span className={thtExp ? 'text-red-600 font-semibold' : thtSoon ? 'text-yellow-600 font-medium' : 'text-gray-500'}>
+                                            THT: <strong>{fmtD(a.tht)}</strong>
+                                            {thtExp ? ' ⚠️ verlopen' : thtSoon ? ` (${thtDays}d)` : ''}
+                                          </span>
+                                        : <span className="text-gray-400">THT: —</span>
+                                      }
+                                      <span className="text-gray-400">{Number(a.inhoud_per_eenheid||0).toFixed(1)} L/stuk</span>
+                                    </div>
+                                    {/* Regel 2: aantallen */}
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
+                                      <span className="text-gray-600">{t('voorraad_afgevuld')}: <strong className="font-semibold text-gray-800">{a.hoeveelheid}×</strong></span>
+                                      {gepickt > 0 && <span className="text-orange-500">Gepickt: <strong>−{gepickt}×</strong></span>}
+                                      {uitgeslagen > 0 && <span className="text-blue-500">Uitgeslagen: <strong>−{uitgeslagen}×</strong></span>}
+                                      {afgeboekt > 0 && <span className="text-red-400">Afgeboekt: <strong>−{afgeboekt}×</strong></span>}
+                                      <span className={`font-bold ${beschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                                        = {beschikbaar}× beschikbaar
+                                      </span>
+                                    </div>
                                   </div>
                                   {beschikbaar > 0 && (
                                     <button
                                       onClick={e => openAfboekModal(a, e)}
-                                      className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap"
+                                      className="flex-shrink-0 text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap mt-0.5"
                                       title="Voorraad handmatig afboeken">
                                       − Afboeken
                                     </button>
@@ -498,13 +581,13 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                 </div>
                                 {/* Afboeklog per afvulling */}
                                 {afboekLogs.length > 0 && (
-                                  <div className="mt-2 space-y-1">
+                                  <div className="mt-2 pl-3 border-l-2 border-red-100 space-y-1">
                                     {afboekLogs.map((ab: any) => (
                                       <div key={ab.id} className="flex items-center gap-2 text-xs">
                                         <span className={`px-1.5 py-0.5 rounded font-medium ${REDEN_COLORS[ab.reden as AfboekingReden] || 'text-gray-500 bg-gray-100'}`}>
                                           {AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.l || ab.reden}
                                         </span>
-                                        <span className="text-red-400 font-medium">−{ab.aantal}×</span>
+                                        <span className="text-red-500 font-semibold">−{ab.aantal}×</span>
                                         <span className="text-gray-400">{ab.datum}</span>
                                         <span className="text-gray-500 italic">"{ab.opmerking}"</span>
                                       </div>
@@ -622,25 +705,6 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
         </Modal>
       )}
 
-      {/* WC Sync log */}
-      {wcCreds?.enabled && (wcSyncLog||[]).length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold text-gray-500 mb-2">{t('wc_sync_log')}</h3>
-          <div className="bg-white rounded-xl shadow-card overflow-x-auto max-h-48 overflow-y-auto">
-            <table className="w-full text-xs">
-              <tbody className="divide-y divide-gray-50">
-                {(wcSyncLog||[]).slice(0, 20).map((l: any) => (
-                  <tr key={l.id} className="px-3 py-1.5 text-gray-500 hover:bg-gray-50">
-                    <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">{new Date(l.ts).toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'})}</td>
-                    <td className="px-3 py-1.5 font-medium">{l.msg}</td>
-                    {l.details && <td className="px-3 py-1.5 text-gray-400">{l.details}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
