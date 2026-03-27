@@ -382,6 +382,22 @@ export interface Bestelling {
   verzend_datum?: string | null
 }
 
+export interface GistMeting {
+  id: number
+  batch_id: number
+  datum: string
+  tijd?: string
+  sg?: number
+  ph?: number
+  temp?: number
+  opmerking?: string
+}
+
+export interface HaInst {
+  sensorEntity: string
+  enabled: boolean
+}
+
 export type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
 
 export interface Afboeking {

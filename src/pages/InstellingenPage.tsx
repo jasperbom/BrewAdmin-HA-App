@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
 import { BF_TO_APP, BUILTIN_ING_TYPES, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS } from '../utils/constants'
-import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable } from '../utils/api'
+import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
 
 const ServerStatusCard = () => {
   const [s, setS]     = useState('loading');
@@ -72,7 +72,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={sensorEntity:'',enabled:false}, setHaInst=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
@@ -225,6 +225,20 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     }
   }, [claudeCreds?.apiKey, claudeCreds?.enabled]);
   const [claudeMsg, setClaudeMsg] = React.useState('');
+  const [haTestMsg, setHaTestMsg] = React.useState('');
+  const [haTesting, setHaTesting] = React.useState(false);
+
+  const testHaSensor = async () => {
+    if (!haInst?.sensorEntity) { setHaTestMsg('Vul een entity ID in.'); return }
+    setHaTesting(true); setHaTestMsg('');
+    try {
+      const d = await haGetState(haInst.sensorEntity)
+      setHaTestMsg(`✓ Waarde: ${d.state}${d.unit ? ' ' + d.unit : ''}`)
+    } catch(e: any) {
+      setHaTestMsg(`⚠ Fout: ${e.message}`)
+    }
+    setHaTesting(false)
+  }
   const saveClaude = () => {
     setClaudeCreds((prev: any) => ({...prev, ...claudeForm}));
     setClaudeMsg('✓ Opgeslagen');
@@ -238,6 +252,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     {id:'brewfather',       label:'Brewfather',              icon:'🍺'},
     {id:'woocommerce',      label:t('settings_webshop'),    icon:'🛒'},
     {id:'claude',           label:'Claude AI',               icon:'🤖'},
+    {id:'homeassistant',    label:'Home Assistant',          icon:'🏠'},
     {id:'accijns',          label:t('settings_excise'),     icon:'💶'},
     {id:'ingredienten',     label:'Ingrediënten',            icon:'🌾'},
     {id:'hygiene',          label:t('settings_hygiene'),    icon:'🧹'},
@@ -684,6 +699,47 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p>{t('settings_claude_hint_pdf')}</p>
           <p>{t('settings_claude_hint_scan')}</p>
           <p>{t('settings_claude_hint_model')} <code className="bg-gray-100 px-1 rounded">claude-haiku-4-5</code> {t('settings_claude_hint_fast')}</p>
+        </div>
+      </div>
+      </>}
+
+      {/* HOME ASSISTANT */}
+      {activeSection==='homeassistant' && <>
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">🏠 Home Assistant Temperatuursensor</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Koppel een HA-sensor entity aan de gistgrafiek in de batchenpagina.
+          De knop <strong>🌡 HA</strong> in de gistgrafiek haalt automatisch de huidige waarde op.
+          Werkt alleen als de app als HA-addon draait.
+        </p>
+        <div className="space-y-4">
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div className="relative">
+              <input type="checkbox" checked={haInst?.enabled||false}
+                onChange={e => setHaInst((p: any) => ({...p, enabled: e.target.checked}))} className="sr-only peer" />
+              <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+            </div>
+            <span className="text-sm font-medium text-gray-700">Ingeschakeld</span>
+          </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Entity ID</label>
+            <input type="text"
+              value={haInst?.sensorEntity||''}
+              onChange={e => setHaInst((p: any) => ({...p, sensorEntity: e.target.value}))}
+              placeholder="sensor.vergistingstank_temperatuur"
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-sm t-input" />
+            <p className="text-xs text-gray-400 mt-1">Bijv. <code className="bg-gray-100 px-1 rounded">sensor.fermentation_tank_temperature</code></p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Btn v="secondary" onClick={testHaSensor} disabled={haTesting}>
+              {haTesting ? 'Testen…' : 'Test verbinding'}
+            </Btn>
+            {haTestMsg && <span className={`text-sm font-medium ${haTestMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{haTestMsg}</span>}
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
+          <p>De app communiceert via de Home Assistant Supervisor API (<code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code>).</p>
+          <p>Als de app niet als HA-addon draait, zal de test een foutmelding geven.</p>
         </div>
       </div>
       </>}

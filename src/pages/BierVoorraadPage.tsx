@@ -282,9 +282,9 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
   return (
     <div>
       {/* Header: titel + tabs + WC-knop */}
-      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-1">
-          <h2 className="text-lg font-semibold mr-4">{t('nav_voorraad')}</h2>
+          <h2 className="text-xl font-bold text-gray-800 mr-4">{t('nav_voorraad')}</h2>
           {tabBtn('overzicht', t('tab_overzicht'))}
           {tabBtn('logboek', <>{t('tab_logboek')}{logBadge}</>)}
         </div>
@@ -547,9 +547,8 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                 {/* Rij 1: basisinfo + afboek-knop */}
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="space-y-1 min-w-0">
-                                    {/* Regel 1: datum, THT, inhoud */}
+                                    {/* Regel 1: THT, inhoud */}
                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-500">
-                                      <span>{t('lbl_date')}: <strong className="text-gray-700">{fmtD(a.datum)}</strong></span>
                                       {a.tht
                                         ? <span className={thtExp ? 'text-red-600 font-semibold' : thtSoon ? 'text-yellow-600 font-medium' : 'text-gray-500'}>
                                             THT: <strong>{fmtD(a.tht)}</strong>

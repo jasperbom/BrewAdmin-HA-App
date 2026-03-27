@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
-import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe } from '../utils/api'
+import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, convertEenheid } from '../utils/constants'
 import Btn from '../components/ui/Btn'
@@ -35,6 +35,146 @@ interface BatchesPageProps {
   hygieneGroups?: any[]
   wcCreds?: any
   artikelen?: any[]
+  gistMetingen?: any[]
+  setGistMetingen?: any
+  haInst?: any
+}
+
+// ── Catmull-Rom spline helper ──────────────────────────────────────────────
+const catmullRomPath = (pts: [number,number][]): string => {
+  if (pts.length < 2) return ''
+  if (pts.length === 2) return `M ${pts[0][0]},${pts[0][1]} L ${pts[1][0]},${pts[1][1]}`
+  let d = `M ${pts[0][0]},${pts[0][1]}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(i + 2, pts.length - 1)]
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6
+    d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2[0]},${p2[1]}`
+  }
+  return d
+}
+
+// ── Fermentatie grafiek SVG component ─────────────────────────────────────
+const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
+  const sorted = [...metingen].sort((a, b) => {
+    const ka = (a.datum || '') + 'T' + (a.tijd || '00:00')
+    const kb = (b.datum || '') + 'T' + (b.tijd || '00:00')
+    return ka.localeCompare(kb)
+  })
+
+  const W = 600, H = 220
+  const PAD = { l: 52, r: 52, t: 20, b: 36 }
+  const CW = W - PAD.l - PAD.r
+  const CH = H - PAD.t - PAD.b
+
+  // X-as: tijdstip als unix ms
+  const xVals = sorted.map(m => new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime())
+  const xMin = xVals[0], xMax = xVals[xVals.length - 1]
+  const xRange = xMax - xMin || 1
+  const toX = (ts: number) => PAD.l + ((ts - xMin) / xRange) * CW
+
+  // SG Y-as (links): schaal 0.990–1.120 of auto
+  const sgVals = sorted.map(m => m.sg).filter((v): v is number => v != null)
+  const sgMin = sgVals.length ? Math.min(...sgVals) - 0.003 : 0.990
+  const sgMax = sgVals.length ? Math.max(...sgVals) + 0.003 : 1.100
+  const sgRange = sgMax - sgMin || 0.001
+  const toYsg = (v: number) => PAD.t + CH - ((v - sgMin) / sgRange) * CH
+
+  // pH Y-as (rechts): schaal 2–8 of auto
+  const phVals = sorted.map(m => m.ph).filter((v): v is number => v != null)
+  const phMin = phVals.length ? Math.min(...phVals) - 0.3 : 2
+  const phMax = phVals.length ? Math.max(...phVals) + 0.3 : 8
+  const phRange = phMax - phMin || 0.1
+  const toYph = (v: number) => PAD.t + CH - ((v - phMin) / phRange) * CH
+
+  // Temp Y-as (rechts, gedeeld met pH via schaling): 0–50°C
+  const tempVals = sorted.map(m => m.temp).filter((v): v is number => v != null)
+  const tempMin = tempVals.length ? Math.min(...tempVals) - 2 : 0
+  const tempMax = tempVals.length ? Math.max(...tempVals) + 2 : 40
+  const tempRange = tempMax - tempMin || 1
+  const toYtemp = (v: number) => PAD.t + CH - ((v - tempMin) / tempRange) * CH
+
+  // Grid
+  const gridLines = 5
+  const sgGridSteps = Array.from({length: gridLines}, (_, i) => sgMin + (sgRange * i) / (gridLines - 1))
+
+  // Punten
+  const sgPts: [number,number][] = sorted.filter(m => m.sg != null).map(m => [toX(new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()), toYsg(m.sg)])
+  const phPts: [number,number][] = sorted.filter(m => m.ph != null).map(m => [toX(new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()), toYph(m.ph)])
+  const tempPts: [number,number][] = sorted.filter(m => m.temp != null).map(m => [toX(new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()), toYtemp(m.temp)])
+
+  // X-as labels: max 6 labels
+  const xLabelCount = Math.min(sorted.length, 6)
+  const xLabelIdxs = Array.from({length: xLabelCount}, (_, i) => Math.round(i * (sorted.length - 1) / Math.max(xLabelCount - 1, 1)))
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height: H, display:'block'}}>
+      {/* Achtergrond */}
+      <rect x={PAD.l} y={PAD.t} width={CW} height={CH} fill="#f9fafb" rx="4" />
+
+      {/* Gridlijnen + SG Y-labels */}
+      {sgGridSteps.map((v, i) => {
+        const y = toYsg(v)
+        return (
+          <g key={i}>
+            <line x1={PAD.l} y1={y} x2={PAD.l + CW} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+            <text x={PAD.l - 4} y={y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{v.toFixed(3)}</text>
+          </g>
+        )
+      })}
+
+      {/* SG lijn + punten */}
+      {sgPts.length >= 2 && <path d={catmullRomPath(sgPts)} fill="none" stroke="#d97706" strokeWidth="2" strokeLinejoin="round" />}
+      {sgPts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3.5" fill="#d97706" stroke="white" strokeWidth="1.5" />)}
+
+      {/* pH lijn + punten */}
+      {phPts.length >= 2 && <path d={catmullRomPath(phPts)} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />}
+      {phPts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3.5" fill="#3b82f6" stroke="white" strokeWidth="1.5" />)}
+
+      {/* Temp lijn + punten */}
+      {tempPts.length >= 2 && <path d={catmullRomPath(tempPts)} fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" strokeDasharray="4 2" />}
+      {tempPts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3.5" fill="#ef4444" stroke="white" strokeWidth="1.5" />)}
+
+      {/* X-as labels */}
+      {xLabelIdxs.map(idx => {
+        const m = sorted[idx]
+        const x = toX(new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime())
+        const label = m.datum ? m.datum.slice(5) + (m.tijd ? ' ' + m.tijd : '') : ''
+        return <text key={idx} x={x} y={H - 6} textAnchor="middle" fontSize="9" fill="#6b7280">{label}</text>
+      })}
+
+      {/* Rechter Y-as labels: pH */}
+      {phVals.length > 0 && (() => {
+        const phSteps = Array.from({length: 4}, (_, i) => phMin + (phRange * i) / 3)
+        return phSteps.map((v, i) => (
+          <text key={i} x={PAD.l + CW + 4} y={toYph(v) + 3} textAnchor="start" fontSize="9" fill="#3b82f6">{v.toFixed(1)}</text>
+        ))
+      })()}
+
+      {/* Rechter Y-as labels: temp (als geen pH) */}
+      {phVals.length === 0 && tempVals.length > 0 && (() => {
+        const tSteps = Array.from({length: 4}, (_, i) => tempMin + (tempRange * i) / 3)
+        return tSteps.map((v, i) => (
+          <text key={i} x={PAD.l + CW + 4} y={toYtemp(v) + 3} textAnchor="start" fontSize="9" fill="#ef4444">{v.toFixed(0)}°</text>
+        ))
+      })()}
+
+      {/* As-lijnen */}
+      <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={PAD.t + CH} stroke="#d1d5db" strokeWidth="1" />
+      <line x1={PAD.l + CW} y1={PAD.t} x2={PAD.l + CW} y2={PAD.t + CH} stroke="#d1d5db" strokeWidth="1" />
+      <line x1={PAD.l} y1={PAD.t + CH} x2={PAD.l + CW} y2={PAD.t + CH} stroke="#d1d5db" strokeWidth="1" />
+
+      {/* Legenda */}
+      {sgVals.length > 0 && <><rect x={PAD.l} y={PAD.t + 4} width="8" height="3" fill="#d97706" rx="1" /><text x={PAD.l + 11} y={PAD.t + 9} fontSize="9" fill="#6b7280">SG</text></>}
+      {phVals.length > 0 && <><rect x={PAD.l + 32} y={PAD.t + 4} width="8" height="3" fill="#3b82f6" rx="1" /><text x={PAD.l + 43} y={PAD.t + 9} fontSize="9" fill="#6b7280">pH</text></>}
+      {tempVals.length > 0 && <><rect x={PAD.l + 64} y={PAD.t + 4} width="8" height="3" fill="#ef4444" rx="1" /><text x={PAD.l + 75} y={PAD.t + 9} fontSize="9" fill="#6b7280">°C</text></>}
+    </svg>
+  )
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000
@@ -44,7 +184,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
   log, setLog, bfCreds, bfSync, tanks, accijnsInst,
-  hygieneItems, hygieneGroups, wcCreds, artikelen
+  hygieneItems, hygieneGroups, wcCreds, artikelen,
+  gistMetingen=[], setGistMetingen=()=>{}, haInst
 }) => {
   const [sel, setSel] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -69,6 +210,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [iForm, setIForm] = useState<any>(emptyI)
   const [batchArchiefIngeklapt, setBatchArchiefIngeklapt] = useStore('batches_archief_ingeklapt', true)
   const [infoIngeklapt, setInfoIngeklapt] = useState(false)
+  const [grafiekOpen, setGrafiekOpen] = useStore('gist_grafiek_open', {} as Record<string,boolean>)
+  const emptyMeting = { datum: tod(), tijd: '', sg: '', ph: '', temp: '', opmerking: '' }
+  const [metingForm, setMetingForm] = useState<any>(emptyMeting)
+  const [haSyncing, setHaSyncing] = useState(false)
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
   const [hygieneIngeklapt, setHygieneIngeklapt] = useStore('batches_hygiene_ingeklapt', true)
@@ -658,6 +803,138 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 })()}
               </div>
             </div>
+
+            {/* Gistgrafiek */}
+            {(() => {
+              const batchMetingen = (gistMetingen||[]).filter((m: any) => m.batch_id === selB.id)
+                .sort((a: any, b: any) => {
+                  const ka = (a.datum||'') + 'T' + (a.tijd||'00:00')
+                  const kb = (b.datum||'') + 'T' + (b.tijd||'00:00')
+                  return ka.localeCompare(kb)
+                })
+              const isOpen = !!grafiekOpen[selB.id]
+
+              const addMeting = () => {
+                if (!metingForm.sg && !metingForm.ph && !metingForm.temp) return
+                const nieuw = {
+                  id: newId(gistMetingen||[]),
+                  batch_id: selB.id,
+                  datum: metingForm.datum || tod(),
+                  tijd: metingForm.tijd || '',
+                  sg: metingForm.sg ? Number(metingForm.sg) : undefined,
+                  ph: metingForm.ph ? Number(metingForm.ph) : undefined,
+                  temp: metingForm.temp ? Number(metingForm.temp) : undefined,
+                  opmerking: metingForm.opmerking,
+                }
+                setGistMetingen((prev: any[]) => [...(prev||[]), nieuw])
+                setMetingForm(emptyMeting)
+              }
+
+              const deleteMeting = (id: number) => {
+                setGistMetingen((prev: any[]) => (prev||[]).filter((m: any) => m.id !== id))
+              }
+
+              const fetchHaTemp = async () => {
+                if (!haInst?.sensorEntity) return
+                setHaSyncing(true)
+                try {
+                  const d = await haGetState(haInst.sensorEntity)
+                  const val = parseFloat(d.state)
+                  if (!isNaN(val)) setMetingForm((f: any) => ({...f, temp: String(val)}))
+                } catch { /* negeer */ }
+                setHaSyncing(false)
+              }
+
+              return (
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  {/* Klikbare header */}
+                  <div className="px-4 py-2.5 bg-gray-50 border-b flex items-center justify-between cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    onClick={() => setGrafiekOpen((p: any) => ({...p, [selB.id]: !isOpen}))}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400 text-xs">{isOpen ? '▼' : '▶'}</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Gistgrafiek</span>
+                      {selB.status === 'Vergisten' && <span className="text-xs text-green-500 font-medium">● actief</span>}
+                      {batchMetingen.length > 0 && <span className="text-xs text-gray-400">({batchMetingen.length} metingen)</span>}
+                    </div>
+                  </div>
+
+                  {/* Invulrij — altijd zichtbaar als geopend */}
+                  {isOpen && (
+                    <div className="px-4 py-2.5 border-b bg-gray-50/50 flex flex-wrap items-center gap-2">
+                      <input type="date" value={metingForm.datum}
+                        onChange={e => setMetingForm((f: any) => ({...f, datum: e.target.value}))}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      <input type="time" value={metingForm.tijd}
+                        onChange={e => setMetingForm((f: any) => ({...f, tijd: e.target.value}))}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs t-input w-24" />
+                      <input type="number" placeholder="SG (1.050)" step="0.001" min="0.990" max="1.200"
+                        value={metingForm.sg}
+                        onChange={e => setMetingForm((f: any) => ({...f, sg: e.target.value}))}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs t-input w-28" />
+                      <input type="number" placeholder="pH (4.2)" step="0.1" min="0" max="14"
+                        value={metingForm.ph}
+                        onChange={e => setMetingForm((f: any) => ({...f, ph: e.target.value}))}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs t-input w-20" />
+                      <input type="number" placeholder="°C" step="0.1" min="-10" max="50"
+                        value={metingForm.temp}
+                        onChange={e => setMetingForm((f: any) => ({...f, temp: e.target.value}))}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs t-input w-20" />
+                      {haInst?.enabled && (
+                        <Btn s="sm" v="secondary" onClick={fetchHaTemp} disabled={haSyncing}>
+                          {haSyncing ? '…' : '🌡 HA'}
+                        </Btn>
+                      )}
+                      <Btn s="sm" onClick={addMeting}>+ Meting</Btn>
+                    </div>
+                  )}
+
+                  {isOpen && (
+                    <div className="p-4 space-y-4">
+                      {batchMetingen.length < 2 ? (
+                        <div className="text-center text-gray-400 text-sm py-6">
+                          {batchMetingen.length === 0
+                            ? 'Voeg metingen toe via de invoerbar hierboven.'
+                            : 'Voeg minimaal 2 metingen toe om de grafiek te tonen.'}
+                        </div>
+                      ) : (
+                        <FermentatieGrafiek metingen={batchMetingen} />
+                      )}
+
+                      {batchMetingen.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-gray-50 text-gray-500 border-b">
+                              <tr>
+                                <th className="px-2 py-1.5 text-left font-medium">Datum/tijd</th>
+                                <th className="px-2 py-1.5 text-right font-medium text-amber-600">SG</th>
+                                <th className="px-2 py-1.5 text-right font-medium text-blue-600">pH</th>
+                                <th className="px-2 py-1.5 text-right font-medium text-red-500">°C</th>
+                                <th className="px-2 py-1.5 text-left font-medium text-gray-400">Opmerking</th>
+                                <th className="px-2 py-1.5"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {batchMetingen.map((m: any) => (
+                                <tr key={m.id} className="hover:bg-gray-50">
+                                  <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg != null ? m.sg.toFixed(3) : '—'}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-blue-700">{m.ph != null ? m.ph.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-red-500">{m.temp != null ? `${m.temp}°` : '—'}</td>
+                                  <td className="px-2 py-1.5 text-gray-400 italic">{m.opmerking || ''}</td>
+                                  <td className="px-2 py-1.5">
+                                    <button onClick={() => deleteMeting(m.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Hygiene checklist */}
             {(() => {

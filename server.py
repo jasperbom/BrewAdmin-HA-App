@@ -47,6 +47,9 @@ CLAUDE_PROXY_PREFIX      = '/api/claude/'
 ANTHROPIC_API_BASE       = 'https://api.anthropic.com'
 CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be large
 
+HA_PROXY_PREFIX          = '/api/homeassistant/'
+HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
+
 _ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'bmp', 'heic', 'heif'}
 _CONTENT_TYPES = {
     'pdf':  'application/pdf',
@@ -371,6 +374,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._claude_proxy()
             return
 
+        if HA_PROXY_PREFIX in path:
+            self._ha_proxy(path)
+            return
+
         if UPLOAD_PREFIX in path:
             self._handle_upload()
             return
@@ -554,6 +561,30 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self._add_security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def _ha_proxy(self, path: str):
+        """Proxy request to Home Assistant Supervisor API to fetch entity state."""
+        idx = path.find(HA_PROXY_PREFIX)
+        entity_id = path[idx + len(HA_PROXY_PREFIX):].split('?')[0].strip('/')
+        if not entity_id:
+            self._json(400, {'error': 'entity_id required'})
+            return
+        token = os.environ.get('SUPERVISOR_TOKEN', '')
+        if not token:
+            self._json(503, {'error': 'SUPERVISOR_TOKEN not available — app must run as HA addon'})
+            return
+        try:
+            req = urllib.request.Request(
+                f'{HA_SUPERVISOR_BASE}/states/{entity_id}',
+                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read())
+                self._json(200, {'state': data.get('state'), 'unit': data.get('attributes', {}).get('unit_of_measurement', ''), 'attributes': data.get('attributes', {})})
+        except urllib.error.HTTPError as e:
+            self._json(e.code, {'error': f'HA API returned {e.code}'})
+        except Exception as e:
+            self._json(502, {'error': str(e)})
 
     def _handle_upload(self):
         """Accept a base64-encoded file upload and save it to UPLOAD_DIR."""

@@ -317,7 +317,7 @@ const IngredientenPage: React.FC<Props> = ({
     <div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-1">
-          <h2 className="text-lg font-semibold mr-4">
+          <h2 className="text-xl font-bold text-gray-800 mr-4">
             {tab === 'verpakkingen' ? `${t('ing_tab_packaging')}${verpakkingen.some((v: any) => Number(v.voorraad || 0) === 0) ? ' ⚠️' : ''}` : tab === 'mutaties' ? t('ing_tab_mutations') : t('ing_tab_ingredients')}
           </h2>
           {tabBtn('ingredienten', t('ing_tab_ingredients'))}
