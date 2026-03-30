@@ -871,6 +871,7 @@
   "settings_verzendkosten_desc": "Configure el nombre y tipo de IVA predeterminados para los gastos de envío.",
   "settings_verzendkosten_naam": "Descripción",
   "settings_verzendkosten_btw": "Tipo IVA",
+  "settings_verzendkosten_prijs": "Precio por defecto",
   "settings_verzendkosten_hint": "Haz clic en '🚚 Envío' en un pedido para añadir una línea de envío.",
   "ph_verzendkosten_naam": "Gastos de envío",
   "lbl_verzendkosten": "Gastos de envío",

@@ -356,34 +356,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             placeholder={t('settings_app_name_placeholder')}
             className="w-full max-w-xs border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
         </div>
-        <div className="flex items-start gap-6">
-          <div className="flex-shrink-0">
-            <div className="w-24 h-16 rounded flex items-center justify-center overflow-hidden" style={{background:({amber:"#451a03",green:"#052e16",blue:"#172554",slate:"#020617",red:"#450a0a",purple:"#2e1065"} as any)[navTheme]||"#451a03"}}>
-              {logo
-                ? <img src={logo} alt={t('lbl_logo_current')} style={{maxHeight:'48px',maxWidth:'88px',objectFit:'contain'}} />
-                : <span className="text-gray-500 text-xs text-center px-1">{t('settings_logo_none')}</span>}
-            </div>
-            <p className="text-xs text-gray-400 mt-1 text-center">{t('settings_logo_preview')}</p>
-          </div>
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2 px-4 py-2 tbtn rounded text-sm font-medium transition-colors cursor-pointer w-fit">
-              {t('settings_logo_upload')}
-              <input type="file" accept="image/*" className="hidden" onChange={(e: any)=>{
-                const f = e.target.files?.[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = (ev: any) => setLogo(ev.target.result);
-                reader.readAsDataURL(f);
-                e.target.value = '';
-              }} />
-            </label>
-            {logo && (
+        <div className="flex items-center gap-4 flex-wrap">
+          {logo && (
+            <div className="relative">
+              <img src={logo} alt={t('lbl_logo_current')} className="h-16 max-w-[180px] object-contain border border-gray-200 rounded-lg p-1 bg-white" />
               <button onClick={()=>{ if(confirm(t('settings_logo_reset_confirm'))) setLogo(null); }}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors w-fit">
-                {t('settings_logo_reset')}
-              </button>
-            )}
-          </div>
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600 transition-colors"
+                title={t('btn_delete')}>✕</button>
+            </div>
+          )}
+          <label className="cursor-pointer px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors">
+            {logo ? t('btn_change_logo') : t('btn_upload_logo')}
+            <input type="file" accept="image/*" className="hidden" onChange={(e: any)=>{
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const reader = new FileReader();
+              reader.onload = (ev: any) => setLogo(ev.target.result);
+              reader.readAsDataURL(f);
+              e.target.value = '';
+            }} />
+          </label>
         </div>
         <p className="text-xs text-gray-400 mt-3">{t('settings_logo_formats')}</p>
       </div>
@@ -535,7 +527,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_verzendkosten')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_verzendkosten_desc')}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_verzendkosten_naam')}</label>
             <input type="text" value={breweryDetails?.verzendkosten_naam||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,verzendkosten_naam:e.target.value}))}
@@ -548,6 +540,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <input type="number" min="0" max="100" value={breweryDetails?.verzendkosten_btw??21} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,verzendkosten_btw:Number(e.target.value)}))}
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-24 t-input" />
               <span className="text-sm text-gray-500">%</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_verzendkosten_prijs')}</label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">€</span>
+              <input type="number" min="0" step="0.01" value={breweryDetails?.verzendkosten_prijs??''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,verzendkosten_prijs:e.target.value===''?null:Number(e.target.value)}))}
+                placeholder="0.00"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
             </div>
           </div>
         </div>

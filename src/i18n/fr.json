@@ -871,6 +871,7 @@
   "settings_verzendkosten_desc": "Définissez le nom et le taux de TVA par défaut pour les frais d'expédition.",
   "settings_verzendkosten_naam": "Désignation",
   "settings_verzendkosten_btw": "Taux TVA",
+  "settings_verzendkosten_prijs": "Prix par défaut",
   "settings_verzendkosten_hint": "Cliquez sur '🚚 Expédition' dans une commande pour ajouter une ligne d'expédition.",
   "ph_verzendkosten_naam": "Frais d'expédition",
   "lbl_verzendkosten": "Frais d'expédition",

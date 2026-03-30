@@ -13,7 +13,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
   const [dateTo, setDateTo] = React.useState(now.toISOString().slice(0,10));
   const [mainTab, setMainTab] = React.useState('verkoop');
-  const [inkoopView, setInkoopView] = React.useState('facturen');
   const [inkoopSortDesc, setInkoopSortDesc] = React.useState(true);
   const [expandedFactuur, setExpandedFactuur] = React.useState(null);
   // Aangiftes tab state
@@ -83,6 +82,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }));
     return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
   }, [inkoopGefilterd]);
+
+  const btwPerTariefAangifte = React.useMemo(() => {
+    const map: any = {};
+    inkoopFacturen
+      .filter((f: any) => f.datum?.startsWith(String(aangifteYear)))
+      .forEach((f: any) => (f.regels||[]).forEach((r: any) => {
+        const k = r.btw_tarief ?? 0;
+        if (!map[k]) map[k] = {tarief:k, netto:0, btw:0};
+        map[k].netto += r.netto||0;
+        map[k].btw   += r.btw_bedrag||0;
+      }));
+    return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
+  }, [inkoopFacturen, aangifteYear]);
 
   const exportInkoopCSV = () => {
     const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_supplier'),t('lbl_netto_inkoop_excl_btw'),'BTW%',t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
@@ -375,22 +387,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               <input type="date" value={dateTo} onChange={(e: any)=>setDateTo(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
             </div>
-          </div>
-        </div>
-
-        {/* ── Eigen verkoopfacturen (uit Bestellingen) ── */}
-        <div className="mt-2">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold text-gray-700">🧾 {t('tab_verkoopfacturen')}</h3>
+            <div className="text-xs text-gray-400 italic self-end pb-2">{t('lbl_facturen_in_periode').replace('{n}',verkoopGefilterd.length)}</div>
             {verkoopGefilterd.length > 0 && (
-              <button onClick={exportVerkoopCSV}
-                className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+              <button onClick={exportVerkoopCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
                 ↓ CSV ({verkoopGefilterd.length})
               </button>
             )}
           </div>
+        </div>
 
-          {verkoopGefilterd.length > 0 && (
+        {verkoopGefilterd.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               {[
                 {label:t('lbl_omzet_excl_btw'), val:verkoopTotals.netto, cls:'text-green-700 font-bold'},
@@ -464,7 +470,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               {t('msg_no_verkoopfacturen')}
             </div>
           )}
-        </div>
       </>)}
 
       {/* ══════════════════════ INKOOP ══════════════════════ */}
@@ -542,142 +547,59 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           </div>
         )}
 
-        {inkoopGefilterd.length > 0 && (<>
-          {/* Subtabs inkoop */}
-          <div className="flex gap-2 flex-wrap">
-            {[{id:'facturen',l:t('tab_facturen')},{id:'btwtarief',l:t('tab_btw_tarief')}].map((v: any)=>(
-              <button key={v.id} onClick={()=>setInkoopView(v.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${inkoopView===v.id?'tbtn':'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                {v.l}
-              </button>
-            ))}
+        {inkoopGefilterd.length > 0 && (
+          <div className={card + ' overflow-x-auto'}>
+            <table className="w-full text-sm min-w-[600px]">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                  <th className="py-2 pr-2 text-left font-medium w-6"></th>
+                  <th className="py-2 pr-3 text-left font-medium cursor-pointer select-none" onClick={()=>setInkoopSortDesc((d: any)=>!d)}>
+                    {t('lbl_date')} {inkoopSortDesc?'↓':'↑'}
+                  </th>
+                  <th className="py-2 pr-3 text-left font-medium">{t('lbl_invoice')}</th>
+                  <th className="py-2 pr-3 text-left font-medium">{t('lbl_supplier')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('lbl_netto')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('lbl_btw')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('lbl_bruto')}</th>
+                  <th className="py-2 text-right font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {inkoopGefilterd.map((f: any) => (<React.Fragment key={f.id}>
+                  <tr className="border-b border-gray-50 hover:bg-amber-50 transition-colors cursor-pointer"
+                      onClick={()=>setEditingFactuur(f)}>
+                    <td className="py-2 pr-2 text-gray-400 text-xs text-center">✎</td>
+                    <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
+                    <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
+                    <td className="py-2 pr-3 font-medium text-gray-800">{f.leverancier||'—'}</td>
+                    <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.totaal_netto||0)}</td>
+                    <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.totaal_btw||0)}</td>
+                    <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.totaal_bruto||0)}</td>
+                    <td className="py-2 text-right whitespace-nowrap">
+                      {f.bijlage?.bestand && (
+                        <a href={`${ADDON_BASE}api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
+                          onClick={(e: any)=>e.stopPropagation()}
+                          title={f.bijlage.naam}
+                          className="text-gray-400 hover:text-blue-600 text-sm transition-colors px-1">📎</a>
+                      )}
+                      <button onClick={(e: any)=>{e.stopPropagation();deleteFactuur(f.id);}}
+                        className="text-gray-300 hover:text-red-500 text-xs transition-colors px-1">✕</button>
+                    </td>
+                  </tr>
+                </React.Fragment>))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-200">
+                  <td colSpan={4} className="py-2 pr-3 text-right text-xs font-semibold text-gray-500 uppercase">{t('lbl_facturen_n').replace('{n}',inkoopGefilterd.length)}</td>
+                  <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(inkoopTotals.netto)}</td>
+                  <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(inkoopTotals.btw)}</td>
+                  <td className="py-2 pr-3 text-right font-bold text-gray-900">{fmt(inkoopTotals.bruto)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
-
-          {/* Facturen tabel */}
-          {inkoopView==='facturen' && (
-            <div className={card + ' overflow-x-auto'}>
-              <table className="w-full text-sm min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
-                    <th className="py-2 pr-2 text-left font-medium w-6"></th>
-                    <th className="py-2 pr-3 text-left font-medium cursor-pointer select-none" onClick={()=>setInkoopSortDesc((d: any)=>!d)}>
-                      {t('lbl_date')} {inkoopSortDesc?'↓':'↑'}
-                    </th>
-                    <th className="py-2 pr-3 text-left font-medium">{t('lbl_invoice')}</th>
-                    <th className="py-2 pr-3 text-left font-medium">{t('lbl_supplier')}</th>
-                    <th className="py-2 pr-3 text-right font-medium">{t('lbl_netto')}</th>
-                    <th className="py-2 pr-3 text-right font-medium">{t('lbl_btw')}</th>
-                    <th className="py-2 pr-3 text-right font-medium">{t('lbl_bruto')}</th>
-                    <th className="py-2 text-right font-medium"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inkoopGefilterd.map((f: any) => (<React.Fragment key={f.id}>
-                    <tr className="border-b border-gray-50 hover:bg-amber-50 transition-colors cursor-pointer"
-                        onClick={()=>setEditingFactuur(f)}>
-                      <td className="py-2 pr-2 text-gray-400 text-xs text-center">✎</td>
-                      <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
-                      <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
-                      <td className="py-2 pr-3 font-medium text-gray-800">{f.leverancier||'—'}</td>
-                      <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.totaal_netto||0)}</td>
-                      <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.totaal_btw||0)}</td>
-                      <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.totaal_bruto||0)}</td>
-                      <td className="py-2 text-right whitespace-nowrap">
-                        {f.bijlage?.bestand && (
-                          <a href={`${ADDON_BASE}api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
-                            onClick={(e: any)=>e.stopPropagation()}
-                            title={f.bijlage.naam}
-                            className="text-gray-400 hover:text-blue-600 text-sm transition-colors px-1">📎</a>
-                        )}
-                        <button onClick={(e: any)=>{e.stopPropagation();deleteFactuur(f.id);}}
-                          className="text-gray-300 hover:text-red-500 text-xs transition-colors px-1">✕</button>
-                      </td>
-                    </tr>
-                  </React.Fragment>))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-gray-200">
-                    <td colSpan={4} className="py-2 pr-3 text-right text-xs font-semibold text-gray-500 uppercase">{t('lbl_facturen_n').replace('{n}',inkoopGefilterd.length)}</td>
-                    <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(inkoopTotals.netto)}</td>
-                    <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(inkoopTotals.btw)}</td>
-                    <td className="py-2 pr-3 text-right font-bold text-gray-900">{fmt(inkoopTotals.bruto)}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-
-          {/* BTW per tarief — aangifte-hulp */}
-          {inkoopView==='btwtarief' && (
-            <div className="space-y-4">
-              <div className={card}>
-                <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('lbl_voorbelasting_per_tarief')}</h3>
-                <p className="text-xs text-gray-400 mb-4">{t('lbl_gebruik_rubriek_5b')}</p>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
-                      <th className="py-2 pr-3 text-left font-medium">{t('lbl_btw_tarief')}</th>
-                      <th className="py-2 pr-3 text-right font-medium">{t('lbl_netto_grondslag')}</th>
-                      <th className="py-2 pr-3 text-right font-medium">{t('lbl_btw_bedrag')}</th>
-                      <th className="py-2 text-right font-medium">{t('lbl_bruto')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {btwPerTarief.map((r: any)=>(
-                      <tr key={r.tarief} className="border-b border-gray-50">
-                        <td className="py-2 pr-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${r.tarief===0?'bg-gray-100 text-gray-500':r.tarief===9?'bg-amber-50 text-amber-700':'bg-blue-50 text-blue-700'}`}>
-                            {r.tarief}%
-                          </span>
-                        </td>
-                        <td className="py-2 pr-3 text-right text-gray-700">{fmt(r.netto)}</td>
-                        <td className="py-2 pr-3 text-right font-semibold text-blue-700">{fmt(r.btw)}</td>
-                        <td className="py-2 text-right text-gray-800">{fmt(r.netto+r.btw)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-gray-200">
-                      <td className="py-2 pr-3 text-xs font-semibold text-gray-500 uppercase">{t('lbl_total')}</td>
-                      <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(btwPerTarief.reduce((s: any,r: any)=>s+r.netto,0))}</td>
-                      <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(btwPerTarief.reduce((s: any,r: any)=>s+r.btw,0))}</td>
-                      <td className="py-2 text-right font-bold text-gray-900">{fmt(btwPerTarief.reduce((s: any,r: any)=>s+r.netto+r.btw,0))}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              <div className={card + ' bg-blue-50 border-blue-100'}>
-                <h3 className="text-xs font-semibold text-blue-800 mb-3 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a_1b')}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1a_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_5b')}</div>
-                    <div className="font-bold text-blue-700 text-base mb-1">{fmt(btwPerTarief.reduce((s: any,r: any)=>s+r.btw,0))}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_5b_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1d')}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1d_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_2a')}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_2a_hint')}</div>
-                  </div>
-                </div>
-                <div className="bg-white rounded-xl p-3 border border-blue-100">
-                  <div className="text-xs text-gray-500 mb-1">{t('lbl_periode')}</div>
-                  <div className="font-medium text-gray-700">{dateFrom} {t('lbl_t_m')} {dateTo}</div>
-                  <div className="text-xs text-gray-400">{t('lbl_facturen_short').replace('{n}',inkoopGefilterd.length)}</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </>)}
+        )}
 
         {inkoopFacturen.length===0 && (
           <div className={card + ' text-center py-14'}>
@@ -789,10 +711,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-white/70 rounded-xl p-2">
                       <div className="text-xs text-gray-400 mb-0.5">{t('lbl_omzet_btw')}</div>
-                      <div className={`text-sm font-bold ${(aangifteFetched || pVerkoop.length>0) ? 'text-gray-800' : 'text-gray-300'}`}>
-                        {(aangifteFetched || pVerkoop.length>0) ? fmt(verkoopBtw) : '—'}
-                      </div>
-                      {(aangifteFetched || pVerkoop.length>0) && <div className="text-xs text-gray-400">{pOrders.length > 0 ? `${pOrders.length} WC` : ''}{eigenFacturenLabel}</div>}
+                      <div className="text-sm font-bold text-gray-800">{fmt(verkoopBtw)}</div>
+                      <div className="text-xs text-gray-400">{pOrders.length > 0 ? `${pOrders.length} WC` : ''}{eigenFacturenLabel}</div>
                     </div>
                     <div className="bg-white/70 rounded-xl p-2">
                       <div className="text-xs text-gray-400 mb-0.5">{t('lbl_voorbelasting')}</div>
@@ -801,17 +721,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     </div>
                     <div className="bg-white/70 rounded-xl p-2">
                       <div className="text-xs text-gray-400 mb-0.5">{t('lbl_te_betalen')}</div>
-                      {(aangifteFetched || pVerkoop.length>0)
-                        ? <div className={`text-sm font-bold ${teBetalen >= 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                            {fmt(Math.abs(teBetalen))}
-                          </div>
-                        : <div className="text-sm font-bold text-gray-300">—</div>
-                      }
-                      {(aangifteFetched || pVerkoop.length>0) && (
-                        <div className={`text-xs font-medium ${teBetalen >= 0 ? 'text-orange-500' : 'text-green-500'}`}>
-                          {teBetalen >= 0 ? t('lbl_te_betalen') : t('lbl_terug')}
-                        </div>
-                      )}
+                      <div className={`text-sm font-bold ${teBetalen >= 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        {fmt(Math.abs(teBetalen))}
+                      </div>
+                      <div className={`text-xs font-medium ${teBetalen >= 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                        {teBetalen >= 0 ? t('lbl_te_betalen') : t('lbl_terug')}
+                      </div>
                     </div>
                   </div>
 
@@ -819,13 +734,78 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   {pFacturen.length > 0 && (
                     <div className="text-xs text-gray-400 border-t border-gray-100 pt-2">
                       {t('lbl_inkoop_netto')} <span className="font-medium text-gray-600">{fmt(inkoopNetto)}</span>
-                      {(aangifteFetched || pVerkoop.length>0) && <> · {t('lbl_verkoop_netto')} <span className="font-medium text-gray-600">{fmt(verkoopNetto)}</span></>}
+                      {' · '}{t('lbl_verkoop_netto')} <span className="font-medium text-gray-600">{fmt(verkoopNetto)}</span>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
+
+          {/* BTW per tarief (inkoop voorbelasting per jaar) */}
+          {btwPerTariefAangifte.length > 0 && (
+            <div className="space-y-4">
+              <div className={card}>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('lbl_voorbelasting_per_tarief')}</h3>
+                <p className="text-xs text-gray-400 mb-4">{t('lbl_gebruik_rubriek_5b')}</p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="py-2 pr-3 text-left font-medium">{t('lbl_btw_tarief')}</th>
+                      <th className="py-2 pr-3 text-right font-medium">{t('lbl_netto_grondslag')}</th>
+                      <th className="py-2 pr-3 text-right font-medium">{t('lbl_btw_bedrag')}</th>
+                      <th className="py-2 text-right font-medium">{t('lbl_bruto')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {btwPerTariefAangifte.map((r: any)=>(
+                      <tr key={r.tarief} className="border-b border-gray-50">
+                        <td className="py-2 pr-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${r.tarief===0?'bg-gray-100 text-gray-500':r.tarief===9?'bg-amber-50 text-amber-700':'bg-blue-50 text-blue-700'}`}>
+                            {r.tarief}%
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-right text-gray-700">{fmt(r.netto)}</td>
+                        <td className="py-2 pr-3 text-right font-semibold text-blue-700">{fmt(r.btw)}</td>
+                        <td className="py-2 text-right text-gray-800">{fmt(r.netto+r.btw)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-200">
+                      <td className="py-2 pr-3 text-xs font-semibold text-gray-500 uppercase">{t('lbl_total')}</td>
+                      <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0))}</td>
+                      <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0))}</td>
+                      <td className="py-2 text-right font-bold text-gray-900">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div className={card + ' bg-blue-50 border-blue-100'}>
+                <h3 className="text-xs font-semibold text-blue-800 mb-3 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a_1b')}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1a_hint')}</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_5b')}</div>
+                    <div className="font-bold text-blue-700 text-base mb-1">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0))}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_5b_hint')}</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1d')}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1d_hint')}</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_2a')}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_2a_hint')}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {!wcCreds?.enabled && inkoopFacturen.length === 0 && (
             <div className={card + ' text-center py-14'}>

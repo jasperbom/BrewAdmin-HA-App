@@ -885,6 +885,7 @@
   "settings_verzendkosten_desc": "Standardname und MwSt.-Satz für Versandkosten festlegen. Der Preis wird pro Bestellung eingegeben.",
   "settings_verzendkosten_naam": "Bezeichnung",
   "settings_verzendkosten_btw": "MwSt.-Satz",
+  "settings_verzendkosten_prijs": "Standardpreis",
   "settings_verzendkosten_hint": "Klicke auf '🚚 Versand' in einer Bestellung, um eine Versandzeile hinzuzufügen.",
   "ph_verzendkosten_naam": "Versandkosten",
   "lbl_verzendkosten": "Versandkosten",

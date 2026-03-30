@@ -236,10 +236,10 @@ function App() {
 
   const nav = [
     {id:'ingredienten',l:t('nav_ingredienten')},
-    {id:'batches',l:t('nav_batches')},
     {id:'recepten',l:t('nav_recepten')},
-    {id:'bestellingen',l:t('nav_bestellingen')},
+    {id:'batches',l:t('nav_batches')},
     {id:'voorraad',l:t('nav_voorraad')},
+    {id:'bestellingen',l:t('nav_bestellingen')},
     {id:'boekhouding',l:t('nav_boekhouding')}
   ];
 

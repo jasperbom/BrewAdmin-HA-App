@@ -885,6 +885,7 @@
   "settings_verzendkosten_desc": "Set the default name and VAT rate for shipping costs. The price is entered per order.",
   "settings_verzendkosten_naam": "Description",
   "settings_verzendkosten_btw": "VAT rate",
+  "settings_verzendkosten_prijs": "Default price",
   "settings_verzendkosten_hint": "Click '🚚 Shipping' in an order to add a shipping line. Price can be adjusted per order.",
   "ph_verzendkosten_naam": "Shipping costs",
   "lbl_verzendkosten": "Shipping costs",

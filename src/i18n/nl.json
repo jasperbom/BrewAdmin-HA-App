@@ -885,6 +885,7 @@
   "settings_verzendkosten_desc": "Stel de standaard naam en het BTW-tarief in voor verzendkosten. De prijs vul je per order in.",
   "settings_verzendkosten_naam": "Omschrijving",
   "settings_verzendkosten_btw": "BTW-tarief",
+  "settings_verzendkosten_prijs": "Standaard prijs",
   "settings_verzendkosten_hint": "Klik op '🚚 Verzendkosten' in een order om een verzendregel toe te voegen. Prijs is aan te passen per order.",
   "ph_verzendkosten_naam": "Verzendkosten",
   "lbl_verzendkosten": "Verzendkosten",
