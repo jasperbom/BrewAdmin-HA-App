@@ -589,7 +589,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       <div>
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
-            ← {t('btn_back')}
+            {t('btn_back')}
           </button>
           <h2 className="text-xl font-bold text-gray-800">
             {selectedOrder.wc_order_nummer ? `WC-${selectedOrder.wc_order_nummer}` : `M-${selectedOrder.id}`}

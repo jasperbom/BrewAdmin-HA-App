@@ -1873,10 +1873,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               if (!bLog.length) return null
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
+                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none"
                     onClick={() => setLogIngeklapt((v: boolean) => !v)}>
-                    <span>{t('batch_log')}</span>
-                    <span className="text-xs opacity-70">{logIngeklapt ? '▶' : '▼'} ({bLog.length})</span>
+                    <span className="text-xs opacity-70">{logIngeklapt ? '▶' : '▼'}</span>
+                    <span>{t('batch_log')} ({bLog.length})</span>
                   </div>
                   {!logIngeklapt && (
                     <div className="overflow-x-auto">
