@@ -96,18 +96,38 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
   }, [inkoopFacturen, aangifteYear]);
 
-  const omzetBelastingJaar = React.useMemo(() => {
+  const omzetBtwPerTarief = React.useMemo(() => {
     const yearStr = String(aangifteYear);
-    const eigenBtw = (verkoopFacturen||[])
+    const hoog = {netto: 0, btw: 0}; // 21%
+    const laag = {netto: 0, btw: 0}; // 9%
+
+    // Eigen verkoopfacturen — split per btw_pct via regels
+    (verkoopFacturen||[])
       .filter((f: any) => f.datum?.startsWith(yearStr))
-      .reduce((s: any, f: any) => s + (f.btw||0), 0);
-    const wcBtw = aangifteOrders
+      .forEach((f: any) => {
+        (f.regels||[]).forEach((r: any) => {
+          const pct = r.btw_pct ?? 0;
+          const netto = r.netto ?? 0;
+          const btw = r.btw_bedrag ?? 0;
+          if (pct >= 20) { hoog.netto += netto; hoog.btw += btw; }
+          else if (pct > 0) { laag.netto += netto; laag.btw += btw; }
+        });
+      });
+
+    // WooCommerce orders — geen tariefsplitsing beschikbaar → hoog tarief (bier = 21%)
+    aangifteOrders
       .filter((o: any) => {
         const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,4);
         return d === yearStr && ['completed','processing'].includes((o as any).status);
       })
-      .reduce((s: any, o: any) => s + parseFloat((o as any).total_tax||0), 0);
-    return eigenBtw + wcBtw;
+      .forEach((o: any) => {
+        const btw = parseFloat((o as any).total_tax||0);
+        const netto = parseFloat((o as any).total||0) - btw;
+        hoog.netto += netto;
+        hoog.btw += btw;
+      });
+
+    return {hoog, laag};
   }, [verkoopFacturen, aangifteOrders, aangifteYear]);
 
   const exportInkoopCSV = () => {
@@ -799,9 +819,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 <h3 className="text-xs font-semibold text-blue-800 mb-3 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a_1b')}</div>
-                    <div className="font-bold text-gray-800 text-base mb-1">{fmt(omzetBelastingJaar)}</div>
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a')}</div>
+                    <div className="font-bold text-gray-800 text-base">{fmt(omzetBtwPerTarief.hoog.netto)}</div>
+                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(omzetBtwPerTarief.hoog.btw)}</div>
                     <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1a_hint')}</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1b')}</div>
+                    <div className="font-bold text-gray-800 text-base">{fmt(omzetBtwPerTarief.laag.netto)}</div>
+                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(omzetBtwPerTarief.laag.btw)}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1b_hint')}</div>
                   </div>
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_5b')}</div>
