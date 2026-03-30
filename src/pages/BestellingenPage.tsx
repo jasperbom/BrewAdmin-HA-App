@@ -139,27 +139,26 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string, regelSku?: string) => {
     // Bepaal SKU: direct uit regel, of via artikel_key lookup
     const orderSku = regelSku || (regelArtikelKey ? (artikelen||[]).find((a: any) => a.key === regelArtikelKey)?.artikelnummer : null) || null
-    return (av||[])
+    const filtered = (av||[]).filter((a: any) => beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
+    if (orderSku) {
+      // Eerst proberen: exact SKU match op artikel_sku
+      const skuMatches = filtered.filter((a: any) => a.artikel_sku === orderSku)
+      if (skuMatches.length > 0) return skuMatches.sort((a: any, b: any) => {
+        if (!a.tht && !b.tht) return 0
+        if (!a.tht) return 1
+        if (!b.tht) return -1
+        return a.tht.localeCompare(b.tht)
+      })
+      // Geen exacte SKU match gevonden — geen resultaten tonen (explicieter dan verkeerd matchen)
+      return []
+    }
+    // Geen SKU: fallback op bier_naam + verpakking
+    return filtered
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        if (orderSku && a.artikel_sku) {
-          // Nieuw record: pure SKU match — batchnaam irrelevant
-          if (a.artikel_sku !== orderSku) return false
-        } else if (orderSku && !a.artikel_sku) {
-          // Oud record zonder artikel_sku: zoek artikel op SKU + verpakking_type (onafhankelijk van batchnaam)
-          const matchArt = (artikelen||[]).find((art: any) =>
-            art.artikelnummer === orderSku &&
-            art.verpakking_type?.toLowerCase() === a.verpakking_type?.toLowerCase()
-          )
-          if (!matchArt) return false
-        } else {
-          // Geen SKU beschikbaar — fallback op bier_naam + verpakking
-          const beerMatch = batch.naam.toLowerCase() === regelBierNaam.toLowerCase()
-          const packMatch = a.verpakking_type.toLowerCase() === regelVerpakking.toLowerCase()
-          if (!beerMatch || !packMatch) return false
-        }
-        return beschikbaarVoorAfvulling(a, excludeBestellingId) > 0
+        return batch.naam.toLowerCase() === regelBierNaam.toLowerCase() &&
+          a.verpakking_type.toLowerCase() === regelVerpakking.toLowerCase()
       })
       .sort((a: any, b: any) => {
         // FEFO: sorter op THT oplopend (oudste eerst)
@@ -780,7 +779,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {draftVoorRegel.map((dp: any, idx: number) => {
                       const avItem = (av||[]).find((a: any) => a.id === dp.afvulling_id)
                       const avBatch = avItem ? bat.find((b: any) => b.id === avItem.batch_id) : null
-                      const avArt = avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
+                      const avArt = avItem?.artikel_sku
+                        ? (artikelen||[]).find((a: any) => a.artikelnummer === avItem.artikel_sku)
+                        : avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
                       const maxBeschik = beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id) + Number(dp.aantal||0)
                       return (
                         <div key={idx} className="flex items-center gap-2 mt-1 text-sm">
@@ -827,7 +828,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                           <option value="">+ {t('picking_afvulling')} toevoegen...</option>
                           {afvullingen.map((a: any) => {
                             const avBatch = bat.find((b: any) => b.id === a.batch_id)
-                            const avArt = avBatch ? (artikelen||[]).find((art: any) => art.key === `${avBatch.naam}|||${a.verpakking_type}`) : null
+                            const avArt = a.artikel_sku
+                              ? (artikelen||[]).find((art: any) => art.artikelnummer === a.artikel_sku)
+                              : avBatch ? (artikelen||[]).find((art: any) => art.key === `${avBatch.naam}|||${a.verpakking_type}`) : null
                             const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
                             return (
                               <option key={a.id} value={a.id}>
