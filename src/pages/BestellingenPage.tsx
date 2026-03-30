@@ -136,23 +136,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // Beschikbare afvullingen voor een orderregel (gefilterd op bier + verpakking)
-  const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, regelArtikelId?: number) => {
-    // Bepaal de SKU van de orderregel
-    const regelArt = regelArtikelId ? (artikelen||[]).find((a: any) => a.id === regelArtikelId) : null
-    const sku = regelArt?.artikelnummer || null
-
+  const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string) => {
+    const keyNorm = regelArtikelKey?.toLowerCase() || null
     return (av||[])
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        if (sku) {
-          // Puur SKU-match: zoek het artikel voor deze afvulling en vergelijk SKU
-          const avArt = (artikelen||[]).find((art: any) =>
-            art.key.toLowerCase() === `${batch.naam}|||${a.verpakking_type}`.toLowerCase()
-          )
-          if (avArt?.artikelnummer !== sku) return false
+        if (keyNorm) {
+          // Match puur op artikel_key (biernaam|||verpakking_type), case-insensitief
+          const avKey = `${batch.naam}|||${a.verpakking_type}`.toLowerCase()
+          if (avKey !== keyNorm) return false
         } else {
-          // Fallback (geen artikel_id): match op biernaam + verpakking
+          // Fallback: geen artikel_key beschikbaar — match op bier_naam + verpakking
           const beerMatch = batch.naam.toLowerCase() === regelBierNaam.toLowerCase()
           const packMatch = a.verpakking_type.toLowerCase() === regelVerpakking.toLowerCase()
           if (!beerMatch || !packMatch) return false
@@ -225,6 +220,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           return {
             id: i + 1,
             type: 'bier',
+            artikel_key: art?.key || null,
             artikel_id: art?.id || null,
             bier_naam: art?.biernaam || item.name || '',
             verpakking_type: art?.verpakking_type || '',
@@ -286,6 +282,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const regel = {
       id: (manualForm.regels.length + 1),
       type: 'bier',
+      artikel_key: artMatch?.key || null,
       artikel_id: artMatch?.id || null,
       bier_naam: regelForm.bier_naam,
       verpakking_type: regelForm.verpakking_type,
@@ -755,7 +752,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const draftVoorRegel = draftPicks[r.id] || []
                 const totaalGepickt = draftVoorRegel.reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
                 const resterend = r.aantal - totaalGepickt
-                const afvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, r.artikel_id)
+                const afvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, null, r.artikel_key)
 
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
@@ -774,7 +771,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {draftVoorRegel.map((dp: any, idx: number) => {
                       const avItem = (av||[]).find((a: any) => a.id === dp.afvulling_id)
                       const avBatch = avItem ? bat.find((b: any) => b.id === avItem.batch_id) : null
-                      const avArt = avBatch ? (artikelen||[]).find((a: any) => a.key === `${avBatch.naam}|||${avItem?.verpakking_type}`) : null
+                      const avArt = avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
                       const maxBeschik = beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id) + Number(dp.aantal||0)
                       return (
                         <div key={idx} className="flex items-center gap-2 mt-1 text-sm">
