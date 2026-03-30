@@ -70,8 +70,8 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   const [isDragging, setIsDragging] = React.useState(false)
   const [tooltip, setTooltip] = React.useState<{x:number, m:any}|null>(null)
 
-  const W = 600, H = 260
-  const PAD = {l:52, r:52, t:22, b:40}
+  const W = 760, H = 280
+  const PAD = {l:58, r:56, t:28, b:44}
   const CW = W - PAD.l - PAD.r, CH = H - PAD.t - PAD.b
 
   const sorted = React.useMemo(() => [...metingen].sort((a,b) =>
@@ -83,7 +83,6 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   const tsMax = tsAll[tsAll.length-1] ?? (tsMin+1)
   const fullRange = tsMax - tsMin || 1
 
-  // Keep zoomRef in sync for use inside non-reactive wheel handler
   React.useEffect(() => { zoomRef.current = zoom }, [zoom])
 
   // Non-passive wheel listener so we can call preventDefault
@@ -97,20 +96,15 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
       if (svgX < PAD.l || svgX > PAD.l + CW) return
       const frac = (svgX - PAD.l) / CW
       const [z0, z1] = zoomRef.current
-      const vMin = tsMin + z0 * fullRange
-      const vMax = tsMin + z1 * fullRange
-      const vRange = vMax - vMin
+      const vMin = tsMin + z0 * fullRange, vMax = tsMin + z1 * fullRange, vRange = vMax - vMin
       const pivot = vMin + frac * vRange
       const factor = e.deltaY > 0 ? 1.3 : 0.77
       const newRange = vRange * factor
-      const newMin = pivot - frac * newRange
-      const newMax = pivot + (1-frac) * newRange
-      const nz0 = Math.max(0, (newMin - tsMin) / fullRange)
-      const nz1 = Math.min(1, (newMax - tsMin) / fullRange)
+      const nz0 = Math.max(0, (pivot - frac * newRange - tsMin) / fullRange)
+      const nz1 = Math.min(1, (pivot + (1-frac) * newRange - tsMin) / fullRange)
       if (nz1 - nz0 > 0.005) {
-        const next: [number,number] = [nz0, Math.min(nz1, 1)]
-        zoomRef.current = next
-        setZoom(next)
+        const next: [number,number] = [nz0, nz1]
+        zoomRef.current = next; setZoom(next)
       }
     }
     svg.addEventListener('wheel', handler, {passive: false})
@@ -125,7 +119,7 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
 
   const findNearest = (svgX: number) => {
     const [z0,z1] = zoomRef.current
-    const vMin = tsMin + z0*fullRange, vMax = tsMin + z1*fullRange, vRange = vMax-vMin
+    const vMin = tsMin+z0*fullRange, vMax = tsMin+z1*fullRange, vRange = vMax-vMin
     const hoverTs = vMin + ((svgX-PAD.l)/CW)*vRange
     let nearest: any = null, best = Infinity
     for (const m of sorted) {
@@ -140,26 +134,17 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
     const svgX = getSvgX(e)
     if (svgX < PAD.l || svgX > PAD.l+CW) return
     dragRef.current = {startX: svgX, startZoom: [...zoomRef.current] as [number,number]}
-    setIsDragging(true)
-    e.preventDefault()
+    setIsDragging(true); e.preventDefault()
   }
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const svgX = getSvgX(e)
-    // Pan when dragging
     if (dragRef.current) {
       const {startX, startZoom: [z0,z1]} = dragRef.current
-      const span = z1 - z0
-      const deltaFrac = -(svgX - startX) / CW * span
-      const nz0 = Math.max(0, z0+deltaFrac)
-      const nz1 = Math.min(1, z1+deltaFrac)
-      if (nz1-nz0 === span) {
-        const next: [number,number] = [nz0, nz1]
-        zoomRef.current = next
-        setZoom(next)
-      }
+      const span = z1-z0, deltaFrac = -(svgX-startX)/CW*span
+      const nz0 = Math.max(0, z0+deltaFrac), nz1 = Math.min(1, z1+deltaFrac)
+      if (nz1-nz0 === span) { const next: [number,number] = [nz0,nz1]; zoomRef.current = next; setZoom(next) }
     }
-    // Tooltip
     if (svgX >= PAD.l && svgX <= PAD.l+CW) {
       const m = findNearest(svgX)
       if (m) {
@@ -179,19 +164,23 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   const viewRange = viewMax - viewMin || 1
   const isZoomed = zoom[0] > 0.005 || zoom[1] < 0.995
   const toX = (ts: number) => PAD.l + ((ts-viewMin)/viewRange)*CW
+  const mkTs = (m: any) => new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()
 
+  // SG — left axis, filled area
   const sgVals = sorted.map(m=>m.sg).filter((v): v is number => v!=null)
-  const sgMin = sgVals.length ? Math.min(...sgVals)-0.003 : 0.990
-  const sgMax = sgVals.length ? Math.max(...sgVals)+0.003 : 1.100
+  const sgMin = sgVals.length ? Math.min(...sgVals)-0.004 : 0.990
+  const sgMax = sgVals.length ? Math.max(...sgVals)+0.004 : 1.100
   const sgRange = sgMax-sgMin || 0.001
   const toYsg = (v: number) => PAD.t+CH-((v-sgMin)/sgRange)*CH
 
+  // pH — dashed blue line
   const phVals = sorted.map(m=>m.ph).filter((v): v is number => v!=null)
   const phMin = phVals.length ? Math.min(...phVals)-0.3 : 2
   const phMax = phVals.length ? Math.max(...phVals)+0.3 : 8
   const phRange = phMax-phMin || 0.1
   const toYph = (v: number) => PAD.t+CH-((v-phMin)/phRange)*CH
 
+  // Temp — right axis, solid red line
   const tempVals = sorted.map(m=>m.temp).filter((v): v is number => v!=null)
   const tempMin = tempVals.length ? Math.min(...tempVals)-2 : 0
   const tempMax = tempVals.length ? Math.max(...tempVals)+2 : 40
@@ -199,17 +188,30 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   const toYtemp = (v: number) => PAD.t+CH-((v-tempMin)/tempRange)*CH
 
   const inView = sorted.filter(m => {
-    const ts = new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()
+    const ts = mkTs(m)
     return ts >= viewMin-viewRange*0.1 && ts <= viewMax+viewRange*0.1
   })
-  const mkTs = (m: any) => new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()
-  const sgPts:  [number,number][] = inView.filter(m=>m.sg!=null).map(m=>[toX(mkTs(m)), toYsg(m.sg)])
-  const phPts:  [number,number][] = inView.filter(m=>m.ph!=null).map(m=>[toX(mkTs(m)), toYph(m.ph)])
-  const tempPts:[number,number][] = inView.filter(m=>m.temp!=null).map(m=>[toX(mkTs(m)), toYtemp(m.temp)])
+  const sgPts:   [number,number][] = inView.filter(m=>m.sg!=null).map(m=>[toX(mkTs(m)), toYsg(m.sg)])
+  const phPts:   [number,number][] = inView.filter(m=>m.ph!=null).map(m=>[toX(mkTs(m)), toYph(m.ph)])
+  const tempPts: [number,number][] = inView.filter(m=>m.temp!=null).map(m=>[toX(mkTs(m)), toYtemp(m.temp)])
+
+  const sgLinePath   = sgPts.length   >= 2 ? catmullRomPath(sgPts)   : ''
+  const sgAreaPath   = sgLinePath ? sgLinePath + ` L ${sgPts[sgPts.length-1][0]},${PAD.t+CH} L ${sgPts[0][0]},${PAD.t+CH} Z` : ''
+  const tempLinePath = tempPts.length >= 2 ? catmullRomPath(tempPts) : ''
+  const phLinePath   = phPts.length   >= 2 ? catmullRomPath(phPts)   : ''
 
   const gridSteps = Array.from({length:5}, (_,i) => sgMin+sgRange*i/4)
-  const xLabelIdxs = Array.from({length: Math.min(inView.length,6)}, (_,i) =>
-    Math.round(i*(inView.length-1)/Math.max(Math.min(inView.length,6)-1,1)))
+  const xLabelIdxs = Array.from({length: Math.min(inView.length,7)}, (_,i) =>
+    Math.round(i*(inView.length-1)/Math.max(Math.min(inView.length,7)-1,1)))
+
+  // Right axis shows temp if available, otherwise pH
+  const hasTemp = tempVals.length > 0, hasPh = phVals.length > 0
+  const rightSteps = Array.from({length:5}, (_,i) => i/4)
+  const rightLabel = (frac: number) => hasTemp
+    ? `${(tempMin + frac*tempRange).toFixed(0)}°`
+    : `${(phMin + frac*phRange).toFixed(1)}`
+  const rightY = (frac: number) => PAD.t + CH - frac*CH
+  const rightColor = hasTemp ? '#ef4444' : '#3b82f6'
 
   return (
     <div className="relative select-none">
@@ -219,46 +221,63 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
           Zoom reset
         </button>
       )}
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full"
-        style={{height:H, display:'block', cursor: isDragging ? 'grabbing' : 'crosshair'}}
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
+        style={{width:'100%', height:'auto', display:'block', cursor: isDragging ? 'grabbing' : 'crosshair'}}
         onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp} onMouseLeave={handleMouseLeave}>
         <defs>
           <clipPath id="fc"><rect x={PAD.l} y={PAD.t} width={CW} height={CH}/></clipPath>
+          <linearGradient id="sgGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#d97706" stopOpacity="0.20"/>
+            <stop offset="100%" stopColor="#d97706" stopOpacity="0.02"/>
+          </linearGradient>
         </defs>
 
+        {/* Achtergrond */}
         <rect x={PAD.l} y={PAD.t} width={CW} height={CH} fill="#f9fafb" rx="4"/>
 
-        {/* Grid + SG Y-labels */}
+        {/* Grid + linker Y-as labels (SG) */}
         {gridSteps.map((v,i) => {
           const y = toYsg(v)
           return <g key={i}>
             <line x1={PAD.l} y1={y} x2={PAD.l+CW} y2={y} stroke="#e5e7eb" strokeWidth="1"/>
-            <text x={PAD.l-4} y={y+3} textAnchor="end" fontSize="9" fill="#9ca3af">{v.toFixed(3)}</text>
+            <text x={PAD.l-5} y={y+3} textAnchor="end" fontSize="9" fill="#9ca3af">{v.toFixed(3)}</text>
           </g>
         })}
 
-        {/* Lines — clipped */}
+        {/* Rechter Y-as labels (temp of pH) */}
+        {(hasTemp || hasPh) && rightSteps.map((frac,i) => (
+          <text key={i} x={PAD.l+CW+5} y={rightY(frac)+3} textAnchor="start" fontSize="9" fill={rightColor}>
+            {rightLabel(frac)}
+          </text>
+        ))}
+
+        {/* Data — geclipd */}
         <g clipPath="url(#fc)">
-          {sgPts.length>=2   && <path d={catmullRomPath(sgPts)}   fill="none" stroke="#d97706" strokeWidth="2"/>}
-          {phPts.length>=2   && <path d={catmullRomPath(phPts)}   fill="none" stroke="#3b82f6" strokeWidth="2"/>}
-          {tempPts.length>=2 && <path d={catmullRomPath(tempPts)} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 2"/>}
+          {/* SG vlakgebied */}
+          {sgAreaPath && <path d={sgAreaPath} fill="url(#sgGrad)"/>}
+          {/* SG lijn */}
+          {sgLinePath && <path d={sgLinePath} fill="none" stroke="#d97706" strokeWidth="2.5"/>}
+          {/* Temp lijn (doorgetrokken rood) */}
+          {tempLinePath && <path d={tempLinePath} fill="none" stroke="#ef4444" strokeWidth="2"/>}
+          {/* pH lijn (gestippeld blauw) */}
+          {phLinePath && <path d={phLinePath} fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="5 3"/>}
         </g>
 
-        {/* Points — clipped */}
+        {/* Punten */}
         {sgPts.map(([x,y],i)   => <circle key={i} cx={x} cy={y} r="3.5" fill="#d97706" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
-        {phPts.map(([x,y],i)   => <circle key={i} cx={x} cy={y} r="3.5" fill="#3b82f6" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
-        {tempPts.map(([x,y],i) => <circle key={i} cx={x} cy={y} r="3.5" fill="#ef4444" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
+        {tempPts.map(([x,y],i) => <circle key={i} cx={x} cy={y} r="3"   fill="#ef4444" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
+        {phPts.map(([x,y],i)   => <circle key={i} cx={x} cy={y} r="3"   fill="#3b82f6" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
 
         {/* Hover tooltip */}
         {tooltip && (() => {
           const m = tooltip.m
           const rows: {t:string, c:string}[] = [{t:`${m.datum}${m.tijd?' '+m.tijd:''}`, c:'#6b7280'}]
-          if (m.sg!=null)   rows.push({t:`SG: ${Number(m.sg).toFixed(3)}`,  c:'#d97706'})
-          if (m.ph!=null)   rows.push({t:`pH: ${Number(m.ph).toFixed(1)}`,  c:'#3b82f6'})
-          if (m.temp!=null) rows.push({t:`${m.temp}°C`,                      c:'#ef4444'})
-          if (m.opmerking)  rows.push({t:m.opmerking,                         c:'#374151'})
-          const bw=104, bh=rows.length*14+10
+          if (m.sg!=null)   rows.push({t:`SG: ${Number(m.sg).toFixed(3)}`,       c:'#d97706'})
+          if (m.ph!=null)   rows.push({t:`pH: ${Number(m.ph).toFixed(1)}`,       c:'#3b82f6'})
+          if (m.temp!=null) rows.push({t:`${Number(m.temp).toFixed(1)}°C`,       c:'#ef4444'})
+          if (m.opmerking)  rows.push({t:m.opmerking,                             c:'#374151'})
+          const bw=114, bh=rows.length*14+10
           const bx = tooltip.x+10+bw > PAD.l+CW ? tooltip.x-bw-10 : tooltip.x+10
           return <g>
             <line x1={tooltip.x} y1={PAD.t} x2={tooltip.x} y2={PAD.t+CH} stroke="#9ca3af" strokeWidth="1" strokeDasharray="3 2"/>
@@ -271,18 +290,10 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
         {xLabelIdxs.map(idx => {
           const m = inView[idx]; if (!m) return null
           const x = toX(mkTs(m))
-          return <text key={idx} x={x} y={H-8} textAnchor="middle" fontSize="9" fill="#6b7280">
+          return <text key={idx} x={x} y={H-10} textAnchor="middle" fontSize="9" fill="#6b7280">
             {m.datum.slice(5)}
           </text>
         })}
-
-        {/* Rechter Y-as: pH of temp */}
-        {phVals.length>0 && Array.from({length:4},(_,i)=>phMin+phRange*i/3).map((v,i) =>
-          <text key={i} x={PAD.l+CW+4} y={toYph(v)+3} textAnchor="start" fontSize="9" fill="#3b82f6">{v.toFixed(1)}</text>
-        )}
-        {phVals.length===0 && tempVals.length>0 && Array.from({length:4},(_,i)=>tempMin+tempRange*i/3).map((v,i) =>
-          <text key={i} x={PAD.l+CW+4} y={toYtemp(v)+3} textAnchor="start" fontSize="9" fill="#ef4444">{v.toFixed(0)}°</text>
-        )}
 
         {/* As-lijnen */}
         <line x1={PAD.l}    y1={PAD.t}    x2={PAD.l}    y2={PAD.t+CH} stroke="#d1d5db" strokeWidth="1"/>
@@ -290,13 +301,13 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
         <line x1={PAD.l}    y1={PAD.t+CH} x2={PAD.l+CW} y2={PAD.t+CH} stroke="#d1d5db" strokeWidth="1"/>
 
         {/* Legenda */}
-        {sgVals.length>0   && <><rect x={PAD.l}    y={PAD.t+4} width="8" height="3" fill="#d97706" rx="1"/><text x={PAD.l+11}    y={PAD.t+9} fontSize="9" fill="#6b7280">SG</text></>}
-        {phVals.length>0   && <><rect x={PAD.l+32}  y={PAD.t+4} width="8" height="3" fill="#3b82f6" rx="1"/><text x={PAD.l+43}   y={PAD.t+9} fontSize="9" fill="#6b7280">pH</text></>}
-        {tempVals.length>0 && <><rect x={PAD.l+64}  y={PAD.t+4} width="8" height="3" fill="#ef4444" rx="1"/><text x={PAD.l+75}   y={PAD.t+9} fontSize="9" fill="#6b7280">°C</text></>}
+        {sgVals.length>0   && <><rect x={PAD.l}    y={PAD.t+5} width="12" height="4" fill="#d97706" rx="1" fillOpacity="0.85"/><text x={PAD.l+15}  y={PAD.t+11} fontSize="9" fill="#6b7280">SG</text></>}
+        {tempVals.length>0 && <><rect x={PAD.l+36}  y={PAD.t+5} width="12" height="4" fill="#ef4444" rx="1"/><text x={PAD.l+51} y={PAD.t+11} fontSize="9" fill="#6b7280">°C</text></>}
+        {phVals.length>0   && <><line x1={PAD.l+72} y1={PAD.t+7} x2={PAD.l+84} y2={PAD.t+7} stroke="#3b82f6" strokeWidth="2" strokeDasharray="4 2"/><text x={PAD.l+87} y={PAD.t+11} fontSize="9" fill="#6b7280">pH</text></>}
 
         {/* Zoom hint */}
         {!isZoomed && sorted.length>=3 && (
-          <text x={PAD.l+CW} y={PAD.t+9} textAnchor="end" fontSize="8" fill="#d1d5db">scroll = zoom · sleep = verschuiven</text>
+          <text x={PAD.l+CW} y={PAD.t+10} textAnchor="end" fontSize="8" fill="#d1d5db">scroll = zoom · sleep = verschuiven</text>
         )}
       </svg>
     </div>
