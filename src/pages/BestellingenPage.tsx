@@ -149,7 +149,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        const beerMatch = batch.naam === matchNaam
+        const batchLow = batch.naam.toLowerCase()
+        const naamLow = matchNaam.toLowerCase()
+        const beerMatch = batchLow === naamLow ||
+          batchLow.includes(naamLow) ||
+          naamLow.includes(batchLow)
         const packMatch = a.verpakking_type === matchVerpakking ||
           (a.verpakking_naam||'').includes(matchVerpakking)
         if (!beerMatch || !packMatch) return false
@@ -773,7 +777,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         <div key={idx} className="flex items-center gap-2 mt-1 text-sm">
                           <span className="flex-1 text-gray-600">
                             {avArt?.artikelnummer && <span className="font-mono font-semibold text-gray-800">[{avArt.artikelnummer}]</span>}{' '}
-                            {avItem?.verpakking_type} · THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
+                            {avBatch?.naam} · {avItem?.verpakking_type} · THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
                           </span>
                           <input type="number" min="0" max={maxBeschik}
                             value={dp.aantal}
@@ -815,7 +819,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.artikelnummer ? `[${avArt.artikelnummer}] ` : ''}{a.verpakking_type} · THT: {a.tht ? fmtD(a.tht) : '—'} · {beschik}× {t('lbl_available')}
+                                {avArt?.artikelnummer ? `[${avArt.artikelnummer}] ` : ''}{avBatch?.naam} · {a.verpakking_type} · THT: {a.tht ? fmtD(a.tht) : '—'} · {beschik}× {t('lbl_available')}
                               </option>
                             )
                           })}
