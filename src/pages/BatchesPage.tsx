@@ -663,6 +663,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const saveBatch = () => {
     if (!bForm.naam.trim()) { alert(t('err_name_required')); return }
+    if (!bForm.batch_nummer?.trim()) { alert(t('err_batch_number_required')); return }
+    const dupNr = bat.find((b: any) => b.batch_nummer?.trim() === bForm.batch_nummer.trim() && b.id !== editId)
+    if (dupNr) { alert(t('err_batch_number_duplicate').replace('{nr}', bForm.batch_nummer).replace('{naam}', dupNr.naam)); return }
     if (bForm.tank && ['Vergisten','Conditioneren'].includes(bForm.status)) {
       const bezet = bat.find((b: any) => b.tank===bForm.tank && b.id!==editId && ['Vergisten','Conditioneren'].includes(b.status))
       if (bezet) { alert(t('err_tank_occupied').replace('{tank}',bForm.tank).replace('{name}',bezet.naam)); return }

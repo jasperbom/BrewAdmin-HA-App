@@ -5,8 +5,9 @@ import { tod } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { BUILTIN_ING_TYPES } from '../utils/constants'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
+import AccijnsPage from './AccijnsPage'
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}}: any) {
   const now = new Date();
   const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -95,6 +96,22 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     });
     const csv = [hdr,...rows].map((r: any)=>r.map((c: any)=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`inkoop_${dateFrom}_${dateTo}.csv`});
+    a.click();
+  };
+
+  const exportVerkoopCSV = () => {
+    const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_klant'),t('lbl_description'),t('lbl_quantity'),'Prijs/stuk','BTW%',t('lbl_netto'),t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
+    const rows: any[] = [];
+    verkoopGefilterd.forEach((f: any) => {
+      (f.regels||[]).forEach((r: any) => rows.push([
+        f.datum, f.factuurnummer||'', f.klant_naam||'',
+        r.omschrijving||'', r.hoeveelheid??'', r.prijs_per_stuk!=null?Number(r.prijs_per_stuk).toFixed(2):'',
+        r.btw_pct??'', r.netto!=null?Number(r.netto).toFixed(2):'', r.btw_bedrag!=null?Number(r.btw_bedrag).toFixed(2):'',
+        r.bruto!=null?Number(r.bruto).toFixed(2):'',
+      ]));
+    });
+    const csv = [hdr,...rows].map((r: any)=>r.map((c: any)=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`verkoop_${dateFrom}_${dateTo}.csv`});
     a.click();
   };
 
@@ -333,11 +350,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         <div className="flex items-center gap-1">
           <h2 className="text-xl font-bold text-gray-800 mr-4">
             {t('nav_boekhouding')}
-            {mainTab === 'aangiftes' && <span className="ml-2 text-base font-normal text-gray-400">{aangifteYear}</span>}
+            {mainTab === 'btw_aangifte' && <span className="ml-2 text-base font-normal text-gray-400">{aangifteYear}</span>}
           </h2>
           {tabBtn('verkoop', t('tab_verkoop'))}
           {tabBtn('inkoop', t('tab_inkoop'))}
-          {tabBtn('aangiftes', t('tab_aangiftes'))}
+          {tabBtn('accijns', t('nav_accijns'))}
+          {tabBtn('btw_aangifte', t('tab_btw_aangifte'))}
         </div>
       </div>
 
@@ -362,7 +380,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
         {/* ── Eigen verkoopfacturen (uit Bestellingen) ── */}
         <div className="mt-2">
-          <h3 className="text-base font-semibold text-gray-700 mb-3">🧾 {t('tab_verkoopfacturen')}</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold text-gray-700">🧾 {t('tab_verkoopfacturen')}</h3>
+            {verkoopGefilterd.length > 0 && (
+              <button onClick={exportVerkoopCSV}
+                className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                ↓ CSV ({verkoopGefilterd.length})
+              </button>
+            )}
+          </div>
 
           {verkoopGefilterd.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -623,21 +649,30 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               </div>
 
               <div className={card + ' bg-blue-50 border-blue-100'}>
-                <h3 className="text-xs font-semibold text-blue-800 mb-2 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <h3 className="text-xs font-semibold text-blue-800 mb-3 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs text-gray-500 mb-1">{t('lbl_rubriek_1a_1b')}</div>
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a_1b')}</div>
                     <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1a_hint')}</div>
                   </div>
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs text-gray-500 mb-1">{t('lbl_rubriek_5b')}</div>
-                    <div className="font-bold text-blue-700 text-base">{fmt(btwPerTarief.reduce((s: any,r: any)=>s+r.btw,0))}</div>
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_5b')}</div>
+                    <div className="font-bold text-blue-700 text-base mb-1">{fmt(btwPerTarief.reduce((s: any,r: any)=>s+r.btw,0))}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_5b_hint')}</div>
                   </div>
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs text-gray-500 mb-1">{t('lbl_periode')}</div>
-                    <div className="font-medium text-gray-700">{dateFrom} {t('lbl_t_m')} {dateTo}</div>
-                    <div className="text-xs text-gray-400">{t('lbl_facturen_short').replace('{n}',inkoopGefilterd.length)}</div>
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1d')}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1d_hint')}</div>
                   </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_2a')}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_2a_hint')}</div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-blue-100">
+                  <div className="text-xs text-gray-500 mb-1">{t('lbl_periode')}</div>
+                  <div className="font-medium text-gray-700">{dateFrom} {t('lbl_t_m')} {dateTo}</div>
+                  <div className="text-xs text-gray-400">{t('lbl_facturen_short').replace('{n}',inkoopGefilterd.length)}</div>
                 </div>
               </div>
             </div>
@@ -658,8 +693,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         )}
       </>)}
 
-      {/* ══════════════════════ AANGIFTES ══════════════════════ */}
-      {mainTab==='aangiftes' && (()=>{
+      {/* ══════════════════════ ACCIJNS ══════════════════════ */}
+      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
+
+      {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
+      {mainTab==='btw_aangifte' && (()=>{
         const periode = (btwInst as any)?.periode || 'kwartaal';
         const periodes = getPeriodes(aangifteYear, periode);
         const today = now.toISOString().slice(0,10);

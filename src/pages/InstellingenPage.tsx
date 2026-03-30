@@ -72,7 +72,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
@@ -261,17 +261,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const navItems = [
-    {id:'app',              label:t('settings_app'),        icon:'⚙️'},
-    {id:'brouwerij',        label:t('settings_brewery'),    icon:'🏭'},
-    {id:'bedrijfsgegevens', label:t('settings_company'),    icon:'🧾'},
-    {id:'brewfather',       label:'Brewfather',              icon:'🍺'},
-    {id:'woocommerce',      label:t('settings_webshop'),    icon:'🛒'},
-    {id:'claude',           label:'Claude AI',               icon:'🤖'},
-    {id:'homeassistant',    label:'Home Assistant',          icon:'🏠'},
-    {id:'accijns',          label:t('settings_excise'),     icon:'💶'},
-    {id:'ingredienten',     label:'Ingrediënten',            icon:'🌾'},
-    {id:'hygiene',          label:t('settings_hygiene'),    icon:'🧹'},
-    {id:'data',             label:t('settings_data'),       icon:'📦'},
+    {id:'brouwerij',     label:t('settings_brewery'),      icon:'🏭'},
+    {id:'koppelingen',   label:t('settings_koppelingen'),  icon:'🔗'},
+    {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
+    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
+    {id:'ingredienten',  label:'Ingrediënten',             icon:'🌾'},
+    {id:'hygiene',       label:t('settings_hygiene'),      icon:'🧹'},
+    {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
 
   const fmtTs = (ts: any) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
@@ -419,8 +415,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
-      {/* BEDRIJFSGEGEVENS (factuur) */}
-      {activeSection==='bedrijfsgegevens' && <>
+      {/* BEDRIJFSGEGEVENS (factuur) — onderdeel van brouwerij */}
+      {activeSection==='brouwerij' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_company')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_company_desc')}</p>
@@ -560,7 +556,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </>}
 
       {/* BREWFATHER */}
-      {activeSection==='brewfather' && <>
+      {activeSection==='koppelingen' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_brewfather_section')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -611,7 +607,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </>}
 
       {/* WOOCOMMERCE */}
-      {activeSection==='woocommerce' && <>
+      {activeSection==='koppelingen' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_woocommerce_section')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -684,7 +680,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </>}
 
       {/* CLAUDE AI */}
-      {activeSection==='claude' && <>
+      {activeSection==='koppelingen' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_claude_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -792,8 +788,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
-      {/* ACCIJNS */}
-      {activeSection==='accijns' && <>
+      {/* FINANCIEEL (accijns + BTW) */}
+      {activeSection==='financieel' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_excise_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -869,6 +865,27 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </button>
           ))}
         </div>
+      </div>
+
+      {/* BTW tarieven */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_btw_tarieven_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_btw_tarieven_desc')}</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {[0, 6, 9, 21].map(pct => (
+            <label key={pct} className="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-100 transition-colors">
+              <input type="checkbox"
+                checked={(btwTarieven||[]).includes(pct)}
+                onChange={(e: any) => {
+                  const arr: number[] = Array.isArray(btwTarieven) ? [...btwTarieven] : [0, 9, 21];
+                  setBtwTarieven(e.target.checked ? [...arr, pct].sort((a,b)=>a-b) : arr.filter(v=>v!==pct));
+                }}
+                className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+              <span className="text-sm font-medium text-gray-700">{pct}%</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400">{t('settings_btw_tarieven_hint')}</p>
       </div>
       </>}
 
@@ -1045,7 +1062,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </>}
 
       {/* DATA */}
-      {activeSection==='data' && <>
+      {/* APP — data import/export (moved from data-sectie) */}
+      {activeSection==='app' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_data_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_data_desc')}</p>
@@ -1061,8 +1079,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         <p className="text-xs text-gray-400 mt-3">{t('settings_data_import_warning')}</p>
       </div>
+      )}
 
-      {/* Inkoop bijlagen downloaden */}
+      {/* FINANCIEEL — inkoop bijlagen downloaden */}
+      {activeSection==='financieel' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_bijlagen_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_bijlagen_desc')}</p>
@@ -1108,8 +1128,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           {bijlagenStatus && bijlagenStatus!=='busy' && <span className="text-sm text-gray-500">{bijlagenStatus}</span>}
         </div>
       </div>
+      )}
 
-      {/* Mutaties log */}
+      {/* INGREDIENTEN — mutatielog wissen */}
+      {activeSection==='ingredienten' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_data_log_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -1122,8 +1144,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </button>
         <p className="text-xs text-gray-400 mt-2">{t('settings_log_warning')}</p>
       </div>
-
-      </>}
+      )}
 
       <div className="pt-2 pb-2 text-center text-xs text-gray-400">
         {t('settings_footer_by')} · <a href="mailto:info@craftery.nl" className="underline hover:text-gray-600">info@craftery.nl</a>
