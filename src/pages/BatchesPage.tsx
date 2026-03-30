@@ -924,6 +924,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       selB.maisch_eff    ? [t('batch_info_mash_efficiency'), `${Number(selB.maisch_eff).toFixed(1)}%`] : null,
                       selB.maisch_ph     ? [t('batch_info_mash_ph'),         Number(selB.maisch_ph).toFixed(2)] : null,
                       selB.product_ph    ? [t('batch_info_product_ph'),      Number(selB.product_ph).toFixed(2)] : null,
+                      selB.kleur         ? [t('recipe_kleur'),               `${selB.kleur} EBC`] : null,
+                      selB.kooktijd      ? [t('recipe_kooktijd'),            `${selB.kooktijd} min`] : null,
+                      selB.kook_volume   ? [t('recipe_kook_volume'),         `${selB.kook_volume} L`] : null,
                     ] as any[]).filter(Boolean).map(([l, v]: any) => (
                       <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className="mt-0.5">{v}</div></div>
                     ))}
@@ -932,6 +935,56 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     <div className="mt-3 pt-3 border-t">
                       <div className="text-xs font-medium text-gray-500 mb-1">{t('lbl_notes')}</div>
                       <div className="text-sm text-gray-700 whitespace-pre-wrap">{safeStr(selB.notities)}</div>
+                    </div>
+                  )}
+                  {selB.maischprofiel && selB.maischprofiel.length > 0 && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-400 border-b">
+                            <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                            <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                            <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                            <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selB.maischprofiel.map((s: any, i: number) => (
+                            <tr key={i} className="border-b border-gray-100 last:border-0">
+                              <td className="py-1 text-gray-700">{s.naam || s.type || `Stap ${i+1}`}</td>
+                              <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                              <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
+                              <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {selB.vergistingsprofiel && selB.vergistingsprofiel.length > 0 && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-400 border-b">
+                            <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                            <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                            <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                            <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selB.vergistingsprofiel.map((s: any, i: number) => (
+                            <tr key={i} className="border-b border-gray-100 last:border-0">
+                              <td className="py-1 text-gray-700">{s.type || `Stap ${i+1}`}</td>
+                              <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                              <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
+                              <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

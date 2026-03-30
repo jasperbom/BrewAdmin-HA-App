@@ -322,11 +322,15 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 {overallOk?'✓ Klaar om te brouwen':overallRed?'✗ Ingrediënten tekort':overallYel?'⚠ Controleer voorraad':'— Onbekende voorraad'}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-4 gap-3 mb-4">
               {[{l:'Batch',v:selRec.batch_size?`${selRec.batch_size} L`:'—'},
                 {l:'OG',  v:selRec.OG?Number(selRec.OG).toFixed(3):'—'},
                 {l:'FG',  v:selRec.FG?Number(selRec.FG).toFixed(3):'—'},
                 {l:'ABV', v:selRec.ABV?`${Number(selRec.ABV).toFixed(1)}%`:'—'},
+                {l:'IBU', v:selRec.IBU?String(selRec.IBU):'—'},
+                {l:t('recipe_kleur'), v:selRec.kleur?`${selRec.kleur} EBC`:'—'},
+                {l:t('recipe_kooktijd'), v:selRec.kooktijd?`${selRec.kooktijd} min`:'—'},
+                {l:t('recipe_kook_volume'), v:selRec.kook_volume?`${selRec.kook_volume} L`:'—'},
               ].map((s: any)=>(
                 <div key={s.l} className="bg-gray-50 rounded-lg p-3 text-center">
                   <div className="text-xs text-gray-400 mb-0.5">{s.l}</div>
@@ -334,10 +338,60 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 </div>
               ))}
             </div>
+            {selRec.maischprofiel && selRec.maischprofiel.length > 0 && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 border-b">
+                      <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selRec.maischprofiel.map((s: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-100 last:border-0">
+                        <td className="py-1 text-gray-700">{s.naam || s.type || `Stap ${i+1}`}</td>
+                        <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <IngSection titel={t('recipe_section_grains')} items={selRec.mout}/>
             <IngSection titel={t('recipe_section_hops')} items={selRec.hop}/>
             <IngSection titel={t('recipe_section_yeast')} items={selRec.gist}/>
             <IngSection titel={t('recipe_section_other')} items={selRec.overig}/>
+            {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 border-b">
+                      <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selRec.vergistingsprofiel.map((s: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-100 last:border-0">
+                        <td className="py-1 text-gray-700">{s.type || `Stap ${i+1}`}</td>
+                        <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {selRec.notities&&(
               <div className="mt-2 p-4 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-1">{t('lbl_notes')}</div>

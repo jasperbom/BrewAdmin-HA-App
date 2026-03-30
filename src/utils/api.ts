@@ -199,6 +199,22 @@ export const bfGetRecipes = async (): Promise<any[]> => {
     hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||''})),
     gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
     overig: (r.miscs||[]).map((m: any) =>       ({naam:m.name||'', hoeveelheid:Number(m.amount||0), eenheid:m.unit||'g', gebruik:m.use||''})),
+    kleur:       bfNumSafe(r.color),
+    kooktijd:    bfNumSafe(r.boilTime),
+    kook_volume: bfNumSafe(r.boilSize),
+    vergistingsprofiel: (r.fermentation?.steps||[]).map((s: any) => ({
+      type: s.type || s.name || '',
+      temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
+      tijd: bfNumSafe(s.actualTime),
+      ramp: bfNumSafe(s.rampTime ?? s.ramp),
+    })),
+    maischprofiel: (r.mash?.steps||[]).map((s: any) => ({
+      naam:     s.name || '',
+      type:     s.type || '',
+      temp:     bfNumSafe(s.stepTemp ?? s.displayTemp),
+      tijd:     bfNumSafe(s.stepTime),
+      rampTijd: bfNumSafe(s.rampTime),
+    })),
   }))
 }
 
@@ -239,6 +255,22 @@ export const bfMapBatch = (b: any) => ({
   maisch_ph: bfNumSafe(b.measuredMashPh),
   product_ph: bfNumSafe(b.measuredFermentationPh != null ? b.measuredFermentationPh : b.measuredPh),
   datum: b.brewDate ? new Date(b.brewDate).toISOString().split('T')[0] : tod(),
+  kleur:       bfNumSafe(b.recipe?.color),
+  kooktijd:    bfNumSafe(b.recipe?.boilTime),
+  kook_volume: bfNumSafe(b.recipe?.boilSize),
+  vergistingsprofiel: (b.recipe?.fermentation?.steps||[]).map((s: any) => ({
+    type: s.type || s.name || '',
+    temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
+    tijd: bfNumSafe(s.actualTime),
+    ramp: bfNumSafe(s.rampTime ?? s.ramp),
+  })),
+  maischprofiel: (b.recipe?.mash?.steps||[]).map((s: any) => ({
+    naam:     s.name || '',
+    type:     s.type || '',
+    temp:     bfNumSafe(s.stepTemp ?? s.displayTemp),
+    tijd:     bfNumSafe(s.stepTime),
+    rampTijd: bfNumSafe(s.rampTime),
+  })),
 })
 
 export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
