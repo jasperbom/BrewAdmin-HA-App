@@ -96,6 +96,20 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
   }, [inkoopFacturen, aangifteYear]);
 
+  const omzetBelastingJaar = React.useMemo(() => {
+    const yearStr = String(aangifteYear);
+    const eigenBtw = (verkoopFacturen||[])
+      .filter((f: any) => f.datum?.startsWith(yearStr))
+      .reduce((s: any, f: any) => s + (f.btw||0), 0);
+    const wcBtw = aangifteOrders
+      .filter((o: any) => {
+        const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,4);
+        return d === yearStr && ['completed','processing'].includes((o as any).status);
+      })
+      .reduce((s: any, o: any) => s + parseFloat((o as any).total_tax||0), 0);
+    return eigenBtw + wcBtw;
+  }, [verkoopFacturen, aangifteOrders, aangifteYear]);
+
   const exportInkoopCSV = () => {
     const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_supplier'),t('lbl_netto_inkoop_excl_btw'),'BTW%',t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
     const rows: any[] = [];
@@ -362,7 +376,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         <div className="flex items-center gap-1">
           <h2 className="text-xl font-bold text-gray-800 mr-4">
             {t('nav_boekhouding')}
-            {mainTab === 'btw_aangifte' && <span className="ml-2 text-base font-normal text-gray-400">{aangifteYear}</span>}
           </h2>
           {tabBtn('verkoop', t('tab_verkoop'))}
           {tabBtn('inkoop', t('tab_inkoop'))}
@@ -787,6 +800,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a_1b')}</div>
+                    <div className="font-bold text-gray-800 text-base mb-1">{fmt(omzetBelastingJaar)}</div>
                     <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1a_hint')}</div>
                   </div>
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
