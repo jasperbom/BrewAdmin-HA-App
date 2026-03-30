@@ -42,21 +42,46 @@ interface BatchesPageProps {
   openBatchId?: number | null
 }
 
-// ── Catmull-Rom spline helper ──────────────────────────────────────────────
+// ── Monotone cubic interpolation ──────────────────────────────────────────
+// Guarantees the curve never overshoots between data points (Fritsch-Carlson)
 const catmullRomPath = (pts: [number,number][]): string => {
-  if (pts.length < 2) return ''
-  if (pts.length === 2) return `M ${pts[0][0]},${pts[0][1]} L ${pts[1][0]},${pts[1][1]}`
+  const n = pts.length
+  if (n < 2) return ''
+  if (n === 2) return `M ${pts[0][0]},${pts[0][1]} L ${pts[1][0]},${pts[1][1]}`
+
+  // Compute slopes between consecutive points
+  const dx = [], dy = [], m: number[] = []
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i+1][0] - pts[i][0])
+    dy.push(pts[i+1][1] - pts[i][1])
+    m.push(dy[i] / (dx[i] || 1e-10))
+  }
+
+  // Tangents at each point (monotone Fritsch-Carlson)
+  const t: number[] = [m[0]]
+  for (let i = 1; i < n - 1; i++) {
+    if (m[i-1] * m[i] <= 0) { t.push(0) }
+    else { t.push((m[i-1] + m[i]) / 2) }
+  }
+  t.push(m[n - 2])
+
+  // Rescale tangents to ensure monotonicity
+  for (let i = 0; i < n - 1; i++) {
+    if (Math.abs(m[i]) < 1e-10) { t[i] = 0; t[i+1] = 0; continue }
+    const a = t[i] / m[i], b = t[i+1] / m[i]
+    const s = a * a + b * b
+    if (s > 9) { const k = 3 / Math.sqrt(s); t[i] = k * a * m[i]; t[i+1] = k * b * m[i] }
+  }
+
+  // Build SVG cubic bezier path
   let d = `M ${pts[0][0]},${pts[0][1]}`
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(i - 1, 0)]
-    const p1 = pts[i]
-    const p2 = pts[i + 1]
-    const p3 = pts[Math.min(i + 2, pts.length - 1)]
-    const cp1x = p1[0] + (p2[0] - p0[0]) / 6
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6
-    const cp2x = p2[0] - (p3[0] - p1[0]) / 6
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6
-    d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2[0]},${p2[1]}`
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i]
+    const cp1x = pts[i][0]   + h / 3
+    const cp1y = pts[i][1]   + t[i] * h / 3
+    const cp2x = pts[i+1][0] - h / 3
+    const cp2y = pts[i+1][1] - t[i+1] * h / 3
+    d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${pts[i+1][0]},${pts[i+1][1]}`
   }
   return d
 }
