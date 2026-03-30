@@ -136,14 +136,22 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // Beschikbare afvullingen voor een orderregel (gefilterd op bier + verpakking)
-  const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number) => {
+  const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, regelArtikelId?: number) => {
+    // Gebruik artikel_id om biernaam + verpakking_type definitief te resolven
+    let matchNaam = regelBierNaam
+    let matchVerpakking = regelVerpakking
+    if (regelArtikelId) {
+      const art = (artikelen||[]).find((a: any) => a.id === regelArtikelId)
+      if (art?.biernaam) matchNaam = art.biernaam
+      if (art?.verpakking_type) matchVerpakking = art.verpakking_type
+    }
     return (av||[])
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        const beerMatch = batch.naam === regelBierNaam
-        const packMatch = a.verpakking_type === regelVerpakking ||
-          (a.verpakking_naam||'').includes(regelVerpakking)
+        const beerMatch = batch.naam === matchNaam
+        const packMatch = a.verpakking_type === matchVerpakking ||
+          (a.verpakking_naam||'').includes(matchVerpakking)
         if (!beerMatch || !packMatch) return false
         return beschikbaarVoorAfvulling(a, excludeBestellingId) > 0
       })
@@ -740,7 +748,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const draftVoorRegel = draftPicks[r.id] || []
                 const totaalGepickt = draftVoorRegel.reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
                 const resterend = r.aantal - totaalGepickt
-                const afvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id)
+                const afvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, r.artikel_id)
 
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
@@ -758,12 +766,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {/* Bestaande picks */}
                     {draftVoorRegel.map((dp: any, idx: number) => {
                       const avItem = (av||[]).find((a: any) => a.id === dp.afvulling_id)
-                      const batch = avItem ? bat.find((b: any) => b.id === avItem.batch_id) : null
+                      const avBatch = avItem ? bat.find((b: any) => b.id === avItem.batch_id) : null
+                      const avArt = avBatch ? (artikelen||[]).find((a: any) => a.key === `${avBatch.naam}|||${avItem?.verpakking_type}`) : null
                       const maxBeschik = beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id) + Number(dp.aantal||0)
                       return (
                         <div key={idx} className="flex items-center gap-2 mt-1 text-sm">
                           <span className="flex-1 text-gray-600">
-                            {batch?.naam} #{batch?.batch_nummer||'—'} · {avItem?.verpakking_type} · THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
+                            {avArt?.artikelnummer && <span className="font-mono font-semibold text-gray-800">[{avArt.artikelnummer}]</span>}{' '}
+                            {avItem?.verpakking_type} · THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
                           </span>
                           <input type="number" min="0" max={maxBeschik}
                             value={dp.aantal}
@@ -800,11 +810,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         }} className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white" defaultValue="">
                           <option value="">+ {t('picking_afvulling')} toevoegen...</option>
                           {afvullingen.map((a: any) => {
-                            const batch = bat.find((b: any) => b.id === a.batch_id)
+                            const avBatch = bat.find((b: any) => b.id === a.batch_id)
+                            const avArt = avBatch ? (artikelen||[]).find((art: any) => art.key === `${avBatch.naam}|||${a.verpakking_type}`) : null
                             const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
                             return (
                               <option key={a.id} value={a.id}>
-                                {batch?.naam} #{batch?.batch_nummer||'—'} · THT: {a.tht ? fmtD(a.tht) : '—'} · {beschik}× {t('lbl_available')}
+                                {avArt?.artikelnummer ? `[${avArt.artikelnummer}] ` : ''}{a.verpakking_type} · THT: {a.tht ? fmtD(a.tht) : '—'} · {beschik}× {t('lbl_available')}
                               </option>
                             )
                           })}
