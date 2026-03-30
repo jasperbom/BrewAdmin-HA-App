@@ -226,8 +226,21 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   const phLinePath   = phPts.length   >= 2 ? catmullRomPath(phPts)   : ''
 
   const gridSteps = Array.from({length:5}, (_,i) => sgMin+sgRange*i/4)
-  const xLabelIdxs = Array.from({length: Math.min(inView.length,7)}, (_,i) =>
-    Math.round(i*(inView.length-1)/Math.max(Math.min(inView.length,7)-1,1)))
+
+  // X-as: één label per unieke datum, alleen tonen als er voldoende ruimte is (geen overlap)
+  const xLabels: {x: number, label: string}[] = []
+  const seenDates = new Set<string>()
+  let lastLabelX = -Infinity
+  const minLabelGap = 52 // SVG-eenheden (~breedte van "MM-DD" label + marge)
+  for (const m of inView) {
+    if (seenDates.has(m.datum)) continue
+    seenDates.add(m.datum)
+    const x = toX(mkTs(m))
+    if (x - lastLabelX >= minLabelGap) {
+      xLabels.push({x, label: m.datum.slice(5)})
+      lastLabelX = x
+    }
+  }
 
   // Right axis shows temp if available, otherwise pH
   const hasTemp = tempVals.length > 0, hasPh = phVals.length > 0
@@ -312,13 +325,9 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
         })()}
 
         {/* X-as labels */}
-        {xLabelIdxs.map(idx => {
-          const m = inView[idx]; if (!m) return null
-          const x = toX(mkTs(m))
-          return <text key={idx} x={x} y={H-10} textAnchor="middle" fontSize="9" fill="#6b7280">
-            {m.datum.slice(5)}
-          </text>
-        })}
+        {xLabels.map(({x, label}) => (
+          <text key={label} x={x} y={H-10} textAnchor="middle" fontSize="9" fill="#6b7280">{label}</text>
+        ))}
 
         {/* As-lijnen */}
         <line x1={PAD.l}    y1={PAD.t}    x2={PAD.l}    y2={PAD.t+CH} stroke="#d1d5db" strokeWidth="1"/>
