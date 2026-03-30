@@ -212,6 +212,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             : (Number(item.quantity||1) > 0 ? parseFloat(item.subtotal||'0') / Number(item.quantity||1) : 0)
           return {
             id: i + 1,
+            type: 'bier',
             artikel_id: art?.id || null,
             bier_naam: art?.biernaam || item.name || '',
             verpakking_type: art?.verpakking_type || '',
@@ -735,7 +736,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         {showPickModal && (
           <Modal title={t('picking_title')} onClose={() => setShowPickModal(false)} wide>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-              {(selectedOrder.regels||[]).filter((r: any) => r.type === 'bier').map((r: any) => {
+              {(selectedOrder.regels||[]).filter((r: any) => r.type === 'bier' || (!r.type && r.bier_naam)).map((r: any) => {
                 const draftVoorRegel = draftPicks[r.id] || []
                 const totaalGepickt = draftVoorRegel.reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
                 const resterend = r.aantal - totaalGepickt
