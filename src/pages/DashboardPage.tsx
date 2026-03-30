@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
 import { STATUS_CLR } from '../utils/constants'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMetingen=[], haInst}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMetingen=[], haInst, haTankTemps={}}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -176,11 +176,9 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
                       ) : (
                         <div className="text-xs text-gray-400 italic">{t('lbl_empty')}</div>
                       )}
-                      {(() => {
-                        const ids = (bat||[]).filter((b: any) => b.tank === tk.id).map((b: any) => b.id)
-                        const last = (gistMetingen||[]).filter((m: any) => ids.includes(m.batch_id) && m.temp != null).sort((a: any, b: any) => (b.datum+(b.tijd||'')).localeCompare(a.datum+(a.tijd||'')))[0]
-                        return last ? <div className="text-sm font-bold text-gray-700 mt-1">{last.temp}°C</div> : null
-                      })()}
+                      {haTankTemps[tk.id] != null && (
+                        <div className="text-sm font-bold text-gray-700 mt-1">{haTankTemps[tk.id]}°C</div>
+                      )}
                     </div>
                   </div>
                 </div>
