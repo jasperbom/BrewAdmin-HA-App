@@ -365,6 +365,30 @@ class BatchErrorBoundary extends React.Component<{children: React.ReactNode}, {e
   }
 }
 
+function openPrint(html: string): void {
+  const w = window.open('', '_blank', 'width=900,height=700')
+  if (!w) { alert('Pop-up geblokkeerd — sta pop-ups toe voor deze pagina.'); return }
+  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>Batch</title><style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; }
+    .page { max-width: 210mm; margin: 0 auto; padding: 12mm 14mm; }
+    h1 { font-size: 16pt; font-weight: bold; margin-bottom: 1mm; }
+    h2 { font-size: 10pt; font-weight: bold; text-transform: uppercase; color: #555; letter-spacing: 0.05em; margin: 5mm 0 2mm; border-bottom: 0.5px solid #ccc; padding-bottom: 1mm; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 3mm; }
+    th { text-align: left; font-size: 8pt; font-weight: bold; border-bottom: 1px solid #888; padding: 1.5mm 2mm; }
+    th.r { text-align: right; }
+    td { padding: 1mm 2mm; font-size: 9pt; border-bottom: 0.5px solid #eee; vertical-align: top; }
+    td.r { text-align: right; }
+    .meta { font-size: 9pt; color: #555; margin-bottom: 4mm; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 6mm; margin-bottom: 3mm; }
+    .grid2 .lbl { font-size: 8pt; color: #888; }
+    .grid2 .val { font-size: 10pt; font-weight: bold; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { size: A4; margin: 0; } }
+  </style></head><body>${html}</body></html>`)
+  w.document.close(); w.focus()
+  setTimeout(() => { w.print() }, 400)
+}
+
 const BatchesPage: React.FC<BatchesPageProps> = ({
   ing, setIng, lots, setLots, bat, setBat, bi, setBi,
   av, setAv, uit,
@@ -417,6 +441,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
   const [hygieneIngeklapt, setHygieneIngeklapt] = useStore('batches_hygiene_ingeklapt', true)
+  const [metingLogIngeklapt, setMetingLogIngeklapt] = useStore('batches_meting_log_ingeklapt', true)
+  const [logIngeklapt, setLogIngeklapt] = useStore('batches_log_ingeklapt', true)
   const [ingIngeklapt, setIngIngeklapt] = useStore('batches_ing_ingeklapt', false)
   const [afvullenIngeklapt, setAfvullenIngeklapt] = useStore('batches_afvullen_ingeklapt', false)
   const [voorraadIngeklapt, setVoorraadIngeklapt] = useStore('batches_voorraad_ingeklapt', false)
@@ -428,6 +454,98 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const addLog = (entry: any) => setLog((prev: any[]) => [...prev, {id:newId(prev||[]), datum:tod(), ...entry}])
 
+  const printBatch = (b: any) => {
+    const batchBi = (bi||[]).filter((i: any) => i.batch_id === b.id)
+    const batchAv = (av||[]).filter((a: any) => a.batch_id === b.id)
+    const metingen = (gistMetingen||[])
+      .filter((m: any) => m.batch_id === b.id)
+      .sort((x: any, y: any) => ((x.datum||'')+'T'+(x.tijd||'00:00')).localeCompare((y.datum||'')+'T'+(y.tijd||'00:00')))
+
+    let html = `<div class="page">`
+    html += `<h1>${b.naam}</h1><div class="meta">`
+    if (b.batch_nummer) html += `#${b.batch_nummer} · `
+    if (b.stijl) html += `${b.stijl} · `
+    html += b.status
+    if (b.datum) html += ` · ${b.datum}`
+    html += `</div>`
+
+    html += `<h2>Batch informatie</h2><div class="grid2">`
+    const infoVelden: [string, any][] = [
+      ['OG', b.OG], ['FG', b.FG],
+      ['ABV', b.ABV ? b.ABV + '%' : ''],
+      ['Liter vergist', b.liter_vergist ? b.liter_vergist + ' L' : ''],
+      ['Maisch eff.', b.maisch_eff ? b.maisch_eff + '%' : ''],
+      ['Brouwzaal eff.', b.brouwzaal_eff ? b.brouwzaal_eff + '%' : ''],
+      ['Maisch pH', b.maisch_ph], ['Product pH', b.product_ph],
+      ['Kleur', b.kleur ? b.kleur + ' EBC' : ''],
+      ['Kooktijd', b.kooktijd ? b.kooktijd + ' min' : ''],
+      ['Tank', b.tank],
+    ]
+    infoVelden.filter(([, v]) => v).forEach(([l, v]) => {
+      html += `<div><div class="lbl">${l}</div><div class="val">${v}</div></div>`
+    })
+    html += `</div>`
+
+    if (b.maischprofiel?.length) {
+      html += `<h2>Maischprofiel</h2><table><tr><th>Stap</th><th class="r">Temp (°C)</th><th class="r">Tijd (min)</th><th class="r">Opwarmen (min)</th></tr>`
+      b.maischprofiel.forEach((s: any, i: number) => {
+        html += `<tr><td>${s.naam||s.type||`Stap ${i+1}`}</td><td class="r">${s.temp||'—'}</td><td class="r">${s.tijd||'—'}</td><td class="r">${s.rampTijd||'—'}</td></tr>`
+      })
+      html += `</table>`
+    }
+
+    if (b.vergistingsprofiel?.length) {
+      html += `<h2>Vergistingsprofiel</h2><table><tr><th>Stap</th><th class="r">Temp (°C)</th><th class="r">Tijd (d)</th><th class="r">Ramp (u)</th></tr>`
+      b.vergistingsprofiel.forEach((s: any, i: number) => {
+        html += `<tr><td>${s.type||`Stap ${i+1}`}</td><td class="r">${s.temp||'—'}</td><td class="r">${s.tijd||'—'}</td><td class="r">${s.ramp||'—'}</td></tr>`
+      })
+      html += `</table>`
+    }
+
+    if (b.notities) {
+      html += `<h2>Notities</h2><p style="font-size:9pt;color:#444;white-space:pre-wrap">${b.notities}</p>`
+    }
+
+    const ingK = batchBi.reduce((s: number, i: any) => s + Number(i.kosten||0), 0)
+    const overH = Number(b.electra_kosten||0)+Number(b.water_kosten||0)+Number(b.schoonmaak_kosten||0)+Number(b.overige_kosten||0)
+    const totK = ingK + overH
+    const totLV = batchAv.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
+    const tankL = Number(b.liter_vergist||0)
+    const kpl = totLV>0 ? totK/totLV : (tankL>0 ? totK/tankL : null)
+    html += `<h2>Kosten</h2><table>`
+    html += `<tr><td>Ingrediënten</td><td class="r">${fmt(ingK)}</td></tr>`
+    html += `<tr><td>Overhead</td><td class="r">${fmt(overH)}</td></tr>`
+    html += `<tr><td><strong>Totaal</strong></td><td class="r"><strong>${fmt(totK)}</strong></td></tr>`
+    if (kpl) html += `<tr><td>Per liter</td><td class="r">${fmt(kpl)}</td></tr>`
+    html += `</table>`
+
+    if (metingen.length > 0) {
+      html += `<h2>Gistmetingen (${metingen.length})</h2><table><tr><th>Datum/tijd</th><th class="r">SG</th><th class="r">pH</th><th class="r">°C</th><th>Opmerking</th></tr>`
+      metingen.forEach((m: any) => {
+        html += `<tr><td>${m.datum||''}${m.tijd?' '+m.tijd:''}</td><td class="r">${m.sg!=null?m.sg.toFixed(3):'—'}</td><td class="r">${m.ph!=null?m.ph.toFixed(1):'—'}</td><td class="r">${m.temp!=null?m.temp+'°':'—'}</td><td>${m.opmerking||''}</td></tr>`
+      })
+      html += `</table>`
+    }
+
+    if (batchBi.length > 0) {
+      html += `<h2>Ingrediënten</h2><table><tr><th>Naam</th><th>Type</th><th class="r">Hoeveelheid</th><th class="r">Kosten</th></tr>`
+      batchBi.forEach((i: any) => {
+        html += `<tr><td>${i.ingredient_naam}</td><td>${i.ingredient_type}</td><td class="r">${i.hoeveelheid} ${i.eenheid}</td><td class="r">${i.kosten?fmt(Number(i.kosten)):'—'}</td></tr>`
+      })
+      html += `</table>`
+    }
+
+    if (batchAv.length > 0) {
+      html += `<h2>Afvulling</h2><table><tr><th>Verpakking</th><th class="r">Stuks</th><th class="r">Liter</th><th>Datum</th></tr>`
+      batchAv.forEach((a: any) => {
+        html += `<tr><td>${a.verpakking_type||'—'}</td><td class="r">${a.hoeveelheid}</td><td class="r">${(Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0)).toFixed(1)} L</td><td>${a.datum||'—'}</td></tr>`
+      })
+      html += `</table>`
+    }
+
+    html += `</div>`
+    openPrint(html)
+  }
 
   const runBfSync = async () => {
     if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
@@ -905,6 +1023,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     className="border border-gray-600 rounded px-2 py-1 text-xs bg-gray-700 text-white t-input">
                     {STATUSSEN.map(s => <option key={s} value={s}>{STATUS_LABELS[s]||s}</option>)}
                   </select>
+                  <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>🖨 Print</Btn>
                   <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
                   <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                 </div>
@@ -1051,18 +1170,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       </div>
                       {batchAv.length > 0 && (
                         <div className="pt-2 border-t">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                             <div>
                               <span className="text-gray-500 text-xs block">{t('status_packaged')}</span>
                               <span className="font-medium">{totLiterVerpakt.toFixed(1)}L</span>
                               <span className="text-gray-400 text-xs ml-1">({totStuks} st)</span>
                             </div>
-                            {tankLiter > 0 && (
-                              <div>
-                                <span className="text-gray-500 text-xs block">{t('batch_tank_volume')}</span>
-                                <span className="font-medium">{tankLiter}L</span>
-                              </div>
-                            )}
                             {verlies !== null && (
                               <div>
                                 <span className="text-gray-500 text-xs block">{t('batch_loss')}</span>
@@ -1167,41 +1280,49 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       )}
 
                       {batchMetingen.length > 0 && (
-                        <div className="overflow-x-auto">
-                          <div className="flex justify-end mb-1 px-1">
+                        <div>
+                          <div className="flex items-center justify-between cursor-pointer select-none py-1.5 border-t mt-2"
+                            onClick={() => setMetingLogIngeklapt((v: boolean) => !v)}>
+                            <span className="text-xs font-medium text-gray-500">
+                              {metingLogIngeklapt ? '▶' : '▼'} Metingen ({batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).length})
+                            </span>
                             <button
-                              onClick={() => setToonAutoMetingen(v => !v)}
+                              onClick={(e) => { e.stopPropagation(); setToonAutoMetingen((v: boolean) => !v) }}
                               className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${toonAutoMetingen ? 'bg-blue-50 border-blue-300 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}
                             >
                               {toonAutoMetingen ? 'Automatisch verbergen' : 'Automatisch tonen'}
                             </button>
                           </div>
-                          <table className="w-full text-xs">
-                            <thead className="bg-gray-50 text-gray-500 border-b">
-                              <tr>
-                                <th className="px-2 py-1.5 text-left font-medium">Datum/tijd</th>
-                                <th className="px-2 py-1.5 text-right font-medium text-amber-600">SG</th>
-                                <th className="px-2 py-1.5 text-right font-medium text-blue-600">pH</th>
-                                <th className="px-2 py-1.5 text-right font-medium text-red-500">°C</th>
-                                <th className="px-2 py-1.5 text-left font-medium text-gray-400">Opmerking</th>
-                                <th className="px-2 py-1.5"></th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).map((m: any) => (
-                                <tr key={m.id} className={`hover:bg-gray-50 ${m.auto ? 'opacity-50' : ''}`}>
-                                  <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}{m.auto ? <span className="ml-1 text-gray-400 text-xs italic">auto</span> : ''}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg != null ? m.sg.toFixed(3) : '—'}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-blue-700">{m.ph != null ? m.ph.toFixed(1) : '—'}</td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-red-500">{m.temp != null ? `${m.temp}°` : '—'}</td>
-                                  <td className="px-2 py-1.5 text-gray-400 italic">{m.opmerking || ''}</td>
-                                  <td className="px-2 py-1.5">
-                                    <button onClick={() => deleteMeting(m.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          {!metingLogIngeklapt && (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-gray-50 text-gray-500 border-b">
+                                  <tr>
+                                    <th className="px-2 py-1.5 text-left font-medium">Datum/tijd</th>
+                                    <th className="px-2 py-1.5 text-right font-medium text-amber-600">SG</th>
+                                    <th className="px-2 py-1.5 text-right font-medium text-blue-600">pH</th>
+                                    <th className="px-2 py-1.5 text-right font-medium text-red-500">°C</th>
+                                    <th className="px-2 py-1.5 text-left font-medium text-gray-400">Opmerking</th>
+                                    <th className="px-2 py-1.5"></th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).map((m: any) => (
+                                    <tr key={m.id} className={`hover:bg-gray-50 ${m.auto ? 'opacity-50' : ''}`}>
+                                      <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}{m.auto ? <span className="ml-1 text-gray-400 text-xs italic">auto</span> : ''}</td>
+                                      <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg != null ? m.sg.toFixed(3) : '—'}</td>
+                                      <td className="px-2 py-1.5 text-right font-mono text-blue-700">{m.ph != null ? m.ph.toFixed(1) : '—'}</td>
+                                      <td className="px-2 py-1.5 text-right font-mono text-red-500">{m.temp != null ? `${m.temp}°` : '—'}</td>
+                                      <td className="px-2 py-1.5 text-gray-400 italic">{m.opmerking || ''}</td>
+                                      <td className="px-2 py-1.5">
+                                        <button onClick={() => deleteMeting(m.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1689,41 +1810,49 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               const bLog = (log||[]).filter((l: any) => l.batch_id===selB.id).slice().reverse()
               if (!bLog.length) return null
               return (
-                <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('batch_log')}</div>
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-gray-500 bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-1.5 text-left">{t('lbl_date')}</th>
-                        <th className="px-3 py-1.5 text-left">{t('lbl_type')}</th>
-                        <th className="px-3 py-1.5 text-left">{t('batch_log_description')}</th>
-                        <th className="px-3 py-1.5 text-right">{t('lbl_quantity')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {bLog.map((l: any) => {
-                        const typeInfo = TYPE[l.type] || {icon:'•', label:l.type||'—', cls:'text-gray-600 bg-gray-100'}
-                        const omschr = l.ingredient_naam
-                          ? l.ingredient_naam + (l.lotnummer ? ` · lot: ${l.lotnummer}` : '')
-                          : l.verpakking_type || l.referentie || '—'
-                        const qty = l.hoeveelheid!=null
-                          ? `${l.hoeveelheid} ${l.eenheid||''}${l.referentie&&l.type!=='gebruik'?` (${l.referentie})`:''}`.trim()
-                          : '—'
-                        return (
-                          <tr key={l.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{l.datum||'—'}</td>
-                            <td className="px-3 py-1.5">
-                              <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${typeInfo.cls}`}>
-                                {typeInfo.icon} {typeInfo.label}
-                              </span>
-                            </td>
-                            <td className="px-3 py-1.5 text-xs">{omschr}</td>
-                            <td className="px-3 py-1.5 text-right font-mono text-xs text-gray-700">{qty}</td>
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
+                    onClick={() => setLogIngeklapt((v: boolean) => !v)}>
+                    <span>{t('batch_log')}</span>
+                    <span className="text-xs opacity-70">{logIngeklapt ? '▶' : '▼'} ({bLog.length})</span>
+                  </div>
+                  {!logIngeklapt && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="text-xs text-gray-500 bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-1.5 text-left">{t('lbl_date')}</th>
+                            <th className="px-3 py-1.5 text-left">{t('lbl_type')}</th>
+                            <th className="px-3 py-1.5 text-left">{t('batch_log_description')}</th>
+                            <th className="px-3 py-1.5 text-right">{t('lbl_quantity')}</th>
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {bLog.map((l: any) => {
+                            const typeInfo = TYPE[l.type] || {icon:'•', label:l.type||'—', cls:'text-gray-600 bg-gray-100'}
+                            const omschr = l.ingredient_naam
+                              ? l.ingredient_naam + (l.lotnummer ? ` · lot: ${l.lotnummer}` : '')
+                              : l.verpakking_type || l.referentie || '—'
+                            const qty = l.hoeveelheid!=null
+                              ? `${l.hoeveelheid} ${l.eenheid||''}${l.referentie&&l.type!=='gebruik'?` (${l.referentie})`:''}`.trim()
+                              : '—'
+                            return (
+                              <tr key={l.id} className="hover:bg-gray-50">
+                                <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{l.datum||'—'}</td>
+                                <td className="px-3 py-1.5">
+                                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${typeInfo.cls}`}>
+                                    {typeInfo.icon} {typeInfo.label}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-1.5 text-xs">{omschr}</td>
+                                <td className="px-3 py-1.5 text-right font-mono text-xs text-gray-700">{qty}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )
             })()}
