@@ -148,7 +148,7 @@ def _valid_bf_path(path: str) -> bool:
 
 def _valid_wc_path(path: str) -> bool:
     """Allow safe characters for a WooCommerce API sub-path + query string."""
-    return bool(path) and all(c.isalnum() or c in '-_/?=&.:%+' for c in path)
+    return bool(path) and all(c.isalnum() or c in '-_/?=&.:%+,[]@' for c in path)
 
 
 def _load_wc_creds() -> dict | None:
