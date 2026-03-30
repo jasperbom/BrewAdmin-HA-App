@@ -4,7 +4,7 @@ import { fmtD } from '../utils/format'
 import { bfGetRecipes } from '../utils/api'
 import Btn from '../components/ui/Btn'
 
-function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen}: any) {
+function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch}: any) {
   const {useState} = React;
   const [sel, setSel]         = useState(null);
   const [syncing, setSyncing] = useState(false);
@@ -84,7 +84,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap">
             {Number(item.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
           </td>
-          <td className="px-3 py-2 text-xs text-gray-400">{item.gebruik||''}</td>
+          <td className="px-3 py-2 text-xs text-gray-400">
+            {item.gebruik||''}
+            {item.tijd ? <span className="ml-1 text-gray-300">· {item.tijd} {item.tijdEenheid==='day'?'d':'min'}</span> : null}
+          </td>
           <td className="px-3 py-2 text-sm text-right whitespace-nowrap">
             {ok!==null
               ? <span className={ok?'text-green-600':bijna?'text-yellow-600':'text-red-600'}>
@@ -318,8 +321,23 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 {selRec.stijl&&<div className="text-sm text-gray-500 mt-0.5">{selRec.stijl}</div>}
                 {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">Door {selRec.auteur}</div>}
               </div>
-              <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap flex-shrink-0 ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
-                {overallOk?'✓ Klaar om te brouwen':overallRed?'✗ Ingrediënten tekort':overallYel?'⚠ Controleer voorraad':'— Onbekende voorraad'}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
+                  {overallOk?'✓ Klaar om te brouwen':overallRed?'✗ Ingrediënten tekort':overallYel?'⚠ Controleer voorraad':'— Onbekende voorraad'}
+                </div>
+                {setPage && setPreNieuwBatch && (
+                  <Btn s="sm" v="primary" onClick={() => {
+                    setPreNieuwBatch({
+                      naam: selRec.naam,
+                      stijl: selRec.stijl || '',
+                      OG: selRec.OG || '',
+                      FG: selRec.FG || '',
+                      ABV: selRec.ABV || '',
+                      liter_vergist: selRec.batch_size || '',
+                    })
+                    setPage('batches')
+                  }}>Brouwen</Btn>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-4 gap-3 mb-4">

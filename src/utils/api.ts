@@ -196,7 +196,7 @@ export const bfGetRecipes = async (): Promise<any[]> => {
     notities: r.notes || '',
     tags:   Array.isArray(r.searchTags) ? r.searchTags : (r.searchTags ? [r.searchTags] : []),
     mout:   (r.fermentables||[]).map((f: any) => ({naam:f.name||'', hoeveelheid:Number(f.amount||0), eenheid:'kg'})),
-    hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||''})),
+    hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||'', tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min'})),
     gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
     overig: (r.miscs||[]).map((m: any) =>       ({naam:m.name||'', hoeveelheid:Number(m.amount||0), eenheid:m.unit||'g', gebruik:m.use||''})),
     kleur:       bfNumSafe(r.color),
@@ -205,7 +205,7 @@ export const bfGetRecipes = async (): Promise<any[]> => {
     vergistingsprofiel: (r.fermentation?.steps||[]).map((s: any) => ({
       type: s.type || s.name || '',
       temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
-      tijd: bfNumSafe(s.actualTime),
+      tijd: bfNumSafe(s.stepTime ?? s.actualTime),
       ramp: bfNumSafe(s.rampTime ?? s.ramp),
     })),
     maischprofiel: (r.mash?.steps||[]).map((s: any) => ({

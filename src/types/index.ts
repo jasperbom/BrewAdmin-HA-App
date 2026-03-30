@@ -184,6 +184,8 @@ export interface ReceptIngredient {
   hoeveelheid: number
   eenheid: string
   gebruik?: string
+  tijd?: number | string
+  tijdEenheid?: string
 }
 
 export interface VergistingsStap {

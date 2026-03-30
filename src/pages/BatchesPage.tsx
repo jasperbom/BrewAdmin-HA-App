@@ -373,12 +373,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   hygieneItems, hygieneGroups, wcCreds, artikelen,
   gistMetingen=[], setGistMetingen=()=>{}, haInst,
   acc=[],
-  openBatchId=null
+  openBatchId=null,
+  preNieuwBatch=null, setPreNieuwBatch=()=>{}
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   React.useEffect(() => {
     if (openBatchId) setSel(openBatchId)
   }, [openBatchId])
+  React.useEffect(() => {
+    if (!preNieuwBatch) return
+    setBForm({...emptyB, ...preNieuwBatch})
+    setEditId(null)
+    setShowForm(true)
+    setPreNieuwBatch(null)
+  }, [preNieuwBatch])
   const [showForm, setShowForm] = useState(false)
   const [showBf, setShowBf] = useState(false)
   const [bfJson, setBfJson] = useState('')
