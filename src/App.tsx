@@ -88,6 +88,7 @@ function App() {
 
   const [page, setPage] = useState('dashboard');
   const [openOrderId, setOpenOrderId] = useState<number | null>(null);
+  const [navBatchId, setNavBatchId] = useState<number | null>(null);
   const importRef = useRef<any>(null);
   const bfAutoSynced = React.useRef(false);
 
@@ -135,13 +136,38 @@ function App() {
     })();
   }, [bfCreds?.enabled, bfCreds?.userId]);
 
-  // Global HA auto-fetch: record temperature every 10 min for fermenting batches
+  // Live tank temps for dashboard: refresh every 60s, all sensors regardless of batch status
+  const [haTankTemps, setHaTankTemps] = React.useState<Record<string, number>>({})
+  const haFetchTankTemps = React.useCallback(async () => {
+    if (!haInst?.enabled) return
+    const sensors: any[] = haInst?.sensors || []
+    if (!sensors.length) return
+    const updates: Record<string, number> = {}
+    for (const sensor of sensors) {
+      if (!sensor?.entity || !sensor?.tank) continue
+      try {
+        const d = await haGetState(sensor.entity)
+        const val = parseFloat(d.state)
+        if (!isNaN(val)) updates[sensor.tank] = val
+      } catch {}
+    }
+    if (Object.keys(updates).length) setHaTankTemps(prev => ({ ...prev, ...updates }))
+  }, [haInst])
+
+  React.useEffect(() => {
+    if (!haInst?.enabled) return
+    haFetchTankTemps()
+    const id = setInterval(haFetchTankTemps, 60 * 1000)
+    return () => clearInterval(id)
+  }, [haInst?.enabled, haFetchTankTemps])
+
+  // Record temperature to fermentation log every 10 min for Vergisten/Conditioneren batches
   const haAutoFetch = React.useCallback(async () => {
     if (!haInst?.enabled) return
     const sensors: any[] = haInst?.sensors || []
     if (!sensors.length) return
-    const fermenting = (bat||[]).filter((b: any) => b.status === 'Vergisten' && b.tank)
-    for (const batch of fermenting) {
+    const recordBatches = (bat||[]).filter((b: any) => b.tank && (b.status === 'Vergisten' || b.status === 'Conditioneren'))
+    for (const batch of recordBatches) {
       const sensor = sensors.find((s: any) => s.tank === batch.tank)
       if (!sensor?.entity) continue
       try {
@@ -269,10 +295,10 @@ function App() {
       </nav>
       <PageErrorBoundary page={page}>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} gistMetingen={gistMetingen} haInst={haInst} />}
+        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} setPage={setPage} tanks={tanks} gistMetingen={gistMetingen} haInst={haInst} haTankTemps={haTankTemps} setNavBatchId={setNavBatchId} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} />}
-        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} acc={acc} />}
+        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} acc={acc} openBatchId={navBatchId} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} />}
         {page==='voorraad' && <BierVoorraadPage bat={bat} av={av} uit={uit} bestellingPicks={bestellingPicks} bestellingen={bestellingen} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} />}
         {page==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
