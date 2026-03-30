@@ -801,7 +801,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       )
                     })}
 
-                    {/* Nieuwe afvulling toevoegen */}
+                    {/* Bier selecteren */}
                     {resterend > 0 && afvullingen.length > 0 && (
                       <div className="mt-2 flex items-center gap-2">
                         <select onChange={e => {
