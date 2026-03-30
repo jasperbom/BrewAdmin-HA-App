@@ -136,22 +136,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // Beschikbare afvullingen voor een orderregel (gefilterd op SKU of bier + verpakking)
-  const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string) => {
-    // Zoek SKU van de orderregel via artikel_key
-    const orderArt = regelArtikelKey ? (artikelen||[]).find((a: any) => a.key === regelArtikelKey) : null
-    const orderSku = orderArt?.artikelnummer || null
+  const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string, regelSku?: string) => {
+    // Bepaal SKU: direct uit regel, of via artikel_key lookup
+    const orderSku = regelSku || (regelArtikelKey ? (artikelen||[]).find((a: any) => a.key === regelArtikelKey)?.artikelnummer : null) || null
     return (av||[])
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
         if (orderSku && a.artikel_sku) {
-          // Pure SKU match — batchnaam irrelevant
+          // Nieuw record: pure SKU match — batchnaam irrelevant
           if (a.artikel_sku !== orderSku) return false
         } else if (orderSku && !a.artikel_sku) {
-          // Afvulling heeft geen SKU (oud record) — match via artikel lookup op batch naam + verpakking
-          const avArtKey = `${batch.naam}|||${a.verpakking_type}`.toLowerCase()
-          const avArt = (artikelen||[]).find((art: any) => art.key?.toLowerCase() === avArtKey)
-          if (!avArt || avArt.artikelnummer !== orderSku) return false
+          // Oud record zonder artikel_sku: zoek artikel op SKU + verpakking_type (onafhankelijk van batchnaam)
+          const matchArt = (artikelen||[]).find((art: any) =>
+            art.artikelnummer === orderSku &&
+            art.verpakking_type?.toLowerCase() === a.verpakking_type?.toLowerCase()
+          )
+          if (!matchArt) return false
         } else {
           // Geen SKU beschikbaar — fallback op bier_naam + verpakking
           const beerMatch = batch.naam.toLowerCase() === regelBierNaam.toLowerCase()
@@ -226,6 +227,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           return {
             id: i + 1,
             type: 'bier',
+            sku: item.sku || null,
             artikel_key: art?.key || null,
             artikel_id: art?.id || null,
             bier_naam: art?.biernaam || item.name || '',
@@ -653,6 +655,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <tr key={r.id} className={isVrij ? 'bg-blue-50' : volledig ? 'bg-green-50' : ''}>
                     <td className="px-3 py-2 font-medium">
                       {r.bier_naam}
+                      {r.sku && <span className="ml-1 font-mono text-xs text-gray-400">[{r.sku}]</span>}
                       {r.type === 'verzending' && <span className="ml-1 text-xs text-blue-500">🚚</span>}
                       {r.type === 'vrij' && <span className="ml-1 text-xs text-purple-500">✎</span>}
                     </td>
@@ -758,12 +761,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const draftVoorRegel = draftPicks[r.id] || []
                 const totaalGepickt = draftVoorRegel.reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
                 const resterend = r.aantal - totaalGepickt
-                const afvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, null, r.artikel_key)
+                const afvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, null, r.artikel_key, r.sku)
 
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-gray-800">{r.bier_naam} – {r.verpakking_type}</span>
+                      <span className="font-semibold text-gray-800">{r.bier_naam} – {r.verpakking_type}{r.sku && <span className="ml-1 font-mono text-xs font-normal text-gray-400">[{r.sku}]</span>}</span>
                       <div className="flex gap-3 text-xs">
                         <span className="text-gray-500">{t('picking_needed')}: <strong>{r.aantal}×</strong></span>
                         <span className={totaalGepickt >= r.aantal ? 'text-green-600 font-semibold' : 'text-orange-500 font-semibold'}>
@@ -836,7 +839,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       </div>
                     )}
                     {resterend > 0 && afvullingen.length === 0 && (
-                      <div className="mt-2 text-xs text-red-500">⚠ Geen beschikbare voorraad gevonden voor {r.bier_naam} {r.verpakking_type}</div>
+                      <div className="mt-2 text-xs text-red-500">⚠ Geen beschikbare voorraad gevonden voor {r.bier_naam} {r.verpakking_type}{r.sku ? ` · SKU: ${r.sku}` : ' · geen SKU'}{r.artikel_key ? '' : ' · geen artikel_key'}</div>
                     )}
                   </div>
                 )
