@@ -137,14 +137,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // Beschikbare afvullingen voor een orderregel (gefilterd op bier + verpakking)
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, regelArtikelId?: number) => {
-    // Match via artikel-key (biernaam|||verpakking_type) — exact, SKU-gebaseerd
+    // Match via artikel-key (biernaam|||verpakking_type) — case-insensitief
     const art = regelArtikelId ? (artikelen||[]).find((a: any) => a.id === regelArtikelId) : null
-    const matchKey = art ? art.key : `${regelBierNaam}|||${regelVerpakking}`
+    const matchKey = (art ? art.key : `${regelBierNaam}|||${regelVerpakking}`).toLowerCase()
     return (av||[])
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        if (`${batch.naam}|||${a.verpakking_type}` !== matchKey) return false
+        if (`${batch.naam}|||${a.verpakking_type}`.toLowerCase() !== matchKey) return false
         return beschikbaarVoorAfvulling(a, excludeBestellingId) > 0
       })
       .sort((a: any, b: any) => {
