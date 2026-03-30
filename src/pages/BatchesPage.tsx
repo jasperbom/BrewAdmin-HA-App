@@ -528,11 +528,39 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     }
 
     if (batchBi.length > 0) {
-      html += `<h2>Ingrediënten</h2><table><tr><th>Naam</th><th>Type</th><th class="r">Hoeveelheid</th><th class="r">Kosten</th></tr>`
+      html += `<h2>Ingrediënten</h2><table><tr><th>Naam</th><th>Type</th><th class="r">Hoeveelheid</th><th>Lot</th><th class="r">Kosten</th></tr>`
       batchBi.forEach((i: any) => {
-        html += `<tr><td>${i.ingredient_naam}</td><td>${i.ingredient_type}</td><td class="r">${i.hoeveelheid} ${i.eenheid}</td><td class="r">${i.kosten?fmt(Number(i.kosten)):'—'}</td></tr>`
+        const lot = i.lot_id ? (lots||[]).find((l: any) => l.id === Number(i.lot_id)) : null
+        html += `<tr><td>${i.ingredient_naam}</td><td>${i.ingredient_type}</td><td class="r">${i.hoeveelheid} ${i.eenheid}</td><td>${lot?.lotnummer||'—'}</td><td class="r">${i.kosten?fmt(Number(i.kosten)):'—'}</td></tr>`
       })
       html += `</table>`
+    }
+
+    const hItems = hygieneItems?.length ? hygieneItems : DEFAULT_HYGIENE_ITEMS
+    const hGroups = hygieneGroups?.length ? hygieneGroups : DEFAULT_HYGIENE_GROUPS
+    const checks = b.hygiene_checks || {}
+    if (hItems.length > 0) {
+      html += `<h2>Hygiëne checklist</h2>`
+      const groepen = [...hGroups].sort((ga: any, gb: any) => ga.volgorde - gb.volgorde)
+      groepen.forEach((g: any) => {
+        const gItems = hItems.filter((hi: any) => hi.group_id === g.id).sort((ha: any, hb: any) => ha.volgorde - hb.volgorde)
+        if (!gItems.length) return
+        html += `<p style="font-size:8pt;font-weight:bold;color:#555;text-transform:uppercase;margin:3mm 0 1mm">${g.naam}</p><table><tbody>`
+        gItems.forEach((item: any) => {
+          const checked = !!checks[item.id]
+          html += `<tr><td style="width:6mm;color:${checked?'#059669':'#9ca3af'}">${checked?'✓':'□'}</td><td style="color:${checked?'#6b7280':'#222'};${checked?'text-decoration:line-through':''}">${item.label}</td></tr>`
+        })
+        html += `</tbody></table>`
+      })
+      const ungrouped = hItems.filter((hi: any) => !hi.group_id)
+      if (ungrouped.length) {
+        html += `<table><tbody>`
+        ungrouped.forEach((item: any) => {
+          const checked = !!checks[item.id]
+          html += `<tr><td style="width:6mm;color:${checked?'#059669':'#9ca3af'}">${checked?'✓':'□'}</td><td style="color:${checked?'#6b7280':'#222'};${checked?'text-decoration:line-through':''}">${item.label}</td></tr>`
+        })
+        html += `</tbody></table>`
+      }
     }
 
     if (batchAv.length > 0) {
