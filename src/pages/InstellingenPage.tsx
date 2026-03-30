@@ -72,7 +72,7 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
@@ -261,17 +261,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const navItems = [
-    {id:'app',              label:t('settings_app'),        icon:'⚙️'},
-    {id:'brouwerij',        label:t('settings_brewery'),    icon:'🏭'},
-    {id:'bedrijfsgegevens', label:t('settings_company'),    icon:'🧾'},
-    {id:'brewfather',       label:'Brewfather',              icon:'🍺'},
-    {id:'woocommerce',      label:t('settings_webshop'),    icon:'🛒'},
-    {id:'claude',           label:'Claude AI',               icon:'🤖'},
-    {id:'homeassistant',    label:'Home Assistant',          icon:'🏠'},
-    {id:'accijns',          label:t('settings_excise'),     icon:'💶'},
-    {id:'ingredienten',     label:'Ingrediënten',            icon:'🌾'},
-    {id:'hygiene',          label:t('settings_hygiene'),    icon:'🧹'},
-    {id:'data',             label:t('settings_data'),       icon:'📦'},
+    {id:'brouwerij',     label:t('settings_brewery'),      icon:'🏭'},
+    {id:'koppelingen',   label:t('settings_koppelingen'),  icon:'🔗'},
+    {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
+    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
+    {id:'ingredienten',  label:'Ingrediënten',             icon:'🌾'},
+    {id:'hygiene',       label:t('settings_hygiene'),      icon:'🧹'},
+    {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
 
   const fmtTs = (ts: any) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
@@ -360,34 +356,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             placeholder={t('settings_app_name_placeholder')}
             className="w-full max-w-xs border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
         </div>
-        <div className="flex items-start gap-6">
-          <div className="flex-shrink-0">
-            <div className="w-24 h-16 rounded flex items-center justify-center overflow-hidden" style={{background:({amber:"#451a03",green:"#052e16",blue:"#172554",slate:"#020617",red:"#450a0a",purple:"#2e1065"} as any)[navTheme]||"#451a03"}}>
-              {logo
-                ? <img src={logo} alt={t('lbl_logo_current')} style={{maxHeight:'48px',maxWidth:'88px',objectFit:'contain'}} />
-                : <span className="text-gray-500 text-xs text-center px-1">{t('settings_logo_none')}</span>}
-            </div>
-            <p className="text-xs text-gray-400 mt-1 text-center">{t('settings_logo_preview')}</p>
-          </div>
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2 px-4 py-2 tbtn rounded text-sm font-medium transition-colors cursor-pointer w-fit">
-              {t('settings_logo_upload')}
-              <input type="file" accept="image/*" className="hidden" onChange={(e: any)=>{
-                const f = e.target.files?.[0];
-                if (!f) return;
-                const reader = new FileReader();
-                reader.onload = (ev: any) => setLogo(ev.target.result);
-                reader.readAsDataURL(f);
-                e.target.value = '';
-              }} />
-            </label>
-            {logo && (
+        <div className="flex items-center gap-4 flex-wrap">
+          {logo && (
+            <div className="relative">
+              <img src={logo} alt={t('lbl_logo_current')} className="h-16 max-w-[180px] object-contain border border-gray-200 rounded-lg p-1 bg-white" />
               <button onClick={()=>{ if(confirm(t('settings_logo_reset_confirm'))) setLogo(null); }}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors w-fit">
-                {t('settings_logo_reset')}
-              </button>
-            )}
-          </div>
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600 transition-colors"
+                title={t('btn_delete')}>✕</button>
+            </div>
+          )}
+          <label className="cursor-pointer px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors">
+            {logo ? t('btn_change_logo') : t('btn_upload_logo')}
+            <input type="file" accept="image/*" className="hidden" onChange={(e: any)=>{
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const reader = new FileReader();
+              reader.onload = (ev: any) => setLogo(ev.target.result);
+              reader.readAsDataURL(f);
+              e.target.value = '';
+            }} />
+          </label>
         </div>
         <p className="text-xs text-gray-400 mt-3">{t('settings_logo_formats')}</p>
       </div>
@@ -419,8 +407,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
-      {/* BEDRIJFSGEGEVENS (factuur) */}
-      {activeSection==='bedrijfsgegevens' && <>
+      {/* BEDRIJFSGEGEVENS (factuur) — onderdeel van brouwerij */}
+      {activeSection==='brouwerij' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_company')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_company_desc')}</p>
@@ -539,7 +527,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_verzendkosten')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_verzendkosten_desc')}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_verzendkosten_naam')}</label>
             <input type="text" value={breweryDetails?.verzendkosten_naam||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,verzendkosten_naam:e.target.value}))}
@@ -554,13 +542,22 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <span className="text-sm text-gray-500">%</span>
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_verzendkosten_prijs')}</label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">€</span>
+              <input type="number" min="0" step="0.01" value={breweryDetails?.verzendkosten_prijs??''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,verzendkosten_prijs:e.target.value===''?null:Number(e.target.value)}))}
+                placeholder="0.00"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+          </div>
         </div>
         <p className="text-xs text-gray-400 mt-2">{t('settings_verzendkosten_hint')}</p>
       </div>
       </>}
 
       {/* BREWFATHER */}
-      {activeSection==='brewfather' && <>
+      {activeSection==='koppelingen' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_brewfather_section')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -611,7 +608,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </>}
 
       {/* WOOCOMMERCE */}
-      {activeSection==='woocommerce' && <>
+      {activeSection==='koppelingen' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_woocommerce_section')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -684,7 +681,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </>}
 
       {/* CLAUDE AI */}
-      {activeSection==='claude' && <>
+      {activeSection==='koppelingen' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_claude_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -792,8 +789,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
-      {/* ACCIJNS */}
-      {activeSection==='accijns' && <>
+      {/* FINANCIEEL (accijns + BTW) */}
+      {activeSection==='financieel' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_excise_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -869,6 +866,27 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </button>
           ))}
         </div>
+      </div>
+
+      {/* BTW tarieven */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_btw_tarieven_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_btw_tarieven_desc')}</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {[0, 6, 9, 21].map(pct => (
+            <label key={pct} className="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-100 transition-colors">
+              <input type="checkbox"
+                checked={(btwTarieven||[]).includes(pct)}
+                onChange={(e: any) => {
+                  const arr: number[] = Array.isArray(btwTarieven) ? [...btwTarieven] : [0, 9, 21];
+                  setBtwTarieven(e.target.checked ? [...arr, pct].sort((a,b)=>a-b) : arr.filter(v=>v!==pct));
+                }}
+                className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+              <span className="text-sm font-medium text-gray-700">{pct}%</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400">{t('settings_btw_tarieven_hint')}</p>
       </div>
       </>}
 
@@ -1045,7 +1063,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </>}
 
       {/* DATA */}
-      {activeSection==='data' && <>
+      {/* APP — data import/export (moved from data-sectie) */}
+      {activeSection==='app' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_data_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_data_desc')}</p>
@@ -1061,8 +1080,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         <p className="text-xs text-gray-400 mt-3">{t('settings_data_import_warning')}</p>
       </div>
+      )}
 
-      {/* Inkoop bijlagen downloaden */}
+      {/* FINANCIEEL — inkoop bijlagen downloaden */}
+      {activeSection==='financieel' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_bijlagen_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_bijlagen_desc')}</p>
@@ -1108,8 +1129,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           {bijlagenStatus && bijlagenStatus!=='busy' && <span className="text-sm text-gray-500">{bijlagenStatus}</span>}
         </div>
       </div>
+      )}
 
-      {/* Mutaties log */}
+      {/* INGREDIENTEN — mutatielog wissen */}
+      {activeSection==='ingredienten' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_data_log_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">
@@ -1122,8 +1145,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </button>
         <p className="text-xs text-gray-400 mt-2">{t('settings_log_warning')}</p>
       </div>
-
-      </>}
+      )}
 
       <div className="pt-2 pb-2 text-center text-xs text-gray-400">
         {t('settings_footer_by')} · <a href="mailto:info@craftery.nl" className="underline hover:text-gray-600">info@craftery.nl</a>

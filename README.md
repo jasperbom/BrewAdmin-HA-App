@@ -60,20 +60,20 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 - Date filter defaults to the full current year
 - Upload PDF or image attachments per invoice (JPG, PNG, WEBP, GIF, TIFF, BMP, HEIC)
 - Download all attachments for a given year as a ZIP archive
-- Aangiftes (declarations) sub-page for excise duty overview
+- **BTW aangifte** tab with period cards (quarterly or monthly) showing omzetbelasting, voorbelasting and te betalen per period; VAT per tariff breakdown with rubriek invoerhulp (1a/1b, 5b, 1d, 2a)
+- **Accijns** tab for excise duty declarations
+- CSV export for both purchase and sales invoices
 
 ### Settings
 The settings page is organised with a sidebar navigation:
 
-- **Branding** — manage brewery name, app name shown in the navigation bar, and logo
-- **Brewery** — manage tanks
-- **Brewfather** — API integration (User ID + API key), manual sync
-- **Webshop** — WooCommerce shop integration (store URL + consumer key/secret), manual stock push, sync log
-- **Excise Duty** — set rates (per hL/ABV and per hL), optional custom formula
-- **Hygiene** — manage checklist items and groups that appear per batch
-- **Data** — export and import of all data (Excel backup), mutation log
-- **Language** — choose interface language (Dutch, English, German, French, Spanish)
-- **Appearance** — choose a colour theme (Amber, Green, Blue, Slate, Red, Purple)
+- **Brouwerij** — manage brewery name, app name shown in the navigation bar, logo (same upload style as invoice logo), tanks, and default shipping costs (name, VAT rate and default price)
+- **Koppelingen** — Brewfather API integration (User ID + API key) and WooCommerce shop integration (store URL + consumer key/secret)
+- **Home Assistant** — HA API connection settings
+- **Financieel** — VAT period (quarterly/monthly), BTW tariff rates, excise duty rates and optional custom formula, invoice attachments download
+- **Ingrediënten** — configurable ingredient types; mutation log
+- **Hygiëne** — manage checklist items and groups that appear per batch
+- **App** — export and import of all data (Excel backup), language selection, colour theme
 
 ### Internationalisation
 The interface supports five languages: Dutch, English, German, French and Spanish. The app automatically detects the browser/system language on first use and applies it if supported, falling back to English otherwise. The language can be changed at any time in Settings → Language.

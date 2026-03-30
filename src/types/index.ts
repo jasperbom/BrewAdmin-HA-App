@@ -22,6 +22,7 @@ export interface Lot {
 export interface Batch {
   id: number
   naam: string
+  biernaam?: string
   batch_nummer?: string
   stijl?: string
   status: string
@@ -41,6 +42,11 @@ export interface Batch {
   maisch_eff?: number | string
   maisch_ph?: number | string
   product_ph?: number | string
+  kleur?: number | string
+  kooktijd?: number | string
+  kook_volume?: number | string
+  vergistingsprofiel?: VergistingsStap[]
+  maischprofiel?: MaischStap[]
   log?: BatchLogEntry[]
 }
 
@@ -167,6 +173,11 @@ export interface Recept {
   hop?: ReceptIngredient[]
   gist?: ReceptIngredient[]
   overig?: ReceptIngredient[]
+  kleur?: number | string
+  kooktijd?: number | string
+  kook_volume?: number | string
+  vergistingsprofiel?: VergistingsStap[]
+  maischprofiel?: MaischStap[]
 }
 
 export interface ReceptIngredient {
@@ -174,6 +185,23 @@ export interface ReceptIngredient {
   hoeveelheid: number
   eenheid: string
   gebruik?: string
+  tijd?: number | string
+  tijdEenheid?: string
+}
+
+export interface VergistingsStap {
+  type?: string
+  temp: number | string
+  tijd?: number | string   // dagen
+  ramp?: number | string   // uren
+}
+
+export interface MaischStap {
+  naam?: string
+  type?: string
+  temp: number | string    // °C
+  tijd: number | string    // minuten
+  rampTijd?: number | string
 }
 
 export interface Tank {

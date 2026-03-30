@@ -4,7 +4,7 @@ import { fmtD } from '../utils/format'
 import { bfGetRecipes } from '../utils/api'
 import Btn from '../components/ui/Btn'
 
-function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen}: any) {
+function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch}: any) {
   const {useState} = React;
   const [sel, setSel]         = useState(null);
   const [syncing, setSyncing] = useState(false);
@@ -84,7 +84,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap">
             {Number(item.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
           </td>
-          <td className="px-3 py-2 text-xs text-gray-400">{item.gebruik||''}</td>
+          <td className="px-3 py-2 text-xs text-gray-400">
+            {item.gebruik||''}
+            {item.tijd ? <span className="ml-1 text-gray-300">· {item.tijd} {item.tijdEenheid==='day'?'d':'min'}</span> : null}
+          </td>
           <td className="px-3 py-2 text-sm text-right whitespace-nowrap">
             {ok!==null
               ? <span className={ok?'text-green-600':bijna?'text-yellow-600':'text-red-600'}>
@@ -318,15 +321,40 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 {selRec.stijl&&<div className="text-sm text-gray-500 mt-0.5">{selRec.stijl}</div>}
                 {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">Door {selRec.auteur}</div>}
               </div>
-              <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap flex-shrink-0 ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
-                {overallOk?'✓ Klaar om te brouwen':overallRed?'✗ Ingrediënten tekort':overallYel?'⚠ Controleer voorraad':'— Onbekende voorraad'}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
+                  {overallOk?'✓ Klaar om te brouwen':overallRed?'✗ Ingrediënten tekort':overallYel?'⚠ Controleer voorraad':'— Onbekende voorraad'}
+                </div>
+                {setPage && setPreNieuwBatch && (
+                  <Btn s="sm" v="primary" onClick={() => {
+                    setPreNieuwBatch({
+                      naam: selRec.naam,
+                      stijl: selRec.stijl || '',
+                      OG: selRec.OG || '',
+                      FG: selRec.FG || '',
+                      ABV: selRec.ABV || '',
+                      liter_vergist: selRec.batch_size || '',
+                      _receptIngredienten: [
+                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg'  })),
+                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
+                        ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg' })),
+                        ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
+                      ],
+                    })
+                    setPage('batches')
+                  }}>Brouwen</Btn>
+                )}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-4 gap-3 mb-4">
               {[{l:'Batch',v:selRec.batch_size?`${selRec.batch_size} L`:'—'},
                 {l:'OG',  v:selRec.OG?Number(selRec.OG).toFixed(3):'—'},
                 {l:'FG',  v:selRec.FG?Number(selRec.FG).toFixed(3):'—'},
                 {l:'ABV', v:selRec.ABV?`${Number(selRec.ABV).toFixed(1)}%`:'—'},
+                {l:'IBU', v:selRec.IBU?String(selRec.IBU):'—'},
+                {l:t('recipe_kleur'), v:selRec.kleur?`${selRec.kleur} EBC`:'—'},
+                {l:t('recipe_kooktijd'), v:selRec.kooktijd?`${selRec.kooktijd} min`:'—'},
+                {l:t('recipe_kook_volume'), v:selRec.kook_volume?`${selRec.kook_volume} L`:'—'},
               ].map((s: any)=>(
                 <div key={s.l} className="bg-gray-50 rounded-lg p-3 text-center">
                   <div className="text-xs text-gray-400 mb-0.5">{s.l}</div>
@@ -334,10 +362,60 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 </div>
               ))}
             </div>
+            {selRec.maischprofiel && selRec.maischprofiel.length > 0 && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 border-b">
+                      <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selRec.maischprofiel.map((s: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-100 last:border-0">
+                        <td className="py-1 text-gray-700">{s.naam || s.type || `Stap ${i+1}`}</td>
+                        <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <IngSection titel={t('recipe_section_grains')} items={selRec.mout}/>
             <IngSection titel={t('recipe_section_hops')} items={selRec.hop}/>
             <IngSection titel={t('recipe_section_yeast')} items={selRec.gist}/>
             <IngSection titel={t('recipe_section_other')} items={selRec.overig}/>
+            {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 border-b">
+                      <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                      <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selRec.vergistingsprofiel.map((s: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-100 last:border-0">
+                        <td className="py-1 text-gray-700">{s.type || `Stap ${i+1}`}</td>
+                        <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {selRec.notities&&(
               <div className="mt-2 p-4 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-1">{t('lbl_notes')}</div>

@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 
 ---
+
+## [1.6.4] — 2026-03-30
+
+### Changed
+- **Navigatie volgorde** — Recepten staat nu voor Batches; Voorraad staat voor Bestellingen
+- **Logo upload stijl** — App logo gebruikt dezelfde stijl als factuurlogo (gestippelde rand, ✕ overlay knop)
+- **Verzendkosten standaard prijs** — Nieuw veld in Instellingen voor een standaard verzendkosten prijs
+- **BTW per tarief** verplaatst van inkoop sub-tab naar BTW aangifte pagina (berekend per jaar); inkoop sub-tabs (Facturen / BTW tarief) verwijderd — facturen tabel altijd zichtbaar
+- **BTW aangifte invoerhulp** — Rubriek 1a/1b toont nu de totale omzetbelasting voor het geselecteerde jaar (eigen verkoopfacturen + WooCommerce orders)
+- **Verkoopfacturen in BTW aangifte** — Waarden worden altijd weergegeven, ook zonder WooCommerce koppeling of eigen facturen in de periode
+
+### Fixed
+- Jaar werd naast "Boekhouding" getoond bij BTW aangifte tab — verwijderd
+- CSV knop verkoop verplaatst naar het periode-filter bovenaan (consistent met inkoop); koptekst "Eigen verkoopfacturen" verwijderd
+
+---
+
 ## [1.6.0]
 
 ### Added —
