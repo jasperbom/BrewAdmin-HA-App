@@ -440,6 +440,8 @@
   "ph_ingredient_name": "Naam ingredient",
   "ph_costs": "€ kosten",
   "ph_beer_name": "Bier naam",
+  "lbl_biernaam_koppeling": "Gekoppeld bier",
+  "ph_biernaam_koppeling": "Kies biernaam uit voorraad...",
   "ph_beer_style": "Bijv. IPA",
   "ph_article_num": "bijv. BIER-001",
   "ph_ean": "bijv. 8712345678901",

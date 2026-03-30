@@ -22,6 +22,7 @@ export interface Lot {
 export interface Batch {
   id: number
   naam: string
+  biernaam?: string
   batch_nummer?: string
   stijl?: string
   status: string

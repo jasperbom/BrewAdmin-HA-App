@@ -440,6 +440,8 @@
   "ph_ingredient_name": "Nom ingrédient",
   "ph_costs": "€ coûts",
   "ph_beer_name": "Nom bière",
+  "lbl_biernaam_koppeling": "Bière liée",
+  "ph_biernaam_koppeling": "Choisir bière du stock...",
   "ph_beer_style": "Ex. IPA",
   "ph_article_num": "ex. BIER-001",
   "ph_ean": "ex. 8712345678901",

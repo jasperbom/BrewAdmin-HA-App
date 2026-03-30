@@ -440,6 +440,8 @@
   "ph_ingredient_name": "Zutatname",
   "ph_costs": "€ Kosten",
   "ph_beer_name": "Bier Name",
+  "lbl_biernaam_koppeling": "Verknüpftes Bier",
+  "ph_biernaam_koppeling": "Bier aus Vorrat wählen...",
   "ph_beer_style": "z.B. IPA",
   "ph_article_num": "z.B. BIER-001",
   "ph_ean": "z.B. 8712345678901",

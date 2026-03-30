@@ -420,7 +420,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const bfFileRef = useRef<HTMLInputElement>(null)
   const [editId, setEditId] = useState<number | null>(null)
 
-  const emptyB = {batch_nummer:'',naam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod()}
+  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod()}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
 
   const safeStr = (v: any): string => {
@@ -983,7 +983,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id===Number(avF.verpakking_id) ? {...v, voorraad:Number(v.voorraad||0)-n} : v))
     }
     const avId = newId(av||[])
-    const avArtKey = `${selB?.naam||''}|||${vp.naam||avF.verpakking_type||''}`.toLowerCase()
+    const avArtKey = `${selB?.biernaam || selB?.naam || ''}|||${vp.naam||avF.verpakking_type||''}`.toLowerCase()
     const avArt = (artikelen||[]).find((a: any) => a.key?.toLowerCase() === avArtKey)
     setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, artikel_sku: avArt?.artikelnummer || null, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
     addLog({type:'afvullen', batch_id:sel, batch_naam:selB?.naam||'', afvulling_id:avId,
@@ -1926,6 +1926,15 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Inp label={t('lbl_batch_number')} value={bForm.batch_nummer} onChange={(v: string)=>setBForm((f: any)=>({...f,batch_nummer:v}))} placeholder="B-2025-001" />
               <Inp label={t('lbl_name')+' *'} value={bForm.naam} onChange={(v: string)=>setBForm((f: any)=>({...f,naam:v}))} placeholder={t('ph_beer_name')} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_biernaam_koppeling')}</label>
+              <select value={bForm.biernaam||''} onChange={e=>setBForm((f: any)=>({...f,biernaam:e.target.value}))}
+                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+                <option value="">{t('ph_biernaam_koppeling')}</option>
+                {[...new Set((artikelen||[]).map((a: any)=>a.biernaam).filter(Boolean))].sort()
+                  .map((n: any) => <option key={n} value={n}>{n}</option>)}
+              </select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Inp label={t('lbl_style')} value={bForm.stijl} onChange={(v: string)=>setBForm((f: any)=>({...f,stijl:v}))} placeholder={t('ph_beer_style')} />

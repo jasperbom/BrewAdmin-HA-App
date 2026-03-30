@@ -781,7 +781,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       const avBatch = avItem ? bat.find((b: any) => b.id === avItem.batch_id) : null
                       const avArt = avItem?.artikel_sku
                         ? (artikelen||[]).find((a: any) => a.artikelnummer === avItem.artikel_sku)
-                        : avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
+                        : avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.biernaam||avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
                       const maxBeschik = beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id) + Number(dp.aantal||0)
                       return (
                         <div key={idx} className="flex items-center gap-2 mt-1 text-sm">

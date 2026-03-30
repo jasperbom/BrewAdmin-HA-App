@@ -440,6 +440,8 @@
   "ph_ingredient_name": "Nombre ingrediente",
   "ph_costs": "€ costes",
   "ph_beer_name": "Nombre cerveza",
+  "lbl_biernaam_koppeling": "Cerveza vinculada",
+  "ph_biernaam_koppeling": "Seleccionar cerveza del stock...",
   "ph_beer_style": "Ej. IPA",
   "ph_article_num": "ej. CERV-001",
   "ph_ean": "ej. 8712345678901",
