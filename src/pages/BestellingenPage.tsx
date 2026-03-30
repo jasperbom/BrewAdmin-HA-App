@@ -137,26 +137,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // Beschikbare afvullingen voor een orderregel (gefilterd op bier + verpakking)
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, regelArtikelId?: number) => {
-    // Gebruik artikel_id om biernaam + verpakking_type definitief te resolven
-    let matchNaam = regelBierNaam
-    let matchVerpakking = regelVerpakking
-    if (regelArtikelId) {
-      const art = (artikelen||[]).find((a: any) => a.id === regelArtikelId)
-      if (art?.biernaam) matchNaam = art.biernaam
-      if (art?.verpakking_type) matchVerpakking = art.verpakking_type
-    }
+    // Match via artikel-key (biernaam|||verpakking_type) — exact, SKU-gebaseerd
+    const art = regelArtikelId ? (artikelen||[]).find((a: any) => a.id === regelArtikelId) : null
+    const matchKey = art ? art.key : `${regelBierNaam}|||${regelVerpakking}`
     return (av||[])
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        const batchLow = batch.naam.toLowerCase()
-        const naamLow = matchNaam.toLowerCase()
-        const beerMatch = batchLow === naamLow ||
-          batchLow.includes(naamLow) ||
-          naamLow.includes(batchLow)
-        const packMatch = a.verpakking_type === matchVerpakking ||
-          (a.verpakking_naam||'').includes(matchVerpakking)
-        if (!beerMatch || !packMatch) return false
+        if (`${batch.naam}|||${a.verpakking_type}` !== matchKey) return false
         return beschikbaarVoorAfvulling(a, excludeBestellingId) > 0
       })
       .sort((a: any, b: any) => {
@@ -282,8 +270,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!regelForm.bier_naam || !regelForm.verpakking_type || !regelForm.aantal) {
       alert('Bier, verpakking en aantal zijn verplicht'); return
     }
+    const artMatch = artikelVoorKeuze(regelForm.bier_naam, regelForm.verpakking_type)
     const regel = {
       id: (manualForm.regels.length + 1),
+      type: 'bier',
+      artikel_id: artMatch?.id || null,
       bier_naam: regelForm.bier_naam,
       verpakking_type: regelForm.verpakking_type,
       aantal: Number(regelForm.aantal),
@@ -776,8 +767,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       return (
                         <div key={idx} className="flex items-center gap-2 mt-1 text-sm">
                           <span className="flex-1 text-gray-600">
-                            {avArt?.artikelnummer && <span className="font-mono font-semibold text-gray-800">[{avArt.artikelnummer}]</span>}{' '}
-                            {avBatch?.naam} · {avItem?.verpakking_type} · THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
+                            <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
+                            {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
+                            {' · '}{avItem?.verpakking_type}
+                            {' · '}THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
+                            {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · Lot {avBatch.batch_nummer}</span>}
                           </span>
                           <input type="number" min="0" max={maxBeschik}
                             value={dp.aantal}
@@ -819,7 +813,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.artikelnummer ? `[${avArt.artikelnummer}] ` : ''}{avBatch?.naam} · {a.verpakking_type} · THT: {a.tht ? fmtD(a.tht) : '—'} · {beschik}× {t('lbl_available')}
+                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · THT: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar
                               </option>
                             )
                           })}
