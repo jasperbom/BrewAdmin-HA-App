@@ -983,7 +983,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id===Number(avF.verpakking_id) ? {...v, voorraad:Number(v.voorraad||0)-n} : v))
     }
     const avId = newId(av||[])
-    setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
+    const avArtKey = `${selB?.naam||''}|||${vp.naam||avF.verpakking_type||''}`.toLowerCase()
+    const avArt = (artikelen||[]).find((a: any) => a.key?.toLowerCase() === avArtKey)
+    setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, artikel_sku: avArt?.artikelnummer || null, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
     addLog({type:'afvullen', batch_id:sel, batch_naam:selB?.naam||'', afvulling_id:avId,
       verpakking_type:vp.naam||avF.verpakking_type, hoeveelheid:n, eenheid:'stuks',
       referentie:`${(n*Number(avF.inhoud_per_eenheid||0)).toFixed(1)}L`,

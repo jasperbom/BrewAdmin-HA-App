@@ -135,19 +135,25 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeslagen)
   }
 
-  // Beschikbare afvullingen voor een orderregel (gefilterd op bier + verpakking)
+  // Beschikbare afvullingen voor een orderregel (gefilterd op SKU of bier + verpakking)
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string) => {
-    const keyNorm = regelArtikelKey?.toLowerCase() || null
+    // Zoek SKU van de orderregel via artikel_key
+    const orderArt = regelArtikelKey ? (artikelen||[]).find((a: any) => a.key === regelArtikelKey) : null
+    const orderSku = orderArt?.artikelnummer || null
     return (av||[])
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        if (keyNorm) {
-          // Match puur op artikel_key (biernaam|||verpakking_type), case-insensitief
-          const avKey = `${batch.naam}|||${a.verpakking_type}`.toLowerCase()
-          if (avKey !== keyNorm) return false
+        if (orderSku && a.artikel_sku) {
+          // Pure SKU match — batchnaam irrelevant
+          if (a.artikel_sku !== orderSku) return false
+        } else if (orderSku && !a.artikel_sku) {
+          // Afvulling heeft geen SKU (oud record) — match via artikel lookup op batch naam + verpakking
+          const avArtKey = `${batch.naam}|||${a.verpakking_type}`.toLowerCase()
+          const avArt = (artikelen||[]).find((art: any) => art.key?.toLowerCase() === avArtKey)
+          if (!avArt || avArt.artikelnummer !== orderSku) return false
         } else {
-          // Fallback: geen artikel_key beschikbaar — match op bier_naam + verpakking
+          // Geen SKU beschikbaar — fallback op bier_naam + verpakking
           const beerMatch = batch.naam.toLowerCase() === regelBierNaam.toLowerCase()
           const packMatch = a.verpakking_type.toLowerCase() === regelVerpakking.toLowerCase()
           if (!beerMatch || !packMatch) return false
