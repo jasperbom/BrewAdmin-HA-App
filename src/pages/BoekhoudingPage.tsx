@@ -114,17 +114,30 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         });
       });
 
-    // WooCommerce orders — geen tariefsplitsing beschikbaar → hoog tarief (bier = 21%)
+    // WooCommerce orders — splitsing via tax_lines (rate_percent per belastingregel)
     aangifteOrders
       .filter((o: any) => {
         const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,4);
         return d === yearStr && ['completed','processing'].includes((o as any).status);
       })
       .forEach((o: any) => {
-        const btw = parseFloat((o as any).total_tax||0);
-        const netto = parseFloat((o as any).total||0) - btw;
-        hoog.netto += netto;
-        hoog.btw += btw;
+        const taxLines: any[] = (o as any).tax_lines || [];
+        if (taxLines.length > 0) {
+          // tax_lines aanwezig → splitsing per tarief
+          taxLines.forEach((tl: any) => {
+            const pct = parseFloat(tl.rate_percent || 0);
+            const btwBedrag = parseFloat(tl.tax_total || 0) + parseFloat(tl.shipping_tax_total || 0);
+            const nettoBedrag = pct > 0 ? btwBedrag / (pct / 100) : 0;
+            if (pct >= 20) { hoog.netto += nettoBedrag; hoog.btw += btwBedrag; }
+            else if (pct > 0) { laag.netto += nettoBedrag; laag.btw += btwBedrag; }
+          });
+        } else {
+          // Geen tax_lines — fallback: totaal in hoog tarief
+          const btw = parseFloat((o as any).total_tax || 0);
+          const netto = parseFloat((o as any).total || 0) - btw;
+          hoog.netto += netto;
+          hoog.btw += btw;
+        }
       });
 
     return {hoog, laag};
