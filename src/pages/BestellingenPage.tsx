@@ -137,14 +137,26 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // Beschikbare afvullingen voor een orderregel (gefilterd op bier + verpakking)
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, regelArtikelId?: number) => {
-    // Match via artikel-key (biernaam|||verpakking_type) — case-insensitief
-    const art = regelArtikelId ? (artikelen||[]).find((a: any) => a.id === regelArtikelId) : null
-    const matchKey = (art ? art.key : `${regelBierNaam}|||${regelVerpakking}`).toLowerCase()
+    // Bepaal de SKU van de orderregel
+    const regelArt = regelArtikelId ? (artikelen||[]).find((a: any) => a.id === regelArtikelId) : null
+    const sku = regelArt?.artikelnummer || null
+
     return (av||[])
       .filter((a: any) => {
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        if (`${batch.naam}|||${a.verpakking_type}`.toLowerCase() !== matchKey) return false
+        if (sku) {
+          // Puur SKU-match: zoek het artikel voor deze afvulling en vergelijk SKU
+          const avArt = (artikelen||[]).find((art: any) =>
+            art.key.toLowerCase() === `${batch.naam}|||${a.verpakking_type}`.toLowerCase()
+          )
+          if (avArt?.artikelnummer !== sku) return false
+        } else {
+          // Fallback (geen artikel_id): match op biernaam + verpakking
+          const beerMatch = batch.naam.toLowerCase() === regelBierNaam.toLowerCase()
+          const packMatch = a.verpakking_type.toLowerCase() === regelVerpakking.toLowerCase()
+          if (!beerMatch || !packMatch) return false
+        }
         return beschikbaarVoorAfvulling(a, excludeBestellingId) > 0
       })
       .sort((a: any, b: any) => {
