@@ -139,18 +139,30 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string, regelSku?: string) => {
     // Bepaal SKU: direct uit regel, of via artikel_key lookup
     const orderSku = regelSku || (regelArtikelKey ? (artikelen||[]).find((a: any) => a.key === regelArtikelKey)?.artikelnummer : null) || null
+    const fefo = (a: any, b: any) => {
+      if (!a.tht && !b.tht) return 0
+      if (!a.tht) return 1
+      if (!b.tht) return -1
+      return a.tht.localeCompare(b.tht)
+    }
     const filtered = (av||[]).filter((a: any) => beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
     if (orderSku) {
-      // Eerst proberen: exact SKU match op artikel_sku
+      // Tier 1: exacte artikel_sku match (nieuwe afvullingen)
       const skuMatches = filtered.filter((a: any) => a.artikel_sku === orderSku)
-      if (skuMatches.length > 0) return skuMatches.sort((a: any, b: any) => {
-        if (!a.tht && !b.tht) return 0
-        if (!a.tht) return 1
-        if (!b.tht) return -1
-        return a.tht.localeCompare(b.tht)
-      })
-      // Geen exacte SKU match gevonden — geen resultaten tonen (explicieter dan verkeerd matchen)
-      return []
+      if (skuMatches.length > 0) return skuMatches.sort(fefo)
+      // Tier 2: oude afvullingen zonder artikel_sku — match via artikel SKU + verpakking_type
+      // (batchnaam irrelevant; als batch.biernaam gezet is, moet die ook kloppen)
+      return filtered.filter((a: any) => {
+        if (a.artikel_sku) return false
+        const matchArt = (artikelen||[]).find((art: any) =>
+          art.artikelnummer === orderSku &&
+          art.verpakking_type?.toLowerCase() === a.verpakking_type?.toLowerCase()
+        )
+        if (!matchArt) return false
+        const batch = bat.find((b: any) => b.id === a.batch_id)
+        if (batch?.biernaam) return batch.biernaam === matchArt.biernaam
+        return true
+      }).sort(fefo)
     }
     // Geen SKU: fallback op bier_naam + verpakking
     return filtered
@@ -160,13 +172,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         return batch.naam.toLowerCase() === regelBierNaam.toLowerCase() &&
           a.verpakking_type.toLowerCase() === regelVerpakking.toLowerCase()
       })
-      .sort((a: any, b: any) => {
-        // FEFO: sorter op THT oplopend (oudste eerst)
-        if (!a.tht && !b.tht) return 0
-        if (!a.tht) return 1
-        if (!b.tht) return -1
-        return a.tht.localeCompare(b.tht)
-      })
+      .sort(fefo)
   }
 
   // Beschikbare bieren voor dropdown (vanuit artikelen)
