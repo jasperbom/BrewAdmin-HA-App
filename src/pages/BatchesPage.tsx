@@ -1074,7 +1074,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <div className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="text-base font-semibold leading-tight truncate">{selB.naam}</div>
-                  {selB.batch_nummer && <div className="text-xs text-gray-400 mt-0.5">#{selB.batch_nummer}{selB.stijl ? ` · ${selB.stijl}` : ''}</div>}
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {selB.batch_nummer ? `#${selB.batch_nummer}` : ''}
+                    {selB.stijl ? `${selB.batch_nummer ? ' · ' : ''}${selB.stijl}` : ''}
+                    {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}🍺 ${selB.biernaam}` : ''}
+                  </div>
                 </div>
                 <div className="flex gap-2 items-center flex-shrink-0 ml-3">
                   <select value={selB.status} onChange={e=>handleStatusChange(e.target.value)}
@@ -1929,12 +1933,27 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_biernaam_koppeling')}</label>
-              <select value={bForm.biernaam||''} onChange={e=>setBForm((f: any)=>({...f,biernaam:e.target.value}))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
-                <option value="">{t('ph_biernaam_koppeling')}</option>
-                {[...new Set((artikelen||[]).map((a: any)=>a.biernaam).filter(Boolean))].sort()
-                  .map((n: any) => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  list="biernamen-datalist"
+                  value={bForm.biernaam||''}
+                  onChange={e=>setBForm((f: any)=>({...f,biernaam:e.target.value}))}
+                  placeholder={t('ph_biernaam_koppeling')}
+                  className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input"
+                />
+                <datalist id="biernamen-datalist">
+                  {[...new Set((artikelen||[]).map((a: any)=>a.biernaam).filter(Boolean))].sort()
+                    .map((n: any) => <option key={n} value={n} />)}
+                </datalist>
+                {bForm.biernaam && (
+                  <button type="button"
+                    onClick={()=>setBForm((f: any)=>({...f,biernaam:''}))}
+                    className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Inp label={t('lbl_style')} value={bForm.stijl} onChange={(v: string)=>setBForm((f: any)=>({...f,stijl:v}))} placeholder={t('ph_beer_style')} />
