@@ -354,6 +354,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [grafiekOpen, setGrafiekOpen] = useStore('gist_grafiek_open', {} as Record<string,boolean>)
   const emptyMeting = { datum: tod(), tijd: '', sg: '', ph: '', temp: '', opmerking: '' }
   const [metingForm, setMetingForm] = useState<any>(emptyMeting)
+  const [toonAutoMetingen, setToonAutoMetingen] = useState(false)
   const [haSyncing, setHaSyncing] = useState(false)
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
@@ -1056,6 +1057,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
                       {batchMetingen.length > 0 && (
                         <div className="overflow-x-auto">
+                          <div className="flex justify-end mb-1 px-1">
+                            <button
+                              onClick={() => setToonAutoMetingen(v => !v)}
+                              className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${toonAutoMetingen ? 'bg-blue-50 border-blue-300 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}
+                            >
+                              {toonAutoMetingen ? 'Automatisch verbergen' : 'Automatisch tonen'}
+                            </button>
+                          </div>
                           <table className="w-full text-xs">
                             <thead className="bg-gray-50 text-gray-500 border-b">
                               <tr>
@@ -1068,9 +1077,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                              {batchMetingen.filter((m: any) => !m.auto).map((m: any) => (
-                                <tr key={m.id} className="hover:bg-gray-50">
-                                  <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}</td>
+                              {batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).map((m: any) => (
+                                <tr key={m.id} className={`hover:bg-gray-50 ${m.auto ? 'opacity-50' : ''}`}>
+                                  <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}{m.auto ? <span className="ml-1 text-gray-400 text-xs italic">auto</span> : ''}</td>
                                   <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg != null ? m.sg.toFixed(3) : '—'}</td>
                                   <td className="px-2 py-1.5 text-right font-mono text-blue-700">{m.ph != null ? m.ph.toFixed(1) : '—'}</td>
                                   <td className="px-2 py-1.5 text-right font-mono text-red-500">{m.temp != null ? `${m.temp}°` : '—'}</td>
