@@ -406,9 +406,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   }, [openBatchId])
   React.useEffect(() => {
     if (!preNieuwBatch) return
-    setBForm({...emptyB, ...preNieuwBatch})
+    const { _receptIngredienten, ...batchData } = preNieuwBatch
+    setBForm({...emptyB, ...batchData})
     setEditId(null)
     setShowForm(true)
+    setPendingBatchIngredienten(_receptIngredienten || [])
     setPreNieuwBatch(null)
   }, [preNieuwBatch])
   const [showForm, setShowForm] = useState(false)
@@ -431,6 +433,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const [bForm, setBForm] = useState<any>(emptyB)
   const [iForm, setIForm] = useState<any>(emptyI)
+  const [pendingBatchIngredienten, setPendingBatchIngredienten] = useState<any[]>([])
   const [batchArchiefIngeklapt, setBatchArchiefIngeklapt] = useStore('batches_archief_ingeklapt', true)
   const [infoIngeklapt, setInfoIngeklapt] = useState(false)
   const [grafiekOpen, setGrafiekOpen] = useStore('gist_grafiek_open', {} as Record<string,boolean>)
@@ -681,6 +684,28 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       const nb = {id:newId(bat), ...bForm}
       setBat((prev: any[]) => [...prev, nb])
       addLog({type:'aangemaakt', batch_id:nb.id, referentie:nb.naam})
+      if (pendingBatchIngredienten.length > 0) {
+        setBi((prev: any[]) => {
+          const startId = prev.length ? Math.max(...prev.map((x: any) => x.id)) + 1 : 1
+          const newBis = pendingBatchIngredienten.map((item: any, idx: number) => {
+            const ingMatch = ing.find((i: any) => i.naam.toLowerCase() === item.ingredient_naam.toLowerCase())
+            return {
+              id: startId + idx,
+              batch_id: nb.id,
+              ingredient_id: ingMatch ? ingMatch.id : null,
+              ingredient_naam: item.ingredient_naam,
+              ingredient_type: item.ingredient_type,
+              hoeveelheid: Number(item.hoeveelheid) || 0,
+              eenheid: item.eenheid,
+              lot_id: null,
+              kosten: null,
+              afgeboekt: false,
+            }
+          })
+          return [...prev, ...newBis]
+        })
+        setPendingBatchIngredienten([])
+      }
       setShowForm(false); setBForm(emptyB)
     }
   }

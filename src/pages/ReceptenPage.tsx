@@ -334,6 +334,12 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                       FG: selRec.FG || '',
                       ABV: selRec.ABV || '',
                       liter_vergist: selRec.batch_size || '',
+                      _receptIngredienten: [
+                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg'  })),
+                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
+                        ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg' })),
+                        ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
+                      ],
                     })
                     setPage('batches')
                   }}>Brouwen</Btn>
