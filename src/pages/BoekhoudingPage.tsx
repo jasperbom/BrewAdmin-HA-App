@@ -4,11 +4,12 @@ import { getLang } from '../i18n'
 import { tod } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { BUILTIN_ING_TYPES } from '../utils/constants'
+import { berekenWinstVerlies } from '../utils/calculations'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}}: any) {
   const now = new Date();
   const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -27,8 +28,25 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
   const [showLosseFactuur, setShowLosseFactuur] = React.useState(false);
   const emptyLosseRegel = () => ({omschrijving:'', hoeveelheid:'1', prijs_per_stuk:'', btw_pct:'21'})
-  const emptyLosseFactuur = () => ({datum:tod(), factuurnummer:'', klant_naam:'', regels:[emptyLosseRegel()]})
+  const emptyLosseFactuur = () => ({datum:tod(), factuurnummer:'', klant_id:null, klant_naam:'', klant_straat:'', klant_postcode:'', klant_stad:'', klant_btw_nummer:'', regels:[emptyLosseRegel()]})
   const [losseFactuurForm, setLosseFactuurForm] = React.useState<any>(emptyLosseFactuur())
+
+  // ── Klanten tab state ──────────────────────────────────────────────────────
+  const [showKlantModal, setShowKlantModal] = React.useState(false)
+  const [editingKlant, setEditingKlant] = React.useState<any>(null)
+  const [viewingKlantId, setViewingKlantId] = React.useState<number|null>(null)
+  const emptyKlantForm = () => ({naam:'', straat:'', postcode:'', stad:'', btw_nummer:'', email:'', telefoon:'', betalingstermijn:''})
+  const [klantForm, setKlantForm] = React.useState<any>(emptyKlantForm())
+
+  // ── Bank tab state ─────────────────────────────────────────────────────────
+  const bankFileRef = React.useRef<any>(null)
+  const [bankAfschrift, setBankAfschrift] = React.useState<any>(null)
+  const [bankTransacties, setBankTransacties] = React.useState<any[]>([])
+
+  // ── Rapporten tab state ────────────────────────────────────────────────────
+  const [rapportTab, setRapportTab] = React.useState('wv')
+  const [rapportVan, setRapportVan] = React.useState(() => new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0,10))
+  const [rapportTot, setRapportTot] = React.useState(() => new Date().toISOString().slice(0,10))
 
   const addLog = (entry: any) => setLog((prev: any)=>[...prev,{id:newId(prev||[]),datum:tod(),...entry}]);
 
@@ -204,7 +222,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       id: newId(verkoopFacturen||[]),
       datum: losseFactuurForm.datum,
       factuurnummer: losseFactuurForm.factuurnummer.trim(),
+      klant_id: losseFactuurForm.klant_id || null,
       klant_naam: losseFactuurForm.klant_naam.trim(),
+      klant_straat: losseFactuurForm.klant_straat?.trim() || '',
+      klant_postcode: losseFactuurForm.klant_postcode?.trim() || '',
+      klant_stad: losseFactuurForm.klant_stad?.trim() || '',
+      klant_btw_nummer: losseFactuurForm.klant_btw_nummer?.trim() || '',
       status: 'open',
       regels,
       netto: totaalNetto,
@@ -424,6 +447,161 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     ));
   };
 
+  const markeerHerinnering = (factuurId: any) => {
+    setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
+      f.id === factuurId ? {...f, status: f.status === 'herinnering' ? 'open' : 'herinnering'} : f
+    ));
+  };
+
+  // ── PDF generatie ─────────────────────────────────────────────────────────
+  const genereerFactuurPDF = (factuur: any) => {
+    const inst = (breweryDetails as any) || {}
+    const klant = (klanten||[]).find((k:any) => k.id === factuur.klant_id)
+    const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
+    const datumObj = factuur.datum ? new Date(factuur.datum) : new Date()
+    const vervalObj = new Date(datumObj)
+    vervalObj.setDate(vervalObj.getDate() + Number(termijn))
+    const fmtD = (d: Date) => d.toLocaleDateString('nl-NL', {day:'2-digit',month:'2-digit',year:'numeric'})
+    const fmtB = (n: number) => '&euro;&nbsp;' + Number(n).toFixed(2).replace('.', ',')
+    const vervalDatum = fmtD(vervalObj)
+    const facDatum = fmtD(datumObj)
+
+    const btwMap: Record<number, {netto:number,btw:number}> = {}
+    ;(factuur.regels||[]).forEach((r: any) => {
+      const pct = r.btw_pct ?? 0
+      if (!btwMap[pct]) btwMap[pct] = {netto:0,btw:0}
+      btwMap[pct].netto += r.netto||0
+      btwMap[pct].btw += r.btw_bedrag||0
+    })
+
+    const logoHtml = factuurLogo
+      ? `<img src="${factuurLogo}" style="max-height:60px;max-width:200px;object-fit:contain;" alt="logo" />`
+      : ''
+
+    const regelRows = (factuur.regels||[]).map((r: any) =>
+      `<tr><td>${r.omschrijving||''}</td><td style="text-align:right">${r.hoeveelheid||''}</td><td style="text-align:right">${fmtB(r.prijs_per_stuk||0)}</td><td style="text-align:right">${r.btw_pct||0}%</td><td style="text-align:right">${fmtB(r.netto||0)}</td><td style="text-align:right">${fmtB(r.btw_bedrag||0)}</td><td style="text-align:right">${fmtB(r.bruto||0)}</td></tr>`
+    ).join('')
+    const btwRows = Object.entries(btwMap).map(([pct, v]) =>
+      `<tr><td>${pct}%</td><td style="text-align:right">${fmtB(v.netto)}</td><td style="text-align:right">${fmtB(v.btw)}</td></tr>`
+    ).join('')
+
+    const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><title>Factuur ${factuur.factuurnummer||factuur.id}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#222;padding:15mm 20mm}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8mm}.bi{text-align:right;font-size:10px;color:#444;line-height:1.7}.bi-naam{font-size:14px;font-weight:bold;color:#111;margin-bottom:3px}.ftitle{font-size:22px;font-weight:bold;color:#111;margin:5mm 0 4mm}.meta{display:flex;gap:10mm;margin-bottom:7mm}.ml{font-size:9px;text-transform:uppercase;color:#888;letter-spacing:.5px;margin-bottom:1px}.mv{font-size:11px;font-weight:500}.kb{background:#f8f9fa;border-left:3px solid #333;padding:3mm 4mm;margin-bottom:7mm}.kn{font-weight:bold;font-size:12px;margin-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:4mm;font-size:10px}th{background:#333;color:#fff;padding:3px 5px;text-align:left;font-size:9px;text-transform:uppercase}td{padding:3px 5px;border-bottom:1px solid #eee;vertical-align:top}.ts{display:flex;justify-content:flex-end;margin-bottom:6mm}.tt{width:65mm}.tt td{padding:2px 5px;border:none}.gt{font-weight:bold;font-size:13px;border-top:2px solid #333!important}.bb{background:#f0f7ff;border:1px solid #cce5ff;padding:3mm 4mm;border-radius:4px;font-size:10px;line-height:1.9}.bt{font-weight:bold;font-size:11px;margin-bottom:2px}@media print{body{padding:10mm 15mm}@page{margin:10mm}}</style></head>
+<body>
+<div class="hdr"><div>${logoHtml}</div><div class="bi"><div class="bi-naam">${inst.naam||''}</div>${inst.straat||inst.huisnummer?`<div>${inst.straat||''} ${inst.huisnummer||''}</div>`:''} ${inst.postcode||inst.stad?`<div>${inst.postcode||''} ${inst.stad||''}</div>`:''} ${inst.btw_nummer?`<div>BTW: ${inst.btw_nummer}</div>`:''} ${inst.kvk_nummer?`<div>KvK: ${inst.kvk_nummer}</div>`:''} ${inst.iban?`<div>IBAN: ${inst.iban}</div>`:''} ${inst.email?`<div>${inst.email}</div>`:''} ${inst.telefoon?`<div>${inst.telefoon}</div>`:''}</div></div>
+<div class="ftitle">FACTUUR</div>
+<div class="meta"><div><div class="ml">Factuurnummer</div><div class="mv">${factuur.factuurnummer||'—'}</div></div><div><div class="ml">Factuurdatum</div><div class="mv">${facDatum}</div></div><div><div class="ml">Vervaldatum</div><div class="mv">${vervalDatum} (${termijn} dgn)</div></div></div>
+<div class="kb"><div class="kn">${factuur.klant_naam||'—'}</div>${factuur.klant_straat?`<div>${factuur.klant_straat}</div>`:''} ${factuur.klant_postcode||factuur.klant_stad?`<div>${factuur.klant_postcode||''} ${factuur.klant_stad||''}</div>`:''} ${factuur.klant_btw_nummer?`<div>BTW: ${factuur.klant_btw_nummer}</div>`:''}</div>
+<table><thead><tr><th style="width:35%">Omschrijving</th><th style="text-align:right;width:8%">Aantal</th><th style="text-align:right;width:13%">Prijs/stuk</th><th style="text-align:right;width:7%">BTW%</th><th style="text-align:right;width:12%">Netto</th><th style="text-align:right;width:12%">BTW</th><th style="text-align:right;width:13%">Bruto</th></tr></thead><tbody>${regelRows}</tbody></table>
+<div style="display:flex;justify-content:flex-end;margin-bottom:4mm"><table style="width:60mm"><thead><tr><th>BTW%</th><th style="text-align:right">Grondslag</th><th style="text-align:right">BTW</th></tr></thead><tbody>${btwRows}</tbody></table></div>
+<div class="ts"><table class="tt"><tr><td>Subtotaal excl. BTW</td><td style="text-align:right">${fmtB(factuur.netto||0)}</td></tr><tr><td>BTW</td><td style="text-align:right">${fmtB(factuur.btw||0)}</td></tr><tr class="gt"><td>Totaal incl. BTW</td><td style="text-align:right">${fmtB(factuur.bruto||0)}</td></tr></table></div>
+<div class="bb"><div class="bt">Betaalinformatie</div>${inst.iban?`<div>IBAN: ${inst.iban}</div>`:''} ${inst.naam?`<div>t.n.v.: ${inst.naam}</div>`:''}<div>o.v.v.: ${factuur.factuurnummer||factuur.id}</div><div>Vervaldatum: ${vervalDatum}</div></div>
+<script>window.onload=function(){setTimeout(function(){window.print();},200);}</script></body></html>`
+
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
+  // ── MT940 parser ──────────────────────────────────────────────────────────
+  const parseMT940 = (text: string): any => {
+    const result: any = { iban:'', referentie:'', afschriftNr:'', beginsaldo:0, eindsaldo:0, transacties:[] }
+    const parseAmt = (s: string) => parseFloat(s.replace(',','.'))
+    const parseDate6 = (s: string) => {
+      const yy=s.slice(0,2),mm=s.slice(2,4),dd=s.slice(4,6)
+      const yr = parseInt(yy) <= (new Date().getFullYear()%100) ? '20'+yy : '19'+yy
+      return `${yr}-${mm}-${dd}`
+    }
+    let field='', buf='', pendingTx: any=null
+    const flush = () => {
+      if (!field) return
+      const v = buf.trim()
+      if (field==='25') result.iban = v.split('/')[0].replace(/\./g,'').trim()
+      else if (field==='20') result.referentie = v
+      else if (field==='28C') result.afschriftNr = v
+      else if (field==='60F'||field==='60M') {
+        const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
+        if (m) result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
+      } else if (field==='62F'||field==='62M') {
+        const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
+        if (m) result.eindsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
+      } else if (field==='61') {
+        const m = v.match(/^(\d{6})(\d{4})?([CD]R?)([A-Z]?)(\d+,\d{2})/)
+        if (m) {
+          if (pendingTx) result.transacties.push(pendingTx)
+          const refM = v.match(/\/\/(.+)/)
+          pendingTx = { datum:parseDate6(m[1]), type:m[3].startsWith('C')?'C':'D', bedrag:parseAmt(m[5]), referentie:refM?refM[1].split('\n')[0].trim():'', omschrijving:'', gekoppeldFactuurId:null, autoGematcht:false }
+        }
+      } else if (field==='86') {
+        if (pendingTx) {
+          pendingTx.omschrijving = v.replace(/\r?\n/g,' ').replace(/\s+/g,' ').trim()
+          result.transacties.push(pendingTx)
+          pendingTx = null
+        }
+      }
+      field=''; buf=''
+    }
+    for (const line of text.split(/\r?\n/)) {
+      if (line.startsWith('-')||line===':') { flush(); continue }
+      const m = line.match(/^:(\w+):(.*)$/)
+      if (m) { flush(); field=m[1]; buf=m[2] }
+      else if (field) buf+='\n'+line
+    }
+    flush()
+    if (pendingTx) result.transacties.push(pendingTx)
+    return result
+  }
+
+  const importMT940 = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = (e: any) => {
+      const text = e.target.result as string
+      const afschrift = parseMT940(text)
+      // Auto-match open verkoopfacturen op bedrag
+      const openFacturen = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+      const gematcht = afschrift.transacties.map((tx: any) => {
+        if (tx.type !== 'C') return tx
+        const match = openFacturen.find((f: any) => Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
+        return match ? {...tx, gekoppeldFactuurId:match.id, autoGematcht:true} : tx
+      })
+      setBankAfschrift(afschrift)
+      setBankTransacties(gematcht)
+    }
+    reader.readAsText(file, 'latin1')
+  }
+
+  const koppelBankTransactie = (txIndex: number, factuurId: number|null) => {
+    setBankTransacties((prev: any[]) => prev.map((tx, i) =>
+      i===txIndex ? {...tx, gekoppeldFactuurId:factuurId, autoGematcht:false} : tx
+    ))
+  }
+
+  // ── Klanten CRUD ──────────────────────────────────────────────────────────
+  const saveKlant = () => {
+    const form = {...klantForm, betalingstermijn: klantForm.betalingstermijn ? Number(klantForm.betalingstermijn) : undefined}
+    if (editingKlant) {
+      setKlanten((prev: any[]) => prev.map((k: any) => k.id===editingKlant.id ? {...k,...form} : k))
+    } else {
+      setKlanten((prev: any[]) => [...(prev||[]), {id:newId(prev||[]), ...form}])
+    }
+    setShowKlantModal(false); setEditingKlant(null); setKlantForm(emptyKlantForm())
+  }
+
+  const deleteKlant = (id: number) => {
+    if (!confirm(t('btn_delete') + '?')) return
+    setKlanten((prev: any[]) => prev.filter((k: any) => k.id !== id))
+    if (viewingKlantId === id) setViewingKlantId(null)
+  }
+
+  const handleKlantSelectInFactuur = (klantId: number|null) => {
+    if (!klantId) {
+      setLosseFactuurForm((f: any) => ({...f, klant_id:null}))
+      return
+    }
+    const k = (klanten||[]).find((k: any) => k.id === klantId)
+    if (!k) return
+    setLosseFactuurForm((f: any) => ({...f, klant_id:klantId, klant_naam:k.naam, klant_straat:k.straat||'', klant_postcode:k.postcode||'', klant_stad:k.stad||'', klant_btw_nummer:k.btw_nummer||''}))
+  }
+
   // (no early return — Inkoop tab is always available)
 
   const tabBtn = (tabId: string, label: string) => (
@@ -444,6 +622,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           </h2>
           {tabBtn('verkoop', t('tab_verkoop'))}
           {tabBtn('inkoop', t('tab_inkoop'))}
+          {tabBtn('klanten', t('tab_klanten'))}
+          {tabBtn('bank', t('tab_bank'))}
+          {tabBtn('rapporten', t('tab_rapporten'))}
           {tabBtn('accijns', t('nav_accijns'))}
           {tabBtn('btw_aangifte', t('tab_btw_aangifte'))}
         </div>
@@ -484,11 +665,21 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         {showLosseFactuur && (
           <Modal title={t('modal_losse_factuur_titel')} onClose={()=>setShowLosseFactuur(false)} wide>
             <div className="space-y-4">
+              {/* Rij 1: klant-kiezer, datum, factuurnummer */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant')}</label>
+                  {(klanten||[]).length > 0 ? (
+                    <select value={losseFactuurForm.klant_id||''}
+                      onChange={(e: any) => { const v = e.target.value; handleKlantSelectInFactuur(v ? Number(v) : null) }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none mb-1">
+                      <option value="">— vrij invullen —</option>
+                      {(klanten||[]).map((k: any) => <option key={k.id} value={k.id}>{k.naam}</option>)}
+                    </select>
+                  ) : null}
                   <input type="text" value={losseFactuurForm.klant_naam}
                     onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,klant_naam:e.target.value}))}
+                    placeholder={t('lbl_klant')}
                     className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
                 </div>
                 <div>
@@ -501,6 +692,36 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   <label className="block text-xs font-medium text-gray-500 mb-1">{t('factuur_number')}</label>
                   <input type="text" value={losseFactuurForm.factuurnummer}
                     onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,factuurnummer:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+              </div>
+              {/* Rij 2: klantadres (voor PDF) */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_straat')}</label>
+                  <input type="text" value={losseFactuurForm.klant_straat}
+                    onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,klant_straat:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_postcode')}</label>
+                  <input type="text" value={losseFactuurForm.klant_postcode}
+                    onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,klant_postcode:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_stad')}</label>
+                  <input type="text" value={losseFactuurForm.klant_stad}
+                    onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,klant_stad:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_btw_nummer')}</label>
+                  <input type="text" value={losseFactuurForm.klant_btw_nummer}
+                    onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,klant_btw_nummer:e.target.value}))}
+                    placeholder="NL000000000B01"
                     className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
                 </div>
               </div>
@@ -619,21 +840,32 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
                       <td className="py-2 pr-3 font-medium text-gray-800">{f.klant_naam||'—'}</td>
                       <td className="py-2 pr-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${f.status==='betaald'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}`}>
-                          {f.status==='betaald' ? t('factuur_paid') : t('factuur_open')}
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${f.status==='betaald'?'bg-green-100 text-green-700':f.status==='herinnering'?'bg-yellow-100 text-yellow-700':'bg-orange-100 text-orange-700'}`}>
+                          {f.status==='betaald' ? t('factuur_paid') : f.status==='herinnering' ? t('lbl_herinnering') : t('factuur_open')}
                         </span>
                       </td>
                       <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.netto||0)}</td>
                       <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.btw||0)}</td>
                       <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.bruto||0)}</td>
                       <td className="py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        {f.status !== 'betaald' && (
-                          <button
-                            onClick={() => markeerBetaald(f.id)}
-                            className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 rounded text-xs font-medium border border-green-200 transition-colors">
-                            {t('btn_mark_paid')}
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => genereerFactuurPDF(f)}
+                            className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
+                            {t('btn_pdf')}
                           </button>
-                        )}
+                          {f.status !== 'betaald' && (
+                            <button onClick={() => markeerBetaald(f.id)}
+                              className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 rounded text-xs font-medium border border-green-200 transition-colors">
+                              {t('btn_mark_paid')}
+                            </button>
+                          )}
+                          {f.status !== 'betaald' && (
+                            <button onClick={() => markeerHerinnering(f.id)}
+                              className={`px-2 py-0.5 rounded text-xs font-medium border transition-colors ${f.status==='herinnering'?'bg-yellow-100 text-yellow-700 border-yellow-300':'bg-gray-50 hover:bg-yellow-50 text-gray-500 border-gray-200'}`}>
+                              !
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -799,6 +1031,429 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             <p className="text-gray-400 text-sm">{t('msg_no_facturen_period')}</p>
           </div>
         )}
+      </>)}
+
+      {/* ══════════════════════ KLANTEN ══════════════════════ */}
+      {mainTab==='klanten' && (<>
+        <div className={card}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-800">{t('tab_klanten')}</h3>
+            <button onClick={()=>{setEditingKlant(null);setKlantForm(emptyKlantForm());setShowKlantModal(true)}}
+              className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
+              {t('btn_nieuwe_klant')}
+            </button>
+          </div>
+          {(klanten||[]).length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">{t('msg_no_klanten')}</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[500px]">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-2 pr-3 text-left font-medium">{t('lbl_name')}</th>
+                    <th className="py-2 pr-3 text-left font-medium">{t('lbl_email')}</th>
+                    <th className="py-2 pr-3 text-right font-medium">{t('lbl_openstaand')}</th>
+                    <th className="py-2 pr-3 text-right font-medium">{t('lbl_betaald')}</th>
+                    <th className="py-2 text-right font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(klanten||[]).map((k: any) => {
+                    const kFacturen = (verkoopFacturen||[]).filter((f: any) => f.klant_id === k.id)
+                    const openstaand = kFacturen.filter((f: any) => f.status !== 'betaald').reduce((s: number, f: any) => s + (f.bruto||0), 0)
+                    const betaald = kFacturen.filter((f: any) => f.status === 'betaald').reduce((s: number, f: any) => s + (f.bruto||0), 0)
+                    const heeftVerlopen = kFacturen.some((f: any) => {
+                      if (f.status === 'betaald') return false
+                      if (!f.datum) return false
+                      const termijn = k.betalingstermijn ?? (breweryDetails as any)?.betalingstermijn ?? 14
+                      const verval = new Date(f.datum)
+                      verval.setDate(verval.getDate() + Number(termijn))
+                      return verval < new Date()
+                    })
+                    return (
+                      <tr key={k.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+                        onClick={()=>setViewingKlantId(viewingKlantId===k.id ? null : k.id)}>
+                        <td className="py-2 pr-3 font-medium text-gray-800">
+                          {heeftVerlopen && <span className="inline-block w-2 h-2 bg-red-500 rounded-full mr-2 align-middle" title="Verlopen factuur(en)"/>}
+                          {k.naam}
+                        </td>
+                        <td className="py-2 pr-3 text-gray-500 text-xs">{k.email||'—'}</td>
+                        <td className={`py-2 pr-3 text-right font-medium ${openstaand>0?'text-orange-600':'text-gray-400'}`}>{openstaand>0?fmt(openstaand):'—'}</td>
+                        <td className="py-2 pr-3 text-right text-green-600">{betaald>0?fmt(betaald):'—'}</td>
+                        <td className="py-2 text-right whitespace-nowrap" onClick={(e:any)=>e.stopPropagation()}>
+                          <button onClick={()=>{setEditingKlant(k);setKlantForm({naam:k.naam,straat:k.straat||'',postcode:k.postcode||'',stad:k.stad||'',btw_nummer:k.btw_nummer||'',email:k.email||'',telefoon:k.telefoon||'',betalingstermijn:k.betalingstermijn??''});setShowKlantModal(true)}}
+                            className="text-xs text-gray-400 hover:text-blue-600 px-2 py-0.5 transition-colors">{t('btn_edit')}</button>
+                          <button onClick={()=>deleteKlant(k.id)}
+                            className="text-xs text-gray-300 hover:text-red-500 px-1 transition-colors">✕</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Factuurhistorie geselecteerde klant */}
+        {viewingKlantId !== null && (() => {
+          const k = (klanten||[]).find((x: any) => x.id === viewingKlantId)
+          if (!k) return null
+          const kFacturen = (verkoopFacturen||[]).filter((f: any) => f.klant_id === viewingKlantId).sort((a: any,b: any)=>b.datum?.localeCompare(a.datum||'')||0)
+          return (
+            <div className={card}>
+              <h3 className="font-semibold text-gray-800 mb-3">{t('lbl_klant_factuurhistorie')}: {k.naam}</h3>
+              {kFacturen.length === 0 ? (
+                <div className="text-sm text-gray-400">{t('msg_no_verkoopfacturen')}</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[500px]">
+                    <thead>
+                      <tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_date')}</th>
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('factuur_number')}</th>
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_status')}</th>
+                        <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_bruto')}</th>
+                        <th className="py-1.5 text-right font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kFacturen.map((f: any) => (
+                        <tr key={f.id} className="border-b border-gray-50">
+                          <td className="py-1.5 pr-3 text-gray-600">{f.datum}</td>
+                          <td className="py-1.5 pr-3 font-mono text-xs">{f.factuurnummer||'—'}</td>
+                          <td className="py-1.5 pr-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${f.status==='betaald'?'bg-green-100 text-green-700':f.status==='herinnering'?'bg-yellow-100 text-yellow-700':'bg-orange-100 text-orange-700'}`}>
+                              {f.status==='betaald'?t('factuur_paid'):f.status==='herinnering'?t('lbl_herinnering'):t('factuur_open')}
+                            </span>
+                          </td>
+                          <td className="py-1.5 pr-3 text-right font-semibold">{fmt(f.bruto||0)}</td>
+                          <td className="py-1.5 text-right whitespace-nowrap">
+                            <button onClick={()=>genereerFactuurPDF(f)}
+                              className="text-xs px-2 py-0.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-gray-600 transition-colors mr-1">
+                              {t('btn_pdf')}
+                            </button>
+                            {f.status !== 'betaald' && (
+                              <button onClick={()=>markeerBetaald(f.id)}
+                                className="text-xs px-2 py-0.5 bg-green-50 hover:bg-green-100 border border-green-200 rounded text-green-700 transition-colors">
+                                {t('btn_mark_paid')}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* Klant modal */}
+        {showKlantModal && (
+          <Modal title={t('modal_klant_titel')} onClose={()=>{setShowKlantModal(false);setEditingKlant(null);setKlantForm(emptyKlantForm())}}>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_name')} *</label>
+                <input type="text" value={klantForm.naam} onChange={(e:any)=>setKlantForm((f:any)=>({...f,naam:e.target.value}))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_straat')}</label>
+                  <input type="text" value={klantForm.straat} onChange={(e:any)=>setKlantForm((f:any)=>({...f,straat:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_postcode')}</label>
+                  <input type="text" value={klantForm.postcode} onChange={(e:any)=>setKlantForm((f:any)=>({...f,postcode:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_stad')}</label>
+                  <input type="text" value={klantForm.stad} onChange={(e:any)=>setKlantForm((f:any)=>({...f,stad:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_btw_nummer')}</label>
+                  <input type="text" value={klantForm.btw_nummer} onChange={(e:any)=>setKlantForm((f:any)=>({...f,btw_nummer:e.target.value}))}
+                    placeholder="NL000000000B01"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_email')}</label>
+                  <input type="email" value={klantForm.email} onChange={(e:any)=>setKlantForm((f:any)=>({...f,email:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_telefoon')}</label>
+                  <input type="text" value={klantForm.telefoon} onChange={(e:any)=>setKlantForm((f:any)=>({...f,telefoon:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_betalingstermijn_override')}</label>
+                <input type="number" value={klantForm.betalingstermijn} min="1" max="365"
+                  onChange={(e:any)=>setKlantForm((f:any)=>({...f,betalingstermijn:e.target.value}))}
+                  className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={()=>{setShowKlantModal(false);setEditingKlant(null);setKlantForm(emptyKlantForm())}}
+                  className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                  {t('btn_cancel')}
+                </button>
+                <button onClick={saveKlant} disabled={!klantForm.naam.trim()}
+                  className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
+                  {t('btn_save')}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </>)}
+
+      {/* ══════════════════════ BANK ══════════════════════ */}
+      {mainTab==='bank' && (<>
+        <div className={card}>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 className="font-semibold text-gray-800">{t('tab_bank')}</h3>
+              {bankAfschrift && (
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {bankAfschrift.iban && <span className="mr-3">{t('lbl_bank_iban')}: <span className="font-mono font-medium">{bankAfschrift.iban}</span></span>}
+                  {bankAfschrift.beginsaldo !== undefined && <span className="mr-3">{t('lbl_beginsaldo')}: <span className="font-medium">{fmt(bankAfschrift.beginsaldo)}</span></span>}
+                  {bankAfschrift.eindsaldo !== undefined && <span>{t('lbl_eindsaldo')}: <span className="font-medium">{fmt(bankAfschrift.eindsaldo)}</span></span>}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-gray-400 italic hidden sm:block">{t('msg_bank_sessie_hint')}</p>
+              <button onClick={()=>bankFileRef.current?.click()}
+                className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
+                {t('btn_bank_import')}
+              </button>
+              <input ref={bankFileRef} type="file" accept=".sta,.txt,.mt940" className="hidden"
+                onChange={(e: any) => { const f = e.target.files?.[0]; if (f) { importMT940(f); e.target.value=''; } }} />
+            </div>
+          </div>
+
+          {!bankAfschrift ? (
+            <div className="text-center py-10 text-gray-400 text-sm">
+              <div className="text-3xl mb-2">🏦</div>
+              <p>{t('msg_no_bank')}</p>
+              <p className="text-xs mt-1 italic">{t('msg_bank_sessie_hint')}</p>
+            </div>
+          ) : bankTransacties.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">Geen transacties gevonden in afschrift.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-2 pr-3 text-left font-medium">{t('lbl_date')}</th>
+                    <th className="py-2 pr-3 text-left font-medium">{t('lbl_omschrijving')}</th>
+                    <th className="py-2 pr-3 text-right font-medium">{t('lbl_credit')}/{t('lbl_debet')}</th>
+                    <th className="py-2 text-left font-medium">{t('tab_verkoop')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankTransacties.map((tx: any, i: number) => {
+                    const gekoppeld = tx.gekoppeldFactuurId ? (verkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldFactuurId) : null
+                    const openFacturen = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+                    return (
+                      <tr key={i} className={`border-b border-gray-50 ${tx.autoGematcht ? 'bg-green-50' : ''}`}>
+                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{tx.datum}</td>
+                        <td className="py-2 pr-3 text-gray-700 max-w-xs truncate" title={tx.omschrijving}>
+                          {tx.omschrijving || tx.referentie || '—'}
+                        </td>
+                        <td className={`py-2 pr-3 text-right font-semibold whitespace-nowrap ${tx.type==='C'?'text-green-600':'text-red-600'}`}>
+                          {tx.type==='C'?'+':'-'}{fmt(tx.bedrag)}
+                        </td>
+                        <td className="py-2" onClick={(e:any)=>e.stopPropagation()}>
+                          {tx.autoGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
+                          {tx.type==='C' && (
+                            <div className="flex items-center gap-2">
+                              <select value={tx.gekoppeldFactuurId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null)}
+                                className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[200px]">
+                                <option value="">— {t('lbl_niet_gekoppeld')} —</option>
+                                {openFacturen.map((f: any) => (
+                                  <option key={f.id} value={f.id}>{f.datum} · {f.klant_naam||'—'} · {fmt(f.bruto||0)}</option>
+                                ))}
+                              </select>
+                              {gekoppeld && (
+                                <button onClick={()=>{ markeerBetaald(gekoppeld.id); koppelBankTransactie(i,null) }}
+                                  className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
+                                  {t('btn_mark_paid')}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </>)}
+
+      {/* ══════════════════════ RAPPORTEN ══════════════════════ */}
+      {mainTab==='rapporten' && (<>
+        {/* Periode filter + sub-tabs */}
+        <div className={card}>
+          <div className="flex flex-wrap items-end gap-4 mb-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_van')}</label>
+              <input type="date" value={rapportVan} onChange={(e:any)=>setRapportVan(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_tot')}</label>
+              <input type="date" value={rapportTot} onChange={(e:any)=>setRapportTot(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+          </div>
+          <div className="flex gap-1 border-b border-gray-100">
+            {(['wv','balans','omzet_cat'] as const).map(tab => (
+              <button key={tab} onClick={()=>setRapportTab(tab)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${rapportTab===tab?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':'tab_omzet_cat')}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Winst & Verlies */}
+        {rapportTab==='wv' && (()=>{
+          const wv = berekenWinstVerlies(verkoopFacturen||[], inkoopFacturen||[], acc||[], rapportVan, rapportTot)
+          const rows: {label:string,val:number,cls?:string,indent?:boolean,sep?:boolean}[] = [
+            {label:t('lbl_omzet'), val:wv.omzet, cls:'text-green-700 font-semibold'},
+            {label:t('lbl_inkoopkosten'), val:-wv.inkoopTotaal, sep:true},
+            {label:t('lbl_inkoopkosten_ingredienten'), val:-wv.inkoopIngredient, indent:true},
+            {label:t('lbl_inkoopkosten_verpakking'), val:-wv.inkoopVerpakking, indent:true},
+            {label:t('lbl_inkoopkosten_overig'), val:-wv.inkoopOverig, indent:true},
+            {label:t('lbl_brutowinst'), val:wv.brutowinst, cls:wv.brutowinst>=0?'text-green-700 font-bold':'text-red-600 font-bold', sep:true},
+            {label:t('lbl_accijns_kosten'), val:-wv.accijnsKosten},
+            {label:t('lbl_nettowinst'), val:wv.nettowinst, cls:wv.nettowinst>=0?'text-green-700 font-bold text-base':'text-red-600 font-bold text-base', sep:true},
+          ]
+          const exportWvCSV = () => {
+            const csv = rows.map(r=>`"${r.label}","${r.val.toFixed(2).replace('.',',')}"`).join('\n')
+            const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`wv_${rapportVan}_${rapportTot}.csv`})
+            a.click()
+          }
+          return (
+            <div className={card}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-800">{t('tab_wv')} — {rapportVan} {t('lbl_t_m')} {rapportTot}</h3>
+                <button onClick={exportWvCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {rows.map((r,i) => (
+                    <tr key={i} className={r.sep?'border-t border-gray-200':''}>
+                      <td className={`py-2 ${r.indent?'pl-6 text-gray-500':r.sep?'font-semibold text-gray-700':'text-gray-700'}`}>{r.label}</td>
+                      <td className={`py-2 text-right whitespace-nowrap ${r.cls||'text-gray-700'}`}>{fmt(r.val)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
+
+        {/* Balans */}
+        {rapportTab==='balans' && (()=>{
+          const openVerkoop = (verkoopFacturen||[]).filter((f:any)=>f.status!=='betaald').reduce((s:number,f:any)=>s+(f.bruto||0),0)
+          const voorraadWaarde = (lots||[]).filter((l:any)=>l.beschikbaar!==false&&l.hoeveelheid>0&&l.prijs_per_eenheid).reduce((s:number,l:any)=>s+(l.hoeveelheid||0)*(l.prijs_per_eenheid||0),0)
+          const accijnsSchuld = (acc||[]).filter((r:any)=>!r.betaald).reduce((s:number,r:any)=>s+(r.totaal_accijns||r.accijns||0),0)
+          const totaalActiva = openVerkoop + voorraadWaarde
+          const totaalPassiva = accijnsSchuld
+          const eigenVermogen = totaalActiva - totaalPassiva
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className={card}>
+                <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_activa')}</h3>
+                <table className="w-full text-sm"><tbody>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_debiteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(openVerkoop)}</td></tr>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_voorraden_indicatief')}</td><td className="py-1.5 text-right font-medium">{fmt(voorraadWaarde)}</td></tr>
+                  <tr className="border-t border-gray-200"><td className="py-2 font-bold text-gray-800">{t('lbl_total')}</td><td className="py-2 text-right font-bold">{fmt(totaalActiva)}</td></tr>
+                </tbody></table>
+              </div>
+              <div className={card}>
+                <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_passiva')}</h3>
+                <table className="w-full text-sm"><tbody>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_crediteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(0)}</td></tr>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_accijns_schuld')}</td><td className="py-1.5 text-right font-medium">{fmt(accijnsSchuld)}</td></tr>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_eigen_vermogen')}</td><td className={`py-1.5 text-right font-medium ${eigenVermogen>=0?'text-green-600':'text-red-600'}`}>{fmt(eigenVermogen)}</td></tr>
+                  <tr className="border-t border-gray-200"><td className="py-2 font-bold text-gray-800">{t('lbl_total')}</td><td className="py-2 text-right font-bold">{fmt(totaalPassiva+eigenVermogen)}</td></tr>
+                </tbody></table>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Omzet per categorie */}
+        {rapportTab==='omzet_cat' && (()=>{
+          const catMap: Record<string,{aantal:number,netto:number,btw:number,bruto:number}> = {}
+          ;(verkoopFacturen||[])
+            .filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
+            .forEach((f:any)=>{
+              ;(f.regels||[]).forEach((r:any)=>{
+                const cat = r.omschrijving||'Overig'
+                if (!catMap[cat]) catMap[cat]={aantal:0,netto:0,btw:0,bruto:0}
+                catMap[cat].aantal += r.hoeveelheid||0
+                catMap[cat].netto += r.netto||0
+                catMap[cat].btw += r.btw_bedrag||0
+                catMap[cat].bruto += r.bruto||0
+              })
+            })
+          const cats = Object.entries(catMap).sort((a,b)=>b[1].netto-a[1].netto)
+          const maxNetto = cats.length > 0 ? Math.max(...cats.map(([,v])=>v.netto)) : 1
+          if (cats.length === 0) return <div className={card+' text-center py-10 text-gray-400 text-sm'}>{t('msg_no_rapport_data')}</div>
+          return (
+            <div className={card}>
+              <h3 className="font-semibold text-gray-800 mb-4">{t('tab_omzet_cat')}</h3>
+              <div className="space-y-3">
+                {cats.map(([cat,v]) => (
+                  <div key={cat}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-gray-700 font-medium">{cat}</span>
+                      <span className="text-sm text-gray-500">{fmt(v.netto)} <span className="text-xs text-gray-400">+ {fmt(v.btw)} BTW</span></span>
+                    </div>
+                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{width:`${Math.round(v.netto/maxNetto*100)}%`, backgroundColor:'var(--t-accent)'}} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm min-w-[400px]">
+                  <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_categorie')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_quantity')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_netto')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_btw')}</th>
+                    <th className="py-1.5 text-right font-medium">{t('lbl_bruto')}</th>
+                  </tr></thead>
+                  <tbody>
+                    {cats.map(([cat,v]) => (
+                      <tr key={cat} className="border-b border-gray-50">
+                        <td className="py-1.5 pr-3 font-medium text-gray-800">{cat}</td>
+                        <td className="py-1.5 pr-3 text-right text-gray-600">{v.aantal}</td>
+                        <td className="py-1.5 pr-3 text-right text-gray-700">{fmt(v.netto)}</td>
+                        <td className="py-1.5 pr-3 text-right text-blue-600">{fmt(v.btw)}</td>
+                        <td className="py-1.5 text-right font-semibold text-gray-900">{fmt(v.bruto)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
       </>)}
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
