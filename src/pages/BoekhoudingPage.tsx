@@ -264,7 +264,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Inkoop',nummer:f.factuurnummer||`IF-${f.id}`,relatie:f.leverancier||'',netto:f.totaal_netto||0,btw:f.totaal_btw||0,totaal:f.totaal_bruto||0}))
       ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
         .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:f.klant_naam||'',netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
-      ;(acc||[]).filter((r:any)=>r.datum>=rapportVan&&r.datum<=rapportTot)
+      ;(acc||[]).filter((r:any)=>r.betaald===true&&r.datum>=rapportVan&&r.datum<=rapportTot)
         .forEach((r:any)=>{const tot=r.totaal_accijns||r.accijns||0;txs.push({datum:r.datum||'',dagboek:'Accijns',nummer:`ACC-${r.id}`,relatie:r.batch_naam||'',netto:tot,btw:0,totaal:tot})})
       return txs.sort((a,b)=>a.datum.localeCompare(b.datum))
     }
@@ -1598,7 +1598,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Inkoop',nummer:f.factuurnummer||`IF-${f.id}`,relatie:f.leverancier||'—',netto:f.totaal_netto||0,btw:f.totaal_btw||0,totaal:f.totaal_bruto||0}))
           ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
             .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:f.klant_naam||'—',netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
-          ;(acc||[]).filter((r:any)=>r.datum>=rapportVan&&r.datum<=rapportTot)
+          ;(acc||[]).filter((r:any)=>r.betaald===true&&r.datum>=rapportVan&&r.datum<=rapportTot)
             .forEach((r:any)=>{const tot=r.totaal_accijns||r.accijns||0;txs.push({datum:r.datum||'',dagboek:'Accijns',nummer:`ACC-${r.id}`,relatie:r.batch_naam||'—',netto:tot,btw:0,totaal:tot})})
           txs.sort((a,b)=>a.datum.localeCompare(b.datum))
 
