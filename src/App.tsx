@@ -194,32 +194,90 @@ function App() {
     return () => clearInterval(id)
   }, [haInst?.enabled, haAutoFetch])
 
-  const doExport = () => excelExport(ing,lots,bat,bi,av,uit,acc,verpakkingen,onderdelen,log,archief,geslotenBieren,recepten,tanks,artikelen,hygieneItems,hygieneGroups,inkoopFacturen,verkoopFacturen,bestellingen,bestellingPicks,afboekingen);
+  const doExport = () => {
+    const backup = {
+      versie: 2,
+      datum: new Date().toISOString(),
+      ingredienten: ing, lots, batches: bat, batch_ingredienten: bi,
+      afvullingen: av, uitslagen: uit, accijns: acc,
+      verpakkingen, onderdelen,
+      voorraad_log: log, voorraad_archief: archief, voorraad_gesloten_bieren: geslotenBieren,
+      accijns_instellingen: accijnsInst,
+      recepten, recepten_verborgen: verborgen,
+      recepten_gearchiveerde_tags: gearchiveerdeTags,
+      recepten_tag_volgorde: tagVolgorde, recepten_gesloten_groepen: geslotenGroepen,
+      tanks, artikelen,
+      hygiene_items: hygieneItems, hygiene_groups: hygieneGroups,
+      inkoop_facturen: inkoopFacturen, verkoop_facturen: verkoopFacturen,
+      btw_instellingen: btwInst, btw_tarieven: btwTarieven,
+      ing_types: ingTypes, ing_type_btw: ingTypeBtw,
+      bestellingen, bestelling_picks: bestellingPicks, afboekingen,
+      klanten, gist_metingen: gistMetingen,
+      brewery_details: breweryDetails, factuur_counter: factuurCounter,
+      ha_instellingen: haInst,
+      app_logo: logo, factuur_logo: factuurLogo, app_name: appName, nav_theme: navTheme,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), {href: url, download: `brewadmin_backup_${new Date().toISOString().slice(0,10)}.json`});
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const doImport = (e: any) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    excelImport(f, (d: any) => {
-      if (confirm(t('err_confirm_excel_import'))) {
-        setIng(d.ingredienten); setLots(d.lots); setBat(d.batches);
-        setBi(d.batchIngredienten); setAv(d.afvullingen); setUit(d.uitslagen); setAcc(d.accijns);
-        if (d.verpakkingen?.length) setVerpakkingen(d.verpakkingen);
-        if (d.onderdelen?.length) setOnderdelen(d.onderdelen);
-        if (d.voorraadLog?.length) setLog(d.voorraadLog);
-        if (d.voorraadArchief?.length) setArchief(d.voorraadArchief);
-        if (d.geslotenBieren?.length) setGeslotenBieren(d.geslotenBieren);
-        if (d.recepten?.length) setRecepten(d.recepten);
-        if (d.tanks?.length) setTanks(d.tanks);
-        if (d.artikelen?.length) setArtikelen(d.artikelen);
-        if (d.hygieneItems?.length) setHygieneItems(d.hygieneItems);
-        if (d.hygieneGroups?.length) setHygieneGroups(d.hygieneGroups);
-        if (d.inkoopFacturen?.length) setInkoopFacturen(d.inkoopFacturen);
-        if (d.verkoopFacturen?.length) setVerkoopFacturen(d.verkoopFacturen);
-        if (d.bestellingen?.length) setBestellingen(d.bestellingen);
-        if (d.bestellingPicks?.length) setBestellingPicks(d.bestellingPicks);
-        if (d.afboekingen?.length) setAfboekingen(d.afboekingen);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const d = JSON.parse(ev.target?.result as string);
+        if (confirm(t('err_confirm_backup_import'))) {
+          if (Array.isArray(d.ingredienten)) setIng(d.ingredienten);
+          if (Array.isArray(d.lots)) setLots(d.lots);
+          if (Array.isArray(d.batches)) setBat(d.batches);
+          if (Array.isArray(d.batch_ingredienten)) setBi(d.batch_ingredienten);
+          if (Array.isArray(d.afvullingen)) setAv(d.afvullingen);
+          if (Array.isArray(d.uitslagen)) setUit(d.uitslagen);
+          if (Array.isArray(d.accijns)) setAcc(d.accijns);
+          if (Array.isArray(d.verpakkingen)) setVerpakkingen(d.verpakkingen);
+          if (Array.isArray(d.onderdelen)) setOnderdelen(d.onderdelen);
+          if (Array.isArray(d.voorraad_log)) setLog(d.voorraad_log);
+          if (Array.isArray(d.voorraad_archief)) setArchief(d.voorraad_archief);
+          if (Array.isArray(d.voorraad_gesloten_bieren)) setGeslotenBieren(d.voorraad_gesloten_bieren);
+          if (Array.isArray(d.recepten)) setRecepten(d.recepten);
+          if (Array.isArray(d.recepten_verborgen)) setVerborgen(d.recepten_verborgen);
+          if (Array.isArray(d.recepten_gearchiveerde_tags)) setGearchiveerdeTags(d.recepten_gearchiveerde_tags);
+          if (Array.isArray(d.recepten_tag_volgorde)) setTagVolgorde(d.recepten_tag_volgorde);
+          if (Array.isArray(d.recepten_gesloten_groepen)) setGeslotenGroepen(d.recepten_gesloten_groepen);
+          if (Array.isArray(d.tanks)) setTanks(d.tanks);
+          if (Array.isArray(d.artikelen)) setArtikelen(d.artikelen);
+          if (Array.isArray(d.hygiene_items)) setHygieneItems(d.hygiene_items);
+          if (Array.isArray(d.hygiene_groups)) setHygieneGroups(d.hygiene_groups);
+          if (Array.isArray(d.inkoop_facturen)) setInkoopFacturen(d.inkoop_facturen);
+          if (Array.isArray(d.verkoop_facturen)) setVerkoopFacturen(d.verkoop_facturen);
+          if (Array.isArray(d.bestellingen)) setBestellingen(d.bestellingen);
+          if (Array.isArray(d.bestelling_picks)) setBestellingPicks(d.bestelling_picks);
+          if (Array.isArray(d.afboekingen)) setAfboekingen(d.afboekingen);
+          if (Array.isArray(d.klanten)) setKlanten(d.klanten);
+          if (Array.isArray(d.gist_metingen)) setGistMetingen(d.gist_metingen);
+          if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
+          if (Array.isArray(d.btw_tarieven)) setBtwTarieven(d.btw_tarieven);
+          if (Array.isArray(d.ing_types)) setIngTypes(d.ing_types);
+          if (d.ing_type_btw) setIngTypeBtw(d.ing_type_btw);
+          if (d.brewery_details) setBreweryDetails(d.brewery_details);
+          if (d.factuur_counter) setFactuurCounter(d.factuur_counter);
+          if (d.ha_instellingen) setHaInst(d.ha_instellingen);
+          if (d.accijns_instellingen) setAccijnsInst(d.accijns_instellingen);
+          if (d.app_logo !== undefined) setLogo(d.app_logo);
+          if (d.factuur_logo !== undefined) setFactuurLogo(d.factuur_logo);
+          if (d.app_name !== undefined) setAppName(d.app_name);
+          if (d.nav_theme) setNavTheme(d.nav_theme);
+        }
+      } catch {
+        alert(t('err_invalid_backup'));
       }
-    });
+    };
+    reader.readAsText(f);
     e.target.value = '';
   };
 
