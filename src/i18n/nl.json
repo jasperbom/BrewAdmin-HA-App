@@ -906,5 +906,8 @@
   "settings_email": "E-mailadres",
   "settings_telefoon": "Telefoonnummer",
   "verzendkosten_modal_title": "Verzendkosten toevoegen",
-  "verzendkosten_prijs": "Prijs excl. BTW"
+  "verzendkosten_prijs": "Prijs excl. BTW",
+  "btn_losse_factuur": "Losse factuur",
+  "modal_losse_factuur_titel": "Losse verkoopfactuur",
+  "lbl_prijs_per_stuk": "Prijs/stuk"
 }

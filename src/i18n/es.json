@@ -892,5 +892,8 @@
   "settings_email": "Correo electrónico",
   "settings_telefoon": "Número de teléfono",
   "verzendkosten_modal_title": "Añadir gastos de envío",
-  "verzendkosten_prijs": "Precio sin IVA"
+  "verzendkosten_prijs": "Precio sin IVA",
+  "btn_losse_factuur": "Factura manual",
+  "modal_losse_factuur_titel": "Factura de venta manual",
+  "lbl_prijs_per_stuk": "Precio/ud."
 }

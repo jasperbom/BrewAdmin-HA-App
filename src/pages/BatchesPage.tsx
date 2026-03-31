@@ -414,10 +414,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     setPreNieuwBatch(null)
   }, [preNieuwBatch])
   const [showForm, setShowForm] = useState(false)
-  const [showBf, setShowBf] = useState(false)
-  const [bfJson, setBfJson] = useState('')
-  const [bfFileName, setBfFileName] = useState('')
-  const bfFileRef = useRef<HTMLInputElement>(null)
   const [editId, setEditId] = useState<number | null>(null)
 
   const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod()}
@@ -713,100 +709,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     }
   }
 
-  const parseBfData = (raw: any) => {
-    const bfNum = (v: any) => {
-      if (v === null || v === undefined) return ''
-      if (typeof v === 'number') return v
-      if (typeof v === 'object') {
-        const n = v.$numberDouble ?? v.$numberDecimal ?? v.$numberInt ?? v.$numberLong
-        if (n !== undefined) return Number(n)||''
-      }
-      const n = Number(v)
-      return isNaN(n) ? '' : n
-    }
-    const bfStr = (v: any) => {
-      if (!v && v !== 0) return ''
-      if (Array.isArray(v)) return v.map((x: any) => typeof x==='string' ? x : (x.note||x.text||x.message||'')).filter(Boolean).join('\n')
-      if (typeof v === 'object') return String(v.$string||v.text||v.note||'')
-      return String(v)
-    }
-    const bfDate = (v: any) => {
-      if (!v) return tod()
-      if (typeof v === 'number') return new Date(v).toISOString().split('T')[0]
-      if (typeof v === 'object') {
-        const ms = v.$date?.$numberLong ?? v.$date ?? null
-        if (ms) return new Date(Number(ms)).toISOString().split('T')[0]
-      }
-      const s = String(v).split('T')[0]
-      return s.match(/^\d{4}-\d{2}-\d{2}$/) ? s : tod()
-    }
-    const BF_MAP_LOCAL: Record<string,string> = {Planning:'Gepland',Brewing:'Brouwen',Fermenting:'Vergisten',Conditioning:'Conditioneren',Packaging:'Verpakt',Completed:'Gesloten',Archived:'Gesloten'}
-    const batches = Array.isArray(raw) ? raw : [raw]
-    let nextBatId = bat.length ? Math.max(0, ...bat.map((x: any) => x.id)) + 1 : 1
-    let nextBiId  = bi.length  ? Math.max(0, ...bi.map((x: any) => x.id))  + 1 : 1
-    const newBatches: any[] = [], newBis: any[] = []
-
-    batches.forEach((d: any) => {
-      const r = d.recipe || d
-      const naam = bfStr(r.name||d.name||'')
-      if (!naam) return
-      const batch_nummer = bfStr(d.batchNo||d.number||r.batchNo||'')
-      if (batch_nummer && bat.find((b: any) => String(b.batch_nummer)===String(batch_nummer))) {
-        alert(t('err_batch_exists').replace('{num}',batch_nummer))
-        return
-      }
-      const nb = {
-        id: nextBatId++, batch_nummer, naam,
-        stijl: bfStr(r.style?.name||d.style?.name||''),
-        status: BF_MAP_LOCAL[bfStr(d.status)]||'Gepland',
-        liter_vergist: bfNum(d.measuredBatchSize||d.estimatedFinalVolume||r.batchSize||r.equipment?.batchSize||''),
-        OG:  bfNum(d.measuredOg||d.estimatedOg||r.og||''),
-        FG:  bfNum(d.measuredFg||d.estimatedFg||r.fg||''),
-        ABV: bfNum(d.measuredAbv||d.estimatedAbv||r.abv||''),
-        tank: '', electra_kosten:'', water_kosten:'', schoonmaak_kosten:'', overige_kosten:'',
-        notities: bfStr(d.notes||d.tasteNotes||''),
-        datum: bfDate(d.brewDate),
-      }
-      newBatches.push(nb)
-      const add = (naam: any, type: string, qty: any, eenh: any) => {
-        const n = bfStr(naam)
-        if (!n) return
-        newBis.push({id:nextBiId++, batch_id:nb.id, ingredient_id:null,
-          ingredient_naam:n, ingredient_type:type,
-          hoeveelheid:bfNum(qty)||0, eenheid:bfStr(eenh)||'g',
-          lot_id:null, afgeboekt:false, kosten:null})
-      }
-      ;(r.fermentables||[]).forEach((f: any) => add(f.name,'Mout',f.amount,f.unit||'kg'))
-      ;(r.hops||[]).forEach((h: any) => add(h.name,'Hop',h.amount,h.unit||'g'))
-      ;(r.yeasts||[]).forEach((y: any) => add(y.name,'Gist',y.amount||1,y.unit||'pkg'))
-      ;(r.miscs||[]).forEach((m: any) => add(m.name,'Overig',m.amount,m.unit||'g'))
-    })
-
-    if (newBatches.length === 0) { alert(t('err_no_valid_batch_data')); return }
-    setBat((prev: any[]) => [...prev, ...newBatches])
-    setBi((prev: any[]) => [...prev, ...newBis])
-    setShowBf(false); setBfJson(''); setBfFileName('')
-    alert(t('batch_import_success').replace('{batches}',String(newBatches.length)).replace('{ingredients}',String(newBis.length)))
-  }
-
-  const importBf = () => {
-    try { parseBfData(JSON.parse(bfJson)) }
-    catch(e: any) { alert(t('err_invalid_json') + e.message) }
-  }
-
-  const loadBfFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBfFileName(file.name)
-    const reader = new FileReader()
-    reader.onload = (ev: any) => {
-      try { parseBfData(JSON.parse(ev.target.result)) }
-      catch(e: any) { alert(t('err_file_read') + e.message) }
-    }
-    reader.readAsText(file)
-    e.target.value = ''
-  }
-
   const fefoSort = (a: any, b: any) => {
     if (a.houdbaarheid && b.houdbaarheid) return new Date(a.houdbaarheid).getTime() - new Date(b.houdbaarheid).getTime()
     if (a.houdbaarheid) return -1
@@ -1006,7 +908,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-xl font-bold text-gray-800">{t('nav_batches')}</h2>
         <div className="flex flex-wrap gap-2 items-center">
           {bfMsg && <span className={`text-xs font-medium ${bfMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{bfMsg}</span>}
@@ -1014,7 +916,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
             {bfSyncing ? t('batch_syncing') : t('batch_sync_brewfather')}
           </Btn>
-          <Btn v="secondary" onClick={()=>setShowBf(true)}>{t('batch_import_json')}</Btn>
           <Btn onClick={()=>{setEditId(null);setBForm(emptyB);setShowForm(true)}}>{t('batch_add_btn')}</Btn>
         </div>
       </div>
@@ -2009,36 +1910,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         </Modal>
       )}
 
-      {/* Brewfather import modal */}
-      {showBf && (
-        <Modal title={t('batch_brewfather_import_title')} onClose={()=>{setShowBf(false);setBfJson('');setBfFileName('')}} wide>
-          <div className="space-y-4">
-            <p className="text-xs text-gray-500">{t('batch_brewfather_instruction')}</p>
-            <div onClick={()=>bfFileRef.current?.click()}
-              className="border-2 border-dashed t-border rounded-lg p-6 text-center cursor-pointer t-hover transition-colors">
-              <div className="text-3xl mb-2">📂</div>
-              <div className="text-sm font-medium text-gray-700">{t('batch_brewfather_choose_file')}</div>
-              <div className="text-xs text-gray-400 mt-1">{t('batch_brewfather_file_type')}</div>
-              {bfFileName && <div className="mt-2 text-xs text-green-700 font-medium">✓ {bfFileName}</div>}
-            </div>
-            <input ref={bfFileRef} type="file" accept=".json,application/json" className="hidden" onChange={loadBfFile} />
-            <details>
-              <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 select-none">{t('batch_brewfather_paste_json')}</summary>
-              <div className="mt-2 space-y-2">
-                <textarea value={bfJson} onChange={e=>setBfJson(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs font-mono h-32 t-input"
-                  placeholder='{"name":"Mijn Batch","recipe":{"fermentables":[...],"hops":[...]}}' />
-                <div className="flex justify-end">
-                  <Btn onClick={importBf} disabled={!bfJson.trim()}>{t('btn_import_json')}</Btn>
-                </div>
-              </div>
-            </details>
-            <div className="flex justify-end">
-              <Btn v="secondary" onClick={()=>{setShowBf(false);setBfJson('');setBfFileName('')}}>{t('btn_close')}</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

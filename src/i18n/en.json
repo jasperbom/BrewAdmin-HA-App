@@ -906,5 +906,8 @@
   "settings_email": "Email address",
   "settings_telefoon": "Phone number",
   "verzendkosten_modal_title": "Add shipping costs",
-  "verzendkosten_prijs": "Price excl. VAT"
+  "verzendkosten_prijs": "Price excl. VAT",
+  "btn_losse_factuur": "Manual invoice",
+  "modal_losse_factuur_titel": "Manual sales invoice",
+  "lbl_prijs_per_stuk": "Price/unit"
 }

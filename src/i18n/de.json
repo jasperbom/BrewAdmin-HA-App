@@ -906,5 +906,8 @@
   "settings_email": "E-Mail-Adresse",
   "settings_telefoon": "Telefonnummer",
   "verzendkosten_modal_title": "Versandkosten hinzufügen",
-  "verzendkosten_prijs": "Preis excl. MwSt."
+  "verzendkosten_prijs": "Preis excl. MwSt.",
+  "btn_losse_factuur": "Einzelrechnung",
+  "modal_losse_factuur_titel": "Manuelle Verkaufsrechnung",
+  "lbl_prijs_per_stuk": "Preis/Stk."
 }

@@ -245,7 +245,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
           )}
           {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓')?'text-green-600':'text-red-500'}`}>{wcSyncMsg}</span>}
           <Sel value={filterBatch} onChange={setFilterBatch}
-            opts={bat.map((b: any) => ({v:String(b.id),l:b.naam}))} ph={t('stock_filter_all_beers')} cls="w-52" />
+            opts={bat.map((b: any) => ({v:String(b.id),l:b.naam}))} ph={t('stock_filter_all_beers')} cls="w-full sm:w-52" />
         </div>
       </div>
 

@@ -346,7 +346,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
               {[{l:'Batch',v:selRec.batch_size?`${selRec.batch_size} L`:'—'},
                 {l:'OG',  v:selRec.OG?Number(selRec.OG).toFixed(3):'—'},
                 {l:'FG',  v:selRec.FG?Number(selRec.FG).toFixed(3):'—'},
@@ -365,6 +365,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             {selRec.maischprofiel && selRec.maischprofiel.length > 0 && (
               <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-gray-400 border-b">
@@ -385,6 +386,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
             <IngSection titel={t('recipe_section_grains')} items={selRec.mout}/>
@@ -394,6 +396,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-gray-400 border-b">
@@ -414,6 +417,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
             {selRec.notities&&(

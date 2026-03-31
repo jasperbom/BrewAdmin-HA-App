@@ -892,5 +892,8 @@
   "settings_email": "Adresse e-mail",
   "settings_telefoon": "Numéro de téléphone",
   "verzendkosten_modal_title": "Ajouter les frais d'expédition",
-  "verzendkosten_prijs": "Prix HT"
+  "verzendkosten_prijs": "Prix HT",
+  "btn_losse_factuur": "Facture manuelle",
+  "modal_losse_factuur_titel": "Facture de vente manuelle",
+  "lbl_prijs_per_stuk": "Prix/unité"
 }

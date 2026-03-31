@@ -5,6 +5,7 @@ import { tod } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { BUILTIN_ING_TYPES } from '../utils/constants'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
+import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}}: any) {
@@ -24,6 +25,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
   const [editingFactuur, setEditingFactuur] = React.useState(null);
   const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
+  const [showLosseFactuur, setShowLosseFactuur] = React.useState(false);
+  const emptyLosseRegel = () => ({omschrijving:'', hoeveelheid:'1', prijs_per_stuk:'', btw_pct:'21'})
+  const emptyLosseFactuur = () => ({datum:tod(), factuurnummer:'', klant_naam:'', regels:[emptyLosseRegel()]})
+  const [losseFactuurForm, setLosseFactuurForm] = React.useState<any>(emptyLosseFactuur())
 
   const addLog = (entry: any) => setLog((prev: any)=>[...prev,{id:newId(prev||[]),datum:tod(),...entry}]);
 
@@ -182,6 +187,33 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }
     setInkoopFacturen((prev: any) => prev.filter((f: any)=>f.id!==id));
     if (expandedFactuur===id) setExpandedFactuur(null);
+  };
+
+  const saveLosseVerkoopFactuur = () => {
+    const regels = (losseFactuurForm.regels||[]).map((r: any) => {
+      const qty = Number(r.hoeveelheid)||0
+      const prijs = Number(r.prijs_per_stuk)||0
+      const pct = Number(r.btw_pct)||0
+      const netto = qty * prijs
+      const btw_bedrag = netto * pct / 100
+      return {...r, hoeveelheid: qty, prijs_per_stuk: prijs, btw_pct: pct, netto, btw_bedrag, bruto: netto + btw_bedrag}
+    })
+    const totaalNetto = regels.reduce((s: number, r: any) => s + r.netto, 0)
+    const totaalBtw   = regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0)
+    const nieuw = {
+      id: newId(verkoopFacturen||[]),
+      datum: losseFactuurForm.datum,
+      factuurnummer: losseFactuurForm.factuurnummer.trim(),
+      klant_naam: losseFactuurForm.klant_naam.trim(),
+      status: 'open',
+      regels,
+      netto: totaalNetto,
+      btw: totaalBtw,
+      bruto: totaalNetto + totaalBtw,
+    }
+    setVerkoopFacturen((prev: any) => [...(prev||[]), nieuw])
+    setShowLosseFactuur(false)
+    setLosseFactuurForm(emptyLosseFactuur())
   };
 
   const saveVrijeFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}: any) => {
@@ -406,7 +438,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
       {/* Header + hoofd-tabs */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           <h2 className="text-xl font-bold text-gray-800 mr-4">
             {t('nav_boekhouding')}
           </h2>
@@ -434,13 +466,119 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
             </div>
             <div className="text-xs text-gray-400 italic self-end pb-2">{t('lbl_facturen_in_periode').replace('{n}',verkoopGefilterd.length)}</div>
-            {verkoopGefilterd.length > 0 && (
-              <button onClick={exportVerkoopCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
-                ↓ CSV ({verkoopGefilterd.length})
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={()=>{setLosseFactuurForm(emptyLosseFactuur());setShowLosseFactuur(true)}}
+                className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
+                {t('btn_losse_factuur')}
               </button>
-            )}
+              {verkoopGefilterd.length > 0 && (
+                <button onClick={exportVerkoopCSV} className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                  ↓ CSV ({verkoopGefilterd.length})
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Losse verkoopfactuur modal */}
+        {showLosseFactuur && (
+          <Modal title={t('modal_losse_factuur_titel')} onClose={()=>setShowLosseFactuur(false)} wide>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant')}</label>
+                  <input type="text" value={losseFactuurForm.klant_naam}
+                    onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,klant_naam:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_date')}</label>
+                  <input type="date" value={losseFactuurForm.datum}
+                    onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,datum:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('factuur_number')}</label>
+                  <input type="text" value={losseFactuurForm.factuurnummer}
+                    onChange={(e: any)=>setLosseFactuurForm((f: any)=>({...f,factuurnummer:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-400 uppercase mb-1 px-0.5">
+                  <div className="col-span-4">{t('lbl_omschrijving')}</div>
+                  <div className="col-span-2">{t('lbl_quantity')}</div>
+                  <div className="col-span-2">{t('lbl_prijs_per_stuk')}</div>
+                  <div className="col-span-1">{t('lbl_btw_pct')}</div>
+                  <div className="col-span-2 text-right">{t('lbl_bruto')}</div>
+                </div>
+                <div className="space-y-2">
+                  {(losseFactuurForm.regels||[]).map((r: any, i: number) => {
+                    const qty = Number(r.hoeveelheid)||0
+                    const prijs = Number(r.prijs_per_stuk)||0
+                    const pct = Number(r.btw_pct)||0
+                    const netto = qty * prijs
+                    const btw_bedrag = netto * pct / 100
+                    const bruto = netto + btw_bedrag
+                    const upd = (k: string, v: any) => setLosseFactuurForm((f: any) => ({...f, regels: f.regels.map((x: any, j: number) => j===i ? {...x,[k]:v} : x)}))
+                    return (
+                      <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                        <input type="text" value={r.omschrijving} onChange={(e: any)=>upd('omschrijving',e.target.value)}
+                          placeholder={t('lbl_omschrijving')}
+                          className="col-span-4 border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none" />
+                        <input type="number" value={r.hoeveelheid} onChange={(e: any)=>upd('hoeveelheid',e.target.value)}
+                          placeholder={t('lbl_quantity')} min="0"
+                          className="col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none" />
+                        <input type="number" value={r.prijs_per_stuk} onChange={(e: any)=>upd('prijs_per_stuk',e.target.value)}
+                          placeholder={t('lbl_prijs_per_stuk')} min="0" step="0.01"
+                          className="col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none" />
+                        <select value={r.btw_pct} onChange={(e: any)=>upd('btw_pct',e.target.value)}
+                          className="col-span-1 border border-gray-300 rounded-lg px-1 py-1.5 text-sm t-input focus:outline-none">
+                          <option value="0">0%</option>
+                          <option value="9">9%</option>
+                          <option value="21">21%</option>
+                        </select>
+                        <div className="col-span-2 text-right text-sm font-medium text-gray-700">{fmt(bruto)}</div>
+                        <button onClick={()=>setLosseFactuurForm((f: any)=>({...f,regels:f.regels.filter((_: any,j: number)=>j!==i)}))}
+                          className="col-span-1 text-gray-300 hover:text-red-500 transition-colors text-base font-bold leading-none">✕</button>
+                      </div>
+                    )
+                  })}
+                  <button onClick={()=>setLosseFactuurForm((f: any)=>({...f,regels:[...f.regels,emptyLosseRegel()]}))}
+                    className="text-sm tbtn px-3 py-1 rounded-lg transition-colors font-medium">
+                    {t('btn_add_rule')}
+                  </button>
+                </div>
+              </div>
+              {(losseFactuurForm.regels||[]).length > 0 && (() => {
+                const regels = (losseFactuurForm.regels||[]).map((r: any) => {
+                  const qty=Number(r.hoeveelheid)||0; const prijs=Number(r.prijs_per_stuk)||0; const pct=Number(r.btw_pct)||0
+                  const netto=qty*prijs; return {netto, btw_bedrag: netto*pct/100}
+                })
+                const totNetto = regels.reduce((s: number,r: any)=>s+r.netto,0)
+                const totBtw   = regels.reduce((s: number,r: any)=>s+r.btw_bedrag,0)
+                return (
+                  <div className="border-t pt-3 flex justify-end gap-6 text-sm">
+                    <span className="text-gray-500">{t('lbl_netto')}: <span className="font-medium text-gray-800">{fmt(totNetto)}</span></span>
+                    <span className="text-gray-500">{t('lbl_btw')}: <span className="font-medium text-blue-700">{fmt(totBtw)}</span></span>
+                    <span className="text-gray-500">{t('lbl_bruto')}: <span className="font-bold text-gray-900">{fmt(totNetto+totBtw)}</span></span>
+                  </div>
+                )
+              })()}
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={()=>setShowLosseFactuur(false)}
+                  className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                  {t('btn_cancel')}
+                </button>
+                <button onClick={saveLosseVerkoopFactuur}
+                  disabled={!(losseFactuurForm.klant_naam||'').trim()}
+                  className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
+                  {t('btn_save')}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
 
         {verkoopGefilterd.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -535,15 +673,17 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
             </div>
             <div className="text-xs text-gray-400 italic self-end pb-2">{t('lbl_facturen_in_periode').replace('{n}',inkoopGefilterd.length)}</div>
-            <button onClick={()=>setShowVrijeFactuur(true)}
-              className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
-              {t('btn_ontvangst')}
-            </button>
-            {inkoopGefilterd.length > 0 && (
-              <button onClick={exportInkoopCSV} className="ml-auto px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
-                ↓ CSV ({inkoopGefilterd.length})
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={()=>setShowVrijeFactuur(true)}
+                className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
+                {t('btn_ontvangst')}
               </button>
-            )}
+              {inkoopGefilterd.length > 0 && (
+                <button onClick={exportInkoopCSV} className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                  ↓ CSV ({inkoopGefilterd.length})
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
