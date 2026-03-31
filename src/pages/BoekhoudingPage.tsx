@@ -1362,7 +1362,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
                 {t('btn_bank_import')}
               </button>
-              <input ref={bankFileRef} type="file" accept=".sta,.txt,.mt940" className="hidden"
+              <input ref={bankFileRef} type="file" accept=".sta,.txt,.mt940,.swi,.940,.swift" className="hidden"
                 onChange={(e: any) => { const f = e.target.files?.[0]; if (f) { importMT940(f); e.target.value=''; } }} />
             </div>
           </div>

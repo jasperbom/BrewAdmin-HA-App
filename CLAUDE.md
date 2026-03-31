@@ -35,7 +35,7 @@ BrewAdmin-HA-App/
 │   │   ├── constants.ts    # Enums, mappings, defaults
 │   │   ├── format.ts       # Formatting utilities
 │   │   ├── calculations.ts # Business logic calculations
-│   │   └── excel.ts        # Excel import/export
+│   │   └── excel.ts        # Excel import (legacy); data backup/restore is now JSON-based in App.tsx
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
 │   ├── App.tsx             # Root: routing, global state, auto-sync
