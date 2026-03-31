@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { wcGet, wcPut } from '../utils/api'
+import { wcGet } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -103,36 +103,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
     setWcSyncLog((prev: any[]) => [entry, ...(prev||[])].slice(0, 100))
   }
 
-  const wcBeschikbaarVoorArt = (art: any) =>
-    (uit||[])
-      .filter((u: any) => { const b=bat.find((bx: any)=>bx.id===u.batch_id); return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type })
-      .reduce((s: number, u: any) => s + Math.max(0, Number(u.aantal||0) - Number(u.verkocht_stuks||0)), 0)
 
-  const wcPushAll = async () => {
-    if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return }
-    setWcSyncing(true); setWcSyncMsg('')
-    try {
-      let bijgewerkt = 0
-      const combis = (artikelen||[]).filter((a: any) => a.artikelnummer)
-      for (const art of combis) {
-        const beschikbaar = wcBeschikbaarVoorArt(art)
-        addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, '')
-        const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`)
-        if (!prods?.length) continue
-        await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true})
-        bijgewerkt++
-      }
-      setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}))
-      const pushMsg = `${bijgewerkt} product${bijgewerkt!==1?'en':''} bijgewerkt`
-      setWcSyncMsg(`✓ ${pushMsg}`)
-      addWcLog('push', `↑ Push voorraad — ${pushMsg}`, combis.filter((a: any) => a.artikelnummer).map((a: any) => `${a.biernaam} ${a.verpakking_type}: ${wcBeschikbaarVoorArt(a)}×`).join(', '))
-    } catch(e: any) {
-      setWcSyncMsg(`⚠ Push mislukt: ${e.message}`)
-      addWcLog('fout', `↑ Push mislukt — ${e.message}`)
-    }
-    setWcSyncing(false)
-    setTimeout(() => setWcSyncMsg(''), 6000)
-  }
 
   const wcPullSales = async () => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return }
@@ -231,11 +202,6 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           {wcCreds?.enabled && (
             <>
-              <button onClick={wcPushAll} disabled={wcSyncing}
-                title={t('wc_push_stock_title')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
-                {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
-              </button>
               <button onClick={wcPullSales} disabled={wcSyncing}
                 title={t('wc_pull_sales_title')}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
