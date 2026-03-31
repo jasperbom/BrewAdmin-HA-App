@@ -929,6 +929,7 @@
   "lbl_transacties": "Transactions",
   "lbl_credit": "Crédit",
   "lbl_debet": "Débit",
+  "lbl_koppeling": "Association",
   "lbl_niet_gekoppeld": "Non associé",
   "btn_koppel_aan_factuur": "Associer à une facture",
   "msg_no_bank": "Aucun relevé bancaire chargé.",

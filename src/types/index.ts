@@ -136,6 +136,7 @@ export interface InkoopFactuur {
   totaal_netto?: number
   totaal_btw?: number
   totaal_bruto?: number
+  status?: 'open' | 'betaald'
 }
 
 export interface FactuurRegel {

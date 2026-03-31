@@ -943,6 +943,7 @@
   "lbl_transacties": "Transaktionen",
   "lbl_credit": "Gutschrift",
   "lbl_debet": "Lastschrift",
+  "lbl_koppeling": "Zuordnung",
   "lbl_niet_gekoppeld": "Nicht zugeordnet",
   "btn_koppel_aan_factuur": "Rechnung zuordnen",
   "msg_no_bank": "Kein Kontoauszug geladen.",

@@ -929,6 +929,7 @@
   "lbl_transacties": "Transacciones",
   "lbl_credit": "Abono",
   "lbl_debet": "Cargo",
+  "lbl_koppeling": "Asociación",
   "lbl_niet_gekoppeld": "Sin asociar",
   "btn_koppel_aan_factuur": "Asociar a factura",
   "msg_no_bank": "No se ha cargado ningún extracto bancario.",

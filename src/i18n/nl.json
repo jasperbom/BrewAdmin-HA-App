@@ -943,6 +943,7 @@
   "lbl_transacties": "Transacties",
   "lbl_credit": "Bij",
   "lbl_debet": "Af",
+  "lbl_koppeling": "Koppeling",
   "lbl_niet_gekoppeld": "Niet gekoppeld",
   "btn_koppel_aan_factuur": "Koppelen aan factuur",
   "msg_no_bank": "Geen bankafschrift geladen.",

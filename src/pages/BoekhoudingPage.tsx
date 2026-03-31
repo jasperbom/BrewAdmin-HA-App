@@ -640,6 +640,33 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const yr = parseInt(yy) <= (new Date().getFullYear()%100) ? '20'+yy : '19'+yy
       return `${yr}-${mm}-${dd}`
     }
+    // Parse SEPA-structured :86: field into counterparty + description
+    const parse86 = (raw: string): {tegenpartij: string, omschrijving: string} => {
+      const s = raw.replace(/\r?\n/g,' ').replace(/\s+/g,' ').trim()
+      // Split on /KEY/ boundaries (KEY = 2-8 uppercase letters only)
+      const kv: Record<string,string> = {}
+      const segs = s.split(/(?=\/[A-Z]{2,8}\/)/)
+      for (const seg of segs) {
+        const m = seg.match(/^\/([A-Z]{2,8})\/(.*)$/)
+        if (m) kv[m[1]] = m[2].replace(/\/$/, '').trim()
+      }
+      // /CNTP/IBAN/BIC/Name/City — name is 3rd slash-part
+      let tegenpartij = ''
+      if (kv['CNTP']) {
+        const parts = kv['CNTP'].split('/')
+        tegenpartij = (parts.length >= 3 ? parts[2] : parts[0]) || ''
+      }
+      tegenpartij = tegenpartij || kv['NAME'] || kv['NAMOP'] || kv['NAAM'] || kv['BENM'] || ''
+      // ABN AMRO plain-text style: "NAAM: Company  OMSCHRIJVING: ..."
+      if (!tegenpartij) tegenpartij = s.match(/\bNAAM:\s*(.+?)(?:\s{2,}|\s+(?:OMSCHRIJVING|KENMERK|IBAN):)/)?.[1]?.trim() || ''
+      // Description
+      let omschrijving = kv['REMI'] || kv['EREF'] || kv['CREF'] || kv['MREF'] || kv['PREF'] || ''
+      if (!omschrijving) omschrijving = s.match(/\bOMSCHRIJVING:\s*(.+?)(?:\s{2,}|\s+(?:NAAM|KENMERK|IBAN):)/)?.[1]?.trim() || ''
+      if (!omschrijving) omschrijving = s.match(/\bKENMERK:\s*(.+)/)?.[1]?.trim() || ''
+      // Fallback: if nothing structured found, use the raw string
+      if (!tegenpartij && !omschrijving) omschrijving = s
+      return {tegenpartij, omschrijving}
+    }
     let field='', buf='', pendingTx: any=null
     const flush = () => {
       if (!field) return
@@ -658,11 +685,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         if (m) {
           if (pendingTx) result.transacties.push(pendingTx)
           const refM = v.match(/\/\/(.+)/)
-          pendingTx = { datum:parseDate6(m[1]), type:m[3].startsWith('C')?'C':'D', bedrag:parseAmt(m[5]), referentie:refM?refM[1].split('\n')[0].trim():'', omschrijving:'', gekoppeldFactuurId:null, autoGematcht:false }
+          pendingTx = { datum:parseDate6(m[1]), type:m[3].startsWith('C')?'C':'D', bedrag:parseAmt(m[5]), referentie:refM?refM[1].split('\n')[0].trim():'', tegenpartij:'', omschrijving:'', gekoppeldFactuurId:null, gekoppeldInkoopId:null, autoGematcht:false }
         }
       } else if (field==='86') {
         if (pendingTx) {
-          pendingTx.omschrijving = v.replace(/\r?\n/g,' ').replace(/\s+/g,' ').trim()
+          const parsed = parse86(v)
+          pendingTx.tegenpartij = parsed.tegenpartij
+          pendingTx.omschrijving = parsed.omschrijving
           result.transacties.push(pendingTx)
           pendingTx = null
         }
@@ -685,12 +714,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     reader.onload = (e: any) => {
       const text = e.target.result as string
       const afschrift = parseMT940(text)
-      // Auto-match open verkoopfacturen op bedrag
-      const openFacturen = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+      const openVerkoop = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+      const openInkoop = (inkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
       const gematcht = afschrift.transacties.map((tx: any) => {
-        if (tx.type !== 'C') return tx
-        const match = openFacturen.find((f: any) => Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
-        return match ? {...tx, gekoppeldFactuurId:match.id, autoGematcht:true} : tx
+        if (tx.type === 'C') {
+          const match = openVerkoop.find((f: any) => Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
+          return match ? {...tx, gekoppeldFactuurId:match.id, autoGematcht:true} : tx
+        } else {
+          const match = openInkoop.find((f: any) => Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
+          return match ? {...tx, gekoppeldInkoopId:match.id, autoGematcht:true} : tx
+        }
       })
       setBankAfschrift(afschrift)
       setBankTransacties(gematcht)
@@ -698,9 +731,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     reader.readAsText(file, 'latin1')
   }
 
-  const koppelBankTransactie = (txIndex: number, factuurId: number|null) => {
+  const koppelBankTransactie = (txIndex: number, factuurId: number|null, soort: 'verkoop'|'inkoop' = 'verkoop') => {
     setBankTransacties((prev: any[]) => prev.map((tx, i) =>
-      i===txIndex ? {...tx, gekoppeldFactuurId:factuurId, autoGematcht:false} : tx
+      i===txIndex ? {...tx, [soort==='inkoop'?'gekoppeldInkoopId':'gekoppeldFactuurId']:factuurId, autoGematcht:false} : tx
+    ))
+  }
+
+  const markeerInkoopBetaald = (id: number) => {
+    setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
+      f.id === id ? {...f, status: 'betaald'} : f
     ))
   }
 
@@ -1123,6 +1162,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.totaal_btw||0)}</td>
                     <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.totaal_bruto||0)}</td>
                     <td className="py-2 text-right whitespace-nowrap">
+                      {f.status === 'betaald'
+                        ? <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 mr-1">{t('factuur_paid')}</span>
+                        : <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 mr-1">{t('factuur_open')}</span>
+                      }
                       {f.bijlage?.bestand && (
                         <a href={`${ADDON_BASE}api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
                           onClick={(e: any)=>e.stopPropagation()}
@@ -1383,35 +1426,55 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     <th className="py-2 pr-3 text-left font-medium">{t('lbl_date')}</th>
                     <th className="py-2 pr-3 text-left font-medium">{t('lbl_omschrijving')}</th>
                     <th className="py-2 pr-3 text-right font-medium">{t('lbl_credit')}/{t('lbl_debet')}</th>
-                    <th className="py-2 text-left font-medium">{t('tab_verkoop')}</th>
+                    <th className="py-2 text-left font-medium">{t('lbl_koppeling')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {bankTransacties.map((tx: any, i: number) => {
-                    const gekoppeld = tx.gekoppeldFactuurId ? (verkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldFactuurId) : null
-                    const openFacturen = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+                    const gekoppeldVerkoop = tx.gekoppeldFactuurId ? (verkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldFactuurId) : null
+                    const gekoppeldInkoop = tx.gekoppeldInkoopId ? (inkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldInkoopId) : null
+                    const openVerkoop = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+                    const openInkoop = (inkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
                     return (
                       <tr key={i} className={`border-b border-gray-50 ${tx.autoGematcht ? 'bg-green-50' : ''}`}>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{tx.datum}</td>
-                        <td className="py-2 pr-3 text-gray-700 max-w-xs truncate" title={tx.omschrijving}>
-                          {tx.omschrijving || tx.referentie || '—'}
+                        <td className="py-2 pr-3 max-w-xs">
+                          {tx.tegenpartij && <div className="text-gray-800 font-medium truncate" title={tx.tegenpartij}>{tx.tegenpartij}</div>}
+                          {tx.omschrijving && <div className="text-gray-500 text-xs truncate" title={tx.omschrijving}>{tx.omschrijving}</div>}
+                          {!tx.tegenpartij && !tx.omschrijving && <span className="text-gray-400">—</span>}
                         </td>
                         <td className={`py-2 pr-3 text-right font-semibold whitespace-nowrap ${tx.type==='C'?'text-green-600':'text-red-600'}`}>
                           {tx.type==='C'?'+':'-'}{fmt(tx.bedrag)}
                         </td>
                         <td className="py-2" onClick={(e:any)=>e.stopPropagation()}>
                           {tx.autoGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
-                          {tx.type==='C' && (
+                          {tx.type==='C' ? (
                             <div className="flex items-center gap-2">
-                              <select value={tx.gekoppeldFactuurId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null)}
+                              <select value={tx.gekoppeldFactuurId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null, 'verkoop')}
                                 className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[200px]">
                                 <option value="">— {t('lbl_niet_gekoppeld')} —</option>
-                                {openFacturen.map((f: any) => (
+                                {openVerkoop.map((f: any) => (
                                   <option key={f.id} value={f.id}>{f.datum} · {f.klant_naam||'—'} · {fmt(f.bruto||0)}</option>
                                 ))}
                               </select>
-                              {gekoppeld && (
-                                <button onClick={()=>{ markeerBetaald(gekoppeld.id); koppelBankTransactie(i,null) }}
+                              {gekoppeldVerkoop && (
+                                <button onClick={()=>{ markeerBetaald(gekoppeldVerkoop.id); koppelBankTransactie(i,null,'verkoop') }}
+                                  className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
+                                  {t('btn_mark_paid')}
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <select value={tx.gekoppeldInkoopId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null, 'inkoop')}
+                                className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[200px]">
+                                <option value="">— {t('lbl_niet_gekoppeld')} —</option>
+                                {openInkoop.map((f: any) => (
+                                  <option key={f.id} value={f.id}>{f.datum} · {f.leverancier||'—'} · {fmt(f.totaal_bruto||0)}</option>
+                                ))}
+                              </select>
+                              {gekoppeldInkoop && (
+                                <button onClick={()=>{ markeerInkoopBetaald(gekoppeldInkoop.id); koppelBankTransactie(i,null,'inkoop') }}
                                   className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   {t('btn_mark_paid')}
                                 </button>

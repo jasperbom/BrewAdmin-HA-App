@@ -943,6 +943,7 @@
   "lbl_transacties": "Transactions",
   "lbl_credit": "Credit",
   "lbl_debet": "Debit",
+  "lbl_koppeling": "Match",
   "lbl_niet_gekoppeld": "Not matched",
   "btn_koppel_aan_factuur": "Link to invoice",
   "msg_no_bank": "No bank statement loaded.",
