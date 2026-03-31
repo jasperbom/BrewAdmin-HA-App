@@ -333,6 +333,7 @@ export interface BtwOvzRegel {
 
 export interface Klant {
   id: number
+  klantnummer?: string
   naam: string
   straat?: string
   postcode?: string
@@ -429,6 +430,7 @@ export interface Bestelling {
   id: number
   status: BestellingStatus
   datum: string
+  klant_id?: number | null
   klant_naam: string
   klant_email?: string
   klant_straat?: string
