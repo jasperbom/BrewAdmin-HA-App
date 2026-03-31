@@ -60,12 +60,14 @@ function fmtDate(d: string | undefined): string {
   catch { return d }
 }
 
-function openPrint(html: string): void {
+function openPrint(html: string, filename: string): void {
   const w = window.open('', '_blank', 'width=900,height=700')
   if (!w) { alert('Pop-up geblokkeerd — sta pop-ups toe voor deze pagina.'); return }
-  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>Print</title><style>${CSS}</style></head><body>${html}</body></html>`)
+  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${filename}</title><style>${CSS}</style></head><body>${html}</body></html>`)
   w.document.close()
   w.focus()
+  // Sluit popup automatisch na opslaan/annuleren print
+  w.onafterprint = () => w.close()
   setTimeout(() => { w.print() }, 400)
 }
 
@@ -182,7 +184,8 @@ export function printPakbon(
     </div>
   </div>`
 
-  openPrint(html)
+  const filename = order.pakbon_nummer || `Pakbon-${order.id || 'export'}`
+  openPrint(html, filename)
 }
 
 // ─────────────────────────────────────────────
@@ -328,5 +331,6 @@ export function printFactuur(
     ${order?.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${order.opmerkingen}</div>` : ''}
   </div>`
 
-  openPrint(html)
+  const filename = `Factuur-${factuurnummer}`
+  openPrint(html, filename)
 }
