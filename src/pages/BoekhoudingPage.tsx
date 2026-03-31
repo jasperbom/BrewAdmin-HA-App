@@ -8,6 +8,7 @@ import { berekenWinstVerlies } from '../utils/calculations'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
+import { printFactuur } from '../components/PakbonExport'
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}}: any) {
   const now = new Date();
@@ -458,48 +459,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const inst = (breweryDetails as any) || {}
     const klant = (klanten||[]).find((k:any) => k.id === factuur.klant_id)
     const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
-    const datumObj = factuur.datum ? new Date(factuur.datum) : new Date()
-    const vervalObj = new Date(datumObj)
-    vervalObj.setDate(vervalObj.getDate() + Number(termijn))
-    const fmtD = (d: Date) => d.toLocaleDateString('nl-NL', {day:'2-digit',month:'2-digit',year:'numeric'})
-    const fmtB = (n: number) => '&euro;&nbsp;' + Number(n).toFixed(2).replace('.', ',')
-    const vervalDatum = fmtD(vervalObj)
-    const facDatum = fmtD(datumObj)
-
-    const btwMap: Record<number, {netto:number,btw:number}> = {}
-    ;(factuur.regels||[]).forEach((r: any) => {
-      const pct = r.btw_pct ?? 0
-      if (!btwMap[pct]) btwMap[pct] = {netto:0,btw:0}
-      btwMap[pct].netto += r.netto||0
-      btwMap[pct].btw += r.btw_bedrag||0
-    })
-
-    const logoHtml = factuurLogo
-      ? `<img src="${factuurLogo}" style="max-height:60px;max-width:200px;object-fit:contain;" alt="logo" />`
-      : ''
-
-    const regelRows = (factuur.regels||[]).map((r: any) =>
-      `<tr><td>${r.omschrijving||''}</td><td style="text-align:right">${r.hoeveelheid||''}</td><td style="text-align:right">${fmtB(r.prijs_per_stuk||0)}</td><td style="text-align:right">${r.btw_pct||0}%</td><td style="text-align:right">${fmtB(r.netto||0)}</td><td style="text-align:right">${fmtB(r.btw_bedrag||0)}</td><td style="text-align:right">${fmtB(r.bruto||0)}</td></tr>`
-    ).join('')
-    const btwRows = Object.entries(btwMap).map(([pct, v]) =>
-      `<tr><td>${pct}%</td><td style="text-align:right">${fmtB(v.netto)}</td><td style="text-align:right">${fmtB(v.btw)}</td></tr>`
-    ).join('')
-
-    const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><title>Factuur ${factuur.factuurnummer||factuur.id}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#222;padding:15mm 20mm}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8mm}.bi{text-align:right;font-size:10px;color:#444;line-height:1.7}.bi-naam{font-size:14px;font-weight:bold;color:#111;margin-bottom:3px}.ftitle{font-size:22px;font-weight:bold;color:#111;margin:5mm 0 4mm}.meta{display:flex;gap:10mm;margin-bottom:7mm}.ml{font-size:9px;text-transform:uppercase;color:#888;letter-spacing:.5px;margin-bottom:1px}.mv{font-size:11px;font-weight:500}.kb{background:#f8f9fa;border-left:3px solid #333;padding:3mm 4mm;margin-bottom:7mm}.kn{font-weight:bold;font-size:12px;margin-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:4mm;font-size:10px}th{background:#333;color:#fff;padding:3px 5px;text-align:left;font-size:9px;text-transform:uppercase}td{padding:3px 5px;border-bottom:1px solid #eee;vertical-align:top}.ts{display:flex;justify-content:flex-end;margin-bottom:6mm}.tt{width:65mm}.tt td{padding:2px 5px;border:none}.gt{font-weight:bold;font-size:13px;border-top:2px solid #333!important}.bb{background:#f0f7ff;border:1px solid #cce5ff;padding:3mm 4mm;border-radius:4px;font-size:10px;line-height:1.9}.bt{font-weight:bold;font-size:11px;margin-bottom:2px}@media print{body{padding:10mm 15mm}@page{margin:10mm}}</style></head>
-<body>
-<div class="hdr"><div>${logoHtml}</div><div class="bi"><div class="bi-naam">${inst.naam||''}</div>${inst.straat||inst.huisnummer?`<div>${inst.straat||''} ${inst.huisnummer||''}</div>`:''} ${inst.postcode||inst.stad?`<div>${inst.postcode||''} ${inst.stad||''}</div>`:''} ${inst.btw_nummer?`<div>BTW: ${inst.btw_nummer}</div>`:''} ${inst.kvk_nummer?`<div>KvK: ${inst.kvk_nummer}</div>`:''} ${inst.iban?`<div>IBAN: ${inst.iban}</div>`:''} ${inst.email?`<div>${inst.email}</div>`:''} ${inst.telefoon?`<div>${inst.telefoon}</div>`:''}</div></div>
-<div class="ftitle">FACTUUR</div>
-<div class="meta"><div><div class="ml">Factuurnummer</div><div class="mv">${factuur.factuurnummer||'—'}</div></div><div><div class="ml">Factuurdatum</div><div class="mv">${facDatum}</div></div><div><div class="ml">Vervaldatum</div><div class="mv">${vervalDatum} (${termijn} dgn)</div></div></div>
-<div class="kb"><div class="kn">${factuur.klant_naam||'—'}</div>${factuur.klant_straat?`<div>${factuur.klant_straat}</div>`:''} ${factuur.klant_postcode||factuur.klant_stad?`<div>${factuur.klant_postcode||''} ${factuur.klant_stad||''}</div>`:''} ${factuur.klant_btw_nummer?`<div>BTW: ${factuur.klant_btw_nummer}</div>`:''}</div>
-<table><thead><tr><th style="width:35%">Omschrijving</th><th style="text-align:right;width:8%">Aantal</th><th style="text-align:right;width:13%">Prijs/stuk</th><th style="text-align:right;width:7%">BTW%</th><th style="text-align:right;width:12%">Netto</th><th style="text-align:right;width:12%">BTW</th><th style="text-align:right;width:13%">Bruto</th></tr></thead><tbody>${regelRows}</tbody></table>
-<div style="display:flex;justify-content:flex-end;margin-bottom:4mm"><table style="width:60mm"><thead><tr><th>BTW%</th><th style="text-align:right">Grondslag</th><th style="text-align:right">BTW</th></tr></thead><tbody>${btwRows}</tbody></table></div>
-<div class="ts"><table class="tt"><tr><td>Subtotaal excl. BTW</td><td style="text-align:right">${fmtB(factuur.netto||0)}</td></tr><tr><td>BTW</td><td style="text-align:right">${fmtB(factuur.btw||0)}</td></tr><tr class="gt"><td>Totaal incl. BTW</td><td style="text-align:right">${fmtB(factuur.bruto||0)}</td></tr></table></div>
-<div class="bb"><div class="bt">Betaalinformatie</div>${inst.iban?`<div>IBAN: ${inst.iban}</div>`:''} ${inst.naam?`<div>t.n.v.: ${inst.naam}</div>`:''}<div>o.v.v.: ${factuur.factuurnummer||factuur.id}</div><div>Vervaldatum: ${vervalDatum}</div></div>
-<script>window.onload=function(){setTimeout(function(){window.print();},200);}</script></body></html>`
-
-    const w = window.open('', '_blank')
-    if (w) { w.document.write(html); w.document.close() }
+    const breweryMet = {...inst, betalingstermijn: termijn}
+    const order = {
+      klant_naam: factuur.klant_naam,
+      klant_straat: factuur.klant_straat,
+      klant_postcode: factuur.klant_postcode,
+      klant_stad: factuur.klant_stad,
+      klant_btw_nummer: factuur.klant_btw_nummer,
+    }
+    printFactuur(order, factuur, breweryMet, '', factuurLogo)
   }
 
   // ── MT940 parser ──────────────────────────────────────────────────────────
