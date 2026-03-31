@@ -954,5 +954,9 @@
   "lbl_eigen_vermogen": "Patrimonio neto",
   "lbl_categorie": "Categoría",
   "msg_no_rapport_data": "No hay datos disponibles para el período seleccionado.",
-  "btn_export_csv_rapport": "↓ Exportar CSV"
+  "btn_export_csv_rapport": "↓ Exportar CSV",
+  "tab_transacties": "Resumen de transacciones",
+  "lbl_dagboek": "Diario",
+  "lbl_relatie": "Relación",
+  "btn_alles_exporteren": "↓ Exportar todo (ZIP)"
 }

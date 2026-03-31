@@ -968,5 +968,9 @@
   "lbl_eigen_vermogen": "Equity",
   "lbl_categorie": "Category",
   "msg_no_rapport_data": "No data available for the selected period.",
-  "btn_export_csv_rapport": "↓ Export CSV"
+  "btn_export_csv_rapport": "↓ Export CSV",
+  "tab_transacties": "Transaction Overview",
+  "lbl_dagboek": "Journal",
+  "lbl_relatie": "Relation",
+  "btn_alles_exporteren": "↓ Export All (ZIP)"
 }

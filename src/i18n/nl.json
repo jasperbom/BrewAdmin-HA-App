@@ -968,5 +968,9 @@
   "lbl_eigen_vermogen": "Eigen vermogen",
   "lbl_categorie": "Categorie",
   "msg_no_rapport_data": "Geen data beschikbaar voor de geselecteerde periode.",
-  "btn_export_csv_rapport": "↓ CSV exporteren"
+  "btn_export_csv_rapport": "↓ CSV exporteren",
+  "tab_transacties": "Transactieoverzicht",
+  "lbl_dagboek": "Dagboek",
+  "lbl_relatie": "Relatie",
+  "btn_alles_exporteren": "↓ Alles exporteren (ZIP)"
 }

@@ -954,5 +954,9 @@
   "lbl_eigen_vermogen": "Capitaux propres",
   "lbl_categorie": "Catégorie",
   "msg_no_rapport_data": "Aucune donnée disponible pour la période sélectionnée.",
-  "btn_export_csv_rapport": "↓ Exporter CSV"
+  "btn_export_csv_rapport": "↓ Exporter CSV",
+  "tab_transacties": "Aperçu des transactions",
+  "lbl_dagboek": "Journal",
+  "lbl_relatie": "Relation",
+  "btn_alles_exporteren": "↓ Tout exporter (ZIP)"
 }

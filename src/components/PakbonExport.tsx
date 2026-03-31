@@ -191,14 +191,16 @@ export function printPakbon(
 // ─────────────────────────────────────────────
 // FACTUUR
 // ─────────────────────────────────────────────
-export function printFactuur(
+
+// Interne helper: bouwt de HTML body-inhoud + bestandsnaam
+function buildFactuurBody(
   order: any,
   factuur: any,
   brewery: any,
   appName: string,
   factuurLogo: string | null | undefined
-): void {
-  if (!factuur) return
+): {bodyHtml: string, filename: string} | null {
+  if (!factuur) return null
 
   const factuurnummer = factuur.factuurnummer || `F-${factuur.id}`
   const factuurdatum = fmtDate(factuur.datum)
@@ -214,7 +216,7 @@ export function printFactuur(
 
   const regels: any[] = factuur.regels || []
 
-  // Compute btw_overzicht from regels if not already present
+  // Bereken btw_overzicht uit regels als niet opgeslagen
   const btwOverzicht: any[] = (() => {
     if (factuur.btw_overzicht && factuur.btw_overzicht.length > 0) return factuur.btw_overzicht
     const map: Record<number, {tarief:number,netto:number,btw:number}> = {}
@@ -249,7 +251,6 @@ export function printFactuur(
   const bruto = factuur.bruto ?? 0
   const naam = brewery?.naam || appName || ''
 
-  // Order reference metadata
   const orderRef = order?.wc_order_nummer
     ? `WooCommerce #${order.wc_order_nummer}`
     : order?.id ? `Order M-${order.id}` : null
@@ -262,7 +263,7 @@ export function printFactuur(
     orderRef ? {label:'Order', val: orderRef} : null,
   ].filter(Boolean) as {label:string,val:string}[]
 
-  const html = `<div class="page">
+  const bodyHtml = `<div class="page">
     <div class="hdr">
       ${breweryBlock(brewery, appName, factuurLogo)}
       <div class="hdr-right">
@@ -331,6 +332,31 @@ export function printFactuur(
     ${order?.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${order.opmerkingen}</div>` : ''}
   </div>`
 
-  const filename = `Factuur-${factuurnummer}`
-  openPrint(html, filename)
+  return {bodyHtml, filename: `Factuur-${factuurnummer}`}
+}
+
+// Geeft volledige standalone HTML terug (voor ZIP-export)
+export function buildFactuurHTML(
+  order: any,
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): string {
+  const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
+  if (!result) return ''
+  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${result.filename}</title><style>${CSS}</style></head><body>${result.bodyHtml}</body></html>`
+}
+
+// Opent printvenster
+export function printFactuur(
+  order: any,
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): void {
+  const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
+  if (!result) return
+  openPrint(result.bodyHtml, result.filename)
 }

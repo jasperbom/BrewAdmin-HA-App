@@ -8,7 +8,60 @@ import { berekenWinstVerlies } from '../utils/calculations'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
-import { printFactuur } from '../components/PakbonExport'
+import { printFactuur, buildFactuurHTML } from '../components/PakbonExport'
+
+// ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
+const _crcTbl = (() => {
+  const t = new Uint32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)
+    t[n] = c
+  }
+  return t
+})()
+function _crc32(data: Uint8Array): number {
+  let c = 0xFFFFFFFF
+  for (let i = 0; i < data.length; i++) c = _crcTbl[(c ^ data[i]) & 0xFF] ^ (c >>> 8)
+  return (c ^ 0xFFFFFFFF) >>> 0
+}
+function _cat(...parts: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0))
+  let off = 0; for (const p of parts) { out.set(p, off); off += p.length }
+  return out
+}
+function _u16(v: number) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, v, true); return b }
+function _u32(v: number) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, v, true); return b }
+function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
+  const enc = new TextEncoder()
+  const locals: Uint8Array[] = [], centrals: Uint8Array[] = []
+  let offset = 0
+  for (const f of files) {
+    const nm = enc.encode(f.name), crc = _crc32(f.data), sz = f.data.length
+    const loc = _cat(
+      new Uint8Array([0x50,0x4B,0x03,0x04]),
+      _u16(20), _u16(0), _u16(0), _u16(0), _u16(0),
+      _u32(crc), _u32(sz), _u32(sz), _u16(nm.length), _u16(0),
+      nm, f.data
+    )
+    locals.push(loc)
+    centrals.push(_cat(
+      new Uint8Array([0x50,0x4B,0x01,0x02]),
+      _u16(20), _u16(20), _u16(0), _u16(0), _u16(0), _u16(0),
+      _u32(crc), _u32(sz), _u32(sz), _u16(nm.length), _u16(0), _u16(0),
+      _u16(0), _u16(0), _u32(0), _u32(offset),
+      nm
+    ))
+    offset += loc.length
+  }
+  const cd = _cat(...centrals)
+  return _cat(...locals, cd, _cat(
+    new Uint8Array([0x50,0x4B,0x05,0x06]),
+    _u16(0), _u16(0), _u16(files.length), _u16(files.length),
+    _u32(cd.length), _u32(offset), _u16(0)
+  ))
+}
+// ──────────────────────────────────────────────────────────────────────────────
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}}: any) {
   const now = new Date();
@@ -197,6 +250,114 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`verkoop_${dateFrom}_${dateTo}.csv`});
     a.click();
   };
+
+  // Exporteer alle boekhouding als ZIP (CSV's + PDF-bijlagen + factuur-HTML's)
+  const exportAllesZip = async () => {
+    const enc = new TextEncoder()
+    const files: {name: string, data: Uint8Array}[] = []
+    const csvRow = (cols: any[]) => cols.map((c:any) => `"${String(c??'').replace(/"/g,'""')}"`).join(',')
+
+    // Helper: bouw transacties array (zelfde logica als subtab)
+    const buildTxs = () => {
+      const txs: {datum:string,dagboek:string,nummer:string,relatie:string,netto:number,btw:number,totaal:number}[] = []
+      ;(inkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
+        .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Inkoop',nummer:f.factuurnummer||`IF-${f.id}`,relatie:f.leverancier||'',netto:f.totaal_netto||0,btw:f.totaal_btw||0,totaal:f.totaal_bruto||0}))
+      ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
+        .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:f.klant_naam||'',netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
+      ;(acc||[]).filter((r:any)=>r.datum>=rapportVan&&r.datum<=rapportTot)
+        .forEach((r:any)=>{const tot=r.totaal_accijns||r.accijns||0;txs.push({datum:r.datum||'',dagboek:'Accijns',nummer:`ACC-${r.id}`,relatie:r.batch_naam||'',netto:tot,btw:0,totaal:tot})})
+      return txs.sort((a,b)=>a.datum.localeCompare(b.datum))
+    }
+
+    // 1. Verkoopfacturen CSV
+    const vfHdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_klant'),t('lbl_status'),t('lbl_description'),t('lbl_quantity'),'Prijs/stuk','BTW%',t('lbl_netto'),t('lbl_btw_bedrag'),'Bruto']
+    const vfRows: any[][] = []
+    ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot).forEach((f:any)=>{
+      if ((f.regels||[]).length) {
+        f.regels.forEach((r:any)=>vfRows.push([f.datum,f.factuurnummer||'',f.klant_naam||'',f.status||'',r.omschrijving||'',r.hoeveelheid??'',r.prijs_per_stuk!=null?Number(r.prijs_per_stuk).toFixed(2):'',r.btw_pct??'',r.netto!=null?Number(r.netto).toFixed(2):'',r.btw_bedrag!=null?Number(r.btw_bedrag).toFixed(2):'',r.bruto!=null?Number(r.bruto).toFixed(2):'']))
+      } else {
+        vfRows.push([f.datum,f.factuurnummer||'',f.klant_naam||'',f.status||'','','','','',f.netto!=null?Number(f.netto).toFixed(2):'',f.btw!=null?Number(f.btw).toFixed(2):'',f.bruto!=null?Number(f.bruto).toFixed(2):''])
+      }
+    })
+    files.push({name:'csv/verkoopfacturen.csv', data: enc.encode('\uFEFF' + [vfHdr,...vfRows].map(csvRow).join('\n'))})
+
+    // 2. Inkoopfacturen CSV
+    const ifHdr = [t('lbl_date'),t('lbl_invoice'),'Leverancier',t('lbl_description'),t('lbl_netto'),'BTW%',t('lbl_btw_bedrag'),'Bruto']
+    const ifRows: any[][] = []
+    ;(inkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot).forEach((f:any)=>{
+      if ((f.regels||[]).length) {
+        f.regels.forEach((r:any)=>ifRows.push([f.datum,f.factuurnummer||'',f.leverancier||'',r.omschrijving||'',r.netto!=null?Number(r.netto).toFixed(2):'',r.btw_pct??'',r.btw_bedrag!=null?Number(r.btw_bedrag).toFixed(2):'',r.bruto!=null?Number(r.bruto).toFixed(2):'']))
+      } else {
+        ifRows.push([f.datum,f.factuurnummer||'',f.leverancier||'','',f.totaal_netto!=null?Number(f.totaal_netto).toFixed(2):'','',f.totaal_btw!=null?Number(f.totaal_btw).toFixed(2):'',f.totaal_bruto!=null?Number(f.totaal_bruto).toFixed(2):''])
+      }
+    })
+    files.push({name:'csv/inkoopfacturen.csv', data: enc.encode('\uFEFF' + [ifHdr,...ifRows].map(csvRow).join('\n'))})
+
+    // 3. Transactieoverzicht CSV
+    const txs = buildTxs()
+    const txHdr = [t('lbl_date'),t('lbl_dagboek'),t('lbl_invoice'),t('lbl_relatie'),t('lbl_netto'),t('lbl_btw'),'Totaal']
+    const txRows = txs.map(r=>[r.datum,r.dagboek,r.nummer,r.relatie,r.netto.toFixed(2),r.btw.toFixed(2),r.totaal.toFixed(2)])
+    files.push({name:'csv/transactieoverzicht.csv', data: enc.encode('\uFEFF' + [txHdr,...txRows].map(csvRow).join('\n'))})
+
+    // 4. Winst & Verlies CSV
+    const wv = berekenWinstVerlies(verkoopFacturen||[], inkoopFacturen||[], acc||[], rapportVan, rapportTot)
+    const wvData = [
+      [t('lbl_omzet'), wv.omzet.toFixed(2)],
+      [t('lbl_inkoopkosten'), (-wv.inkoopTotaal).toFixed(2)],
+      [t('lbl_inkoopkosten_ingredienten'), (-wv.inkoopIngredient).toFixed(2)],
+      [t('lbl_inkoopkosten_verpakking'), (-wv.inkoopVerpakking).toFixed(2)],
+      [t('lbl_inkoopkosten_overig'), (-wv.inkoopOverig).toFixed(2)],
+      [t('lbl_brutowinst'), wv.brutowinst.toFixed(2)],
+      [t('lbl_accijns_kosten'), (-wv.accijnsKosten).toFixed(2)],
+      [t('lbl_nettowinst'), wv.nettowinst.toFixed(2)],
+    ]
+    files.push({name:'csv/winst_verlies.csv', data: enc.encode('\uFEFF' + [['Post','Bedrag'],...wvData].map(csvRow).join('\n'))})
+
+    // 5. Omzet per categorie CSV
+    const catMap: Record<string,{aantal:number,netto:number,btw:number,bruto:number}> = {}
+    ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot).forEach((f:any)=>{
+      ;(f.regels||[]).forEach((r:any)=>{
+        const cat = r.omschrijving||'Overig'
+        if (!catMap[cat]) catMap[cat]={aantal:0,netto:0,btw:0,bruto:0}
+        catMap[cat].aantal+=r.hoeveelheid||0; catMap[cat].netto+=r.netto||0; catMap[cat].btw+=r.btw_bedrag||0; catMap[cat].bruto+=r.bruto||0
+      })
+    })
+    const omzetRows = Object.entries(catMap).sort((a,b)=>b[1].netto-a[1].netto).map(([cat,v])=>[cat,v.aantal,v.netto.toFixed(2),v.btw.toFixed(2),v.bruto.toFixed(2)])
+    files.push({name:'csv/omzet_categorie.csv', data: enc.encode('\uFEFF' + [[t('lbl_categorie'),'Aantal',t('lbl_netto'),t('lbl_btw'),'Bruto'],...omzetRows].map(csvRow).join('\n'))})
+
+    // 6. Verkoopfacturen als HTML (printbaar naar PDF)
+    const inst = (breweryDetails as any)||{}
+    ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot).forEach((f:any)=>{
+      const klant = (klanten||[]).find((k:any)=>k.id===f.klant_id)
+      const termijn = klant?.betalingstermijn ?? inst?.betalingstermijn ?? 14
+      const order = {klant_naam:f.klant_naam,klant_straat:f.klant_straat,klant_postcode:f.klant_postcode,klant_stad:f.klant_stad,klant_btw_nummer:f.klant_btw_nummer}
+      const html = buildFactuurHTML(order, f, {...inst, betalingstermijn:termijn}, '', factuurLogo)
+      const bestandsnaam = (f.factuurnummer||`VF-${f.id}`).replace(/[^a-zA-Z0-9_\-]/g,'_')
+      files.push({name:`verkoopfacturen/${bestandsnaam}.html`, data: enc.encode(html)})
+    })
+
+    // 7. Inkoop bijlagen ophalen van server
+    const fileBase = ADDON_BASE + 'api/file/'
+    const bijlagePromises = (inkoopFacturen||[])
+      .filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot&&f.bijlage?.bestand)
+      .map(async (f:any) => {
+        try {
+          const res = await fetch(fileBase + f.bijlage.bestand)
+          if (!res.ok) return
+          const buf = await res.arrayBuffer()
+          files.push({name:`inkoopfacturen/${f.bijlage.bestand}`, data: new Uint8Array(buf)})
+        } catch {}
+      })
+    await Promise.all(bijlagePromises)
+
+    // ZIP bouwen en downloaden
+    const zip = makeZip(files)
+    const a = Object.assign(document.createElement('a'),{
+      href: URL.createObjectURL(new Blob([zip.buffer as ArrayBuffer],{type:'application/zip'})),
+      download: `boekhouding_${rapportVan}_${rapportTot}.zip`
+    })
+    a.click()
+  }
 
   const deleteFactuur = (id: any) => {
     if (!confirm(t('err_confirm_delete_inkoop'))) return;
@@ -1283,12 +1444,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               <input type="date" value={rapportTot} onChange={(e:any)=>setRapportTot(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
             </div>
+            <div className="ml-auto flex items-end">
+              <button onClick={exportAllesZip}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-800 text-white hover:bg-gray-700 transition-colors">
+                {t('btn_alles_exporteren')}
+              </button>
+            </div>
           </div>
-          <div className="flex gap-1 border-b border-gray-100">
-            {(['wv','balans','omzet_cat'] as const).map(tab => (
+          <div className="flex gap-1 border-b border-gray-100 flex-wrap">
+            {(['wv','balans','omzet_cat','transacties'] as const).map(tab => (
               <button key={tab} onClick={()=>setRapportTab(tab)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${rapportTab===tab?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':'tab_omzet_cat')}
+                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':tab==='omzet_cat'?'tab_omzet_cat':'tab_transacties')}
               </button>
             ))}
           </div>
@@ -1417,6 +1584,75 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       </tr>
                     ))}
                   </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Transactieoverzicht */}
+        {rapportTab==='transacties' && (()=>{
+          type TxRij = {datum:string,dagboek:string,nummer:string,relatie:string,netto:number,btw:number,totaal:number}
+          const txs: TxRij[] = []
+          ;(inkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
+            .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Inkoop',nummer:f.factuurnummer||`IF-${f.id}`,relatie:f.leverancier||'—',netto:f.totaal_netto||0,btw:f.totaal_btw||0,totaal:f.totaal_bruto||0}))
+          ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
+            .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:f.klant_naam||'—',netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
+          ;(acc||[]).filter((r:any)=>r.datum>=rapportVan&&r.datum<=rapportTot)
+            .forEach((r:any)=>{const tot=r.totaal_accijns||r.accijns||0;txs.push({datum:r.datum||'',dagboek:'Accijns',nummer:`ACC-${r.id}`,relatie:r.batch_naam||'—',netto:tot,btw:0,totaal:tot})})
+          txs.sort((a,b)=>a.datum.localeCompare(b.datum))
+
+          const totNetto=txs.reduce((s,r)=>s+r.netto,0)
+          const totBtw=txs.reduce((s,r)=>s+r.btw,0)
+          const totTotaal=txs.reduce((s,r)=>s+r.totaal,0)
+
+          const exportTxCSV = () => {
+            const hdr = `"${t('lbl_date')}","${t('lbl_dagboek')}","${t('lbl_invoice')}","${t('lbl_relatie')}","${t('lbl_netto')}","${t('lbl_btw')}","Totaal"`
+            const rows = txs.map(r=>`"${r.datum}","${r.dagboek}","${r.nummer}","${r.relatie}","${r.netto.toFixed(2).replace('.',',')}","${r.btw.toFixed(2).replace('.',',')}","${r.totaal.toFixed(2).replace('.',',')}"`)
+            const csv = [hdr,...rows].join('\n')
+            const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`transactieoverzicht_${rapportVan}_${rapportTot}.csv`})
+            a.click()
+          }
+
+          if (!txs.length) return <div className={card+' text-center py-10 text-gray-400 text-sm'}>{t('msg_no_rapport_data')}</div>
+          return (
+            <div className={card}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-800">{t('tab_transacties')} — {rapportVan} {t('lbl_t_m')} {rapportTot}</h3>
+                <button onClick={exportTxCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[600px]">
+                  <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_date')}</th>
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_dagboek')}</th>
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_invoice')}</th>
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_relatie')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_netto')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_btw')}</th>
+                    <th className="py-1.5 text-right font-medium">{t('lbl_total')}</th>
+                  </tr></thead>
+                  <tbody>
+                    {txs.map((r,i)=>(
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-1.5 pr-3 text-gray-600 whitespace-nowrap">{r.datum}</td>
+                        <td className="py-1.5 pr-3">
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${r.dagboek==='Verkoop'?'bg-green-100 text-green-700':r.dagboek==='Inkoop'?'bg-blue-100 text-blue-700':'bg-orange-100 text-orange-700'}`}>{r.dagboek}</span>
+                        </td>
+                        <td className="py-1.5 pr-3 text-gray-700 font-mono text-xs">{r.nummer}</td>
+                        <td className="py-1.5 pr-3 text-gray-700">{r.relatie}</td>
+                        <td className="py-1.5 pr-3 text-right text-gray-700">{fmt(r.netto)}</td>
+                        <td className="py-1.5 pr-3 text-right text-blue-600">{fmt(r.btw)}</td>
+                        <td className="py-1.5 text-right font-semibold text-gray-900">{fmt(r.totaal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                    <td className="py-2 pr-3 text-gray-700" colSpan={4}>{t('lbl_total')}</td>
+                    <td className="py-2 pr-3 text-right">{fmt(totNetto)}</td>
+                    <td className="py-2 pr-3 text-right text-blue-600">{fmt(totBtw)}</td>
+                    <td className="py-2 text-right">{fmt(totTotaal)}</td>
+                  </tr></tfoot>
                 </table>
               </div>
             </div>

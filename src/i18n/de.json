@@ -968,5 +968,9 @@
   "lbl_eigen_vermogen": "Eigenkapital",
   "lbl_categorie": "Kategorie",
   "msg_no_rapport_data": "Keine Daten für den ausgewählten Zeitraum verfügbar.",
-  "btn_export_csv_rapport": "↓ CSV exportieren"
+  "btn_export_csv_rapport": "↓ CSV exportieren",
+  "tab_transacties": "Transaktionsübersicht",
+  "lbl_dagboek": "Buchungsjournal",
+  "lbl_relatie": "Relation",
+  "btn_alles_exporteren": "↓ Alles exportieren (ZIP)"
 }
