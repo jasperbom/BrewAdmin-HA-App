@@ -163,6 +163,23 @@ There is no test suite (no Jest, Vitest, or Python unittest). Verify changes man
 - Theme colors accessed via CSS vars (`var(--t-accent)`) for theme-switching support
 - Dark backgrounds with light text is the UI default
 
+### Uniforme styling — verplichte patronen
+
+Houd de UI consistent door altijd dezelfde patronen te gebruiken:
+
+| Situatie | Klasse/patroon |
+|----------|---------------|
+| Sectie-header van een lijst/kaart | `t-hdr text-white font-medium text-sm px-4 py-2.5` |
+| Klikbare sectie-header | Voeg altijd toe: `flex items-center justify-between cursor-pointer` + `<span className="text-xs opacity-75">→</span>` als laatste child |
+| Accent-kleur inline tekst/link | `style={{color: 'var(--t-accent)'}}` — nooit `text-amber-*` hardcoden |
+| Sectie-label binnen een card | `text-xs font-semibold text-gray-500 uppercase tracking-wide` |
+| Fallback tekst (onbekende naam) | Altijd via i18n: `t('lbl_onbekend')` of `t('lbl_naamloos')` |
+
+**Regels:**
+- Gebruik **uitsluitend** de bestaande `t-hdr` class uit `src/index.css` voor sectie-headers — geen nieuwe varianten aanmaken
+- Alle klikbare headers krijgen een `→` pijl zodat de gebruiker weet dat navigatie mogelijk is
+- Gebruik `style={{color: 'var(--t-accent)'}}` voor themagevoelige kleuren — dit werkt correct bij alle 6 thema's
+
 ---
 
 ## Key Domain Concepts

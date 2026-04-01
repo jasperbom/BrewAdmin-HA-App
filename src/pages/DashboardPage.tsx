@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
 import { STATUS_CLR } from '../utils/constants'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -44,6 +44,14 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
       new Date(b.datum + 'T' + (b.tijd||'00:00')).getTime() -
       new Date(a.datum + 'T' + (a.tijd||'00:00')).getTime()
     )[0];
+  };
+
+  // Liters nog in tank = liter_vergist min al afgevulde liters
+  const inTankL = (batchId: number, lv: number) => {
+    const tot = (av||[])
+      .filter((a: any) => a.batch_id === batchId)
+      .reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid||0) * Number(a.hoeveelheid||0), 0);
+    return Math.max(0, Number(lv||0) - tot);
   };
 
   const sgProgress = (batch: any) => {
@@ -126,7 +134,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
 
   const LotRow = ({lot, urgent}: any) => {
     const days = daysLeft(lot.houdbaarheid);
-    const naam = ing.find((i: any) => i.id === lot.ingredient_id)?.naam || 'Onbekend';
+    const naam = ing.find((i: any) => i.id === lot.ingredient_id)?.naam || t('lbl_onbekend');
     return (
       <div className={`flex items-center justify-between px-4 py-3 rounded-lg border ${urgent?'bg-red-50 border-red-200':'bg-yellow-50 border-yellow-200'}`}>
         <div className="flex flex-col">
@@ -144,7 +152,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
   const VoorraadRow = ({u, urgent}: any) => {
     const days  = daysLeft(u.tht);
     const batch = bat.find((b: any) => b.id === u.batch_id);
-    const bier  = batch?.naam || 'Onbekend';
+    const bier  = batch?.naam || t('lbl_onbekend');
     const beschik = Number(u.aantal||0) - Number(u.verkocht_stuks||0);
     return (
       <div className={`flex items-center justify-between px-4 py-3 rounded-lg border ${urgent?'bg-red-50 border-red-200':'bg-yellow-50 border-yellow-200'}`}>
@@ -230,7 +238,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
             {binnen90.map((l: any) => (
               <div key={l.id} className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-gray-50 border border-gray-200">
                 <div>
-                  <span className="font-medium text-sm text-gray-800">{ing.find((i: any) => i.id === l.ingredient_id)?.naam || 'Onbekend'}</span>
+                  <span className="font-medium text-sm text-gray-800">{ing.find((i: any) => i.id === l.ingredient_id)?.naam || t('lbl_onbekend')}</span>
                   <span className="text-xs text-gray-500 ml-2">{t('lbl_lot_short')}: {l.lotnummer||'—'} · {l.hoeveelheid} {l.eenheid}</span>
                 </div>
                 <div className="text-sm text-gray-500 font-medium">{daysLeft(l.houdbaarheid)}d · {fmtD(l.houdbaarheid)}</div>
@@ -246,8 +254,9 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
           {tanks.map((tk: any) => {
             const batch    = bat.find((b: any) => b.tank === tk.id && ['Vergisten','Conditioneren'].includes(b.status));
             const anyBatch = bat.find((b: any) => b.tank === tk.id && b.status !== 'Gesloten');
-            const fillPct  = batch && batch.liter_vergist && tk.volume
-              ? (Number(batch.liter_vergist) / Number(tk.volume)) * 100
+            const inTank   = batch?.liter_vergist ? inTankL(batch.id, batch.liter_vergist) : 0;
+            const fillPct  = batch?.liter_vergist
+              ? (inTank / Number(batch.liter_vergist)) * 100
               : 0;
             const sgPct    = batch ? sgProgress(batch) : null;
             const latestM  = batch ? latestMeting(batch.id) : null;
@@ -292,7 +301,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
                           )}
                           {batch.liter_vergist && (
                             <span className="text-xs text-gray-400">
-                              {batch.liter_vergist}L{tk.volume ? ` / ${tk.volume}L` : ''}
+                              {inTank.toFixed(1)}L / {batch.liter_vergist}L
                             </span>
                           )}
                         </div>
@@ -311,6 +320,9 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
                 {/* SG voortgang */}
                 {batch && (sgPct !== null || latestM) && (
                   <div className="mt-3 border-t border-gray-100 pt-3">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      {t('dashboard_fermentation_progress')}
+                    </div>
                     {sgPct !== null && (
                       <>
                         <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -345,7 +357,8 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
                     {!isFormOpen ? (
                       <button
                         onClick={() => { setMetingBatchId(batch.id); setMForm({sg:'',ph:'',temp:''}); }}
-                        className="text-xs font-medium t-accent-text hover:underline mt-1 flex items-center gap-1"
+                        className="text-xs font-medium hover:underline mt-1 flex items-center gap-1"
+                        style={{color: 'var(--t-accent)'}}
                       >
                         + {t('dashboard_add_measurement')}
                       </button>
@@ -449,7 +462,10 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
       {/* ── Fallback: actieve batches zonder tanks ────────────────────────── */}
       {actiefBatches.length > 0 && tanks.length === 0 && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('dashboard_active_batches')}</div>
+          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setPage('batches')}>
+            <span>{t('dashboard_active_batches')}</span>
+            <span className="text-xs opacity-75">→</span>
+          </div>
           <div className="divide-y divide-gray-100">
             {actiefBatches.map((b: any) => {
               const pct     = sgProgress(b);
@@ -462,7 +478,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, setPage, tanks, gistMeting
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm text-gray-800">{b.naam || 'Naamloos'}</span>
+                      <span className="font-medium text-sm text-gray-800">{b.naam || t('lbl_naamloos')}</span>
                       {b.batch_nummer && <span className="text-xs text-gray-400">#{b.batch_nummer}</span>}
                     </div>
                     {latestM?.sg && (
