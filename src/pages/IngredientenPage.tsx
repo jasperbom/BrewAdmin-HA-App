@@ -661,7 +661,7 @@ const IngredientenPage: React.FC<Props> = ({
       {showVAfboek && (
         <Modal title={`Afboeken: ${showVAfboek.naam}`} onClose={() => setShowVAfboek(null)}>
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">{t('lbl_available')}: <strong>{showVAfboek.voorraad || 0} stuks</strong></p>
+            <p className="text-sm text-gray-600">{t('lbl_available')}: <strong>{showVAfboek.voorraad || 0} {t('unit_stuks')}</strong></p>
             <Inp label={t('packaging_deduct_units')} type="number" value={vAfQty} onChange={setVAfQty} placeholder="0" />
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowVAfboek(null)}>{t('btn_cancel')}</Btn>

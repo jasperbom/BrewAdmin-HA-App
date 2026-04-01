@@ -9,11 +9,11 @@ import Modal from '../components/ui/Modal'
 
 type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
 
-const AFBOEKING_REDENEN: { v: AfboekingReden; l: string }[] = [
-  { v: 'vermis',        l: 'Vermis' },
-  { v: 'intern_gebruik',l: 'Intern gebruik' },
-  { v: 'vernietiging',  l: 'Vernietiging' },
-  { v: 'overig',        l: 'Overig' },
+const AFBOEKING_REDENEN: { v: AfboekingReden; lKey: string }[] = [
+  { v: 'vermis',        lKey: 'lbl_afboeking_vermis' },
+  { v: 'intern_gebruik',lKey: 'lbl_afboeking_intern_gebruik' },
+  { v: 'vernietiging',  lKey: 'lbl_afboeking_vernietiging' },
+  { v: 'overig',        lKey: 'lbl_afboeking_overig' },
 ]
 
 const REDEN_COLORS: Record<AfboekingReden, string> = {
@@ -116,10 +116,10 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
 
   const doAfboeken = () => {
     const aantal = Number(afboekForm.aantal)
-    if (!afboekForm.opmerking.trim()) { setAfboekError('Opmerking is verplicht.'); return }
-    if (!aantal || aantal < 1) { setAfboekError('Aantal moet minimaal 1 zijn.'); return }
+    if (!afboekForm.opmerking.trim()) { setAfboekError(t('err_afboeking_opmerking_required')); return }
+    if (!aantal || aantal < 1) { setAfboekError(t('err_afboeking_aantal_min')); return }
     const max = beschikbaarVoorAfvulling(afboekModal)
-    if (aantal > max) { setAfboekError(`Maximaal ${max} stuks beschikbaar.`); return }
+    if (aantal > max) { setAfboekError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return }
     const nieuw = {
       id: newId(afboekingen),
       afvulling_id: afboekModal.id,
@@ -130,7 +130,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
       opmerking: afboekForm.opmerking.trim(),
     }
     setAfboekingen((prev: any[]) => [...(prev||[]), nieuw])
-    const redenLabel = AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.l || afboekForm.reden
+    const redenLabel = t(AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.lKey || afboekForm.reden)
     const batch = bat.find((b: any) => b.id === afboekModal.batch_id)
     setLog((prev: any[]) => [...(prev||[]), {
       id: newId(prev||[]),
@@ -252,7 +252,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
 
   // Groeperen op biernaam → batch
   const beerNames = [...new Set(
-    visibleAv.map((a: any) => getBatch(a.batch_id)?.naam || 'Onbekend')
+    visibleAv.map((a: any) => getBatch(a.batch_id)?.naam || t('lbl_onbekend'))
   )] as string[]
 
   // Logboek: alleen bier-stockmutaties
@@ -301,14 +301,14 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
 
       {/* Filterbalk */}
       <div className="flex items-center gap-3 mb-4 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Batch:</span>
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{t('lbl_batch_filter')}</span>
         <Sel value={filterBatch} onChange={setFilterBatch}
           opts={bat.map((b: any) => ({v: String(b.id), l: b.naam}))}
           ph={t('stock_filter_all_beers')} cls="w-52" />
         {filterBatch && (
           <button onClick={() => setFilterBatch('')}
             className="text-xs text-gray-400 hover:text-gray-600 underline whitespace-nowrap">
-            Wis filter
+            {t('btn_clear_filter')}
           </button>
         )}
       </div>
@@ -325,7 +325,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                   <div className="flex justify-between"><span className="text-gray-500">{t('voorraad_afgevuld')}</span><span className="font-mono font-medium text-gray-600">{s.totAfgevuld}×</span></div>
                   {s.totGepickt > 0 && <div className="flex justify-between"><span className="text-gray-500">{t('voorraad_gepickt')}</span><span className="font-mono font-medium text-orange-500">{s.totGepickt}×</span></div>}
                   {s.totUitgeslagen > 0 && <div className="flex justify-between"><span className="text-gray-500">{t('voorraad_uitgeslagen')}</span><span className="font-mono font-medium text-blue-500">{s.totUitgeslagen}×</span></div>}
-                  {s.totAfgeboekt > 0 && <div className="flex justify-between"><span className="text-gray-500">Afgeboekt</span><span className="font-mono font-medium text-red-400">{s.totAfgeboekt}×</span></div>}
+                  {s.totAfgeboekt > 0 && <div className="flex justify-between"><span className="text-gray-500">{t('voorraad_afgeboekt')}</span><span className="font-mono font-medium text-red-400">{s.totAfgeboekt}×</span></div>}
                   <div className="flex justify-between pt-1 mt-1 border-t">
                     <span className="font-medium text-gray-700">{t('voorraad_beschikbaar')}</span>
                     <span className={`font-mono font-bold ${s.totBeschikbaar>0?'text-green-600':'text-gray-400'}`}>{s.totBeschikbaar}×</span>
@@ -381,9 +381,9 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
             <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between flex-wrap gap-2">
               <span>{t('tab_logboek')}</span>
               <div className="flex items-center gap-1 bg-white/20 rounded-lg p-0.5">
-                {logSubBtn('alle', 'Alle')}
-                {logSubBtn('voorraad', `Voorraad (${beerLogEntries.length})`)}
-                {wcCreds?.enabled && logSubBtn('woocommerce', `WooCommerce (${(wcSyncLog||[]).length})`)}
+                {logSubBtn('alle', t('orders_filter_alle'))}
+                {logSubBtn('voorraad', t('log_filter_voorraad').replace('{n}', String(beerLogEntries.length)))}
+                {wcCreds?.enabled && logSubBtn('woocommerce', t('log_filter_woocommerce').replace('{n}', String((wcSyncLog||[]).length)))}
               </div>
             </div>
             {combined.length === 0 ? (
@@ -394,7 +394,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
                     <th className="px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
-                    <th className="px-3 py-2 text-left font-medium">Omschrijving</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('lbl_description')}</th>
                     <th className="px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
                   </tr>
                 </thead>
@@ -420,7 +420,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                     }
                     const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type}
                     const qty = l.hoeveelheid != null
-                      ? `${l.type === 'afboeking' ? '−' : '+'}${l.hoeveelheid} ${l.eenheid || 'stuks'}`
+                      ? `${l.type === 'afboeking' ? '−' : '+'}${l.hoeveelheid} ${l.eenheid || t('unit_stuks')}`
                       : '—'
                     return (
                       <tr key={`v-${l.id}`} className="hover:bg-gray-50">
@@ -454,7 +454,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
       {/* Bierlijst gegroepeerd op naam → batch */}
       {logView === 'overzicht' && <div className="space-y-6">
         {beerNames.map(beerName => {
-          const beerAv = visibleAv.filter((a: any) => (getBatch(a.batch_id)?.naam || 'Onbekend') === beerName)
+          const beerAv = visibleAv.filter((a: any) => (getBatch(a.batch_id)?.naam || t('lbl_onbekend')) === beerName)
           const beerBatchIds = [...new Set(beerAv.map((a: any) => a.batch_id))] as number[]
           const bTotBeschik = beerAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0)
           const bTotGepickt = beerAv.reduce((s: number, a: any) => s + gepicktVoorAfvulling(a), 0)
@@ -491,7 +491,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                     <div className="px-4 py-2 t-hdr text-white flex items-center justify-between flex-wrap gap-2 text-sm">
                       <div className="flex items-center gap-2">
                         {b?.batch_nummer
-                          ? <span className="font-semibold">Batch #{b.batch_nummer}</span>
+                          ? <span className="font-semibold">{t('lbl_batch_nummer').replace('{n}', String(b.batch_nummer))}</span>
                           : <span className="text-gray-400 italic">{t('batch_no_number')}</span>
                         }
                         {b?.stijl && <span className="text-xs text-gray-400">{b.stijl}</span>}
@@ -525,7 +525,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                               <span className="text-gray-400">{t('voorraad_afgevuld')}: <strong>{vtTotAfgevuld}×</strong></span>
                               {vtTotGepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>{vtTotGepickt}×</strong></span>}
                               {vtTotUitgeslagen > 0 && <span className="text-blue-500">{t('voorraad_uitgeslagen')}: <strong>{vtTotUitgeslagen}×</strong></span>}
-                              {vtTotAfgeboekt > 0 && <span className="text-red-400">Afgeboekt: <strong>{vtTotAfgeboekt}×</strong></span>}
+                              {vtTotAfgeboekt > 0 && <span className="text-red-400">{t('voorraad_afgeboekt')}: <strong>{vtTotAfgeboekt}×</strong></span>}
                               {vtTotBeschik > 0
                                 ? <span className="font-bold text-green-600">{t('voorraad_beschikbaar')}: {vtTotBeschik}×</span>
                                 : <span className="font-medium text-gray-400">{t('voorraad_beschikbaar')}: 0×</span>
@@ -552,7 +552,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                       {a.tht
                                         ? <span className={thtExp ? 'text-red-600 font-semibold' : thtSoon ? 'text-yellow-600 font-medium' : 'text-gray-500'}>
                                             THT: <strong>{fmtD(a.tht)}</strong>
-                                            {thtExp ? ' ⚠️ verlopen' : thtSoon ? ` (${thtDays}d)` : ''}
+                                            {thtExp ? ` ${t('msg_tht_verlopen')}` : thtSoon ? ` (${thtDays}d)` : ''}
                                           </span>
                                         : <span className="text-gray-400">THT: —</span>
                                       }
@@ -561,11 +561,11 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                     {/* Regel 2: aantallen */}
                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
                                       <span className="text-gray-600">{t('voorraad_afgevuld')}: <strong className="font-semibold text-gray-800">{a.hoeveelheid}×</strong></span>
-                                      {gepickt > 0 && <span className="text-orange-500">Gepickt: <strong>−{gepickt}×</strong></span>}
-                                      {uitgeslagen > 0 && <span className="text-blue-500">Uitgeslagen: <strong>−{uitgeslagen}×</strong></span>}
-                                      {afgeboekt > 0 && <span className="text-red-400">Afgeboekt: <strong>−{afgeboekt}×</strong></span>}
+                                      {gepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>−{gepickt}×</strong></span>}
+                                      {uitgeslagen > 0 && <span className="text-blue-500">{t('voorraad_uitgeslagen')}: <strong>−{uitgeslagen}×</strong></span>}
+                                      {afgeboekt > 0 && <span className="text-red-400">{t('voorraad_afgeboekt')}: <strong>−{afgeboekt}×</strong></span>}
                                       <span className={`font-bold ${beschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                                        = {beschikbaar}× beschikbaar
+                                        {t('msg_n_beschikbaar').replace('{n}', String(beschikbaar))}
                                       </span>
                                     </div>
                                   </div>
@@ -573,7 +573,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                     <button
                                       onClick={e => openAfboekModal(a, e)}
                                       className="flex-shrink-0 text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap mt-0.5"
-                                      title="Voorraad handmatig afboeken">
+                                      title={t('title_afboeken_modal').replace('{verpakking}', a.verpakking_naam || a.verpakking_type || '')}>
                                       − Afboeken
                                     </button>
                                   )}
@@ -584,7 +584,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                     {afboekLogs.map((ab: any) => (
                                       <div key={ab.id} className="flex items-center gap-2 text-xs">
                                         <span className={`px-1.5 py-0.5 rounded font-medium ${REDEN_COLORS[ab.reden as AfboekingReden] || 'text-gray-500 bg-gray-100'}`}>
-                                          {AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.l || ab.reden}
+                                          {t(AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.lKey || ab.reden)}
                                         </span>
                                         <span className="text-red-500 font-semibold">−{ab.aantal}×</span>
                                         <span className="text-gray-400">{ab.datum}</span>
@@ -609,25 +609,25 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
 
       {/* Afboeken modal */}
       {afboekModal && (
-        <Modal title={`Voorraad afboeken — ${afboekModal.verpakking_naam || afboekModal.verpakking_type || ''}`} onClose={() => setAfboekModal(null)}>
+        <Modal title={t('title_afboeken_modal').replace('{verpakking}', afboekModal.verpakking_naam || afboekModal.verpakking_type || '')} onClose={() => setAfboekModal(null)}>
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4">
-              <span>Beschikbaar: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
-              {afboekModal.tht && <span>THT: <strong>{fmtD(afboekModal.tht)}</strong></span>}
-              {afboekModal.datum && <span>Afgevuld: <strong>{fmtD(afboekModal.datum)}</strong></span>}
+              <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
+              {afboekModal.tht && <span>{t('lbl_tht')} <strong>{fmtD(afboekModal.tht)}</strong></span>}
+              {afboekModal.datum && <span>{t('lbl_afgevuld_op')} <strong>{fmtD(afboekModal.datum)}</strong></span>}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Reden <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_reden')} <span className="text-red-400">*</span></label>
                 <Sel
                   value={afboekForm.reden}
                   onChange={(v: string) => setAfboekForm(f => ({...f, reden: v as AfboekingReden}))}
-                  opts={AFBOEKING_REDENEN.map(r => ({v: r.v, l: r.l}))}
+                  opts={AFBOEKING_REDENEN.map(r => ({v: r.v, l: t(r.lKey)}))}
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Aantal <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
                 <Inp
                   type="number"
                   value={afboekForm.aantal}
@@ -638,7 +638,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Opmerking <span className="text-red-400">*</span></label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking_required')} <span className="text-red-400">*</span></label>
               <textarea
                 value={afboekForm.opmerking}
                 onChange={e => { setAfboekForm(f => ({...f, opmerking: e.target.value})); setAfboekError('') }}
@@ -655,8 +655,8 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
             )}
 
             <div className="flex justify-end gap-2 pt-1 border-t">
-              <Btn v="secondary" onClick={() => setAfboekModal(null)}>Annuleren</Btn>
-              <Btn onClick={doAfboeken} cls="bg-red-500 hover:bg-red-600 text-white">Afboeken bevestigen</Btn>
+              <Btn v="secondary" onClick={() => setAfboekModal(null)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={doAfboeken} cls="bg-red-500 hover:bg-red-600 text-white">{t('btn_afboeken_bevestigen')}</Btn>
             </div>
           </div>
         </Modal>
@@ -664,7 +664,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
 
       {/* Artikel stamgegevens modal */}
       {artModal && (
-        <Modal title={`Artikelstamgegevens — ${artModal.biernaam} · ${artModal.verpakking_type}`} onClose={() => setArtModal(null)}>
+        <Modal title={t('title_artikel_stamgegevens').replace('{bier}', artModal.biernaam).replace('{verpakking}', artModal.verpakking_type)} onClose={() => setArtModal(null)}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
