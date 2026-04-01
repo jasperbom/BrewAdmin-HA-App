@@ -973,6 +973,7 @@
   "msg_no_bank": "No bank statement loaded.",
   "msg_bank_sessie_hint": "Bank statements are not saved — only visible in this session.",
   "lbl_auto_gematcht": "Auto-match",
+  "lbl_onthouden_koppeling": "Remembered",
 
   "tab_rapporten": "Reports",
   "tab_wv": "Profit & Loss",

@@ -63,7 +63,7 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[]}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}}: any) {
   const now = new Date();
   const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -96,6 +96,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const bankFileRef = React.useRef<any>(null)
   const [bankAfschrift, setBankAfschrift] = React.useState<any>(null)
   const [bankTransacties, setBankTransacties] = React.useState<any[]>([])
+
+  // Unieke sleutel per transactie voor persistente koppeling-geheugen
+  const txKey = (tx: any): string => {
+    if (tx.referentie) return `${tx.datum}|${tx.type}|${tx.bedrag}|${tx.referentie}`
+    return `${tx.datum}|${tx.type}|${tx.bedrag}|${(tx.tegenpartij||tx.omschrijving||'').slice(0,40)}`
+  }
 
   // ── Rapporten tab state ────────────────────────────────────────────────────
   const [rapportTab, setRapportTab] = React.useState('wv')
@@ -716,15 +722,39 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const afschrift = parseMT940(text)
       const openVerkoop = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
       const openInkoop = (inkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+      const nieuweKoppelingen: Record<string, any> = {}
       const gematcht = afschrift.transacties.map((tx: any) => {
+        const key = txKey(tx)
+        // Eerder opgeslagen koppeling terugzetten
+        const opgeslagen = (bankKoppelingen as any)[key]
+        if (opgeslagen) {
+          return {
+            ...tx,
+            gekoppeldFactuurId: opgeslagen.soort === 'verkoop' ? opgeslagen.factuurId : null,
+            gekoppeldInkoopId: opgeslagen.soort === 'inkoop' ? opgeslagen.factuurId : null,
+            autoGematcht: true,
+            herinneringsGematcht: true,
+          }
+        }
+        // Automatisch koppelen op basis van bedrag
         if (tx.type === 'C') {
           const match = openVerkoop.find((f: any) => Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
-          return match ? {...tx, gekoppeldFactuurId:match.id, autoGematcht:true} : tx
+          if (match) {
+            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: match.id}
+            return {...tx, gekoppeldFactuurId:match.id, autoGematcht:true}
+          }
         } else {
           const match = openInkoop.find((f: any) => Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
-          return match ? {...tx, gekoppeldInkoopId:match.id, autoGematcht:true} : tx
+          if (match) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: match.id}
+            return {...tx, gekoppeldInkoopId:match.id, autoGematcht:true}
+          }
         }
+        return tx
       })
+      if (Object.keys(nieuweKoppelingen).length > 0) {
+        setBankKoppelingen((prev: any) => ({...prev, ...nieuweKoppelingen}))
+      }
       setBankAfschrift(afschrift)
       setBankTransacties(gematcht)
     }
@@ -732,9 +762,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   const koppelBankTransactie = (txIndex: number, factuurId: number|null, soort: 'verkoop'|'inkoop' = 'verkoop') => {
-    setBankTransacties((prev: any[]) => prev.map((tx, i) =>
-      i===txIndex ? {...tx, [soort==='inkoop'?'gekoppeldInkoopId':'gekoppeldFactuurId']:factuurId, autoGematcht:false} : tx
-    ))
+    setBankTransacties((prev: any[]) => {
+      const tx = prev[txIndex]
+      const key = txKey(tx)
+      if (factuurId) {
+        setBankKoppelingen((k: any) => ({...k, [key]: {soort, factuurId}}))
+      } else {
+        setBankKoppelingen((k: any) => { const c = {...k}; delete c[key]; return c })
+      }
+      return prev.map((t, i) =>
+        i===txIndex ? {...t, [soort==='inkoop'?'gekoppeldInkoopId':'gekoppeldFactuurId']:factuurId, autoGematcht:false, herinneringsGematcht:false} : t
+      )
+    })
   }
 
   const markeerInkoopBetaald = (id: number) => {
@@ -1447,7 +1486,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           {tx.type==='C'?'+':'-'}{fmt(tx.bedrag)}
                         </td>
                         <td className="py-2" onClick={(e:any)=>e.stopPropagation()}>
-                          {tx.autoGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
+                          {tx.herinneringsGematcht && <span className="text-xs text-blue-600 mr-2">↩ {t('lbl_onthouden_koppeling')}</span>}
+                          {tx.autoGematcht && !tx.herinneringsGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
                           {tx.type==='C' ? (
                             <div className="flex items-center gap-2">
                               <select value={tx.gekoppeldFactuurId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null, 'verkoop')}

@@ -959,6 +959,7 @@
   "msg_no_bank": "No se ha cargado ningún extracto bancario.",
   "msg_bank_sessie_hint": "Los extractos bancarios no se guardan — solo visibles en esta sesión.",
   "lbl_auto_gematcht": "Coincidencia auto",
+  "lbl_onthouden_koppeling": "Recordado",
 
   "tab_rapporten": "Informes",
   "tab_wv": "Pérdidas y Ganancias",

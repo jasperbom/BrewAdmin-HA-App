@@ -973,6 +973,7 @@
   "msg_no_bank": "Geen bankafschrift geladen.",
   "msg_bank_sessie_hint": "Bankafschriften worden niet opgeslagen — alleen zichtbaar in deze sessie.",
   "lbl_auto_gematcht": "Auto-match",
+  "lbl_onthouden_koppeling": "Onthouden",
 
   "tab_rapporten": "Rapporten",
   "tab_wv": "Winst & Verlies",
