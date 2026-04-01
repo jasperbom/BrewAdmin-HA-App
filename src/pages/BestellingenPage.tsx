@@ -795,7 +795,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
                             {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
                             {' · '}{avItem?.verpakking_type}
-                            {' · '}THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
+                            {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
                             {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · Lot {avBatch.batch_nummer}</span>}
                           </span>
                           <input type="number" min="0" max={maxBeschik}
@@ -840,7 +840,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · THT: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar
+                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar
                               </option>
                             )
                           })}
@@ -981,7 +981,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <span className="font-mono text-sm font-semibold text-gray-700">{orderNr}</span>
                 <div>
                   <div className="font-medium text-gray-800">{b.klant_naam}</div>
-                  <div className="text-xs text-gray-500">{fmtD(b.datum)} · {(b.regels||[]).length} regel{(b.regels||[]).length!==1?'s':''}</div>
+                  <div className="text-xs text-gray-500">{fmtD(b.datum)} · {t('lbl_n_regels').replace('{n}', String((b.regels||[]).length))}</div>
                 </div>
               </div>
               <div className="flex items-center gap-3">

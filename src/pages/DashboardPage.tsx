@@ -452,7 +452,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                 className="px-5 py-2 text-xs text-gray-400 cursor-pointer hover:bg-gray-50"
                 onClick={() => setPage('bestellingen')}
               >
-                +{openBestellingen.length - 5} meer…
+                {t('msg_n_meer').replace('{n}', String(openBestellingen.length - 5))}
               </div>
             )}
           </div>

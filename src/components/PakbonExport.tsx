@@ -3,6 +3,7 @@
  * Print helpers for pakbon (packing slip) and factuur (invoice).
  * Opens a new window with embedded CSS and triggers window.print().
  */
+import { t } from '../i18n'
 
 const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -62,7 +63,7 @@ function fmtDate(d: string | undefined): string {
 
 function openPrint(html: string, filename: string): void {
   const w = window.open('', '_blank', 'width=900,height=700')
-  if (!w) { alert('Pop-up geblokkeerd — sta pop-ups toe voor deze pagina.'); return }
+  if (!w) { alert(t('err_popup_blocked')); return }
   w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${filename}</title><style>${CSS}</style></head><body>${html}</body></html>`)
   w.document.close()
   w.focus()
@@ -143,28 +144,28 @@ export function printPakbon(
     </div>
 
     <div class="meta-grid">
-      <div class="meta-block"><div class="ml">Datum</div><div class="mv">${datum}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${datum}</div></div>
       <div class="meta-block"><div class="ml">Order</div><div class="mv">${orderRef}</div></div>
     </div>
 
     <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">Bezorgadres</div>
+      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_bezorgadres')}</div>
       ${klantBlock(order)}
     </div>
 
     <table>
       <thead>
         <tr>
-          <th>Bier</th>
+          <th>${t('lbl_pakbon_bier')}</th>
           <th>Batch #</th>
-          <th>Verpakking</th>
-          <th>Inhoud</th>
-          <th>THT</th>
+          <th>${t('lbl_pakbon_verpakking')}</th>
+          <th>${t('lbl_pakbon_inhoud')}</th>
+          <th>${t('lbl_tht')}</th>
           <th class="r">Aantal</th>
         </tr>
       </thead>
       <tbody>
-        ${rows || '<tr><td colspan="6" style="text-align:center;color:#888;padding:4mm;">Geen picks</td></tr>'}
+        ${rows || `<tr><td colspan="6" style="text-align:center;color:#888;padding:4mm;">${t('msg_geen_picks')}</td></tr>`}
       </tbody>
     </table>
 
@@ -172,9 +173,9 @@ export function printPakbon(
 
     <div class="footer">
       <div class="sign-block">
-        <div style="font-size:8pt;font-weight:bold;text-transform:uppercase;color:#888;letter-spacing:0.05em">Ontvangst</div>
+        <div style="font-size:8pt;font-weight:bold;text-transform:uppercase;color:#888;letter-spacing:0.05em">${t('lbl_pakbon_ontvangst')}</div>
         <div class="sign-line"></div>
-        <div class="sign-label">Handtekening ontvanger</div>
+        <div class="sign-label">${t('lbl_handtekening')}</div>
       </div>
       <div class="sign-block">
         <div style="font-size:8pt;font-weight:bold;text-transform:uppercase;color:#888;letter-spacing:0.05em">Datum ontvangst</div>
@@ -258,7 +259,7 @@ function buildFactuurBody(
   const metaItems = [
     {label:'Factuurnummer', val: factuurnummer},
     {label:'Factuurdatum', val: factuurdatum},
-    {label:`Vervaldatum (${betalingstermijn} dgn)`, val: vervalDatum},
+    {label:t('lbl_vervaldatum').replace('{n}', String(betalingstermijn)), val: vervalDatum},
     leveringsdatum ? {label:'Leverdatum', val: leveringsdatum} : null,
     orderRef ? {label:'Order', val: orderRef} : null,
   ].filter(Boolean) as {label:string,val:string}[]
@@ -267,7 +268,7 @@ function buildFactuurBody(
     <div class="hdr">
       ${breweryBlock(brewery, appName, factuurLogo)}
       <div class="hdr-right">
-        <div class="doc-title">FACTUUR</div>
+        <div class="doc-title">${t('lbl_factuur_titel')}</div>
         <div class="doc-nr">${factuurnummer}</div>
         ${factuur.status === 'betaald' ? '<div style="margin-top:2mm"><span class="badge badge-green">✓ Betaald</span></div>' : ''}
       </div>
@@ -278,7 +279,7 @@ function buildFactuurBody(
     </div>
 
     <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">Factuuradres</div>
+      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_factuuradres')}</div>
       ${klantBlock(order)}
     </div>
 
@@ -316,14 +317,14 @@ function buildFactuurBody(
 
     <div class="totals">
       <table>
-        <tr><td>Subtotaal excl. BTW</td><td class="r">${fmtEuro(netto)}</td></tr>
+        <tr><td>${t('lbl_subtotaal_excl')}</td><td class="r">${fmtEuro(netto)}</td></tr>
         <tr><td>BTW</td><td class="r">${fmtEuro(btw)}</td></tr>
-        <tr class="grand-total"><td>Totaal incl. BTW</td><td class="r">${fmtEuro(bruto)}</td></tr>
+        <tr class="grand-total"><td>${t('lbl_totaal_incl')}</td><td class="r">${fmtEuro(bruto)}</td></tr>
       </table>
     </div>
 
     <div class="pay-block">
-      <div class="pay-title">Betaalinformatie</div>
+      <div class="pay-title">${t('lbl_betaalinformatie')}</div>
       ${brewery?.iban ? `<div>IBAN: <strong>${brewery.iban}</strong>${naam ? ` &nbsp;t.n.v. ${naam}` : ''}</div>` : ''}
       <div>Bedrag: <strong>${fmtEuro(bruto)}</strong> &nbsp;·&nbsp; Vervaldatum: <strong>${vervalDatum}</strong></div>
       <div>o.v.v. factuurnummer <strong>${factuurnummer}</strong></div>

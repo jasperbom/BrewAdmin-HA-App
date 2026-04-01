@@ -275,6 +275,26 @@ Key names are alphanumeric + underscore only (enforced by server). Common keys:
 
 ## Internationalization
 
+### i18n — Verbod op hardcoded tekst (verplicht)
+
+**NOOIT hardcoded gebruikersgerichte tekst schrijven.** Elke zin, label, knoptekst,
+foutmelding, placeholder, tooltip, confirm/alert-dialoog en template-string die de
+gebruiker ziet MOET via `t('sleutel')` gaan. Dit geldt ook voor:
+
+- `alert(...)` en `confirm(...)` calls
+- `title="..."` en `placeholder="..."` attributen
+- Template literals: `Maximaal ${n} stuks` → `t('...').replace('{n}', n)`
+- Fallback-strings: `|| 'Onbekend'` → `|| t('lbl_onbekend')`
+- HTML-strings voor print/PDF (PakbonExport.tsx)
+- Foutmeldingen in state: `setMsg('Fout opgetreden')` → `setMsg(t('...'))`
+
+**Uitzonderingen (geen t() nodig):**
+- DATA-waarden die als identifier opgeslagen worden (`eenheid: 'stuks'`, `status: 'Brouwen'`)
+- Code-comments
+- Interne log-berichten die nooit getoond worden aan de gebruiker
+
+Bij elke nieuwe sleutel: voeg toe aan **alle 5** taalbestanden (nl/en/de/fr/es).
+
 - Translation files: `src/i18n/{nl,en,de,fr,es}.json`
 - Access via `t('key')` function from `src/i18n/index.ts`
 - Fallback chain: requested lang → Dutch → key name

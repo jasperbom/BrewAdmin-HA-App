@@ -80,7 +80,7 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string): Promise<an
       }
       messages = [{role: 'user', content: `${CLAUDE_FACTUUR_META_PROMPT}\n\nFactuurtekst:\n${text.slice(0, 8000)}`}]
     } else {
-      if (!claudeApiKey) throw new Error('Dit is een gescande PDF zonder leesbare tekst. Claude AI is nodig om afbeeldingen te lezen (Instellingen → Claude AI).')
+      if (!claudeApiKey) throw new Error(t('err_pdf_no_text'))
       const b64 = await fileToBase64(file)
       messages = [{role: 'user', content: [
         {type: 'document', source: {type: 'base64', media_type: 'application/pdf', data: b64}},
@@ -88,7 +88,7 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string): Promise<an
       ]}]
     }
   } else {
-    if (!claudeApiKey) throw new Error('Geen Claude API-sleutel ingesteld (Instellingen → Claude AI).')
+    if (!claudeApiKey) throw new Error(t('err_no_claude_key'))
     const b64 = await fileToBase64(file)
     const mt = file.type || 'image/jpeg'
     messages = [{role: 'user', content: [

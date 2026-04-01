@@ -256,7 +256,7 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
       {isZoomed && (
         <button onClick={() => setZoom([0,1])}
           className="absolute top-1 right-1 z-10 text-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 px-2 py-0.5 rounded shadow-sm transition-colors">
-          Zoom reset
+          {t('btn_zoom_reset')}
         </button>
       )}
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
@@ -341,7 +341,7 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
 
         {/* Zoom hint */}
         {!isZoomed && sorted.length>=3 && (
-          <text x={PAD.l+CW} y={PAD.t+10} textAnchor="end" fontSize="8" fill="#d1d5db">scroll = zoom · sleep = verschuiven</text>
+          <text x={PAD.l+CW} y={PAD.t+10} textAnchor="end" fontSize="8" fill="#d1d5db">{t('chart_hint')}</text>
         )}
       </svg>
     </div>
@@ -356,9 +356,9 @@ class BatchErrorBoundary extends React.Component<{children: React.ReactNode}, {e
   render() {
     if (this.state.error) return (
       <div className="bg-red-50 rounded-xl p-4 text-sm border border-red-200">
-        <div className="font-medium text-red-700">Er is een fout opgetreden bij het laden van de batchdetails.</div>
+        <div className="font-medium text-red-700">{t('err_batch_loading')}</div>
         <div className="mt-1 text-xs text-red-500 font-mono">{this.state.error}</div>
-        <button onClick={() => this.setState({error:null})} className="mt-2 text-xs text-red-600 underline hover:text-red-800">Probeer opnieuw</button>
+        <button onClick={() => this.setState({error:null})} className="mt-2 text-xs text-red-600 underline hover:text-red-800">{t('btn_retry')}</button>
       </div>
     )
     return this.props.children
@@ -367,7 +367,7 @@ class BatchErrorBoundary extends React.Component<{children: React.ReactNode}, {e
 
 function openPrint(html: string): void {
   const w = window.open('', '_blank', 'width=900,height=700')
-  if (!w) { alert('Pop-up geblokkeerd — sta pop-ups toe voor deze pagina.'); return }
+  if (!w) { alert(t('err_popup_blocked')); return }
   w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>Batch</title><style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; }
@@ -488,7 +488,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (b.maischprofiel?.length) {
       html += `<h2>Maischprofiel</h2><table><tr><th>Stap</th><th class="r">Temp (°C)</th><th class="r">Tijd (min)</th><th class="r">Opwarmen (min)</th></tr>`
       b.maischprofiel.forEach((s: any, i: number) => {
-        html += `<tr><td>${s.naam||s.type||`Stap ${i+1}`}</td><td class="r">${s.temp||'—'}</td><td class="r">${s.tijd||'—'}</td><td class="r">${s.rampTijd||'—'}</td></tr>`
+        html += `<tr><td>${s.naam||s.type||t('lbl_stap_n').replace('{n}', String(i+1))}</td><td class="r">${s.temp||'—'}</td><td class="r">${s.tijd||'—'}</td><td class="r">${s.rampTijd||'—'}</td></tr>`
       })
       html += `</table>`
     }
@@ -496,7 +496,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (b.vergistingsprofiel?.length) {
       html += `<h2>Vergistingsprofiel</h2><table><tr><th>Stap</th><th class="r">Temp (°C)</th><th class="r">Tijd (d)</th><th class="r">Ramp (u)</th></tr>`
       b.vergistingsprofiel.forEach((s: any, i: number) => {
-        html += `<tr><td>${s.type||`Stap ${i+1}`}</td><td class="r">${s.temp||'—'}</td><td class="r">${s.tijd||'—'}</td><td class="r">${s.ramp||'—'}</td></tr>`
+        html += `<tr><td>${s.type||t('lbl_stap_n').replace('{n}', String(i+1))}</td><td class="r">${s.temp||'—'}</td><td class="r">${s.tijd||'—'}</td><td class="r">${s.ramp||'—'}</td></tr>`
       })
       html += `</table>`
     }
@@ -576,7 +576,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const runBfSync = async () => {
     if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
-      setBfMsg('⚠ Geen Brewfather credentials ingesteld')
+      setBfMsg(t('err_bf_no_credentials'))
       return
     }
     setBfSyncing(true); setBfMsg('')
@@ -634,10 +634,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         }
         return next
       })
-      setBfMsg(`✓ Gesynchroniseerd — ${added} nieuw, ${updated} bijgewerkt`)
+      setBfMsg(t('msg_bf_sync_success').replace('{n}', String(added)).replace('{m}', String(updated)))
       if (bfSync) bfSync()
     } catch(e: any) {
-      setBfMsg('⚠ Sync mislukt: ' + (e.message||String(e)))
+      setBfMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e)))
     }
     setBfSyncing(false)
   }
@@ -1042,7 +1042,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <tbody>
                           {selB.maischprofiel.map((s: any, i: number) => (
                             <tr key={i} className="border-b border-gray-100 last:border-0">
-                              <td className="py-1 text-gray-700">{s.naam || s.type || `Stap ${i+1}`}</td>
+                              <td className="py-1 text-gray-700">{s.naam || s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
                               <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
                               <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
                               <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
@@ -1067,7 +1067,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <tbody>
                           {selB.vergistingsprofiel.map((s: any, i: number) => (
                             <tr key={i} className="border-b border-gray-100 last:border-0">
-                              <td className="py-1 text-gray-700">{s.type || `Stap ${i+1}`}</td>
+                              <td className="py-1 text-gray-700">{s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
                               <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
                               <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
                               <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
@@ -1468,7 +1468,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                     {ingLots.map((l: any) => {
                                       const avBi = convertEenheid(Number(l.hoeveelheid||0), l.eenheid, x.eenheid) ?? Number(l.hoeveelheid||0)
                                       const ok = avBi >= Number(x.hoeveelheid||0) - 0.001
-                                      const thtStr = l.houdbaarheid ? ` · THT ${l.houdbaarheid}` : ''
+                                      const thtStr = l.houdbaarheid ? ` · ${t('lbl_tht')} ${l.houdbaarheid}` : ''
                                       return <option key={l.id} value={l.id}>{ok?'':'⚠ '}{l.lotnummer||'—'} ({r3(avBi)} {x.eenheid}{thtStr})</option>
                                     })}
                                   </select>
@@ -1551,7 +1551,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             ? lots.filter((l: any)=>l.ingredient_id===Number(iForm.ingredient_id)&&l.beschikbaar)
                             : lots.filter((l: any)=>l.beschikbaar)
                           )].sort(fefoSort).map((l: any) => {
-                            const thtStr = l.houdbaarheid ? ` · THT ${l.houdbaarheid}` : ''
+                            const thtStr = l.houdbaarheid ? ` · ${t('lbl_tht')} ${l.houdbaarheid}` : ''
                             return <option key={l.id} value={l.id}>{l.lotnummer||'—'} ({l.hoeveelheid}{l.eenheid}{thtStr})</option>
                           })}
                         </select>

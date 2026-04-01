@@ -240,7 +240,7 @@ const IngredientenPage: React.FC<Props> = ({
   const deleteIng = () => {
     if (!selIng) return
     if (activeLots(sel!).length > 0) { alert('Kan niet verwijderen: er zijn nog actieve lots.'); return }
-    if (!confirm(`Ingrediënt "${selIng.naam}" en alle bijbehorende lots verwijderen?`)) return
+    if (!confirm(t('confirm_delete_ingredient').replace('{naam}', selIng.naam))) return
     setIng((prev: any[]) => prev.filter((i: any) => i.id !== sel))
     setLots((prev: any[]) => prev.filter((l: any) => l.ingredient_id !== sel))
     setSel(null)
@@ -611,7 +611,7 @@ const IngredientenPage: React.FC<Props> = ({
               </div>
               <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase mb-1.5">{t('ing_used_in_batches')}</div>
-                {gebruiktIn.length === 0 ? <p className="text-gray-400 text-xs italic">{t('ing_not_used')}</p> : <div className="space-y-1">{gebruiktIn.map((u: any, i: number) => <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5"><span className="font-medium">{u.batch?.naam || 'Onbekende batch'}{u.batch?.batch_nummer ? ` #${u.batch.batch_nummer}` : ''}</span><span className="font-mono text-gray-600 text-xs">{u.hoeveelheid} {u.eenheid}</span></div>)}</div>}
+                {gebruiktIn.length === 0 ? <p className="text-gray-400 text-xs italic">{t('ing_not_used')}</p> : <div className="space-y-1">{gebruiktIn.map((u: any, i: number) => <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5"><span className="font-medium">{u.batch?.naam || t('lbl_onbekend')}{u.batch?.batch_nummer ? ` #${u.batch.batch_nummer}` : ''}</span><span className="font-mono text-gray-600 text-xs">{u.hoeveelheid} {u.eenheid}</span></div>)}</div>}
               </div>
               {!isArchief && (
                 <div className="border-t pt-3">

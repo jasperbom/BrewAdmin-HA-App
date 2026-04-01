@@ -101,6 +101,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [boekingTxIndex, setBoekingTxIndex] = React.useState<number|null>(null)
   const emptyBoekingForm = () => ({omschrijving: '', categorie: '', btw_pct: '21'})
   const [boekingForm, setBoekingForm] = React.useState<any>(emptyBoekingForm())
+  const [boekingInitialData, setBoekingInitialData] = React.useState<any>(null)
 
   // Unieke sleutel per transactie voor persistente koppeling-geheugen
   const txKey = (tx: any): string => {
@@ -843,6 +844,39 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setBoekingForm(emptyBoekingForm())
   }
 
+  const saveBoekingFactuur = ({factuurForm, vrijeRegels, bijlage}: any) => {
+    const txIdx = boekingTxIndex
+    if (txIdx === null) return
+    const tx = bankTransacties[txIdx]
+    if (!tx) return
+    const regels: any[] = (vrijeRegels||[]).map((r: any) => {
+      const netto = parseFloat(r.netto)||0
+      const btw_tarief = Number(r.btw_tarief)||0
+      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2)}
+    })
+    if (!regels.length) return
+    const totaal_netto = regels.reduce((s: any, r: any) => s+r.netto, 0)
+    const totaal_btw = regels.reduce((s: any, r: any) => s+r.btw_bedrag, 0)
+    const totaal_bruto = totaal_netto + totaal_btw
+    const factuur: any = {
+      id: newId(inkoopFacturen||[]),
+      status: 'betaald',
+      datum: factuurForm?.datum || tx.datum,
+      leverancier: factuurForm?.leverancier || tx.tegenpartij || '',
+      factuurnummer: factuurForm?.factuur || '',
+      regels,
+      totaal_netto,
+      totaal_btw,
+      totaal_bruto,
+      bijlage: bijlage || null,
+    }
+    setInkoopFacturen((prev: any[]) => [...(prev||[]), factuur])
+    koppelBankTransactie(txIdx, factuur.id, 'inkoop')
+    setBoekingTxIndex(null)
+    setBoekingInitialData(null)
+    setBoekingForm(emptyBoekingForm())
+  }
+
   // ── Klanten CRUD ──────────────────────────────────────────────────────────
   const saveKlant = () => {
     const form = {...klantForm, betalingstermijn: klantForm.betalingstermijn ? Number(klantForm.betalingstermijn) : undefined}
@@ -1566,7 +1600,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 </button>
                               )}
                               {!tx.gekoppeldFactuurId && (
-                                <button onClick={()=>{ setBoekingTxIndex(i); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
+                                <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                   className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   + {t('btn_nieuwe_boeking')}
                                 </button>
@@ -1588,7 +1622,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 </button>
                               )}
                               {!tx.gekoppeldInkoopId && (
-                                <button onClick={()=>{ setBoekingTxIndex(i); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
+                                <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                   className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   + {t('btn_nieuwe_boeking')}
                                 </button>
@@ -1606,57 +1640,20 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         </div>
 
         {/* Nieuwe boeking modal */}
-        {boekingTxIndex !== null && (() => {
-          const tx = bankTransacties[boekingTxIndex]
-          if (!tx) return null
-          const isUitgave = tx.type === 'D'
-          return (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800">{t('title_nieuwe_boeking')}</h3>
-                  <button onClick={()=>setBoekingTxIndex(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
-                </div>
-                <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm flex gap-4 text-gray-600">
-                  <span className="text-gray-500">{tx.datum}</span>
-                  <span className={`font-semibold ${isUitgave?'text-red-600':'text-green-600'}`}>{isUitgave?'-':'+'}{fmt(tx.bedrag)}</span>
-                  {tx.tegenpartij && <span className="truncate">{tx.tegenpartij}</span>}
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_boeking_omschrijving')}</label>
-                  <input type="text" value={boekingForm.omschrijving}
-                    onChange={e=>setBoekingForm((f: any)=>({...f,omschrijving:e.target.value}))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_boeking_categorie')}</label>
-                  <input type="text" value={boekingForm.categorie}
-                    onChange={e=>setBoekingForm((f: any)=>({...f,categorie:e.target.value}))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_btw')}</label>
-                  <select value={boekingForm.btw_pct} onChange={e=>setBoekingForm((f: any)=>({...f,btw_pct:e.target.value}))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none">
-                    <option value="0">0%</option>
-                    <option value="9">9%</option>
-                    <option value="21">21%</option>
-                  </select>
-                </div>
-                <div className="flex justify-end gap-2 pt-2 border-t">
-                  <button onClick={()=>setBoekingTxIndex(null)}
-                    className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
-                    {t('btn_cancel')}
-                  </button>
-                  <button onClick={saveNieuweBoeking} disabled={!boekingForm.omschrijving.trim()}
-                    className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
-                    {t('btn_save')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
+        {boekingTxIndex !== null && boekingInitialData && (
+          <InkoopFactuurModal
+            knownLeveranciers={knownLeveranciers}
+            ing={ing}
+            onderdelen={onderdelen}
+            initialTab="vrije"
+            initialData={boekingInitialData}
+            onSave={saveBoekingFactuur}
+            onClose={()=>{ setBoekingTxIndex(null); setBoekingInitialData(null); setBoekingForm(emptyBoekingForm()) }}
+            claudeCreds={claudeCreds}
+            ingTypes={ingTypes}
+            ingTypeBtw={ingTypeBtw}
+          />
+        )}
       </>)}
 
       {/* ══════════════════════ RAPPORTEN ══════════════════════ */}

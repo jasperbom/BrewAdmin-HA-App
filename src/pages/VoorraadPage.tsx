@@ -91,7 +91,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
     const b = getBatch(u.batch_id)
     setArchief((prev: any[]) => [...(prev||[]), {
       ...u,
-      batch_naam: b?.naam || 'Onbekend',
+      batch_naam: b?.naam || t('lbl_onbekend'),
       batch_nummer: b?.batch_nummer || '',
       archiveer_datum: tod(),
     }])
@@ -242,13 +242,13 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
       <div className="space-y-6">
         {(() => {
           const beerNames = [...new Set(
-            visibleUit.map((u: any) => getBatch(u.batch_id)?.naam || 'Onbekend')
+            visibleUit.map((u: any) => getBatch(u.batch_id)?.naam || t('lbl_onbekend'))
           )] as string[]
 
           return beerNames.map(beerName => {
             const beerBatchIds = [...new Set(
               visibleUit
-                .filter((u: any) => (getBatch(u.batch_id)?.naam || 'Onbekend') === beerName)
+                .filter((u: any) => (getBatch(u.batch_id)?.naam || t('lbl_onbekend')) === beerName)
                 .map((u: any) => u.batch_id)
             )] as number[]
             const beerRows = visibleUit.filter((u: any) => beerBatchIds.includes(u.batch_id))
@@ -370,7 +370,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
       </div>
 
       {artModal && (
-        <Modal title={`Artikelstamgegevens — ${artModal.biernaam} · ${artModal.verpakking_type}`} onClose={()=>setArtModal(null)}>
+        <Modal title={t('title_artikel_stamgegevens').replace('{bier}', artModal.biernaam).replace('{verpakking}', artModal.verpakking_type)} onClose={()=>setArtModal(null)}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -390,7 +390,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('stock_article_vat')}</label>
                 <Sel value={artForm.btw} onChange={(v: string)=>setArtForm((f: any)=>({...f,btw:v}))}
-                  opts={[{v:'0',l:'0% — vrijgesteld'},{v:'9',l:'9% — laag'},{v:'21',l:'21% — hoog'}]} />
+                  opts={[{v:'0',l:t('btw_vrijgesteld')},{v:'9',l:t('btw_laag')},{v:'21',l:t('btw_hoog')}]} />
               </div>
             </div>
             <div>

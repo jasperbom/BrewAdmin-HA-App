@@ -551,12 +551,12 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-500">
                                       {a.tht
                                         ? <span className={thtExp ? 'text-red-600 font-semibold' : thtSoon ? 'text-yellow-600 font-medium' : 'text-gray-500'}>
-                                            THT: <strong>{fmtD(a.tht)}</strong>
+                                            {t('lbl_tht')}: <strong>{fmtD(a.tht)}</strong>
                                             {thtExp ? ` ${t('msg_tht_verlopen')}` : thtSoon ? ` (${thtDays}d)` : ''}
                                           </span>
-                                        : <span className="text-gray-400">THT: —</span>
+                                        : <span className="text-gray-400">{t('lbl_tht')}: —</span>
                                       }
-                                      <span className="text-gray-400">{Number(a.inhoud_per_eenheid||0).toFixed(1)} L/stuk</span>
+                                      <span className="text-gray-400">{Number(a.inhoud_per_eenheid||0).toFixed(1)} {t('lbl_liter_per_stuk')}</span>
                                     </div>
                                     {/* Regel 2: aantallen */}
                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
@@ -574,7 +574,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
                                       onClick={e => openAfboekModal(a, e)}
                                       className="flex-shrink-0 text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap mt-0.5"
                                       title={t('title_afboeken_modal').replace('{verpakking}', a.verpakking_naam || a.verpakking_type || '')}>
-                                      − Afboeken
+                                      − {t('btn_afboeken')}
                                     </button>
                                   )}
                                 </div>
@@ -613,7 +613,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4">
               <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
-              {afboekModal.tht && <span>{t('lbl_tht')} <strong>{fmtD(afboekModal.tht)}</strong></span>}
+              {afboekModal.tht && <span>{t('lbl_tht')}: <strong>{fmtD(afboekModal.tht)}</strong></span>}
               {afboekModal.datum && <span>{t('lbl_afgevuld_op')} <strong>{fmtD(afboekModal.datum)}</strong></span>}
             </div>
 
@@ -684,7 +684,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('stock_article_vat')}</label>
                 <Sel value={artForm.btw} onChange={(v: string) => setArtForm((f: any) => ({...f, btw: v}))}
-                  opts={[{v:'0',l:'0% — vrijgesteld'},{v:'9',l:'9% — laag'},{v:'21',l:'21% — hoog'}]} />
+                  opts={[{v:'0',l:t('btw_vrijgesteld')},{v:'9',l:t('btw_laag')},{v:'21',l:t('btw_hoog')}]} />
               </div>
             </div>
             <div>
