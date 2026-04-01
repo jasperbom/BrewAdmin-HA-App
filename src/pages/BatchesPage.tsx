@@ -519,7 +519,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     html += `</table>`
 
     if (metingen.length > 0) {
-      html += `<h2>Gistmetingen (${metingen.length})</h2><table><tr><th>Datum/tijd</th><th class="r">SG</th><th class="r">pH</th><th class="r">°C</th><th>Opmerking</th></tr>`
+      html += `<h2>${t('batch_gist_export_header')} (${metingen.length})</h2><table><tr><th>${t('batch_gist_date_time')}</th><th class="r">SG</th><th class="r">pH</th><th class="r">°C</th><th>${t('batch_gist_remark')}</th></tr>`
       metingen.forEach((m: any) => {
         html += `<tr><td>${m.datum||''}${m.tijd?' '+m.tijd:''}</td><td class="r">${m.sg!=null?m.sg.toFixed(3):'—'}</td><td class="r">${m.ph!=null?m.ph.toFixed(1):'—'}</td><td class="r">${m.temp!=null?m.temp+'°':'—'}</td><td>${m.opmerking||''}</td></tr>`
       })
@@ -1194,9 +1194,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     onClick={() => setGrafiekOpen((p: any) => ({...p, [selB.id]: !isOpen}))}>
                     <div className="flex items-center gap-2">
                       <span className="text-gray-400 text-xs">{isOpen ? '▼' : '▶'}</span>
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Gistgrafiek</span>
-                      {selB.status === 'Vergisten' && <span className="text-xs text-green-500 font-medium">● actief</span>}
-                      {batchMetingen.length > 0 && <span className="text-xs text-gray-400">({batchMetingen.length} metingen)</span>}
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">{t('batch_gist_chart')}</span>
+                      {selB.status === 'Vergisten' && <span className="text-xs text-green-500 font-medium">{t('batch_gist_active')}</span>}
+                      {batchMetingen.length > 0 && <span className="text-xs text-gray-400">({batchMetingen.length} {t('batch_gist_measurements')})</span>}
                     </div>
                   </div>
 
@@ -1226,7 +1226,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           {haSyncing ? '…' : '🌡 HA'}
                         </Btn>
                       )}
-                      <Btn s="sm" onClick={addMeting}>+ Meting</Btn>
+                      <Btn s="sm" onClick={addMeting}>{t('batch_gist_add')}</Btn>
                     </div>
                   )}
 
@@ -1235,8 +1235,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       {batchMetingen.length < 2 ? (
                         <div className="text-center text-gray-400 text-sm py-6">
                           {batchMetingen.length === 0
-                            ? 'Voeg metingen toe via de invoerbar hierboven.'
-                            : 'Voeg minimaal 2 metingen toe om de grafiek te tonen.'}
+                            ? t('batch_gist_no_measurements')
+                            : t('batch_gist_min_2')}
                         </div>
                       ) : (
                         <FermentatieGrafiek metingen={batchMetingen} />
@@ -1247,13 +1247,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           <div className="flex items-center justify-between cursor-pointer select-none py-1.5 border-t mt-2"
                             onClick={() => setMetingLogIngeklapt((v: boolean) => !v)}>
                             <span className="text-xs font-medium text-gray-500">
-                              {metingLogIngeklapt ? '▶' : '▼'} Metingen ({batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).length})
+                              {metingLogIngeklapt ? '▶' : '▼'} {t('batch_gist_log')} ({batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).length})
                             </span>
                             <button
                               onClick={(e) => { e.stopPropagation(); setToonAutoMetingen((v: boolean) => !v) }}
                               className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${toonAutoMetingen ? 'bg-blue-50 border-blue-300 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}
                             >
-                              {toonAutoMetingen ? 'Automatisch verbergen' : 'Automatisch tonen'}
+                              {toonAutoMetingen ? t('batch_gist_auto_hide') : t('batch_gist_auto_show')}
                             </button>
                           </div>
                           {!metingLogIngeklapt && (
@@ -1261,11 +1261,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               <table className="w-full text-xs">
                                 <thead className="bg-gray-50 text-gray-500 border-b">
                                   <tr>
-                                    <th className="px-2 py-1.5 text-left font-medium">Datum/tijd</th>
+                                    <th className="px-2 py-1.5 text-left font-medium">{t('batch_gist_date_time')}</th>
                                     <th className="px-2 py-1.5 text-right font-medium text-amber-600">SG</th>
                                     <th className="px-2 py-1.5 text-right font-medium text-blue-600">pH</th>
                                     <th className="px-2 py-1.5 text-right font-medium text-red-500">°C</th>
-                                    <th className="px-2 py-1.5 text-left font-medium text-gray-400">Opmerking</th>
+                                    <th className="px-2 py-1.5 text-left font-medium text-gray-400">{t('batch_gist_remark')}</th>
                                     <th className="px-2 py-1.5"></th>
                                   </tr>
                                 </thead>
