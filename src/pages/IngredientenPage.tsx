@@ -221,7 +221,7 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const openVTEdit = (v: any) => {
-    setVtForm({ naam: v.naam, inhoud_liter: String(v.inhoud_liter || ''), type: v.type || '', onderdelen: v.onderdelen || [] })
+    setVtForm({ naam: v.naam, inhoud_liter: String(v.inhoud_liter || ''), type: v.type || '', onderdelen: Array.isArray(v.onderdelen) ? v.onderdelen : [] })
     setShowVEdit(v); setShowVTAdd(true)
   }
 
@@ -748,9 +748,9 @@ const IngredientenPage: React.FC<Props> = ({
             </div>
             <div className="border-t pt-3">
               <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_components')}</p>
-              {vtForm.onderdelen.length > 0 && (
+              {(Array.isArray(vtForm.onderdelen) ? vtForm.onderdelen : []).length > 0 && (
                 <div className="mb-3 space-y-1">
-                  {vtForm.onderdelen.map((o: any, i: number) => {
+                  {(Array.isArray(vtForm.onderdelen) ? vtForm.onderdelen : []).map((o: any, i: number) => {
                     const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
                     return <div key={i} className="flex items-center gap-2 text-sm bg-gray-50 rounded px-2 py-1"><span className="flex-1">{o.aantal}× {od?.naam || '?'}</span><button onClick={() => setVtForm(f => ({ ...f, onderdelen: f.onderdelen.filter((_: any, j: number) => j !== i) }))} className="text-red-400 hover:text-red-600 text-xs">✕</button></div>
                   })}
