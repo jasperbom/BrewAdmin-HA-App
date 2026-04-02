@@ -33,3 +33,6 @@ html{scrollbar-gutter:stable;}
 .t-checkbox{accent-color:var(--t-accent);}
 .peer:checked~.t-toggle{background-color:var(--t-accent)!important;}
 .t-icon-hover:hover{color:var(--t-accent);}
+.wc-btn{background-color:#7f54b3;color:#fff;}
+.wc-btn:hover:not(:disabled){background-color:#6d4499;}
+.wc-btn:active:not(:disabled){background-color:#5c3a82;}

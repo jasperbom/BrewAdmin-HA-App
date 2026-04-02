@@ -644,7 +644,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button onClick={saveWc} className="px-4 py-2 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors">{t('btn_save')}</button>
+            <button onClick={saveWc} className="wc-btn px-4 py-2 rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
             <button onClick={testWc} disabled={wcTesting||!wcForm.storeUrl||!wcForm.consumerKey||!wcForm.consumerSecret}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-40">
               {wcTesting ? t('btn_testing') : t('btn_test_connection')}

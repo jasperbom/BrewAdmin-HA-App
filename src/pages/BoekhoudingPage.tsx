@@ -1567,7 +1567,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             <div className="flex items-center gap-2">
               <p className="text-xs text-gray-400 italic hidden sm:block">{t('msg_bank_sessie_hint')}</p>
               <button onClick={()=>{ setKapitaalTxIndex(null); setKapitaalForm(emptyKapitaalForm()); setShowKapitaalModal(true) }}
-                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
                 + {t('btn_kapitaalstorting')}
               </button>
               <button onClick={()=>bankFileRef.current?.click()}
