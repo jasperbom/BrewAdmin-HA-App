@@ -1568,7 +1568,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               <p className="text-xs text-gray-400 italic hidden sm:block">{t('msg_bank_sessie_hint')}</p>
               <button onClick={()=>{ setKapitaalTxIndex(null); setKapitaalForm(emptyKapitaalForm()); setShowKapitaalModal(true) }}
                 className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
-                + {t('btn_kapitaalstorting')}
+                {t('btn_kapitaalstorting')}
               </button>
               <button onClick={()=>bankFileRef.current?.click()}
                 className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
@@ -1651,7 +1651,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                   </button>
                                   <button onClick={()=>{ setKapitaalTxIndex(i); setKapitaalForm({datum: tx.datum, omschrijving: tx.omschrijving||tx.tegenpartij||'', bedrag: String(tx.bedrag), type: 'storting', eigenaar: tx.tegenpartij||''}); setShowKapitaalModal(true) }}
                                     className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
-                                    + {t('btn_kapitaalstorting')}
+                                    {t('btn_kapitaalstorting')}
                                   </button>
                                 </>
                               )}
@@ -1777,7 +1777,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
             <div className="ml-auto flex items-end">
               <button onClick={exportAllesZip}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-800 text-white hover:bg-gray-700 transition-colors">
+                className="px-3 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors">
                 {t('btn_alles_exporteren')}
               </button>
             </div>
