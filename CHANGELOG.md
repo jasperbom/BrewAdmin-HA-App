@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.7.0] — 2026-03-31
+
+### Added
+- **Transactieoverzicht** — nieuw 4e sub-tabblad in Rapporten (Boekhouding) met een chronologisch overzicht van alle inkoop-, verkoop- en accijnsmutaties per dagboek; gefilterd op de ingestelde rapportageperiode; CSV-export en kleurgecodeerde dagboekbadges
+- **Alles exporteren als ZIP** — knop in de datumfilter-balk van Rapporten downloadt alle CSV's (W&V, omzet per categorie, inkoop, verkoop, transactieoverzicht) plus HTML-versies van verkoopfacturen en originele inkoop­bijlagen in één ZIP-bestand
+- **JSON back-up export/import** — vervangt de Excel import/export in Instellingen → App; exporteert een volledig `brewadmin_backup_YYYY-MM-DD.json` met alle app-data (batches, ingrediënten, lots, recepten, facturen, bestellingen, klanten, instellingen, enz.); importeer een back-upbestand om alle data te herstellen
+- **MT940 .swi bestandsformaat** — bankafschriften met de extensie `.swi` (ING/SWIFT) worden nu herkend en geïmporteerd; ook `.940` en `.swift` toegevoegd naast de bestaande `.sta`, `.txt` en `.mt940`
+- **PDF bestandsnaam** — gedownloade factuur-PDF's en pakbonnen gebruiken nu het factuur-/pakbonnummer als bestandsnaam in plaats van een timestamp
+
+### Changed
+- **Verkoopfacturen als HTML in ZIP** — factuur-HTML kan in de browser worden geopend en via Afdrukken → PDF worden opgeslagen
+- Verwijder push-voorraad knop van de VoorraadPage (was duplicaat van WC sync)
+- BF JSON-importknop verwijderd van Batches-pagina (Brewfather-sync via API volstaat)
+- Losse verkoopfactuur (niet gekoppeld aan bestelling) toegevoegd in Boekhouding
+
+### Fixed
+- WC pull-knop kleur gecorrigeerd (bg-purple-600)
+- Accijnsrijen in Transactieoverzicht worden alleen getoond bij `betaald = true` (afdracht)
+- Diverse responsive verbeteringen op kleine schermen
+
+---
+
 ## [1.6.4] — 2026-03-30
 
 ### Changed

@@ -151,7 +151,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
                           <option value="">{t('batch_filling_select_ph')}</option>
                           {verpakkingen.map((vp: any) => (
                             <option key={vp.id} value={vp.id} disabled={vpVoorraadA(vp)===0}>
-                              {vp.naam} — {vpVoorraadA(vp)} stuks
+                              {vp.naam} — {vpVoorraadA(vp)} {t('unit_stuks')}
                             </option>
                           ))}
                         </select>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { wcGet, wcPut } from '../utils/api'
+import { wcGet } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -91,7 +91,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
     const b = getBatch(u.batch_id)
     setArchief((prev: any[]) => [...(prev||[]), {
       ...u,
-      batch_naam: b?.naam || 'Onbekend',
+      batch_naam: b?.naam || t('lbl_onbekend'),
       batch_nummer: b?.batch_nummer || '',
       archiveer_datum: tod(),
     }])
@@ -103,36 +103,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
     setWcSyncLog((prev: any[]) => [entry, ...(prev||[])].slice(0, 100))
   }
 
-  const wcBeschikbaarVoorArt = (art: any) =>
-    (uit||[])
-      .filter((u: any) => { const b=bat.find((bx: any)=>bx.id===u.batch_id); return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type })
-      .reduce((s: number, u: any) => s + Math.max(0, Number(u.aantal||0) - Number(u.verkocht_stuks||0)), 0)
 
-  const wcPushAll = async () => {
-    if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return }
-    setWcSyncing(true); setWcSyncMsg('')
-    try {
-      let bijgewerkt = 0
-      const combis = (artikelen||[]).filter((a: any) => a.artikelnummer)
-      for (const art of combis) {
-        const beschikbaar = wcBeschikbaarVoorArt(art)
-        addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, '')
-        const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`)
-        if (!prods?.length) continue
-        await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true})
-        bijgewerkt++
-      }
-      setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}))
-      const pushMsg = `${bijgewerkt} product${bijgewerkt!==1?'en':''} bijgewerkt`
-      setWcSyncMsg(`✓ ${pushMsg}`)
-      addWcLog('push', `↑ Push voorraad — ${pushMsg}`, combis.filter((a: any) => a.artikelnummer).map((a: any) => `${a.biernaam} ${a.verpakking_type}: ${wcBeschikbaarVoorArt(a)}×`).join(', '))
-    } catch(e: any) {
-      setWcSyncMsg(`⚠ Push mislukt: ${e.message}`)
-      addWcLog('fout', `↑ Push mislukt — ${e.message}`)
-    }
-    setWcSyncing(false)
-    setTimeout(() => setWcSyncMsg(''), 6000)
-  }
 
   const wcPullSales = async () => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return }
@@ -231,21 +202,16 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           {wcCreds?.enabled && (
             <>
-              <button onClick={wcPushAll} disabled={wcSyncing}
-                title={t('wc_push_stock_title')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
-                {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
-              </button>
               <button onClick={wcPullSales} disabled={wcSyncing}
                 title={t('wc_pull_sales_title')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500 text-white rounded text-sm font-medium hover:bg-purple-600 transition-colors disabled:opacity-40">
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
                 {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_pull_sales')}
               </button>
             </>
           )}
           {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓')?'text-green-600':'text-red-500'}`}>{wcSyncMsg}</span>}
           <Sel value={filterBatch} onChange={setFilterBatch}
-            opts={bat.map((b: any) => ({v:String(b.id),l:b.naam}))} ph={t('stock_filter_all_beers')} cls="w-52" />
+            opts={bat.map((b: any) => ({v:String(b.id),l:b.naam}))} ph={t('stock_filter_all_beers')} cls="w-full sm:w-52" />
         </div>
       </div>
 
@@ -276,13 +242,13 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
       <div className="space-y-6">
         {(() => {
           const beerNames = [...new Set(
-            visibleUit.map((u: any) => getBatch(u.batch_id)?.naam || 'Onbekend')
+            visibleUit.map((u: any) => getBatch(u.batch_id)?.naam || t('lbl_onbekend'))
           )] as string[]
 
           return beerNames.map(beerName => {
             const beerBatchIds = [...new Set(
               visibleUit
-                .filter((u: any) => (getBatch(u.batch_id)?.naam || 'Onbekend') === beerName)
+                .filter((u: any) => (getBatch(u.batch_id)?.naam || t('lbl_onbekend')) === beerName)
                 .map((u: any) => u.batch_id)
             )] as number[]
             const beerRows = visibleUit.filter((u: any) => beerBatchIds.includes(u.batch_id))
@@ -404,7 +370,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
       </div>
 
       {artModal && (
-        <Modal title={`Artikelstamgegevens — ${artModal.biernaam} · ${artModal.verpakking_type}`} onClose={()=>setArtModal(null)}>
+        <Modal title={t('title_artikel_stamgegevens').replace('{bier}', artModal.biernaam).replace('{verpakking}', artModal.verpakking_type)} onClose={()=>setArtModal(null)}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -424,7 +390,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('stock_article_vat')}</label>
                 <Sel value={artForm.btw} onChange={(v: string)=>setArtForm((f: any)=>({...f,btw:v}))}
-                  opts={[{v:'0',l:'0% — vrijgesteld'},{v:'9',l:'9% — laag'},{v:'21',l:'21% — hoog'}]} />
+                  opts={[{v:'0',l:t('btw_vrijgesteld')},{v:'9',l:t('btw_laag')},{v:'21',l:t('btw_hoog')}]} />
               </div>
             </div>
             <div>

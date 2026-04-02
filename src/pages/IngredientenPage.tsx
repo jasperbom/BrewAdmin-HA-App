@@ -221,7 +221,7 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const openVTEdit = (v: any) => {
-    setVtForm({ naam: v.naam, inhoud_liter: String(v.inhoud_liter || ''), type: v.type || '', onderdelen: v.onderdelen || [] })
+    setVtForm({ naam: v.naam, inhoud_liter: String(v.inhoud_liter || ''), type: v.type || '', onderdelen: Array.isArray(v.onderdelen) ? v.onderdelen : [] })
     setShowVEdit(v); setShowVTAdd(true)
   }
 
@@ -240,7 +240,7 @@ const IngredientenPage: React.FC<Props> = ({
   const deleteIng = () => {
     if (!selIng) return
     if (activeLots(sel!).length > 0) { alert('Kan niet verwijderen: er zijn nog actieve lots.'); return }
-    if (!confirm(`Ingrediënt "${selIng.naam}" en alle bijbehorende lots verwijderen?`)) return
+    if (!confirm(t('confirm_delete_ingredient').replace('{naam}', selIng.naam))) return
     setIng((prev: any[]) => prev.filter((i: any) => i.id !== sel))
     setLots((prev: any[]) => prev.filter((l: any) => l.ingredient_id !== sel))
     setSel(null)
@@ -611,7 +611,7 @@ const IngredientenPage: React.FC<Props> = ({
               </div>
               <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase mb-1.5">{t('ing_used_in_batches')}</div>
-                {gebruiktIn.length === 0 ? <p className="text-gray-400 text-xs italic">{t('ing_not_used')}</p> : <div className="space-y-1">{gebruiktIn.map((u: any, i: number) => <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5"><span className="font-medium">{u.batch?.naam || 'Onbekende batch'}{u.batch?.batch_nummer ? ` #${u.batch.batch_nummer}` : ''}</span><span className="font-mono text-gray-600 text-xs">{u.hoeveelheid} {u.eenheid}</span></div>)}</div>}
+                {gebruiktIn.length === 0 ? <p className="text-gray-400 text-xs italic">{t('ing_not_used')}</p> : <div className="space-y-1">{gebruiktIn.map((u: any, i: number) => <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5"><span className="font-medium">{u.batch?.naam || t('lbl_onbekend')}{u.batch?.batch_nummer ? ` #${u.batch.batch_nummer}` : ''}</span><span className="font-mono text-gray-600 text-xs">{u.hoeveelheid} {u.eenheid}</span></div>)}</div>}
               </div>
               {!isArchief && (
                 <div className="border-t pt-3">
@@ -661,7 +661,7 @@ const IngredientenPage: React.FC<Props> = ({
       {showVAfboek && (
         <Modal title={`Afboeken: ${showVAfboek.naam}`} onClose={() => setShowVAfboek(null)}>
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">{t('lbl_available')}: <strong>{showVAfboek.voorraad || 0} stuks</strong></p>
+            <p className="text-sm text-gray-600">{t('lbl_available')}: <strong>{showVAfboek.voorraad || 0} {t('unit_stuks')}</strong></p>
             <Inp label={t('packaging_deduct_units')} type="number" value={vAfQty} onChange={setVAfQty} placeholder="0" />
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowVAfboek(null)}>{t('btn_cancel')}</Btn>
@@ -748,9 +748,9 @@ const IngredientenPage: React.FC<Props> = ({
             </div>
             <div className="border-t pt-3">
               <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_components')}</p>
-              {vtForm.onderdelen.length > 0 && (
+              {(Array.isArray(vtForm.onderdelen) ? vtForm.onderdelen : []).length > 0 && (
                 <div className="mb-3 space-y-1">
-                  {vtForm.onderdelen.map((o: any, i: number) => {
+                  {(Array.isArray(vtForm.onderdelen) ? vtForm.onderdelen : []).map((o: any, i: number) => {
                     const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
                     return <div key={i} className="flex items-center gap-2 text-sm bg-gray-50 rounded px-2 py-1"><span className="flex-1">{o.aantal}× {od?.naam || '?'}</span><button onClick={() => setVtForm(f => ({ ...f, onderdelen: f.onderdelen.filter((_: any, j: number) => j !== i) }))} className="text-red-400 hover:text-red-600 text-xs">✕</button></div>
                   })}

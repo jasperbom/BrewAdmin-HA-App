@@ -47,7 +47,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
       const recs = await bfGetRecipes();
       setRecepten(recs);
       setMsg(`✓ ${recs.length} recept${recs.length!==1?'en':''} gesynchroniseerd`);
-    } catch(e: any) { setMsg('⚠ Sync mislukt: '+(e.message||String(e))); }
+    } catch(e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e))); }
     setSyncing(false);
   };
 
@@ -323,7 +323,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
-                  {overallOk?'✓ Klaar om te brouwen':overallRed?'✗ Ingrediënten tekort':overallYel?'⚠ Controleer voorraad':'— Onbekende voorraad'}
+                  {overallOk?t('recept_klaar_brouwen'):overallRed?t('recept_tekort'):overallYel?t('recept_controleer'):t('recept_onbekend_voorraad')}
                 </div>
                 {setPage && setPreNieuwBatch && (
                   <Btn s="sm" v="primary" onClick={() => {
@@ -342,11 +342,11 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                       ],
                     })
                     setPage('batches')
-                  }}>Brouwen</Btn>
+                  }}>{t('btn_brouwen')}</Btn>
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
               {[{l:'Batch',v:selRec.batch_size?`${selRec.batch_size} L`:'—'},
                 {l:'OG',  v:selRec.OG?Number(selRec.OG).toFixed(3):'—'},
                 {l:'FG',  v:selRec.FG?Number(selRec.FG).toFixed(3):'—'},
@@ -365,6 +365,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             {selRec.maischprofiel && selRec.maischprofiel.length > 0 && (
               <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-gray-400 border-b">
@@ -377,7 +378,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                   <tbody>
                     {selRec.maischprofiel.map((s: any, i: number) => (
                       <tr key={i} className="border-b border-gray-100 last:border-0">
-                        <td className="py-1 text-gray-700">{s.naam || s.type || `Stap ${i+1}`}</td>
+                        <td className="py-1 text-gray-700">{s.naam || s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
                         <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
                         <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
                         <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
@@ -385,6 +386,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
             <IngSection titel={t('recipe_section_grains')} items={selRec.mout}/>
@@ -394,6 +396,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-gray-400 border-b">
@@ -406,7 +409,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                   <tbody>
                     {selRec.vergistingsprofiel.map((s: any, i: number) => (
                       <tr key={i} className="border-b border-gray-100 last:border-0">
-                        <td className="py-1 text-gray-700">{s.type || `Stap ${i+1}`}</td>
+                        <td className="py-1 text-gray-700">{s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
                         <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
                         <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
                         <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
@@ -414,6 +417,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
             {selRec.notities&&(
@@ -425,7 +429,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           </div>
         </>):(
           <div className="flex-1 flex items-center justify-center text-gray-300 text-sm py-24 bg-white rounded-xl shadow-card">
-            ← Selecteer een recept
+            {t('msg_select_recept')}
           </div>
         )}
       </div>

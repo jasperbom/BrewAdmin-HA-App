@@ -247,7 +247,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           id: newId([...(bestellingen||[]), ...nieuw]),
           status: 'nieuw',
           datum: (o.date_created||tod()).slice(0, 10),
-          klant_naam: `${o.billing?.first_name||''} ${o.billing?.last_name||''}`.trim() || 'Onbekend',
+          klant_naam: `${o.billing?.first_name||''} ${o.billing?.last_name||''}`.trim() || t('lbl_onbekend'),
           klant_email: o.billing?.email||'',
           klant_straat: o.billing?.address_1||'',
           klant_huisnummer: '',
@@ -262,9 +262,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         imported++
       }
       if (nieuw.length) setBestellingen((prev: any[]) => [...(prev||[]), ...nieuw])
-      setWcMsg(`✓ ${imported} bestelling${imported!==1?'en':''} geïmporteerd`)
+      setWcMsg(t('msg_wc_orders_imported').replace('{n}', String(imported)))
     } catch(e: any) {
-      setWcMsg(`⚠ Import mislukt: ${e.message}`)
+      setWcMsg(t('msg_wc_import_failed').replace('{msg}', e.message))
     }
     setWcImporting(false)
     setTimeout(() => setWcMsg(''), 8000)
@@ -272,8 +272,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // --- Handmatige order opslaan ---
   const saveManualOrder = () => {
-    if (!manualForm.klant_naam.trim()) { alert('Klantnaam is verplicht'); return }
-    if (!manualForm.regels.length) { alert('Voeg minimaal één orderregel toe'); return }
+    if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
+    if (!manualForm.regels.length) { alert(t('err_order_min_lines')); return }
     const nb: any = {
       id: newId(bestellingen||[]),
       status: 'nieuw',
@@ -289,7 +289,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const addRegel = () => {
     if (!regelForm.bier_naam || !regelForm.verpakking_type || !regelForm.aantal) {
-      alert('Bier, verpakking en aantal zijn verplicht'); return
+      alert(t('err_order_line_fields_required')); return
     }
     const artMatch = artikelVoorKeuze(regelForm.bier_naam, regelForm.verpakking_type)
     const regel = {
@@ -795,7 +795,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
                             {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
                             {' · '}{avItem?.verpakking_type}
-                            {' · '}THT: {avItem?.tht ? fmtD(avItem.tht) : '—'}
+                            {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
                             {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · Lot {avBatch.batch_nummer}</span>}
                           </span>
                           <input type="number" min="0" max={maxBeschik}
@@ -840,7 +840,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · THT: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar
+                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar
                               </option>
                             )
                           })}
@@ -848,7 +848,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       </div>
                     )}
                     {resterend > 0 && afvullingen.length === 0 && (
-                      <div className="mt-2 text-xs text-red-500">⚠ Geen beschikbare voorraad gevonden voor {r.bier_naam} {r.verpakking_type}{r.sku ? ` · SKU: ${r.sku}` : ' · geen SKU'}{r.artikel_key ? '' : ' · geen artikel_key'}</div>
+                      <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}{r.artikel_key ? '' : ''}</div>
                     )}
                   </div>
                 )
@@ -865,7 +865,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         {showAnnuleerModal && (
           <Modal title={t('order_cancel')} onClose={() => setShowAnnuleerModal(false)}>
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">Weet je zeker dat je deze bestelling wilt annuleren? Bestaande picks worden vrijgegeven.</p>
+              <p className="text-sm text-gray-600">{t('msg_order_cancel_confirm')}</p>
               <div className="flex justify-end gap-2">
                 <Btn v="secondary" onClick={() => setShowAnnuleerModal(false)}>{t('btn_cancel')}</Btn>
                 <Btn v="danger" onClick={annuleerOrder}>{t('order_cancel')}</Btn>
@@ -965,7 +965,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
       {filtered.length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">
-          {statusFilter === 'alle' ? 'Nog geen bestellingen. Importeer WooCommerce orders of maak handmatig een bestelling aan.' : `Geen bestellingen met status "${statusFilter}".`}
+          {statusFilter === 'alle' ? t('msg_no_orders') : t('msg_no_orders_status').replace('{status}', t(`orders_filter_${statusFilter}`)||statusFilter)}
         </div>
       )}
 
@@ -981,11 +981,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <span className="font-mono text-sm font-semibold text-gray-700">{orderNr}</span>
                 <div>
                   <div className="font-medium text-gray-800">{b.klant_naam}</div>
-                  <div className="text-xs text-gray-500">{fmtD(b.datum)} · {(b.regels||[]).length} regel{(b.regels||[]).length!==1?'s':''}</div>
+                  <div className="text-xs text-gray-500">{fmtD(b.datum)} · {t('lbl_n_regels').replace('{n}', String((b.regels||[]).length))}</div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {picks.length > 0 && <span className="text-xs text-gray-400">{picks.reduce((s: number, p: any) => s+p.aantal,0)} stuks gepickt</span>}
+                {picks.length > 0 && <span className="text-xs text-gray-400">{t('msg_stuks_gepickt').replace('{n}', String(picks.reduce((s: number, p: any) => s+p.aantal,0)))}</span>}
                 <span className="font-semibold text-gray-800">{fmt(totaal)}</span>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status]||'bg-gray-100'}`}>
                   {t(`orders_status_${b.status}`)||b.status}
@@ -1008,8 +1008,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <Inp label={t('manual_order_klant_email')} value={manualForm.klant_email} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_email: v}))} placeholder="jan@example.nl" />
               </div>
               <div className="grid grid-cols-2 gap-3 mt-2">
-                <Inp label="Bedrijf" value={manualForm.klant_bedrijf} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_bedrijf: v}))} placeholder="Bedrijfsnaam (optioneel)" />
-                <Inp label="Straat + huisnr" value={manualForm.klant_straat} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_straat: v}))} placeholder="Hoofdstraat 1" />
+                <Inp label={t('lbl_company')} value={manualForm.klant_bedrijf} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_bedrijf: v}))} placeholder={t('lbl_company')} />
+                <Inp label={t('lbl_address')} value={manualForm.klant_straat} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_straat: v}))} placeholder="Hoofdstraat 1" />
               </div>
               <div className="grid grid-cols-2 gap-3 mt-2">
                 <Inp label={t('settings_postcode')} value={manualForm.klant_postcode} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_postcode: v}))} placeholder="1234 AB" />
@@ -1049,7 +1049,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                           btw_pct: art ? String(art.btw||'9') : '9'}))
                       }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
-                      <option value="">Kies bier...</option>
+                      <option value="">{t('opt_select_beer')}</option>
                       {beschikbareBieren.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                   </div>
@@ -1064,7 +1064,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                           btw_pct: art ? String(art.btw||'9') : '9'}))
                       }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
-                      <option value="">Kies verpakking...</option>
+                      <option value="">{t('opt_select_packaging')}</option>
                       {verpakkingVoorBier(regelForm.bier_naam).map((v: string) => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
@@ -1083,9 +1083,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs text-gray-500 mb-0.5">Opmerkingen</label>
+              <label className="block text-xs text-gray-500 mb-0.5">{t('lbl_opmerkingen')}</label>
               <textarea value={manualForm.opmerkingen} onChange={e => setManualForm((f: any) => ({...f, opmerkingen: e.target.value}))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={2} placeholder="Optionele opmerkingen..." />
+                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={2} placeholder={t('ph_optionele_opmerkingen')} />
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4 pt-3 border-t">

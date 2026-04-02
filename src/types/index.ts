@@ -136,6 +136,7 @@ export interface InkoopFactuur {
   totaal_netto?: number
   totaal_btw?: number
   totaal_bruto?: number
+  status?: 'open' | 'betaald'
 }
 
 export interface FactuurRegel {
@@ -331,6 +332,38 @@ export interface BtwOvzRegel {
   btw: number
 }
 
+export interface Klant {
+  id: number
+  klantnummer?: string
+  naam: string
+  straat?: string
+  postcode?: string
+  stad?: string
+  btw_nummer?: string
+  email?: string
+  telefoon?: string
+  betalingstermijn?: number
+}
+
+export interface BankTransactie {
+  datum: string
+  valutaDatum?: string
+  type: 'C' | 'D'
+  bedrag: number
+  omschrijving: string
+  referentie?: string
+  gekoppeldFactuurId?: number | null
+}
+
+export interface BankAfschrift {
+  iban?: string
+  referentie?: string
+  afschriftNr?: string
+  beginsaldo?: number
+  eindsaldo?: number
+  transacties: BankTransactie[]
+}
+
 export interface VerkoopFactuur {
   id: number
   datum?: string
@@ -341,11 +374,16 @@ export interface VerkoopFactuur {
   bruto?: number
   // Nieuwe velden voor order-gebaseerde facturen
   bestelling_id?: number | null
+  klant_id?: number | null
   klant_naam?: string
   klant_adres?: string
+  klant_straat?: string
+  klant_postcode?: string
+  klant_stad?: string
+  klant_btw_nummer?: string
   regels?: VerkoopFactuurRegel[]
   btw_overzicht?: BtwOvzRegel[]
-  status?: 'open' | 'betaald'
+  status?: 'open' | 'betaald' | 'herinnering'
 }
 
 export interface BreweryDetails {
@@ -393,6 +431,7 @@ export interface Bestelling {
   id: number
   status: BestellingStatus
   datum: string
+  klant_id?: number | null
   klant_naam: string
   klant_email?: string
   klant_straat?: string

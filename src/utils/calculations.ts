@@ -30,3 +30,54 @@ export const accijnsCalcBatch = (batch: any, accijnsInst: AccijnsInst | null = n
   const abv = Number(batch.ABV || 0)
   return accijnsCalc(liter, abv, r1, r2, accijnsInst)
 }
+
+export interface WinstVerliesResult {
+  omzet: number
+  inkoopIngredient: number
+  inkoopVerpakking: number
+  inkoopOverig: number
+  inkoopTotaal: number
+  accijnsKosten: number
+  brutowinst: number
+  nettowinst: number
+}
+
+export const berekenWinstVerlies = (
+  verkoopFacturen: any[],
+  inkoopFacturen: any[],
+  accRecords: any[],
+  van: string,
+  tot: string
+): WinstVerliesResult => {
+  const inPeriod = (datum: string | undefined) => datum && datum >= van && datum <= tot
+
+  const omzet = verkoopFacturen
+    .filter((f: any) => inPeriod(f.datum))
+    .reduce((s: number, f: any) => s + (f.netto || 0), 0)
+
+  let inkoopIngredient = 0
+  let inkoopVerpakking = 0
+  let inkoopOverig = 0
+
+  inkoopFacturen
+    .filter((f: any) => inPeriod(f.datum))
+    .forEach((f: any) => {
+      ;(f.regels || []).forEach((r: any) => {
+        const netto = r.netto || 0
+        if (r.type === 'ingredient') inkoopIngredient += netto
+        else if (r.type === 'verpakking') inkoopVerpakking += netto
+        else inkoopOverig += netto
+      })
+    })
+
+  const inkoopTotaal = inkoopIngredient + inkoopVerpakking + inkoopOverig
+
+  const accijnsKosten = accRecords
+    .filter((r: any) => inPeriod(r.datum))
+    .reduce((s: number, r: any) => s + (r.totaal_accijns || r.accijns || 0), 0)
+
+  const brutowinst = omzet - inkoopIngredient - inkoopVerpakking
+  const nettowinst = brutowinst - inkoopOverig - accijnsKosten
+
+  return { omzet, inkoopIngredient, inkoopVerpakking, inkoopOverig, inkoopTotaal, accijnsKosten, brutowinst, nettowinst }
+}

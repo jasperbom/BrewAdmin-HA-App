@@ -780,7 +780,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <p className="text-sm text-gray-400 italic py-1">Geen sensoren geconfigureerd.</p>
           )}
         </div>
-        <Btn v="secondary" s="sm" onClick={addSensor}>+ Sensor toevoegen</Btn>
+        <Btn v="secondary" s="sm" onClick={addSensor}>{t('btn_sensor_toevoegen')}</Btn>
 
         <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
           <p>Communiceert via <code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code>.</p>
@@ -1075,7 +1075,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </button>
           <label className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded text-sm font-medium hover:bg-blue-800 transition-colors cursor-pointer">
             {t('settings_data_import')}
-            <input ref={importRef} type="file" accept=".xlsx" onChange={doImport} className="hidden" />
+            <input ref={importRef} type="file" accept=".json" onChange={doImport} className="hidden" />
           </label>
         </div>
         <p className="text-xs text-gray-400 mt-3">{t('settings_data_import_warning')}</p>

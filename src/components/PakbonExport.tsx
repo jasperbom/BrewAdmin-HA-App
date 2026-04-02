@@ -3,47 +3,48 @@
  * Print helpers for pakbon (packing slip) and factuur (invoice).
  * Opens a new window with embedded CSS and triggers window.print().
  */
+import { t } from '../i18n'
 
 const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #222; background: #fff; }
-  .page { max-width: 210mm; margin: 0 auto; padding: 14mm 14mm 10mm; }
-  h1 { font-size: 18pt; font-weight: bold; margin-bottom: 2mm; }
-  h2 { font-size: 12pt; font-weight: bold; margin-bottom: 2mm; color: #444; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
-  th { text-align: left; font-size: 9pt; font-weight: bold; border-bottom: 1.5px solid #222; padding: 2mm 2mm 1.5mm; }
+  .page { max-width: 210mm; margin: 0 auto; padding: 14mm 16mm 12mm; }
+  .hdr { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8mm; }
+  .hdr-left { display: flex; align-items: center; gap: 5mm; }
+  .hdr-right { text-align: right; }
+  .logo { max-height: 18mm; max-width: 45mm; object-fit: contain; }
+  .bi-naam { font-size: 14pt; font-weight: bold; color: #111; margin-bottom: 2px; }
+  .bi-info { font-size: 9pt; color: #555; line-height: 1.65; margin-top: 1mm; }
+  .doc-title { font-size: 22pt; font-weight: bold; color: #111; letter-spacing: 1px; margin-bottom: 1mm; }
+  .doc-nr { font-size: 11pt; font-weight: bold; color: #333; }
+  .meta-grid { display: flex; gap: 12mm; flex-wrap: wrap; margin-bottom: 7mm; }
+  .meta-block .ml { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 1px; }
+  .meta-block .mv { font-size: 10pt; font-weight: 500; color: #222; }
+  .kb { background: #f8f9fa; border-left: 3px solid #333; padding: 3.5mm 4.5mm; margin-bottom: 7mm; }
+  .kn { font-weight: bold; font-size: 12pt; margin-bottom: 3px; }
+  .kb p { font-size: 10pt; line-height: 1.55; color: #333; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  th { background: #333; color: #fff; padding: 3px 5px; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; }
   th.r { text-align: right; }
-  td { padding: 1.5mm 2mm; font-size: 10pt; border-bottom: 0.5px solid #ddd; vertical-align: top; }
+  td { padding: 3px 5px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 10pt; }
   td.r { text-align: right; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8mm; }
-  .header-left { display: flex; align-items: center; gap: 5mm; }
-  .header-right { text-align: right; font-size: 10pt; }
-  .logo { max-height: 18mm; max-width: 40mm; object-fit: contain; }
-  .brewery-name { font-size: 14pt; font-weight: bold; }
-  .brewery-addr { font-size: 9pt; color: #555; margin-top: 1mm; }
-  .doc-title { font-size: 20pt; font-weight: bold; color: #1a3a6a; margin-bottom: 1mm; }
-  .doc-number { font-size: 12pt; font-weight: bold; }
-  .doc-meta { font-size: 9pt; color: #555; margin-top: 1mm; }
-  .addresses { display: flex; gap: 15mm; margin-bottom: 8mm; }
-  .address-block { flex: 1; }
-  .address-block .label { font-size: 8pt; font-weight: bold; text-transform: uppercase; color: #888; margin-bottom: 1mm; letter-spacing: 0.05em; }
-  .address-block p { font-size: 10pt; line-height: 1.5; }
-  .totals { margin-left: auto; width: 70mm; }
-  .totals table td { border-bottom: none; padding: 1mm 2mm; font-size: 10pt; }
-  .totals table td.r { font-weight: normal; }
-  .totals .total-row td { font-weight: bold; font-size: 11pt; border-top: 1.5px solid #222; padding-top: 2mm; }
-  .btw-table { margin-top: 4mm; margin-bottom: 0; }
-  .btw-table th, .btw-table td { font-size: 9pt; padding: 1mm 2mm; }
+  .totals { display: flex; justify-content: flex-end; margin-bottom: 5mm; }
+  .totals table { width: 65mm; }
+  .totals td { border: none; padding: 2px 5px; font-size: 10pt; }
+  .totals td.r { font-weight: normal; }
+  .grand-total td { font-weight: bold; font-size: 12pt; border-top: 2px solid #333 !important; padding-top: 2.5mm; }
+  .btw-section { display: flex; justify-content: flex-end; margin-bottom: 4mm; }
+  .btw-table { width: auto; min-width: 80mm; margin: 0; }
+  .btw-table th, .btw-table td { font-size: 9pt; padding: 2px 5px; }
+  .pay-block { background: #f0f7ff; border: 1px solid #cce5ff; padding: 3.5mm 4.5mm; border-radius: 3px; font-size: 9.5pt; line-height: 1.85; }
+  .pay-block .pay-title { font-weight: bold; font-size: 10.5pt; margin-bottom: 2px; }
   .footer { margin-top: 8mm; border-top: 1px solid #ccc; padding-top: 4mm; font-size: 9pt; color: #555; display: flex; justify-content: space-between; gap: 10mm; }
   .sign-block { flex: 1; }
   .sign-line { margin-top: 10mm; border-bottom: 1px solid #888; width: 50mm; }
   .sign-label { font-size: 8pt; color: #888; margin-top: 1mm; }
   .badge { display: inline-block; padding: 0.5mm 2mm; border-radius: 2mm; font-size: 8pt; font-weight: bold; }
   .badge-green { background: #d1fae5; color: #065f46; }
-  .remarks { margin-top: 3mm; font-size: 9pt; color: #555; }
-  .section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; color: #888; letter-spacing: 0.05em; margin-bottom: 1mm; }
-  .payment-info { margin-top: 4mm; border: 0.5px solid #ddd; padding: 3mm 4mm; border-radius: 1mm; font-size: 9pt; background: #f9f9f9; }
-  .payment-info strong { color: #222; }
+  .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @page { size: A4; margin: 0; }
@@ -51,7 +52,7 @@ const CSS = `
 `
 
 function fmtEuro(n: number): string {
-  return '€\u202f' + n.toFixed(2).replace('.', ',')
+  return '\u20ac\u202f' + n.toFixed(2).replace('.', ',')
 }
 
 function fmtDate(d: string | undefined): string {
@@ -60,46 +61,48 @@ function fmtDate(d: string | undefined): string {
   catch { return d }
 }
 
-function openPrint(html: string): void {
+function openPrint(html: string, filename: string): void {
   const w = window.open('', '_blank', 'width=900,height=700')
-  if (!w) { alert('Pop-up geblokkeerd — sta pop-ups toe voor deze pagina.'); return }
-  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>Print</title><style>${CSS}</style></head><body>${html}</body></html>`)
+  if (!w) { alert(t('err_popup_blocked')); return }
+  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${filename}</title><style>${CSS}</style></head><body>${html}</body></html>`)
   w.document.close()
   w.focus()
+  // Sluit popup automatisch na opslaan/annuleren print
+  w.onafterprint = () => w.close()
   setTimeout(() => { w.print() }, 400)
 }
 
-function breweryHeader(brewery: any, appName: string, logo: string | null | undefined): string {
+function breweryBlock(brewery: any, appName: string, logo: string | null | undefined): string {
   const logoHtml = logo ? `<img src="${logo}" class="logo" alt="logo" />` : ''
-  const naam = brewery.naam || appName || 'Brouwerij'
-  const straat = [brewery.straat, brewery.huisnummer].filter(Boolean).join(' ')
-  const plaats = [brewery.postcode, brewery.stad].filter(Boolean).join(' ')
+  const naam = brewery?.naam || appName || 'Brouwerij'
+  const straat = [brewery?.straat, brewery?.huisnummer].filter(Boolean).join(' ')
+  const plaats = [brewery?.postcode, brewery?.stad].filter(Boolean).join(' ')
+  const infoLines = [straat, plaats, brewery?.btw_nummer ? `BTW: ${brewery.btw_nummer}` : '', brewery?.kvk_nummer ? `KvK: ${brewery.kvk_nummer}` : '', brewery?.iban ? `IBAN: ${brewery.iban}` : '', brewery?.email || '', brewery?.telefoon || ''].filter(Boolean).map(l => `<div>${l}</div>`).join('')
   return `
-    <div class="header-left">
+    <div class="hdr-left">
       ${logoHtml}
       <div>
-        <div class="brewery-name">${naam}</div>
-        ${straat ? `<div class="brewery-addr">${straat}</div>` : ''}
-        ${plaats ? `<div class="brewery-addr">${plaats}</div>` : ''}
-        ${brewery.email ? `<div class="brewery-addr">${brewery.email}</div>` : ''}
-        ${brewery.telefoon ? `<div class="brewery-addr">${brewery.telefoon}</div>` : ''}
-        ${brewery.btw_nummer ? `<div class="brewery-addr">BTW: ${brewery.btw_nummer}</div>` : ''}
-        ${brewery.kvk_nummer ? `<div class="brewery-addr">KvK: ${brewery.kvk_nummer}</div>` : ''}
+        <div class="bi-naam">${naam}</div>
+        ${infoLines ? `<div class="bi-info">${infoLines}</div>` : ''}
       </div>
     </div>`
 }
 
-function klantAdresBlock(order: any): string {
+function klantBlock(order: any): string {
   const lines: string[] = []
   if (order.klant_bedrijf) lines.push(`<strong>${order.klant_bedrijf}</strong>`)
-  lines.push(order.klant_naam || '—')
-  const adres = [
-    order.klant_straat && order.klant_huisnummer ? `${order.klant_straat} ${order.klant_huisnummer}` : order.klant_straat || '',
-    order.klant_postcode && order.klant_stad ? `${order.klant_postcode}  ${order.klant_stad}` : order.klant_stad || '',
-  ].filter(Boolean)
-  adres.forEach(l => lines.push(l))
+  if (order.klant_naam) lines.push(order.klant_naam)
+  const straat = order.klant_straat && order.klant_huisnummer
+    ? `${order.klant_straat} ${order.klant_huisnummer}`
+    : (order.klant_straat || '')
+  if (straat) lines.push(straat)
+  const plaats = [order.klant_postcode, order.klant_stad].filter(Boolean).join('  ')
+  if (plaats) lines.push(plaats)
+  if (order.klant_btw_nummer) lines.push(`BTW: ${order.klant_btw_nummer}`)
   if (order.klant_email) lines.push(order.klant_email)
-  return lines.map(l => `<p>${l}</p>`).join('')
+  if (!lines.length) lines.push('—')
+  const [first, ...rest] = lines
+  return `<div class="kn">${first}</div>${rest.map(l => `<p>${l}</p>`).join('')}`
 }
 
 // ─────────────────────────────────────────────
@@ -132,36 +135,37 @@ export function printPakbon(
   }).join('')
 
   const html = `<div class="page">
-    <div class="header">
-      ${breweryHeader(brewery, appName, factuurLogo)}
-      <div class="header-right">
-        <div class="doc-title">Pakbon</div>
-        <div class="doc-number">${pakbonNr}</div>
-        <div class="doc-meta">Datum: ${datum}</div>
-        <div class="doc-meta">Order: ${orderRef}</div>
+    <div class="hdr">
+      ${breweryBlock(brewery, appName, factuurLogo)}
+      <div class="hdr-right">
+        <div class="doc-title">PAKBON</div>
+        <div class="doc-nr">${pakbonNr}</div>
       </div>
     </div>
 
-    <div class="addresses">
-      <div class="address-block">
-        <div class="label">Bezorgadres</div>
-        ${klantAdresBlock(order)}
-      </div>
+    <div class="meta-grid">
+      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${datum}</div></div>
+      <div class="meta-block"><div class="ml">Order</div><div class="mv">${orderRef}</div></div>
+    </div>
+
+    <div class="kb">
+      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_bezorgadres')}</div>
+      ${klantBlock(order)}
     </div>
 
     <table>
       <thead>
         <tr>
-          <th>Bier</th>
+          <th>${t('lbl_pakbon_bier')}</th>
           <th>Batch #</th>
-          <th>Verpakking</th>
-          <th>Inhoud</th>
-          <th>THT</th>
+          <th>${t('lbl_pakbon_verpakking')}</th>
+          <th>${t('lbl_pakbon_inhoud')}</th>
+          <th>${t('lbl_tht')}</th>
           <th class="r">Aantal</th>
         </tr>
       </thead>
       <tbody>
-        ${rows || '<tr><td colspan="6" style="text-align:center;color:#888;">Geen picks</td></tr>'}
+        ${rows || `<tr><td colspan="6" style="text-align:center;color:#888;padding:4mm;">${t('msg_geen_picks')}</td></tr>`}
       </tbody>
     </table>
 
@@ -169,46 +173,62 @@ export function printPakbon(
 
     <div class="footer">
       <div class="sign-block">
-        <div class="section-title">Ontvangst</div>
+        <div style="font-size:8pt;font-weight:bold;text-transform:uppercase;color:#888;letter-spacing:0.05em">${t('lbl_pakbon_ontvangst')}</div>
         <div class="sign-line"></div>
-        <div class="sign-label">Handtekening ontvanger</div>
+        <div class="sign-label">${t('lbl_handtekening')}</div>
       </div>
       <div class="sign-block">
-        <div class="section-title">Datum ontvangst</div>
+        <div style="font-size:8pt;font-weight:bold;text-transform:uppercase;color:#888;letter-spacing:0.05em">Datum ontvangst</div>
         <div class="sign-line"></div>
         <div class="sign-label">Datum</div>
       </div>
     </div>
   </div>`
 
-  openPrint(html)
+  const filename = order.pakbon_nummer || `Pakbon-${order.id || 'export'}`
+  openPrint(html, filename)
 }
 
 // ─────────────────────────────────────────────
 // FACTUUR
 // ─────────────────────────────────────────────
-export function printFactuur(
+
+// Interne helper: bouwt de HTML body-inhoud + bestandsnaam
+function buildFactuurBody(
   order: any,
   factuur: any,
   brewery: any,
   appName: string,
   factuurLogo: string | null | undefined
-): void {
-  if (!factuur) return
+): {bodyHtml: string, filename: string} | null {
+  if (!factuur) return null
 
   const factuurnummer = factuur.factuurnummer || `F-${factuur.id}`
   const factuurdatum = fmtDate(factuur.datum)
-  const leveringsdatum = fmtDate(order.verzend_datum || order.datum)
-  const betalingstermijn = brewery.betalingstermijn ?? 14
+  const betalingstermijn = brewery?.betalingstermijn ?? 14
   const vervalDatum = (() => {
     try {
-      const d = new Date(factuur.datum || order.datum)
+      const d = new Date(factuur.datum || order?.datum || new Date().toISOString())
       d.setDate(d.getDate() + Number(betalingstermijn))
       return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
     } catch { return '—' }
   })()
+  const leveringsdatum = order?.verzend_datum || order?.datum ? fmtDate(order.verzend_datum || order.datum) : null
 
   const regels: any[] = factuur.regels || []
+
+  // Bereken btw_overzicht uit regels als niet opgeslagen
+  const btwOverzicht: any[] = (() => {
+    if (factuur.btw_overzicht && factuur.btw_overzicht.length > 0) return factuur.btw_overzicht
+    const map: Record<number, {tarief:number,netto:number,btw:number}> = {}
+    regels.forEach((r: any) => {
+      const pct = r.btw_pct ?? 0
+      if (!map[pct]) map[pct] = {tarief:pct, netto:0, btw:0}
+      map[pct].netto += r.netto || 0
+      map[pct].btw += r.btw_bedrag || 0
+    })
+    return Object.values(map).sort((a,b) => a.tarief - b.tarief)
+  })()
 
   const regelRows = regels.map((r: any) => `<tr>
     <td>${r.omschrijving || '—'}</td>
@@ -220,7 +240,6 @@ export function printFactuur(
     <td class="r">${fmtEuro(r.bruto)}</td>
   </tr>`).join('')
 
-  const btwOverzicht: any[] = factuur.btw_overzicht || []
   const btwRows = btwOverzicht.map((b: any) => `<tr>
     <td>BTW ${b.tarief}%</td>
     <td class="r">${fmtEuro(b.netto)}</td>
@@ -231,28 +250,37 @@ export function printFactuur(
   const netto = factuur.netto ?? 0
   const btw = factuur.btw ?? 0
   const bruto = factuur.bruto ?? 0
+  const naam = brewery?.naam || appName || ''
 
-  const html = `<div class="page">
-    <div class="header">
-      ${breweryHeader(brewery, appName, factuurLogo)}
-      <div class="header-right">
-        <div class="doc-title">Factuur</div>
-        <div class="doc-number">${factuurnummer}</div>
-        <div class="doc-meta">Factuurdatum: ${factuurdatum}</div>
-        <div class="doc-meta">Leverdatum: ${leveringsdatum}</div>
+  const orderRef = order?.wc_order_nummer
+    ? `WooCommerce #${order.wc_order_nummer}`
+    : order?.id ? `Order M-${order.id}` : null
+
+  const metaItems = [
+    {label:'Factuurnummer', val: factuurnummer},
+    {label:'Factuurdatum', val: factuurdatum},
+    {label:t('lbl_vervaldatum').replace('{n}', String(betalingstermijn)), val: vervalDatum},
+    leveringsdatum ? {label:'Leverdatum', val: leveringsdatum} : null,
+    orderRef ? {label:'Order', val: orderRef} : null,
+  ].filter(Boolean) as {label:string,val:string}[]
+
+  const bodyHtml = `<div class="page">
+    <div class="hdr">
+      ${breweryBlock(brewery, appName, factuurLogo)}
+      <div class="hdr-right">
+        <div class="doc-title">${t('lbl_factuur_titel')}</div>
+        <div class="doc-nr">${factuurnummer}</div>
+        ${factuur.status === 'betaald' ? '<div style="margin-top:2mm"><span class="badge badge-green">✓ Betaald</span></div>' : ''}
       </div>
     </div>
 
-    <div class="addresses">
-      <div class="address-block">
-        <div class="label">Factuuradres</div>
-        ${klantAdresBlock(order)}
-      </div>
-      <div class="address-block">
-        <div class="label">Order</div>
-        <p>${order.wc_order_nummer ? `WooCommerce #${order.wc_order_nummer}` : `Order M-${order.id}`}</p>
-        ${factuur.status === 'betaald' ? '<p><span class="badge badge-green">✓ Betaald</span></p>' : ''}
-      </div>
+    <div class="meta-grid">
+      ${metaItems.map(m => `<div class="meta-block"><div class="ml">${m.label}</div><div class="mv">${m.val}</div></div>`).join('')}
+    </div>
+
+    <div class="kb">
+      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_factuuradres')}</div>
+      ${klantBlock(order)}
     </div>
 
     <table>
@@ -268,40 +296,68 @@ export function printFactuur(
         </tr>
       </thead>
       <tbody>
-        ${regelRows || '<tr><td colspan="7" style="text-align:center;color:#888;">Geen regels</td></tr>'}
+        ${regelRows || '<tr><td colspan="7" style="text-align:center;color:#888;padding:4mm;">Geen regels</td></tr>'}
       </tbody>
     </table>
 
     ${btwOverzicht.length > 0 ? `
-    <table class="btw-table" style="width:auto;margin-left:auto;margin-right:0;min-width:110mm;">
-      <thead>
-        <tr>
-          <th>BTW-tarief</th>
-          <th class="r">Netto</th>
-          <th class="r">BTW</th>
-          <th class="r">Bruto</th>
-        </tr>
-      </thead>
-      <tbody>${btwRows}</tbody>
-    </table>` : ''}
+    <div class="btw-section">
+      <table class="btw-table">
+        <thead>
+          <tr>
+            <th>BTW-tarief</th>
+            <th class="r">Netto</th>
+            <th class="r">BTW</th>
+            <th class="r">Bruto</th>
+          </tr>
+        </thead>
+        <tbody>${btwRows}</tbody>
+      </table>
+    </div>` : ''}
 
     <div class="totals">
       <table>
-        <tr><td>Subtotaal excl. BTW</td><td class="r">${fmtEuro(netto)}</td></tr>
+        <tr><td>${t('lbl_subtotaal_excl')}</td><td class="r">${fmtEuro(netto)}</td></tr>
         <tr><td>BTW</td><td class="r">${fmtEuro(btw)}</td></tr>
-        <tr class="total-row"><td>Totaal incl. BTW</td><td class="r">${fmtEuro(bruto)}</td></tr>
+        <tr class="grand-total"><td>${t('lbl_totaal_incl')}</td><td class="r">${fmtEuro(bruto)}</td></tr>
       </table>
     </div>
 
-    <div class="payment-info">
-      <strong>Betaalinstructies</strong><br/>
-      Gelieve het bedrag van <strong>${fmtEuro(bruto)}</strong> over te maken binnen <strong>${betalingstermijn} dagen</strong>
-      (uiterlijk ${vervalDatum}) onder vermelding van factuurnummer <strong>${factuurnummer}</strong>.<br/>
-      ${brewery.iban ? `IBAN: <strong>${brewery.iban}</strong>${(appName || brewery.naam) ? ` t.n.v. ${appName || brewery.naam}` : ''}` : ''}
+    <div class="pay-block">
+      <div class="pay-title">${t('lbl_betaalinformatie')}</div>
+      ${brewery?.iban ? `<div>IBAN: <strong>${brewery.iban}</strong>${naam ? ` &nbsp;t.n.v. ${naam}` : ''}</div>` : ''}
+      <div>Bedrag: <strong>${fmtEuro(bruto)}</strong> &nbsp;·&nbsp; Vervaldatum: <strong>${vervalDatum}</strong></div>
+      <div>o.v.v. factuurnummer <strong>${factuurnummer}</strong></div>
     </div>
 
-    ${order.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${order.opmerkingen}</div>` : ''}
+    ${order?.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${order.opmerkingen}</div>` : ''}
   </div>`
 
-  openPrint(html)
+  return {bodyHtml, filename: `Factuur-${factuurnummer}`}
+}
+
+// Geeft volledige standalone HTML terug (voor ZIP-export)
+export function buildFactuurHTML(
+  order: any,
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): string {
+  const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
+  if (!result) return ''
+  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${result.filename}</title><style>${CSS}</style></head><body>${result.bodyHtml}</body></html>`
+}
+
+// Opent printvenster
+export function printFactuur(
+  order: any,
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): void {
+  const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
+  if (!result) return
+  openPrint(result.bodyHtml, result.filename)
 }
