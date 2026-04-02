@@ -1,11 +1,5 @@
 import { t } from '../i18n'
 
-export const BF_MAP: Record<string, string> = {
-  "Planning":"Gepland","Brewing":"Brouwen","Fermenting":"Vergisten",
-  "Conditioning":"Conditioneren","Carbonating":"Conditioneren",
-  "Packaging":"Verpakt","Completed":"Gesloten","Archived":"Gesloten"
-}
-
 export const STATUS_CLR: Record<string, string> = {
   "Gepland":"bg-slate-100 text-slate-600 ring-1 ring-slate-200",
   "Brouwen":"bg-blue-100 text-blue-700 ring-1 ring-blue-200",
