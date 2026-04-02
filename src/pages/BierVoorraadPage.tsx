@@ -290,10 +290,11 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
         </div>
         <div className="flex items-center gap-2">
           {wcCreds?.enabled && (
-            <Btn onClick={wcPushAll} disabled={wcSyncing} s="sm"
-              cls="bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-40">
+            <button onClick={wcPushAll} disabled={wcSyncing}
+              title={t('wc_push_stock_title')}
+              className="wc-btn flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40">
               {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
-            </Btn>
+            </button>
           )}
           {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</span>}
         </div>

@@ -941,7 +941,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           {wcCreds?.enabled && (
             <button onClick={importWcOrders} disabled={wcImporting}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
+              className="wc-btn flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40">
               {wcImporting ? `⏳ ${t('wc_importing')}` : t('orders_import_wc')}
             </button>
           )}

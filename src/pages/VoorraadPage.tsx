@@ -204,7 +204,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
             <>
               <button onClick={wcPullSales} disabled={wcSyncing}
                 title={t('wc_pull_sales_title')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-40">
+                className="wc-btn flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40">
                 {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_pull_sales')}
               </button>
             </>
