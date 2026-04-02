@@ -79,6 +79,7 @@ function App() {
   const [haInst, setHaInst] = useStore('ha_instellingen', {enabled: false, sensors: []});
   const [klanten, setKlanten] = useStore('klanten', []);
   const [bankKoppelingen, setBankKoppelingen] = useStore('bank_koppelingen', {});
+  const [kapitaalBoekingen, setKapitaalBoekingen] = useStore('kapitaal_boekingen', []);
 
   // Sync lang to i18n module on each render (equivalent to _lang = lang in source)
   i18nSetLang(lang);
@@ -214,6 +215,7 @@ function App() {
       ing_types: ingTypes, ing_type_btw: ingTypeBtw,
       bestellingen, bestelling_picks: bestellingPicks, afboekingen,
       klanten, gist_metingen: gistMetingen,
+      kapitaal_boekingen: kapitaalBoekingen,
       brewery_details: breweryDetails, factuur_counter: factuurCounter,
       ha_instellingen: haInst,
       app_logo: logo, factuur_logo: factuurLogo, app_name: appName, nav_theme: navTheme,
@@ -261,6 +263,7 @@ function App() {
           if (Array.isArray(d.afboekingen)) setAfboekingen(d.afboekingen);
           if (Array.isArray(d.klanten)) setKlanten(d.klanten);
           if (Array.isArray(d.gist_metingen)) setGistMetingen(d.gist_metingen);
+          if (Array.isArray(d.kapitaal_boekingen)) setKapitaalBoekingen(d.kapitaal_boekingen);
           if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
           if (Array.isArray(d.btw_tarieven)) setBtwTarieven(d.btw_tarieven);
           if (Array.isArray(d.ing_types)) setIngTypes(d.ing_types);
@@ -361,7 +364,7 @@ function App() {
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} />}
         {page==='voorraad' && <BierVoorraadPage bat={bat} av={av} uit={uit} bestellingPicks={bestellingPicks} bestellingen={bestellingen} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} />}
         {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} />}
       </main>
       </PageErrorBoundary>

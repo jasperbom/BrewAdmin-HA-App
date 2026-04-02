@@ -364,6 +364,15 @@ export interface BankAfschrift {
   transacties: BankTransactie[]
 }
 
+export interface KapitaalBoeking {
+  id: number
+  datum: string
+  omschrijving: string
+  bedrag: number                        // altijd positief
+  type: 'storting' | 'onttrekking'
+  eigenaar?: string
+}
+
 export interface VerkoopFactuur {
   id: number
   datum?: string

@@ -1081,5 +1081,15 @@
   "lbl_betaalinformatie": "Betaalinformatie",
   "lbl_vervaldatum": "Vervaldatum ({n} dgn)",
   "lbl_subtotaal_excl": "Subtotaal excl. BTW",
-  "lbl_totaal_incl": "Totaal incl. BTW"
+  "lbl_totaal_incl": "Totaal incl. BTW",
+  "btn_kapitaalstorting": "+ Kapitaalstorting",
+  "title_kapitaalstorting": "Kapitaalstorting / onttrekking",
+  "opt_kapitaal_storting": "Storting (eigenaar → bedrijf)",
+  "opt_kapitaal_onttrekking": "Onttrekking (bedrijf → eigenaar)",
+  "ph_kapitaal_omschrijving": "Bijv. Eigen inbreng Q1",
+  "lbl_eigenaar": "Eigenaar",
+  "lbl_optioneel": "optioneel",
+  "ph_eigenaar_naam": "Naam eigenaar…",
+  "lbl_kapitaal": "Kapitaal",
+  "lbl_gestort_kapitaal": "Gestort kapitaal"
 }

@@ -1081,5 +1081,15 @@
   "lbl_betaalinformatie": "Payment information",
   "lbl_vervaldatum": "Due date ({n} days)",
   "lbl_subtotaal_excl": "Subtotal excl. VAT",
-  "lbl_totaal_incl": "Total incl. VAT"
+  "lbl_totaal_incl": "Total incl. VAT",
+  "btn_kapitaalstorting": "+ Capital injection",
+  "title_kapitaalstorting": "Capital injection / withdrawal",
+  "opt_kapitaal_storting": "Injection (owner → business)",
+  "opt_kapitaal_onttrekking": "Withdrawal (business → owner)",
+  "ph_kapitaal_omschrijving": "E.g. Owner contribution Q1",
+  "lbl_eigenaar": "Owner",
+  "lbl_optioneel": "optional",
+  "ph_eigenaar_naam": "Owner name…",
+  "lbl_kapitaal": "Capital",
+  "lbl_gestort_kapitaal": "Capital invested"
 }
