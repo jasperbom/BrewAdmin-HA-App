@@ -1081,5 +1081,15 @@
   "lbl_betaalinformatie": "Zahlungsinformationen",
   "lbl_vervaldatum": "Fälligkeitsdatum ({n} Tage)",
   "lbl_subtotaal_excl": "Zwischensumme excl. MwSt",
-  "lbl_totaal_incl": "Gesamtbetrag inkl. MwSt"
+  "lbl_totaal_incl": "Gesamtbetrag inkl. MwSt",
+  "btn_kapitaalstorting": "+ Kapitaleinlage",
+  "title_kapitaalstorting": "Kapitaleinlage / -entnahme",
+  "opt_kapitaal_storting": "Einlage (Inhaber → Betrieb)",
+  "opt_kapitaal_onttrekking": "Entnahme (Betrieb → Inhaber)",
+  "ph_kapitaal_omschrijving": "Z.B. Eigenkapitaleinlage Q1",
+  "lbl_eigenaar": "Eigentümer",
+  "lbl_optioneel": "optional",
+  "ph_eigenaar_naam": "Name des Eigentümers…",
+  "lbl_kapitaal": "Kapital",
+  "lbl_gestort_kapitaal": "Eingebrachtes Kapital"
 }

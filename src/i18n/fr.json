@@ -1077,5 +1077,15 @@
   "lbl_betaalinformatie": "Informations de paiement",
   "lbl_vervaldatum": "Date d'échéance ({n} j)",
   "lbl_subtotaal_excl": "Sous-total HT",
-  "lbl_totaal_incl": "Total TTC"
+  "lbl_totaal_incl": "Total TTC",
+  "btn_kapitaalstorting": "+ Apport en capital",
+  "title_kapitaalstorting": "Apport / retrait de capital",
+  "opt_kapitaal_storting": "Apport (propriétaire → entreprise)",
+  "opt_kapitaal_onttrekking": "Retrait (entreprise → propriétaire)",
+  "ph_kapitaal_omschrijving": "Ex. Apport personnel T1",
+  "lbl_eigenaar": "Propriétaire",
+  "lbl_optioneel": "optionnel",
+  "ph_eigenaar_naam": "Nom du propriétaire…",
+  "lbl_kapitaal": "Capital",
+  "lbl_gestort_kapitaal": "Capital apporté"
 }

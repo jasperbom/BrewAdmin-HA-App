@@ -1077,5 +1077,15 @@
   "lbl_betaalinformatie": "Información de pago",
   "lbl_vervaldatum": "Fecha de vencimiento ({n} días)",
   "lbl_subtotaal_excl": "Subtotal excl. IVA",
-  "lbl_totaal_incl": "Total incl. IVA"
+  "lbl_totaal_incl": "Total incl. IVA",
+  "btn_kapitaalstorting": "+ Aportación de capital",
+  "title_kapitaalstorting": "Aportación / retiro de capital",
+  "opt_kapitaal_storting": "Aportación (propietario → empresa)",
+  "opt_kapitaal_onttrekking": "Retiro (empresa → propietario)",
+  "ph_kapitaal_omschrijving": "Ej. Aportación propia T1",
+  "lbl_eigenaar": "Propietario",
+  "lbl_optioneel": "opcional",
+  "ph_eigenaar_naam": "Nombre del propietario…",
+  "lbl_kapitaal": "Capital",
+  "lbl_gestort_kapitaal": "Capital aportado"
 }
