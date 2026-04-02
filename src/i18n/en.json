@@ -974,7 +974,7 @@
   "settings_telefoon": "Phone number",
   "verzendkosten_modal_title": "Add shipping costs",
   "verzendkosten_prijs": "Price excl. VAT",
-  "btn_losse_factuur": "Manual invoice",
+  "btn_losse_factuur": "+ Manual invoice",
   "modal_losse_factuur_titel": "Manual sales invoice",
   "lbl_prijs_per_stuk": "Price/unit",
 
@@ -1001,7 +1001,7 @@
   "lbl_debiteur_saldo": "Balance",
 
   "tab_bank": "Bank",
-  "btn_bank_import": "Import MT940",
+  "btn_bank_import": "+ MT940",
   "lbl_bank_iban": "Account",
   "lbl_beginsaldo": "Opening balance",
   "lbl_eindsaldo": "Closing balance",
