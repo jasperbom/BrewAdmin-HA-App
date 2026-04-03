@@ -223,7 +223,9 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
         </div>
       ) : (
         <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-4 mb-8 text-green-700 text-sm flex items-center gap-3">
-          <span className="text-xl">✓</span>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" width="20" height="20" className="flex-shrink-0">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
           <span>{t('dashboard_all_ok')}</span>
         </div>
       )}
@@ -231,7 +233,9 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
       {binnen90.length > 0 && (
         <details className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <summary className="px-5 py-4 cursor-pointer font-medium text-gray-700 text-sm select-none list-none flex items-center gap-2">
-            <span>🕐</span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" width="16" height="16" className="flex-shrink-0">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
             <span>{t('dashboard_expires_30_90').replace('{n}', binnen90.length)}</span>
           </summary>
           <div className="px-5 pb-4 pt-1 space-y-2">
@@ -400,7 +404,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                         <div className="flex gap-2">
                           <button
                             onClick={saveMeting}
-                            className="t-bg text-white text-xs px-3 py-1.5 rounded font-medium hover:opacity-90"
+                            className="tbtn text-white text-xs px-3 py-1.5 rounded font-medium hover:opacity-90"
                           >
                             {t('btn_save')}
                           </button>
