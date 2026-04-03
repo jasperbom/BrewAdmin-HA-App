@@ -2,37 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
-body{margin:0;background:var(--t-bg,#f3f4f6);}
-html{scrollbar-gutter:stable;}
-:root{
-  --t-accent:#d97706;
-  --t-light:#fde68a;
-  --t-pale:#fffbeb;
-  --t-text:#78350f;
-  --t-btn:#d97706;
-  --t-btn-h:#b45309;
-  --t-btn-a:#78350f;
-  --t-bg:#fefdf5;
+@layer base {
+  html {
+    scrollbar-gutter: stable;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    margin: 0;
+    background: var(--t-bg, #f3f4f6);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
 }
-.tbtn{background-color:var(--t-btn);color:#fff;}
-.tbtn:hover:not(:disabled){background-color:var(--t-btn-h);}
-.tbtn:active:not(:disabled){background-color:var(--t-btn-a);}
-.t-tab{border-bottom-color:var(--t-accent)!important;color:var(--t-text)!important;}
-.t-sel{background-color:var(--t-light)!important;border-left-color:var(--t-accent)!important;}
-.t-hover:hover{background-color:var(--t-light);}
-.t-hdr{background:linear-gradient(to right,var(--t-btn-a),var(--t-btn-h));}
-.t-hdr-solid{background-color:var(--t-btn-a);}
-.t-nav{background-color:var(--t-pale)!important;color:var(--t-text)!important;border-color:var(--t-accent)!important;}
-.t-panel{background-color:var(--t-pale);border-color:var(--t-accent);}
-.t-card-l{border-left-color:var(--t-accent)!important;}
-.t-back{color:var(--t-text);background-color:var(--t-pale);border-color:var(--t-accent);}
-.t-back:hover{filter:brightness(0.95);}
-.t-border{border-color:var(--t-accent)!important;}
-.t-input{outline:none;}
-.t-input:focus{box-shadow:0 0 0 2px var(--t-accent)!important;border-color:var(--t-accent)!important;}
-.t-checkbox{accent-color:var(--t-accent);}
-.peer:checked~.t-toggle{background-color:var(--t-accent)!important;}
-.t-icon-hover:hover{color:var(--t-accent);}
-.wc-btn{background-color:#7f54b3;color:#fff;}
-.wc-btn:hover:not(:disabled){background-color:#6d4499;}
-.wc-btn:active:not(:disabled){background-color:#5c3a82;}
+
+:root {
+  --t-accent: #d97706;
+  --t-light: #fde68a;
+  --t-pale: #fffbeb;
+  --t-text: #78350f;
+  --t-btn: #d97706;
+  --t-btn-h: #b45309;
+  --t-btn-a: #78350f;
+  --t-bg: #fefdf5;
+}
+
+/* Primaire actieknop */
+.tbtn {
+  background-color: var(--t-btn);
+  color: #fff;
+  transition: background-color 150ms ease, opacity 150ms ease, box-shadow 150ms ease;
+}
+.tbtn:hover:not(:disabled) { background-color: var(--t-btn-h); }
+.tbtn:active:not(:disabled) { background-color: var(--t-btn-a); }
+.tbtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--t-pale), 0 0 0 5px var(--t-accent);
+}
+
+/* Navigatie en tabs */
+.t-tab { border-bottom-color: var(--t-accent) !important; color: var(--t-text) !important; }
+.t-sel { background-color: var(--t-light) !important; border-left-color: var(--t-accent) !important; }
+.t-hover:hover { background-color: var(--t-light); }
+
+/* Headers */
+.t-hdr { background: linear-gradient(to right, var(--t-btn-a), var(--t-btn-h)); }
+.t-hdr-solid { background-color: var(--t-btn-a); }
+
+/* Nav, panels, cards */
+.t-nav { background-color: var(--t-pale) !important; color: var(--t-text) !important; border-color: var(--t-accent) !important; }
+.t-panel { background-color: var(--t-pale); border-color: var(--t-accent); }
+.t-card-l { border-left-color: var(--t-accent) !important; }
+
+/* Knoppen en controls */
+.t-back { color: var(--t-text); background-color: var(--t-pale); border-color: var(--t-accent); transition: filter 150ms ease; }
+.t-back:hover { filter: brightness(0.95); }
+.t-border { border-color: var(--t-accent) !important; }
+
+/* Formulier inputs */
+.t-input { outline: none; transition: box-shadow 150ms ease, border-color 150ms ease; }
+.t-input:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--t-accent) 20%, transparent) !important;
+  border-color: var(--t-accent) !important;
+}
+
+/* Formulier controls */
+.t-checkbox { accent-color: var(--t-accent); }
+.peer:checked ~ .t-toggle { background-color: var(--t-accent) !important; }
+
+/* Icon hover */
+.t-icon-hover:hover { color: var(--t-accent); transition: color 150ms ease; }
+
+/* WooCommerce knoppen */
+.wc-btn {
+  background-color: #7f54b3;
+  color: #fff;
+  transition: background-color 150ms ease;
+}
+.wc-btn:hover:not(:disabled) { background-color: #6d4499; }
+.wc-btn:active:not(:disabled) { background-color: #5c3a82; }
