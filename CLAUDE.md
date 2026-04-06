@@ -35,7 +35,7 @@ BrewAdmin-HA-App/
 │   │   ├── constants.ts    # Enums, mappings, defaults
 │   │   ├── format.ts       # Formatting utilities
 │   │   ├── calculations.ts # Business logic calculations
-│   │   └── excel.ts        # Excel import (legacy); data backup/restore is now JSON-based in App.tsx
+│   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
 │   ├── App.tsx             # Root: routing, global state, auto-sync
@@ -218,12 +218,12 @@ Statusbadges gebruiken vaste Tailwind-kleuren met semantische betekenis:
 
 | Kleur | Gebruik |
 |-------|---------|
-| `green-*` | Inkomsten, ontvangst, succes, verkoop |
+| `green-*` | Inkomsten, ontvangst, succes, verkoop, BTW-periode Afgesloten |
 | `red-*` | Uitgaven, fouten, tekort, gevaarlijke acties |
-| `blue-*` | Inkoop, informatie, neutrale acties |
-| `orange-*` | BTW, overige kosten, waarschuwingen |
+| `blue-*` | Inkoop, informatie, neutrale acties, BTW-periode Lopend |
+| `orange-*` | BTW, overige kosten, waarschuwingen, BTW-periode Openstaand |
 | `purple-*` | Uitslaan (bier), Kapitaal-dagboek (badge), conditioneren/lagering fase |
-| `gray-*` | Neutrale tekst, secondaire elementen |
+| `gray-*` | Neutrale tekst, secondaire elementen, BTW-periode Toekomstig |
 | `emerald-*` | Speciale successtaten (via `Btn v="green"`) |
 
 > Statusbadges mogen vaste kleuren gebruiken omdat ze semantisch zijn en niet onderdeel van het thema.
@@ -282,10 +282,108 @@ Gepland → Aan het brouwen → Aan het gisten → Conditioning → Afgevuld →
 
 ### Data keys (stored in `/data/<key>.json`)
 
-Key names are alphanumeric + underscore only (enforced by server). Common keys:
-- `batches`, `ingredienten`, `lots`, `recepten`, `afvullingen`
-- `biervoorraden`, `bestellingen`, `inkoopfacturen`
-- `accijns_aangiften`, `hygieneLog`, `instellingen`
+Key names are alphanumeric + underscore only (enforced by server). All active keys:
+
+| Key | Type | Inhoud |
+|-----|------|--------|
+| `ingredienten` | array | Ingrediënten |
+| `lots` | array | Ingrediëntlots (voorraadeenheden) |
+| `batches` | array | Brouwbatches |
+| `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
+| `afvullingen` | array | Afvullingen / releases |
+| `uitslagen` | array | Biervoorraaduitslagen |
+| `accijns` | array | Accijnsrecords |
+| `verpakkingen` | array | Verpakkingstypen |
+| `onderdelen` | array | Apparatuur-onderdelen |
+| `voorraad_log` | array | Mutatielog ingrediënten |
+| `voorraad_archief` | array | Gearchiveerde voorraadmutaties |
+| `voorraad_gesloten_bieren` | array | Afgesloten biersoorten |
+| `recepten` | array | Recepten (lokaal + Brewfather) |
+| `recepten_verborgen` | array | Verborgen recept-IDs |
+| `recepten_gearchiveerde_tags` | array | Gearchiveerde recepttags |
+| `recepten_tag_volgorde` | array | Volgorde recepttags |
+| `recepten_gesloten_groepen` | array | Ingeklapte receptgroepen |
+| `tanks` | array | Tanks / fermentoren |
+| `artikelen` | array | WooCommerce-artikelen (SKU-mapping) |
+| `hygiene_items` | array | Hygiëne-controleitems |
+| `hygiene_groups` | array | Hygiëne-groepen |
+| `inkoop_facturen` | array | Inkoopfacturen |
+| `verkoop_facturen` | array | Verkoopfacturen |
+| `bestellingen` | array | WooCommerce-bestellingen |
+| `bestelling_picks` | array | Pickregels per bestelling |
+| `afboekingen` | array | Biervoorraadbewegingen |
+| `klanten` | array | Klanten |
+| `gist_metingen` | array | Gistingsmetingen per batch |
+| `kapitaal_boekingen` | array | Kapitaalstortingen / -onttrekkingen |
+| `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
+| `ing_types` | array | Ingrediënttypen |
+| `accijns_instellingen` | object | Accijnstarieven |
+| `btw_instellingen` | object | BTW-aangifte-instellingen (periode) |
+| `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
+| `brewery_details` | object | Brouwerijnaam, adres, BTW-nr. |
+| `factuur_counter` | object | Doorlopend factuurnummer per jaar |
+| `ha_instellingen` | object | Home Assistant sensor-instellingen |
+| `bank_koppelingen` | object | Koppeling banktransacties aan facturen/BTW (zie hieronder) |
+| `app_logo` | string\|null | Base64 app-logo |
+| `factuur_logo` | string\|null | Base64 factuurlogo |
+| `app_name` | string | Naam van de brouwerij-app |
+| `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
+| `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
+| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials (nooit in backup) |
+| `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
+
+---
+
+## Backup & Restore
+
+Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `excelExport` en `excelImport` in `src/utils/excel.ts` verwerken alle data.
+
+- **Export:** `doExport()` in `App.tsx` → `excelExport(data)` → downloadt `brewadmin_backup_YYYY-MM-DD.xlsx`
+- **Import:** `doImport(e)` in `App.tsx` → `excelImport(file, cb, onError)` → stelt alle state in
+- **UI:** Instellingen → App → Data import & export (`accept=".xlsx"`)
+- **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
+- **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
+- **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de backup
+
+Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
+
+---
+
+## BTW Aangifte — implementatiedetails
+
+### Periodeberekening
+
+`getPeriodes(year, periode)` in `BoekhoudingPage.tsx` berekent kwartaal- of maandperiodes. De geselecteerde periode wordt bijgehouden in `selectedPeriode` (lokale state). De memo's `btwPerTariefAangifte` en `omzetBtwPerTarief` filteren altijd op het datumbereik van de geselecteerde periode (of het hele jaar als niets geselecteerd is).
+
+### Periodestatus
+
+Periodes hebben vier statussen:
+
+| Status | Kleur | Conditie |
+|--------|-------|----------|
+| Toekomstig | Grijs | `p.from > today` |
+| Lopend | Blauw | `p.from ≤ today ≤ p.to` |
+| Openstaand | Oranje | `p.to < today` én géén BTW-koppeling in `bankKoppelingen` |
+| Afgesloten | Groen | `p.to < today` én BTW-koppeling aanwezig |
+
+Een periode wordt pas "Afgesloten" wanneer de gebruiker een banktransactie koppelt als bewijs van betaling. Zolang dat niet is gedaan staat de periode op **Openstaand** (oranje).
+
+### `bankKoppelingen` — koppelingtypen
+
+Het `bankKoppelingen` object (sleutel: `txKey(tx)`) ondersteunt drie soorten koppelingen:
+
+```ts
+// Verkoopfactuur
+{ soort: 'verkoop', factuurId: number }
+
+// Inkoopfactuur
+{ soort: 'inkoop', factuurId: number }
+
+// BTW-afdracht (koppelt een debettransactie aan een BTW-periode)
+{ soort: 'btw', periodeKey: string }  // bijv. '2026-Q1' of '2026-M04'
+```
+
+De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort: 'btw'`-entries en bouwt een `Set<string>` van betaalde periodeKeys. Bij MT940-herimport worden BTW-koppelingen automatisch hersteld via `gekoppeldBtwPeriode` op de transactie.
 
 ---
 

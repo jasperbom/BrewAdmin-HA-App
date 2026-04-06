@@ -1075,7 +1075,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </button>
           <label className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded text-sm font-medium hover:bg-blue-800 transition-colors cursor-pointer">
             {t('settings_data_import')}
-            <input ref={importRef} type="file" accept=".json" onChange={doImport} className="hidden" />
+            <input ref={importRef} type="file" accept=".xlsx" onChange={doImport} className="hidden" />
           </label>
         </div>
         <p className="text-xs text-gray-400 mt-3">{t('settings_data_import_warning')}</p>
