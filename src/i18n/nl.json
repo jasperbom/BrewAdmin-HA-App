@@ -286,6 +286,8 @@
   "batch_gist_date_time": "Datum/tijd",
   "batch_gist_remark": "Opmerking",
   "batch_gist_export_header": "Gistmetingen",
+  "lbl_open_btw_periodes": "Openstaande BTW",
+  "lbl_btw_periodes_outstanding": "periodes te betalen",
   "lbl_open_orders": "Open bestellingen",
   "lbl_orders_to_pick": "te picken/pakken",
   "settings_brewery": "Brouwerij",

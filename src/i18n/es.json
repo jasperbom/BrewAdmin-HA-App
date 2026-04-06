@@ -286,6 +286,8 @@
   "batch_gist_date_time": "Fecha/hora",
   "batch_gist_remark": "Comentario",
   "batch_gist_export_header": "Mediciones de fermentación",
+  "lbl_open_btw_periodes": "IVA pendiente",
+  "lbl_btw_periodes_outstanding": "períodos a pagar",
   "lbl_open_orders": "Pedidos abiertos",
   "lbl_orders_to_pick": "por preparar/enviar",
   "settings_brewery": "Cervecería",

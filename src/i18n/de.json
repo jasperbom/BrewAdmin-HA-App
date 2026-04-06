@@ -286,6 +286,8 @@
   "batch_gist_date_time": "Datum/Zeit",
   "batch_gist_remark": "Anmerkung",
   "batch_gist_export_header": "Gärmessungen",
+  "lbl_open_btw_periodes": "Offene MwSt",
+  "lbl_btw_periodes_outstanding": "Perioden zu zahlen",
   "lbl_open_orders": "Offene Bestellungen",
   "lbl_orders_to_pick": "zu picken/packen",
   "settings_brewery": "Brauerei",
