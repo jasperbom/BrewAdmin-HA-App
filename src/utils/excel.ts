@@ -84,7 +84,16 @@ export const excelExport = (data: any) => {
   ]
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inst), 'Instellingen')
 
-  XLSX.writeFile(wb, `brewadmin_backup_${new Date().toISOString().slice(0,10)}.xlsx`)
+  // Genereer buffer en download via Blob URL (zelfde patroon als JSON-export)
+  const buf = XLSX.write(wb, {bookType: 'xlsx', type: 'array'})
+  const blob = new Blob([buf], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+  const url = URL.createObjectURL(blob)
+  const a = Object.assign(document.createElement('a'), {
+    href: url,
+    download: `brewadmin_backup_${new Date().toISOString().slice(0,10)}.xlsx`
+  })
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ── Import ────────────────────────────────────────────────────────────────────
