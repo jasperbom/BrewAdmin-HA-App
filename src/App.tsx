@@ -197,9 +197,7 @@ function App() {
   }, [haInst?.enabled, haAutoFetch])
 
   const doExport = () => {
-    const backup = {
-      versie: 2,
-      datum: new Date().toISOString(),
+    excelExport({
       ingredienten: ing, lots, batches: bat, batch_ingredienten: bi,
       afvullingen: av, uitslagen: uit, accijns: acc,
       verpakkingen, onderdelen,
@@ -216,72 +214,61 @@ function App() {
       bestellingen, bestelling_picks: bestellingPicks, afboekingen,
       klanten, gist_metingen: gistMetingen,
       kapitaal_boekingen: kapitaalBoekingen,
+      bank_koppelingen: bankKoppelingen,
       brewery_details: breweryDetails, factuur_counter: factuurCounter,
       ha_instellingen: haInst,
       app_logo: logo, factuur_logo: factuurLogo, app_name: appName, nav_theme: navTheme,
-    };
-    const blob = new Blob([JSON.stringify(backup, null, 2)], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement('a'), {href: url, download: `brewadmin_backup_${new Date().toISOString().slice(0,10)}.json`});
-    a.click();
-    URL.revokeObjectURL(url);
+    });
   };
 
   const doImport = (e: any) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const d = JSON.parse(ev.target?.result as string);
-        if (confirm(t('err_confirm_backup_import'))) {
-          if (Array.isArray(d.ingredienten)) setIng(d.ingredienten);
-          if (Array.isArray(d.lots)) setLots(d.lots);
-          if (Array.isArray(d.batches)) setBat(d.batches);
-          if (Array.isArray(d.batch_ingredienten)) setBi(d.batch_ingredienten);
-          if (Array.isArray(d.afvullingen)) setAv(d.afvullingen);
-          if (Array.isArray(d.uitslagen)) setUit(d.uitslagen);
-          if (Array.isArray(d.accijns)) setAcc(d.accijns);
-          if (Array.isArray(d.verpakkingen)) setVerpakkingen(d.verpakkingen);
-          if (Array.isArray(d.onderdelen)) setOnderdelen(d.onderdelen);
-          if (Array.isArray(d.voorraad_log)) setLog(d.voorraad_log);
-          if (Array.isArray(d.voorraad_archief)) setArchief(d.voorraad_archief);
-          if (Array.isArray(d.voorraad_gesloten_bieren)) setGeslotenBieren(d.voorraad_gesloten_bieren);
-          if (Array.isArray(d.recepten)) setRecepten(d.recepten);
-          if (Array.isArray(d.recepten_verborgen)) setVerborgen(d.recepten_verborgen);
-          if (Array.isArray(d.recepten_gearchiveerde_tags)) setGearchiveerdeTags(d.recepten_gearchiveerde_tags);
-          if (Array.isArray(d.recepten_tag_volgorde)) setTagVolgorde(d.recepten_tag_volgorde);
-          if (Array.isArray(d.recepten_gesloten_groepen)) setGeslotenGroepen(d.recepten_gesloten_groepen);
-          if (Array.isArray(d.tanks)) setTanks(d.tanks);
-          if (Array.isArray(d.artikelen)) setArtikelen(d.artikelen);
-          if (Array.isArray(d.hygiene_items)) setHygieneItems(d.hygiene_items);
-          if (Array.isArray(d.hygiene_groups)) setHygieneGroups(d.hygiene_groups);
-          if (Array.isArray(d.inkoop_facturen)) setInkoopFacturen(d.inkoop_facturen);
-          if (Array.isArray(d.verkoop_facturen)) setVerkoopFacturen(d.verkoop_facturen);
-          if (Array.isArray(d.bestellingen)) setBestellingen(d.bestellingen);
-          if (Array.isArray(d.bestelling_picks)) setBestellingPicks(d.bestelling_picks);
-          if (Array.isArray(d.afboekingen)) setAfboekingen(d.afboekingen);
-          if (Array.isArray(d.klanten)) setKlanten(d.klanten);
-          if (Array.isArray(d.gist_metingen)) setGistMetingen(d.gist_metingen);
-          if (Array.isArray(d.kapitaal_boekingen)) setKapitaalBoekingen(d.kapitaal_boekingen);
-          if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
-          if (Array.isArray(d.btw_tarieven)) setBtwTarieven(d.btw_tarieven);
-          if (Array.isArray(d.ing_types)) setIngTypes(d.ing_types);
-          if (d.ing_type_btw) setIngTypeBtw(d.ing_type_btw);
-          if (d.brewery_details) setBreweryDetails(d.brewery_details);
-          if (d.factuur_counter) setFactuurCounter(d.factuur_counter);
-          if (d.ha_instellingen) setHaInst(d.ha_instellingen);
-          if (d.accijns_instellingen) setAccijnsInst(d.accijns_instellingen);
-          if (d.app_logo !== undefined) setLogo(d.app_logo);
-          if (d.factuur_logo !== undefined) setFactuurLogo(d.factuur_logo);
-          if (d.app_name !== undefined) setAppName(d.app_name);
-          if (d.nav_theme) setNavTheme(d.nav_theme);
-        }
-      } catch {
-        alert(t('err_invalid_backup'));
-      }
-    };
-    reader.readAsText(f);
+    if (!confirm(t('err_confirm_backup_import'))) { e.target.value = ''; return; }
+    excelImport(f, (d) => {
+      if (Array.isArray(d.ingredienten)) setIng(d.ingredienten);
+      if (Array.isArray(d.lots)) setLots(d.lots);
+      if (Array.isArray(d.batches)) setBat(d.batches);
+      if (Array.isArray(d.batch_ingredienten)) setBi(d.batch_ingredienten);
+      if (Array.isArray(d.afvullingen)) setAv(d.afvullingen);
+      if (Array.isArray(d.uitslagen)) setUit(d.uitslagen);
+      if (Array.isArray(d.accijns)) setAcc(d.accijns);
+      if (Array.isArray(d.verpakkingen)) setVerpakkingen(d.verpakkingen);
+      if (Array.isArray(d.onderdelen)) setOnderdelen(d.onderdelen);
+      if (Array.isArray(d.voorraad_log)) setLog(d.voorraad_log);
+      if (Array.isArray(d.voorraad_archief)) setArchief(d.voorraad_archief);
+      if (Array.isArray(d.voorraad_gesloten_bieren)) setGeslotenBieren(d.voorraad_gesloten_bieren);
+      if (Array.isArray(d.recepten)) setRecepten(d.recepten);
+      if (Array.isArray(d.recepten_verborgen)) setVerborgen(d.recepten_verborgen);
+      if (Array.isArray(d.recepten_gearchiveerde_tags)) setGearchiveerdeTags(d.recepten_gearchiveerde_tags);
+      if (Array.isArray(d.recepten_tag_volgorde)) setTagVolgorde(d.recepten_tag_volgorde);
+      if (Array.isArray(d.recepten_gesloten_groepen)) setGeslotenGroepen(d.recepten_gesloten_groepen);
+      if (Array.isArray(d.tanks)) setTanks(d.tanks);
+      if (Array.isArray(d.artikelen)) setArtikelen(d.artikelen);
+      if (Array.isArray(d.hygiene_items)) setHygieneItems(d.hygiene_items);
+      if (Array.isArray(d.hygiene_groups)) setHygieneGroups(d.hygiene_groups);
+      if (Array.isArray(d.inkoop_facturen)) setInkoopFacturen(d.inkoop_facturen);
+      if (Array.isArray(d.verkoop_facturen)) setVerkoopFacturen(d.verkoop_facturen);
+      if (Array.isArray(d.bestellingen)) setBestellingen(d.bestellingen);
+      if (Array.isArray(d.bestelling_picks)) setBestellingPicks(d.bestelling_picks);
+      if (Array.isArray(d.afboekingen)) setAfboekingen(d.afboekingen);
+      if (Array.isArray(d.klanten)) setKlanten(d.klanten);
+      if (Array.isArray(d.gist_metingen)) setGistMetingen(d.gist_metingen);
+      if (Array.isArray(d.kapitaal_boekingen)) setKapitaalBoekingen(d.kapitaal_boekingen);
+      if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
+      if (Array.isArray(d.btw_tarieven) && d.btw_tarieven.length) setBtwTarieven(d.btw_tarieven);
+      if (Array.isArray(d.ing_types) && d.ing_types.length) setIngTypes(d.ing_types);
+      if (d.ing_type_btw) setIngTypeBtw(d.ing_type_btw);
+      if (d.brewery_details) setBreweryDetails(d.brewery_details);
+      if (d.factuur_counter) setFactuurCounter(d.factuur_counter);
+      if (d.ha_instellingen) setHaInst(d.ha_instellingen);
+      if (d.accijns_instellingen) setAccijnsInst(d.accijns_instellingen);
+      if (d.bank_koppelingen && typeof d.bank_koppelingen === 'object') setBankKoppelingen(d.bank_koppelingen);
+      if (d.app_logo !== undefined) setLogo(d.app_logo);
+      if (d.factuur_logo !== undefined) setFactuurLogo(d.factuur_logo);
+      if (d.app_name !== undefined) setAppName(d.app_name);
+      if (d.nav_theme) setNavTheme(d.nav_theme);
+    }, () => alert(t('err_invalid_backup')));
     e.target.value = '';
   };
 
