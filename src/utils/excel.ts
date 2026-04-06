@@ -25,75 +25,79 @@ const prep = (d: any[]) => (d?.length ? d.map(toRow) : [{}])
 // ── Export ────────────────────────────────────────────────────────────────────
 // Verwacht hetzelfde object als de JSON-backup (alle app-data).
 export const excelExport = (data: any) => {
-  const wb = XLSX.utils.book_new()
+  try {
+    const wb = XLSX.utils.book_new()
 
-  const addSheet = (name: string, arr: any[]) =>
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(prep(arr || [])), name)
+    const addSheet = (name: string, arr: any[]) =>
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(prep(arr || [])), name)
 
-  // ── Array-sheets ──────────────────────────────────────────────────────────
-  addSheet('Ingredienten',          data.ingredienten)
-  addSheet('Lots',                  data.lots)
-  addSheet('Batches',               data.batches)
-  addSheet('BatchIngredienten',     data.batch_ingredienten)
-  addSheet('Afvullingen',           data.afvullingen)
-  addSheet('Uitslagen',             data.uitslagen)
-  addSheet('Accijns',               data.accijns)
-  addSheet('Verpakkingen',          data.verpakkingen)
-  addSheet('Onderdelen',            data.onderdelen)
-  addSheet('VoorraadLog',           data.voorraad_log)
-  addSheet('VoorraadArchief',       data.voorraad_archief)
-  addSheet('GeslotenBieren',        data.voorraad_gesloten_bieren)
-  addSheet('Recepten',              data.recepten)
-  addSheet('ReceptenVerborgen',     data.recepten_verborgen)
-  addSheet('ReceptenTags',          data.recepten_gearchiveerde_tags)
-  addSheet('ReceptenTagVolgorde',   data.recepten_tag_volgorde)
-  addSheet('ReceptenGroepen',       data.recepten_gesloten_groepen)
-  addSheet('Tanks',                 data.tanks)
-  addSheet('Artikelen',             data.artikelen)
-  addSheet('HygieneItems',          data.hygiene_items)
-  addSheet('HygieneGroups',         data.hygiene_groups)
-  addSheet('InkoopFacturen',        data.inkoop_facturen)
-  addSheet('VerkoopFacturen',       data.verkoop_facturen)
-  addSheet('Bestellingen',          data.bestellingen)
-  addSheet('BestellingPicks',       data.bestelling_picks)
-  addSheet('Afboekingen',           data.afboekingen)
-  addSheet('Klanten',               data.klanten)
-  addSheet('GistMetingen',          data.gist_metingen)
-  addSheet('KapitaalBoekingen',     data.kapitaal_boekingen)
+    // ── Array-sheets ──────────────────────────────────────────────────────────
+    addSheet('Ingredienten',          data.ingredienten)
+    addSheet('Lots',                  data.lots)
+    addSheet('Batches',               data.batches)
+    addSheet('BatchIngredienten',     data.batch_ingredienten)
+    addSheet('Afvullingen',           data.afvullingen)
+    addSheet('Uitslagen',             data.uitslagen)
+    addSheet('Accijns',               data.accijns)
+    addSheet('Verpakkingen',          data.verpakkingen)
+    addSheet('Onderdelen',            data.onderdelen)
+    addSheet('VoorraadLog',           data.voorraad_log)
+    addSheet('VoorraadArchief',       data.voorraad_archief)
+    addSheet('GeslotenBieren',        data.voorraad_gesloten_bieren)
+    addSheet('Recepten',              data.recepten)
+    addSheet('ReceptenVerborgen',     data.recepten_verborgen)
+    addSheet('ReceptenTags',          data.recepten_gearchiveerde_tags)
+    addSheet('ReceptenTagVolgorde',   data.recepten_tag_volgorde)
+    addSheet('ReceptenGroepen',       data.recepten_gesloten_groepen)
+    addSheet('Tanks',                 data.tanks)
+    addSheet('Artikelen',             data.artikelen)
+    addSheet('HygieneItems',          data.hygiene_items)
+    addSheet('HygieneGroups',         data.hygiene_groups)
+    addSheet('InkoopFacturen',        data.inkoop_facturen)
+    addSheet('VerkoopFacturen',       data.verkoop_facturen)
+    addSheet('Bestellingen',          data.bestellingen)
+    addSheet('BestellingPicks',       data.bestelling_picks)
+    addSheet('Afboekingen',           data.afboekingen)
+    addSheet('Klanten',               data.klanten)
+    addSheet('GistMetingen',          data.gist_metingen)
+    addSheet('KapitaalBoekingen',     data.kapitaal_boekingen)
 
-  // Simpele primitieve arrays — wrap in object voor Excel
-  addSheet('BtwTarieven', (data.btw_tarieven || []).map((v: any) => ({tarief: v})))
-  addSheet('IngTypes',    (data.ing_types    || []).map((v: any) => ({type: v})))
+    // Simpele primitieve arrays — wrap in object voor Excel
+    addSheet('BtwTarieven', (data.btw_tarieven || []).map((v: any) => ({tarief: v})))
+    addSheet('IngTypes',    (data.ing_types    || []).map((v: any) => ({type: v})))
 
-  // ── Instellingen-sheet (objects + losse waarden als key-value rijen) ───────
-  const inst: {sleutel: string, waarde: any}[] = [
-    {sleutel: '_versie',              waarde: 3},
-    {sleutel: '_datum',               waarde: new Date().toISOString()},
-    {sleutel: 'accijns_instellingen', waarde: JSON.stringify(data.accijns_instellingen ?? {})},
-    {sleutel: 'btw_instellingen',     waarde: JSON.stringify(data.btw_instellingen     ?? {})},
-    {sleutel: 'ing_type_btw',         waarde: JSON.stringify(data.ing_type_btw         ?? {})},
-    {sleutel: 'brewery_details',      waarde: JSON.stringify(data.brewery_details      ?? {})},
-    {sleutel: 'factuur_counter',      waarde: JSON.stringify(data.factuur_counter      ?? {})},
-    {sleutel: 'ha_instellingen',      waarde: JSON.stringify(data.ha_instellingen      ?? {})},
-    {sleutel: 'bank_koppelingen',     waarde: JSON.stringify(data.bank_koppelingen     ?? {})},
-    {sleutel: 'app_name',             waarde: data.app_name  ?? ''},
-    {sleutel: 'nav_theme',            waarde: data.nav_theme ?? 'amber'},
-    // Logo's: base64 strings — opgeslagen als tekst (mogelijk groot)
-    {sleutel: 'app_logo',             waarde: data.app_logo     ?? ''},
-    {sleutel: 'factuur_logo',         waarde: data.factuur_logo ?? ''},
-  ]
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inst), 'Instellingen')
+    // ── Instellingen-sheet (objects + losse waarden als key-value rijen) ───────
+    // Logo's worden NIET in Excel opgeslagen (te groot voor cellen; worden apart opgeslagen)
+    const inst: {sleutel: string, waarde: any}[] = [
+      {sleutel: '_versie',              waarde: 3},
+      {sleutel: '_datum',               waarde: new Date().toISOString()},
+      {sleutel: 'accijns_instellingen', waarde: JSON.stringify(data.accijns_instellingen ?? {})},
+      {sleutel: 'btw_instellingen',     waarde: JSON.stringify(data.btw_instellingen     ?? {})},
+      {sleutel: 'ing_type_btw',         waarde: JSON.stringify(data.ing_type_btw         ?? {})},
+      {sleutel: 'brewery_details',      waarde: JSON.stringify(data.brewery_details      ?? {})},
+      {sleutel: 'factuur_counter',      waarde: JSON.stringify(data.factuur_counter      ?? {})},
+      {sleutel: 'ha_instellingen',      waarde: JSON.stringify(data.ha_instellingen      ?? {})},
+      {sleutel: 'bank_koppelingen',     waarde: JSON.stringify(data.bank_koppelingen     ?? {})},
+      {sleutel: 'app_name',             waarde: data.app_name  ?? ''},
+      {sleutel: 'nav_theme',            waarde: data.nav_theme ?? 'amber'},
+    ]
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inst), 'Instellingen')
 
-  // Genereer buffer en download via Blob URL (zelfde patroon als JSON-export)
-  const buf = XLSX.write(wb, {bookType: 'xlsx', type: 'array'})
-  const blob = new Blob([buf], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
-  const url = URL.createObjectURL(blob)
-  const a = Object.assign(document.createElement('a'), {
-    href: url,
-    download: `brewadmin_backup_${new Date().toISOString().slice(0,10)}.xlsx`
-  })
-  a.click()
-  URL.revokeObjectURL(url)
+    // Genereer buffer en download via Blob URL
+    const buf = XLSX.write(wb, {bookType: 'xlsx', type: 'array'})
+    const blob = new Blob([buf], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `brewadmin_backup_${new Date().toISOString().slice(0,10)}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Excel export fout:', err)
+    alert('Export mislukt: ' + (err instanceof Error ? err.message : String(err)))
+  }
 }
 
 // ── Import ────────────────────────────────────────────────────────────────────
