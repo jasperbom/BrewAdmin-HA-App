@@ -286,6 +286,8 @@
   "batch_gist_date_time": "Date/heure",
   "batch_gist_remark": "Remarque",
   "batch_gist_export_header": "Mesures de fermentation",
+  "lbl_open_btw_periodes": "TVA en attente",
+  "lbl_btw_periodes_outstanding": "périodes à payer",
   "lbl_open_orders": "Commandes ouvertes",
   "lbl_orders_to_pick": "à préparer/expédier",
   "settings_brewery": "Brasserie",

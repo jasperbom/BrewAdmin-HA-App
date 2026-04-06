@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
 import { STATUS_CLR } from '../utils/constants'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -33,8 +33,37 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   const openAccijns    = acc.filter((a: any) => !a.betaald);
   const openAccBed     = openAccijns.reduce((s: any, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0);
   const beschVoorraad  = uit.reduce((s: any, u: any) => s + Number(u.aantal||0) - Number(u.verkocht_stuks||0), 0);
-  const actiefBatches  = bat.filter((b: any) => !['Gesloten','Verpakt'].includes(b.status));
   const openBestellingen = bi.filter((b: any) => ['nieuw','gepickt'].includes(b.status));
+
+  const openBtwPeriodes = React.useMemo(() => {
+    const periodeType = (btwInst as any)?.periode ?? 'kwartaal';
+    const nu = new Date(); nu.setHours(0,0,0,0);
+    const jaar = nu.getFullYear();
+    const betaald = new Set(
+      Object.values(bankKoppelingen as any)
+        .filter((k: any) => k?.soort === 'btw')
+        .map((k: any) => k.periodeKey)
+    );
+    const past: string[] = [];
+    if (periodeType === 'kwartaal') {
+      for (let q = 1; q <= 4; q++) {
+        const to = new Date(jaar, q * 3, 0);
+        if (to < nu) {
+          const key = `${jaar}-Q${q}`;
+          if (!betaald.has(key)) past.push(key);
+        }
+      }
+    } else {
+      for (let m = 1; m <= 12; m++) {
+        const to = new Date(jaar, m, 0);
+        if (to < nu) {
+          const key = `${jaar}-M${String(m).padStart(2, '0')}`;
+          if (!betaald.has(key)) past.push(key);
+        }
+      }
+    }
+    return past;
+  }, [btwInst, bankKoppelingen]);
 
   // ── SG helpers ────────────────────────────────────────────────────────────
   const latestMeting = (batchId: number) => {
@@ -185,12 +214,11 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   return (
     <div>
       {/* ── Stat cards ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-        <StatCard label={t('lbl_active_batches')}    value={actiefBatches.length}   sub={t('lbl_of_n_total').replace('{n}', bat.length)}            color="blue"                              onClick={() => setPage('batches')} />
-        <StatCard label={t('lbl_stock_available')}   value={beschVoorraad}          sub={t('lbl_units_released')}                                   color="green"                             onClick={() => setPage('voorraad')} />
-        <StatCard label={t('lbl_open_excise')}       value={fmt(openAccBed)}        sub={`${openAccijns.length} ${t('lbl_declarations')}`}          color={openAccBed > 0 ? 'red' : 'gray'}   onClick={() => setPage('accijns')} />
-        <StatCard label={t('lbl_active_lots')}       value={activeLots.length}      sub={`${lotsMetTht.length} ${t('lbl_with_tht_date')}`}          color="amber"                             onClick={() => setPage('ingredienten')} />
-        <StatCard label={t('lbl_open_orders')}       value={openBestellingen.length} sub={t('lbl_orders_to_pick')}                                   color={openBestellingen.length > 0 ? 'orange' : 'gray'} onClick={() => setPage('bestellingen')} />
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard label={t('lbl_stock_available')}   value={beschVoorraad}            sub={t('lbl_units_released')}                              color="green"                                          onClick={() => setPage('voorraad')} />
+        <StatCard label={t('lbl_open_excise')}       value={fmt(openAccBed)}          sub={`${openAccijns.length} ${t('lbl_declarations')}`}     color={openAccBed > 0 ? 'red' : 'gray'}                onClick={() => setPage('boekhouding')} />
+        <StatCard label={t('lbl_open_btw_periodes')} value={openBtwPeriodes.length}   sub={t('lbl_btw_periodes_outstanding')}                    color={openBtwPeriodes.length > 0 ? 'orange' : 'gray'} onClick={() => setPage('boekhouding')} />
+        <StatCard label={t('lbl_open_orders')}       value={openBestellingen.length}  sub={t('lbl_orders_to_pick')}                              color={openBestellingen.length > 0 ? 'orange' : 'gray'} onClick={() => setPage('bestellingen')} />
       </div>
 
       {/* ── THT alerts ────────────────────────────────────────────────────── */}
