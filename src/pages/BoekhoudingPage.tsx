@@ -242,6 +242,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     return {hoog, laag};
   }, [verkoopFacturen, aangifteOrders, aangifteYear, selectedPeriode]);
 
+  // Set van periodeKeys die een gekoppelde BTW-banktransactie hebben
+  const btwBetaaldePerioden = React.useMemo(() => {
+    const s = new Set<string>();
+    Object.values(bankKoppelingen as any).forEach((k: any) => {
+      if (k?.soort === 'btw' && k.periodeKey) s.add(k.periodeKey);
+    });
+    return s;
+  }, [bankKoppelingen]);
+
   const exportInkoopCSV = () => {
     const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_supplier'),t('lbl_netto_inkoop_excl_btw'),'BTW%',t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
     const rows: any[] = [];
@@ -748,6 +757,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             ...tx,
             gekoppeldFactuurId: opgeslagen.soort === 'verkoop' ? opgeslagen.factuurId : null,
             gekoppeldInkoopId: opgeslagen.soort === 'inkoop' ? opgeslagen.factuurId : null,
+            gekoppeldBtwPeriode: opgeslagen.soort === 'btw' ? opgeslagen.periodeKey : undefined,
             autoGematcht: true,
             herinneringsGematcht: true,
           }
@@ -803,6 +813,26 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       )
     })
   }
+
+  const koppelBtwBetaling = (txIndex: number, periodeKey: string) => {
+    setBankTransacties((prev: any[]) => {
+      const tx = prev[txIndex];
+      const key = txKey(tx);
+      setBankKoppelingen((k: any) => ({...k, [key]: {soort: 'btw', periodeKey}}));
+      return prev.map((t, i) => i === txIndex ? {...t, gekoppeldBtwPeriode: periodeKey} : t);
+    });
+  };
+
+  const ontkoppelBtwBetaling = (periodeKey: string) => {
+    setBankKoppelingen((k: any) => {
+      const c = {...k};
+      Object.keys(c).forEach(key => { if (c[key]?.soort === 'btw' && c[key].periodeKey === periodeKey) delete c[key]; });
+      return c;
+    });
+    setBankTransacties((prev: any[]) => prev.map((t: any) =>
+      t.gekoppeldBtwPeriode === periodeKey ? {...t, gekoppeldBtwPeriode: undefined} : t
+    ));
+  };
 
   const markeerInkoopBetaald = (id: number) => {
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
@@ -1675,7 +1705,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                   {t('btn_mark_paid')}
                                 </button>
                               )}
-                              {!tx.gekoppeldInkoopId && (
+                              {tx.gekoppeldBtwPeriode ? (
+                                <span className="text-xs text-orange-600 font-medium">
+                                  ✓ BTW {tx.gekoppeldBtwPeriode}
+                                  <button onClick={()=>ontkoppelBtwBetaling(tx.gekoppeldBtwPeriode)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors">×</button>
+                                </span>
+                              ) : !tx.gekoppeldInkoopId && (
                                 <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                   className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   + {t('btn_nieuwe_boeking')}
@@ -2111,25 +2146,33 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               const teBetalen = verkoopBtw - voorbelasting;
 
               // Periode status
-              const isFuture  = p.from > today;
-              const isCurrent = p.from <= today && p.to >= today;
-              const isPast    = p.to < today;
+              const isBetaald    = btwBetaaldePerioden.has(p.key);
+              const isFuture     = p.from > today;
+              const isCurrent    = p.from <= today && p.to >= today;
+              const isPast       = p.to < today;
+              const isOpenstaand = isPast && !isBetaald;
+              const isAfgesloten = isPast && isBetaald;
 
               const statusCls = isFuture
                 ? 'bg-gray-50 border-gray-100'
                 : isCurrent
                   ? 'bg-blue-50 border-blue-100'
-                  : isPast
-                    ? 'bg-white border-gray-100'
-                    : 'bg-white border-gray-100';
+                  : isOpenstaand
+                    ? 'bg-orange-50 border-orange-200'
+                    : 'bg-green-50 border-green-100';
 
               const badgeCls = isFuture
                 ? 'bg-gray-100 text-gray-400'
                 : isCurrent
                   ? 'bg-blue-100 text-blue-700'
-                  : 'bg-gray-100 text-gray-500';
+                  : isOpenstaand
+                    ? 'bg-orange-100 text-orange-700'
+                    : 'bg-green-100 text-green-700';
 
-              const badgeLabel = isFuture ? t('lbl_aangifte_toekomstig') : isCurrent ? t('lbl_aangifte_lopend') : t('lbl_aangifte_afgesloten');
+              const badgeLabel = isFuture ? t('lbl_aangifte_toekomstig')
+                : isCurrent    ? t('lbl_aangifte_lopend')
+                : isOpenstaand ? t('lbl_aangifte_openstaand')
+                : t('lbl_aangifte_afgesloten');
 
               const isSelected = selectedPeriode?.from === p.from;
               return (
@@ -2175,6 +2218,52 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       {' · '}{t('lbl_verkoop_netto')} <span className="font-medium text-gray-600">{fmt(verkoopNetto)}</span>
                     </div>
                   )}
+
+                  {/* Betaling koppelen / betalingsstatus */}
+                  {isPast && (()=>{
+                    const gekoppeldeKey = Object.keys(bankKoppelingen as any).find((k: any) => (bankKoppelingen as any)[k]?.soort === 'btw' && (bankKoppelingen as any)[k].periodeKey === p.key);
+                    const txInfo = gekoppeldeKey ? bankTransacties.find((tx: any) => txKey(tx) === gekoppeldeKey) : null;
+                    if (isAfgesloten) {
+                      return (
+                        <div className="border-t border-green-200 pt-2 flex items-center justify-between" onClick={(e: any)=>e.stopPropagation()}>
+                          <span className="text-xs text-green-600 font-medium">
+                            ✓ {t('lbl_btw_betaling_gekoppeld')}
+                            {txInfo ? ` · ${txInfo.datum} · ${fmt(txInfo.bedrag)}` : ''}
+                          </span>
+                          <button onClick={()=>ontkoppelBtwBetaling(p.key)}
+                            className="text-xs text-gray-400 hover:text-red-500 ml-2 transition-colors">
+                            {t('btn_ontkoppel')}
+                          </button>
+                        </div>
+                      );
+                    }
+                    const debitTxns = bankTransacties.filter((tx: any) =>
+                      tx.type === 'D' && !tx.gekoppeldInkoopId && !tx.gekoppeldBtwPeriode
+                    );
+                    return (
+                      <div className="border-t border-orange-200 pt-2" onClick={(e: any)=>e.stopPropagation()}>
+                        {debitTxns.length > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-orange-600 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
+                            <select onChange={(e: any)=>{
+                              const idx = bankTransacties.findIndex((tx: any) => txKey(tx) === e.target.value);
+                              if (idx >= 0) koppelBtwBetaling(idx, p.key);
+                            }} defaultValue=""
+                              className="border border-orange-200 rounded px-2 py-0.5 text-xs focus:outline-none flex-1 min-w-0">
+                              <option value="">— {t('lbl_selecteer_transactie')} —</option>
+                              {debitTxns.map((tx: any) => (
+                                <option key={txKey(tx)} value={txKey(tx)}>
+                                  {tx.datum} · {tx.tegenpartij||tx.omschrijving||'?'} · {fmt(tx.bedrag)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-orange-500 italic">{t('msg_geen_banktxn_geladen')}</p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
