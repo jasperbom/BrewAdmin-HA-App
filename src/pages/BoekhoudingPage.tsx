@@ -77,6 +77,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [aangifteLoading, setAangifteLoading] = React.useState(false);
   const [aangifteError, setAangifteError] = React.useState('');
   const [aangifteFetched, setAangifteFetched] = React.useState(false);
+  const [selectedPeriode, setSelectedPeriode] = React.useState<{from:string,to:string,label:string}|null>(null);
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
   const [editingFactuur, setEditingFactuur] = React.useState(null);
   const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
@@ -180,8 +181,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   const btwPerTariefAangifte = React.useMemo(() => {
     const map: any = {};
+    const fromDate = selectedPeriode?.from ?? `${aangifteYear}-01-01`;
+    const toDate   = selectedPeriode?.to   ?? `${aangifteYear}-12-31`;
     inkoopFacturen
-      .filter((f: any) => f.datum?.startsWith(String(aangifteYear)))
+      .filter((f: any) => f.datum >= fromDate && f.datum <= toDate)
       .forEach((f: any) => (f.regels||[]).forEach((r: any) => {
         const k = r.btw_tarief ?? 0;
         if (!map[k]) map[k] = {tarief:k, netto:0, btw:0};
@@ -189,16 +192,17 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         map[k].btw   += r.btw_bedrag||0;
       }));
     return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
-  }, [inkoopFacturen, aangifteYear]);
+  }, [inkoopFacturen, aangifteYear, selectedPeriode]);
 
   const omzetBtwPerTarief = React.useMemo(() => {
-    const yearStr = String(aangifteYear);
+    const fromDate = selectedPeriode?.from ?? `${aangifteYear}-01-01`;
+    const toDate   = selectedPeriode?.to   ?? `${aangifteYear}-12-31`;
     const hoog = {netto: 0, btw: 0}; // 21%
     const laag = {netto: 0, btw: 0}; // 9%
 
     // Eigen verkoopfacturen — split per btw_pct via regels
     (verkoopFacturen||[])
-      .filter((f: any) => f.datum?.startsWith(yearStr))
+      .filter((f: any) => f.datum >= fromDate && f.datum <= toDate)
       .forEach((f: any) => {
         (f.regels||[]).forEach((r: any) => {
           const pct = r.btw_pct ?? 0;
@@ -212,8 +216,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     // WooCommerce orders — splitsing via tax_lines (rate_percent per belastingregel)
     aangifteOrders
       .filter((o: any) => {
-        const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,4);
-        return d === yearStr && ['completed','processing'].includes((o as any).status);
+        const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,10);
+        return d >= fromDate && d <= toDate && ['completed','processing'].includes((o as any).status);
       })
       .forEach((o: any) => {
         const taxLines: any[] = (o as any).tax_lines || [];
@@ -236,7 +240,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       });
 
     return {hoog, laag};
-  }, [verkoopFacturen, aangifteOrders, aangifteYear]);
+  }, [verkoopFacturen, aangifteOrders, aangifteYear, selectedPeriode]);
 
   const exportInkoopCSV = () => {
     const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_supplier'),t('lbl_netto_inkoop_excl_btw'),'BTW%',t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
@@ -2009,10 +2013,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           <div className={card}>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
-                <button onClick={()=>{setAangifteYear((y: any)=>y-1); setAangifteFetched(false); setAangifteOrders([]);}}
+                <button onClick={()=>{setAangifteYear((y: any)=>y-1); setAangifteFetched(false); setAangifteOrders([]); setSelectedPeriode(null);}}
                   className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg leading-none transition-colors">‹</button>
                 <span className="text-lg font-bold text-gray-800 w-14 text-center">{aangifteYear}</span>
-                <button onClick={()=>{setAangifteYear((y: any)=>y+1); setAangifteFetched(false); setAangifteOrders([]);}}
+                <button onClick={()=>{setAangifteYear((y: any)=>y+1); setAangifteFetched(false); setAangifteOrders([]); setSelectedPeriode(null);}}
                   className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg leading-none transition-colors">›</button>
               </div>
               <div className="text-xs text-gray-400 italic">
@@ -2029,6 +2033,57 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             {aangifteError && <p className="mt-2 text-sm text-red-600">{aangifteError}</p>}
             {aangifteFetched && <p className="mt-2 text-xs text-green-600">{t('msg_aangifte_loaded').replace('{n}',aangifteOrders.length).replace('{year}',aangifteYear)}</p>}
           </div>
+
+          {/* Jaar totaal */}
+          {(()=>{
+            const yearStr = String(aangifteYear);
+            const jaarOrders = aangifteOrders.filter((o: any) => {
+              const d = (o.date_paid||o.date_created||'').slice(0,4);
+              return d === yearStr && ['completed','processing'].includes(o.status);
+            });
+            const jaarWcBtw   = jaarOrders.reduce((s: any,o: any)=>s+parseFloat(o.total_tax||0), 0);
+            const jaarEigenBtw = (verkoopFacturen||[])
+              .filter((f: any) => f.datum?.startsWith(yearStr))
+              .reduce((s: any,f: any)=>s+(f.btw||0), 0);
+            const jaarOmzetBtw = jaarWcBtw + jaarEigenBtw;
+            const jaarVoorbelast = inkoopFacturen
+              .filter((f: any) => f.datum?.startsWith(yearStr))
+              .reduce((s: any,f: any)=>s+(f.totaal_btw||0), 0);
+            const jaarTeBetalen = jaarOmzetBtw - jaarVoorbelast;
+            return (
+              <div className={card + ' border-gray-200'}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-bold text-gray-700">{t('lbl_jaar_totaal')} {aangifteYear}</span>
+                  {selectedPeriode && (
+                    <button onClick={()=>setSelectedPeriode(null)}
+                      className="text-xs px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">
+                      ✕ {t('lbl_aangifte_heel_jaar').replace('{year}','')}
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-gray-50 rounded-xl p-2">
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_omzet_btw')}</div>
+                    <div className="text-sm font-bold text-gray-800">{fmt(jaarOmzetBtw)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-2">
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_voorbelasting')}</div>
+                    <div className="text-sm font-bold text-blue-700">{fmt(jaarVoorbelast)}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-2">
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_te_betalen')}</div>
+                    <div className={`text-sm font-bold ${jaarTeBetalen >= 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                      {fmt(Math.abs(jaarTeBetalen))}
+                    </div>
+                    <div className={`text-xs font-medium ${jaarTeBetalen >= 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                      {jaarTeBetalen >= 0 ? t('lbl_te_betalen') : t('lbl_terug')}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-2 italic">{t('lbl_aangifte_klik_periode')}</p>
+              </div>
+            );
+          })()}
 
           {/* Periode-kaarten */}
           <div className={`grid gap-4 ${periode==='maand' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'}`}>
@@ -2076,8 +2131,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
               const badgeLabel = isFuture ? t('lbl_aangifte_toekomstig') : isCurrent ? t('lbl_aangifte_lopend') : t('lbl_aangifte_afgesloten');
 
+              const isSelected = selectedPeriode?.from === p.from;
               return (
-                <div key={p.key} className={`rounded-2xl border shadow-sm p-5 space-y-3 ${statusCls}`}>
+                <div key={p.key}
+                  onClick={()=>setSelectedPeriode(isSelected ? null : {from:p.from, to:p.to, label:p.label})}
+                  className={`rounded-2xl border shadow-sm p-5 space-y-3 cursor-pointer transition-all ${isSelected ? 'ring-2 ring-[var(--t-accent)] bg-white border-transparent' : statusCls}`}>
                   {/* Header */}
                   <div className="flex items-start justify-between">
                     <div>
@@ -2122,11 +2180,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             })}
           </div>
 
-          {/* BTW per tarief (inkoop voorbelasting per jaar) */}
+          {/* BTW per tarief (inkoop voorbelasting per geselecteerde periode of jaar) */}
           {btwPerTariefAangifte.length > 0 && (
             <div className="space-y-4">
               <div className={card}>
-                <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('lbl_voorbelasting_per_tarief')}</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">
+                  {t('lbl_voorbelasting_per_tarief')} — <span style={{color:'var(--t-accent)'}}>{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</span>
+                </h3>
                 <p className="text-xs text-gray-400 mb-4">{t('lbl_gebruik_rubriek_5b')}</p>
                 <table className="w-full text-sm">
                   <thead>
@@ -2163,7 +2223,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               </div>
 
               <div className={card + ' bg-blue-50 border-blue-100'}>
-                <h3 className="text-xs font-semibold text-blue-800 mb-3 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
+                <h3 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
+                <p className="text-xs text-blue-600 mb-3">{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a')}</div>
