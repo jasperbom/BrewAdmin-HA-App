@@ -34,6 +34,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   const openAccBed     = openAccijns.reduce((s: any, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0);
   const beschVoorraad  = uit.reduce((s: any, u: any) => s + Number(u.aantal||0) - Number(u.verkocht_stuks||0), 0);
   const openBestellingen = bi.filter((b: any) => ['nieuw','gepickt'].includes(b.status));
+  const actiefBatches  = bat.filter((b: any) => b.status !== 'Gesloten');
 
   const openBtwPeriodes = React.useMemo(() => {
     const periodeType = (btwInst as any)?.periode ?? 'kwartaal';
