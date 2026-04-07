@@ -207,7 +207,7 @@ const StatiegeldPage: React.FC<Props> = ({
     <button
       key={key}
       onClick={() => setTab(key)}
-      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === key ? 't-tab' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === key ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
     >
       {label}
     </button>
@@ -216,17 +216,16 @@ const StatiegeldPage: React.FC<Props> = ({
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-xl font-bold text-gray-800">{t('nav_statiegeld')}</h2>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-card mb-4">
-        <div className="flex border-b overflow-x-auto">
+        <div className="flex items-center gap-1 flex-wrap">
+          <h2 className="text-xl font-bold text-gray-800 mr-4">{t('nav_statiegeld')}</h2>
           {tabBtn('config', t('statiegeld_tab_config'))}
           {tabBtn('snd', t('statiegeld_tab_snd'))}
           {tabBtn('fust', t('statiegeld_tab_fust'))}
           {tabBtn('mutaties', t('statiegeld_tab_mutaties'))}
         </div>
+      </div>
 
+      <div className="bg-white rounded-xl shadow-card">
         {/* TAB: Configuratie */}
         {tab === 'config' && (
           <div className="p-4">
