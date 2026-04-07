@@ -973,7 +973,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-xl font-bold text-gray-800">{t('orders_title')}</h2>
+        <div className="flex items-center gap-1 flex-wrap">
+          <h2 className="text-xl font-bold text-gray-800 mr-4">{t('orders_title')}</h2>
+          {(['alle','nieuw','gepickt','verzonden','afgerond','geannuleerd'] as StatusFilter[]).map(s => {
+            const count = s === 'alle' ? 0 : (bestellingen||[]).filter(b => b.status === s).length
+            return (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${statusFilter===s ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                {t(`orders_filter_${s}`)||s}
+                {count > 0 && <span className="ml-1 opacity-70">({count})</span>}
+              </button>
+            )
+          })}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           {wcCreds?.enabled && (
             <button onClick={importWcOrders} disabled={wcImporting}
@@ -984,19 +996,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           {wcMsg && <span className={`text-xs font-medium ${wcMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcMsg}</span>}
           <Btn onClick={() => { setManualForm(emptyManual); setShowManualModal(true) }}>{t('orders_new')}</Btn>
         </div>
-      </div>
-
-      {/* Status filter tabs */}
-      <div className="flex gap-1 mb-4 flex-wrap">
-        {(['alle','nieuw','gepickt','verzonden','afgerond','geannuleerd'] as StatusFilter[]).map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${statusFilter===s ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 border hover:bg-gray-50'}`}>
-            {t(`orders_filter_${s}`)||s}
-            {s !== 'alle' && (bestellingen||[]).filter(b => b.status === s).length > 0 &&
-              <span className="ml-1 opacity-70">({(bestellingen||[]).filter(b => b.status === s).length})</span>
-            }
-          </button>
-        ))}
       </div>
 
       {filtered.length === 0 && (

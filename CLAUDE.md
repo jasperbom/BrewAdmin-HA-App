@@ -123,6 +123,29 @@ There is no test suite (no Jest, Vitest, or Python unittest). Verify changes man
 - Commit messages are descriptive, often in Dutch (matching UI language)
 - Version is tracked in `config.yaml` (`version:`) and referenced in `README.md` and `CHANGELOG.md`
 
+### Versie-bump per commit (verplicht)
+
+**Elke commit verhoogt de versie in `config.yaml` met `0.0.1`.** De bump is
+onderdeel van dezelfde commit als de inhoudelijke wijziging — niet een aparte
+commit.
+
+Roll-over-regels (semver-achtig met cap 99 per segment):
+
+- `patch` loopt van `0` t/m `99`. Na `0.0.99` → `0.1.0` (patch reset, minor +1).
+- `minor` loopt van `0` t/m `99`. Na `0.99.0` → `1.0.0` (minor reset, major +1).
+- `major` heeft geen cap.
+
+Voorbeelden:
+
+| Huidige versie | Volgende versie |
+|---|---|
+| `1.7.9`  | `1.7.10` |
+| `1.7.99` | `1.8.0`  |
+| `1.99.99` | `2.0.0` |
+
+Pas naast `config.yaml` ook `README.md` en `CHANGELOG.md` aan wanneer die de
+versie noemen, zodat alle drie de bestanden in sync blijven.
+
 ---
 
 ## Code Conventions
