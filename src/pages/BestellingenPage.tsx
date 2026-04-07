@@ -17,6 +17,7 @@ interface BestellingenPageProps {
   acc: any[]
   setAcc: any
   artikelen: any[]
+  verpakkingen?: any[]
   bestellingen: any[]
   setBestellingen: any
   bestellingPicks: any[]
@@ -49,7 +50,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const BestellingenPage: React.FC<BestellingenPageProps> = ({
   bat, av, uit, setUit, acc, setAcc,
-  artikelen, bestellingen, setBestellingen,
+  artikelen, verpakkingen=[], bestellingen, setBestellingen,
   bestellingPicks, setBestellingPicks,
   verkoopFacturen, setVerkoopFacturen,
   wcCreds, accijnsInst, breweryDetails, appName='', logo=null,
@@ -413,7 +414,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
     // 3. VerkoopFactuur
     const rnd2 = (n: number) => Math.round(n * 100) / 100
-    const regelsList = (selectedOrder.regels||[]).map((r: any) => {
+    const regelsList: any[] = (selectedOrder.regels||[]).map((r: any) => {
       const netto = rnd2(Number(r.aantal||0) * Number(r.prijs_per_stuk||0))
       const btw_bedrag = rnd2(netto * Number(r.btw_pct||0) / 100)
       return {
@@ -426,6 +427,41 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         bruto: rnd2(netto + btw_bedrag),
       }
     })
+    // Statiegeld auto-pass: voor elke bier-regel met een verpakking die statiegeld
+    // heeft, één extra factuurregel toevoegen (BTW altijd 0%). WooCommerce-orders
+    // mogen al een statiegeldregel meesturen — in dat geval slaan we de auto-pass
+    // over om dubbele boeking te voorkomen.
+    const wcHasOwnDeposit = !!selectedOrder.wc_order_id && (selectedOrder.regels||[]).some((r: any) => {
+      const oms = String(r.omschrijving||'').toLowerCase()
+      return oms.includes('statiegeld') || oms.includes('deposit') || oms.includes('borg')
+    })
+    if (!wcHasOwnDeposit) {
+      ;(selectedOrder.regels||[]).forEach((r: any) => {
+        if (r.type && r.type !== 'bier') return
+        const vp = (verpakkingen||[]).find((v: any) =>
+          (r.verpakking_id && v.id === r.verpakking_id) ||
+          (v.naam && r.verpakking_type && String(v.naam).toLowerCase() === String(r.verpakking_type).toLowerCase()) ||
+          (v.type && r.verpakking_type && String(v.type).toLowerCase() === String(r.verpakking_type).toLowerCase())
+        )
+        const bedrag = Number(vp?.statiegeld_bedrag || 0)
+        const soort = vp?.statiegeld_soort
+        if (!vp || bedrag <= 0 || (soort !== 'snd' && soort !== 'fust')) return
+        const aantal = Number(r.aantal||0)
+        if (aantal === 0) return
+        const netto = rnd2(aantal * bedrag)
+        regelsList.push({
+          omschrijving: `${t(soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${vp.naam}`,
+          hoeveelheid: aantal,
+          prijs_per_stuk: bedrag,
+          btw_pct: 0,
+          netto,
+          btw_bedrag: 0,
+          bruto: netto,
+          statiegeld_soort: soort,
+          verpakking_id: vp.id,
+        })
+      })
+    }
     const btwTarieven = [...new Set(regelsList.map((r: any) => Number(r.btw_pct||0)))] as number[]
     const btw_overzicht = btwTarieven.map(tarief => {
       const regelsVanTarief = regelsList.filter((r: any) => Number(r.btw_pct||0) === tarief)

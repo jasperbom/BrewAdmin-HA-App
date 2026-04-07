@@ -78,6 +78,11 @@ export interface Verpakking {
   voorraad?: number
   kosten_per_stuk?: number
   onderdelen?: VerpakkingOnderdeel[]
+  // Statiegeld per stuk dat samen met deze verpakking gefactureerd wordt
+  statiegeld_bedrag?: number
+  // 'snd' = Statiegeld Nederland (afdracht aan derden)
+  // 'fust' = eigen statiegeld op fusten (saldo per klant)
+  statiegeld_soort?: 'snd' | 'fust' | null
 }
 
 export interface VerpakkingOnderdeel {
@@ -324,6 +329,10 @@ export interface VerkoopFactuurRegel {
   netto: number
   btw_bedrag: number
   bruto: number
+  // Statiegeld-discriminator: aanwezig op auto-gegenereerde statiegeldregels
+  statiegeld_soort?: 'snd' | 'fust'
+  // Verwijzing naar de Verpakking die de statiegeldregel oplevert
+  verpakking_id?: number
 }
 
 export interface BtwOvzRegel {
@@ -392,7 +401,9 @@ export interface VerkoopFactuur {
   klant_btw_nummer?: string
   regels?: VerkoopFactuurRegel[]
   btw_overzicht?: BtwOvzRegel[]
-  status?: 'open' | 'betaald' | 'herinnering'
+  status?: 'open' | 'betaald' | 'herinnering' | 'credit'
+  // Voor creditnota's: verwijzing naar de oorspronkelijke factuur (optioneel)
+  credit_van_factuur_id?: number | null
 }
 
 export interface BreweryDetails {
