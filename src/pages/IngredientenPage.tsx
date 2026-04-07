@@ -70,7 +70,7 @@ const IngredientenPage: React.FC<Props> = ({
   const [odQty, setOdQty] = useState('')
   const [odPrijs, setOdPrijs] = useState('')
   const [odTotaalprijs, setOdTotaalprijs] = useState('')
-  const emptyVT = { naam: '', inhoud_liter: '', type: '', onderdelen: [] as any[] }
+  const emptyVT = { naam: '', inhoud_liter: '', type: '', onderdelen: [] as any[], statiegeld_bedrag: '', statiegeld_soort: '' }
   const [showVTAdd, setShowVTAdd] = useState(false)
   const [vtForm, setVtForm] = useState(emptyVT)
   const [vtOnderdeel, setVtOnderdeel] = useState({ onderdeel_id: '', aantal: '1' })
@@ -212,16 +212,18 @@ const IngredientenPage: React.FC<Props> = ({
 
   const saveVTAdd = () => {
     if (!vtForm.naam.trim()) { alert(t('err_name_required')); return }
+    const stBedrag = Number(vtForm.statiegeld_bedrag || 0)
+    const stSoort: 'snd' | 'fust' | null = vtForm.statiegeld_soort === 'snd' || vtForm.statiegeld_soort === 'fust' ? vtForm.statiegeld_soort : null
     if (showVEdit) {
-      setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVEdit.id ? { ...v, naam: vtForm.naam.trim(), inhoud_liter: Number(vtForm.inhoud_liter || 0), type: vtForm.type || '', onderdelen: vtForm.onderdelen } : v))
+      setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVEdit.id ? { ...v, naam: vtForm.naam.trim(), inhoud_liter: Number(vtForm.inhoud_liter || 0), type: vtForm.type || '', onderdelen: vtForm.onderdelen, statiegeld_bedrag: stBedrag, statiegeld_soort: stSoort } : v))
     } else {
-      setVerpakkingen((prev: any[]) => [...prev, { id: newId(prev), naam: vtForm.naam.trim(), inhoud_liter: Number(vtForm.inhoud_liter || 0), type: vtForm.type || '', onderdelen: vtForm.onderdelen, voorraad: 0 }])
+      setVerpakkingen((prev: any[]) => [...prev, { id: newId(prev), naam: vtForm.naam.trim(), inhoud_liter: Number(vtForm.inhoud_liter || 0), type: vtForm.type || '', onderdelen: vtForm.onderdelen, voorraad: 0, statiegeld_bedrag: stBedrag, statiegeld_soort: stSoort }])
     }
     setVtForm(emptyVT); setVtOnderdeel({ onderdeel_id: '', aantal: '1' }); setShowVTAdd(false); setShowVEdit(null)
   }
 
   const openVTEdit = (v: any) => {
-    setVtForm({ naam: v.naam, inhoud_liter: String(v.inhoud_liter || ''), type: v.type || '', onderdelen: Array.isArray(v.onderdelen) ? v.onderdelen : [] })
+    setVtForm({ naam: v.naam, inhoud_liter: String(v.inhoud_liter || ''), type: v.type || '', onderdelen: Array.isArray(v.onderdelen) ? v.onderdelen : [], statiegeld_bedrag: v.statiegeld_bedrag != null ? String(v.statiegeld_bedrag) : '', statiegeld_soort: v.statiegeld_soort || '' })
     setShowVEdit(v); setShowVTAdd(true)
   }
 
@@ -745,6 +747,10 @@ const IngredientenPage: React.FC<Props> = ({
               <Inp label={t('lbl_name') + ' *'} value={vtForm.naam} onChange={(v: string) => setVtForm(f => ({ ...f, naam: v }))} placeholder="Fles 33cL compleet" />
               <Inp label={t('packaging_content')} type="number" value={vtForm.inhoud_liter} onChange={(v: string) => setVtForm(f => ({ ...f, inhoud_liter: v }))} placeholder="0.33" />
               <Sel label={t('lbl_type')} value={vtForm.type} onChange={(v: string) => setVtForm(f => ({ ...f, type: v }))} opts={[{ v: 'fles', l: t('pkg_fles') }, { v: 'blik', l: t('pkg_blik') }, { v: 'fust', l: t('pkg_fust') }, { v: 'overig', l: t('ing_type_overig') }]} ph={t('packaging_choose_type')} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Sel label={t('statiegeld_soort')} value={vtForm.statiegeld_soort} onChange={(v: string) => setVtForm(f => ({ ...f, statiegeld_soort: v }))} opts={[{ v: 'snd', l: t('statiegeld_snd') }, { v: 'fust', l: t('statiegeld_fust') }]} ph={t('statiegeld_geen')} />
+              <Inp label={t('statiegeld_bedrag')} type="number" value={vtForm.statiegeld_bedrag} onChange={(v: string) => setVtForm(f => ({ ...f, statiegeld_bedrag: v }))} placeholder="0.00" />
             </div>
             <div className="border-t pt-3">
               <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_components')}</p>

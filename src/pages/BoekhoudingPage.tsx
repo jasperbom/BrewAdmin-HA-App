@@ -2219,6 +2219,24 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     </div>
                   )}
 
+                  {/* Statiegeld Nederland — info-only afdracht */}
+                  {(()=>{
+                    let sndBedrag = 0;
+                    (verkoopFacturen||[]).forEach((f: any) => {
+                      if (!f?.datum || f.datum < p.from || f.datum > p.to) return;
+                      (f.regels||[]).forEach((r: any) => {
+                        if (r?.statiegeld_soort === 'snd') sndBedrag += Number(r.netto||0);
+                      });
+                    });
+                    if (sndBedrag === 0) return null;
+                    return (
+                      <div className="text-xs border-t border-gray-100 pt-2 flex items-center justify-between">
+                        <span className="text-gray-500">{t('statiegeld_snd_in_periode')}</span>
+                        <span className="font-semibold" style={{color:'var(--t-accent)'}}>€ {fmt(Math.round(sndBedrag*100)/100)}</span>
+                      </div>
+                    );
+                  })()}
+
                   {/* Betaling koppelen / betalingsstatus */}
                   {isPast && (()=>{
                     const gekoppeldeKey = Object.keys(bankKoppelingen as any).find((k: any) => (bankKoppelingen as any)[k]?.soort === 'btw' && (bankKoppelingen as any)[k].periodeKey === p.key);

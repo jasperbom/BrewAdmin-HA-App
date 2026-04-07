@@ -203,7 +203,8 @@ function buildFactuurBody(
 ): {bodyHtml: string, filename: string} | null {
   if (!factuur) return null
 
-  const factuurnummer = factuur.factuurnummer || `F-${factuur.id}`
+  const isCredit = factuur.status === 'credit'
+  const factuurnummer = factuur.factuurnummer || `${isCredit ? 'CN' : 'F'}-${factuur.id}`
   const factuurdatum = fmtDate(factuur.datum)
   const betalingstermijn = brewery?.betalingstermijn ?? 14
   const vervalDatum = (() => {
@@ -268,7 +269,7 @@ function buildFactuurBody(
     <div class="hdr">
       ${breweryBlock(brewery, appName, factuurLogo)}
       <div class="hdr-right">
-        <div class="doc-title">${t('lbl_factuur_titel')}</div>
+        <div class="doc-title">${isCredit ? t('lbl_creditnota_titel') : t('lbl_factuur_titel')}</div>
         <div class="doc-nr">${factuurnummer}</div>
         ${factuur.status === 'betaald' ? '<div style="margin-top:2mm"><span class="badge badge-green">✓ Betaald</span></div>' : ''}
       </div>
