@@ -248,6 +248,7 @@ export const bfMapBatch = (b: any) => ({
   OG:  bfNumSafe(b.measuredOg  || b.estimatedOg),
   FG:  bfNumSafe(b.measuredFg  || b.estimatedFg),
   ABV: bfNumSafe(b.measuredAbv || b.estimatedAbv),
+  platogehalte: (() => { const og = Number(bfNumSafe(b.measuredOg || b.estimatedOg)); return og >= 1 && og <= 1.2 ? Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og)*10)/10 : ''; })(),
   tank:'', electra_kosten:'', water_kosten:'', schoonmaak_kosten:'', overige_kosten:'',
   notities: (Array.isArray(b.notes)?b.notes.join(' '):(typeof b.notes==='object'&&b.notes?'':b.notes||'')) || (Array.isArray(b.tasteNotes)?b.tasteNotes.join(' '):(typeof b.tasteNotes==='object'&&b.tasteNotes?'':b.tasteNotes||'')),
   brouwzaal_eff: bfNumSafe(b.measuredBrewhouseEfficiency != null ? b.measuredBrewhouseEfficiency : b.estimatedBrewhouseEfficiency),

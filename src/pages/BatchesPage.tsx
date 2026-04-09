@@ -448,7 +448,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [ingFormOpen, setIngFormOpen] = useState(false)
   const [batchZoek, setBatchZoek] = useState('')
 
-  const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:''}
+  const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:'',gn_code:''}
   const [avF, setAvF] = useState<any>(emptyAv)
 
   const addLog = (entry: any) => setLog((prev: any[]) => [...prev, {id:newId(prev||[]), datum:tod(), ...entry}])
@@ -598,7 +598,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           const ch: any = {brewfather_id: bfB._id}
           if (existing.status !== appStatus) ch.status = appStatus
           if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize)
-          if (bfB.measuredOg)  ch.OG  = bfNumSafe(bfB.measuredOg)
+          if (bfB.measuredOg) {
+            ch.OG = bfNumSafe(bfB.measuredOg);
+            const _og = Number(ch.OG);
+            if (_og >= 1 && _og <= 1.2 && !existing.platogehalte)
+              ch.platogehalte = Math.round((-616.868 + 1111.14*_og - 630.272*_og*_og + 135.997*_og*_og*_og)*10)/10;
+          }
           if (bfB.measuredFg)  ch.FG  = bfNumSafe(bfB.measuredFg)
           if (bfB.measuredAbv) ch.ABV = bfNumSafe(bfB.measuredAbv)
           if (bfB.measuredBrewhouseEfficiency != null) ch.brouwzaal_eff = bfNumSafe(bfB.measuredBrewhouseEfficiency)
@@ -1596,7 +1601,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       <span>{t('batch_filling_register')}</span>
                     </div>
                     {!afvullenIngeklapt && <div className="p-3">
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_packaging')} <span className="text-red-500">*</span></label>
                           {(verpakkingen||[]).length===0
@@ -1621,6 +1626,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <Inp label={t('batch_filling_units')} type="number" value={avF.hoeveelheid} onChange={(v: string)=>setAvF((f: any)=>({...f,hoeveelheid:v}))} placeholder="1" />
                         <Inp label={t('batch_filling_date')} type="date" value={avF.datum} onChange={(v: string)=>setAvF((f: any)=>({...f,datum:v}))} />
                         <Inp label={t('batch_filling_tht')} type="date" value={avF.tht} onChange={(v: string)=>setAvF((f: any)=>({...f,tht:v}))} />
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_gn_code')}</label>
+                          <select value={avF.gn_code||''} onChange={e=>setAvF((f: any)=>({...f,gn_code:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
+                            <option value="">—</option>
+                            <option value="2203 00 01">{t('gn_2203_00_01')}</option>
+                            <option value="2203 00 09">{t('gn_2203_00_09')}</option>
+                            <option value="2206">{t('gn_2206')}</option>
+                            <option value="2202 91 00">{t('gn_2202_91_00')}</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="mt-2 flex items-center justify-between">
                         {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}
@@ -1885,19 +1900,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Inp label={t('lbl_liters_fermented')} type="number" value={bForm.liter_vergist} onChange={(v: string)=>setBForm((f: any)=>({...f,liter_vergist:v}))} placeholder="0" />
-              <Inp label={t('lbl_og')} type="number" value={bForm.OG} onChange={(v: string)=>setBForm((f: any)=>({...f,OG:v}))} placeholder="1.050" />
+              <Inp label={t('lbl_og')} type="number" value={bForm.OG} onChange={(v: string)=>{
+                const og = parseFloat(v);
+                const plato = !isNaN(og) && og >= 1 && og <= 1.2
+                  ? Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og)*10)/10
+                  : '';
+                setBForm((f: any)=>({...f, OG:v, platogehalte: plato !== '' ? String(plato) : f.platogehalte}));
+              }} placeholder="1.050" />
               <Inp label={t('lbl_fg')} type="number" value={bForm.FG} onChange={(v: string)=>setBForm((f: any)=>({...f,FG:v}))} placeholder="1.010" />
               <Inp label={t('lbl_abv')} type="number" value={bForm.ABV} onChange={(v: string)=>setBForm((f: any)=>({...f,ABV:v}))} placeholder="5.0" />
               <Inp label={t('lbl_platogehalte')} type="number" value={bForm.platogehalte||''} onChange={(v: string)=>setBForm((f: any)=>({...f,platogehalte:v}))} placeholder="12.0" />
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">{t('lbl_gn_code')}</label>
-                <select value={bForm.gn_code||''} onChange={e=>setBForm((f: any)=>({...f,gn_code:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                  <option value="">—</option>
-                  <option value="2203 00 01">{t('gn_2203_00_01')}</option>
-                  <option value="2203 00 09">{t('gn_2203_00_09')}</option>
-                  <option value="2203 00 10">{t('gn_2203_00_10')}</option>
-                </select>
-              </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <Inp label={t('batch_info_brew_efficiency')} type="number" value={bForm.brouwzaal_eff||''} onChange={(v: string)=>setBForm((f: any)=>({...f,brouwzaal_eff:v}))} placeholder="75" />
@@ -1916,7 +1928,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <textarea value={safeStr(bForm.notities)} onChange={e=>setBForm((f: any)=>({...f,notities:e.target.value}))}
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={2} placeholder={t('lbl_notes')+'...'} />
             </div>
-            {bForm.status && bForm.status !== 'Gepland' && (!bForm.gn_code || !bForm.platogehalte) && (
+            {bForm.status && bForm.status !== 'Gepland' && !bForm.platogehalte && (
               <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800">
                 <span className="text-yellow-500 mt-0.5">&#9888;</span>
                 <span>{t('agp_waarschuwing_gn_plato')}</span>

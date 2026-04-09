@@ -2214,7 +2214,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       </>)}
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
-      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} uit={uit} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} />}
+      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} />}
 
       {/* ══════════════════════ VOORRAADVERLOOP ══════════════════════ */}
       {mainTab==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} />}

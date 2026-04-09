@@ -897,9 +897,8 @@
   "lbl_alle": "Alle",
   "lbl_platogehalte": "Platogehalte (°P)",
   "lbl_gn_code": "GN-code",
-  "gn_2203_00_01": "2203 00 01 — Bier ≤ 0,5% ABV",
-  "gn_2203_00_09": "2203 00 09 — Bier > 0,5% ABV",
-  "gn_2203_00_10": "2203 00 10 — Bier in vaten > 10L",
+  "gn_2203_00_01": "2203 00 01 — Bier van mout (>0,5% vol), kleine verpakking",
+  "gn_2203_00_09": "2203 00 09 — Bier van mout (>0,5% vol), groot formaat",
   "lbl_type_uitslag": "Type uitslag",
   "opt_binnenland": "Binnenland",
   "opt_intracommunautair": "Intracommunautair (EU)",
@@ -1050,5 +1049,7 @@
   "lbl_afboeking_vernietiging": "Vernietiging",
   "lbl_afboeking_overig": "Overig",
   "tab_balans": "Balans",
-  "agp_duplicaat_ingrediënt": "Er bestaat al een ingrediënt met deze naam"
+  "agp_duplicaat_ingrediënt": "Er bestaat al een ingrediënt met deze naam",
+  "gn_2206": "2206 — Bier-frisdrankmengsel (>0,5% vol)",
+  "gn_2202_91_00": "2202 91 00 — Alcoholvrij bier (≤0,5% vol)"
 }

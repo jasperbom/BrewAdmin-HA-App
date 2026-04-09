@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.12] — 2026-04-09
+
+### Changed — GN-codes bij afvulling + automatische Plato-berekening
+- **GN-codes verplaatst naar afvulling** — GN-code wordt nu per afvulling gekozen (niet meer op batch-niveau), omdat het afhankelijk is van het verpakkingsformaat.
+- **Nieuwe GN-codes** — 2203 00 01 (kleine verpakking), 2203 00 09 (groot formaat), 2206 (bier-frisdrankmengsel), 2202 91 00 (alcoholvrij bier).
+- **Automatische Plato-berekening** — bij het invullen van OG wordt het platogehalte automatisch berekend. Ook bij Brewfather-sync wordt Plato automatisch afgeleid uit OG.
+
 ## [1.8.11] — 2026-04-09
 
 ### Added — EBC-bierkleur in tankvisualisatie
