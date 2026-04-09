@@ -297,6 +297,31 @@ function App() {
     e.target.value = '';
   };
 
+  const resetApp = () => {
+    setIng([]); setLots([]); setBat([]); setBi([]);
+    setAv([]); setUit([]); setAcc([]);
+    setVerpakkingen([]); setOnderdelen([]);
+    setLog([]); setArchief([]); setGeslotenBieren([]);
+    setRecepten([]); setVerborgen([]);
+    setGearchiveerdeTags([]); setTagVolgorde([]); setGeslotenGroepen([]);
+    setTanks([]); setArtikelen([]);
+    setHygieneItems(DEFAULT_HYGIENE_ITEMS); setHygieneGroups(DEFAULT_HYGIENE_GROUPS);
+    setInkoopFacturen([]); setVerkoopFacturen([]);
+    setBestellingen([]); setBestellingPicks([]); setAfboekingen([]);
+    setKlanten([]); setGistMetingen([]);
+    setKapitaalBoekingen([]); setEadDocumenten([]);
+    setInventarisaties([]); setAuditLog([]); setAccijnsAangiftes([]);
+    setBtwInst({periode: 'kwartaal'}); setBtwTarieven([0, 9, 21]);
+    setIngTypes(["Mout","Hop","Gist","Suiker","Overig"]); setIngTypeBtw({});
+    setKostenSoorten(['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']);
+    setBreweryDetails({naam:'',straat:'',huisnummer:'',postcode:'',stad:'',btw_nummer:'',kvk_nummer:'',iban:'',betalingstermijn:14});
+    setFactuurCounter({jaar:0,nr:0}); setHaInst({enabled: false, sensors: []});
+    setAccijnsInst({tarief_per_hl_abv:7.51,tarief_per_hl:24.17});
+    setBankKoppelingen({});
+    setLogo(null); setFactuurLogo(null); setAppName(''); setNavTheme('amber');
+    setWcSyncLog([]);
+  };
+
   const openAcc = acc.filter((a: any)=>!a.betaald).reduce((s: any,a: any)=>s+Number(a.accijns??a.totaal_accijns??0),0);
   const beschikbareVoorraad = (av||[]).reduce((s: number, a: any) => {
     const gepickt = (bestellingPicks||[]).filter((p: any) => {
@@ -386,7 +411,7 @@ function App() {
         {page==='voorraad' && <BierVoorraadPage bat={bat} av={av} uit={uit} bestellingPicks={bestellingPicks} bestellingen={bestellingen} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} resetApp={resetApp} />}
       </main>
       </PageErrorBoundary>
     </div>

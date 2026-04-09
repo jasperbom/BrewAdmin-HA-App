@@ -1300,5 +1300,11 @@
   "ks_administratie": "Administratie",
   "ks_overig": "Overig",
   "settings_kosten_soorten_title": "Kostensoorten",
-  "settings_kosten_soorten_desc": "Categorieën voor inkoopkosten"
+  "settings_kosten_soorten_desc": "Categorieën voor inkoopkosten",
+  "settings_reset_title": "App resetten",
+  "settings_reset_desc": "Wis alle gegevens en herstel de app naar fabrieksinstellingen. Dit kan niet ongedaan worden gemaakt.",
+  "settings_reset_btn": "Alle data wissen",
+  "settings_reset_confirm": "Typ RESET om te bevestigen dat je alle data wilt wissen.",
+  "settings_reset_wrong": "Bevestiging onjuist. Reset is geannuleerd.",
+  "settings_reset_done": "Alle data is gewist. De app is hersteld naar de standaardinstellingen."
 }

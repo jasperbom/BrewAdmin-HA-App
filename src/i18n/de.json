@@ -1300,5 +1300,11 @@
   "ks_administratie": "Verwaltung",
   "ks_overig": "Sonstiges",
   "settings_kosten_soorten_title": "Kostenarten",
-  "settings_kosten_soorten_desc": "Kategorien für Einkaufskosten"
+  "settings_kosten_soorten_desc": "Kategorien für Einkaufskosten",
+  "settings_reset_title": "App zurücksetzen",
+  "settings_reset_desc": "Alle Daten löschen und die App auf Werkseinstellungen zurücksetzen. Dies kann nicht rückgängig gemacht werden.",
+  "settings_reset_btn": "Alle Daten löschen",
+  "settings_reset_confirm": "Geben Sie RESET ein, um zu bestätigen, dass Sie alle Daten löschen möchten.",
+  "settings_reset_wrong": "Bestätigung falsch. Reset wurde abgebrochen.",
+  "settings_reset_done": "Alle Daten wurden gelöscht. Die App wurde auf Standardeinstellungen zurückgesetzt."
 }

@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.3] — 2026-04-09
+
+### Added — App reset
+- **Reset App knop** — alle data wissen en app herstellen naar fabrieksinstellingen via Instellingen → App, met dubbele bevestiging (typ "RESET")
+
+---
+
 ## [1.8.2] — 2026-04-09
 
 ### Added — Kostensoorten

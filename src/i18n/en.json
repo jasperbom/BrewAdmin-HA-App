@@ -1300,5 +1300,11 @@
   "ks_administratie": "Administration",
   "ks_overig": "Other",
   "settings_kosten_soorten_title": "Cost categories",
-  "settings_kosten_soorten_desc": "Categories for purchase costs"
+  "settings_kosten_soorten_desc": "Categories for purchase costs",
+  "settings_reset_title": "Reset app",
+  "settings_reset_desc": "Erase all data and restore the app to factory settings. This cannot be undone.",
+  "settings_reset_btn": "Erase all data",
+  "settings_reset_confirm": "Type RESET to confirm that you want to erase all data.",
+  "settings_reset_wrong": "Confirmation incorrect. Reset has been cancelled.",
+  "settings_reset_done": "All data has been erased. The app has been restored to default settings."
 }
