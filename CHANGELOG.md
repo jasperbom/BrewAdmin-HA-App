@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.11] — 2026-04-09
+
+### Added — EBC-bierkleur in tankvisualisatie
+- **Realistische bierkleur** — de vloeistof in de fermentatietank toont nu de werkelijke bierkleur op basis van de EBC-waarde uit het recept (SRM-kleurtabel, 40 tinten van lichtgeel tot zwart).
+- **Fallback** — zonder EBC-waarde valt de kleur terug op blauw (gisting) of amber (conditionering).
+
 ## [1.8.10] — 2026-04-09
 
 ### Improved — Fermentatietank-visualisatie op dashboard

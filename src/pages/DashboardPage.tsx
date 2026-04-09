@@ -136,17 +136,52 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     );
   };
 
+  // EBC naar bierkleur (SRM-gebaseerde mapping)
+  const ebcToColor = (ebc: number): { fill: string, fillDark: string, highlight: string } => {
+    // EBC → SRM ≈ EBC / 1.97, dan SRM naar hex via standaard bierkleurtabel
+    const srm = Math.max(1, Math.min(40, ebc / 1.97));
+    // SRM kleurtabel (1-40) — gebaseerd op Davison/Morey model
+    const srmColors: string[] = [
+      '#FFE699','#FFD878','#FFCA5A','#FFBF42','#FBB123', // 1-5
+      '#F8A600','#F39C00','#EA8F00','#E58500','#DE7C00', // 6-10
+      '#D77200','#CF6900','#CB6200','#C35900','#BB5100', // 11-15
+      '#B54C00','#AE4200','#A63E00','#A13500','#9B3200', // 16-20
+      '#952D00','#8E2900','#882300','#821E00','#7B1A00', // 21-25
+      '#751607','#6F120E','#6A0E16','#640B1E','#5E0B24', // 26-30
+      '#580B2B','#520C31','#4C0C37','#470C3E','#420D44', // 31-35
+      '#3D0D49','#380E4F','#340E54','#2F0F59','#2A0F5E', // 36-40
+    ];
+    const idx = Math.round(srm) - 1;
+    const base = srmColors[Math.min(idx, srmColors.length - 1)];
+    // Lichter en donkerder variant afleiden
+    const lighten = (hex: string, amt: number) => {
+      const r = Math.min(255, parseInt(hex.slice(1,3),16) + amt);
+      const g = Math.min(255, parseInt(hex.slice(3,5),16) + amt);
+      const b = Math.min(255, parseInt(hex.slice(5,7),16) + amt);
+      return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+    };
+    const darken = (hex: string, amt: number) => {
+      const r = Math.max(0, parseInt(hex.slice(1,3),16) - amt);
+      const g = Math.max(0, parseInt(hex.slice(3,5),16) - amt);
+      const b = Math.max(0, parseInt(hex.slice(5,7),16) - amt);
+      return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+    };
+    return { fill: base, fillDark: darken(base, 30), highlight: lighten(base, 50) };
+  };
+
   // Visuele conische fermentor (SVG)
   const tankIdRef = React.useRef(0);
-  const TankVisual = ({fillPct, status}: {fillPct: number, status?: string}) => {
+  const TankVisual = ({fillPct, status, ebc}: {fillPct: number, status?: string, ebc?: number}) => {
     const [uid] = useState(() => `t${++tankIdRef.current}`);
     const pct = Math.min(100, Math.max(0, fillPct || 0));
-    // Kleuren per status
-    const colors = status === 'Vergisten'
-      ? { fill: '#60a5fa', fillDark: '#3b82f6', highlight: '#93c5fd' }
-      : status === 'Conditioneren'
-        ? { fill: '#fbbf24', fillDark: '#f59e0b', highlight: '#fcd34d' }
-        : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' };
+    // Kleuren: EBC als beschikbaar, anders fallback per status
+    const colors = ebc && ebc > 0
+      ? ebcToColor(ebc)
+      : status === 'Vergisten'
+        ? { fill: '#60a5fa', fillDark: '#3b82f6', highlight: '#93c5fd' }
+        : status === 'Conditioneren'
+          ? { fill: '#fbbf24', fillDark: '#f59e0b', highlight: '#fcd34d' }
+          : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' };
 
     /* Tank geometrie (viewBox 0 0 56 120)
        - Manway/dome:     y 2–10
@@ -401,7 +436,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                   className={`flex items-start gap-4 ${handleTankClick ? 'cursor-pointer' : ''}`}
                   onClick={handleTankClick}
                 >
-                  <TankVisual fillPct={fillPct} status={batch?.status} />
+                  <TankVisual fillPct={fillPct} status={batch?.status} ebc={batch?.kleur ? Number(batch.kleur) : undefined} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-bold text-gray-700">{tk.naam || tk.id}</span>
