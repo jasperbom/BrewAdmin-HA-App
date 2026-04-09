@@ -17,6 +17,8 @@ export interface Lot {
   leverancier?: string
   prijs_per_eenheid?: number
   beschikbaar?: boolean
+  gn_code?: string
+  created_at?: string
 }
 
 export interface Batch {
@@ -48,6 +50,9 @@ export interface Batch {
   vergistingsprofiel?: VergistingsStap[]
   maischprofiel?: MaischStap[]
   log?: BatchLogEntry[]
+  platogehalte?: number | string
+  gn_code?: string
+  created_at?: string
 }
 
 export interface BatchLogEntry {
@@ -95,7 +100,10 @@ export interface Afvulling {
   batch_id: number
   verpakking_id?: number
   verpakking_naam?: string
+  verpakking_type?: string
   inhoud_liter?: number
+  inhoud_per_eenheid?: number
+  hoeveelheid?: number
   aantal: number
   datum?: string
   tht?: string
@@ -269,6 +277,7 @@ export interface BfCreds {
 export interface AccijnsInst {
   tarief_per_hl_abv?: number
   tarief_per_hl?: number
+  tarief_per_hl_plato?: number
   customFormulaEnabled?: boolean
   customFormula?: string
 }
@@ -293,6 +302,8 @@ export interface Periode {
   maand?: number
 }
 
+export type TypeUitslag = 'binnenland' | 'intracommunautair' | 'export'
+
 export interface Uitslag {
   id: number
   batch_id: number
@@ -305,6 +316,13 @@ export interface Uitslag {
   datum?: string
   tht?: string
   accijns_betaald?: boolean
+  type_uitslag?: TypeUitslag
+  bestemming_naam?: string
+  bestemming_adres?: string
+  bestemming_land?: string
+  vervoerder?: string
+  ead_arc?: string
+  created_at?: string
 }
 
 export interface AccijnsRecord {
@@ -420,6 +438,9 @@ export interface BreweryDetails {
   verzendkosten_btw?: number
   email?: string
   telefoon?: string
+  agp_nummer?: string
+  accijns_verantwoordelijke?: string
+  douane_nummer?: string
 }
 
 export interface BestellingRegel {
@@ -502,4 +523,68 @@ export interface Afboeking {
   aantal: number
   reden: AfboekingReden
   opmerking: string
+  created_at?: string
+}
+
+// ── AGP Compliance Types ─────────────────────────────────────────────────────
+
+export type EADType = 'e-ad' | 'noodprocedure' | 'ontvangstbevestiging'
+export type EADStatus = 'aangemaakt' | 'verzonden' | 'ontvangen' | 'geannuleerd'
+
+export interface EADDocument {
+  id: number
+  arc_nummer?: string
+  type: EADType
+  status: EADStatus
+  uitslag_id?: number
+  dispatch_type?: TypeUitslag
+  bestemming_naam?: string
+  bestemming_adres?: string
+  bestemming_land?: string
+  vervoerder?: string
+  datum_aanmaak?: string
+  datum_verzending?: string
+  datum_ontvangst?: string
+  notities?: string
+}
+
+export interface Inventarisatie {
+  id: number
+  datum: string
+  type: 'ingredienten' | 'bier' | 'volledig'
+  status: 'open' | 'afgerond'
+  tellingen: InventarisatieTelling[]
+  opmerkingen?: string
+}
+
+export interface InventarisatieTelling {
+  id: number
+  ref_type: 'lot' | 'afvulling'
+  ref_id: number
+  naam?: string
+  administratief: number
+  geteld: number
+  verschil: number
+  verklaring?: string
+  eenheid?: string
+}
+
+export interface AuditEntry {
+  id: number
+  timestamp: string
+  entiteit: string
+  entiteit_id: number
+  actie: 'aangemaakt' | 'gewijzigd' | 'verwijderd'
+  velden?: Record<string, {oud?: any, nieuw?: any}>
+  omschrijving?: string
+}
+
+export type AccijnsAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
+
+export interface AccijnsAangifte {
+  maand: string
+  status: AccijnsAangifteStatus
+  berekend_datum?: string
+  ingediend_datum?: string
+  betaald_datum?: string
 }

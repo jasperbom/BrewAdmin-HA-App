@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify('1.8.0'),
+  },
   plugins: [react(), viteSingleFile()],
   build: {
     target: 'esnext',

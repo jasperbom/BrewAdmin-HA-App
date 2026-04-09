@@ -8,11 +8,14 @@ Supports Home Assistant Ingress: requests arrive with a path prefix like
 The server strips any prefix and looks for /api/data/<key> anywhere in the path.
 """
 import base64
+import datetime
 import http.server
 import io
 import json
 import os
 import re
+import shutil
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -25,8 +28,11 @@ STATIC_FILE = Path('/app/static/index.html')
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — bescherming tegen DoS via grote requests
 UPLOAD_DIR = DATA_DIR / 'inkoop_facturen'
 
+BACKUP_DIR = DATA_DIR / 'backups'
+
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 API_DATA_PREFIX = '/api/data/'
 BF_API_BASE = 'https://api.brewfather.app/v2'
@@ -43,6 +49,8 @@ UPLOAD_PREFIX            = '/api/upload/'
 FILE_PREFIX              = '/api/file/'
 DELETE_UPLOAD_PREFIX     = '/api/delete_upload/'
 DOWNLOAD_BIJLAGEN_PREFIX = '/api/download_bijlagen/'
+BACKUPS_PREFIX           = '/api/backups'
+BACKUPS_TRIGGER_PATH     = '/api/backups/trigger'
 CLAUDE_PROXY_PREFIX      = '/api/claude/'
 ANTHROPIC_API_BASE       = 'https://api.anthropic.com'
 CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be large
@@ -244,6 +252,91 @@ def _bf_request(uid: str, api_key: str, url: str) -> tuple[int, bytes]:
         return 502, b'{}'
 
 
+# ── Backup system (AGP 7-year retention) ──────────────────────────────────
+
+def _run_backup() -> str:
+    """Copy all /data/*.json files into /data/backups/YYYY-MM-DD/.
+    Returns the backup date string."""
+    today = datetime.date.today().isoformat()
+    dest = BACKUP_DIR / today
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in DATA_DIR.glob('*.json'):
+        shutil.copy2(f, dest / f.name)
+    return today
+
+
+def _should_keep_backup(backup_date: datetime.date, today: datetime.date) -> bool:
+    """Determine whether a backup should be retained based on AGP policy.
+    - Daily backups: keep for 30 days
+    - Weekly (Monday) backups: keep for 1 year
+    - Monthly (1st of month) backups: keep for 7 years
+    """
+    age = (today - backup_date).days
+    # Monthly backups (1st of month): keep 7 years
+    if backup_date.day == 1 and age <= 7 * 365:
+        return True
+    # Weekly backups (Monday): keep 1 year
+    if backup_date.weekday() == 0 and age <= 365:
+        return True
+    # Daily backups: keep 30 days
+    if age <= 30:
+        return True
+    return False
+
+
+def _cleanup_backups() -> None:
+    """Remove backup directories that no longer meet the retention policy."""
+    today = datetime.date.today()
+    for entry in sorted(BACKUP_DIR.iterdir()):
+        if not entry.is_dir():
+            continue
+        try:
+            backup_date = datetime.date.fromisoformat(entry.name)
+        except ValueError:
+            continue
+        if not _should_keep_backup(backup_date, today):
+            shutil.rmtree(entry, ignore_errors=True)
+
+
+def _backup_loop(interval: float = 86400.0) -> None:
+    """Background loop: run backup + cleanup once per day."""
+    while True:
+        try:
+            _run_backup()
+            _cleanup_backups()
+        except Exception as exc:
+            print(f'[backup] error: {exc}', flush=True)
+        time.sleep(interval)
+
+
+def _list_backups() -> list[dict]:
+    """Return list of available backups with date and file count."""
+    result = []
+    for entry in sorted(BACKUP_DIR.iterdir()):
+        if not entry.is_dir():
+            continue
+        try:
+            datetime.date.fromisoformat(entry.name)
+        except ValueError:
+            continue
+        files = list(entry.glob('*.json'))
+        result.append({'date': entry.name, 'file_count': len(files)})
+    return result
+
+
+def _backup_to_zip(date_str: str) -> bytes | None:
+    """Create a ZIP archive of a backup directory. Returns bytes or None."""
+    backup_path = BACKUP_DIR / date_str
+    if not backup_path.is_dir():
+        return None
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(backup_path.iterdir()):
+            if f.is_file():
+                zf.write(f, f.name)
+    return buf.getvalue()
+
+
 class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
     # ── helpers ────────────────────────────────────────────────────────────
@@ -315,6 +408,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._wc_proxy_get()
             return
 
+        if BACKUPS_PREFIX in path and BACKUPS_TRIGGER_PATH not in path:
+            self._handle_backups_get()
+            return
+
         if FILE_PREFIX in path:
             self._serve_upload()
             return
@@ -380,6 +477,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if HA_PROXY_PREFIX in path:
             self._ha_proxy(path)
+            return
+
+        if BACKUPS_TRIGGER_PATH in path:
+            self._handle_backup_trigger()
             return
 
         if UPLOAD_PREFIX in path:
@@ -671,6 +772,44 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    # ── Backup endpoints ────────────────────────────────────────────────
+
+    def _handle_backups_get(self):
+        """GET /api/backups — list backups; GET /api/backups/<date> — download ZIP."""
+        path = self.path.split('?')[0]
+        idx = path.find(BACKUPS_PREFIX)
+        suffix = path[idx + len(BACKUPS_PREFIX):].strip('/')
+        if not suffix:
+            # List all available backups
+            self._json(200, _list_backups())
+            return
+        # Expect a date like YYYY-MM-DD
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', suffix):
+            self._json(400, {'error': 'invalid date format, use YYYY-MM-DD'})
+            return
+        data = _backup_to_zip(suffix)
+        if data is None:
+            self._json(404, {'error': 'backup not found'})
+            return
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/zip')
+        self.send_header('Content-Length', len(data))
+        self.send_header('Content-Disposition',
+                         f'attachment; filename="backup_{suffix}.zip"')
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _handle_backup_trigger(self):
+        """POST /api/backups/trigger — run an immediate manual backup."""
+        # Read (and discard) body if any
+        self._read_body(max_len=256)
+        try:
+            date_str = _run_backup()
+            self._json(200, {'ok': True, 'date': date_str})
+        except Exception as exc:
+            self._json(500, {'error': str(exc)})
+
     def _serve_bijlagen_zip(self):
         """Serve a ZIP of all invoice attachments for the requested year."""
         path = self.path.split('?')[0]
@@ -738,5 +877,11 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8099))
     print(f'Brouwerij Admin gestart op poort {port}', flush=True)
     print(f'Data opgeslagen in {DATA_DIR}', flush=True)
+
+    # Start background backup thread (AGP 7-year retention)
+    _backup_thread = threading.Thread(target=_backup_loop, daemon=True)
+    _backup_thread.start()
+    print(f'Backup thread gestart (dagelijks naar {BACKUP_DIR})', flush=True)
+
     server = http.server.HTTPServer(('0.0.0.0', port), BrouwerijHandler)
     server.serve_forever()

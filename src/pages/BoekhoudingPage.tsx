@@ -8,6 +8,7 @@ import { berekenWinstVerlies } from '../utils/calculations'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
+import VoorraadverloopPage from './VoorraadverloopPage'
 import { printFactuur, buildFactuurHTML } from '../components/PakbonExport'
 
 // ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
@@ -63,7 +64,7 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, eadDocumenten=[], setEadDocumenten=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
   const now = new Date();
   const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -450,7 +451,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const lot = {id:newId([...lots,...newLots]), ingredient_id:iid, hoeveelheid:Number(p.qty), eenheid:p.eenh,
         houdbaarheid:p.tht||null, lotnummer:p.lotnr||'', leverancier:factuurForm.leverancier||'',
         prijs_per_eenheid:p.prijs?Number(p.prijs):null, factuur_nummer:factuurForm.factuur||'',
-        aankoop_datum:factuurForm.datum||tod(), btw_tarief:Number(p.btw_tarief)||0, beschikbaar:true};
+        aankoop_datum:factuurForm.datum||tod(), btw_tarief:Number(p.btw_tarief)||0, beschikbaar:true,
+        created_at:new Date().toISOString()};
       newLots.push(lot);
       addLog({ingredient_id:iid, ingredient_naam:updatedIng.find((i: any)=>i.id===iid)?.naam||p.nieuw.trim(),
         lot_id:lot.id, lotnummer:lot.lotnummer||'', type:'ontvangst',
@@ -993,6 +995,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           {tabBtn('bank', t('tab_bank'))}
           {tabBtn('rapporten', t('tab_rapporten'))}
           {tabBtn('accijns', t('nav_accijns'))}
+          {tabBtn('voorraadverloop', t('nav_voorraadverloop'))}
           {tabBtn('btw_aangifte', t('tab_btw_aangifte'))}
         </div>
       </div>
@@ -2035,7 +2038,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       </>)}
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
-      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} />}
+      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} uit={uit} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} />}
+
+      {/* ══════════════════════ VOORRAADVERLOOP ══════════════════════ */}
+      {mainTab==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} />}
 
       {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
       {mainTab==='btw_aangifte' && (()=>{

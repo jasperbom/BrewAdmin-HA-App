@@ -61,6 +61,10 @@ export const excelExport = (data: any) => {
     addSheet('Klanten',               data.klanten)
     addSheet('GistMetingen',          data.gist_metingen)
     addSheet('KapitaalBoekingen',     data.kapitaal_boekingen)
+    addSheet('EADDocumenten',         data.ead_documenten)
+    addSheet('Inventarisaties',       data.inventarisaties)
+    addSheet('AuditLog',             data.audit_log)
+    addSheet('AccijnsAangiftes',     data.accijns_aangiftes)
 
     // Simpele primitieve arrays — wrap in object voor Excel
     addSheet('BtwTarieven', (data.btw_tarieven || []).map((v: any) => ({tarief: v})))
@@ -156,6 +160,10 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         klanten:                      parse('Klanten'),
         gist_metingen:                parse('GistMetingen'),
         kapitaal_boekingen:           parse('KapitaalBoekingen'),
+        ead_documenten:               parse('EADDocumenten'),
+        inventarisaties:              parse('Inventarisaties'),
+        audit_log:                    parse('AuditLog'),
+        accijns_aangiftes:            parse('AccijnsAangiftes'),
 
         // Primitieve arrays
         btw_tarieven: gs('BtwTarieven').map((r: any) => r.tarief).filter((v: any) => v != null),
