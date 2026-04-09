@@ -1312,6 +1312,7 @@
   "fv_telefoon": "Telefonnummer",
   "fv_betaalblok": "Zahlungsinformationen (IBAN + Fälligkeitsdatum)",
   "btn_factuur_voorbeeld": "Vorschau anzeigen",
+  "btn_ontkoppel_herinnering": "Trennen und neu verknüpfen",
   "settings_reset_title": "App zurücksetzen",
   "settings_reset_desc": "Alle Daten löschen und die App auf Werkseinstellungen zurücksetzen. Dies kann nicht rückgängig gemacht werden.",
   "settings_reset_btn": "Alle Daten löschen",

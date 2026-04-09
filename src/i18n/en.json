@@ -1312,6 +1312,7 @@
   "fv_telefoon": "Phone number",
   "fv_betaalblok": "Payment information (IBAN + due date)",
   "btn_factuur_voorbeeld": "Preview example",
+  "btn_ontkoppel_herinnering": "Unlink and re-link",
   "settings_reset_title": "Reset app",
   "settings_reset_desc": "Erase all data and restore the app to factory settings. This cannot be undone.",
   "settings_reset_btn": "Erase all data",

@@ -1308,6 +1308,7 @@
   "fv_telefoon": "Número de teléfono",
   "fv_betaalblok": "Información de pago (IBAN + fecha de vencimiento)",
   "btn_factuur_voorbeeld": "Ver vista previa",
+  "btn_ontkoppel_herinnering": "Desvincular y volver a vincular",
   "settings_reset_title": "Restablecer aplicación",
   "settings_reset_desc": "Borrar todos los datos y restaurar la aplicación a la configuración de fábrica. Esta acción no se puede deshacer.",
   "settings_reset_btn": "Borrar todos los datos",
