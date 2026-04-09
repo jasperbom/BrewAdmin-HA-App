@@ -53,12 +53,6 @@ export const ONDERDEEL_TYPES = [
   {type:'overig',    label:'ing_type_overig'},
 ]
 
-export const verpKostenLabels = (type: string) => ({
-  fles: {verpakking:t('pkg_fles'),   afsluiting:t('pkg_kroonkurk')},
-  blik: {verpakking:t('pkg_blik'),   afsluiting:t('pkg_deksel')},
-  fust: {verpakking:t('pkg_fust'),   afsluiting:t('pkg_cap')},
-} as Record<string,any>)[type] || {verpakking:t('pkg_default'), afsluiting:t('pkg_closure_default')}
-
 export const NAV_THEMES: Record<string, any> = {
   amber:  {p1:'#451a03',p2:'#78350f',p3:'#d97706',p4:'#fde68a',p5:'#fffbeb',
            from:'#451a03',to:'#78350f',accent:'#d97706',light:'#fde68a',pale:'#fffbeb',text:'#78350f',btn:'#d97706',btnH:'#b45309',btnA:'#78350f',bg:'#fefdf5'},
@@ -94,7 +88,7 @@ export const BF_TO_APP: Record<string,string> = {
   Packaging:'Verpakt',Completed:'Gesloten',Archived:'Gesloten'
 }
 
-export const SUPPORTED_LANGS = ['nl', 'en', 'de', 'fr', 'es']
+const SUPPORTED_LANGS = ['nl', 'en', 'de', 'fr', 'es']
 
 export const detectLang = (): string => {
   const browser = ((navigator as any).language || (navigator as any).userLanguage || 'en').toLowerCase().split('-')[0]

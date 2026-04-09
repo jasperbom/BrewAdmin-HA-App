@@ -13,21 +13,15 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   // ── Lot expiry ────────────────────────────────────────────────────────────
   const activeLots   = lots.filter((l: any) => l.beschikbaar && Number(l.hoeveelheid||0) > 0);
   const lotsMetTht   = activeLots.filter((l: any) => l.houdbaarheid);
-  // @ts-ignore
-  const verlopen     = lotsMetTht.filter((l: any) => new Date(l.houdbaarheid) < today).sort((a: any,b: any) => new Date(a.houdbaarheid) - new Date(b.houdbaarheid));
-  // @ts-ignore
-  const binnen30     = lotsMetTht.filter((l: any) => { const d = new Date(l.houdbaarheid); return d >= today && (d-today)/dayMs <= 30; }).sort((a: any,b: any) => new Date(a.houdbaarheid) - new Date(b.houdbaarheid));
-  // @ts-ignore
-  const binnen90     = lotsMetTht.filter((l: any) => { const d = new Date(l.houdbaarheid); return d >= today && (d-today)/dayMs > 30 && (d-today)/dayMs <= 90; }).sort((a: any,b: any) => new Date(a.houdbaarheid) - new Date(b.houdbaarheid));
-  // @ts-ignore
-  const daysLeft = (d: any) => Math.ceil((new Date(d) - today) / dayMs);
+  const verlopen     = lotsMetTht.filter((l: any) => new Date(l.houdbaarheid) < today).sort((a: any,b: any) => new Date(a.houdbaarheid).getTime() - new Date(b.houdbaarheid).getTime());
+  const binnen30     = lotsMetTht.filter((l: any) => { const d = new Date(l.houdbaarheid); return d >= today && (d.getTime()-today.getTime())/dayMs <= 30; }).sort((a: any,b: any) => new Date(a.houdbaarheid).getTime() - new Date(b.houdbaarheid).getTime());
+  const binnen90     = lotsMetTht.filter((l: any) => { const d = new Date(l.houdbaarheid); return d >= today && (d.getTime()-today.getTime())/dayMs > 30 && (d.getTime()-today.getTime())/dayMs <= 90; }).sort((a: any,b: any) => new Date(a.houdbaarheid).getTime() - new Date(b.houdbaarheid).getTime());
+  const daysLeft = (d: any) => Math.ceil((new Date(d).getTime() - today.getTime()) / dayMs);
 
   // ── Beer stock expiry ─────────────────────────────────────────────────────
   const uitMetTht   = uit.filter((u: any) => u.tht && (Number(u.aantal||0) - Number(u.verkocht_stuks||0)) > 0);
-  // @ts-ignore
-  const uitVerlopen = uitMetTht.filter((u: any) => new Date(u.tht) < today).sort((a: any,b: any) => new Date(a.tht) - new Date(b.tht));
-  // @ts-ignore
-  const uitBinnen30 = uitMetTht.filter((u: any) => { const d = new Date(u.tht); return d >= today && (d-today)/dayMs <= 30; }).sort((a: any,b: any) => new Date(a.tht) - new Date(b.tht));
+  const uitVerlopen = uitMetTht.filter((u: any) => new Date(u.tht) < today).sort((a: any,b: any) => new Date(a.tht).getTime() - new Date(b.tht).getTime());
+  const uitBinnen30 = uitMetTht.filter((u: any) => { const d = new Date(u.tht); return d >= today && (d.getTime()-today.getTime())/dayMs <= 30; }).sort((a: any,b: any) => new Date(a.tht).getTime() - new Date(b.tht).getTime());
 
   // ── Stat counts ───────────────────────────────────────────────────────────
   const openAccijns    = acc.filter((a: any) => !a.betaald);
