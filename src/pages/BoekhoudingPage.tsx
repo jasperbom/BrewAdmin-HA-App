@@ -709,7 +709,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       else if (field==='28C') result.afschriftNr = v
       else if (field==='60F'||field==='60M') {
         const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
-        if (m) result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
+        // Alleen het eerste beginsaldo bewaren (bij meerdere statements in één bestand)
+        if (m && !result._beginsaldoGezet) { result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3]); result._beginsaldoGezet = true }
       } else if (field==='62F'||field==='62M') {
         const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
         if (m) result.eindsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
@@ -739,6 +740,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }
     flush()
     if (pendingTx) result.transacties.push(pendingTx)
+    delete result._beginsaldoGezet
     return result
   }
 
@@ -759,6 +761,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             ...tx,
             gekoppeldFactuurId: opgeslagen.soort === 'verkoop' ? opgeslagen.factuurId : null,
             gekoppeldInkoopId: opgeslagen.soort === 'inkoop' ? opgeslagen.factuurId : null,
+            gekoppeldKapitaalId: opgeslagen.soort === 'kapitaal' ? opgeslagen.factuurId : null,
             gekoppeldBtwPeriode: opgeslagen.soort === 'btw' ? opgeslagen.periodeKey : undefined,
             autoGematcht: true,
             herinneringsGematcht: true,
@@ -1644,6 +1647,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     const gekoppeldKapitaal = tx.gekoppeldKapitaalId ? (kapitaalBoekingen||[]).find((k: any) => k.id === tx.gekoppeldKapitaalId) : null
                     const openVerkoop = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
                     const openInkoop = (inkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
+                    // Voeg de gekoppelde factuur toe als die niet al in de open-lijst staat (bijv. reeds betaald)
+                    const extraVerkoop = tx.gekoppeldFactuurId && !openVerkoop.some((f: any) => f.id === tx.gekoppeldFactuurId)
+                      ? (verkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldFactuurId) : null
+                    const extraInkoop = tx.gekoppeldInkoopId && !openInkoop.some((f: any) => f.id === tx.gekoppeldInkoopId)
+                      ? (inkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldInkoopId) : null
                     return (
                       <tr key={i} className={`border-b border-gray-50 ${tx.autoGematcht ? 'bg-green-50' : ''}`}>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{tx.datum}</td>
@@ -1656,7 +1664,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           {tx.type==='C'?'+':'-'}{fmt(tx.bedrag)}
                         </td>
                         <td className="py-2" onClick={(e:any)=>e.stopPropagation()}>
-                          {tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-blue-600 mr-2">↩ {t('lbl_onthouden_koppeling')}</span>}
+                          {tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-blue-600 mr-2">↩ {t('lbl_onthouden_koppeling')}
+                            <button onClick={()=>{
+                              const key = txKey(tx)
+                              setBankKoppelingen((k: any) => { const c={...k}; delete c[key]; return c })
+                              setBankTransacties((prev: any[]) => prev.map((t: any, j: number) => j===i ? {...t, gekoppeldFactuurId:null, gekoppeldInkoopId:null, gekoppeldKapitaalId:null, gekoppeldBtwPeriode:undefined, herinneringsGematcht:false, autoGematcht:false} : t))
+                            }} className="ml-1 text-gray-400 hover:text-red-500 transition-colors" title={t('btn_ontkoppel_herinnering')}>×</button>
+                          </span>}
                           {tx.retroGematcht && <span className="text-xs text-gray-500 mr-2">✓ {t('lbl_retro_gematcht')}</span>}
                           {tx.autoGematcht && !tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
                           {tx.type==='C' ? (
@@ -1664,6 +1678,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                               <select value={tx.gekoppeldFactuurId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null, 'verkoop')}
                                 className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[200px]">
                                 <option value="">— {t('lbl_niet_gekoppeld')} —</option>
+                                {extraVerkoop && <option key={extraVerkoop.id} value={extraVerkoop.id}>{extraVerkoop.datum} · {extraVerkoop.klant_naam||'—'} · {fmt(extraVerkoop.bruto||0)} ✓</option>}
                                 {openVerkoop.map((f: any) => (
                                   <option key={f.id} value={f.id}>{f.datum} · {f.klant_naam||'—'} · {fmt(f.bruto||0)}</option>
                                 ))}
@@ -1682,7 +1697,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                     setBankKoppelingen((k: any) => { const c={...k}; delete c[txKey(tx)]; return c })
                                   }} className="ml-1 text-gray-400 hover:text-red-500">×</button>
                                 </span>
-                              ) : !tx.gekoppeldFactuurId && (
+                              ) : !tx.gekoppeldFactuurId && !tx.herinneringsGematcht && (
                                 <>
                                   <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                     className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
@@ -1700,6 +1715,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                               <select value={tx.gekoppeldInkoopId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null, 'inkoop')}
                                 className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[200px]">
                                 <option value="">— {t('lbl_niet_gekoppeld')} —</option>
+                                {extraInkoop && <option key={extraInkoop.id} value={extraInkoop.id}>{extraInkoop.datum} · {extraInkoop.leverancier||'—'} · {fmt(extraInkoop.totaal_bruto||0)} ✓</option>}
                                 {openInkoop.map((f: any) => (
                                   <option key={f.id} value={f.id}>{f.datum} · {f.leverancier||'—'} · {fmt(f.totaal_bruto||0)}</option>
                                 ))}
@@ -1715,7 +1731,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                   ✓ BTW {tx.gekoppeldBtwPeriode}
                                   <button onClick={()=>ontkoppelBtwBetaling(tx.gekoppeldBtwPeriode)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors">×</button>
                                 </span>
-                              ) : !tx.gekoppeldInkoopId && (
+                              ) : !tx.gekoppeldInkoopId && !tx.herinneringsGematcht && (
                                 <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                   className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   + {t('btn_nieuwe_boeking')}

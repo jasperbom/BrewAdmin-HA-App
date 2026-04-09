@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.6] — 2026-04-09
+
+### Fixed — MT940 beginsaldo
+- **Beginsaldo correct bij meerdere statements** — bij MT940 bestanden met meerdere bankafschriften werd het beginsaldo overschreven door het beginsaldo van het laatste statement (dat gelijk is aan het eindsaldo van het voorgaande). Nu wordt alleen het eerste beginsaldo bewaard.
+
+---
+
+## [1.8.5] — 2026-04-09
+
+### Fixed — Banktransactie-koppelingen (onthouden)
+- **Dropdown toont nu ook betaalde facturen** — als een onthouden koppeling naar een reeds betaalde factuur verwijst, verschijnt deze alsnog in de dropdown
+- **Kapitaalstortingen worden nu correct onthouden** — bij herimport van MT940 wordt `gekoppeldKapitaalId` hersteld
+- **Knoppen verborgen bij onthouden koppelingen** — "+Nieuwe boeking" en "+Kapitaalstorting" worden niet meer getoond wanneer een boeking al onthouden is
+- **Onthouden koppelingen opnieuw koppelen** — ×-knop naast "↩ Onthouden koppeling" badge om een onjuiste koppeling te wissen en opnieuw in te stellen
+
+---
+
+## [1.8.4] — 2026-04-09
+
+### Added — Factuurvelden zichtbaarheid
+- **Zichtbare velden op factuur & pakbon** — per veld instellen welke bedrijfsgegevens op facturen en pakbonnen verschijnen (logo, adres, BTW-nr, KvK, IBAN, e-mail, telefoon, betaalblok)
+- **Factuurvoorbeeld** — preview-knop in Instellingen → Brouwerij om direct te zien hoe de factuur eruitziet met de huidige instellingen
+
+---
+
 ## [1.8.3] — 2026-04-09
 
 ### Added — App reset
