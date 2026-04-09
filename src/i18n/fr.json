@@ -1266,5 +1266,22 @@
   "gpa_stroom_productie": "Production",
   "gpa_stroom_verpakking": "Conditionnement",
   "gpa_stroom_opslag_gereed": "Stockage produit fini",
-  "gpa_stroom_uitslag": "Expédition"
+  "gpa_stroom_uitslag": "Expédition",
+  "lot_ead_koppeling": "e-AD lié (ARC)",
+  "audit_gebruiker": "Utilisateur",
+
+  "agp_waarschuwing_gn_plato": "Attention : le code GN et le degré Plato sont requis pour la déclaration d'accise",
+  "agp_duplicaat_ingrediënt": "Un ingrédient avec ce nom existe déjà",
+  "agp_goederenstroom": "Flux de marchandises AGP",
+  "agp_stroom_inkoop": "Achat matières premières",
+  "agp_stroom_opslag_grond": "Stockage matières premières",
+  "agp_stroom_productie": "Production / Brassage",
+  "agp_stroom_verpakking": "Conditionnement",
+  "agp_stroom_opslag_gereed": "Stockage produits finis",
+  "agp_stroom_uitslag": "Sortie",
+  "agp_stroom_binnenland": "National",
+  "agp_stroom_eu": "Intracommunautaire (e-AD)",
+  "agp_stroom_export": "Exportation (e-AD)",
+  "agp_stroom_bijzonder": "Mouvements spéciaux",
+  "agp_stroom_vermis": "Perte / Destruction / Usage interne"
 }

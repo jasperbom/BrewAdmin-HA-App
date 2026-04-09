@@ -1270,5 +1270,22 @@
   "gpa_stroom_productie": "Productie",
   "gpa_stroom_verpakking": "Verpakking",
   "gpa_stroom_opslag_gereed": "Opslag gereed product",
-  "gpa_stroom_uitslag": "Uitslag"
+  "gpa_stroom_uitslag": "Uitslag",
+  "lot_ead_koppeling": "Gekoppeld e-AD (ARC)",
+  "audit_gebruiker": "Gebruiker",
+
+  "agp_waarschuwing_gn_plato": "Let op: GN-code en Platogehalte zijn vereist voor accijnsaangifte",
+  "agp_duplicaat_ingrediënt": "Er bestaat al een ingrediënt met deze naam",
+  "agp_goederenstroom": "Goederenstroom AGP",
+  "agp_stroom_inkoop": "Inkoop grondstoffen",
+  "agp_stroom_opslag_grond": "Opslag grondstoffen",
+  "agp_stroom_productie": "Productie / Brouwen",
+  "agp_stroom_verpakking": "Verpakking / Afvullen",
+  "agp_stroom_opslag_gereed": "Opslag gereed product",
+  "agp_stroom_uitslag": "Uitslag",
+  "agp_stroom_binnenland": "Binnenland",
+  "agp_stroom_eu": "Intracommunautair (e-AD)",
+  "agp_stroom_export": "Export (e-AD)",
+  "agp_stroom_bijzonder": "Bijzondere mutaties",
+  "agp_stroom_vermis": "Vermis / Vernietiging / Intern gebruik"
 }

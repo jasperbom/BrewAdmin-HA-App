@@ -4,7 +4,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify('1.8.0'),
+    __APP_VERSION__: JSON.stringify('1.8.1'),
   },
   plugins: [react(), viteSingleFile()],
   build: {

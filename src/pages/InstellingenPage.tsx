@@ -988,6 +988,74 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         <p className="text-xs text-gray-400">{t('settings_btw_tarieven_hint')}</p>
       </div>
+
+      {/* Goederenstroom AGP diagram */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('agp_goederenstroom')}</h2>
+        <p className="text-sm text-gray-500 mb-4">AGP goederenstroomdiagram</p>
+
+        <div className="overflow-x-auto print:overflow-visible">
+          <div className="flex items-start gap-2 min-w-[700px]">
+            {/* Stap 1: Inkoop */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_inkoop')}</div>
+            </div>
+            <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
+
+            {/* Stap 2: Opslag grondstoffen */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_opslag_grond')}</div>
+            </div>
+            <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
+
+            {/* Stap 3: Productie */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_productie')}</div>
+            </div>
+            <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
+
+            {/* Stap 4: Verpakking */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_verpakking')}</div>
+            </div>
+            <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
+
+            {/* Stap 5: Opslag gereed product */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-28" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_opslag_gereed')}</div>
+            </div>
+            <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
+
+            {/* Stap 6: Uitslag met vertakkingen */}
+            <div className="flex flex-col items-start gap-1">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24 mb-1" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_uitslag')}</div>
+              <div className="flex items-center gap-1 ml-1">
+                <span className="text-gray-400 text-xs">&rarr;</span>
+                <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">{t('agp_stroom_binnenland')}</span>
+              </div>
+              <div className="flex items-center gap-1 ml-1">
+                <span className="text-gray-400 text-xs">&rarr;</span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">{t('agp_stroom_eu')}</span>
+              </div>
+              <div className="flex items-center gap-1 ml-1">
+                <span className="text-gray-400 text-xs">&rarr;</span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">{t('agp_stroom_export')}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bijzondere mutaties - aftakking vanuit opslag gereed product */}
+          <div className="mt-4 pt-3 border-t border-dashed border-gray-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{t('agp_stroom_opslag_gereed')}</span>
+              <span className="text-gray-400 text-xs">&darr;</span>
+              <div className="px-2.5 py-1.5 bg-red-100 text-red-800 rounded text-xs font-semibold">{t('agp_stroom_bijzonder')}</div>
+              <span className="text-gray-400 text-xs">&rarr;</span>
+              <span className="px-2 py-1 bg-red-50 text-red-700 rounded text-xs">{t('agp_stroom_vermis')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
       </>}
 
       {/* INGREDIËNTEN TYPES */}

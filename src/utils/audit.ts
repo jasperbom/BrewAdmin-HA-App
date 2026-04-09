@@ -11,6 +11,7 @@ export const logAudit = (
     actie: 'aangemaakt' | 'gewijzigd' | 'verwijderd'
     velden?: Record<string, {oud?: any, nieuw?: any}>
     omschrijving?: string
+    gebruiker?: string
   }
 ) => {
   const id = Date.now() + (++_idCounter)

@@ -1916,6 +1916,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <textarea value={safeStr(bForm.notities)} onChange={e=>setBForm((f: any)=>({...f,notities:e.target.value}))}
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={2} placeholder={t('lbl_notes')+'...'} />
             </div>
+            {bForm.status && bForm.status !== 'Gepland' && (!bForm.gn_code || !bForm.platogehalte) && (
+              <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800">
+                <span className="text-yellow-500 mt-0.5">&#9888;</span>
+                <span>{t('agp_waarschuwing_gn_plato')}</span>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={()=>setShowForm(false)}>{t('btn_cancel')}</Btn>
               <Btn onClick={saveBatch}>{t('btn_save')}</Btn>

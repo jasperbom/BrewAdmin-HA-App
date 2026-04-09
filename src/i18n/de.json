@@ -1270,5 +1270,22 @@
   "gpa_stroom_productie": "Produktion",
   "gpa_stroom_verpakking": "Verpackung",
   "gpa_stroom_opslag_gereed": "Fertigproduktlager",
-  "gpa_stroom_uitslag": "Versand"
+  "gpa_stroom_uitslag": "Versand",
+  "lot_ead_koppeling": "Verknüpftes e-AD (ARC)",
+  "audit_gebruiker": "Benutzer",
+
+  "agp_waarschuwing_gn_plato": "Achtung: GN-Code und Platogehalt sind für die Verbrauchsteuererklärung erforderlich",
+  "agp_duplicaat_ingrediënt": "Es gibt bereits eine Zutat mit diesem Namen",
+  "agp_goederenstroom": "AGP Warenfluss",
+  "agp_stroom_inkoop": "Rohstoffeinkauf",
+  "agp_stroom_opslag_grond": "Rohstofflager",
+  "agp_stroom_productie": "Produktion / Brauen",
+  "agp_stroom_verpakking": "Verpackung / Abfüllung",
+  "agp_stroom_opslag_gereed": "Fertigwarenlager",
+  "agp_stroom_uitslag": "Auslagerung",
+  "agp_stroom_binnenland": "Inland",
+  "agp_stroom_eu": "Innergemeinschaftlich (e-AD)",
+  "agp_stroom_export": "Export (e-AD)",
+  "agp_stroom_bijzonder": "Sonderbewegungen",
+  "agp_stroom_vermis": "Verlust / Vernichtung / Eigenverbrauch"
 }

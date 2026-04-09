@@ -18,6 +18,8 @@ export interface Lot {
   prijs_per_eenheid?: number
   beschikbaar?: boolean
   gn_code?: string
+  ead_id?: number
+  ead_arc?: string
   created_at?: string
 }
 
@@ -577,6 +579,7 @@ export interface AuditEntry {
   actie: 'aangemaakt' | 'gewijzigd' | 'verwijderd'
   velden?: Record<string, {oud?: any, nieuw?: any}>
   omschrijving?: string
+  gebruiker?: string
 }
 
 export type AccijnsAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
