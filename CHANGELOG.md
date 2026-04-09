@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.6] — 2026-04-09
+
+### Fixed — MT940 beginsaldo
+- **Beginsaldo correct bij meerdere statements** — bij MT940 bestanden met meerdere bankafschriften werd het beginsaldo overschreven door het beginsaldo van het laatste statement (dat gelijk is aan het eindsaldo van het voorgaande). Nu wordt alleen het eerste beginsaldo bewaard.
+
+---
+
 ## [1.8.5] — 2026-04-09
 
 ### Fixed — Banktransactie-koppelingen (onthouden)

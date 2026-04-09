@@ -709,7 +709,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       else if (field==='28C') result.afschriftNr = v
       else if (field==='60F'||field==='60M') {
         const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
-        if (m) result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
+        // Alleen het eerste beginsaldo bewaren (bij meerdere statements in één bestand)
+        if (m && !result._beginsaldoGezet) { result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3]); result._beginsaldoGezet = true }
       } else if (field==='62F'||field==='62M') {
         const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
         if (m) result.eindsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
@@ -739,6 +740,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }
     flush()
     if (pendingTx) result.transacties.push(pendingTx)
+    delete result._beginsaldoGezet
     return result
   }
 
