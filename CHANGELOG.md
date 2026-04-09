@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.9] — 2026-04-09
+
+### Improved — Security hardening, code cleanup en dode code verwijderd
+- **SSRF bescherming** — `_wc_test()` blokkeert nu requests naar private/interne IP-adressen.
+- **Error message hardening** — foutmeldingen lekken geen interne details meer naar de client.
+- **CSP aangescherpt** — `unsafe-eval` verwijderd uit Content Security Policy.
+- **CORS beperkt** — alleen nog `localhost:5173` en `localhost:8099` als trusted origins.
+- **Type safety** — 6x `@ts-ignore` in DashboardPage vervangen door correcte `.getTime()` calls.
+- **Dode code verwijderd** — ongebruikte `verpKostenLabels` functie verwijderd, `SUPPORTED_LANGS` niet meer geëxporteerd.
+- **i18n opgeschoond** — ~236 ongebruikte vertaalsleutels verwijderd uit alle 5 taalbestanden.
+
 ## [1.8.8] — 2026-04-09
 
 ### Added — Herinnering, 2e herinnering en aanmaning voor verkoopfacturen

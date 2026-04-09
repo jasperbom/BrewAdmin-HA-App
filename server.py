@@ -11,13 +11,16 @@ import base64
 import datetime
 import http.server
 import io
+import ipaddress
 import json
 import os
 import re
 import shutil
+import socket
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from collections import defaultdict
@@ -99,7 +102,7 @@ _SEC_HEADERS = [
 # Extra headers only on the HTML page
 _CSP = (
     "default-src 'none'; "
-    "script-src 'unsafe-inline' 'unsafe-eval' "
+    "script-src 'unsafe-inline' "
         "https://unpkg.com https://cdn.tailwindcss.com https://cdn.sheetjs.com; "
     "style-src 'unsafe-inline'; "
     "worker-src blob: https://unpkg.com; "
@@ -113,14 +116,31 @@ _CSP = (
 _HTML_EXTRA = [('Content-Security-Policy', _CSP)]
 
 
+_TRUSTED_ORIGINS = frozenset((
+    'http://localhost:5173',   # Vite dev server
+    'http://localhost:8099',   # production preview
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:8099',
+))
+
+
 def _trusted_origin(origin: str) -> str | None:
-    """Return origin if it is localhost/loopback, else None."""
-    for prefix in ('http://localhost:', 'https://localhost:',
-                   'http://127.0.0.1:', 'https://127.0.0.1:',
-                   'http://[::1]:', 'https://[::1]:'):
-        if origin.startswith(prefix):
-            return origin
-    return None
+    """Return origin if it is a known dev/preview origin, else None."""
+    return origin if origin in _TRUSTED_ORIGINS else None
+
+
+def _is_private_url(url: str) -> bool:
+    """Block requests to private/internal IP ranges (SSRF protection)."""
+    try:
+        host = urllib.parse.urlparse(url).hostname or ''
+        for info in socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM):
+            addr = info[4][0]
+            ip = ipaddress.ip_address(addr)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return True
+    except Exception:
+        return True  # als DNS niet lukt, blokkeer
+    return False
 
 
 def _valid_key(key: str) -> bool:
@@ -195,8 +215,8 @@ def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = Non
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read() or b'{}'
-    except Exception as ex:
-        return 502, json.dumps({'error': str(ex)}).encode()
+    except Exception:
+        return 502, json.dumps({'error': 'upstream request failed'}).encode()
 
 
 def extract_key(path: str) -> str | None:
@@ -632,6 +652,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not url.startswith('https://') and not url.startswith('http://'):
             self._json(400, {'error': 'storeUrl must start with https:// or http://'})
             return
+        if _is_private_url(url):
+            self._json(400, {'error': 'storeUrl must not point to a private/internal address'})
+            return
         creds = {'url': url, 'key': key, 'secret': secret}
         # Use products endpoint — works with any read-capable API key (no admin required)
         status, body = _wc_request(creds, 'GET', 'products?per_page=1&_fields=id')
@@ -696,8 +719,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 msg = f'HA API returned {e.code}'
             self._json(e.code, {'error': msg})
-        except Exception as e:
-            self._json(502, {'error': str(e)})
+        except Exception:
+            self._json(502, {'error': 'could not reach Home Assistant API'})
 
     def _handle_upload(self):
         """Accept a base64-encoded file upload and save it to UPLOAD_DIR."""
@@ -763,8 +786,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 status = resp.status
         except urllib.error.HTTPError as e:
             status, data = e.code, e.read() or b'{}'
-        except Exception as ex:
-            status, data = 502, json.dumps({'error': str(ex)}).encode()
+        except Exception:
+            status, data = 502, json.dumps({'error': 'upstream request failed'}).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(data))
@@ -807,8 +830,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         try:
             date_str = _run_backup()
             self._json(200, {'ok': True, 'date': date_str})
-        except Exception as exc:
-            self._json(500, {'error': str(exc)})
+        except Exception:
+            self._json(500, {'error': 'backup failed'})
 
     def _serve_bijlagen_zip(self):
         """Serve a ZIP of all invoice attachments for the requested year."""
