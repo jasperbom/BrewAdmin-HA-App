@@ -9,7 +9,7 @@ import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 import VoorraadverloopPage from './VoorraadverloopPage'
-import { printFactuur, buildFactuurHTML } from '../components/PakbonExport'
+import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
 
 // ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
 const _crcTbl = (() => {
@@ -643,10 +643,71 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   };
 
   const markeerHerinnering = (factuurId: any) => {
+    const vandaag = new Date().toISOString().slice(0,10)
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
-      f.id === factuurId ? {...f, status: f.status === 'herinnering' ? 'open' : 'herinnering'} : f
+      f.id === factuurId ? {...f, status: 'herinnering', herinnering_datum: vandaag} : f
     ));
   };
+
+  const markeerTweedeHerinnering = (factuurId: any) => {
+    const vandaag = new Date().toISOString().slice(0,10)
+    setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
+      f.id === factuurId ? {...f, status: 'tweede_herinnering', tweede_herinnering_datum: vandaag} : f
+    ));
+  };
+
+  const markeerAanmaning = (factuurId: any) => {
+    const vandaag = new Date().toISOString().slice(0,10)
+    setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
+      f.id === factuurId ? {...f, status: 'aanmaning', aanmaning_datum: vandaag} : f
+    ));
+  };
+
+  // Genereer herinnering/aanmaning PDF én update status
+  const genereerEnMarkeer = (f: any, niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning') => {
+    const inst = (breweryDetails as any) || {}
+    const klant = (klanten||[]).find((k:any) => k.id === f.klant_id)
+    const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
+    printHerinnering(f, {...inst, betalingstermijn: termijn}, '', factuurLogo, niveau)
+    if (niveau === 'herinnering') markeerHerinnering(f.id)
+    else if (niveau === 'tweede_herinnering') markeerTweedeHerinnering(f.id)
+    else markeerAanmaning(f.id)
+  };
+
+  // Alle onbetaalde facturen die de vervaldatum gepasseerd zijn (onafhankelijk van datumfilter)
+  const verkoopVervallen = React.useMemo(() => {
+    const nu = new Date(); nu.setHours(0,0,0,0)
+    return (verkoopFacturen||[])
+      .filter((f: any) => {
+        if (f.status === 'betaald' || f.status === 'credit') return false
+        if (!f.datum) return false
+        const klant = (klanten||[]).find((k:any) => k.id === f.klant_id)
+        const termijn = klant?.betalingstermijn ?? (breweryDetails as any)?.betalingstermijn ?? 14
+        const verval = new Date(f.datum)
+        verval.setDate(verval.getDate() + Number(termijn))
+        return verval < nu
+      })
+      .sort((a: any, b: any) => a.datum.localeCompare(b.datum))
+  }, [verkoopFacturen, klanten, breweryDetails]);
+
+  // Helper: dagen te laat
+  const dagenTeLaat = (f: any) => {
+    const klant = (klanten||[]).find((k:any) => k.id === f.klant_id)
+    const termijn = klant?.betalingstermijn ?? (breweryDetails as any)?.betalingstermijn ?? 14
+    const verval = new Date(f.datum)
+    verval.setDate(verval.getDate() + Number(termijn))
+    const nu = new Date(); nu.setHours(0,0,0,0)
+    return Math.ceil((nu.getTime() - verval.getTime()) / 86400000)
+  };
+
+  // Status badge helper voor verkoopfacturen
+  const statusBadge = (f: any) => {
+    if (f.status === 'betaald') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">{t('factuur_paid')}</span>
+    if (f.status === 'aanmaning') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">{t('lbl_aanmaning')}</span>
+    if (f.status === 'tweede_herinnering') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">{t('lbl_tweede_herinnering')}</span>
+    if (f.status === 'herinnering') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">{t('lbl_herinnering')}</span>
+    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">{t('factuur_open')}</span>
+  }
 
   // ── PDF generatie ─────────────────────────────────────────────────────────
   const genereerFactuurPDF = (factuur: any) => {
@@ -1186,6 +1247,54 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           </Modal>
         )}
 
+        {/* ── Vervallen facturen (altijd zichtbaar als er zijn) ─────────── */}
+        {verkoopVervallen.length > 0 && (
+          <div className="bg-white rounded-xl border-2 border-red-300 shadow-sm overflow-hidden">
+            <div className="px-4 py-2.5 bg-red-50 border-b border-red-200 flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex-shrink-0">{verkoopVervallen.length}</span>
+              <span className="font-semibold text-red-800 text-sm">{t('lbl_vervallen_facturen')}</span>
+            </div>
+            <div className="divide-y divide-red-50">
+              {verkoopVervallen.map((f: any) => {
+                const dagen = dagenTeLaat(f)
+                const volgendeActie = f.status === 'aanmaning' ? null
+                  : f.status === 'tweede_herinnering' ? 'aanmaning'
+                  : f.status === 'herinnering' ? 'tweede_herinnering'
+                  : 'herinnering'
+                return (
+                  <div key={f.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm text-gray-900">{f.klant_naam||'—'}</span>
+                        <span className="font-mono text-xs text-gray-400">{f.factuurnummer||''}</span>
+                        {statusBadge(f)}
+                        <span className="text-xs text-red-600 font-medium">{t('lbl_factuur_vervallen_dagen').replace('{n}',String(dagen))}</span>
+                      </div>
+                    </div>
+                    <div className="font-semibold text-sm text-gray-900 whitespace-nowrap">{fmt(f.bruto||0)}</div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button onClick={()=>genereerFactuurPDF(f)}
+                        className="px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
+                        {t('btn_pdf')}
+                      </button>
+                      {volgendeActie && (
+                        <button onClick={()=>genereerEnMarkeer(f, volgendeActie as any)}
+                          className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${volgendeActie==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volgendeActie==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
+                          {volgendeActie==='aanmaning'?t('btn_aanmaning_pdf'):volgendeActie==='tweede_herinnering'?t('btn_tweede_herinnering_pdf'):t('btn_herinnering_pdf')}
+                        </button>
+                      )}
+                      <button onClick={()=>markeerBetaald(f.id)}
+                        className="px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded text-xs font-medium border border-green-200 transition-colors">
+                        {t('btn_mark_paid')}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {verkoopGefilterd.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               {[
@@ -1224,11 +1333,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                       <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
                       <td className="py-2 pr-3 font-medium text-gray-800">{f.klant_naam||'—'}</td>
-                      <td className="py-2 pr-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${f.status==='betaald'?'bg-green-100 text-green-700':f.status==='herinnering'?'bg-yellow-100 text-yellow-700':'bg-orange-100 text-orange-700'}`}>
-                          {f.status==='betaald' ? t('factuur_paid') : f.status==='herinnering' ? t('lbl_herinnering') : t('factuur_open')}
-                        </span>
-                      </td>
+                      <td className="py-2 pr-3">{statusBadge(f)}</td>
                       <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.netto||0)}</td>
                       <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.btw||0)}</td>
                       <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.bruto||0)}</td>
@@ -1238,16 +1343,22 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                             className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
                             {t('btn_pdf')}
                           </button>
+                          {f.status !== 'betaald' && f.status !== 'credit' && (() => {
+                            const volg = f.status === 'aanmaning' ? null
+                              : f.status === 'tweede_herinnering' ? 'aanmaning' as const
+                              : f.status === 'herinnering' ? 'tweede_herinnering' as const
+                              : 'herinnering' as const
+                            return volg ? (
+                              <button onClick={() => genereerEnMarkeer(f, volg)}
+                                className={`px-2 py-0.5 rounded text-xs font-medium border transition-colors ${volg==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volg==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
+                                {volg==='aanmaning'?t('btn_aanmaning_pdf'):volg==='tweede_herinnering'?t('btn_tweede_herinnering_pdf'):t('btn_herinnering_pdf')}
+                              </button>
+                            ) : null
+                          })()}
                           {f.status !== 'betaald' && (
                             <button onClick={() => markeerBetaald(f.id)}
                               className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 rounded text-xs font-medium border border-green-200 transition-colors">
                               {t('btn_mark_paid')}
-                            </button>
-                          )}
-                          {f.status !== 'betaald' && (
-                            <button onClick={() => markeerHerinnering(f.id)}
-                              className={`px-2 py-0.5 rounded text-xs font-medium border transition-colors ${f.status==='herinnering'?'bg-yellow-100 text-yellow-700 border-yellow-300':'bg-gray-50 hover:bg-yellow-50 text-gray-500 border-gray-200'}`}>
-                              !
                             </button>
                           )}
                         </div>
@@ -1513,17 +1624,25 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         <tr key={f.id} className="border-b border-gray-50">
                           <td className="py-1.5 pr-3 text-gray-600">{f.datum}</td>
                           <td className="py-1.5 pr-3 font-mono text-xs">{f.factuurnummer||'—'}</td>
-                          <td className="py-1.5 pr-3">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${f.status==='betaald'?'bg-green-100 text-green-700':f.status==='herinnering'?'bg-yellow-100 text-yellow-700':'bg-orange-100 text-orange-700'}`}>
-                              {f.status==='betaald'?t('factuur_paid'):f.status==='herinnering'?t('lbl_herinnering'):t('factuur_open')}
-                            </span>
-                          </td>
+                          <td className="py-1.5 pr-3">{statusBadge(f)}</td>
                           <td className="py-1.5 pr-3 text-right font-semibold">{fmt(f.bruto||0)}</td>
                           <td className="py-1.5 text-right whitespace-nowrap">
                             <button onClick={()=>genereerFactuurPDF(f)}
                               className="text-xs px-2 py-0.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-gray-600 transition-colors mr-1">
                               {t('btn_pdf')}
                             </button>
+                            {f.status !== 'betaald' && f.status !== 'credit' && (() => {
+                              const volg = f.status === 'aanmaning' ? null
+                                : f.status === 'tweede_herinnering' ? 'aanmaning' as const
+                                : f.status === 'herinnering' ? 'tweede_herinnering' as const
+                                : 'herinnering' as const
+                              return volg ? (
+                                <button onClick={()=>genereerEnMarkeer(f, volg)}
+                                  className={`text-xs px-2 py-0.5 rounded border transition-colors mr-1 ${volg==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volg==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
+                                  {volg==='aanmaning'?t('btn_aanmaning_pdf'):volg==='tweede_herinnering'?t('btn_tweede_herinnering_pdf'):t('btn_herinnering_pdf')}
+                                </button>
+                              ) : null
+                            })()}
                             {f.status !== 'betaald' && (
                               <button onClick={()=>markeerBetaald(f.id)}
                                 className="text-xs px-2 py-0.5 bg-green-50 hover:bg-green-100 border border-green-200 rounded text-green-700 transition-colors">

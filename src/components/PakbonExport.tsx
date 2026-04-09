@@ -45,6 +45,12 @@ const CSS = `
   .badge { display: inline-block; padding: 0.5mm 2mm; border-radius: 2mm; font-size: 8pt; font-weight: bold; }
   .badge-green { background: #d1fae5; color: #065f46; }
   .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
+  .notice-block { background: #fff7ed; border: 1.5px solid #f97316; padding: 3.5mm 4.5mm; border-radius: 3px; margin-bottom: 5mm; }
+  .notice-title { font-weight: bold; font-size: 11pt; color: #c2410c; margin-bottom: 2px; }
+  .notice-text { font-size: 9.5pt; line-height: 1.65; color: #7c2d12; }
+  .aanmaning-block { background: #fef2f2; border: 2px solid #dc2626; padding: 3.5mm 4.5mm; border-radius: 3px; margin-bottom: 5mm; }
+  .aanmaning-title { font-weight: bold; font-size: 11pt; color: #dc2626; margin-bottom: 2px; }
+  .aanmaning-text { font-size: 9.5pt; line-height: 1.65; color: #7f1d1d; }
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @page { size: A4; margin: 0; }
@@ -371,4 +377,112 @@ export function printFactuur(
   const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
   if (!result) return
   openPrint(result.bodyHtml, result.filename)
+}
+
+// ─────────────────────────────────────────────
+// BETALINGSHERINNERING / AANMANING
+// ─────────────────────────────────────────────
+export function printHerinnering(
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined,
+  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning'
+): void {
+  if (!factuur) return
+
+  const fv = brewery?.factuur_velden || {}
+  const factuurnummer = factuur.factuurnummer || `F-${factuur.id}`
+  const factuurdatum = fmtDate(factuur.datum)
+  const betalingstermijn = brewery?.betalingstermijn ?? 14
+  const bruto = factuur.bruto ?? 0
+  const naam = brewery?.naam || appName || ''
+
+  // Originele vervaldatum
+  const origVerval = (() => {
+    try {
+      const d = new Date(factuur.datum || new Date().toISOString())
+      d.setDate(d.getDate() + Number(betalingstermijn))
+      return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
+    } catch { return '—' }
+  })()
+
+  // Nieuwe betalingsdatum (7 dagen vanaf vandaag)
+  const nieuweVerval = (() => {
+    const d = new Date()
+    const dagExtra = niveau === 'aanmaning' ? 7 : 14
+    d.setDate(d.getDate() + dagExtra)
+    return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
+  })()
+
+  // Titel & tekst op basis van niveau
+  let docTitel: string
+  let noticeHtml: string
+  let filenamePrefix: string
+  if (niveau === 'aanmaning') {
+    docTitel = t('lbl_aanmaning_document')
+    filenamePrefix = 'Aanmaning'
+    noticeHtml = `<div class="aanmaning-block">
+      <div class="aanmaning-title">${t('lbl_aanmaning_document')}</div>
+      <div class="aanmaning-text">${t('msg_aanmaning_tekst')}</div>
+    </div>`
+  } else if (niveau === 'tweede_herinnering') {
+    docTitel = t('lbl_tweede_herinnering_document')
+    filenamePrefix = '2e-Herinnering'
+    noticeHtml = `<div class="notice-block">
+      <div class="notice-title">${t('lbl_tweede_herinnering_document')}</div>
+      <div class="notice-text">${t('msg_tweede_herinnering_tekst')}</div>
+    </div>`
+  } else {
+    docTitel = t('lbl_herinnering_document')
+    filenamePrefix = '1e-Herinnering'
+    noticeHtml = `<div class="notice-block">
+      <div class="notice-title">${t('lbl_herinnering_document')}</div>
+      <div class="notice-text">${t('msg_herinnering_tekst')}</div>
+    </div>`
+  }
+
+  const vandaag = new Date().toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
+
+  const klantOrder = {
+    klant_naam: factuur.klant_naam,
+    klant_straat: factuur.klant_straat,
+    klant_postcode: factuur.klant_postcode,
+    klant_stad: factuur.klant_stad,
+    klant_btw_nummer: factuur.klant_btw_nummer,
+  }
+
+  const bodyHtml = `<div class="page">
+    <div class="hdr">
+      ${breweryBlock(brewery, appName, factuurLogo)}
+      <div class="hdr-right">
+        <div class="doc-title" style="font-size:18pt">${docTitel}</div>
+        <div class="doc-nr" style="color:#888">${t('lbl_date')}: ${vandaag}</div>
+      </div>
+    </div>
+
+    <div class="kb">
+      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_factuuradres')}</div>
+      ${klantBlock(klantOrder)}
+    </div>
+
+    ${noticeHtml}
+
+    <div class="meta-grid" style="margin-bottom:5mm">
+      <div class="meta-block"><div class="ml">${t('lbl_originele_factuur')}</div><div class="mv">${factuurnummer}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${factuurdatum}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_vervaldatum').replace('{n}',String(betalingstermijn))}</div><div class="mv">${origVerval}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_openstaand_bedrag')}</div><div class="mv" style="font-weight:bold;font-size:13pt">${fmtEuro(bruto)}</div></div>
+    </div>
+
+    ${(fv.betaalblok !== false) ? `<div class="pay-block">
+      <div class="pay-title">${t('lbl_betaalinformatie')}</div>
+      ${brewery?.iban ? `<div>IBAN: <strong>${brewery.iban}</strong>${naam ? ` &nbsp;t.n.v. ${naam}` : ''}</div>` : ''}
+      <div>${t('lbl_openstaand_bedrag')}: <strong>${fmtEuro(bruto)}</strong></div>
+      <div>${t('lbl_nieuw_vervaldag')}: <strong>${nieuweVerval}</strong></div>
+      <div>o.v.v. factuurnummer <strong>${factuurnummer}</strong></div>
+    </div>` : ''}
+  </div>`
+
+  openPrint(bodyHtml, `${filenamePrefix}-${factuurnummer}`)
 }

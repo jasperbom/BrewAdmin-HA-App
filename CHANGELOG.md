@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.8] — 2026-04-09
+
+### Added — Herinnering, 2e herinnering en aanmaning voor verkoopfacturen
+- **Vervallen facturen sectie** — boven de factuurlijst verschijnt een rood gemarkeerd blok met alle facturen waarvan de betaaltermijn verstreken is, direct zichtbaar ongeacht datumfilter.
+- **Escalatie-actieknoppen** — elke vervallen factuur toont de volgende logische stap: "1e Herinnering" → "2e Herinnering" → "Aanmaning". Klikken genereert direct het PDF-document én past de status aan.
+- **Herinnering/aanmaning PDF** — professionele documenten met brouwerijlogo, klantgegevens, factuurreferentie, openstaand bedrag en nieuwe betaaldeadline. Stijl past zich aan op urgentie (oranje/rood).
+- **4 statusniveaus** — facturen kunnen nu `open`, `herinnering`, `tweede_herinnering`, `aanmaning` of `betaald` zijn, elk met eigen badge-kleur (oranje → geel → oranje → rood → groen).
+- **Dashboard widget** — vervallen facturen verschijnen als aparte widget op het dashboard met een rode teller-badge en overzicht van de eerste 5. Stat card vervangt BTW-openstaand.
+- **Datumlogs** — `herinnering_datum`, `tweede_herinnering_datum` en `aanmaning_datum` worden bijgehouden zodat je weet wanneer elke stap is verzonden.
+- **Klant factuurhistorie** — ook in de klant-detailweergave zijn de nieuwe statussen en escalatieknoppen zichtbaar.
+
+---
+
 ## [1.8.7] — 2026-04-09
 
 ### Added — Bijschrift koppelen aan negatieve inkoopfactuur

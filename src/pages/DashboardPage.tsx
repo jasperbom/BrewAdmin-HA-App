@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
 import { STATUS_CLR } from '../utils/constants'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -35,6 +35,20 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   const beschVoorraad  = uit.reduce((s: any, u: any) => s + Number(u.aantal||0) - Number(u.verkocht_stuks||0), 0);
   const openBestellingen = bi.filter((b: any) => ['nieuw','gepickt'].includes(b.status));
   const actiefBatches  = bat.filter((b: any) => b.status !== 'Gesloten');
+
+  // ── Vervallen verkoopfacturen ─────────────────────────────────────────────
+  const vervallenFacturen = React.useMemo(() => {
+    const nu = new Date(); nu.setHours(0,0,0,0)
+    return (verkoopFacturen||[]).filter((f: any) => {
+      if (f.status === 'betaald' || f.status === 'credit') return false
+      if (!f.datum) return false
+      const klant = (klanten||[]).find((k:any) => k.id === f.klant_id)
+      const termijn = klant?.betalingstermijn ?? (breweryDetails as any)?.betalingstermijn ?? 14
+      const verval = new Date(f.datum)
+      verval.setDate(verval.getDate() + Number(termijn))
+      return verval < nu
+    }).sort((a: any, b: any) => a.datum.localeCompare(b.datum))
+  }, [verkoopFacturen, klanten, breweryDetails])
 
   const openBtwPeriodes = React.useMemo(() => {
     const periodeType = (btwInst as any)?.periode ?? 'kwartaal';
@@ -216,10 +230,10 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     <div>
       {/* ── Stat cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label={t('lbl_stock_available')}   value={beschVoorraad}            sub={t('lbl_units_released')}                              color="green"                                          onClick={() => setPage('voorraad')} />
-        <StatCard label={t('lbl_open_excise')}       value={fmt(openAccBed)}          sub={`${openAccijns.length} ${t('lbl_declarations')}`}     color={openAccBed > 0 ? 'red' : 'gray'}                onClick={() => setPage('boekhouding')} />
-        <StatCard label={t('lbl_open_btw_periodes')} value={openBtwPeriodes.length}   sub={t('lbl_btw_periodes_outstanding')}                    color={openBtwPeriodes.length > 0 ? 'orange' : 'gray'} onClick={() => setPage('boekhouding')} />
-        <StatCard label={t('lbl_open_orders')}       value={openBestellingen.length}  sub={t('lbl_orders_to_pick')}                              color={openBestellingen.length > 0 ? 'orange' : 'gray'} onClick={() => setPage('bestellingen')} />
+        <StatCard label={t('lbl_stock_available')}    value={beschVoorraad}              sub={t('lbl_units_released')}                              color="green"                                               onClick={() => setPage('voorraad')} />
+        <StatCard label={t('lbl_open_excise')}        value={fmt(openAccBed)}            sub={`${openAccijns.length} ${t('lbl_declarations')}`}     color={openAccBed > 0 ? 'red' : 'gray'}                     onClick={() => setPage('boekhouding')} />
+        <StatCard label={t('lbl_vervallen_facturen')} value={vervallenFacturen.length}   sub={t('lbl_factuur_vervallen_dagen').replace('{n}','')}    color={vervallenFacturen.length > 0 ? 'red' : 'gray'}       onClick={() => setPage('boekhouding')} />
+        <StatCard label={t('lbl_open_orders')}        value={openBestellingen.length}    sub={t('lbl_orders_to_pick')}                              color={openBestellingen.length > 0 ? 'orange' : 'gray'}     onClick={() => setPage('bestellingen')} />
       </div>
 
       {/* ── THT alerts ────────────────────────────────────────────────────── */}
@@ -486,6 +500,51 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                 onClick={() => setPage('bestellingen')}
               >
                 {t('msg_n_meer').replace('{n}', String(openBestellingen.length - 5))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Vervallen facturen ───────────────────────────────────────────── */}
+      {vervallenFacturen.length > 0 && (
+        <div className="bg-white rounded-xl border-2 border-red-300 shadow-sm mb-6">
+          <div
+            className="px-4 py-2.5 bg-red-50 border-b border-red-200 flex items-center justify-between cursor-pointer"
+            onClick={() => setPage('boekhouding')}
+          >
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-600 text-white text-xs font-bold flex-shrink-0">{vervallenFacturen.length}</span>
+              <span className="font-semibold text-red-800 text-sm">{t('dashboard_vervallen_facturen')}</span>
+            </div>
+            <span className="text-xs opacity-75 text-red-700">→</span>
+          </div>
+          <div className="divide-y divide-red-50">
+            {vervallenFacturen.slice(0, 5).map((f: any) => {
+              const statusClr = f.status === 'aanmaning' ? 'bg-red-100 text-red-700'
+                : f.status === 'tweede_herinnering' ? 'bg-orange-100 text-orange-700'
+                : f.status === 'herinnering' ? 'bg-yellow-100 text-yellow-700'
+                : 'bg-orange-100 text-orange-700'
+              const statusLbl = f.status === 'aanmaning' ? t('lbl_aanmaning')
+                : f.status === 'tweede_herinnering' ? t('lbl_tweede_herinnering')
+                : f.status === 'herinnering' ? t('lbl_herinnering')
+                : t('factuur_open')
+              return (
+                <div key={f.id} className="flex items-center justify-between px-5 py-2.5 hover:bg-red-50 cursor-pointer" onClick={() => setPage('boekhouding')}>
+                  <div>
+                    <span className="font-medium text-sm text-gray-800">{f.klant_naam || '—'}</span>
+                    <span className="text-xs text-gray-400 ml-2">{f.factuurnummer || ''}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusClr}`}>{statusLbl}</span>
+                    <span className="text-xs font-semibold text-gray-700">{fmtD(f.datum)}</span>
+                  </div>
+                </div>
+              )
+            })}
+            {vervallenFacturen.length > 5 && (
+              <div className="px-5 py-2 text-xs text-gray-400 cursor-pointer hover:bg-red-50" onClick={() => setPage('boekhouding')}>
+                {t('msg_n_meer').replace('{n}', String(vervallenFacturen.length - 5))}
               </div>
             )}
           </div>
