@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.10] — 2026-04-09
+
+### Improved — Fermentatietank-visualisatie op dashboard
+- **Nieuwe SVG-tank** — de eenvoudige CSS-rechthoek is vervangen door een realistische conische fermentor met cilindervormig lichaam, conische bodem, manway/dome, poten, voetjes en aftapkraan.
+- **Metallic gradient** op de tankwand voor een professionele uitstraling.
+- **Geanimeerde bubbels** tijdens actieve gisting (status "Vergisten").
+- **Vloeistofvulling** met gradient, oppervlaktegolf en percentage-label, geclipped op de tankvorm.
+
 ## [1.8.9] — 2026-04-09
 
 ### Improved — Security hardening, code cleanup en dode code verwijderd
