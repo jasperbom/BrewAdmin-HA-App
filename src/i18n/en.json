@@ -1053,6 +1053,7 @@
   "lbl_debet": "Debit",
   "lbl_koppeling": "Match",
   "lbl_niet_gekoppeld": "Not matched",
+  "lbl_of_creditnota": "or purchase credit note:",
   "btn_koppel_aan_factuur": "Link to invoice",
   "msg_no_bank": "No bank statement loaded.",
   "msg_bank_sessie_hint": "Bank statements are not saved — only visible in this session.",

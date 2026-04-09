@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.7] — 2026-04-09
+
+### Added — Bijschrift koppelen aan negatieve inkoopfactuur
+- **Creditnota leverancier via MT940** — een bijschrift (geld ontvangen) kan nu ook gekoppeld worden aan een inkoopfactuur met negatief totaalbedrag (creditnota). Een tweede dropdown "of creditnota inkoop:" verschijnt automatisch zodra er open negatieve inkoopfacturen bestaan.
+- **Auto-matching** — bij het importeren van een MT940-bestand worden bijschriften nu ook automatisch gematcht aan negatieve inkoopfacturen als er geen verkoopfactuur overeenkomt.
+- **Wederzijdse uitsluiting** — koppelen aan inkoop wist automatisch de eventuele verkoopkoppeling en vice versa.
+
+---
+
 ## [1.8.6] — 2026-04-09
 
 ### Fixed — MT940 beginsaldo

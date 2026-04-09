@@ -1049,6 +1049,7 @@
   "lbl_debet": "Débit",
   "lbl_koppeling": "Association",
   "lbl_niet_gekoppeld": "Non associé",
+  "lbl_of_creditnota": "ou note de crédit achat :",
   "btn_koppel_aan_factuur": "Associer à une facture",
   "msg_no_bank": "Aucun relevé bancaire chargé.",
   "msg_bank_sessie_hint": "Les relevés bancaires ne sont pas sauvegardés — visibles uniquement dans cette session.",

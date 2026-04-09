@@ -1049,6 +1049,7 @@
   "lbl_debet": "Cargo",
   "lbl_koppeling": "Asociación",
   "lbl_niet_gekoppeld": "Sin asociar",
+  "lbl_of_creditnota": "o nota de crédito compra:",
   "btn_koppel_aan_factuur": "Asociar a factura",
   "msg_no_bank": "No se ha cargado ningún extracto bancario.",
   "msg_bank_sessie_hint": "Los extractos bancarios no se guardan — solo visibles en esta sesión.",

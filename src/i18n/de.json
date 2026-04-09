@@ -1053,6 +1053,7 @@
   "lbl_debet": "Lastschrift",
   "lbl_koppeling": "Zuordnung",
   "lbl_niet_gekoppeld": "Nicht zugeordnet",
+  "lbl_of_creditnota": "oder Einkaufsgutschrift:",
   "btn_koppel_aan_factuur": "Rechnung zuordnen",
   "msg_no_bank": "Kein Kontoauszug geladen.",
   "msg_bank_sessie_hint": "Kontoauszüge werden nicht gespeichert — nur in dieser Sitzung sichtbar.",
