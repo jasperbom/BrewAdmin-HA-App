@@ -1287,5 +1287,18 @@
   "agp_stroom_eu": "Intra-EU (e-AD)",
   "agp_stroom_export": "Export (e-AD)",
   "agp_stroom_bijzonder": "Special transactions",
-  "agp_stroom_vermis": "Loss / Destruction / Internal use"
+  "agp_stroom_vermis": "Loss / Destruction / Internal use",
+  "lbl_kostensoort": "Cost category",
+  "ph_kostensoort": "Choose cost category",
+  "ks_grondstoffen": "Raw materials",
+  "ks_verpakkingsmateriaal": "Packaging materials",
+  "ks_energie": "Energy",
+  "ks_huur": "Rent",
+  "ks_transport": "Transport",
+  "ks_onderhoud": "Maintenance",
+  "ks_marketing": "Marketing",
+  "ks_administratie": "Administration",
+  "ks_overig": "Other",
+  "settings_kosten_soorten_title": "Cost categories",
+  "settings_kosten_soorten_desc": "Categories for purchase costs"
 }

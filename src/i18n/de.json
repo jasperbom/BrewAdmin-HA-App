@@ -1287,5 +1287,18 @@
   "agp_stroom_eu": "Innergemeinschaftlich (e-AD)",
   "agp_stroom_export": "Export (e-AD)",
   "agp_stroom_bijzonder": "Sonderbewegungen",
-  "agp_stroom_vermis": "Verlust / Vernichtung / Eigenverbrauch"
+  "agp_stroom_vermis": "Verlust / Vernichtung / Eigenverbrauch",
+  "lbl_kostensoort": "Kostenart",
+  "ph_kostensoort": "Kostenart wählen",
+  "ks_grondstoffen": "Rohstoffe",
+  "ks_verpakkingsmateriaal": "Verpackungsmaterial",
+  "ks_energie": "Energie",
+  "ks_huur": "Miete",
+  "ks_transport": "Transport",
+  "ks_onderhoud": "Wartung",
+  "ks_marketing": "Marketing",
+  "ks_administratie": "Verwaltung",
+  "ks_overig": "Sonstiges",
+  "settings_kosten_soorten_title": "Kostenarten",
+  "settings_kosten_soorten_desc": "Kategorien für Einkaufskosten"
 }

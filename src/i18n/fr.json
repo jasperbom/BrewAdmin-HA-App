@@ -1283,5 +1283,18 @@
   "agp_stroom_eu": "Intracommunautaire (e-AD)",
   "agp_stroom_export": "Exportation (e-AD)",
   "agp_stroom_bijzonder": "Mouvements spéciaux",
-  "agp_stroom_vermis": "Perte / Destruction / Usage interne"
+  "agp_stroom_vermis": "Perte / Destruction / Usage interne",
+  "lbl_kostensoort": "Type de coût",
+  "ph_kostensoort": "Choisir un type de coût",
+  "ks_grondstoffen": "Matières premières",
+  "ks_verpakkingsmateriaal": "Matériaux d'emballage",
+  "ks_energie": "Énergie",
+  "ks_huur": "Loyer",
+  "ks_transport": "Transport",
+  "ks_onderhoud": "Maintenance",
+  "ks_marketing": "Marketing",
+  "ks_administratie": "Administration",
+  "ks_overig": "Autre",
+  "settings_kosten_soorten_title": "Types de coûts",
+  "settings_kosten_soorten_desc": "Catégories pour les coûts d'achat"
 }

@@ -164,6 +164,7 @@ export interface FactuurRegel {
   prijs_per_stuk?: number
   netto?: number
   btw_tarief?: number
+  kostensoort?: string
 }
 
 export interface Bijlage {
