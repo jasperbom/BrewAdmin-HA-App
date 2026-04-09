@@ -28,9 +28,7 @@ export const accijnsCalcBatch = (batch: any, accijnsInst: AccijnsInst | null = n
 
 export interface WinstVerliesResult {
   omzet: number
-  inkoopIngredient: number
-  inkoopVerpakking: number
-  inkoopOverig: number
+  inkoopPerKostensoort: Record<string, number>
   inkoopTotaal: number
   accijnsKosten: number
   brutowinst: number
@@ -50,29 +48,29 @@ export const berekenWinstVerlies = (
     .filter((f: any) => inPeriod(f.datum))
     .reduce((s: number, f: any) => s + (f.netto || 0), 0)
 
-  let inkoopIngredient = 0
-  let inkoopVerpakking = 0
-  let inkoopOverig = 0
+  const inkoopPerKostensoort: Record<string, number> = {}
 
   inkoopFacturen
     .filter((f: any) => inPeriod(f.datum))
     .forEach((f: any) => {
       ;(f.regels || []).forEach((r: any) => {
         const netto = r.netto || 0
-        if (r.type === 'ingredient') inkoopIngredient += netto
-        else if (r.type === 'verpakking') inkoopVerpakking += netto
-        else inkoopOverig += netto
+        const ks = r.kostensoort
+          || (r.type === 'ingredient' ? 'Grondstoffen'
+            : r.type === 'verpakking' ? 'Verpakkingsmateriaal'
+            : 'Overig')
+        inkoopPerKostensoort[ks] = (inkoopPerKostensoort[ks] || 0) + netto
       })
     })
 
-  const inkoopTotaal = inkoopIngredient + inkoopVerpakking + inkoopOverig
+  const inkoopTotaal = Object.values(inkoopPerKostensoort).reduce((s, v) => s + v, 0)
 
   const accijnsKosten = accRecords
     .filter((r: any) => inPeriod(r.datum))
     .reduce((s: number, r: any) => s + (r.totaal_accijns || r.accijns || 0), 0)
 
-  const brutowinst = omzet - inkoopIngredient - inkoopVerpakking
-  const nettowinst = brutowinst - inkoopOverig - accijnsKosten
+  const brutowinst = omzet - (inkoopPerKostensoort['Grondstoffen'] || 0) - (inkoopPerKostensoort['Verpakkingsmateriaal'] || 0)
+  const nettowinst = omzet - inkoopTotaal - accijnsKosten
 
-  return { omzet, inkoopIngredient, inkoopVerpakking, inkoopOverig, inkoopTotaal, accijnsKosten, brutowinst, nettowinst }
+  return { omzet, inkoopPerKostensoort, inkoopTotaal, accijnsKosten, brutowinst, nettowinst }
 }

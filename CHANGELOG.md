@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.2] — 2026-04-09
+
+### Added — Kostensoorten
+- **Kostensoorten op inkoopfacturen** — vrije regels op inkoopfacturen krijgen een kostensoort-dropdown (Grondstoffen, Verpakkingsmateriaal, Energie, Huur, Transport, Onderhoud, Marketing, Administratie, Overig)
+- **Dynamische Winst & Verlies rapportage** — inkoopkosten worden nu per kostensoort uitgesplitst in plaats van de vaste driedeling ingrediënten/verpakking/overig
+- **Aanpasbare kostensoorten** — eigen kostensoorten toevoegen, hernoemen of verwijderen via Instellingen
+- **Excel backup** — kostensoorten worden meegenomen in backup export/import
+
+---
+
 ## [1.8.1] — 2026-04-09
 
 ### Added — AGP-compliance (Accijnsgoederenplaats)

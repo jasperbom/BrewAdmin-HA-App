@@ -13,6 +13,7 @@ export const STATUS_CLR: Record<string, string> = {
 
 export const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Verpakt","Gesloten"]
 export const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"]
+export const BUILTIN_KOSTEN_SOORTEN = ['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']
 export const EENHEDEN = ["kg","g","L","mL","pkg","stuks"]
 
 export const UNIT_BASE: Record<string, {group:string, f:number}> = {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
-import { BF_TO_APP, BUILTIN_ING_TYPES, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS } from '../utils/constants'
+import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS } from '../utils/constants'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
 
 const ServerStatusCard = () => {
@@ -151,8 +151,9 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
+  const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -349,6 +350,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
     {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
     {id:'ingredienten',  label:'Ingrediënten',             icon:'🌾'},
+    {id:'kostensoorten', label:t('settings_kosten_soorten_title'), icon:'📊'},
     {id:'hygiene',       label:t('settings_hygiene'),      icon:'🧹'},
     {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
@@ -1095,6 +1097,36 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_new_ingredient_type')} value={newIngType} onChange={(e: any)=>setNewIngType(e.target.value)}
               onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}} />
             <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}>{t('btn_add')}</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* KOSTENSOORTEN */}
+      {activeSection==='kostensoorten' && (
+        <div className={card}>
+          <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_kosten_soorten_title')}</h2>
+          <p className="text-sm text-gray-500 mb-4">{t('settings_kosten_soorten_desc')}</p>
+          <div className="space-y-2 mb-4">
+            {kostenSoorten.map((ks: string, idx: number) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input"
+                  value={ks}
+                  onBlur={(e: any)=>{const val=e.target.value.trim();if(val&&val!==ks){setKostenSoorten((prev: any)=>prev.map((s: any,i: number)=>i===idx?val:s))}}}
+                  onChange={(e: any)=>setKostenSoorten((prev: any)=>prev.map((s: any,i: number)=>i===idx?e.target.value:s))} />
+                <button
+                  title={t('btn_delete')}
+                  onClick={()=>{
+                    if(!confirm(t('confirm_ingredient_type_delete').replace('{typ}',ks)))return;
+                    setKostenSoorten((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
+                  }}
+                  className="text-sm px-2 py-1.5 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_kostensoort')} value={newKostenSoort} onChange={(e: any)=>setNewKostenSoort(e.target.value)}
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);setNewKostenSoort('');}}} />
+            <Btn onClick={()=>{const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);setNewKostenSoort('');}}>{t('btn_add')}</Btn>
           </div>
         </div>
       )}

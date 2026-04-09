@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { getLang } from '../i18n'
 import { tod } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
-import { BUILTIN_ING_TYPES } from '../utils/constants'
+import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
@@ -64,7 +64,7 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, eadDocumenten=[], setEadDocumenten=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, eadDocumenten=[], setEadDocumenten=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN}: any) {
   const now = new Date();
   const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -336,9 +336,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const wvData = [
       [t('lbl_omzet'), wv.omzet.toFixed(2)],
       [t('lbl_inkoopkosten'), (-wv.inkoopTotaal).toFixed(2)],
-      [t('lbl_inkoopkosten_ingredienten'), (-wv.inkoopIngredient).toFixed(2)],
-      [t('lbl_inkoopkosten_verpakking'), (-wv.inkoopVerpakking).toFixed(2)],
-      [t('lbl_inkoopkosten_overig'), (-wv.inkoopOverig).toFixed(2)],
+      ...Object.entries(wv.inkoopPerKostensoort).sort(([a],[b])=>a.localeCompare(b,'nl')).map(([ks,val])=>[
+        `— ${BUILTIN_KOSTEN_SOORTEN.includes(ks) ? t('ks_'+ks.toLowerCase()) : ks}`, (-val).toFixed(2)
+      ]),
       [t('lbl_brutowinst'), wv.brutowinst.toFixed(2)],
       [t('lbl_accijns_kosten'), (-wv.accijnsKosten).toFixed(2)],
       [t('lbl_nettowinst'), wv.nettowinst.toFixed(2)],
@@ -492,19 +492,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find((i: any)=>i.id===Number(p.ing_id))?.naam||p.nieuw||'') : (p.nieuw||'');
       regels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
-        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Grondstoffen'});
     });
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
       const netto = parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0));
       const btw_tarief = Number(v.btw_tarief)||0;
       regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
-        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Verpakkingsmateriaal'});
     });
     vrijeRegels.forEach((r: any) => {
       const netto = parseFloat(r.netto)||0;
       const btw_tarief = Number(r.btw_tarief)||0;
-      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2)});
+      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2), kostensoort: r.kostensoort||'Overig'});
     });
     if (!regels.length) return;
     const calc_netto = regels.reduce((s: any,r: any)=>s+r.netto, 0);
@@ -535,19 +535,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find((i: any)=>i.id===Number(p.ing_id))?.naam||p._naam||p.nieuw.trim()) : (p._naam||p.nieuw.trim());
       regels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
-        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Grondstoffen'});
     });
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
       const netto = parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0));
       const btw_tarief = Number(v.btw_tarief)||0;
       regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
-        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Verpakkingsmateriaal'});
     });
     vrijeRegels.forEach((r: any) => {
       const netto = parseFloat(r.netto)||0;
       const btw_tarief = Number(r.btw_tarief)||0;
-      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2)});
+      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort: r.kostensoort||'Overig'});
     });
     const calc_netto = regels.reduce((s: any,r: any)=>s+r.netto, 0);
     const calc_btw = regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0);
@@ -894,7 +894,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const regels: any[] = (vrijeRegels||[]).map((r: any) => {
       const netto = parseFloat(r.netto)||0
       const btw_tarief = Number(r.btw_tarief)||0
-      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2)}
+      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2), kostensoort: r.kostensoort||'Overig'}
     })
     if (!regels.length) return
     const totaal_netto = regels.reduce((s: any, r: any) => s+r.netto, 0)
@@ -1301,6 +1301,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             claudeCreds={claudeCreds}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
+            kostenSoorten={kostenSoorten}
           />
         )}
         {/* Factuur bewerken modal */}
@@ -1316,6 +1317,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             claudeCreds={claudeCreds}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
+            kostenSoorten={kostenSoorten}
           />
         )}
 
@@ -1798,6 +1800,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             claudeCreds={claudeCreds}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
+            kostenSoorten={kostenSoorten}
           />
         )}
       </>)}
@@ -1837,12 +1840,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         {/* Winst & Verlies */}
         {rapportTab==='wv' && (()=>{
           const wv = berekenWinstVerlies(verkoopFacturen||[], inkoopFacturen||[], acc||[], rapportVan, rapportTot)
+          const ksRows = Object.entries(wv.inkoopPerKostensoort)
+            .sort(([a],[b]) => a.localeCompare(b,'nl'))
+            .map(([ks, val]) => ({
+              label: `— ${BUILTIN_KOSTEN_SOORTEN.includes(ks) ? t('ks_'+ks.toLowerCase()) : ks}`,
+              val: -val, indent: true
+            }))
           const rows: {label:string,val:number,cls?:string,indent?:boolean,sep?:boolean}[] = [
             {label:t('lbl_omzet'), val:wv.omzet, cls:'text-green-700 font-semibold'},
             {label:t('lbl_inkoopkosten'), val:-wv.inkoopTotaal, sep:true},
-            {label:t('lbl_inkoopkosten_ingredienten'), val:-wv.inkoopIngredient, indent:true},
-            {label:t('lbl_inkoopkosten_verpakking'), val:-wv.inkoopVerpakking, indent:true},
-            {label:t('lbl_inkoopkosten_overig'), val:-wv.inkoopOverig, indent:true},
+            ...ksRows,
             {label:t('lbl_brutowinst'), val:wv.brutowinst, cls:wv.brutowinst>=0?'text-green-700 font-bold':'text-red-600 font-bold', sep:true},
             {label:t('lbl_accijns_kosten'), val:-wv.accijnsKosten},
             {label:t('lbl_nettowinst'), val:wv.nettowinst, cls:wv.nettowinst>=0?'text-green-700 font-bold text-base':'text-red-600 font-bold text-base', sep:true},

@@ -1287,5 +1287,18 @@
   "agp_stroom_eu": "Intracommunautair (e-AD)",
   "agp_stroom_export": "Export (e-AD)",
   "agp_stroom_bijzonder": "Bijzondere mutaties",
-  "agp_stroom_vermis": "Vermis / Vernietiging / Intern gebruik"
+  "agp_stroom_vermis": "Vermis / Vernietiging / Intern gebruik",
+  "lbl_kostensoort": "Kostensoort",
+  "ph_kostensoort": "Kies kostensoort",
+  "ks_grondstoffen": "Grondstoffen",
+  "ks_verpakkingsmateriaal": "Verpakkingsmateriaal",
+  "ks_energie": "Energie",
+  "ks_huur": "Huur",
+  "ks_transport": "Transport",
+  "ks_onderhoud": "Onderhoud",
+  "ks_marketing": "Marketing",
+  "ks_administratie": "Administratie",
+  "ks_overig": "Overig",
+  "settings_kosten_soorten_title": "Kostensoorten",
+  "settings_kosten_soorten_desc": "Categorieën voor inkoopkosten"
 }

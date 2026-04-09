@@ -4,7 +4,7 @@ import Btn from './ui/Btn'
 import Inp from './ui/Inp'
 import Sel from './ui/Sel'
 import { t } from '../i18n'
-import { BUILTIN_ING_TYPES, EENHEDEN, ONDERDEEL_TYPES } from '../utils/constants'
+import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES } from '../utils/constants'
 import { ADDON_BASE, callClaudeProxy } from '../utils/api'
 import { tod } from '../utils/format'
 
@@ -116,12 +116,14 @@ interface InkoopFactuurModalProps {
   ingTypes?: string[]
   ingTypeBtw?: Record<string, number>
   initialData?: any
+  kostenSoorten?: string[]
 }
 
 function InkoopFactuurModal({
   knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose,
   initialTab='ingredienten', initialIngId='', claudeCreds=null,
-  ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null
+  ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
+  kostenSoorten=BUILTIN_KOSTEN_SOORTEN
 }: InkoopFactuurModalProps) {
   const defaultType = ingTypes[0] || 'Mout'
   const emptyProduct = {ing_id:initialIngId,nieuw:'',type:defaultType,fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:ingTypeBtw[defaultType]!=null?String(ingTypeBtw[defaultType]):'9'}
@@ -175,12 +177,12 @@ function InkoopFactuurModal({
     })
   })
 
-  const emptyVrije = {naam:'', netto: '' as string | number, btw_tarief: 21}
+  const emptyVrije = {naam:'', netto: '' as string | number, btw_tarief: 21, kostensoort: 'Overig'}
   const [vrijeForm, setVrijeForm] = useState<any>(emptyVrije)
   const [vrijeList, setVrijeList] = useState<any[]>(() => {
     if (!initialData?.regels) return []
     return initialData.regels.filter((r: any) => r.type==='overig').map((r: any, i: number) => ({
-      naam: r.naam, netto: String(r.netto||''), btw_tarief: Number(r.btw_tarief??21), _id: Date.now()+i+2000,
+      naam: r.naam, netto: String(r.netto||''), btw_tarief: Number(r.btw_tarief??21), kostensoort: r.kostensoort || 'Overig', _id: Date.now()+i+2000,
     }))
   })
 
@@ -595,6 +597,10 @@ function InkoopFactuurModal({
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('lbl_vrije_regel_toevoegen')}</p>
             <div className="space-y-2">
               <Inp label={t('lbl_omschrijving')} value={String(vrijeForm.naam)} onChange={v => setVrijeForm((f: any)=>({...f,naam:v}))} placeholder={t('ph_vrije_regel')} />
+              <Sel label={t('lbl_kostensoort')} value={vrijeForm.kostensoort || 'Overig'}
+                onChange={v => setVrijeForm((f: any)=>({...f,kostensoort:v}))}
+                opts={kostenSoorten.map((ks: string) => ({v:ks, l:BUILTIN_KOSTEN_SOORTEN.includes(ks) ? t('ks_'+ks.toLowerCase()) : ks}))}
+                ph={t('ph_kostensoort')} />
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <div className="flex items-center justify-between mb-1">
@@ -679,8 +685,8 @@ function InkoopFactuurModal({
                   ))}
                   {vrijeList.map((r: any, i: number) => (
                     <tr key={r._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingVrijeIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-yellow-50 hover:bg-yellow-100'}`}
-                      onClick={() => {setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief});setTab('vrije');setEditingVrijeIdx(i);}}>
-                      <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">{t('lbl_tag_vrij')}</span></td>
+                      onClick={() => {setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief,kostensoort:r.kostensoort||'Overig'});setTab('vrije');setEditingVrijeIdx(i);}}>
+                      <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">{t('lbl_tag_vrij')}</span>{r.kostensoort && r.kostensoort !== 'Overig' && <span className="ml-1 text-xs text-gray-400">{BUILTIN_KOSTEN_SOORTEN.includes(r.kostensoort) ? t('ks_'+r.kostensoort.toLowerCase()) : r.kostensoort}</span>}</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
