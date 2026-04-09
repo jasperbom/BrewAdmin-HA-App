@@ -894,9 +894,8 @@
   "lbl_alle": "Todos",
   "lbl_platogehalte": "Grado Plato (°P)",
   "lbl_gn_code": "Código NC",
-  "gn_2203_00_01": "2203 00 01 — Cerveza ≤ 0,5% ABV",
-  "gn_2203_00_09": "2203 00 09 — Cerveza > 0,5% ABV",
-  "gn_2203_00_10": "2203 00 10 — Cerveza en envases > 10L",
+  "gn_2203_00_01": "2203 00 01 — Cerveza de malta (>0,5% vol), envase pequeño",
+  "gn_2203_00_09": "2203 00 09 — Cerveza de malta (>0,5% vol), formato grande",
   "lbl_type_uitslag": "Tipo de envío",
   "opt_binnenland": "Nacional",
   "opt_intracommunautair": "Intracomunitario (UE)",
@@ -1047,5 +1046,7 @@
   "lbl_afboeking_vernietiging": "Destrucción",
   "lbl_afboeking_overig": "Otro",
   "tab_balans": "Balance",
-  "agp_duplicaat_ingrediënt": "Ya existe un ingrediente con este nombre"
+  "agp_duplicaat_ingrediënt": "Ya existe un ingrediente con este nombre",
+  "gn_2206": "2206 — Mezcla cerveza-refresco (>0,5% vol)",
+  "gn_2202_91_00": "2202 91 00 — Cerveza sin alcohol (≤0,5% vol)"
 }

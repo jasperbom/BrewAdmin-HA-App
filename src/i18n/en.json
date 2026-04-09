@@ -897,9 +897,8 @@
   "lbl_alle": "All",
   "lbl_platogehalte": "Plato (°P)",
   "lbl_gn_code": "CN code",
-  "gn_2203_00_01": "2203 00 01 — Beer ≤ 0.5% ABV",
-  "gn_2203_00_09": "2203 00 09 — Beer > 0.5% ABV",
-  "gn_2203_00_10": "2203 00 10 — Beer in containers > 10L",
+  "gn_2203_00_01": "2203 00 01 — Malt beer (>0.5% vol), small packaging",
+  "gn_2203_00_09": "2203 00 09 — Malt beer (>0.5% vol), large format",
   "lbl_type_uitslag": "Dispatch type",
   "opt_binnenland": "Domestic",
   "opt_intracommunautair": "Intra-community (EU)",
@@ -1050,5 +1049,7 @@
   "lbl_afboeking_vernietiging": "Destruction",
   "lbl_afboeking_overig": "Other",
   "tab_balans": "Balance Sheet",
-  "agp_duplicaat_ingrediënt": "An ingredient with this name already exists"
+  "agp_duplicaat_ingrediënt": "An ingredient with this name already exists",
+  "gn_2206": "2206 — Beer-soft drink mixture (>0.5% vol)",
+  "gn_2202_91_00": "2202 91 00 — Non-alcoholic beer (≤0.5% vol)"
 }

@@ -28,7 +28,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
   log=[], setLog=()=>{}
 }) => {
   const [sel, setSel] = useState<number | null>(null)
-  const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:''}
+  const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:'',gn_code:''}
   const [avF, setAvF] = useState<any>(emptyAv)
 
   const activeBat = bat.filter((b: any) => b.status==='Vergisten' || b.status==='Conditioneren' || b.status==='Verpakt')
@@ -71,7 +71,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id===Number(avF.verpakking_id) ? {...v,voorraad:Number(v.voorraad||0)-n} : v))
     }
     const avId = newId(av)
-    setAv((prev: any[]) => [...prev, {id:avId, batch_id:sel, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
+    setAv((prev: any[]) => [...prev, {id:avId, batch_id:sel, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n, gn_code:avF.gn_code||undefined}])
     setLog((prev: any[]) => [...(prev||[]), {
       id: newId(prev||[]),
       datum: avF.datum || tod(),
@@ -166,6 +166,16 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
                   <Inp label={t('batch_filling_units')} type="number" value={avF.hoeveelheid} onChange={(v: string)=>setAvF((f: any)=>({...f,hoeveelheid:v}))} placeholder="1" />
                   <Inp label={t('batch_filling_date')} type="date" value={avF.datum} onChange={(v: string)=>setAvF((f: any)=>({...f,datum:v}))} />
                   <Inp label={t('batch_filling_tht')} type="date" value={avF.tht} onChange={(v: string)=>setAvF((f: any)=>({...f,tht:v}))} />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_gn_code')}</label>
+                    <select value={avF.gn_code||''} onChange={e=>setAvF((f: any)=>({...f,gn_code:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
+                      <option value="">—</option>
+                      <option value="2203 00 01">{t('gn_2203_00_01')}</option>
+                      <option value="2203 00 09">{t('gn_2203_00_09')}</option>
+                      <option value="2206">{t('gn_2206')}</option>
+                      <option value="2202 91 00">{t('gn_2202_91_00')}</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
                   {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}

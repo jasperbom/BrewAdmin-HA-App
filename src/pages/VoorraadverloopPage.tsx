@@ -188,7 +188,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
         combos.set(key, {
           batch_naam: batch.naam,
           verpakking_naam: a.verpakking_naam,
-          gn_code: batch.gn_code || '',
+          gn_code: a.gn_code || batch.gn_code || '',
           batch_ids: new Set<string>(),
           afvulling_ids: new Set<string>(),
         })

@@ -7,7 +7,7 @@ import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import { logAudit } from '../utils/audit'
 
-function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{}, uit=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
+function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{}, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState, useMemo} = React;
   const [activeTab, setActiveTab] = useState<'accijns'|'ead'>('accijns');
   // acc records: {id, batch_id, batch_nummer, uitslag_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
@@ -15,7 +15,15 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
   const getLiter   = (a: any) => Number(a.liter   ?? a.totaal_liter   ?? 0);
   const getNaam    = (bid: any) => bat.find((b: any)=>b.id===bid)?.naam||'—';
   const getBatch   = (bid: any) => bat.find((b: any)=>b.id===bid);
-  const getGn      = (bid: any) => getBatch(bid)?.gn_code || '—';
+  // GN-code: eerst op afvulling zoeken (via uitslag → afvulling), dan fallback op batch
+  const getGnForRecord = (a: any) => {
+    const u = uit.find((u: any) => u.id === a.uitslag_id);
+    if (u?.afvulling_id) {
+      const afv = av.find((af: any) => af.id === u.afvulling_id);
+      if (afv?.gn_code) return afv.gn_code;
+    }
+    return getBatch(a.batch_id)?.gn_code || '—';
+  };
   const getPlato   = (bid: any) => { const p = getBatch(bid)?.platogehalte; return p ? `${p}°P` : '—'; };
 
   const now = new Date();
@@ -52,7 +60,7 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
       if (!g[k]) g[k] = {
         key: k, batch_id: a.batch_id, naam: getNaam(a.batch_id),
         batch_nummer: a.batch_nummer, abv: a.abv,
-        gn_code: getGn(a.batch_id), plato: getPlato(a.batch_id),
+        gn_code: getGnForRecord(a), plato: getPlato(a.batch_id),
         liter: 0, accijns: 0, allPaid: true,
       };
       g[k].liter   += getLiter(a);

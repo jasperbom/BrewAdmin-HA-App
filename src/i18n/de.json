@@ -897,9 +897,8 @@
   "lbl_alle": "Alle",
   "lbl_platogehalte": "Stammwürze (°P)",
   "lbl_gn_code": "KN-Code",
-  "gn_2203_00_01": "2203 00 01 — Bier ≤ 0,5% ABV",
-  "gn_2203_00_09": "2203 00 09 — Bier > 0,5% ABV",
-  "gn_2203_00_10": "2203 00 10 — Bier in Behältern > 10L",
+  "gn_2203_00_01": "2203 00 01 — Malzbier (>0,5% vol), Kleinverpackung",
+  "gn_2203_00_09": "2203 00 09 — Malzbier (>0,5% vol), Großformat",
   "lbl_type_uitslag": "Versandart",
   "opt_binnenland": "Inland",
   "opt_intracommunautair": "Innergemeinschaftlich (EU)",
@@ -1050,5 +1049,7 @@
   "lbl_afboeking_vernietiging": "Vernichtung",
   "lbl_afboeking_overig": "Sonstiges",
   "tab_balans": "Bilanz",
-  "agp_duplicaat_ingrediënt": "Es gibt bereits eine Zutat mit diesem Namen"
+  "agp_duplicaat_ingrediënt": "Es gibt bereits eine Zutat mit diesem Namen",
+  "gn_2206": "2206 — Bier-Erfrischungsgetränk-Mischung (>0,5% vol)",
+  "gn_2202_91_00": "2202 91 00 — Alkoholfreies Bier (≤0,5% vol)"
 }
