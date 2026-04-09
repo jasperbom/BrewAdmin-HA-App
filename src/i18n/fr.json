@@ -1296,5 +1296,11 @@
   "ks_administratie": "Administration",
   "ks_overig": "Autre",
   "settings_kosten_soorten_title": "Types de coûts",
-  "settings_kosten_soorten_desc": "Catégories pour les coûts d'achat"
+  "settings_kosten_soorten_desc": "Catégories pour les coûts d'achat",
+  "settings_reset_title": "Réinitialiser l'application",
+  "settings_reset_desc": "Effacer toutes les données et restaurer l'application aux paramètres d'usine. Cette action est irréversible.",
+  "settings_reset_btn": "Effacer toutes les données",
+  "settings_reset_confirm": "Tapez RESET pour confirmer que vous souhaitez effacer toutes les données.",
+  "settings_reset_wrong": "Confirmation incorrecte. La réinitialisation a été annulée.",
+  "settings_reset_done": "Toutes les données ont été effacées. L'application a été restaurée aux paramètres par défaut."
 }

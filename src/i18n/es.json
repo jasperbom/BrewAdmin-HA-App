@@ -1296,5 +1296,11 @@
   "ks_administratie": "Administración",
   "ks_overig": "Otros",
   "settings_kosten_soorten_title": "Tipos de costes",
-  "settings_kosten_soorten_desc": "Categorías para costes de compra"
+  "settings_kosten_soorten_desc": "Categorías para costes de compra",
+  "settings_reset_title": "Restablecer aplicación",
+  "settings_reset_desc": "Borrar todos los datos y restaurar la aplicación a la configuración de fábrica. Esta acción no se puede deshacer.",
+  "settings_reset_btn": "Borrar todos los datos",
+  "settings_reset_confirm": "Escriba RESET para confirmar que desea borrar todos los datos.",
+  "settings_reset_wrong": "Confirmación incorrecta. El restablecimiento ha sido cancelado.",
+  "settings_reset_done": "Todos los datos han sido borrados. La aplicación se ha restaurado a la configuración predeterminada."
 }
