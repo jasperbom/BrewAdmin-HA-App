@@ -95,6 +95,15 @@ function App() {
     i18nSetLang(l);
   };
 
+  // Detecteer HA-gebruiker voor audit trail (f.03)
+  const getAuditGebruiker = (): string | undefined => {
+    try {
+      const hass = (window as any).__hass;
+      if (hass?.user?.name) return hass.user.name;
+    } catch (_) { /* geen HA omgeving */ }
+    return breweryDetails?.accijns_verantwoordelijke || undefined;
+  };
+
   const [page, setPage] = useState('dashboard');
   const [openOrderId, setOpenOrderId] = useState<number | null>(null);
   const [navBatchId, setNavBatchId] = useState<number | null>(null);

@@ -1270,5 +1270,22 @@
   "gpa_stroom_productie": "Production",
   "gpa_stroom_verpakking": "Packaging",
   "gpa_stroom_opslag_gereed": "Store finished product",
-  "gpa_stroom_uitslag": "Dispatch"
+  "gpa_stroom_uitslag": "Dispatch",
+  "lot_ead_koppeling": "Linked e-AD (ARC)",
+  "audit_gebruiker": "User",
+
+  "agp_waarschuwing_gn_plato": "Warning: GN code and Plato content are required for excise declaration",
+  "agp_duplicaat_ingrediënt": "An ingredient with this name already exists",
+  "agp_goederenstroom": "AGP Goods Flow",
+  "agp_stroom_inkoop": "Raw material purchase",
+  "agp_stroom_opslag_grond": "Raw material storage",
+  "agp_stroom_productie": "Production / Brewing",
+  "agp_stroom_verpakking": "Packaging / Filling",
+  "agp_stroom_opslag_gereed": "Finished product storage",
+  "agp_stroom_uitslag": "Dispatch",
+  "agp_stroom_binnenland": "Domestic",
+  "agp_stroom_eu": "Intra-EU (e-AD)",
+  "agp_stroom_export": "Export (e-AD)",
+  "agp_stroom_bijzonder": "Special transactions",
+  "agp_stroom_vermis": "Loss / Destruction / Internal use"
 }

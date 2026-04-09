@@ -1266,5 +1266,22 @@
   "gpa_stroom_productie": "Producción",
   "gpa_stroom_verpakking": "Envasado",
   "gpa_stroom_opslag_gereed": "Almacén producto terminado",
-  "gpa_stroom_uitslag": "Expedición"
+  "gpa_stroom_uitslag": "Expedición",
+  "lot_ead_koppeling": "e-AD vinculado (ARC)",
+  "audit_gebruiker": "Usuario",
+
+  "agp_waarschuwing_gn_plato": "Atención: el código GN y el grado Plato son obligatorios para la declaración de impuestos especiales",
+  "agp_duplicaat_ingrediënt": "Ya existe un ingrediente con este nombre",
+  "agp_goederenstroom": "Flujo de mercancías AGP",
+  "agp_stroom_inkoop": "Compra materias primas",
+  "agp_stroom_opslag_grond": "Almacén materias primas",
+  "agp_stroom_productie": "Producción / Elaboración",
+  "agp_stroom_verpakking": "Envasado",
+  "agp_stroom_opslag_gereed": "Almacén producto terminado",
+  "agp_stroom_uitslag": "Despacho",
+  "agp_stroom_binnenland": "Nacional",
+  "agp_stroom_eu": "Intracomunitario (e-AD)",
+  "agp_stroom_export": "Exportación (e-AD)",
+  "agp_stroom_bijzonder": "Movimientos especiales",
+  "agp_stroom_vermis": "Pérdida / Destrucción / Uso interno"
 }
