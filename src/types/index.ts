@@ -422,7 +422,11 @@ export interface VerkoopFactuur {
   klant_btw_nummer?: string
   regels?: VerkoopFactuurRegel[]
   btw_overzicht?: BtwOvzRegel[]
-  status?: 'open' | 'betaald' | 'herinnering' | 'credit'
+  status?: 'open' | 'betaald' | 'herinnering' | 'tweede_herinnering' | 'aanmaning' | 'credit'
+  // Herinneringsdata (datum waarop herinnering/aanmaning is verzonden)
+  herinnering_datum?: string
+  tweede_herinnering_datum?: string
+  aanmaning_datum?: string
   // Voor creditnota's: verwijzing naar de oorspronkelijke factuur (optioneel)
   credit_van_factuur_id?: number | null
 }
