@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.4] — 2026-04-09
+
+### Added — Factuurvelden zichtbaarheid
+- **Zichtbare velden op factuur & pakbon** — per veld instellen welke bedrijfsgegevens op facturen en pakbonnen verschijnen (logo, adres, BTW-nr, KvK, IBAN, e-mail, telefoon, betaalblok)
+- **Factuurvoorbeeld** — preview-knop in Instellingen → Brouwerij om direct te zien hoe de factuur eruitziet met de huidige instellingen
+
+---
+
 ## [1.8.3] — 2026-04-09
 
 ### Added — App reset

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS } from '../utils/constants'
+import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
 
 const ServerStatusCard = () => {
@@ -623,6 +624,81 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </button>
           )}
         </div>
+      </div>
+
+      {/* Factuurvelden zichtbaarheid */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_factuur_velden_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_factuur_velden_desc')}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+          {([
+            ['logo',       'fv_logo'],
+            ['adres',      'fv_adres'],
+            ['btw_nummer', 'fv_btw_nummer'],
+            ['kvk_nummer', 'fv_kvk_nummer'],
+            ['iban',       'fv_iban'],
+            ['email',      'fv_email'],
+            ['telefoon',   'fv_telefoon'],
+            ['betaalblok', 'fv_betaalblok'],
+          ] as [string, string][]).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2 cursor-pointer group">
+              <input type="checkbox"
+                checked={breweryDetails?.factuur_velden?.[key] !== false}
+                onChange={(e: any) => setBreweryDetails((p: any) => ({
+                  ...p,
+                  factuur_velden: { ...(p?.factuur_velden || {}), [key]: e.target.checked }
+                }))}
+                className="t-checkbox rounded" />
+              <span className="text-sm text-gray-700 group-hover:text-gray-900">{t(label)}</span>
+            </label>
+          ))}
+        </div>
+        <Btn v="secondary" onClick={() => {
+          const fv = breweryDetails?.factuur_velden || {}
+          const voorbeeldBrewery = {
+            ...breweryDetails,
+            naam: breweryDetails?.naam || appName || 'Voorbeeldbrouwerij',
+            straat: breweryDetails?.straat || 'Brouwerijstraat',
+            huisnummer: breweryDetails?.huisnummer || '1',
+            postcode: breweryDetails?.postcode || '1234 AB',
+            stad: breweryDetails?.stad || 'Amsterdam',
+            btw_nummer: breweryDetails?.btw_nummer || 'NL000000000B01',
+            kvk_nummer: breweryDetails?.kvk_nummer || '12345678',
+            iban: breweryDetails?.iban || 'NL00 BANK 0000 0000 00',
+            email: breweryDetails?.email || 'info@brouwerij.nl',
+            telefoon: breweryDetails?.telefoon || '+31 6 00000000',
+            factuur_velden: fv,
+          }
+          const voorbeeldOrder = {
+            klant_bedrijf: 'Café De Proeverij',
+            klant_naam: 'Jan Jansen',
+            klant_straat: 'Kerkstraat',
+            klant_huisnummer: '42',
+            klant_postcode: '5678 CD',
+            klant_stad: 'Rotterdam',
+          }
+          const voorbeeldFactuur = {
+            id: 1,
+            factuurnummer: 'F-2026-001',
+            datum: new Date().toISOString().slice(0,10),
+            status: 'open',
+            netto: 120.00,
+            btw: 25.20,
+            bruto: 145.20,
+            regels: [
+              { omschrijving: 'IPA 33cl (6-pack)', hoeveelheid: 10, prijs_per_stuk: 8.50, btw_pct: 21, netto: 85.00, btw_bedrag: 17.85, bruto: 102.85 },
+              { omschrijving: 'Blond 75cl', hoeveelheid: 5, prijs_per_stuk: 7.00, btw_pct: 21, netto: 35.00, btw_bedrag: 7.35, bruto: 42.35 },
+            ],
+            btw_overzicht: [{ tarief: 21, netto: 120.00, btw: 25.20 }],
+          }
+          const html = buildFactuurHTML(voorbeeldOrder, voorbeeldFactuur, voorbeeldBrewery, appName || 'Brouwerij', fv.logo !== false ? (factuurLogo || logo) : null)
+          const w = window.open('', '_blank', 'width=900,height=700')
+          if (w) {
+            w.document.write(html)
+            w.document.close()
+            w.focus()
+          }
+        }}>{t('btn_factuur_voorbeeld')}</Btn>
       </div>
 
       {/* Verzendkosten */}

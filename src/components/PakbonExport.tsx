@@ -73,11 +73,21 @@ function openPrint(html: string, filename: string): void {
 }
 
 function breweryBlock(brewery: any, appName: string, logo: string | null | undefined): string {
-  const logoHtml = logo ? `<img src="${logo}" class="logo" alt="logo" />` : ''
+  const fv = brewery?.factuur_velden || {}
+  const showLogo = fv.logo !== false
+  const logoHtml = showLogo && logo ? `<img src="${logo}" class="logo" alt="logo" />` : ''
   const naam = brewery?.naam || appName || 'Brouwerij'
   const straat = [brewery?.straat, brewery?.huisnummer].filter(Boolean).join(' ')
   const plaats = [brewery?.postcode, brewery?.stad].filter(Boolean).join(' ')
-  const infoLines = [straat, plaats, brewery?.btw_nummer ? `BTW: ${brewery.btw_nummer}` : '', brewery?.kvk_nummer ? `KvK: ${brewery.kvk_nummer}` : '', brewery?.iban ? `IBAN: ${brewery.iban}` : '', brewery?.email || '', brewery?.telefoon || ''].filter(Boolean).map(l => `<div>${l}</div>`).join('')
+  const infoLines = [
+    fv.adres !== false ? straat : '',
+    fv.adres !== false ? plaats : '',
+    fv.btw_nummer !== false && brewery?.btw_nummer ? `BTW: ${brewery.btw_nummer}` : '',
+    fv.kvk_nummer !== false && brewery?.kvk_nummer ? `KvK: ${brewery.kvk_nummer}` : '',
+    fv.iban !== false && brewery?.iban ? `IBAN: ${brewery.iban}` : '',
+    fv.email !== false ? (brewery?.email || '') : '',
+    fv.telefoon !== false ? (brewery?.telefoon || '') : '',
+  ].filter(Boolean).map(l => `<div>${l}</div>`).join('')
   return `
     <div class="hdr-left">
       ${logoHtml}
@@ -324,12 +334,12 @@ function buildFactuurBody(
       </table>
     </div>
 
-    <div class="pay-block">
+    ${(brewery?.factuur_velden?.betaalblok !== false) ? `<div class="pay-block">
       <div class="pay-title">${t('lbl_betaalinformatie')}</div>
       ${brewery?.iban ? `<div>IBAN: <strong>${brewery.iban}</strong>${naam ? ` &nbsp;t.n.v. ${naam}` : ''}</div>` : ''}
       <div>Bedrag: <strong>${fmtEuro(bruto)}</strong> &nbsp;·&nbsp; Vervaldatum: <strong>${vervalDatum}</strong></div>
       <div>o.v.v. factuurnummer <strong>${factuurnummer}</strong></div>
-    </div>
+    </div>` : ''}
 
     ${order?.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${order.opmerkingen}</div>` : ''}
   </div>`
