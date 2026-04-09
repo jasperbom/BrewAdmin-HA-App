@@ -8,6 +8,7 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import { printPakbon, printFactuur } from '../components/PakbonExport'
+import { logAudit } from '../utils/audit'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -36,6 +37,8 @@ interface BestellingenPageProps {
   factuurLogo?: string | null
   openOrderId?: number | null
   setOpenOrderId?: (id: number | null) => void
+  auditLog?: any[]
+  setAuditLog?: any
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -56,7 +59,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   wcCreds, accijnsInst, breweryDetails, appName='', logo=null,
   factuurCounter, setFactuurCounter=()=>{},
   log=[], setLog=()=>{}, factuurLogo=null,
-  openOrderId=null, setOpenOrderId=()=>{}
+  openOrderId=null, setOpenOrderId=()=>{},
+  auditLog=[], setAuditLog=()=>{}
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -78,6 +82,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [showManualModal, setShowManualModal] = useState(false)
   const [showPickModal, setShowPickModal] = useState(false)
   const [showAfrondModal, setShowAfrondModal] = useState(false)
+  const [uitslagForm, setUitslagForm] = useState({type_uitslag: 'binnenland' as string, bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: ''})
   const [showAnnuleerModal, setShowAnnuleerModal] = useState(false)
   const [showVrijeRegelModal, setShowVrijeRegelModal] = useState(false)
   const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
@@ -312,6 +317,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Picking opslaan ---
   const savePicks = () => {
     if (!selectedOrder) return
+    // Valideer voorraad per afvulling voordat picks opgeslagen worden
+    const pickTotals: Record<number, number> = {}
+    for (const picks of Object.values(draftPicks)) {
+      for (const p of picks as any[]) {
+        if (!p.aantal || p.aantal <= 0) continue
+        pickTotals[p.afvulling_id] = (pickTotals[p.afvulling_id]||0) + Number(p.aantal)
+      }
+    }
+    for (const [afvIdStr, totaal] of Object.entries(pickTotals)) {
+      const afvItem = (av||[]).find((a: any) => a.id === Number(afvIdStr))
+      if (!afvItem) continue
+      const beschik = beschikbaarVoorAfvulling(afvItem, selectedOrder.id)
+      if (totaal > beschik) {
+        alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
+        return
+      }
+    }
     const newPicks: any[] = []
     let pickId = newId(bestellingPicks||[])
     for (const [regelIdStr, picks] of Object.entries(draftPicks)) {
@@ -382,6 +404,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         datum: vandaag,
         tht: avItem.tht||null,
         accijns_betaald: false,
+        type_uitslag: uitslagForm.type_uitslag || 'binnenland',
+        bestemming_naam: uitslagForm.bestemming_naam || '',
+        bestemming_adres: uitslagForm.bestemming_adres || '',
+        bestemming_land: uitslagForm.bestemming_land || '',
+        vervoerder: uitslagForm.vervoerder || '',
+        created_at: new Date().toISOString(),
       })
     }
 
@@ -525,6 +553,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         omschrijving: `Order ${selectedOrder.klant_naam} — ${factuurNummer}`,
       }))
       return [...(prev||[]), ...nieuweLogEntries]
+    })
+    // Audit log: bestelling afgerond
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Bestelling',
+      entiteit_id: selectedOrder.id,
+      actie: 'gewijzigd',
+      omschrijving: `${selectedOrder.klant_naam} — ${factuurNummer} (${nieuweUitslagen.length} uitslagen)`,
     })
     setShowAfrondModal(false)
   }
@@ -785,6 +820,32 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <li>Verkoopfactuur aanmaken in de boekhouding</li>
                   <li>Pakbon- en factuurnummer genereren</li>
                 </ul>
+              </div>
+              {/* AGP: Type uitslag en bestemmingsgegevens */}
+              <div className="border border-gray-200 rounded-lg p-3 space-y-3">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_type_uitslag')}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <select value={uitslagForm.type_uitslag} onChange={e => setUitslagForm(f => ({...f, type_uitslag: e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
+                      <option value="binnenland">{t('opt_binnenland')}</option>
+                      <option value="intracommunautair">{t('opt_intracommunautair')}</option>
+                      <option value="export">{t('opt_export')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_vervoerder')} value={uitslagForm.vervoerder} onChange={e => setUitslagForm(f => ({...f, vervoerder: e.target.value}))} />
+                  </div>
+                </div>
+                {uitslagForm.type_uitslag !== 'binnenland' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_naam')} value={uitslagForm.bestemming_naam} onChange={e => setUitslagForm(f => ({...f, bestemming_naam: e.target.value}))} />
+                      <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_land')} value={uitslagForm.bestemming_land} onChange={e => setUitslagForm(f => ({...f, bestemming_land: e.target.value}))} />
+                    </div>
+                    <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_adres')} value={uitslagForm.bestemming_adres} onChange={e => setUitslagForm(f => ({...f, bestemming_adres: e.target.value}))} />
+                    <div className="text-xs text-amber-600 font-medium">{t('msg_ead_vereist')}</div>
+                  </>
+                )}
               </div>
               <div className="flex justify-end gap-2">
                 <Btn v="secondary" onClick={() => setShowAfrondModal(false)}>{t('btn_cancel')}</Btn>

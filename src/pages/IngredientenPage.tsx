@@ -96,6 +96,7 @@ const IngredientenPage: React.FC<Props> = ({
       hoeveelheid: String(lot.hoeveelheid || ''),
       houdbaarheid: lot.houdbaarheid || '',
       prijs_per_eenheid: lot.prijs_per_eenheid != null ? String(lot.prijs_per_eenheid) : '',
+      gn_code: lot.gn_code || '',
     })
     setLotCorr({ delta: '', richting: '+', reden: '', eenheid: lot.eenheid || '' })
   }
@@ -111,6 +112,7 @@ const IngredientenPage: React.FC<Props> = ({
       hoeveelheid: Number(lotEdit.hoeveelheid) || 0,
       houdbaarheid: lotEdit.houdbaarheid || null,
       prijs_per_eenheid: lotEdit.prijs_per_eenheid !== '' ? Number(lotEdit.prijs_per_eenheid) : null,
+      gn_code: lotEdit.gn_code || undefined,
       beschikbaar: (Number(lotEdit.hoeveelheid) || 0) > 0,
     }))
     setShowLot(null)
@@ -122,7 +124,8 @@ const IngredientenPage: React.FC<Props> = ({
     const corrEenh = lotCorr.eenheid || lot.eenheid
     const deltaInLot = convertEenheid(delta, corrEenh, lot.eenheid)
     if (deltaInLot === null) { alert(t('err_convert_units').replace('{from}', corrEenh).replace('{to}', lot.eenheid)); return }
-    const nieuweQty = lotCorr.richting === '+' ? Number(lot.hoeveelheid) + deltaInLot : Math.max(0, Number(lot.hoeveelheid) - deltaInLot)
+    if (lotCorr.richting === '-' && deltaInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${lot.hoeveelheid} ${lot.eenheid}`)); return }
+    const nieuweQty = lotCorr.richting === '+' ? Number(lot.hoeveelheid) + deltaInLot : Number(lot.hoeveelheid) - deltaInLot
     setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: nieuweQty, beschikbaar: nieuweQty > 0 }))
     addLog({ ingredient_id: lot.ingredient_id, ingredient_naam: ing.find((i: any) => i.id === lot.ingredient_id)?.naam || '', lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'correctie', hoeveelheid: lotCorr.richting === '-' ? -delta : delta, eenheid: corrEenh, referentie: lotCorr.reden || 'Handmatige correctie' })
     setLotCorr({ delta: '', richting: '+', reden: '', eenheid: lot.eenheid })
@@ -136,7 +139,8 @@ const IngredientenPage: React.FC<Props> = ({
     const van = afEenheid || lot.eenheid
     const qInLot = convertEenheid(q, van, lot.eenheid)
     if (qInLot === null) { alert(t('err_convert_units').replace('{from}', van).replace('{to}', lot.eenheid)); return }
-    setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: Math.max(0, Number(l.hoeveelheid) - qInLot), beschikbaar: Number(l.hoeveelheid) - qInLot > 0 }))
+    if (qInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${lot.hoeveelheid} ${lot.eenheid}`)); return }
+    setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: Number(l.hoeveelheid) - qInLot, beschikbaar: Number(l.hoeveelheid) - qInLot > 0 }))
     addLog({ ingredient_id: lot.ingredient_id, ingredient_naam: ing.find((i: any) => i.id === lot.ingredient_id)?.naam || '', lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'afboeking', hoeveelheid: q, eenheid: van, referentie: 'Handmatig afgeboekt' })
     setShowA(null); setAfQty(''); setAfEenheid('')
   }
@@ -262,7 +266,7 @@ const IngredientenPage: React.FC<Props> = ({
           updatedIng = [...updatedIng, n]; iid = n.id
         }
       }
-      const lot = { id: newId([...lots, ...newLots]), ingredient_id: iid, hoeveelheid: Number(p.qty), eenheid: p.eenh, houdbaarheid: p.tht || null, lotnummer: p.lotnr || '', leverancier: factuurForm.leverancier || '', prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: factuurForm.factuur || '', aankoop_datum: factuurForm.datum || tod(), btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true }
+      const lot = { id: newId([...lots, ...newLots]), ingredient_id: iid, hoeveelheid: Number(p.qty), eenheid: p.eenh, houdbaarheid: p.tht || null, lotnummer: p.lotnr || '', leverancier: factuurForm.leverancier || '', prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: factuurForm.factuur || '', aankoop_datum: factuurForm.datum || tod(), btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true, created_at: new Date().toISOString() }
       newLots.push(lot)
       addLog({ ingredient_id: iid, ingredient_naam: updatedIng.find((i: any) => i.id === iid)?.naam || p.nieuw.trim(), lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'ontvangst', hoeveelheid: Number(p.qty), eenheid: p.eenh, referentie: factuurForm.factuur || factuurForm.leverancier || '' })
     })
@@ -609,6 +613,7 @@ const IngredientenPage: React.FC<Props> = ({
                 </div>
                 <Inp label={t('lbl_tht')} type="date" value={le('houdbaarheid')} onChange={(v: string) => setLe('houdbaarheid', v)} />
                 <Inp label={t('modal_price_per_unit')} type="number" value={le('prijs_per_eenheid')} onChange={(v: string) => setLe('prijs_per_eenheid', v)} placeholder="—" />
+                <Inp label={t('lbl_gn_code')} value={le('gn_code')} onChange={(v: string) => setLe('gn_code', v)} placeholder="2203 00 09" />
                 {origQty > 0 && <div><div className="text-xs text-gray-400">{t('ing_original_received')}</div><div className="font-medium text-gray-700">{origQty} {l.eenheid}</div></div>}
               </div>
               <div>

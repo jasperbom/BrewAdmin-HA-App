@@ -416,7 +416,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
 
-  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod()}
+  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:''}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
 
   const safeStr = (v: any): string => {
@@ -589,7 +589,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           (bfB.batchNo != null && String(b.batch_nummer) === String(bfB.batchNo)))
         const appStatus = BF_TO_APP[bfB.status] || 'Gepland'
         if (!existing) {
-          const nb = {...bfMapBatch(bfB), id: newId([...bat, ...newBatches])}
+          const nb = {...bfMapBatch(bfB), id: newId([...bat, ...newBatches]), created_at: new Date().toISOString()}
           newBatches.push(nb)
           const nbis = bfMapBis(bfB, nb.id, newId([...bi, ...newBis]) + newBis.length)
           newBis.push(...nbis)
@@ -671,7 +671,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       const velden: Record<string,string> = {naam:'Naam',stijl:'Stijl',batch_nummer:'Batch #',tank:'Tank',
         liter_vergist:'Liters',OG:'OG',FG:'FG',ABV:'ABV',
         brouwzaal_eff:'Brouwzaal eff.',maisch_eff:'Maisch eff.',maisch_ph:'Maisch pH',product_ph:'Product pH',
-        electra_kosten:'Elektra',water_kosten:'Water',schoonmaak_kosten:'Schoonmaak',overige_kosten:'Overig',notities:'Notities'}
+        electra_kosten:'Elektra',water_kosten:'Water',schoonmaak_kosten:'Schoonmaak',overige_kosten:'Overig',notities:'Notities',platogehalte:'Plato',gn_code:'GN-code'}
       const wijz = Object.entries(velden)
         .filter(([k]) => String(oud?.[k]??'') !== String(bForm[k]??''))
         .map(([k,l]) => `${l}: ${oud?.[k]||'—'} → ${bForm[k]||'—'}`)
@@ -680,7 +680,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       setEditId(null)
       setShowForm(false); setBForm(emptyB)
     } else {
-      const nb = {id:newId(bat), ...bForm}
+      const nb = {id:newId(bat), ...bForm, created_at: new Date().toISOString()}
       setBat((prev: any[]) => [...prev, nb])
       addLog({type:'aangemaakt', batch_id:nb.id, referentie:nb.naam})
       if (pendingBatchIngredienten.length > 0) {
@@ -791,13 +791,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (iForm.lot_id) {
       const lotId = Number(iForm.lot_id), qty = Number(iForm.hoeveelheid||0)
       const lot = lots.find((l: any) => l.id === lotId)
-      const qtyInLot = convertEenheid(qty, iForm.eenheid, lot?.eenheid||iForm.eenheid) ?? qty
       if (lot && convertEenheid(qty, iForm.eenheid, lot.eenheid) === null) {
         alert(t('err_convert_units').replace('{from}',iForm.eenheid).replace('{to}',lot.eenheid)); return
       }
+      const qtyInLot = convertEenheid(qty, iForm.eenheid, lot?.eenheid||iForm.eenheid) ?? qty
+      if (lot && qtyInLot > Number(lot.hoeveelheid||0) + 0.001) {
+        const availInBiEenh = r3(convertEenheid(Number(lot.hoeveelheid||0), lot.eenheid, iForm.eenheid) ?? Number(lot.hoeveelheid||0))
+        alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${availInBiEenh} ${iForm.eenheid}`)); return
+      }
       setLots((prev: any[]) => prev.map((l: any) => l.id!==lotId ? l : {...l,
-        hoeveelheid: Math.max(0, Number(l.hoeveelheid||0) - qtyInLot),
-        beschikbaar: Number(l.hoeveelheid||0) - qtyInLot > 0,
+        hoeveelheid: r3(Math.max(0, Number(l.hoeveelheid||0) - qtyInLot)),
+        beschikbaar: r3(Number(l.hoeveelheid||0) - qtyInLot) > 0,
       }))
     }
     setIForm(emptyI)
@@ -1884,6 +1888,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <Inp label={t('lbl_og')} type="number" value={bForm.OG} onChange={(v: string)=>setBForm((f: any)=>({...f,OG:v}))} placeholder="1.050" />
               <Inp label={t('lbl_fg')} type="number" value={bForm.FG} onChange={(v: string)=>setBForm((f: any)=>({...f,FG:v}))} placeholder="1.010" />
               <Inp label={t('lbl_abv')} type="number" value={bForm.ABV} onChange={(v: string)=>setBForm((f: any)=>({...f,ABV:v}))} placeholder="5.0" />
+              <Inp label={t('lbl_platogehalte')} type="number" value={bForm.platogehalte||''} onChange={(v: string)=>setBForm((f: any)=>({...f,platogehalte:v}))} placeholder="12.0" />
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">{t('lbl_gn_code')}</label>
+                <select value={bForm.gn_code||''} onChange={e=>setBForm((f: any)=>({...f,gn_code:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
+                  <option value="">—</option>
+                  <option value="2203 00 01">{t('gn_2203_00_01')}</option>
+                  <option value="2203 00 09">{t('gn_2203_00_09')}</option>
+                  <option value="2203 00 10">{t('gn_2203_00_10')}</option>
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <Inp label={t('batch_info_brew_efficiency')} type="number" value={bForm.brouwzaal_eff||''} onChange={(v: string)=>setBForm((f: any)=>({...f,brouwzaal_eff:v}))} placeholder="75" />

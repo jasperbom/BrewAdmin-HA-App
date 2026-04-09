@@ -72,7 +72,86 @@ const ServerStatusCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}}: any) {
+const BackupCard = () => {
+  const [backups, setBackups] = React.useState<{date:string, file_count:number}[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [triggering, setTriggering] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const fetchBackups = () => {
+    setLoading(true);
+    fetch(ADDON_BASE + 'api/backups')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setBackups(Array.isArray(data) ? data.reverse() : []); setLoading(false); })
+      .catch(() => { setBackups([]); setLoading(false); });
+  };
+
+  React.useEffect(() => { fetchBackups(); }, []);
+
+  const triggerBackup = async () => {
+    setTriggering(true); setMsg('');
+    try {
+      const r = await fetch(ADDON_BASE + 'api/backups/trigger', { method: 'POST' });
+      const d = await r.json();
+      if (d.ok) {
+        setMsg(`✓ ${d.date}`);
+        fetchBackups();
+      } else {
+        setMsg(`⚠ ${d.error || 'Error'}`);
+      }
+    } catch (e: any) {
+      setMsg(`⚠ ${e.message}`);
+    }
+    setTriggering(false);
+  };
+
+  const downloadBackup = (date: string) => {
+    const a = document.createElement('a');
+    a.href = ADDON_BASE + 'api/backups/' + date;
+    a.download = `backup_${date}.zip`;
+    a.click();
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+      <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_backup_titel')}</h2>
+      <p className="text-sm text-gray-500 mb-4">{t('settings_backup_retentie')}</p>
+
+      <div className="flex items-center gap-3 mb-5">
+        <Btn onClick={triggerBackup} disabled={triggering}>
+          {triggering ? '...' : t('settings_backup_handmatig')}
+        </Btn>
+        {msg && <span className="text-sm text-gray-600">{msg}</span>}
+      </div>
+
+      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_backup_geschiedenis')}</div>
+
+      {loading ? (
+        <p className="text-sm text-gray-400 italic">...</p>
+      ) : backups.length === 0 ? (
+        <p className="text-sm text-gray-400 italic">{t('settings_backup_geen')}</p>
+      ) : (
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {backups.map(b => (
+            <div key={b.date} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <div>
+                <span className="text-sm font-medium text-gray-700">{b.date}</span>
+                <span className="text-xs text-gray-400 ml-2">{b.file_count} {b.file_count === 1 ? 'file' : 'files'}</span>
+              </div>
+              <button onClick={() => downloadBackup(b.date)}
+                className="text-xs font-medium px-2.5 py-1 rounded transition-colors"
+                style={{color: 'var(--t-accent)'}}>
+                {t('settings_backup_download')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
@@ -82,6 +161,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [customFormulaEnabled, setCustomFormulaEnabled] = React.useState(accijnsInst?.customFormulaEnabled || false);
   const [customFormula, setCustomFormula] = React.useState(accijnsInst?.customFormula || '');
   const [formulaError, setFormulaError] = React.useState('');
+  const [auditFilterEntiteit, setAuditFilterEntiteit] = React.useState('');
+  const [auditDateFrom, setAuditDateFrom] = React.useState('');
+  const [auditDateTo, setAuditDateTo] = React.useState('');
+  const [auditLimit, setAuditLimit] = React.useState(100);
 
   const testFormula = (formula: any) => {
     if (!formula.trim()) { setFormulaError(''); return true; }
@@ -483,6 +566,23 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_telefoon')}</label>
               <input type="tel" value={breweryDetails?.telefoon||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,telefoon:e.target.value}))}
                 placeholder="+31 6 00000000"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_agp_nummer')}</label>
+              <input type="text" value={breweryDetails?.agp_nummer||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,agp_nummer:e.target.value}))}
+                placeholder="NL00000000000"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_douane_nummer')}</label>
+              <input type="text" value={breweryDetails?.douane_nummer||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,douane_nummer:e.target.value}))}
+                placeholder="NL000000"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_accijns_verantwoordelijke')}</label>
+              <input type="text" value={breweryDetails?.accijns_verantwoordelijke||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,accijns_verantwoordelijke:e.target.value}))}
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
             </div>
           </div>
@@ -1082,6 +1182,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       )}
 
+      {/* APP — automatische back-ups */}
+      {activeSection==='app' && <BackupCard />}
+
       {/* FINANCIEEL — inkoop bijlagen downloaden */}
       {activeSection==='financieel' && (
       <div className={card}>
@@ -1147,8 +1250,94 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       )}
 
+      {/* AUDIT TRAIL */}
+      {activeSection==='app' && (
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('audit_titel')}</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          {(auditLog||[]).length} {t('audit_titel').toLowerCase()}
+        </p>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          <select
+            value={auditFilterEntiteit}
+            onChange={e => setAuditFilterEntiteit(e.target.value)}
+            className="t-input text-sm border border-gray-300 rounded px-2 py-1.5"
+          >
+            <option value="">{t('audit_filter_alles')}</option>
+            {[...new Set((auditLog||[]).map((e: any) => e.entiteit))].sort().map((ent: any) => (
+              <option key={ent} value={ent}>{ent}</option>
+            ))}
+          </select>
+          <input type="date" value={auditDateFrom} onChange={e => setAuditDateFrom(e.target.value)}
+            className="t-input text-sm border border-gray-300 rounded px-2 py-1.5" />
+          <span className="text-gray-400 self-center">—</span>
+          <input type="date" value={auditDateTo} onChange={e => setAuditDateTo(e.target.value)}
+            className="t-input text-sm border border-gray-300 rounded px-2 py-1.5" />
+        </div>
+
+        {(() => {
+          const filtered = [...(auditLog||[])]
+            .filter((e: any) => !auditFilterEntiteit || e.entiteit === auditFilterEntiteit)
+            .filter((e: any) => {
+              if (!e.timestamp) return true
+              const d = e.timestamp.slice(0,10)
+              if (auditDateFrom && d < auditDateFrom) return false
+              if (auditDateTo && d > auditDateTo) return false
+              return true
+            })
+            .sort((a: any, b: any) => (b.timestamp||'').localeCompare(a.timestamp||''))
+          const shown = filtered.slice(0, auditLimit)
+          const actieLabel = (a: string) => t(`audit_${a}`) || a
+
+          if (!filtered.length) return <p className="text-sm text-gray-400 italic">{t('audit_geen')}</p>
+
+          return <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 uppercase border-b">
+                    <th className="py-2 pr-3">{t('audit_timestamp')}</th>
+                    <th className="py-2 pr-3">{t('audit_entiteit')}</th>
+                    <th className="py-2 pr-3">{t('audit_actie')}</th>
+                    <th className="py-2">{t('audit_omschrijving')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((e: any) => (
+                    <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-2 pr-3 text-gray-500 whitespace-nowrap">{fmtTs(e.timestamp)}</td>
+                      <td className="py-2 pr-3 font-medium text-gray-700">{e.entiteit}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                          e.actie==='aangemaakt' ? 'bg-green-100 text-green-700' :
+                          e.actie==='verwijderd' ? 'bg-red-100 text-red-700' :
+                          'bg-blue-100 text-blue-700'
+                        }`}>{actieLabel(e.actie)}</span>
+                      </td>
+                      <td className="py-2 text-gray-600">{e.omschrijving || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filtered.length > auditLimit && (
+              <button onClick={() => setAuditLimit((prev: number) => prev + 100)}
+                className="mt-3 text-sm font-medium hover:underline" style={{color:'var(--t-accent)'}}>
+                {t('audit_meer_tonen')} ({filtered.length - auditLimit} {t('audit_titel').toLowerCase()})
+              </button>
+            )}
+          </>
+        })()}
+      </div>
+      )}
+
       <div className="pt-2 pb-2 text-center text-xs text-gray-400">
         {t('settings_footer_by')} · <a href="mailto:info@craftery.nl" className="underline hover:text-gray-600">info@craftery.nl</a>
+        {typeof __APP_VERSION__ !== 'undefined' && (
+          <span className="block mt-1">{t('settings_versie')}: {__APP_VERSION__}</span>
+        )}
       </div>
       </div>
     </div>

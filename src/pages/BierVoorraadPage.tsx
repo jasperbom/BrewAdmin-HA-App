@@ -128,6 +128,7 @@ const BierVoorraadPage: React.FC<BierVoorraadPageProps> = ({
       aantal,
       reden: afboekForm.reden,
       opmerking: afboekForm.opmerking.trim(),
+      created_at: new Date().toISOString(),
     }
     setAfboekingen((prev: any[]) => [...(prev||[]), nieuw])
     const redenLabel = t(AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.lKey || afboekForm.reden)
