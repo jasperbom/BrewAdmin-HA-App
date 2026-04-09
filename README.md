@@ -44,11 +44,27 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 - Automatic WooCommerce stock update on release
 - Archiving of fully sold releases
 
-### Excise Duty
-- Automatic excise duty calculation on release (litres × ABV × rate)
+### Excise Duty (AGP-compliant)
+- Automatic excise duty calculation on release (litres × ABV × rate), with Plato tariff support
+- GN-code and Plato degree on batches and ingredient lots
 - Custom formula support: define your own JavaScript expression with variables `liter`, `abv`, `hl`, `r1`, `r2`
+- **e-AD Register** — manage e-AD documents, emergency procedures and receipt confirmations with ARC numbers, status tracking and destination details
+- **Dispatch types** — classify dispatches as domestic, intra-EU or export with destination, carrier and e-AD reference
+- **Declaration workflow** — per-month status progression: open → calculated → submitted → paid
 - Overview of outstanding and paid declarations
-- Mark excise duty as paid with one click
+
+### Inventory Counts (Inventarisatie)
+- Physical stock counts for ingredients, beer or both
+- Automatic comparison of administrative vs. counted stock per item
+- Colour-coded variance display (green = match, yellow = small, red = large)
+- Mandatory explanation for any discrepancy
+- Optional automatic stock corrections with mutation log
+
+### Stock Flow / GPA Report (Voorraadverloop)
+- Period-based overview (month/quarter/year) of all stock movements
+- Raw materials: opening stock + purchases − production usage ± corrections = closing stock
+- Finished product: opening stock + production − dispatches (domestic/EU/export) − special transactions = closing stock
+- Excel export per period
 
 ### Accounting (Boekhouding)
 - Purchase invoice management with supplier, date, amount and VAT fields
@@ -70,13 +86,13 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 ### Settings
 The settings page is organised with a sidebar navigation:
 
-- **Brouwerij** — manage brewery name, app name shown in the navigation bar, logo (same upload style as invoice logo), tanks, and default shipping costs (name, VAT rate and default price)
+- **Brouwerij** — manage brewery name, app name, logo, tanks, default shipping costs, AGP number, customs number and excise duty officer
 - **Koppelingen** — Brewfather API integration (User ID + API key) and WooCommerce shop integration (store URL + consumer key/secret)
 - **Home Assistant** — HA API connection settings
-- **Financieel** — VAT period (quarterly/monthly), BTW tariff rates, excise duty rates and optional custom formula, invoice attachments download
+- **Financieel** — VAT period (quarterly/monthly), BTW tariff rates, excise duty rates and optional custom formula, invoice attachments download, AGP goods flow diagram
 - **Ingrediënten** — configurable ingredient types; mutation log
 - **Hygiëne** — manage checklist items and groups that appear per batch
-- **App** — JSON backup export/import (full data snapshot as `brewadmin_backup_YYYY-MM-DD.json`), language selection, colour theme
+- **App** — JSON backup export/import, automated server-side backups with 7-year AGP retention policy, audit trail viewer, language selection, colour theme, version display
 
 ### Internationalisation
 The interface supports five languages: Dutch, English, German, French and Spanish. The app automatically detects the browser/system language on first use and applies it if supported, falling back to English otherwise. The language can be changed at any time in Settings → Language.

@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.1] — 2026-04-09
+
+### Added — AGP-compliance (Accijnsgoederenplaats)
+- **e-AD Register** — volledig documentbeheer voor e-AD's, noodprocedures en ontvangstbevestigingen met ARC-nummers, statusverloop (aangemaakt → verzonden → ontvangen → geannuleerd), bestemming, vervoerder en audit trail
+- **Voorraadverloop / GPA-rapport** — nieuw tabblad in Boekhouding met per periode (maand/kwartaal/jaar): beginvoorraad + inslagen + productie − uitslagen (binnenland/EU/export) − bijzondere mutaties = eindvoorraad, voor zowel grondstoffen als gereed product; Excel-export
+- **Inventarisatiemodule** — eigen pagina voor voorraadtellingen (ingrediënten, bier of volledig); administratieve vs. fysieke voorraad per item, verschilverklaring verplicht, optioneel automatische correcties doorvoeren
+- **GN-code en Platogehalte** — beschikbaar op batches en lots; GN-code selecteerbaar uit standaardlijst (2203 00 01/09/10); Platogehalte geïntegreerd in accijnsberekening
+- **Type uitslag** — uitslagen registreren nu type (binnenland/intracommunautair/export), bestemming (naam, adres, land), vervoerder en e-AD/ARC-koppeling
+- **Accijns-aangifteworkflow** — statusverloop per maand: open → berekend → ingediend → betaald, met datumregistratie per stap
+- **Audit trail** — alle wijzigingen aan kritieke entiteiten worden gelogd met tijdstip, entiteit, actie, veldwijzigingen en gebruikersnaam; viewer in Instellingen met filters
+- **Geautomatiseerde backups** — dagelijkse server-side backups met AGP-retentiebeleid (dagelijks 30 dagen, wekelijks 1 jaar, maandelijks 7 jaar); backup-overzicht en handmatige trigger in Instellingen
+- **Negatieve-voorraadvalidatie** — harde validatie op 4 plaatsen: ingrediëntcorrecties, ingrediëntafboekingen, batchproductie en bestelling-picking
+- **Goederenstroomdiagram** — visueel AGP-stroomdiagram in Instellingen (inkoop → opslag → productie → verpakking → opslag → uitslag)
+- **Inslag-e-AD koppeling** — lots kunnen nu gelinkt worden aan een ontvangen e-AD via ARC-nummer
+- **AGP-instellingen** — AGP-nummer, Douane-nummer en accijns-verantwoordelijke in brouwerijgegevens
+- **Versieweergave** — app-versie zichtbaar in Instellingen
+- **Stamgegevensvalidatie** — waarschuwing bij ontbrekende GN-code/Platogehalte, duplicaat-preventie ingrediënten
+- **Gebruikersidentificatie** — audit trail detecteert HA-gebruikersnaam of valt terug op accijns-verantwoordelijke
+- **created_at timestamps** — automatisch op batches, lots, uitslagen en afboekingen
+
+### Changed
+- Accijnsberekening ondersteunt nu Plato-tarief naast ABV- en minimum-tarief
+- i18n uitgebreid met ~150 keys in alle 5 talen (nl/en/de/fr/es)
+
+---
+
 ## [1.7.0] — 2026-03-31
 
 ### Added
