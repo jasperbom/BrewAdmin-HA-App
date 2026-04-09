@@ -780,6 +780,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: retro.id}
             return {...tx, gekoppeldFactuurId:retro.id, autoGematcht:true, retroGematcht:true}
           }
+          // Negatieve inkoopfactuur (creditnota): bedrag komt overeen met abs(totaal_bruto)
+          const inkoopCredit = (inkoopFacturen||[]).find((f: any) => f.status !== 'betaald' && (f.totaal_bruto||0) < 0 && Math.abs((f.totaal_bruto||0) + tx.bedrag) <= 0.01)
+          if (inkoopCredit) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: inkoopCredit.id}
+            return {...tx, gekoppeldInkoopId: inkoopCredit.id, autoGematcht: true}
+          }
         } else {
           const match = openInkoop.find((f: any) => Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
           if (match) {
@@ -814,7 +820,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         setBankKoppelingen((k: any) => { const c = {...k}; delete c[key]; return c })
       }
       return prev.map((t, i) =>
-        i===txIndex ? {...t, [soort==='inkoop'?'gekoppeldInkoopId':'gekoppeldFactuurId']:factuurId, autoGematcht:false, herinneringsGematcht:false} : t
+        i===txIndex ? {
+          ...t,
+          gekoppeldFactuurId: soort==='verkoop' ? factuurId : null,
+          gekoppeldInkoopId: soort==='inkoop' ? factuurId : null,
+          autoGematcht: false,
+          herinneringsGematcht: false
+        } : t
       )
     })
   }
@@ -1652,6 +1664,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       ? (verkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldFactuurId) : null
                     const extraInkoop = tx.gekoppeldInkoopId && !openInkoop.some((f: any) => f.id === tx.gekoppeldInkoopId)
                       ? (inkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldInkoopId) : null
+                    const openInkoopNegatief = (inkoopFacturen||[]).filter((f: any) => f.status !== 'betaald' && (f.totaal_bruto||0) < 0)
+                    const extraInkoopNegatief = tx.gekoppeldInkoopId && !openInkoopNegatief.some((f: any) => f.id === tx.gekoppeldInkoopId)
+                      ? (inkoopFacturen||[]).find((f: any) => f.id === tx.gekoppeldInkoopId && (f.totaal_bruto||0) < 0) : null
                     return (
                       <tr key={i} className={`border-b border-gray-50 ${tx.autoGematcht ? 'bg-green-50' : ''}`}>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{tx.datum}</td>
@@ -1683,6 +1698,25 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                   <option key={f.id} value={f.id}>{f.datum} · {f.klant_naam||'—'} · {fmt(f.bruto||0)}</option>
                                 ))}
                               </select>
+                              {(openInkoopNegatief.length > 0 || tx.gekoppeldInkoopId) && (
+                                <>
+                                  <span className="text-xs text-gray-400">{t('lbl_of_creditnota')}</span>
+                                  <select value={tx.gekoppeldInkoopId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null, 'inkoop')}
+                                    className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[200px]">
+                                    <option value="">— {t('lbl_niet_gekoppeld')} —</option>
+                                    {extraInkoopNegatief && <option key={extraInkoopNegatief.id} value={extraInkoopNegatief.id}>{extraInkoopNegatief.datum} · {extraInkoopNegatief.leverancier||'—'} · {fmt(extraInkoopNegatief.totaal_bruto||0)} ✓</option>}
+                                    {openInkoopNegatief.map((f: any) => (
+                                      <option key={f.id} value={f.id}>{f.datum} · {f.leverancier||'—'} · {fmt(f.totaal_bruto||0)}</option>
+                                    ))}
+                                  </select>
+                                  {gekoppeldInkoop && gekoppeldInkoop.status !== 'betaald' && (
+                                    <button onClick={()=>{ markeerInkoopBetaald(gekoppeldInkoop.id); koppelBankTransactie(i,null,'inkoop') }}
+                                      className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
+                                      {t('btn_mark_paid')}
+                                    </button>
+                                  )}
+                                </>
+                              )}
                               {gekoppeldVerkoop && gekoppeldVerkoop.status !== 'betaald' && (
                                 <button onClick={()=>{ markeerBetaald(gekoppeldVerkoop.id); koppelBankTransactie(i,null,'verkoop') }}
                                   className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors whitespace-nowrap">

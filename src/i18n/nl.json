@@ -1053,6 +1053,7 @@
   "lbl_debet": "Af",
   "lbl_koppeling": "Koppeling",
   "lbl_niet_gekoppeld": "Niet gekoppeld",
+  "lbl_of_creditnota": "of creditnota inkoop:",
   "btn_koppel_aan_factuur": "Koppelen aan factuur",
   "msg_no_bank": "Geen bankafschrift geladen.",
   "msg_bank_sessie_hint": "Bankafschriften worden niet opgeslagen — alleen zichtbaar in deze sessie.",
