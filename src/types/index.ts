@@ -54,6 +54,7 @@ export interface Batch {
   log?: BatchLogEntry[]
   platogehalte?: number | string
   gn_code?: string
+  product_id?: number
   created_at?: string
 }
 
@@ -139,6 +140,38 @@ export interface Artikel {
   verkoopprijs?: number | string
   btw_pct?: number | string
   omschrijving?: string
+}
+
+export interface Product {
+  id: number
+  naam: string
+  stijl?: string
+  omschrijving?: string
+  afbeeldingen?: string[]
+  recept_ids?: string[]
+  categorie?: string
+  status?: 'actief' | 'gearchiveerd'
+  notities?: string
+  abv?: number | string
+  ebc?: number | string
+  ibu?: number | string
+  created_at?: string
+}
+
+export interface ProductArtikel {
+  id: number
+  product_id: number
+  verpakking_id?: number
+  verpakking_naam?: string
+  verpakking_type?: string
+  inhoud_liter?: number
+  artikelnummer?: string
+  ean?: string
+  verkoopprijs?: number | string
+  btw_pct?: number | string
+  omschrijving?: string
+  gn_code?: string
+  b2b_prijs?: number | string
 }
 
 export interface InkoopFactuur {

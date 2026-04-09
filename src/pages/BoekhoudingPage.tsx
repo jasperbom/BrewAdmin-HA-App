@@ -8,7 +8,6 @@ import { berekenWinstVerlies } from '../utils/calculations'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
-import VoorraadverloopPage from './VoorraadverloopPage'
 import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
 
 // ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
@@ -1071,7 +1070,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           {tabBtn('bank', t('tab_bank'))}
           {tabBtn('rapporten', t('tab_rapporten'))}
           {tabBtn('accijns', t('nav_accijns'))}
-          {tabBtn('voorraadverloop', t('nav_voorraadverloop'))}
           {tabBtn('btw_aangifte', t('tab_btw_aangifte'))}
         </div>
       </div>
@@ -2215,9 +2213,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
       {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} />}
-
-      {/* ══════════════════════ VOORRAADVERLOOP ══════════════════════ */}
-      {mainTab==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} />}
 
       {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
       {mainTab==='btw_aangifte' && (()=>{

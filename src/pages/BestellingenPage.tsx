@@ -39,6 +39,8 @@ interface BestellingenPageProps {
   setOpenOrderId?: (id: number | null) => void
   auditLog?: any[]
   setAuditLog?: any
+  producten?: any[]
+  productArtikelen?: any[]
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -60,7 +62,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   factuurCounter, setFactuurCounter=()=>{},
   log=[], setLog=()=>{}, factuurLogo=null,
   openOrderId=null, setOpenOrderId=()=>{},
-  auditLog=[], setAuditLog=()=>{}
+  auditLog=[], setAuditLog=()=>{},
+  producten=[], productArtikelen=[]
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -100,8 +103,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     regels: [] as any[]
   }
   const [manualForm, setManualForm] = useState<any>(emptyManual)
-  const emptyRegel = {bier_naam: '', verpakking_type: '', aantal: '1', prijs_per_stuk: '', btw_pct: '9', omschrijving: ''}
+  const emptyRegel = {bier_naam: '', verpakking_type: '', aantal: '1', prijs_per_stuk: '', btw_pct: '9', omschrijving: '', prijsType: 'normaal'}
   const [regelForm, setRegelForm] = useState<any>(emptyRegel)
+  const [manualVerzending, setManualVerzending] = useState({enabled: false, naam: '', prijs: '', btw_pct: '21'})
 
   const selectedOrder = (bestellingen||[]).find((b: any) => b.id === selectedId)
 
@@ -170,23 +174,51 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         return true
       }).sort(fefo)
     }
-    // Geen SKU: fallback op bier_naam + verpakking
+    // Geen SKU: fallback op bier_naam + verpakking (ook via product_id)
+    const prod = (producten||[]).find((p: any) => p.naam.toLowerCase() === regelBierNaam.toLowerCase())
+    // Verpakkingsnamen die bij het gevraagde type horen (bijv. "fles" → ["Vichy 33cL", "Fles 33cL", ...])
+    const vpNamenVoorType = verpakkingen
+      .filter((v: any) => v.type?.toLowerCase() === regelVerpakking.toLowerCase())
+      .map((v: any) => v.naam?.toLowerCase())
+      .filter(Boolean)
     return filtered
       .filter((a: any) => {
+        const avpLower = (a.verpakking_type || '').toLowerCase()
+        const matchVerpakking = avpLower === regelVerpakking.toLowerCase()
+          || vpNamenVoorType.includes(avpLower)
+          || vpNamenVoorType.some((n: string) => avpLower.includes(n) || n.includes(avpLower))
+        if (!matchVerpakking) return false
         const batch = bat.find((b: any) => b.id === a.batch_id)
         if (!batch) return false
-        return batch.naam.toLowerCase() === regelBierNaam.toLowerCase() &&
-          a.verpakking_type.toLowerCase() === regelVerpakking.toLowerCase()
+        if (batch.naam.toLowerCase() === regelBierNaam.toLowerCase()) return true
+        if (batch.biernaam && batch.biernaam.toLowerCase() === regelBierNaam.toLowerCase()) return true
+        if (prod && batch.product_id === prod.id) return true
+        return false
       })
       .sort(fefo)
   }
 
-  // Beschikbare bieren voor dropdown (vanuit artikelen)
-  const beschikbareBieren = [...new Set((artikelen||[]).map((a: any) => a.biernaam).filter(Boolean))] as string[]
-  const verpakkingVoorBier = (biernaam: string) =>
-    (artikelen||[]).filter((a: any) => a.biernaam === biernaam).map((a: any) => a.verpakking_type).filter(Boolean)
-  const artikelVoorKeuze = (biernaam: string, verpakking: string) =>
-    (artikelen||[]).find((a: any) => a.biernaam === biernaam && a.verpakking_type === verpakking)
+  // Beschikbare bieren voor dropdown (vanuit producten + artikelen fallback)
+  const beschikbareBieren = [...new Set([
+    ...(producten||[]).filter((p: any) => p.status !== 'gearchiveerd').map((p: any) => p.naam),
+    ...(artikelen||[]).map((a: any) => a.biernaam)
+  ].filter(Boolean))] as string[]
+  const verpakkingVoorBier = (biernaam: string) => {
+    const prod = (producten||[]).find((p: any) => p.naam === biernaam);
+    if (prod) {
+      const paTypes = (productArtikelen||[]).filter((a: any) => a.product_id === prod.id).map((a: any) => a.verpakking_type).filter(Boolean);
+      if (paTypes.length) return paTypes;
+    }
+    return (artikelen||[]).filter((a: any) => a.biernaam === biernaam).map((a: any) => a.verpakking_type).filter(Boolean);
+  }
+  const artikelVoorKeuze = (biernaam: string, verpakking: string) => {
+    const prod = (producten||[]).find((p: any) => p.naam === biernaam);
+    if (prod) {
+      const pa = (productArtikelen||[]).find((a: any) => a.product_id === prod.id && a.verpakking_type === verpakking);
+      if (pa) return pa;
+    }
+    return (artikelen||[]).find((a: any) => a.biernaam === biernaam && a.verpakking_type === verpakking);
+  }
 
   // Factuurnummering
   const genFactuurNummer = (): string => {
@@ -280,17 +312,32 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const saveManualOrder = () => {
     if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
     if (!manualForm.regels.length) { alert(t('err_order_min_lines')); return }
+    let regels = [...manualForm.regels];
+    if (manualVerzending.enabled && Number(manualVerzending.prijs) > 0) {
+      regels.push({
+        id: regels.length + 1,
+        type: 'verzending',
+        bier_naam: manualVerzending.naam || t('lbl_verzendkosten'),
+        verpakking_type: '',
+        aantal: 1,
+        prijs_per_stuk: Number(manualVerzending.prijs),
+        btw_pct: Number(manualVerzending.btw_pct || 21),
+        omschrijving: manualVerzending.naam || t('lbl_verzendkosten'),
+      });
+    }
     const nb: any = {
       id: newId(bestellingen||[]),
       status: 'nieuw',
       datum: tod(),
       ...manualForm,
+      regels,
       wc_order_id: null,
       wc_order_nummer: null,
     }
     setBestellingen((prev: any[]) => [...(prev||[]), nb])
     setShowManualModal(false)
     setManualForm(emptyManual)
+    setManualVerzending({enabled: false, naam: '', prijs: '', btw_pct: '21'})
   }
 
   const addRegel = () => {
@@ -309,6 +356,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       prijs_per_stuk: regelForm.prijs_per_stuk !== '' ? Number(regelForm.prijs_per_stuk) : 0,
       btw_pct: Number(regelForm.btw_pct||9),
       omschrijving: regelForm.omschrijving || `${regelForm.bier_naam} ${regelForm.verpakking_type}`,
+      prijsType: regelForm.prijsType || 'normaal',
     }
     setManualForm((f: any) => ({...f, regels: [...f.regels, regel]}))
     setRegelForm(emptyRegel)
@@ -1121,6 +1169,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   {manualForm.regels.map((r: any, idx: number) => (
                     <div key={idx} className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-50">
                       <span className="flex-1 font-medium">{r.bier_naam} – {r.verpakking_type}</span>
+                      {r.prijsType === 'b2b' && <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">B2B</span>}
                       <span className="text-gray-500">{r.aantal}× à {fmt(r.prijs_per_stuk)}</span>
                       <span className="text-gray-400">{r.btw_pct}% BTW</span>
                       <button onClick={() => setManualForm((f: any) => ({...f, regels: f.regels.filter((_: any, i: number) => i !== idx)}))}
@@ -1132,7 +1181,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
               {/* Nieuwe regel toevoegen */}
               <div className="border rounded-lg p-3 space-y-2">
-                <div className="text-xs font-medium text-gray-600">{t('manual_order_add_line')}</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-gray-600">{t('manual_order_add_line')}</div>
+                  <div className="flex bg-gray-100 rounded-lg p-0.5">
+                    <button type="button" onClick={() => {
+                      const art = artikelVoorKeuze(regelForm.bier_naam, regelForm.verpakking_type);
+                      const prijs = art ? String(art.verkoopprijs||'') : regelForm.prijs_per_stuk;
+                      setRegelForm((f: any) => ({...f, prijsType: 'normaal', prijs_per_stuk: prijs}));
+                    }}
+                      className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${regelForm.prijsType !== 'b2b' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+                      {t('lbl_prijs_normaal')}
+                    </button>
+                    <button type="button" onClick={() => {
+                      const art = artikelVoorKeuze(regelForm.bier_naam, regelForm.verpakking_type);
+                      const prijs = art && art.b2b_prijs ? String(art.b2b_prijs) : regelForm.prijs_per_stuk;
+                      setRegelForm((f: any) => ({...f, prijsType: 'b2b', prijs_per_stuk: prijs}));
+                    }}
+                      className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${regelForm.prijsType === 'b2b' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+                      B2B
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs text-gray-500 mb-0.5">{t('manual_order_beer')} *</label>
@@ -1140,9 +1209,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       onChange={e => {
                         const bier = e.target.value
                         const art = artikelVoorKeuze(bier, regelForm.verpakking_type)
+                        const prijs = art ? (regelForm.prijsType === 'b2b' && art.b2b_prijs ? String(art.b2b_prijs) : String(art.verkoopprijs||'')) : ''
                         setRegelForm((f: any) => ({...f, bier_naam: bier, verpakking_type: '',
-                          prijs_per_stuk: art ? String(art.verkoopprijs||'') : '',
-                          btw_pct: art ? String(art.btw||'9') : '9'}))
+                          prijs_per_stuk: prijs,
+                          btw_pct: art ? String(art.btw||art.btw_pct||'9') : '9'}))
                       }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
                       <option value="">{t('opt_select_beer')}</option>
@@ -1155,9 +1225,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       onChange={e => {
                         const vp = e.target.value
                         const art = artikelVoorKeuze(regelForm.bier_naam, vp)
+                        const prijs = art ? (regelForm.prijsType === 'b2b' && art.b2b_prijs ? String(art.b2b_prijs) : String(art.verkoopprijs||'')) : ''
                         setRegelForm((f: any) => ({...f, verpakking_type: vp,
-                          prijs_per_stuk: art ? String(art.verkoopprijs||'') : '',
-                          btw_pct: art ? String(art.btw||'9') : '9'}))
+                          prijs_per_stuk: prijs,
+                          btw_pct: art ? String(art.btw||art.btw_pct||'9') : '9'}))
                       }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
                       <option value="">{t('opt_select_packaging')}</option>
@@ -1176,6 +1247,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 </div>
                 <Btn s="sm" onClick={addRegel}>{t('manual_order_add_line')}</Btn>
               </div>
+            </div>
+
+            {/* Verzendkosten */}
+            <div className="border rounded-lg p-3 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={manualVerzending.enabled}
+                  onChange={e => setManualVerzending(f => ({...f, enabled: e.target.checked}))}
+                  className="t-checkbox" />
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_verzendkosten')}</span>
+              </label>
+              {manualVerzending.enabled && (
+                <div className="grid grid-cols-3 gap-2">
+                  <Inp label={t('lbl_description')} value={manualVerzending.naam} onChange={(v: string) => setManualVerzending(f => ({...f, naam: v}))} placeholder={t('lbl_verzendkosten')} />
+                  <Inp label={t('verzendkosten_prijs')} type="number" value={manualVerzending.prijs} onChange={(v: string) => setManualVerzending(f => ({...f, prijs: v}))} placeholder="0.00" />
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">{t('manual_order_btw')}%</label>
+                    <Sel value={manualVerzending.btw_pct} onChange={(v: string) => setManualVerzending(f => ({...f, btw_pct: v}))}
+                      opts={[{v:'0',l:'0%'},{v:'9',l:'9%'},{v:'21',l:'21%'}]} />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

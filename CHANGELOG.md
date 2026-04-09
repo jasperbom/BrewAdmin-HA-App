@@ -4,6 +4,69 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.20] — 2026-04-09
+
+### Fixed — Productnaam in Voorraadverloop
+- **VoorraadverloopPage** toont nu de productnaam (via `product_id`) in plaats van de batchnaam in het gereed product-overzicht. Fallback op `biernaam` en `naam` als er geen product gekoppeld is.
+
+## [1.8.19] — 2026-04-09
+
+### Fixed — Uniforme paginaheaders
+- **ProductenPage**: header gebruikt nu standaard `h2 text-gray-800` i.p.v. accentkleur `h1`.
+- **VoorraadverloopPage**: paginatitel toegevoegd (ontbrak).
+- **InventarisatiePage**: font aangepast naar `text-xl font-bold` (was `text-lg font-semibold`).
+
+## [1.8.18] — 2026-04-09
+
+### Changed — Administratie-menu
+- **Administratie-dropdown** toegevoegd met Boekhouding, Inventarisatie, Voorraadverloop en Statiegeld als sub-items.
+- **Voorraadverloop** pagina nu bereikbaar via navigatie (was eerder niet gerouteerd).
+- **Dropdown-logica gegeneraliseerd** — meerdere dropdown-menu's ondersteunen via dezelfde code.
+
+## [1.8.17] — 2026-04-09
+
+### Changed — Navigatie herstructurering
+- **Brouwerij-menu** toegevoegd als dropdown met Ingrediënten, Recepten en Batches als sub-items.
+- **Navigatie vereenvoudigd** — minder items op het hoogste niveau, logische groepering van brouwerij-gerelateerde pagina's.
+
+## [1.8.16] — 2026-04-09
+
+### Changed — BierVoorraadPage samengevoegd met ProductenPage
+- **BierVoorraadPage verwijderd** — voorraadoverzicht, afboeken en logboek zijn nu geïntegreerd in de Producten-pagina.
+- **Logboek** met voorraadmutaties (afvullen, uitslaan, afboeken) en WooCommerce sync-log toegevoegd aan ProductenPage.
+- **WooCommerce push** knop verplaatst naar de Producten-pagina.
+- **Navigatie vereenvoudigd** — "Voorraad" menu-item verwijderd.
+
+## [1.8.15] — 2026-04-09
+
+### Fixed — Picking en kostensoorten
+- **Picking-bug opgelost** — orders met verpakkingstype uit productArtikelen ("fles") matchen nu correct met afvullingen die het oude naam-formaat gebruiken ("Fles 33cL") via de verpakkingen-store.
+- **GN-code selector** op artikelniveau met beheerbare codes in Instellingen.
+- **BTW incl/excl toggle** op verkoopprijs en B2B-prijs bij productartikelen.
+- **B2B-prijs** per artikel, met per-orderregel prijstype (Normaal/B2B) bij bestellingen.
+- **Verzendkosten** toevoegbaar bij handmatige bestellingen.
+- **Negatief afboeken** toegestaan bij voorraadcorrecties.
+
+## [1.8.14] — 2026-04-09
+
+### Changed — Producten-pagina verbeterd
+- **ABV, EBC en IBU** toegevoegd als bierkenmerken op het product.
+- **Foto upload limiet** verhoogd van 500KB naar 2MB per afbeelding.
+- **Voorraad-overzicht geïntegreerd** in productdetailpagina — per verpakkingstype worden afvullingen, gepickt, uitgeslagen, afgeboekt en beschikbaar getoond, inclusief afboekfunctionaliteit.
+- **GN-code verwijderd** van Product (blijft op Batch-niveau).
+
+## [1.8.13] — 2026-04-09
+
+### Added — Producten-pagina
+- **Product als first-class entiteit** — nieuw concept dat recepten, batches, voorraad en verkoop verbindt.
+- **Producten-pagina** — beheer producten met naam, stijl, categorie, productfoto's (max 5), en gekoppelde recepten.
+- **Product-artikelen (SKU's)** — per product meerdere verpakkingsvarianten met artikelnummer, EAN, verkoopprijs en BTW%.
+- **Kostprijs & marge** — automatische berekening van kostprijs per liter op basis van ingrediënt- en utilitykosten, met marge per SKU.
+- **Product-selector in batches** — bij het aanmaken van een batch kan een product worden geselecteerd, waarmee biernaam, stijl en GN-code automatisch worden ingevuld.
+- **Automatische migratie** — bestaande biernamen en artikelen worden automatisch omgezet naar Product-entiteiten bij eerste gebruik.
+- **WooCommerce-integratie uitgebreid** — voorraadsync en bestellingen werken nu ook met product-artikelen.
+- **Excel backup** — producten en product-artikelen worden meegenomen in backup export/import.
+
 ## [1.8.12] — 2026-04-09
 
 ### Changed — GN-codes bij afvulling + automatische Plato-berekening

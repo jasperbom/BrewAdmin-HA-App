@@ -14,6 +14,23 @@ export const STATUS_CLR: Record<string, string> = {
 export const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Verpakt","Gesloten"]
 export const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"]
 export const BUILTIN_KOSTEN_SOORTEN = ['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']
+
+export const DEFAULT_GN_CODES = [
+  {code:'2203 00 01', naam:'Bier van mout — verpakking ≤10 liter'},
+  {code:'2203 00 09', naam:'Bier van mout — overige kleine verpakking ≤10 liter'},
+  {code:'2203 00 10', naam:'Bier van mout — verpakking >10 liter (vaten/fusten)'},
+  {code:'2206 00 31', naam:'Gegiste mousserende drank — verpakking ≤10 liter'},
+  {code:'2206 00 39', naam:'Gegiste niet-mousserende drank — verpakking ≤10 liter'},
+  {code:'2206 00 51', naam:'Gegiste mousserende drank — verpakking >10 liter'},
+  {code:'2206 00 59', naam:'Gegiste niet-mousserende drank — verpakking >10 liter'},
+  {code:'2206 00 81', naam:'Overig gegiste mousserende drank (mixdranken/Radler) ≤10 liter'},
+  {code:'2206 00 89', naam:'Overig gegiste niet-mousserende drank (mixdranken) ≤10 liter'},
+  {code:'2202 91 00', naam:'Alcoholvrij bier (<0,5% vol)'},
+  {code:'2202 99 11', naam:'Niet-alcoholische drank op basis van soja/melk'},
+  {code:'2202 99 15', naam:'Niet-alcoholische drank op basis van vruchten/groenten'},
+  {code:'2202 99 19', naam:'Overige niet-alcoholische dranken'},
+]
+
 export const EENHEDEN = ["kg","g","L","mL","pkg","stuks"]
 
 export const UNIT_BASE: Record<string, {group:string, f:number}> = {

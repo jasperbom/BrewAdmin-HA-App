@@ -3,19 +3,20 @@ import { t, setLang as i18nSetLang } from './i18n'
 import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
 import SyncDot from './components/ui/SyncDot'
 import DashboardPage from './pages/DashboardPage'
 import IngredientenPage from './pages/IngredientenPage'
 import BatchesPage from './pages/BatchesPage'
 import AfvullenPage from './pages/AfvullenPage'
-import BierVoorraadPage from './pages/BierVoorraadPage'
 import BestellingenPage from './pages/BestellingenPage'
 import StatiegeldPage from './pages/StatiegeldPage'
 import ReceptenPage from './pages/ReceptenPage'
 import BoekhoudingPage from './pages/BoekhoudingPage'
 import InstellingenPage from './pages/InstellingenPage'
 import InventarisatiePage from './pages/InventarisatiePage'
+import ProductenPage from './pages/ProductenPage'
+import VoorraadverloopPage from './pages/VoorraadverloopPage'
 
 class PageErrorBoundary extends React.Component<{children: React.ReactNode, page: string}, {err: string|null}> {
   state = { err: null as string|null }
@@ -73,6 +74,7 @@ function App() {
   const [ingTypes, setIngTypes] = useStore('ing_types', ["Mout","Hop","Gist","Suiker","Overig"]);
   const [ingTypeBtw, setIngTypeBtw] = useStore('ing_type_btw', {});
   const [kostenSoorten, setKostenSoorten] = useStore('kosten_soorten', ['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']);
+  const [gnCodes, setGnCodes] = useStore('gn_codes', DEFAULT_GN_CODES);
   const [bestellingen, setBestellingen] = useStore('bestellingen', []);
   const [bestellingPicks, setBestellingPicks] = useStore('bestelling_picks', []);
   const [afboekingen, setAfboekingen] = useStore('afboekingen', []);
@@ -87,6 +89,8 @@ function App() {
   const [inventarisaties, setInventarisaties] = useStore('inventarisaties', []);
   const [auditLog, setAuditLog] = useStore('audit_log', []);
   const [accijnsAangiftes, setAccijnsAangiftes] = useStore('accijns_aangiftes', []);
+  const [producten, setProducten] = useStore('producten', []);
+  const [productArtikelen, setProductArtikelen] = useStore('product_artikelen', []);
 
   // Sync lang to i18n module on each render (equivalent to _lang = lang in source)
   i18nSetLang(lang);
@@ -106,6 +110,8 @@ function App() {
   };
 
   const [page, setPage] = useState('dashboard');
+  const [openMenu, setOpenMenu] = useState<string|null>(null);
+  const menuRefs = useRef<Record<string, HTMLDivElement|null>>({});
   const [openOrderId, setOpenOrderId] = useState<number | null>(null);
   const [navBatchId, setNavBatchId] = useState<number | null>(null);
   const [preNieuwBatch, setPreNieuwBatch] = useState<any>(null);
@@ -174,6 +180,41 @@ function App() {
     if (Object.keys(updates).length) setHaTankTemps(prev => ({ ...prev, ...updates }))
   }, [haInst])
 
+  // Eenmalige migratie: maak Product-entiteiten aan uit bestaande biernamen en artikelen
+  const productMigrated = React.useRef(false);
+  React.useEffect(() => {
+    if (productMigrated.current) return;
+    if (!bat || !artikelen) return;
+    if ((producten||[]).length > 0) { productMigrated.current = true; return; }
+    // Verzamel unieke biernamen uit batches en artikelen
+    const bierNamen = new Set<string>();
+    for (const b of (bat||[])) { if (b.biernaam?.trim()) bierNamen.add(b.biernaam.trim()); else if (b.naam?.trim()) bierNamen.add(b.naam.trim()); }
+    for (const a of (artikelen||[])) { if (a.biernaam?.trim()) bierNamen.add(a.biernaam.trim()); }
+    if (bierNamen.size === 0) { productMigrated.current = true; return; }
+    productMigrated.current = true;
+    const newProducten: any[] = [];
+    const newPAs: any[] = [];
+    let pid = 1, paid = 1;
+    for (const naam of bierNamen) {
+      const firstBatch = (bat||[]).find((b: any) => (b.biernaam||b.naam) === naam);
+      const prod = {id: pid++, naam, stijl: firstBatch?.stijl || '', status: 'actief' as const, created_at: tod()};
+      newProducten.push(prod);
+      // Converteer artikelen voor dit product
+      const arts = (artikelen||[]).filter((a: any) => a.biernaam === naam);
+      for (const a of arts) {
+        const vp = (verpakkingen||[]).find((v: any) => v.naam === a.verpakking_naam || v.type === a.verpakking_type);
+        newPAs.push({id: paid++, product_id: prod.id, verpakking_id: vp?.id, verpakking_naam: a.verpakking_naam || vp?.naam || '', verpakking_type: a.verpakking_type || vp?.type || '', inhoud_liter: vp?.inhoud_liter, artikelnummer: a.artikelnummer, ean: a.ean, verkoopprijs: a.verkoopprijs, btw_pct: a.btw_pct || a.btw, omschrijving: a.omschrijving});
+      }
+      // Zet product_id op batches
+      const batchUpdates = (bat||[]).filter((b: any) => (b.biernaam||b.naam) === naam && !b.product_id);
+      if (batchUpdates.length) {
+        setBat((prev: any[]) => prev.map((b: any) => (b.biernaam||b.naam) === naam && !b.product_id ? {...b, product_id: prod.id} : b));
+      }
+    }
+    if (newProducten.length) setProducten(newProducten);
+    if (newPAs.length) setProductArtikelen(newPAs);
+  }, [bat, artikelen, producten]);
+
   React.useEffect(() => {
     if (!haInst?.enabled) return
     haFetchTankTemps()
@@ -226,7 +267,7 @@ function App() {
       hygiene_items: hygieneItems, hygiene_groups: hygieneGroups,
       inkoop_facturen: inkoopFacturen, verkoop_facturen: verkoopFacturen,
       btw_instellingen: btwInst, btw_tarieven: btwTarieven,
-      ing_types: ingTypes, ing_type_btw: ingTypeBtw, kosten_soorten: kostenSoorten,
+      ing_types: ingTypes, ing_type_btw: ingTypeBtw, kosten_soorten: kostenSoorten, gn_codes: gnCodes,
       bestellingen, bestelling_picks: bestellingPicks, afboekingen,
       klanten, gist_metingen: gistMetingen,
       kapitaal_boekingen: kapitaalBoekingen,
@@ -234,6 +275,7 @@ function App() {
       inventarisaties,
       audit_log: auditLog,
       accijns_aangiftes: accijnsAangiftes,
+      producten, product_artikelen: productArtikelen,
       bank_koppelingen: bankKoppelingen,
       brewery_details: breweryDetails, factuur_counter: factuurCounter,
       ha_instellingen: haInst,
@@ -279,11 +321,14 @@ function App() {
       if (Array.isArray(d.inventarisaties)) setInventarisaties(d.inventarisaties);
       if (Array.isArray(d.audit_log)) setAuditLog(d.audit_log);
       if (Array.isArray(d.accijns_aangiftes)) setAccijnsAangiftes(d.accijns_aangiftes);
+      if (Array.isArray(d.producten)) setProducten(d.producten);
+      if (Array.isArray(d.product_artikelen)) setProductArtikelen(d.product_artikelen);
       if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
       if (Array.isArray(d.btw_tarieven) && d.btw_tarieven.length) setBtwTarieven(d.btw_tarieven);
       if (Array.isArray(d.ing_types) && d.ing_types.length) setIngTypes(d.ing_types);
       if (d.ing_type_btw) setIngTypeBtw(d.ing_type_btw);
       if (Array.isArray(d.kosten_soorten) && d.kosten_soorten.length) setKostenSoorten(d.kosten_soorten);
+      if (Array.isArray(d.gn_codes) && d.gn_codes.length) setGnCodes(d.gn_codes);
       if (d.brewery_details) setBreweryDetails(d.brewery_details);
       if (d.factuur_counter) setFactuurCounter(d.factuur_counter);
       if (d.ha_instellingen) setHaInst(d.ha_instellingen);
@@ -311,9 +356,11 @@ function App() {
     setKlanten([]); setGistMetingen([]);
     setKapitaalBoekingen([]); setEadDocumenten([]);
     setInventarisaties([]); setAuditLog([]); setAccijnsAangiftes([]);
+    setProducten([]); setProductArtikelen([]);
     setBtwInst({periode: 'kwartaal'}); setBtwTarieven([0, 9, 21]);
     setIngTypes(["Mout","Hop","Gist","Suiker","Overig"]); setIngTypeBtw({});
     setKostenSoorten(['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']);
+    setGnCodes(DEFAULT_GN_CODES);
     setBreweryDetails({naam:'',straat:'',huisnummer:'',postcode:'',stad:'',btw_nummer:'',kvk_nummer:'',iban:'',betalingstermijn:14});
     setFactuurCounter({jaar:0,nr:0}); setHaInst({enabled: false, sensors: []});
     setAccijnsInst({tarief_per_hl_abv:7.51,tarief_per_hl:24.17});
@@ -323,27 +370,25 @@ function App() {
   };
 
   const openAcc = acc.filter((a: any)=>!a.betaald).reduce((s: any,a: any)=>s+Number(a.accijns??a.totaal_accijns??0),0);
-  const beschikbareVoorraad = (av||[]).reduce((s: number, a: any) => {
-    const gepickt = (bestellingPicks||[]).filter((p: any) => {
-      if (p.afvulling_id !== a.id) return false;
-      const b = (bestellingen||[]).find((bs: any) => bs.id === p.bestelling_id);
-      return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
-    }).reduce((ps: number, p: any) => ps + Number(p.aantal||0), 0);
-    const uitgeslagen = (uit||[]).filter((u: any) => u.afvulling_id === a.id).reduce((us: number, u: any) => us + Number(u.aantal||0), 0);
-    return s + Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeslagen);
-  }, 0);
   const openBestellingen = (bestellingen||[]).filter((b: any) => b.status==='nieuw'||b.status==='gepickt').length;
 
-  const nav = [
-    {id:'ingredienten',l:t('nav_ingredienten')},
-    {id:'recepten',l:t('nav_recepten')},
-    {id:'batches',l:t('nav_batches')},
-    {id:'voorraad',l:t('nav_voorraad')},
+  const nav: Array<{id:string,l:string,sub?:Array<{id:string,l:string}>}> = [
+    {id:'brouwerij',l:t('nav_brouwerij'),sub:[
+      {id:'ingredienten',l:t('nav_ingredienten')},
+      {id:'recepten',l:t('nav_recepten')},
+      {id:'batches',l:t('nav_batches')},
+    ]},
+    {id:'producten',l:t('nav_producten')},
     {id:'bestellingen',l:t('nav_bestellingen')},
-    {id:'statiegeld',l:t('nav_statiegeld')},
-    {id:'inventarisatie',l:t('nav_inventarisatie')},
-    {id:'boekhouding',l:t('nav_boekhouding')}
+    {id:'administratie',l:t('nav_administratie'),sub:[
+      {id:'boekhouding',l:t('nav_boekhouding')},
+      {id:'inventarisatie',l:t('nav_inventarisatie')},
+      {id:'voorraadverloop',l:t('nav_voorraadverloop')},
+      {id:'statiegeld',l:t('nav_statiegeld')},
+    ]},
   ];
+  const subIds = new Map<string, string>();
+  for (const n of nav) if (n.sub) for (const s of n.sub) subIds.set(s.id, n.id);
 
   const today = new Date(); today.setHours(0,0,0,0);
   const thtAlert = lots.filter((l: any)=>l.beschikbaar && Number(l.hoeveelheid||0)>0 && l.houdbaarheid && new Date(l.houdbaarheid)<today).length;
@@ -378,15 +423,35 @@ function App() {
           <button onClick={()=>setPage('dashboard')} className="font-bold text-sm mr-3 hidden sm:block px-2 py-1 rounded-lg transition-colors tracking-wide text-white hover:bg-white/20">
             {appName || t('app_title')}
           </button>
-          {nav.map(n => (
+          {nav.map(n => n.sub ? (
+            <div key={n.id} ref={el => { menuRefs.current[n.id] = el }} className="relative flex-shrink-0">
+              <button
+                onClick={() => setOpenMenu(v => v === n.id ? null : n.id)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all duration-150 flex items-center gap-1 ${subIds.get(page)===n.id?'bg-white/20 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+                {n.l}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 opacity-60 transition-transform ${openMenu===n.id?'rotate-180':''}`}><path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" /></svg>
+              </button>
+              {openMenu===n.id && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} />
+                  <div className="fixed z-50 min-w-[160px] mt-1" style={{top: (menuRefs.current[n.id]?.getBoundingClientRect().bottom ?? 56) + 'px', left: (menuRefs.current[n.id]?.getBoundingClientRect().left ?? 0) + 'px'}}>
+                    <div className="rounded-lg shadow-xl border border-white/10 overflow-hidden" style={{background: nt.from}}>
+                      {n.sub.map(s => (
+                        <button key={s.id} onClick={()=>{setPage(s.id);setOpenMenu(null)}}
+                          className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${page===s.id?'bg-white/20 text-white':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+                          {s.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
             <button key={n.id} onClick={()=>setPage(n.id)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all duration-150 relative ${page===n.id?'bg-white/20 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
               {n.l}
-              {n.id==='dashboard'&&thtAlert>0&&<span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{thtAlert}</span>}
-              {n.id==='dashboard'&&thtAlert===0&&thtWarn>0&&<span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{thtWarn}</span>}
-              {n.id==='accijns'&&openAcc>0&&<span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">!</span>}
               {n.id==='bestellingen'&&openBestellingen>0&&<span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{openBestellingen}</span>}
-              {n.id==='voorraad'&&beschikbareVoorraad>0&&<span className="absolute -top-1 -right-1 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold" style={{backgroundColor:'var(--t-accent)'}}>{beschikbareVoorraad}</span>}
             </button>
           ))}
           <div className="ml-auto flex items-center gap-1">
@@ -405,13 +470,14 @@ function App() {
         {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} av={av} setPage={setPage} tanks={tanks} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} haTankTemps={haTankTemps} setNavBatchId={setNavBatchId} btwInst={btwInst} bankKoppelingen={bankKoppelingen} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} />}
-        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} />}
-        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} />}
+        {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} av={av} uit={uit} bi={bi} lots={lots} acc={acc} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} />}
+        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} wcCreds={wcCreds} artikelen={artikelen} producten={producten} productArtikelen={productArtikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} />}
+        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} />}
-        {page==='voorraad' && <BierVoorraadPage bat={bat} av={av} uit={uit} bestellingPicks={bestellingPicks} bestellingen={bestellingen} artikelen={artikelen} setArtikelen={setArtikelen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} />}
+        {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} resetApp={resetApp} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} resetApp={resetApp} />}
       </main>
       </PageErrorBoundary>
     </div>

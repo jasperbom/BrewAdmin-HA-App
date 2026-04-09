@@ -1,0 +1,973 @@
+import React from 'react'
+import { t } from '../i18n'
+import { newId, wcGet, wcPut } from '../utils/api'
+import { fmt, fmtD, tod } from '../utils/format'
+import Btn from '../components/ui/Btn'
+import Sel from '../components/ui/Sel'
+import Modal from '../components/ui/Modal'
+
+type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
+
+const AFBOEKING_REDENEN: { v: AfboekingReden; lKey: string }[] = [
+  { v: 'vermis',        lKey: 'lbl_afboeking_vermis' },
+  { v: 'intern_gebruik',lKey: 'lbl_afboeking_intern_gebruik' },
+  { v: 'vernietiging',  lKey: 'lbl_afboeking_vernietiging' },
+  { v: 'overig',        lKey: 'lbl_afboeking_overig' },
+]
+
+const REDEN_COLORS: Record<AfboekingReden, string> = {
+  vermis:         'text-red-600 bg-red-50',
+  intern_gebruik: 'text-blue-600 bg-blue-50',
+  vernietiging:   'text-orange-600 bg-orange-50',
+  overig:         'text-gray-600 bg-gray-100',
+}
+
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}}: any) {
+  const {useState, useMemo} = React;
+  const [sel, setSel] = useState<number|null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [form, setForm] = useState<any>({});
+  const [zoek, setZoek] = useState('');
+  const [toonGearchiveerd, setToonGearchiveerd] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [fotoTab, setFotoTab] = useState(0);
+  const [artForm, setArtForm] = useState<any>(null);
+  const [receptSelectOpen, setReceptSelectOpen] = useState(false);
+  const [voorraadOpen, setVoorraadOpen] = useState(true);
+  const [afboekModal, setAfboekModal] = useState<any>(null);
+  const [afboekForm, setAfboekForm] = useState<{aantal: string; reden: AfboekingReden; opmerking: string}>({aantal: '1', reden: 'vermis', opmerking: ''});
+  const [afboekError, setAfboekError] = useState('');
+  const [prijsInclBtw, setPrijsInclBtw] = useState(false);
+  const [b2bPrijsInclBtw, setB2bPrijsInclBtw] = useState(false);
+  const [logboekOpen, setLogboekOpen] = useState(false);
+  const [logFilter, setLogFilter] = useState<'alle' | 'voorraad' | 'woocommerce'>('alle');
+  const [wcSyncing, setWcSyncing] = useState(false);
+  const [wcSyncMsg, setWcSyncMsg] = useState('');
+
+  const selProduct = useMemo(() => (producten||[]).find((p: any) => p.id === sel), [producten, sel]);
+
+  const visibleProducten = useMemo(() => {
+    let list = (producten||[]) as any[];
+    if (!toonGearchiveerd) list = list.filter((p: any) => p.status !== 'gearchiveerd');
+    if (zoek.trim()) {
+      const q = zoek.toLowerCase();
+      list = list.filter((p: any) => (p.naam||'').toLowerCase().includes(q) || (p.stijl||'').toLowerCase().includes(q) || (p.categorie||'').toLowerCase().includes(q));
+    }
+    return list.sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
+  }, [producten, zoek, toonGearchiveerd]);
+
+  // Voorraad helpers
+  const beschikbaarVoorAfvulling = (a: any): number => {
+    const gepickt = ((bestellingPicks||[]) as any[]).filter((p: any) => {
+      if (p.afvulling_id !== a.id) return false;
+      const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
+      return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
+    }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
+    const uitgeslagen = ((uit||[]) as any[]).filter((u: any) => u.afvulling_id === a.id).reduce((s: number, u: any) => s + Number(u.aantal||0), 0);
+    const afgeboekt = ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id).reduce((s: number, ab: any) => s + Number(ab.aantal||0), 0);
+    return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeslagen - afgeboekt);
+  };
+
+  const gepicktVoorAfvulling = (a: any): number =>
+    ((bestellingPicks||[]) as any[]).filter((p: any) => {
+      if (p.afvulling_id !== a.id) return false;
+      const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
+      return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
+    }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
+
+  const uitgeslagenVoorAfvulling = (a: any): number =>
+    ((uit||[]) as any[]).filter((u: any) => u.afvulling_id === a.id).reduce((s: number, u: any) => s + Number(u.aantal||0), 0);
+
+  const afgeboektVoorAfvulling = (a: any): number =>
+    ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id).reduce((s: number, ab: any) => s + Number(ab.aantal||0), 0);
+
+  // Statistieken per product
+  const productStats = useMemo(() => {
+    const stats: Record<number, {batches: number, liter: number, voorraad: number, kostprijs: number}> = {};
+    for (const p of (producten||[])) {
+      const pBatches = (bat||[]).filter((b: any) => b.product_id === p.id);
+      const batchIds = new Set(pBatches.map((b: any) => b.id));
+      const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
+      const pAv = (av||[]).filter((a: any) => batchIds.has(a.batch_id));
+      const voorraad = pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
+      let totaalKosten = 0;
+      for (const b of pBatches) {
+        const batchBi = (bi||[]).filter((i: any) => i.batch_id === b.id);
+        for (const ingredient of batchBi) totaalKosten += Number(ingredient.kosten||0);
+        totaalKosten += Number(b.electra_kosten||0) + Number(b.water_kosten||0) + Number(b.schoonmaak_kosten||0) + Number(b.overige_kosten||0);
+      }
+      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
+    }
+    return stats;
+  }, [producten, bat, av, uit, bi, bestellingen, bestellingPicks, afboekingen]);
+
+  const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel), [productArtikelen, sel]);
+  const selRecepten = useMemo(() => {
+    if (!selProduct?.recept_ids?.length) return [];
+    return (recepten||[]).filter((r: any) => selProduct.recept_ids.includes(r.id));
+  }, [selProduct, recepten]);
+  const beschikbareRecepten = useMemo(() => {
+    const gekoppeld = new Set(selProduct?.recept_ids || []);
+    return (recepten||[]).filter((r: any) => !gekoppeld.has(r.id));
+  }, [selProduct, recepten]);
+  const selBatches = useMemo(() => (bat||[]).filter((b: any) => b.product_id === sel), [bat, sel]);
+
+  // Voorraad voor geselecteerd product: afvullingen gegroepeerd per verpakkingstype
+  const selVoorraad = useMemo(() => {
+    if (!sel) return [];
+    const batchIds = new Set(selBatches.map((b: any) => b.id));
+    const pAv = (av||[]).filter((a: any) => batchIds.has(a.batch_id));
+    const vTypes = [...new Set(pAv.map((a: any) => a.verpakking_type).filter(Boolean))].sort() as string[];
+    return vTypes.map(vt => {
+      const rows = pAv.filter((a: any) => a.verpakking_type === vt);
+      const totAfgevuld = rows.reduce((s: number, a: any) => s + Number(a.hoeveelheid||0), 0);
+      const totGepickt = rows.reduce((s: number, a: any) => s + gepicktVoorAfvulling(a), 0);
+      const totUitgeslagen = rows.reduce((s: number, a: any) => s + uitgeslagenVoorAfvulling(a), 0);
+      const totAfgeboekt = rows.reduce((s: number, a: any) => s + afgeboektVoorAfvulling(a), 0);
+      const totBeschikbaar = rows.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
+      return {vt, rows, totAfgevuld, totGepickt, totUitgeslagen, totAfgeboekt, totBeschikbaar};
+    });
+  }, [sel, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen]);
+
+  const startEdit = (product?: any) => {
+    if (product) {
+      setForm({...product});
+    } else {
+      setForm({id: newId(producten), naam: '', stijl: '', omschrijving: '', afbeeldingen: [], recept_ids: [], categorie: '', status: 'actief', notities: '', abv: '', ebc: '', ibu: '', created_at: tod()});
+    }
+    setEditMode(true);
+    setFotoTab(0);
+  };
+
+  const saveProduct = () => {
+    if (!form.naam?.trim()) { setMsg(t('err_product_naam_required')); return; }
+    const dupl = (producten||[]).find((p: any) => p.naam.toLowerCase() === form.naam.trim().toLowerCase() && p.id !== form.id);
+    if (dupl) { setMsg(t('err_product_naam_duplicaat')); return; }
+    const updated = {...form, naam: form.naam.trim()};
+    const exists = (producten||[]).find((p: any) => p.id === form.id);
+    if (exists) {
+      setProducten((prev: any[]) => prev.map((p: any) => p.id === form.id ? updated : p));
+    } else {
+      setProducten((prev: any[]) => [...(prev||[]), updated]);
+      setSel(form.id);
+    }
+    setEditMode(false);
+    setMsg('');
+  };
+
+  const deleteProduct = () => {
+    if (!confirm(t('confirm_product_verwijderen'))) return;
+    setProducten((prev: any[]) => prev.filter((p: any) => p.id !== sel));
+    setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.product_id !== sel));
+    setBat((prev: any[]) => prev.map((b: any) => b.product_id === sel ? {...b, product_id: undefined} : b));
+    setSel(null);
+  };
+
+  const toggleArchiveer = () => {
+    const newStatus = selProduct?.status === 'gearchiveerd' ? 'actief' : 'gearchiveerd';
+    setProducten((prev: any[]) => prev.map((p: any) => p.id === sel ? {...p, status: newStatus} : p));
+  };
+
+  // Foto upload (max 2MB per foto)
+  const handleFotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setMsg(t('err_foto_te_groot').replace('{max}', '2MB')); return; }
+    const fotos = form.afbeeldingen || [];
+    if (fotos.length >= 5) { setMsg(t('err_max_fotos').replace('{max}', '5')); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setForm((f: any) => ({...f, afbeeldingen: [...(f.afbeeldingen||[]), ev.target?.result as string]}));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const removeFoto = (idx: number) => {
+    setForm((f: any) => ({...f, afbeeldingen: (f.afbeeldingen||[]).filter((_: any, i: number) => i !== idx)}));
+    if (fotoTab >= (form.afbeeldingen?.length || 1) - 1) setFotoTab(Math.max(0, fotoTab - 1));
+  };
+
+  const koppelRecept = (receptId: string) => {
+    setForm((f: any) => ({...f, recept_ids: [...(f.recept_ids||[]), receptId]}));
+    setReceptSelectOpen(false);
+  };
+
+  const ontkoppelRecept = (receptId: string) => {
+    setForm((f: any) => ({...f, recept_ids: (f.recept_ids||[]).filter((id: string) => id !== receptId)}));
+  };
+
+  // Artikel CRUD
+  const startArtEdit = (art?: any) => {
+    setPrijsInclBtw(false);
+    setB2bPrijsInclBtw(false);
+    if (art) {
+      setArtForm({...art});
+    } else {
+      setArtForm({id: newId(productArtikelen), product_id: sel, verpakking_id: '', verpakking_naam: '', verpakking_type: '', inhoud_liter: '', artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: ''});
+    }
+  };
+
+  const saveArtikel = () => {
+    if (!artForm) return;
+    const vp = (verpakkingen||[]).find((v: any) => v.id === Number(artForm.verpakking_id));
+    let prijs = Number(artForm.verkoopprijs || 0);
+    if (prijsInclBtw && prijs > 0) {
+      prijs = prijs / (1 + Number(artForm.btw_pct || 0) / 100);
+    }
+    let b2b = Number(artForm.b2b_prijs || 0);
+    if (b2bPrijsInclBtw && b2b > 0) {
+      b2b = b2b / (1 + Number(artForm.btw_pct || 0) / 100);
+    }
+    const updated = {...artForm, verkoopprijs: prijs > 0 ? prijs.toFixed(2) : artForm.verkoopprijs, b2b_prijs: b2b > 0 ? b2b.toFixed(2) : artForm.b2b_prijs, verpakking_naam: vp?.naam || artForm.verpakking_naam, verpakking_type: vp?.type || vp?.naam || artForm.verpakking_type, inhoud_liter: vp?.inhoud_liter || artForm.inhoud_liter};
+    const exists = (productArtikelen||[]).find((a: any) => a.id === artForm.id);
+    if (exists) {
+      setProductArtikelen((prev: any[]) => prev.map((a: any) => a.id === artForm.id ? updated : a));
+    } else {
+      setProductArtikelen((prev: any[]) => [...(prev||[]), updated]);
+    }
+    setArtForm(null);
+  };
+
+  const deleteArtikel = (id: number) => {
+    setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.id !== id));
+  };
+
+  const berekenMarge = (art: any) => {
+    const stats = productStats[sel!];
+    if (!stats || stats.kostprijs <= 0 || !art.inhoud_liter) return null;
+    const kostprijsPerEenheid = stats.kostprijs * Number(art.inhoud_liter || 0);
+    const verkoopprijs = Number(art.verkoopprijs || 0);
+    if (verkoopprijs <= 0) return null;
+    const marge = ((verkoopprijs - kostprijsPerEenheid) / verkoopprijs) * 100;
+    return {kostprijsPerEenheid, marge};
+  };
+
+  // Afboeken
+  const openAfboekModal = (a: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAfboekForm({aantal: '1', reden: 'vermis', opmerking: ''});
+    setAfboekError('');
+    setAfboekModal(a);
+  };
+
+  const doAfboeken = () => {
+    const aantal = Number(afboekForm.aantal);
+    if (!afboekForm.opmerking.trim()) { setAfboekError(t('err_afboeking_opmerking_required')); return; }
+    if (!aantal || aantal === 0) { setAfboekError(t('err_afboeking_aantal_min')); return; }
+    if (aantal > 0) {
+      const max = beschikbaarVoorAfvulling(afboekModal);
+      if (aantal > max) { setAfboekError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
+    }
+    const nieuw = {
+      id: newId(afboekingen||[]),
+      afvulling_id: afboekModal.id,
+      batch_id: afboekModal.batch_id,
+      datum: new Date().toISOString().slice(0, 10),
+      aantal,
+      reden: afboekForm.reden,
+      opmerking: afboekForm.opmerking.trim(),
+      created_at: new Date().toISOString(),
+    };
+    if (setAfboekingen) setAfboekingen((prev: any[]) => [...(prev||[]), nieuw]);
+    const redenLabel = t(AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.lKey || afboekForm.reden);
+    const batch = (bat||[]).find((b: any) => b.id === afboekModal.batch_id);
+    if (setLog) setLog((prev: any[]) => [...(prev||[]), {
+      id: newId(prev||[]),
+      datum: new Date().toISOString().slice(0, 10),
+      type: 'afboeking',
+      batch_id: afboekModal.batch_id,
+      batch_naam: batch?.naam || '',
+      afvulling_id: afboekModal.id,
+      verpakking_type: afboekModal.verpakking_naam || afboekModal.verpakking_type || '',
+      hoeveelheid: aantal,
+      eenheid: 'stuks',
+      reden: afboekForm.reden,
+      referentie: redenLabel,
+      omschrijving: `${redenLabel} — ${afboekForm.opmerking.trim()}`,
+    }]);
+    setAfboekModal(null);
+  };
+
+  // --- WooCommerce push ---
+  const addWcLog = (type: string, msg: string, details?: string) => {
+    const entry = {id: newId(wcSyncLog||[]), ts: new Date().toISOString(), type, msg, details: details||''};
+    setWcSyncLog((prev: any[]) => [entry, ...(prev||[])].slice(0, 100));
+  };
+
+  const wcBeschikbaarVoorArt = (art: any) =>
+    (av||[]).filter((a: any) => {
+      const b = bat.find((bx: any) => bx.id === a.batch_id);
+      return b && (b.product_id === art._product_id || b.naam === art.biernaam) &&
+        (a.verpakking_type === art.verpakking_type || (verpakkingen||[]).some((v: any) => v.type === art.verpakking_type && v.naam === a.verpakking_type));
+    }).reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
+
+  const wcPushAll = async () => {
+    if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
+    setWcSyncing(true); setWcSyncMsg('');
+    try {
+      let bijgewerkt = 0;
+      const paWithNames = (productArtikelen||[]).filter((a: any) => a.artikelnummer).map((pa: any) => {
+        const prod = (producten||[]).find((p: any) => p.id === pa.product_id);
+        return {...pa, biernaam: prod?.naam || '', _product_id: pa.product_id};
+      });
+      const combis = paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer);
+      for (const art of combis) {
+        const beschikbaar = wcBeschikbaarVoorArt(art);
+        addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, '');
+        const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
+        if (!prods?.length) continue;
+        await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
+        bijgewerkt++;
+      }
+      setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}));
+      const pushMsg = `${bijgewerkt} product${bijgewerkt!==1?'en':''} bijgewerkt`;
+      setWcSyncMsg(`✓ ${pushMsg}`);
+      addWcLog('push', `↑ Push voorraad — ${pushMsg}`,
+        combis.filter((a: any) => a.artikelnummer).map((a: any) => `${a.biernaam} ${a.verpakking_type}: ${wcBeschikbaarVoorArt(a)}×`).join(', '));
+    } catch(e: any) {
+      setWcSyncMsg(`⚠ Push mislukt: ${e.message}`);
+      addWcLog('fout', `↑ Push mislukt — ${e.message}`);
+    }
+    setWcSyncing(false);
+    setTimeout(() => setWcSyncMsg(''), 6000);
+  };
+
+  // --- Logboek data ---
+  const beerLogEntries = [...(log||[])]
+    .filter((l: any) => ['afvullen','uitslaan','afboeking'].includes(l.type))
+    .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''));
+
+  const LOG_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
+    afvullen:  {icon:'🍺', cls:'text-green-700 bg-green-50',  label: t('log_type_afvullen')},
+    uitslaan:  {icon:'🚛', cls:'text-purple-700 bg-purple-50', label: t('log_type_uitslaan')},
+    afboeking: {icon:'🗑️', cls:'text-red-700 bg-red-50',      label: t('log_type_afboeking')},
+  };
+
+  const WC_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
+    push:  {icon: '↑', cls: 'text-purple-700 bg-purple-50', label: 'WC Push'},
+    pull:  {icon: '↓', cls: 'text-blue-700 bg-blue-50',   label: 'WC Pull'},
+    fout:  {icon: '⚠', cls: 'text-red-700 bg-red-50',     label: 'WC Fout'},
+    debug: {icon: '·', cls: 'text-gray-500 bg-gray-100',  label: 'WC Debug'},
+  };
+
+  const logCombined = useMemo(() => {
+    const wcEntries = (wcSyncLog || []).map((l: any) => ({
+      _src: 'wc' as const, id: l.id, datum: l.ts ? l.ts.slice(0, 10) : '—',
+      sortKey: l.ts || '', type: l.type, msg: l.msg, details: l.details,
+    }));
+    const voorraadEntries = beerLogEntries.map((l: any) => ({
+      _src: 'voorraad' as const, ...l,
+      sortKey: (l.datum || '') + (l.id ? String(l.id).padStart(10, '0') : ''),
+    }));
+    if (logFilter === 'voorraad') return voorraadEntries;
+    if (logFilter === 'woocommerce') return wcEntries;
+    return [...voorraadEntries, ...wcEntries].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+  }, [log, wcSyncLog, logFilter]);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Linker kolom: productlijst */}
+      <div className="md:col-span-1">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 className="text-xl font-bold text-gray-800">{t('title_producten')}</h2>
+          <div className="flex items-center gap-2">
+            {wcCreds?.enabled && (
+              <button onClick={wcPushAll} disabled={wcSyncing}
+                title={t('wc_push_stock_title')}
+                className="wc-btn flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40">
+                {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
+              </button>
+            )}
+            <Btn onClick={() => startEdit()} s="sm">{t('btn_nieuw_product')}</Btn>
+          </div>
+        </div>
+        {wcSyncMsg && <div className={`text-xs font-medium mb-2 ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</div>}
+
+        <input type="text" value={zoek} onChange={e => setZoek(e.target.value)} placeholder={t('ph_product_zoek')}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 t-input" />
+
+        <label className="flex items-center gap-2 text-xs text-gray-500 mb-3 cursor-pointer select-none">
+          <input type="checkbox" checked={toonGearchiveerd} onChange={e => setToonGearchiveerd(e.target.checked)} className="t-checkbox" />
+          {t('lbl_product_toon_gearchiveerd')}
+        </label>
+
+        {visibleProducten.length === 0 && (
+          <div className="text-center text-gray-400 text-sm py-8">{t('lbl_geen_producten')}</div>
+        )}
+
+        <div className="space-y-2">
+          {visibleProducten.map((p: any) => {
+            const stats = productStats[p.id] || {batches: 0, liter: 0, voorraad: 0};
+            const artCount = (productArtikelen||[]).filter((a: any) => a.product_id === p.id).length;
+            const thumb = p.afbeeldingen?.[0];
+            return (
+              <div key={p.id} onClick={() => { setSel(p.id); setEditMode(false); setArtForm(null); }}
+                className={`rounded-xl border cursor-pointer transition-all hover:shadow-md ${sel === p.id ? 'border-2 shadow-md' : 'border-gray-200 hover:border-gray-300'}`}
+                style={sel === p.id ? {borderColor: 'var(--t-accent)'} : undefined}>
+                <div className="flex items-center gap-3 p-3">
+                  {thumb ? (
+                    <img src={thumb} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-gray-300">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm truncate">{p.naam}</span>
+                      {p.status === 'gearchiveerd' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-500">{t('lbl_product_gearchiveerd')}</span>}
+                    </div>
+                    {p.stijl && <div className="text-xs text-gray-500 truncate">{p.stijl}</div>}
+                    <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400">
+                      {p.abv && <span>{Number(p.abv).toFixed(1)}%</span>}
+                      <span>{stats.batches} {t('lbl_product_batches').toLowerCase()}</span>
+                      <span className={stats.voorraad > 0 ? 'text-green-600 font-medium' : ''}>{stats.voorraad}x</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Logboek */}
+        <div className="mt-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setLogboekOpen(!logboekOpen)}>
+            <span className="flex items-center gap-2">
+              {t('tab_logboek')}
+              {beerLogEntries.length > 0 && <span className="bg-white/20 rounded-full px-1.5 text-xs">{beerLogEntries.length}</span>}
+            </span>
+            <span className="text-xs opacity-75">{logboekOpen ? '▼' : '▶'}</span>
+          </div>
+          {logboekOpen && (
+            <div>
+              <div className="px-3 py-2 bg-gray-50 border-b flex items-center gap-1">
+                {(['alle', 'voorraad', ...(wcCreds?.enabled ? ['woocommerce'] : [])] as const).map(f => (
+                  <button key={f} onClick={() => setLogFilter(f as any)}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${logFilter === f ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                    {f === 'alle' ? t('orders_filter_alle') : f === 'voorraad' ? t('log_filter_voorraad').replace('{n}', String(beerLogEntries.length)) : t('log_filter_woocommerce').replace('{n}', String((wcSyncLog||[]).length))}
+                  </button>
+                ))}
+              </div>
+              {logCombined.length === 0 ? (
+                <div className="p-6 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
+                      <th className="px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
+                      <th className="px-3 py-2 text-left font-medium">{t('lbl_description')}</th>
+                      <th className="px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {logCombined.slice(0, 50).map((l: any) => {
+                      if (l._src === 'wc') {
+                        const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug;
+                        return (
+                          <tr key={`wc-${l.id}`} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum}</td>
+                            <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ws.cls}`}>{ws.icon} {ws.label}</span></td>
+                            <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
+                              <div className="truncate">{l.msg}</div>
+                              {l.details && <div className="text-gray-400 truncate" title={l.details}>{l.details}</div>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
+                          </tr>
+                        );
+                      }
+                      const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
+                      const qty = l.hoeveelheid != null
+                        ? `${l.type === 'afboeking' ? '−' : '+'}${Math.abs(l.hoeveelheid)} ${l.eenheid || t('unit_stuks')}`
+                        : '—';
+                      return (
+                        <tr key={`v-${l.id}`} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum || '—'}</td>
+                          <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ts.cls}`}>{ts.icon} {ts.label}</span></td>
+                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
+                            <div className="font-medium text-gray-700 truncate">{l.batch_naam || '—'}{l.verpakking_type ? ` · ${l.verpakking_type}` : ''}</div>
+                            {(l.omschrijving || l.referentie) && <div className="text-gray-400 truncate" title={l.omschrijving || l.referentie}>{l.omschrijving || l.referentie}</div>}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : 'text-green-600'}`}>{qty}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Rechter kolom: product detail */}
+      <div className="md:col-span-2">
+        {!sel && !editMode && (
+          <div className="text-center text-gray-400 text-sm py-16">{t('lbl_geen_producten')}</div>
+        )}
+
+        {/* Edit/nieuw formulier */}
+        {editMode && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between rounded-t-xl">
+              <span className="font-medium text-sm">{form.id && (producten||[]).find((p: any) => p.id === form.id) ? form.naam || t('lbl_product_naam') : t('btn_nieuw_product')}</span>
+            </div>
+            <div className="p-4 space-y-4">
+              {msg && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{msg}</div>}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_naam')}</label>
+                  <input type="text" value={form.naam||''} onChange={e => setForm((f: any) => ({...f, naam: e.target.value}))} placeholder={t('ph_product_naam')} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_stijl')}</label>
+                  <input type="text" value={form.stijl||''} onChange={e => setForm((f: any) => ({...f, stijl: e.target.value}))} placeholder={t('ph_product_stijl')} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_categorie')}</label>
+                  <input type="text" value={form.categorie||''} onChange={e => setForm((f: any) => ({...f, categorie: e.target.value}))} placeholder={t('ph_product_categorie')} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_abv')}</label>
+                    <input type="number" step="0.1" value={form.abv||''} onChange={e => setForm((f: any) => ({...f, abv: e.target.value}))} placeholder="5.5" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_ebc')}</label>
+                    <input type="number" step="1" value={form.ebc||''} onChange={e => setForm((f: any) => ({...f, ebc: e.target.value}))} placeholder="12" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_ibu')}</label>
+                    <input type="number" step="1" value={form.ibu||''} onChange={e => setForm((f: any) => ({...f, ibu: e.target.value}))} placeholder="35" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_omschrijving')}</label>
+                <textarea value={form.omschrijving||''} onChange={e => setForm((f: any) => ({...f, omschrijving: e.target.value}))} rows={2} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_notities')}</label>
+                <textarea value={form.notities||''} onChange={e => setForm((f: any) => ({...f, notities: e.target.value}))} rows={2} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+              </div>
+
+              {/* Foto's */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_afbeeldingen')}</label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(form.afbeeldingen||[]).map((img: string, idx: number) => (
+                    <div key={idx} className="relative group">
+                      <img src={img} alt="" className={`w-20 h-20 rounded-lg object-cover border-2 cursor-pointer ${fotoTab === idx ? '' : 'border-transparent'}`} style={fotoTab === idx ? {borderColor: 'var(--t-accent)'} : undefined} onClick={() => setFotoTab(idx)} />
+                      <button onClick={() => removeFoto(idx)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                    </div>
+                  ))}
+                  {(form.afbeeldingen||[]).length < 5 && (
+                    <label className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-gray-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-gray-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                      <input type="file" accept="image/*" className="hidden" onChange={handleFotoUpload} />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Recepten koppelen */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_recepten')}</label>
+                  <Btn onClick={() => setReceptSelectOpen(!receptSelectOpen)} s="sm" v="ghost">{t('btn_koppel_recept')}</Btn>
+                </div>
+                {receptSelectOpen && beschikbareRecepten.length > 0 && (
+                  <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto bg-white shadow-sm">
+                    {beschikbareRecepten.map((r: any) => (
+                      <button key={r.id} onClick={() => koppelRecept(r.id)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
+                        <span className="font-medium">{r.naam}</span>
+                        {r.stijl && <span className="text-gray-400 ml-2 text-xs">{r.stijl}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 space-y-1">
+                  {(form.recept_ids||[]).map((rid: string) => {
+                    const r = (recepten||[]).find((rec: any) => rec.id === rid);
+                    return r ? (
+                      <div key={rid} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-1.5 text-sm">
+                        <span>{r.naam} {r.stijl && <span className="text-gray-400 text-xs ml-1">{r.stijl}</span>}</span>
+                        <button onClick={() => ontkoppelRecept(rid)} className="text-xs text-red-500 hover:text-red-700">{t('btn_ontkoppel_recept')}</button>
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <Btn onClick={saveProduct}>{t('btn_product_opslaan')}</Btn>
+                <Btn onClick={() => { setEditMode(false); setMsg(''); }} v="secondary">{t('btn_product_annuleren')}</Btn>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Product detail (view mode) */}
+        {sel && selProduct && !editMode && (
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between rounded-t-xl">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{selProduct.naam}</span>
+                  {selProduct.status === 'gearchiveerd' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20">{t('lbl_product_gearchiveerd')}</span>}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Btn onClick={() => startEdit(selProduct)} s="sm" v="header">{t('btn_bewerken')}</Btn>
+                  <Btn onClick={toggleArchiveer} s="sm" v="header">{selProduct.status === 'gearchiveerd' ? t('btn_product_activeren') : t('btn_product_archiveren')}</Btn>
+                  <Btn onClick={deleteProduct} s="sm" v="header-danger">{t('btn_product_verwijderen')}</Btn>
+                </div>
+              </div>
+
+              <div className="p-4">
+                <div className="flex gap-4">
+                  {selProduct.afbeeldingen?.length > 0 && (
+                    <div className="flex-shrink-0">
+                      <img src={selProduct.afbeeldingen[fotoTab] || selProduct.afbeeldingen[0]} alt="" className="w-40 h-40 rounded-xl object-cover" />
+                      {selProduct.afbeeldingen.length > 1 && (
+                        <div className="flex gap-1 mt-2 justify-center">
+                          {selProduct.afbeeldingen.map((_: any, i: number) => (
+                            <button key={i} onClick={() => setFotoTab(i)} className={`w-2.5 h-2.5 rounded-full transition-colors ${fotoTab === i ? '' : 'bg-gray-300'}`} style={fotoTab === i ? {backgroundColor: 'var(--t-accent)'} : undefined} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    {selProduct.stijl && <div className="text-sm text-gray-500 mb-1">{selProduct.stijl}</div>}
+                    {selProduct.categorie && <div className="text-xs text-gray-400 mb-2">{selProduct.categorie}</div>}
+                    {/* ABV / EBC / IBU badges */}
+                    {(selProduct.abv || selProduct.ebc || selProduct.ibu) && (
+                      <div className="flex gap-2 mb-3">
+                        {selProduct.abv && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{Number(selProduct.abv).toFixed(1)}% ABV</span>}
+                        {selProduct.ebc && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">{selProduct.ebc} EBC</span>}
+                        {selProduct.ibu && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{selProduct.ibu} IBU</span>}
+                      </div>
+                    )}
+                    {selProduct.omschrijving && <div className="text-sm text-gray-600 mb-3">{selProduct.omschrijving}</div>}
+                    {selProduct.notities && <div className="text-xs text-gray-400 italic">{selProduct.notities}</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Statistieken */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                {label: t('lbl_product_batches'), value: productStats[sel]?.batches || 0},
+                {label: t('lbl_product_totaal_liter'), value: `${(productStats[sel]?.liter || 0).toFixed(0)} L`},
+                {label: t('lbl_product_voorraad'), value: productStats[sel]?.voorraad || 0},
+                {label: t('lbl_product_kostprijs_liter'), value: productStats[sel]?.kostprijs > 0 ? fmt(productStats[sel].kostprijs) : '-'},
+              ].map((s, i) => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">{s.label}</div>
+                  <div className="text-lg font-bold mt-1" style={{color: 'var(--t-accent)'}}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Voorraad overzicht */}
+            {selVoorraad.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setVoorraadOpen(!voorraadOpen)}>
+                  <span>{t('lbl_product_voorraad')}</span>
+                  <span className="text-xs opacity-75">{voorraadOpen ? '▼' : '▶'}</span>
+                </div>
+                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeslagen, totAfgeboekt, totBeschikbaar}) => (
+                  <div key={vt}>
+                    <div className="px-4 py-2 bg-gray-50 border-b border-t flex items-center justify-between text-sm">
+                      <span className="font-medium text-gray-700">{vt}</span>
+                      <div className="flex gap-3 text-xs text-gray-500">
+                        <span className="text-gray-400">{t('voorraad_afgevuld')}: <strong>{totAfgevuld}×</strong></span>
+                        {totGepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>{totGepickt}×</strong></span>}
+                        {totUitgeslagen > 0 && <span className="text-blue-500">{t('voorraad_uitgeslagen')}: <strong>{totUitgeslagen}×</strong></span>}
+                        {totAfgeboekt > 0 && <span className="text-red-400">{t('voorraad_afgeboekt')}: <strong>{totAfgeboekt}×</strong></span>}
+                        <span className={`font-bold ${totBeschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>{t('voorraad_beschikbaar')}: {totBeschikbaar}×</span>
+                      </div>
+                    </div>
+                    {rows.map((a: any) => {
+                      const beschikbaar = beschikbaarVoorAfvulling(a);
+                      const batch = (bat||[]).find((b: any) => b.id === a.batch_id);
+                      const thtDays = a.tht ? Math.ceil((new Date(a.tht).getTime() - new Date().getTime()) / 86400000) : null;
+                      const thtExp = thtDays !== null && thtDays < 0;
+                      const thtSoon = thtDays !== null && thtDays >= 0 && thtDays <= 60;
+                      const afboekLogs = ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id);
+                      return (
+                        <div key={a.id} className="px-4 py-3 border-b last:border-b-0">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                                {batch && <span className="font-medium text-gray-700">{batch.batch_nummer ? `#${batch.batch_nummer}` : batch.naam}</span>}
+                                {a.tht
+                                  ? <span className={thtExp ? 'text-red-600 font-semibold' : thtSoon ? 'text-yellow-600 font-medium' : ''}>
+                                      {t('lbl_tht')}: <strong>{fmtD(a.tht)}</strong>
+                                      {thtExp ? ` ${t('msg_tht_verlopen')}` : thtSoon ? ` (${thtDays}d)` : ''}
+                                    </span>
+                                  : <span className="text-gray-400">{t('lbl_tht')}: —</span>
+                                }
+                                <span className="text-gray-400">{Number(a.inhoud_per_eenheid||0).toFixed(1)} {t('lbl_liter_per_stuk')}</span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
+                                <span className="text-gray-600">{t('voorraad_afgevuld')}: <strong className="font-semibold text-gray-800">{a.hoeveelheid}×</strong></span>
+                                <span className={`font-bold ${beschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                                  {t('msg_n_beschikbaar').replace('{n}', String(beschikbaar))}
+                                </span>
+                              </div>
+                            </div>
+                            {beschikbaar > 0 && (
+                              <button onClick={e => openAfboekModal(a, e)}
+                                className="flex-shrink-0 text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap mt-0.5">
+                                − {t('btn_afboeken')}
+                              </button>
+                            )}
+                          </div>
+                          {afboekLogs.length > 0 && (
+                            <div className="mt-2 pl-3 border-l-2 border-red-100 space-y-1">
+                              {afboekLogs.map((ab: any) => (
+                                <div key={ab.id} className="flex items-center gap-2 text-xs">
+                                  <span className={`px-1.5 py-0.5 rounded font-medium ${REDEN_COLORS[ab.reden as AfboekingReden] || 'text-gray-500 bg-gray-100'}`}>
+                                    {t(AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.lKey || ab.reden)}
+                                  </span>
+                                  <span className="text-red-500 font-semibold">−{ab.aantal}×</span>
+                                  <span className="text-gray-400">{ab.datum}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Recepten */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('lbl_product_recepten')}</div>
+              <div className="p-3">
+                {selRecepten.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_recepten_gekoppeld')}</div>}
+                {selRecepten.map((r: any) => (
+                  <div key={r.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
+                    <div>
+                      <span className="text-sm font-medium">{r.naam}</span>
+                      {r.stijl && <span className="text-xs text-gray-400 ml-2">{r.stijl}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Artikelen / SKU's */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between">
+                <span>{t('lbl_product_artikelen')}</span>
+                <Btn onClick={() => startArtEdit()} s="sm" v="header">{t('btn_artikel_toevoegen')}</Btn>
+              </div>
+
+              {artForm && (
+                <div className="p-3 bg-gray-50 border-b border-gray-200">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[11px] text-gray-500">{t('lbl_product_verpakking')}</label>
+                      <select value={artForm.verpakking_id||''} onChange={e => setArtForm((f: any) => ({...f, verpakking_id: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input bg-white">
+                        <option value="">-</option>
+                        {(verpakkingen||[]).map((v: any) => <option key={v.id} value={v.id}>{v.naam} ({v.inhoud_liter}L)</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500">{t('lbl_product_sku')}</label>
+                      <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500">{t('lbl_product_ean')}</label>
+                      <input type="text" value={artForm.ean||''} onChange={e => setArtForm((f: any) => ({...f, ean: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] text-gray-500">{t('lbl_product_prijs')}</label>
+                        <button type="button" onClick={() => {
+                          const btw = Number(artForm.btw_pct || 0);
+                          const prijs = Number(artForm.verkoopprijs || 0);
+                          if (prijsInclBtw && prijs > 0) {
+                            setArtForm((f: any) => ({...f, verkoopprijs: (prijs / (1 + btw / 100)).toFixed(2)}));
+                          } else if (!prijsInclBtw && prijs > 0) {
+                            setArtForm((f: any) => ({...f, verkoopprijs: (prijs * (1 + btw / 100)).toFixed(2)}));
+                          }
+                          setPrijsInclBtw(!prijsInclBtw);
+                        }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
+                          {prijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
+                        </button>
+                      </div>
+                      <input type="number" step="0.01" value={artForm.verkoopprijs||''} onChange={e => setArtForm((f: any) => ({...f, verkoopprijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] text-gray-500">{t('lbl_product_b2b_prijs')}</label>
+                        <button type="button" onClick={() => {
+                          const btw = Number(artForm.btw_pct || 0);
+                          const prijs = Number(artForm.b2b_prijs || 0);
+                          if (b2bPrijsInclBtw && prijs > 0) {
+                            setArtForm((f: any) => ({...f, b2b_prijs: (prijs / (1 + btw / 100)).toFixed(2)}));
+                          } else if (!b2bPrijsInclBtw && prijs > 0) {
+                            setArtForm((f: any) => ({...f, b2b_prijs: (prijs * (1 + btw / 100)).toFixed(2)}));
+                          }
+                          setB2bPrijsInclBtw(!b2bPrijsInclBtw);
+                        }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
+                          {b2bPrijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
+                        </button>
+                      </div>
+                      <input type="number" step="0.01" value={artForm.b2b_prijs||''} onChange={e => setArtForm((f: any) => ({...f, b2b_prijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500">{t('lbl_product_btw')}</label>
+                      <input type="number" value={artForm.btw_pct||''} onChange={e => setArtForm((f: any) => ({...f, btw_pct: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500">{t('lbl_gn_code')}</label>
+                      <select value={artForm.gn_code||''} onChange={e => setArtForm((f: any) => ({...f, gn_code: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input bg-white">
+                        <option value="">-</option>
+                        {(gnCodes||[]).map((gc: any) => <option key={gc.code} value={gc.code}>{gc.code} — {gc.naam}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500">{t('lbl_product_omschrijving')}</label>
+                      <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <Btn onClick={saveArtikel} s="sm">{t('btn_product_opslaan')}</Btn>
+                    <Btn onClick={() => setArtForm(null)} s="sm" v="secondary">{t('btn_product_annuleren')}</Btn>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3">
+                {selArtikelen.length === 0 && !artForm && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_product_artikelen')}</div>}
+                {selArtikelen.length > 0 && (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-gray-500 border-b border-gray-100">
+                        <th className="text-left py-1 font-medium">{t('lbl_product_verpakking')}</th>
+                        <th className="text-left py-1 font-medium">{t('lbl_product_sku')}</th>
+                        <th className="text-left py-1 font-medium">{t('lbl_gn_code')}</th>
+                        <th className="text-right py-1 font-medium">{t('lbl_product_prijs')}</th>
+                        <th className="text-right py-1 font-medium">{t('lbl_product_b2b_prijs')}</th>
+                        <th className="text-right py-1 font-medium">{t('lbl_product_btw')}</th>
+                        <th className="text-right py-1 font-medium">{t('lbl_product_marge')}</th>
+                        <th className="w-16"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selArtikelen.map((a: any) => {
+                        const margeInfo = berekenMarge(a);
+                        return (
+                          <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-1.5">{a.verpakking_naam || '-'}</td>
+                            <td className="py-1.5 font-mono">{a.artikelnummer || '-'}</td>
+                            <td className="py-1.5 text-gray-500">{a.gn_code || '-'}</td>
+                            <td className="py-1.5 text-right">{a.verkoopprijs ? fmt(a.verkoopprijs) : '-'}</td>
+                            <td className="py-1.5 text-right">{a.b2b_prijs ? fmt(a.b2b_prijs) : '-'}</td>
+                            <td className="py-1.5 text-right">{a.btw_pct != null ? `${a.btw_pct}%` : '-'}</td>
+                            <td className="py-1.5 text-right">{margeInfo ? `${margeInfo.marge.toFixed(0)}%` : '-'}</td>
+                            <td className="py-1.5 text-right">
+                              <button onClick={() => startArtEdit(a)} className="text-gray-400 hover:text-gray-600 mr-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                                </svg>
+                              </button>
+                              <button onClick={() => deleteArtikel(a.id)} className="text-red-400 hover:text-red-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            {/* Batches */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setPage && setPage('batches')}>
+                <span>{t('lbl_product_batches')} ({selBatches.length})</span>
+                <span className="text-xs opacity-75">&rarr;</span>
+              </div>
+              <div className="p-3">
+                {selBatches.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_producten')}</div>}
+                {selBatches.slice(0, 10).map((b: any) => (
+                  <div key={b.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
+                    <div>
+                      <span className="text-sm font-medium">{b.naam}</span>
+                      {b.batch_nummer && <span className="text-xs text-gray-400 ml-2">#{b.batch_nummer}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {b.ABV && <span className="text-xs text-gray-500">{Number(b.ABV).toFixed(1)}%</span>}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
+                    </div>
+                  </div>
+                ))}
+                {selBatches.length > 10 && <div className="text-xs text-gray-400 text-center py-1">+{selBatches.length - 10}</div>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Afboeken modal */}
+      {afboekModal && (
+        <Modal title={t('title_afboeken_modal').replace('{verpakking}', afboekModal.verpakking_naam || afboekModal.verpakking_type || '')} onClose={() => setAfboekModal(null)}>
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4">
+              <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
+              {afboekModal.tht && <span>{t('lbl_tht')}: <strong>{fmtD(afboekModal.tht)}</strong></span>}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_reden')} <span className="text-red-400">*</span></label>
+                <Sel value={afboekForm.reden} onChange={(v: string) => setAfboekForm(f => ({...f, reden: v as AfboekingReden}))}
+                  opts={AFBOEKING_REDENEN.map(r => ({v: r.v, l: t(r.lKey)}))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
+                <input type="number" value={afboekForm.aantal} onChange={e => setAfboekForm(f => ({...f, aantal: e.target.value}))} placeholder="1"
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking_required')} <span className="text-red-400">*</span></label>
+              <textarea value={afboekForm.opmerking} onChange={e => { setAfboekForm(f => ({...f, opmerking: e.target.value})); setAfboekError(''); }} rows={3}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm t-input resize-none" />
+            </div>
+            {afboekError && <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">{afboekError}</div>}
+            <div className="flex justify-end gap-2 pt-1 border-t">
+              <Btn v="secondary" onClick={() => setAfboekModal(null)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={doAfboeken} v="danger">{t('btn_afboeken_bevestigen')}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+export default ProductenPage

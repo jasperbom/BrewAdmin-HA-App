@@ -222,7 +222,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
         {/* Back + header */}
         <div className="flex items-center gap-3 flex-wrap">
           <Btn v="secondary" s="sm" onClick={() => setSelected(null)}>← {t('btn_cancel')}</Btn>
-          <h2 className="text-lg font-semibold text-gray-800">{t('inv_titel')} #{selected.id}</h2>
+          <h2 className="text-xl font-bold text-gray-800">{t('inv_titel')} #{selected.id}</h2>
           <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${
             isOpen ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
           }`}>
@@ -353,7 +353,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-800">{t('inv_titel')}</h2>
+        <h2 className="text-xl font-bold text-gray-800">{t('inv_titel')}</h2>
         <Btn onClick={() => { setNewType('ingredienten'); setShowNew(true) }}>
           + {t('inv_nieuwe_telling')}
         </Btn>

@@ -152,9 +152,11 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
+  const [newGnCode, setNewGnCode] = React.useState('');
+  const [newGnNaam, setNewGnNaam] = React.useState('');
   const [tarieven, setTarieven] = React.useState({
     tarief_per_hl_abv: String(accijnsInst?.tarief_per_hl_abv ?? 7.51),
     tarief_per_hl:     String(accijnsInst?.tarief_per_hl     ?? 24.17),
@@ -352,6 +354,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
     {id:'ingredienten',  label:'Ingrediënten',             icon:'🌾'},
     {id:'kostensoorten', label:t('settings_kosten_soorten_title'), icon:'📊'},
+    {id:'gncodes',       label:t('settings_gn_codes_title'), icon:'📦'},
     {id:'hygiene',       label:t('settings_hygiene'),      icon:'🧹'},
     {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
@@ -1203,6 +1206,39 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_kostensoort')} value={newKostenSoort} onChange={(e: any)=>setNewKostenSoort(e.target.value)}
               onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);setNewKostenSoort('');}}} />
             <Btn onClick={()=>{const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);setNewKostenSoort('');}}>{t('btn_add')}</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* GN-CODES */}
+      {activeSection==='gncodes' && (
+        <div className="bg-white rounded-xl shadow-card p-6">
+          <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_gn_codes_title')}</h2>
+          <p className="text-sm text-gray-500 mb-4">{t('settings_gn_codes_desc')}</p>
+          <div className="space-y-2 mb-4">
+            {(gnCodes||[]).map((gc: any, idx: number) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input className="w-32 border rounded px-2 py-1.5 text-sm t-input font-mono"
+                  value={gc.code}
+                  onChange={(e: any)=>setGnCodes((prev: any)=>prev.map((g: any,i: number)=>i===idx?{...g, code:e.target.value}:g))} />
+                <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input"
+                  value={gc.naam}
+                  onChange={(e: any)=>setGnCodes((prev: any)=>prev.map((g: any,i: number)=>i===idx?{...g, naam:e.target.value}:g))} />
+                <button
+                  title={t('btn_delete')}
+                  onClick={()=>{
+                    if(!confirm(t('confirm_gn_code_delete').replace('{code}',gc.code)))return;
+                    setGnCodes((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
+                  }}
+                  className="text-sm px-2 py-1.5 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input className="w-32 border rounded px-2 py-1.5 text-sm t-input font-mono" placeholder={t('ph_gn_code')} value={newGnCode} onChange={(e: any)=>setNewGnCode(e.target.value)} />
+            <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_gn_naam')} value={newGnNaam} onChange={(e: any)=>setNewGnNaam(e.target.value)}
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);setNewGnCode('');setNewGnNaam('');}}} />
+            <Btn onClick={()=>{const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);setNewGnCode('');setNewGnNaam('');}}>{t('btn_add')}</Btn>
           </div>
         </div>
       )}
