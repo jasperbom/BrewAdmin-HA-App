@@ -59,7 +59,7 @@ const colorClass = (v: number) =>
 
 /* ── Component ───────────────────────────────────────────────────────────────── */
 
-function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], afboekingen = [], log = [], ing = [], accijnsInst = null }: any) {
+function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], afboekingen = [], log = [], ing = [], accijnsInst = null, producten = [] }: any) {
   const { useState, useMemo } = React
   const now = new Date()
   const [periodType, setPeriodType] = useState<PeriodType>('maand')
@@ -183,10 +183,13 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
     av.forEach((a: any) => {
       const batch = batchMap[a.batch_id]
       if (!batch) return
-      const key = `${batch.naam}|||${a.verpakking_naam}`
+      // Productnaam via product_id, fallback biernaam, fallback batchnaam
+      const product = batch.product_id ? producten.find((p: any) => p.id === batch.product_id) : null
+      const bierNaam = product?.naam || batch.biernaam || batch.naam
+      const key = `${bierNaam}|||${a.verpakking_naam}`
       if (!combos.has(key)) {
         combos.set(key, {
-          batch_naam: batch.naam,
+          batch_naam: bierNaam,
           verpakking_naam: a.verpakking_naam,
           gn_code: a.gn_code || batch.gn_code || '',
           batch_ids: new Set<string>(),
@@ -264,7 +267,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
     })
 
     return rows.sort((a, b) => a.batch_naam.localeCompare(b.batch_naam) || a.verpakking_naam.localeCompare(b.verpakking_naam))
-  }, [av, uit, afboekingen, batchMap, van, tot])
+  }, [av, uit, afboekingen, batchMap, van, tot, producten])
 
   const gereedTotals = useMemo(() => ({
     beginvoorraad: gereedRows.reduce((s: number, r: any) => s + r.beginvoorraad, 0),
@@ -341,6 +344,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
 
   return (
     <div className="space-y-6">
+      <h2 className="text-xl font-bold text-gray-800">{t('nav_voorraadverloop')}</h2>
       {/* Period selector */}
       <div className="bg-white rounded-xl shadow-card p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">

@@ -35,6 +35,8 @@ interface BatchesPageProps {
   hygieneGroups?: any[]
   wcCreds?: any
   artikelen?: any[]
+  producten?: any[]
+  productArtikelen?: any[]
   gistMetingen?: any[]
   setGistMetingen?: any
   haInst?: any
@@ -394,7 +396,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
   log, setLog, bfCreds, bfSync, tanks, accijnsInst,
-  hygieneItems, hygieneGroups, wcCreds, artikelen,
+  hygieneItems, hygieneGroups, wcCreds, artikelen, producten=[], productArtikelen=[],
   gistMetingen=[], setGistMetingen=()=>{}, haInst,
   acc=[],
   openBatchId=null,
@@ -416,7 +418,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
 
-  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:''}
+  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
 
   const safeStr = (v: any): string => {
@@ -894,8 +896,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id===Number(avF.verpakking_id) ? {...v, voorraad:Number(v.voorraad||0)-n} : v))
     }
     const avId = newId(av||[])
+    // Zoek artikel SKU: eerst via productArtikelen (nieuw), daarna via oude artikelen (fallback)
+    const pArt = selB?.product_id ? (productArtikelen||[]).find((a: any) => a.product_id === selB.product_id && a.verpakking_id === Number(avF.verpakking_id)) : null;
     const avArtKey = `${selB?.biernaam || selB?.naam || ''}|||${vp.naam||avF.verpakking_type||''}`.toLowerCase()
-    const avArt = (artikelen||[]).find((a: any) => a.key?.toLowerCase() === avArtKey)
+    const avArt = pArt || (artikelen||[]).find((a: any) => a.key?.toLowerCase() === avArtKey)
     setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, artikel_sku: avArt?.artikelnummer || null, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
     addLog({type:'afvullen', batch_id:sel, batch_naam:selB?.naam||'', afvulling_id:avId,
       verpakking_type:vp.naam||avF.verpakking_type, hoeveelheid:n, eenheid:'stuks',
@@ -1852,23 +1856,25 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <Inp label={t('lbl_name')+' *'} value={bForm.naam} onChange={(v: string)=>setBForm((f: any)=>({...f,naam:v}))} placeholder={t('ph_beer_name')} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_biernaam_koppeling')}</label>
+              <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('nav_producten')}</label>
               <div className="flex gap-1">
-                <input
-                  type="text"
-                  list="biernamen-datalist"
-                  value={bForm.biernaam||''}
-                  onChange={e=>setBForm((f: any)=>({...f,biernaam:e.target.value}))}
-                  placeholder={t('ph_biernaam_koppeling')}
+                <select
+                  value={bForm.product_id||''}
+                  onChange={e=>{
+                    const pid = e.target.value ? Number(e.target.value) : '';
+                    const prod = producten.find((p: any) => p.id === pid);
+                    setBForm((f: any)=>({...f, product_id: pid || '', biernaam: prod?.naam || f.biernaam, stijl: prod?.stijl || f.stijl, gn_code: prod?.gn_code || f.gn_code}));
+                  }}
                   className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input"
-                />
-                <datalist id="biernamen-datalist">
-                  {[...new Set((artikelen||[]).map((a: any)=>a.biernaam).filter(Boolean))].sort()
-                    .map((n: any) => <option key={n} value={n} />)}
-                </datalist>
-                {bForm.biernaam && (
+                >
+                  <option value="">{t('ph_biernaam_koppeling')}</option>
+                  {producten.filter((p: any) => p.status !== 'gearchiveerd').sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||'')).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.naam}{p.stijl ? ` (${p.stijl})` : ''}</option>
+                  ))}
+                </select>
+                {bForm.product_id && (
                   <button type="button"
-                    onClick={()=>setBForm((f: any)=>({...f,biernaam:''}))}
+                    onClick={()=>setBForm((f: any)=>({...f, product_id: '', biernaam: ''}))}
                     className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">
                     ✕
                   </button>

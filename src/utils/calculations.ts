@@ -74,3 +74,38 @@ export const berekenWinstVerlies = (
 
   return { omzet, inkoopPerKostensoort, inkoopTotaal, accijnsKosten, brutowinst, nettowinst }
 }
+
+export interface ProductKostprijsResult {
+  kostprijs_per_liter: number
+  totaal_kosten: number
+  totaal_liter: number
+}
+
+export const berekenProductKostprijs = (
+  product_id: number,
+  batches: any[],
+  batchIngredienten: any[],
+  _lots?: any[]
+): ProductKostprijsResult => {
+  const pBatches = (batches||[]).filter((b: any) => b.product_id === product_id)
+  let totaal_kosten = 0
+  let totaal_liter = 0
+
+  for (const b of pBatches) {
+    totaal_liter += Number(b.liter_vergist || 0)
+    // Ingrediëntkosten
+    const bBi = (batchIngredienten||[]).filter((i: any) => i.batch_id === b.id)
+    for (const ing of bBi) {
+      totaal_kosten += Number(ing.kosten || 0)
+    }
+    // Utilitykosten
+    totaal_kosten += Number(b.electra_kosten || 0) + Number(b.water_kosten || 0) +
+      Number(b.schoonmaak_kosten || 0) + Number(b.overige_kosten || 0)
+  }
+
+  return {
+    kostprijs_per_liter: totaal_liter > 0 ? totaal_kosten / totaal_liter : 0,
+    totaal_kosten,
+    totaal_liter
+  }
+}
