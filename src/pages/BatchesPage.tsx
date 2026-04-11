@@ -1321,7 +1321,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, hygiene_checks: nieuweChecks} : b))
                 const item = items.find((i: any) => i.id===itemId)
                 const groep = item?.group_id ? groups.find((g: any) => g.id===item.group_id) : null
-                const label = groep ? `${groep.label} — ${item?.label}` : item?.label||`item ${itemId}`
+                const label = groep ? `${groep.naam} — ${item?.label}` : item?.label||`item ${itemId}`
                 addLog({type:'hygiene', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
               }
               const ungrouped = items.filter((i: any) => !i.group_id)
@@ -1346,7 +1346,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       {totaal === 0 && <p className="text-sm text-gray-400 italic">{t('batch_hygiene_no_items')}</p>}
                       {gegroepeerd.map(({group, items:gItems}: any) => (
                         <div key={group.id}>
-                          <div className="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-1.5 pb-1 border-b border-teal-100">{group.label}</div>
+                          <div className="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-1.5 pb-1 border-b border-teal-100">{group.naam}</div>
                           <div className="space-y-0.5">
                             {gItems.map((item: any) => (
                               <label key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
