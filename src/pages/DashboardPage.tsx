@@ -386,12 +386,13 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
         : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' };
 
     /* Barrel geometrie (viewBox 0 0 56 120) — vat van de voorkant gezien
-       - Vat (kopkant):  cirkel cx=28, cy=52, r=22
+       - Vat (kopkant):  cirkel cx=28, cy=54, r=22
        - Metalen hoepel: dikke ring rond de cirkel
-       - Cradle:         y 76–111 (houten wieg onder vat)
-       Vloeistof vult van y=74 (bodem cirkel) tot y=30 (top), totaal 44px. */
+       - Cradle:         compacte gebogen houten wieg die onder de barrel loopt
+       - Bunghole:       bovenop het vat (op de top van de cirkel)
+       Vloeistof vult van y=76 (bodem cirkel) tot y=32 (top), totaal 44px. */
     const cx = 28;
-    const cy = 52;
+    const cy = 54;
     const r  = 22;
     const totalH = r * 2;
     const fillH = (pct / 100) * totalH;
@@ -421,10 +422,10 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
           </linearGradient>
         </defs>
 
-        {/* Cradle — trapezoidale houten wieg onder het vat */}
-        <path d="M6,108 L12,78 L44,78 L50,108 Z" fill="#5c2e0a" opacity="0.92"/>
-        <path d="M12,78 L44,78" stroke="#3d1c05" strokeWidth="0.8"/>
-        <rect x="2" y="108" width="52" height="3" rx="1" fill="#3d1c05"/>
+        {/* Cradle — compacte gebogen houten wieg die meeloopt met de onderkant van het vat */}
+        <path d="M14,72 A22,22 0 0,1 42,72 L42,86 L14,86 Z"
+          fill="#5c2e0a" opacity="0.92" stroke="#3d1c05" strokeWidth="0.5"/>
+        <rect x="12" y="86" width="32" height="2" rx="1" fill="#3d1c05"/>
 
         {/* Metalen buitenhoepel (achtergrond) */}
         <circle cx={cx} cy={cy} r={r+1} fill={`url(#brh-${uid})`} stroke="#1e293b" strokeWidth="0.5"/>
@@ -452,12 +453,14 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
           <line x1="4" y1={cy + 10} x2="52" y2={cy + 10} stroke="#3d1c05" strokeWidth="0.7"/>
         </g>
 
-        {/* Bunghole (vulopening) bovenin de kopkant */}
-        <circle cx={cx} cy={cy - 15} r="1.8" fill="#1a0800" stroke="#3d1c05" strokeWidth="0.5"/>
-        <circle cx={cx - 0.5} cy={cy - 15.5} r="0.6" fill="#78350f" opacity="0.6"/>
+        {/* Bunghole (vulopening) bovenop het vat — op de top van de cirkel */}
+        <ellipse cx={cx} cy={cy - r} rx="3.5" ry="1.3"
+          fill="#1a0800" stroke="#3d1c05" strokeWidth="0.6"/>
+        <ellipse cx={cx} cy={cy - r - 0.2} rx="2" ry="0.6"
+          fill="#3d1c05" opacity="0.6"/>
 
-        {/* Glans op de metalen hoepel (bovenkant links) */}
-        <path d={`M${cx - 16},${cy - 14} A${r+1},${r+1} 0 0,1 ${cx - 2},${cy - 22}`}
+        {/* Glans op de metalen hoepel (linkerkant, onder de bunghole langs) */}
+        <path d={`M${cx - 18},${cy - 6} A${r+1},${r+1} 0 0,1 ${cx - 10},${cy - 20}`}
           fill="none" stroke="white" strokeWidth="1.5" opacity="0.4" strokeLinecap="round"/>
 
         {/* Subtiele glans op het hout */}

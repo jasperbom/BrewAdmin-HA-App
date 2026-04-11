@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.26] — 2026-04-11
+
+### Changed — Barrel cradle en bunghole
+- **DashboardPage**: `BarrelVisual` heeft nu een compactere, gebogen
+  cradle die met dezelfde straal als het vat meeloopt — de bovenkant van
+  de wieg volgt de onderkant van de cirkel in plaats van een plat
+  trapezium eronder. De cradle is zo'n 2/3e lager dan voorheen.
+- **DashboardPage**: de bunghole zit nu als een ellips bovenop het vat
+  (op de top van de cirkel) in plaats van op de voorkant, wat het
+  perspectief vanaf de voorkant natuurlijker maakt.
+
 ## [1.8.25] — 2026-04-11
 
 ### Changed — Barrel vanaf de voorkant
