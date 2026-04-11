@@ -258,6 +258,7 @@ export interface Tank {
   id: string
   naam?: string
   volume?: number
+  soort?: 'fermentatie' | 'bright' | 'barrel'
 }
 
 export interface HygieneItem {
