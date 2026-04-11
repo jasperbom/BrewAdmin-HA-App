@@ -375,7 +375,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     );
   };
 
-  // Visueel houten vat / barrel (SVG) — horizontaal liggend vat op een cradle
+  // Visueel houten vat / barrel (SVG) — vat van de voorkant gezien (rond)
   const BarrelVisual = ({fillPct, status, ebc}: {fillPct: number, status?: string, ebc?: number}) => {
     const [uid] = useState(() => `br${++tankIdRef.current}`);
     const pct = Math.min(100, Math.max(0, fillPct || 0));
@@ -385,80 +385,89 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
         ? { fill: '#d97706', fillDark: '#b45309', highlight: '#f59e0b' }
         : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' };
 
-    /* Barrel geometrie (viewBox 0 0 56 120) — horizontaal liggend vat
-       - Buik:     x 8–48, y 28–92 (bolling top en bottom in het midden)
-       - Cradle:   y 92–111 (houten steun onder vat)
-       Vloeistof vult van y=92 (bodem) tot y=28 (top), totaal 64px. */
-    const totalH = 64;
+    /* Barrel geometrie (viewBox 0 0 56 120) — vat van de voorkant gezien
+       - Vat (kopkant):  cirkel cx=28, cy=52, r=22
+       - Metalen hoepel: dikke ring rond de cirkel
+       - Cradle:         y 76–111 (houten wieg onder vat)
+       Vloeistof vult van y=74 (bodem cirkel) tot y=30 (top), totaal 44px. */
+    const cx = 28;
+    const cy = 52;
+    const r  = 22;
+    const totalH = r * 2;
     const fillH = (pct / 100) * totalH;
-    const liquidTop = 92 - fillH;
-
-    // Horizontaal vat silhouet: bolling top + vlakke zijkanten + bolling bottom
-    const barrelPath = 'M8,40 Q28,28 48,40 L48,80 Q28,92 8,80 Z';
+    const liquidTop = (cy + r) - fillH;
 
     return (
-      <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.08))'}}>
+      <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.12))'}}>
         <defs>
           <clipPath id={`brc-${uid}`}>
-            <path d={barrelPath} />
+            <circle cx={cx} cy={cy} r={r-2} />
           </clipPath>
-          {/* Hout gradient */}
-          <linearGradient id={`brw-${uid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#b45309"/>
-            <stop offset="30%" stopColor="#92400e"/>
-            <stop offset="70%" stopColor="#78350f"/>
+          {/* Hout radial gradient voor 3D-effect op de kopkant */}
+          <radialGradient id={`brw-${uid}`} cx="40%" cy="35%" r="75%">
+            <stop offset="0%" stopColor="#c27410"/>
+            <stop offset="50%" stopColor="#92400e"/>
             <stop offset="100%" stopColor="#5c2e0a"/>
-          </linearGradient>
+          </radialGradient>
           <linearGradient id={`brl-${uid}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={colors.highlight} stopOpacity="0.85"/>
             <stop offset="100%" stopColor={colors.fillDark} stopOpacity="0.95"/>
           </linearGradient>
+          {/* Metalen ring gradient */}
+          <linearGradient id={`brh-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#94a3b8"/>
+            <stop offset="50%" stopColor="#475569"/>
+            <stop offset="100%" stopColor="#1e293b"/>
+          </linearGradient>
         </defs>
 
-        {/* Cradle / houten steun onder het vat */}
-        <path d="M6,92 L14,108 L20,108 L16,92 Z" fill="#5c2e0a" opacity="0.9"/>
-        <path d="M50,92 L42,108 L36,108 L40,92 Z" fill="#5c2e0a" opacity="0.9"/>
-        <rect x="4" y="108" width="48" height="3" rx="1" fill="#5c2e0a"/>
+        {/* Cradle — trapezoidale houten wieg onder het vat */}
+        <path d="M6,108 L12,78 L44,78 L50,108 Z" fill="#5c2e0a" opacity="0.92"/>
+        <path d="M12,78 L44,78" stroke="#3d1c05" strokeWidth="0.8"/>
+        <rect x="2" y="108" width="52" height="3" rx="1" fill="#3d1c05"/>
 
-        {/* Vat lichaam (hout) */}
-        <path d={barrelPath} fill={`url(#brw-${uid})`} stroke="#5c2e0a" strokeWidth="1.5"/>
+        {/* Metalen buitenhoepel (achtergrond) */}
+        <circle cx={cx} cy={cy} r={r+1} fill={`url(#brh-${uid})`} stroke="#1e293b" strokeWidth="0.5"/>
 
-        {/* Vloeistof binnen het vat */}
+        {/* Houten kopkant */}
+        <circle cx={cx} cy={cy} r={r-2} fill={`url(#brw-${uid})`} stroke="#3d1c05" strokeWidth="0.8"/>
+
+        {/* Vloeistof — horizontale chord door de cirkel */}
         {pct > 0 && (
-          <g clipPath={`url(#brc-${uid})`} opacity="0.65">
+          <g clipPath={`url(#brc-${uid})`} opacity="0.7">
             <rect x="0" y={liquidTop} width="56" height={fillH + 2} fill={`url(#brl-${uid})`} />
+            {/* Oppervlakte-highlight bij de vloeistoftop */}
+            {pct < 100 && pct > 2 && (
+              <line x1="0" y1={liquidTop} x2="56" y2={liquidTop}
+                stroke={colors.highlight} strokeWidth="1" opacity="0.7"/>
+            )}
           </g>
         )}
 
-        {/* Duigen (houten planken) — horizontaal langs de lengte van het vat */}
-        <g clipPath={`url(#brc-${uid})`} opacity="0.35">
-          <line x1="8" y1="48" x2="48" y2="48" stroke="#3d1c05" strokeWidth="0.6"/>
-          <line x1="8" y1="56" x2="48" y2="56" stroke="#3d1c05" strokeWidth="0.6"/>
-          <line x1="8" y1="64" x2="48" y2="64" stroke="#3d1c05" strokeWidth="0.6"/>
-          <line x1="8" y1="72" x2="48" y2="72" stroke="#3d1c05" strokeWidth="0.6"/>
+        {/* Houten planken van de kopkant — horizontale naden tussen duigen */}
+        <g clipPath={`url(#brc-${uid})`} opacity="0.45">
+          <line x1="4" y1={cy - 14} x2="52" y2={cy - 14} stroke="#3d1c05" strokeWidth="0.7"/>
+          <line x1="4" y1={cy - 6}  x2="52" y2={cy - 6}  stroke="#3d1c05" strokeWidth="0.7"/>
+          <line x1="4" y1={cy + 2}  x2="52" y2={cy + 2}  stroke="#3d1c05" strokeWidth="0.7"/>
+          <line x1="4" y1={cy + 10} x2="52" y2={cy + 10} stroke="#3d1c05" strokeWidth="0.7"/>
         </g>
 
-        {/* Metalen hoepels — verticale banden rond het horizontale vat */}
-        <g clipPath={`url(#brc-${uid})`}>
-          <rect x="13" y="0" width="3" height="120" fill="#64748b" opacity="0.9"/>
-          <rect x="13" y="0" width="0.5" height="120" fill="#cbd5e1"/>
-          <rect x="26" y="0" width="4" height="120" fill="#64748b" opacity="0.9"/>
-          <rect x="26" y="0" width="0.5" height="120" fill="#cbd5e1"/>
-          <rect x="40" y="0" width="3" height="120" fill="#64748b" opacity="0.9"/>
-          <rect x="40" y="0" width="0.5" height="120" fill="#cbd5e1"/>
-        </g>
+        {/* Bunghole (vulopening) bovenin de kopkant */}
+        <circle cx={cx} cy={cy - 15} r="1.8" fill="#1a0800" stroke="#3d1c05" strokeWidth="0.5"/>
+        <circle cx={cx - 0.5} cy={cy - 15.5} r="0.6" fill="#78350f" opacity="0.6"/>
 
-        {/* Bunghole (vulopening) bovenop het vat */}
-        <ellipse cx="28" cy="30" rx="2.5" ry="1.2" fill="#3d1c05" stroke="#5c2e0a" strokeWidth="0.6"/>
+        {/* Glans op de metalen hoepel (bovenkant links) */}
+        <path d={`M${cx - 16},${cy - 14} A${r+1},${r+1} 0 0,1 ${cx - 2},${cy - 22}`}
+          fill="none" stroke="white" strokeWidth="1.5" opacity="0.4" strokeLinecap="round"/>
 
-        {/* Glans op het hout */}
-        <path d="M14,36 Q28,30 42,36" fill="none" stroke="white" strokeWidth="1" opacity="0.22"/>
+        {/* Subtiele glans op het hout */}
+        <circle cx={cx - 7} cy={cy - 8} r="4" fill="white" opacity="0.08"/>
 
         {/* Percentage label */}
         {pct > 8 && (
-          <text x="28" y="64" textAnchor="middle"
+          <text x={cx} y={cy + 4} textAnchor="middle"
             fontSize="11" fontWeight="bold" fill="white"
-            style={{textShadow: '0 1px 2px rgba(0,0,0,0.5)', userSelect: 'none'}}>
+            style={{textShadow: '0 1px 2px rgba(0,0,0,0.6)', userSelect: 'none'}}>
             {Math.round(pct)}%
           </text>
         )}

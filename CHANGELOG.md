@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.25] — 2026-04-11
+
+### Changed — Barrel vanaf de voorkant
+- **DashboardPage**: `BarrelVisual` is opnieuw getekend als een ronde
+  kopkant gezien vanaf de voorkant — een cirkel met een donkere metalen
+  hoepel eromheen, houten duig-naden binnen de kopkant, en een bunghole
+  bovenin. De vloeistof vult het vat als een horizontale chord door de
+  cirkel. Een trapezoidale houten wieg houdt het ronde vat vast.
+
 ## [1.8.24] — 2026-04-11
 
 ### Added — Tank-geschiedenis per batch
