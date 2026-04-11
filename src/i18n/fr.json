@@ -247,6 +247,7 @@
   "batch_move_tank_label": "Déplacer vers une cuve",
   "batch_move_tank_choose": "— Choisir une cuve —",
   "batch_move_tank_confirm": "Déplacer",
+  "batch_tank_history": "Historique des cuves",
   "lbl_occupied": "occupée",
   "settings_brewfather_enable": "Intégration activée",
   "settings_brewfather_user_id": "User ID",

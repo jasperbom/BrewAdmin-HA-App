@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
+import { resolveTankHistorie } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 
 function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}}: any) {
@@ -327,9 +328,9 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
           </linearGradient>
         </defs>
 
-        {/* Poten */}
-        <line x1="12" y1="100" x2="10" y2="118" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round"/>
-        <line x1="44" y1="100" x2="46" y2="118" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round"/>
+        {/* Poten — recht, matching fermentor-stijl */}
+        <line x1="10" y1="100" x2="10" y2="118" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="46" y1="100" x2="46" y2="118" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round"/>
         <ellipse cx="10" cy="118" rx="3" ry="1.5" fill="#94a3b8"/>
         <ellipse cx="46" cy="118" rx="3" ry="1.5" fill="#94a3b8"/>
 
@@ -374,7 +375,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     );
   };
 
-  // Visueel houten vat / barrel (SVG) — horizontaal gebogen vat met duigen en hoepels
+  // Visueel houten vat / barrel (SVG) — horizontaal liggend vat op een cradle
   const BarrelVisual = ({fillPct, status, ebc}: {fillPct: number, status?: string, ebc?: number}) => {
     const [uid] = useState(() => `br${++tankIdRef.current}`);
     const pct = Math.min(100, Math.max(0, fillPct || 0));
@@ -384,18 +385,16 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
         ? { fill: '#d97706', fillDark: '#b45309', highlight: '#f59e0b' }
         : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' };
 
-    /* Barrel geometrie (viewBox 0 0 56 120) — horizontaal vat, gecentreerd y 30–100
-       - Vat buik:       x 4–52, y 30–100 (bolling in het midden)
-       - Duigen:         verticale bruine lijnen
-       - Hoepels:        horizontale donkere banden
-       - Poten:          onder vat
-       Vloeistof vult van y=100 (bodem) tot y=30 (top), totaal 70px. */
-    const totalH = 70;
+    /* Barrel geometrie (viewBox 0 0 56 120) — horizontaal liggend vat
+       - Buik:     x 8–48, y 28–92 (bolling top en bottom in het midden)
+       - Cradle:   y 92–111 (houten steun onder vat)
+       Vloeistof vult van y=92 (bodem) tot y=28 (top), totaal 64px. */
+    const totalH = 64;
     const fillH = (pct / 100) * totalH;
-    const liquidTop = 100 - fillH;
+    const liquidTop = 92 - fillH;
 
-    // Barrel silhouet: twee bolle zijkanten
-    const barrelPath = 'M10,34 Q4,65 10,96 L46,96 Q52,65 46,34 Z';
+    // Horizontaal vat silhouet: bolling top + vlakke zijkanten + bolling bottom
+    const barrelPath = 'M8,40 Q28,28 48,40 L48,80 Q28,92 8,80 Z';
 
     return (
       <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.08))'}}>
@@ -416,50 +415,48 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
           </linearGradient>
         </defs>
 
-        {/* Poten / steun */}
-        <rect x="8" y="100" width="40" height="3" rx="1" fill="#78350f"/>
-        <line x1="14" y1="103" x2="12" y2="118" stroke="#5c2e0a" strokeWidth="2.5" strokeLinecap="round"/>
-        <line x1="42" y1="103" x2="44" y2="118" stroke="#5c2e0a" strokeWidth="2.5" strokeLinecap="round"/>
-        <ellipse cx="12" cy="118" rx="3" ry="1.2" fill="#5c2e0a"/>
-        <ellipse cx="44" cy="118" rx="3" ry="1.2" fill="#5c2e0a"/>
+        {/* Cradle / houten steun onder het vat */}
+        <path d="M6,92 L14,108 L20,108 L16,92 Z" fill="#5c2e0a" opacity="0.9"/>
+        <path d="M50,92 L42,108 L36,108 L40,92 Z" fill="#5c2e0a" opacity="0.9"/>
+        <rect x="4" y="108" width="48" height="3" rx="1" fill="#5c2e0a"/>
 
         {/* Vat lichaam (hout) */}
         <path d={barrelPath} fill={`url(#brw-${uid})`} stroke="#5c2e0a" strokeWidth="1.5"/>
 
-        {/* Vloeistof binnen het vat (zichtbaar via bunghole illusie) */}
+        {/* Vloeistof binnen het vat */}
         {pct > 0 && (
-          <g clipPath={`url(#brc-${uid})`} opacity="0.55">
+          <g clipPath={`url(#brc-${uid})`} opacity="0.65">
             <rect x="0" y={liquidTop} width="56" height={fillH + 2} fill={`url(#brl-${uid})`} />
           </g>
         )}
 
-        {/* Duigen (verticale houten planken) */}
-        <g clipPath={`url(#brc-${uid})`} opacity="0.4">
-          <line x1="18" y1="30" x2="18" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
-          <line x1="25" y1="30" x2="25" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
-          <line x1="31" y1="30" x2="31" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
-          <line x1="38" y1="30" x2="38" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
+        {/* Duigen (houten planken) — horizontaal langs de lengte van het vat */}
+        <g clipPath={`url(#brc-${uid})`} opacity="0.35">
+          <line x1="8" y1="48" x2="48" y2="48" stroke="#3d1c05" strokeWidth="0.6"/>
+          <line x1="8" y1="56" x2="48" y2="56" stroke="#3d1c05" strokeWidth="0.6"/>
+          <line x1="8" y1="64" x2="48" y2="64" stroke="#3d1c05" strokeWidth="0.6"/>
+          <line x1="8" y1="72" x2="48" y2="72" stroke="#3d1c05" strokeWidth="0.6"/>
         </g>
 
-        {/* Metalen hoepels */}
+        {/* Metalen hoepels — verticale banden rond het horizontale vat */}
         <g clipPath={`url(#brc-${uid})`}>
-          <rect x="0" y="38" width="56" height="3" fill="#64748b" opacity="0.9"/>
-          <rect x="0" y="38.5" width="56" height="0.5" fill="#cbd5e1"/>
-          <rect x="0" y="62" width="56" height="4" fill="#64748b" opacity="0.9"/>
-          <rect x="0" y="62.5" width="56" height="0.5" fill="#cbd5e1"/>
-          <rect x="0" y="88" width="56" height="3" fill="#64748b" opacity="0.9"/>
-          <rect x="0" y="88.5" width="56" height="0.5" fill="#cbd5e1"/>
+          <rect x="13" y="0" width="3" height="120" fill="#64748b" opacity="0.9"/>
+          <rect x="13" y="0" width="0.5" height="120" fill="#cbd5e1"/>
+          <rect x="26" y="0" width="4" height="120" fill="#64748b" opacity="0.9"/>
+          <rect x="26" y="0" width="0.5" height="120" fill="#cbd5e1"/>
+          <rect x="40" y="0" width="3" height="120" fill="#64748b" opacity="0.9"/>
+          <rect x="40" y="0" width="0.5" height="120" fill="#cbd5e1"/>
         </g>
 
-        {/* Bunghole (vulopening) bovenop */}
-        <ellipse cx="28" cy="32" rx="3" ry="1.5" fill="#3d1c05" stroke="#5c2e0a" strokeWidth="0.6"/>
+        {/* Bunghole (vulopening) bovenop het vat */}
+        <ellipse cx="28" cy="30" rx="2.5" ry="1.2" fill="#3d1c05" stroke="#5c2e0a" strokeWidth="0.6"/>
 
-        {/* Glans */}
-        <path d="M12,42 Q8,65 12,90" fill="none" stroke="white" strokeWidth="1.5" opacity="0.2"/>
+        {/* Glans op het hout */}
+        <path d="M14,36 Q28,30 42,36" fill="none" stroke="white" strokeWidth="1" opacity="0.22"/>
 
         {/* Percentage label */}
         {pct > 8 && (
-          <text x="28" y="68" textAnchor="middle"
+          <text x="28" y="64" textAnchor="middle"
             fontSize="11" fontWeight="bold" fill="white"
             style={{textShadow: '0 1px 2px rgba(0,0,0,0.5)', userSelect: 'none'}}>
             {Math.round(pct)}%
@@ -600,9 +597,17 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
               : 0;
             const sgPct    = batch ? sgProgress(batch) : null;
             const latestM  = batch ? latestMeting(batch.id) : null;
-            const daysInTank = batch?.datum
-              ? Math.floor((Date.now() - new Date(batch.datum).getTime()) / dayMs)
-              : null;
+            // Dagen in de huidige tank — start vanaf de laatste verplaatsing
+            // (fallback: brouwdatum als er nog geen historie is)
+            const daysInTank = (() => {
+              if (!batch) return null;
+              const hist = resolveTankHistorie(batch);
+              const curr = hist.find(r => r.isCurrent && r.tank === tk.id);
+              if (curr) return curr.dagen;
+              return batch.datum
+                ? Math.floor((Date.now() - new Date(batch.datum).getTime()) / dayMs)
+                : null;
+            })();
             const isFormOpen = metingBatchId === batch?.id;
 
             const handleTankClick = anyBatch

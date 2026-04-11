@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
+import { resolveTankHistorie, appendTankHistorie } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, convertEenheid } from '../utils/constants'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -678,7 +679,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     const nieuweStatus = (doelTank.soort==='bright' || doelTank.soort==='barrel') && oudeStatus==='Vergisten'
       ? 'Conditioneren'
       : oudeStatus
-    setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, tank: moveTankTarget, status: nieuweStatus} : b))
+    const nieuweHistorie = appendTankHistorie(selB, moveTankTarget, tod(), nieuweStatus)
+    setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, tank: moveTankTarget, status: nieuweStatus, tank_historie: nieuweHistorie} : b))
     const ref = nieuweStatus !== oudeStatus
       ? `${t('lbl_tank')}: ${oudeTank} → ${moveTankTarget} | ${oudeStatus} → ${nieuweStatus}`
       : `${t('lbl_tank')}: ${oudeTank} → ${moveTankTarget}`
@@ -705,7 +707,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       const wijz = Object.entries(velden)
         .filter(([k]) => String(oud?.[k]??'') !== String(bForm[k]??''))
         .map(([k,l]) => `${l}: ${oud?.[k]||'—'} → ${bForm[k]||'—'}`)
-      setBat((p: any[]) => p.map((b: any) => b.id===editId ? {...b,...bForm} : b))
+      // Bij tankwijziging via het formulier ook de tank-historie bijwerken
+      const tankGewijzigd = oud && String(oud.tank||'') !== String(bForm.tank||'')
+      const extraPatch: Record<string, any> = {}
+      if (tankGewijzigd && bForm.tank) {
+        extraPatch.tank_historie = appendTankHistorie(oud, bForm.tank, tod(), bForm.status)
+      }
+      setBat((p: any[]) => p.map((b: any) => b.id===editId ? {...b,...bForm,...extraPatch} : b))
       if (wijz.length > 0) addLog({type:'gewijzigd', batch_id:editId, referentie:wijz.join(' | ')})
       setEditId(null)
       setShowForm(false); setBForm(emptyB)
@@ -1085,6 +1093,37 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className="mt-0.5">{v}</div></div>
                     ))}
                   </div>
+                  {(() => {
+                    const historie = resolveTankHistorie(selB)
+                    if (historie.length <= 1) return null
+                    return (
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('batch_tank_history')}</div>
+                        <div className="flex flex-col gap-1">
+                          {historie.map((rij, i) => {
+                            const tankInfo = (tanks||[]).find((tk: any) => tk.id === rij.tank)
+                            const tankNaam = tankInfo?.naam || rij.tank || t('lbl_onbekend')
+                            return (
+                              <div
+                                key={i}
+                                className={`flex items-center justify-between text-sm px-3 py-1.5 rounded ${rij.isCurrent ? 't-panel font-medium' : 'bg-gray-50 text-gray-600'}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="truncate">{tankNaam}</span>
+                                  <span className="text-xs text-gray-400">
+                                    {fmtD(rij.from)}{rij.to ? ` → ${fmtD(rij.to)}` : ''}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-semibold ml-2 flex-shrink-0">
+                                  {t('dashboard_days_in_tank').replace('{n}', String(rij.dagen))}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
                   {safeStr(selB.notities) && (
                     <div className="mt-3 pt-3 border-t">
                       <div className="text-xs font-medium text-gray-500 mb-1">{t('lbl_notes')}</div>

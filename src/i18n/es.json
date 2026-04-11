@@ -247,6 +247,7 @@
   "batch_move_tank_label": "Mover a tanque",
   "batch_move_tank_choose": "— Elige un tanque —",
   "batch_move_tank_confirm": "Mover",
+  "batch_tank_history": "Historial de tanques",
   "lbl_occupied": "ocupado",
   "settings_brewfather_enable": "Integración activada",
   "settings_brewfather_user_id": "User ID",

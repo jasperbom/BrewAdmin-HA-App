@@ -247,6 +247,7 @@
   "batch_move_tank_label": "Verplaats naar tank",
   "batch_move_tank_choose": "— Kies een tank —",
   "batch_move_tank_confirm": "Verplaatsen",
+  "batch_tank_history": "Tank geschiedenis",
   "lbl_occupied": "bezet",
   "settings_brewfather_enable": "Koppeling ingeschakeld",
   "settings_brewfather_user_id": "User ID",

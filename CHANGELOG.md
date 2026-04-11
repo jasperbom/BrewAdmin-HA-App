@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.24] — 2026-04-11
+
+### Added — Tank-geschiedenis per batch
+- **BatchesPage**: nieuwe sectie "Tank geschiedenis" in het batch-info
+  blok toont alle tanks waarin de batch heeft gezeten, gestapeld van oud
+  naar nieuw. De onderste regel is de huidige tank en telt dagen vanaf
+  het moment van verplaatsen (start dus op 0).
+- **Batch-interface**: nieuw veld `tank_historie` met entries
+  `{tank, from, to?, status}`. `handleMoveTank` en het bewerken van de
+  tank via het edit-formulier werken de historie automatisch bij.
+  Legacy-batches zonder historie krijgen een gesynthetiseerde eerste
+  entry op basis van `batch.datum` + `batch.tank`.
+- **DashboardPage**: het "X dagen in tank"-label op de tankkaart gebruikt
+  nu de tijd sinds de laatste verplaatsing in plaats van de brouwdatum —
+  direct na een move staat de teller op 0.
+
+### Fixed — Brewfather vergistingsprofiel in batches
+- `bfMapBatch` in `utils/api.ts` las `s.actualTime` (een unix
+  ms-timestamp, bijv. `1775858400000`) als de geplande duur in dagen,
+  waardoor het vergistingsprofiel op de batchpagina absurd hoge waarden
+  toonde. Nu wordt `s.stepTime` gebruikt — dezelfde bron als de
+  recept-mapping — zodat de waarden overeenkomen met wat in het recept
+  staat (bijv. 14 d, 2 d).
+
+## [1.8.23] — 2026-04-11
+
+### Fixed — Dashboard tankvormen
+- **Bright tank**: de poten zijn nu recht in plaats van licht naar buiten
+  hellend, matching de stijl van de fermentor.
+- **Barrel**: het houten vat ligt nu horizontaal op een cradle met twee
+  driehoekige steunen in plaats van rechtop te staan. De metalen hoepels
+  zijn herschikt als verticale banden, de duigen lopen horizontaal langs
+  de lengte van het vat, en de bunghole zit bovenop.
+
 ## [1.8.22] — 2026-04-11
 
 ### Added — Bright tanks, barrels en verplaatsen tussen tanks

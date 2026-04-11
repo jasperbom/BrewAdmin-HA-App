@@ -1,4 +1,4 @@
-import { AccijnsInst } from '../types'
+import { AccijnsInst, TankHistorieEntry } from '../types'
 
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
   const liter = L; const hl = L / 100
@@ -108,4 +108,57 @@ export const berekenProductKostprijs = (
     totaal_kosten,
     totaal_liter
   }
+}
+
+// ── Tank-geschiedenis ───────────────────────────────────────────────────────
+// Retourneert het geresolveerde verloop van tanks voor een batch. Als er nog
+// geen expliciete `tank_historie` is (legacy batches), wordt één entry
+// gesynthetiseerd op basis van `batch.datum` + `batch.tank`.
+export interface TankHistorieRij {
+  tank: string
+  from: string
+  to?: string
+  dagen: number
+  isCurrent: boolean
+}
+
+const DAG_MS = 86400000
+
+export const resolveTankHistorie = (batch: any): TankHistorieRij[] => {
+  if (!batch) return []
+  const today = new Date()
+  const hist: TankHistorieEntry[] = Array.isArray(batch.tank_historie) ? batch.tank_historie : []
+  const base: TankHistorieEntry[] = hist.length > 0
+    ? hist
+    : (batch.tank && batch.datum ? [{ tank: batch.tank, from: batch.datum, status: batch.status }] : [])
+  return base.map((entry, i) => {
+    const isCurrent = i === base.length - 1 && !entry.to
+    const fromD = new Date(entry.from)
+    const toD   = entry.to ? new Date(entry.to) : today
+    const dagen = Math.max(0, Math.floor((toD.getTime() - fromD.getTime()) / DAG_MS))
+    return { tank: entry.tank, from: entry.from, to: entry.to, dagen, isCurrent }
+  })
+}
+
+// Voegt een verplaatsing toe aan de tank-historie. Sluit de laatste open entry
+// af op `datum` en opent een nieuwe entry voor `nieuweTank`. Als er nog geen
+// historie bestaat wordt eerst de oude tank gesynthetiseerd uit `batch.datum`.
+export const appendTankHistorie = (
+  batch: any,
+  nieuweTank: string,
+  datum: string,
+  nieuweStatus?: string
+): TankHistorieEntry[] => {
+  const hist: TankHistorieEntry[] = Array.isArray(batch?.tank_historie) ? [...batch.tank_historie] : []
+  // Synthetiseer eerste entry als er nog geen historie is
+  if (hist.length === 0 && batch?.tank && batch?.datum) {
+    hist.push({ tank: batch.tank, from: batch.datum, status: batch.status })
+  }
+  // Sluit de laatste open entry af
+  if (hist.length > 0 && !hist[hist.length - 1].to) {
+    hist[hist.length - 1] = { ...hist[hist.length - 1], to: datum }
+  }
+  // Open een nieuwe entry voor de nieuwe tank
+  hist.push({ tank: nieuweTank, from: datum, status: nieuweStatus })
+  return hist
 }

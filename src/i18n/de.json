@@ -247,6 +247,7 @@
   "batch_move_tank_label": "In Tank verschieben",
   "batch_move_tank_choose": "— Tank wählen —",
   "batch_move_tank_confirm": "Verschieben",
+  "batch_tank_history": "Tank-Verlauf",
   "lbl_occupied": "belegt",
   "settings_brewfather_enable": "Integration aktiviert",
   "settings_brewfather_user_id": "Benutzer-ID",
