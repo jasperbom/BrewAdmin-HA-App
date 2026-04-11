@@ -56,6 +56,14 @@ export interface Batch {
   gn_code?: string
   product_id?: number
   created_at?: string
+  tank_historie?: TankHistorieEntry[]
+}
+
+export interface TankHistorieEntry {
+  tank: string
+  from: string     // ISO-datum waarop het bier in deze tank kwam
+  to?: string      // ISO-datum waarop het bier uit deze tank ging (undefined = huidige tank)
+  status?: string  // Batch-status bij het begin van deze periode
 }
 
 export interface BatchLogEntry {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
+import { resolveTankHistorie } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 
 function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}}: any) {
@@ -596,9 +597,17 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
               : 0;
             const sgPct    = batch ? sgProgress(batch) : null;
             const latestM  = batch ? latestMeting(batch.id) : null;
-            const daysInTank = batch?.datum
-              ? Math.floor((Date.now() - new Date(batch.datum).getTime()) / dayMs)
-              : null;
+            // Dagen in de huidige tank — start vanaf de laatste verplaatsing
+            // (fallback: brouwdatum als er nog geen historie is)
+            const daysInTank = (() => {
+              if (!batch) return null;
+              const hist = resolveTankHistorie(batch);
+              const curr = hist.find(r => r.isCurrent && r.tank === tk.id);
+              if (curr) return curr.dagen;
+              return batch.datum
+                ? Math.floor((Date.now() - new Date(batch.datum).getTime()) / dayMs)
+                : null;
+            })();
             const isFormOpen = metingBatchId === batch?.id;
 
             const handleTankClick = anyBatch

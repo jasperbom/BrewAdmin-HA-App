@@ -262,7 +262,10 @@ export const bfMapBatch = (b: any) => ({
   vergistingsprofiel: (b.recipe?.fermentation?.steps||[]).map((s: any) => ({
     type: s.type || s.name || '',
     temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
-    tijd: bfNumSafe(s.actualTime),
+    // Gebruik stepTime (geplande duur in dagen). Brewfather's actualTime is
+    // een unix ms-timestamp (wanneer de stap daadwerkelijk werd bereikt),
+    // géén dagentelling — die hier lezen gaf voorheen waarden als 1775858400000.
+    tijd: bfNumSafe(s.stepTime),
     ramp: bfNumSafe(s.rampTime ?? s.ramp),
   })),
   maischprofiel: (b.recipe?.mash?.steps||[]).map((s: any) => ({
