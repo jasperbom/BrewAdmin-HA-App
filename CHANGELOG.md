@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.23] — 2026-04-11
+
+### Fixed — Dashboard tankvormen
+- **Bright tank**: de poten zijn nu recht in plaats van licht naar buiten
+  hellend, matching de stijl van de fermentor.
+- **Barrel**: het houten vat ligt nu horizontaal op een cradle met twee
+  driehoekige steunen in plaats van rechtop te staan. De metalen hoepels
+  zijn herschikt als verticale banden, de duigen lopen horizontaal langs
+  de lengte van het vat, en de bunghole zit bovenop.
+
 ## [1.8.22] — 2026-04-11
 
 ### Added — Bright tanks, barrels en verplaatsen tussen tanks
