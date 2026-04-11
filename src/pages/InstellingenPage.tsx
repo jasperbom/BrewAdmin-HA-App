@@ -1250,11 +1250,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         const groups = hygieneGroups && hygieneGroups.length ? hygieneGroups : DEFAULT_HYGIENE_GROUPS;
 
         const addGroep = () => {
-          const label = nieuwGroep.trim();
-          if (!label) return;
-          if (groups.find((g: any)=>g.label.toLowerCase()===label.toLowerCase())) { alert(t('err_group_exists')); return; }
+          const naam = nieuwGroep.trim();
+          if (!naam) return;
+          if (groups.find((g: any)=>(g.naam||'').toLowerCase()===naam.toLowerCase())) { alert(t('err_group_exists')); return; }
           const maxId = groups.length ? Math.max(...groups.map((g: any)=>g.id)) : 0;
-          setHygieneGroups([...groups, {id: maxId+1, label}]);
+          setHygieneGroups([...groups, {id: maxId+1, naam, volgorde: groups.length}]);
           setNieuwGroep('');
         };
         const removeGroep = (id: any) => {
@@ -1279,7 +1279,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           if (!label) return;
           const maxId = items.length ? Math.max(...items.map((i: any)=>i.id)) : 0;
           const group_id = nieuwHygieneItemGroep ? Number(nieuwHygieneItemGroep) : null;
-          setHygieneItems([...items, {id: maxId+1, label, group_id}]);
+          setHygieneItems([...items, {id: maxId+1, label, group_id, volgorde: items.length}]);
           setNieuwHygieneItem('');
         };
         const removeItem = (id: any) => setHygieneItems(items.filter((i: any)=>i.id!==id));
@@ -1309,7 +1309,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 {groups.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_groups_none')}</p>}
                 {groups.map((g: any, idx: number)=>(
                   <div key={g.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
-                    <span className="flex-1 text-sm font-medium text-teal-800">{g.label}</span>
+                    <span className="flex-1 text-sm font-medium text-teal-800">{g.naam}</span>
                     <span className="text-xs text-teal-500">{items.filter((i: any)=>i.group_id===g.id).length} items</span>
                     <button onClick={()=>moveGroep(g.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
                     <button onClick={()=>moveGroep(g.id,1)} disabled={idx===groups.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
@@ -1340,7 +1340,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                     <select value={item.group_id||''} onChange={(e: any)=>setItemGroep(item.id,e.target.value)}
                       className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 bg-white focus:outline-none focus:border-teal-400 max-w-[130px]">
                       <option value="">{t('settings_hygiene_item_no_group')}</option>
-                      {groups.map((g: any)=><option key={g.id} value={g.id}>{g.label}</option>)}
+                      {groups.map((g: any)=><option key={g.id} value={g.id}>{g.naam}</option>)}
                     </select>
                     <button onClick={()=>moveItem(item.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
                     <button onClick={()=>moveItem(item.id,1)} disabled={idx===items.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
@@ -1356,7 +1356,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <select value={nieuwHygieneItemGroep} onChange={(e: any)=>setNieuwHygieneItemGroep(e.target.value)}
                   className="border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
                   <option value="">{t('settings_hygiene_item_no_group')}</option>
-                  {groups.map((g: any)=><option key={g.id} value={g.id}>{g.label}</option>)}
+                  {groups.map((g: any)=><option key={g.id} value={g.id}>{g.naam}</option>)}
                 </select>
                 <button onClick={addItem}
                   className="px-3 py-1.5 tbtn rounded text-sm font-medium transition-colors">

@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.21] — 2026-04-11
+
+### Fixed — Hygiëne-instellingen
+- **InstellingenPage**: hygiënegroepen worden nu opgeslagen met het juiste
+  veld `naam` (i.p.v. `label`), waardoor toevoegen, weergeven en verwijderen
+  van groepen weer correct werkt. De duplicaat-check leest eveneens uit
+  `naam`. Nieuwe groepen en items krijgen automatisch een `volgorde`-veld,
+  consistent met de defaults.
+- **BatchesPage** hygiëne-checklist: groepskoppen en log-referenties tonen
+  nu `group.naam` in plaats van het niet-bestaande `group.label`, zodat
+  groepsnamen niet meer als `undefined` verschijnen.
+
 ## [1.8.20] — 2026-04-09
 
 ### Fixed — Productnaam in Voorraadverloop
