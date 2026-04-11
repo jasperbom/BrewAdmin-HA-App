@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.22] — 2026-04-11
+
+### Added — Bright tanks, barrels en verplaatsen tussen tanks
+- **Tank-instellingen**: elke tank krijgt een soort (`fermentatie`,
+  `bright` of `barrel`). Bij het toevoegen kies je de soort en bestaande
+  tanks kunnen achteraf omgeschakeld worden via een dropdown.
+- **Batch verplaatsen**: in de batch-header verschijnt een
+  `↪ Verplaatsen`-knop wanneer de batch in status *Vergisten* of
+  *Conditioneren* staat. De inline picker toont alle beschikbare tanks
+  (inclusief de soort) en respecteert tank-bezetting. Bij verplaatsen
+  van een fermentatietank naar een bright tank of barrel wisselt de
+  batch automatisch naar *Conditioneren*. De verplaatsing wordt
+  gelogd onder `gewijzigd`.
+- **Dashboard**: bright tanks krijgen een rechtopstaande drukketel met
+  twee koepels en een drukmeter; barrels worden weergegeven als houten
+  vat met duigen en metalen hoepels. Fermentatietanks behouden de
+  bestaande conische vorm.
+
 ## [1.8.21] — 2026-04-11
 
 ### Fixed — Hygiëne-instellingen

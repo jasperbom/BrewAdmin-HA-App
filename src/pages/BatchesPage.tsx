@@ -434,6 +434,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [pendingBatchIngredienten, setPendingBatchIngredienten] = useState<any[]>([])
   const [batchArchiefIngeklapt, setBatchArchiefIngeklapt] = useStore('batches_archief_ingeklapt', true)
   const [infoIngeklapt, setInfoIngeklapt] = useState(false)
+  const [moveTankOpen, setMoveTankOpen] = useState(false)
+  const [moveTankTarget, setMoveTankTarget] = useState('')
   const [grafiekOpen, setGrafiekOpen] = useStore('gist_grafiek_open', {} as Record<string,boolean>)
   const emptyMeting = { datum: tod(), tijd: '', sg: '', ph: '', temp: '', opmerking: '' }
   const [metingForm, setMetingForm] = useState<any>(emptyMeting)
@@ -662,6 +664,27 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (oudeStatus === nieuweStatus) return
     setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, status:nieuweStatus} : b))
     addLog({type:'status', batch_id:selB.id, referentie:`${oudeStatus} → ${nieuweStatus}`})
+  }
+
+  const handleMoveTank = () => {
+    if (!selB || !moveTankTarget) return
+    const doelTank = (tanks||[]).find((tk: any) => tk.id===moveTankTarget)
+    if (!doelTank) return
+    const bezet = bat.find((b: any) => b.tank===moveTankTarget && b.id!==selB.id && ['Vergisten','Conditioneren'].includes(b.status))
+    if (bezet) { alert(t('err_tank_occupied').replace('{tank}',moveTankTarget).replace('{name}',bezet.naam)); return }
+    const oudeTank = selB.tank || '—'
+    const oudeStatus = selB.status
+    // Bij verplaatsen naar bright tank of barrel: batch naar Conditioneren tenzij al verder in het proces
+    const nieuweStatus = (doelTank.soort==='bright' || doelTank.soort==='barrel') && oudeStatus==='Vergisten'
+      ? 'Conditioneren'
+      : oudeStatus
+    setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, tank: moveTankTarget, status: nieuweStatus} : b))
+    const ref = nieuweStatus !== oudeStatus
+      ? `${t('lbl_tank')}: ${oudeTank} → ${moveTankTarget} | ${oudeStatus} → ${nieuweStatus}`
+      : `${t('lbl_tank')}: ${oudeTank} → ${moveTankTarget}`
+    addLog({type:'gewijzigd', batch_id:selB.id, referentie:ref})
+    setMoveTankOpen(false)
+    setMoveTankTarget('')
   }
 
   const saveBatch = () => {
@@ -999,11 +1022,39 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     className="border border-gray-600 rounded px-2 py-1 text-xs bg-gray-700 text-white t-input">
                     {STATUSSEN.map(s => <option key={s} value={s}>{STATUS_LABELS[s]||s}</option>)}
                   </select>
+                  {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
+                    <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>↪ {t('batch_move_tank')}</Btn>
+                  )}
                   <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>🖨 Print</Btn>
                   <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
                   <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                 </div>
               </div>
+
+              {/* Verplaats tank inline picker */}
+              {moveTankOpen && (
+                <div className="px-4 py-3 bg-teal-50 border-b border-teal-200 flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-teal-800">{t('batch_move_tank_label')}:</span>
+                  <select value={moveTankTarget} onChange={(e: any)=>setMoveTankTarget(e.target.value)}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm bg-white t-input">
+                    <option value="">{t('batch_move_tank_choose')}</option>
+                    {(tanks||[]).filter((tk: any) => tk.id !== selB.tank).map((tk: any) => {
+                      const bezet = bat.find((b: any) => b.tank===tk.id && b.id!==selB.id && ['Vergisten','Conditioneren'].includes(b.status))
+                      const soort = tk.soort || 'fermentatie'
+                      const soortLbl = soort==='bright' ? t('tank_soort_bright')
+                                      : soort==='barrel' ? t('tank_soort_barrel')
+                                      : t('tank_soort_fermentatie')
+                      return (
+                        <option key={tk.id} value={tk.id} disabled={!!bezet}>
+                          {tk.id} — {soortLbl}{bezet ? ` (${t('lbl_occupied')})` : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <Btn s="sm" v="green" onClick={handleMoveTank} disabled={!moveTankTarget}>{t('batch_move_tank_confirm')}</Btn>
+                  <Btn s="sm" v="secondary" onClick={()=>{setMoveTankOpen(false);setMoveTankTarget('')}}>{t('btn_cancel')}</Btn>
+                </div>
+              )}
 
               {/* Info collapse */}
               <div className="px-4 py-2 flex items-center gap-2 cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>

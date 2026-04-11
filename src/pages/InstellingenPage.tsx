@@ -210,6 +210,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const [tankInput, setTankInput] = React.useState('');
+  const [tankSoortInput, setTankSoortInput] = React.useState<'fermentatie'|'bright'|'barrel'>('fermentatie');
   const [nieuwHygieneItem, setNieuwHygieneItem] = React.useState('');
   const [nieuwHygieneItemGroep, setNieuwHygieneItemGroep] = React.useState('');
   const [nieuwGroep, setNieuwGroep] = React.useState('');
@@ -218,8 +219,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     if (!id) return;
     // @ts-ignore
     if (tanks.find(t=>t.id===id)) { alert(t('err_tank_exists').replace('{id}',id)); return; }
-    setTanks((prev: any)=>[...prev, {id}]);
+    setTanks((prev: any)=>[...prev, {id, soort: tankSoortInput}]);
     setTankInput('');
+  };
+  const setTankSoort = (id: string, soort: 'fermentatie'|'bright'|'barrel') => {
+    setTanks((prev: any)=>prev.map((x: any)=>x.id===id ? {...x, soort} : x));
   };
 
   const [bfForm, setBfForm]   = React.useState({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false});
@@ -475,19 +479,34 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('settings_tanks_desc')}</p>
         <div className="flex flex-wrap gap-2 mb-4">
           {tanks.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_tanks_none')}</p>}
-          {tanks.map((tnk: any)=>(
+          {tanks.map((tnk: any)=>{
+            const soort = tnk.soort || 'fermentatie';
+            return (
             <div key={tnk.id} className="flex items-center gap-1.5 bg-gray-100 border border-gray-200 rounded-lg px-3 py-1.5">
               <span className="text-sm font-medium text-gray-700 flex items-center gap-1"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAAUCAYAAABWMrcvAAADFUlEQVR42nVTS2wTVxQ97409nhmPP5AYO24bkyYNMGkRMiKqilpThJpFxdJLll2AkAptJSQWmYzIpgu2kbrspgtX3dCgRpEAW/0kaa2ShFQJqLIIjgN2QuMkY2c8n/dYRAlESe/u6J6je++5OsABlcvl5O9zuc4dfOdOUXmzT/eQb9+WKYB0Oh2iHr3EOfffHRu7Ovfk1wsAoOs6BQCyDTg1DMJGR0dPFWfmTwt+X8RznYtBVb3n2LZw85trw7quc8MwOAAuACDnzoHk83ny089jt1Kpzhufnc983pGIpwj4WcfxjvefzbSMwZtTuq7TQqHAhWw2K4yMjDAH/i8YMPjxRx+6H2jHnb/+eugFZZklk4nQxFTxwpXLlye/vv5lKZvLCbs3HYqGMoejEe66jghAqdc35NW1ugJwIsmizAj5FAC0WIz4dkTMYy0AoJQIM48emY2mWQswOWrbThSccwrS3Oeexz0hIEpkq2k9vDs2Xv7t94n19fX6hmW1apRQwsm2aQCwO4n6BHth8Z8Xi0uVJUJJvP9Mv+9Yb/dm6Wl5wy/644yx13/SNI3Pzc2JUTVMH88vTHcdfefkwPlPOo+m3hZmZmd5pD3Gw+GoZ1mWf896lUrFv7q2Geg40h1sNhtqz7upeKXy7ITdamrz00Xl5erKJhWELQBAHqB9fX1kYGCgcey9npGerrcSkxMTyrPyEmk1TbdWrfrK5cWOnu6u5VXT+nF7Tp7RbDbLAKAzGXssBgJVNaT+96Ramxal4BPHcZjjEhIKqU+Nr66UAMAwDLbrXqm0rLQdOlyWJKV278F9WZLl59WVNa+t/cisIklrmUzGt89yV2Su49htLcu6HwmrdWvLZI1GczKoyA8s2w4XCgVvnygVi7m26ypBVTUDovSn47inRUX5JRRSVc91D45GIpEAcz2STMaDZ9LpBUEI/Hvq/ZOLLdtu4xx+zvlr0c6bx8fHhVptJX/j+rVbpml+RyiGvx0e/GFyqqhXni//MTQ0JOxLq6ZpYkdvbzsAgHPyZugiqVR0J3v/V3sEB5FfAeeRVsZFp5mTAAAAAElFTkSuQmCC" style={{height:'16px',width:'auto',display:'inline'}} alt="tank" />{tnk.id}</span>
+              <select value={soort} onChange={(e: any)=>setTankSoort(tnk.id, e.target.value)}
+                className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-600 t-input ml-1">
+                <option value="fermentatie">{t('tank_soort_fermentatie')}</option>
+                <option value="bright">{t('tank_soort_bright')}</option>
+                <option value="barrel">{t('tank_soort_barrel')}</option>
+              </select>
               <button onClick={()=>setTanks((prev: any)=>prev.filter((x: any)=>x.id!==tnk.id))}
                 className="text-gray-400 hover:text-red-500 text-xs ml-1 leading-none">✕</button>
             </div>
-          ))}
+            );
+          })}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input type="text" value={tankInput} onChange={(e: any)=>setTankInput(e.target.value)}
             onKeyDown={(e: any)=>e.key==='Enter'&&addTank()}
             placeholder={t('settings_tank_add_label')}
             className="border border-gray-300 rounded px-3 py-1.5 text-sm w-40 t-input" />
+          <select value={tankSoortInput} onChange={(e: any)=>setTankSoortInput(e.target.value as any)}
+            className="border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+            <option value="fermentatie">{t('tank_soort_fermentatie')}</option>
+            <option value="bright">{t('tank_soort_bright')}</option>
+            <option value="barrel">{t('tank_soort_barrel')}</option>
+          </select>
           <button onClick={addTank}
             className="px-4 py-1.5 tbtn rounded text-sm font-medium transition-colors">
             {t('settings_tank_add_btn')}

@@ -286,6 +286,189 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     );
   };
 
+  // Visuele bright tank (SVG) — rechtopstaande drukketel met twee koepels, geen conus
+  const BrightTankVisual = ({fillPct, status, ebc}: {fillPct: number, status?: string, ebc?: number}) => {
+    const [uid] = useState(() => `bt${++tankIdRef.current}`);
+    const pct = Math.min(100, Math.max(0, fillPct || 0));
+    const colors = ebc && ebc > 0
+      ? ebcToColor(ebc)
+      : status === 'Conditioneren'
+        ? { fill: '#fbbf24', fillDark: '#f59e0b', highlight: '#fcd34d' }
+        : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' };
+
+    /* Bright tank geometrie (viewBox 0 0 56 120)
+       - Bovenkoepel:     y 14–28 (halve ellips)
+       - Cilinder:        y 28–96 (hoogte 68)
+       - Onderkoepel:     y 96–110 (halve ellips)
+       - Poten:           y 100–118
+       Vloeistof vult van y=110 tot y=14 (totaal 96px). */
+    const totalH = 96;
+    const fillH = (pct / 100) * totalH;
+    const liquidTop = 110 - fillH;
+
+    // Path: dome top + cilinder + dome bottom
+    const tankPath = 'M4,28 A24,14 0 0,1 52,28 L52,96 A24,14 0 0,1 4,96 Z';
+
+    return (
+      <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))'}}>
+        <defs>
+          <clipPath id={`btc-${uid}`}>
+            <path d={tankPath} />
+          </clipPath>
+          <linearGradient id={`btm-${uid}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#e2e8f0"/>
+            <stop offset="30%" stopColor="#f8fafc"/>
+            <stop offset="70%" stopColor="#f1f5f9"/>
+            <stop offset="100%" stopColor="#cbd5e1"/>
+          </linearGradient>
+          <linearGradient id={`btl-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={colors.highlight} stopOpacity="0.9"/>
+            <stop offset="100%" stopColor={colors.fillDark} stopOpacity="0.95"/>
+          </linearGradient>
+        </defs>
+
+        {/* Poten */}
+        <line x1="12" y1="100" x2="10" y2="118" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="44" y1="100" x2="46" y2="118" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round"/>
+        <ellipse cx="10" cy="118" rx="3" ry="1.5" fill="#94a3b8"/>
+        <ellipse cx="46" cy="118" rx="3" ry="1.5" fill="#94a3b8"/>
+
+        {/* Tank body */}
+        <path d={tankPath} fill={`url(#btm-${uid})`} stroke="#94a3b8" strokeWidth="1.5"/>
+
+        {/* Vloeistof */}
+        {pct > 0 && (
+          <g clipPath={`url(#btc-${uid})`}>
+            <rect x="0" y={liquidTop} width="56" height={fillH + 2} fill={`url(#btl-${uid})`} />
+            <path
+              d={`M6,${liquidTop} Q18,${liquidTop - 2} 28,${liquidTop} Q38,${liquidTop + 2} 50,${liquidTop}`}
+              fill={colors.highlight} opacity="0.5"
+            />
+          </g>
+        )}
+
+        {/* Glans */}
+        <path d="M8,32 L10,92 L8,88 L6,32 Z" fill="white" opacity="0.15"/>
+
+        {/* Ringmarkeringen */}
+        <line x1="4" y1="36" x2="52" y2="36" stroke="#94a3b8" strokeWidth="0.7" opacity="0.4"/>
+        <line x1="4" y1="88" x2="52" y2="88" stroke="#94a3b8" strokeWidth="0.7" opacity="0.4"/>
+
+        {/* Drukmeter bovenop */}
+        <circle cx="28" cy="18" r="3" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="0.8"/>
+        <line x1="28" y1="18" x2="30" y2="16" stroke="#64748b" strokeWidth="0.8" strokeLinecap="round"/>
+
+        {/* Aftapkraan */}
+        <rect x="26" y="108" width="4" height="4" rx="1" fill="#94a3b8"/>
+        <line x1="28" y1="112" x2="28" y2="115" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
+
+        {/* Percentage label */}
+        {pct > 8 && (
+          <text x="28" y={Math.max(liquidTop + fillH / 2 + 4, liquidTop + 10)} textAnchor="middle"
+            fontSize="10" fontWeight="bold" fill="white"
+            style={{textShadow: '0 1px 2px rgba(0,0,0,0.3)', userSelect: 'none'}}>
+            {Math.round(pct)}%
+          </text>
+        )}
+      </svg>
+    );
+  };
+
+  // Visueel houten vat / barrel (SVG) — horizontaal gebogen vat met duigen en hoepels
+  const BarrelVisual = ({fillPct, status, ebc}: {fillPct: number, status?: string, ebc?: number}) => {
+    const [uid] = useState(() => `br${++tankIdRef.current}`);
+    const pct = Math.min(100, Math.max(0, fillPct || 0));
+    const colors = ebc && ebc > 0
+      ? ebcToColor(ebc)
+      : status === 'Conditioneren'
+        ? { fill: '#d97706', fillDark: '#b45309', highlight: '#f59e0b' }
+        : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' };
+
+    /* Barrel geometrie (viewBox 0 0 56 120) — horizontaal vat, gecentreerd y 30–100
+       - Vat buik:       x 4–52, y 30–100 (bolling in het midden)
+       - Duigen:         verticale bruine lijnen
+       - Hoepels:        horizontale donkere banden
+       - Poten:          onder vat
+       Vloeistof vult van y=100 (bodem) tot y=30 (top), totaal 70px. */
+    const totalH = 70;
+    const fillH = (pct / 100) * totalH;
+    const liquidTop = 100 - fillH;
+
+    // Barrel silhouet: twee bolle zijkanten
+    const barrelPath = 'M10,34 Q4,65 10,96 L46,96 Q52,65 46,34 Z';
+
+    return (
+      <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.08))'}}>
+        <defs>
+          <clipPath id={`brc-${uid}`}>
+            <path d={barrelPath} />
+          </clipPath>
+          {/* Hout gradient */}
+          <linearGradient id={`brw-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#b45309"/>
+            <stop offset="30%" stopColor="#92400e"/>
+            <stop offset="70%" stopColor="#78350f"/>
+            <stop offset="100%" stopColor="#5c2e0a"/>
+          </linearGradient>
+          <linearGradient id={`brl-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={colors.highlight} stopOpacity="0.85"/>
+            <stop offset="100%" stopColor={colors.fillDark} stopOpacity="0.95"/>
+          </linearGradient>
+        </defs>
+
+        {/* Poten / steun */}
+        <rect x="8" y="100" width="40" height="3" rx="1" fill="#78350f"/>
+        <line x1="14" y1="103" x2="12" y2="118" stroke="#5c2e0a" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="42" y1="103" x2="44" y2="118" stroke="#5c2e0a" strokeWidth="2.5" strokeLinecap="round"/>
+        <ellipse cx="12" cy="118" rx="3" ry="1.2" fill="#5c2e0a"/>
+        <ellipse cx="44" cy="118" rx="3" ry="1.2" fill="#5c2e0a"/>
+
+        {/* Vat lichaam (hout) */}
+        <path d={barrelPath} fill={`url(#brw-${uid})`} stroke="#5c2e0a" strokeWidth="1.5"/>
+
+        {/* Vloeistof binnen het vat (zichtbaar via bunghole illusie) */}
+        {pct > 0 && (
+          <g clipPath={`url(#brc-${uid})`} opacity="0.55">
+            <rect x="0" y={liquidTop} width="56" height={fillH + 2} fill={`url(#brl-${uid})`} />
+          </g>
+        )}
+
+        {/* Duigen (verticale houten planken) */}
+        <g clipPath={`url(#brc-${uid})`} opacity="0.4">
+          <line x1="18" y1="30" x2="18" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
+          <line x1="25" y1="30" x2="25" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
+          <line x1="31" y1="30" x2="31" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
+          <line x1="38" y1="30" x2="38" y2="100" stroke="#5c2e0a" strokeWidth="0.6"/>
+        </g>
+
+        {/* Metalen hoepels */}
+        <g clipPath={`url(#brc-${uid})`}>
+          <rect x="0" y="38" width="56" height="3" fill="#64748b" opacity="0.9"/>
+          <rect x="0" y="38.5" width="56" height="0.5" fill="#cbd5e1"/>
+          <rect x="0" y="62" width="56" height="4" fill="#64748b" opacity="0.9"/>
+          <rect x="0" y="62.5" width="56" height="0.5" fill="#cbd5e1"/>
+          <rect x="0" y="88" width="56" height="3" fill="#64748b" opacity="0.9"/>
+          <rect x="0" y="88.5" width="56" height="0.5" fill="#cbd5e1"/>
+        </g>
+
+        {/* Bunghole (vulopening) bovenop */}
+        <ellipse cx="28" cy="32" rx="3" ry="1.5" fill="#3d1c05" stroke="#5c2e0a" strokeWidth="0.6"/>
+
+        {/* Glans */}
+        <path d="M12,42 Q8,65 12,90" fill="none" stroke="white" strokeWidth="1.5" opacity="0.2"/>
+
+        {/* Percentage label */}
+        {pct > 8 && (
+          <text x="28" y="68" textAnchor="middle"
+            fontSize="11" fontWeight="bold" fill="white"
+            style={{textShadow: '0 1px 2px rgba(0,0,0,0.5)', userSelect: 'none'}}>
+            {Math.round(pct)}%
+          </text>
+        )}
+      </svg>
+    );
+  };
+
   const LotRow = ({lot, urgent}: any) => {
     const days = daysLeft(lot.houdbaarheid);
     const naam = ing.find((i: any) => i.id === lot.ingredient_id)?.naam || t('lbl_onbekend');
@@ -436,7 +619,13 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                   className={`flex items-start gap-4 ${handleTankClick ? 'cursor-pointer' : ''}`}
                   onClick={handleTankClick}
                 >
-                  <TankVisual fillPct={fillPct} status={batch?.status} ebc={batch?.kleur ? Number(batch.kleur) : undefined} />
+                  {(() => {
+                    const soort = tk.soort || 'fermentatie';
+                    const ebcNum = batch?.kleur ? Number(batch.kleur) : undefined;
+                    if (soort === 'bright') return <BrightTankVisual fillPct={fillPct} status={batch?.status} ebc={ebcNum} />;
+                    if (soort === 'barrel') return <BarrelVisual fillPct={fillPct} status={batch?.status} ebc={ebcNum} />;
+                    return <TankVisual fillPct={fillPct} status={batch?.status} ebc={ebcNum} />;
+                  })()}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-bold text-gray-700">{tk.naam || tk.id}</span>
