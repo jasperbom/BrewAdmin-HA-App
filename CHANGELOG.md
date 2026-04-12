@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.27] — 2026-04-12
+
+### Fixed — Vergistingsprofiel duur uit Brewfather
+- **api.ts**: `bfGetRecipes()` gebruikte `actualTime` (unix-ms-timestamp) als
+  fallback voor `stepTime` — hierdoor werden vergistingsstappen weergegeven als
+  bijv. 1775858400000 dagen i.p.v. 14 dagen. Fallback verwijderd.
+- **App.tsx / BatchesPage.tsx**: Bij Brewfather-sync wordt het vergistings- en
+  maischprofiel nu ook bijgewerkt voor reeds geïmporteerde batches.
+- **App.tsx**: Eénmalige data-sanitizer die bij het laden corrupte `tijd`-waarden
+  (>365) in bestaande batches herstelt.
+
 ## [1.8.26] — 2026-04-11
 
 ### Changed — Barrel cradle en bunghole

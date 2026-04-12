@@ -205,7 +205,7 @@ export const bfGetRecipes = async (): Promise<any[]> => {
     vergistingsprofiel: (r.fermentation?.steps||[]).map((s: any) => ({
       type: s.type || s.name || '',
       temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
-      tijd: bfNumSafe(s.stepTime ?? s.actualTime),
+      tijd: bfNumSafe(s.stepTime),
       ramp: bfNumSafe(s.rampTime ?? s.ramp),
     })),
     maischprofiel: (r.mash?.steps||[]).map((s: any) => ({

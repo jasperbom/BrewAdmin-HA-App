@@ -621,6 +621,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           if (_rawN && !existing.notities) {
             ch.notities = Array.isArray(_rawN) ? _rawN.map((x: any) => typeof x==='string'?x:(x?.note||x?.text||x?.message||'')).filter(Boolean).join('\n') : (typeof _rawN==='object'&&_rawN ? String(_rawN.$string||_rawN.text||_rawN.note||'') : String(_rawN||''))
           }
+          const mapped = bfMapBatch(bfB)
+          ch.vergistingsprofiel = mapped.vergistingsprofiel
+          ch.maischprofiel = mapped.maischprofiel
           updBatches.push({id: existing.id, ch})
           const existingBis = bi.filter((x: any) => x.batch_id === existing.id)
           const hasWrongFields = existingBis.length > 0 && existingBis.some((x: any) => x.naam && !x.ingredient_naam)

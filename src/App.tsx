@@ -118,6 +118,32 @@ function App() {
   const importRef = useRef<any>(null);
   const bfAutoSynced = React.useRef(false);
 
+  // Eénmalige sanitizer: corrigeer vergistings-/maischprofiel-stappen waar
+  // tijd per ongeluk een unix-ms-timestamp bevat i.p.v. dagen.
+  const sanitizedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (sanitizedRef.current || !bat) return;
+    sanitizedRef.current = true;
+    const fix = (steps: any[]) => {
+      let changed = false;
+      for (const s of steps) {
+        if (s.tijd != null && Number(s.tijd) > 365) { s.tijd = ''; changed = true; }
+      }
+      return changed;
+    };
+    let dirty = false;
+    const patched = bat.map((b: any) => {
+      let bDirty = false;
+      const vp = b.vergistingsprofiel ? b.vergistingsprofiel.map((s: any) => ({...s})) : undefined;
+      const mp = b.maischprofiel ? b.maischprofiel.map((s: any) => ({...s})) : undefined;
+      if (vp && fix(vp)) { bDirty = true; }
+      if (mp && fix(mp)) { bDirty = true; }
+      if (bDirty) { dirty = true; return {...b, vergistingsprofiel: vp, maischprofiel: mp}; }
+      return b;
+    });
+    if (dirty) setBat(patched);
+  }, [bat]);
+
   React.useEffect(() => {
     if (bfAutoSynced.current || !bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) return;
     if (!bat || !bi) return;
@@ -149,6 +175,9 @@ function App() {
             if (bfB.measuredFermentationPh != null) ch.product_ph = bfNumSafe(bfB.measuredFermentationPh);
             else if (bfB.measuredPh != null && !existing.product_ph) ch.product_ph = bfNumSafe(bfB.measuredPh);
             { const _rawN=bfB.notes||bfB.tasteNotes; if (_rawN && !existing.notities) { ch.notities = Array.isArray(_rawN)?_rawN.map((x: any)=>typeof x==='string'?x:(x?.note||x?.text||x?.message||'')).filter(Boolean).join('\n'):(typeof _rawN==='object'&&_rawN?String((_rawN as any).$string||(_rawN as any).text||(_rawN as any).note||''):String(_rawN||'')); } }
+            const mapped = bfMapBatch(bfB);
+            ch.vergistingsprofiel = mapped.vergistingsprofiel;
+            ch.maischprofiel = mapped.maischprofiel;
             updBatches.push({id: existing.id, ch});
           }
         }
