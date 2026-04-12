@@ -434,7 +434,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [iForm, setIForm] = useState<any>(emptyI)
   const [pendingBatchIngredienten, setPendingBatchIngredienten] = useState<any[]>([])
   const [batchArchiefIngeklapt, setBatchArchiefIngeklapt] = useStore('batches_archief_ingeklapt', true)
-  const [infoIngeklapt, setInfoIngeklapt] = useState(false)
+  const [infoIngeklapt, setInfoIngeklapt] = useState(true)
   const [moveTankOpen, setMoveTankOpen] = useState(false)
   const [moveTankTarget, setMoveTankTarget] = useState('')
   const [grafiekOpen, setGrafiekOpen] = useStore('gist_grafiek_open', {} as Record<string,boolean>)
@@ -656,6 +656,21 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   }
 
   const getBi = (bid: number) => bi.filter((x: any) => x.batch_id === bid)
+
+  const latestMeting = (batchId: number) => {
+    const ms = (gistMetingen||[]).filter((m: any) => m.batch_id === batchId && m.sg)
+    if (!ms.length) return null
+    return ms.sort((a: any, b: any) =>
+      new Date(b.datum + 'T' + (b.tijd||'00:00')).getTime() -
+      new Date(a.datum + 'T' + (a.tijd||'00:00')).getTime()
+    )[0]
+  }
+
+  const sgProgress = (batch: any) => {
+    const m = latestMeting(batch.id)
+    if (!m || !batch.OG || !batch.FG || Number(batch.OG) <= Number(batch.FG)) return null
+    return Math.min(100, Math.max(0, (Number(batch.OG) - m.sg) / (Number(batch.OG) - Number(batch.FG)) * 100))
+  }
 
   const ingKosten = (b: any) => getBi(b.id).reduce((s: number, x: any) => {
     if (x.kosten) return s + Number(x.kosten)
@@ -1019,24 +1034,38 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           <div className="flex-1 min-w-0 space-y-4">
             {/* Header card */}
             <div className="bg-white rounded-xl shadow-card overflow-hidden">
-              <div className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between">
-                <div className="min-w-0">
-                  <div className="text-base font-semibold leading-tight truncate">{selB.naam}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">
-                    {selB.batch_nummer ? `#${selB.batch_nummer}` : ''}
-                    {selB.stijl ? `${selB.batch_nummer ? ' · ' : ''}${selB.stijl}` : ''}
-                    {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}🍺 ${selB.biernaam}` : ''}
+              <div className="px-4 py-3 t-hdr-solid text-white">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold leading-tight truncate">{selB.naam}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {selB.batch_nummer ? `#${selB.batch_nummer}` : ''}
+                      {selB.stijl ? `${selB.batch_nummer ? ' · ' : ''}${selB.stijl}` : ''}
+                      {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}🍺 ${selB.biernaam}` : ''}
+                    </div>
+                  </div>
+                  <div className="hidden sm:flex gap-2 items-center flex-shrink-0 ml-3">
+                    <select value={selB.status} onChange={e=>handleStatusChange(e.target.value)}
+                      className="border border-gray-600 rounded px-2 py-1 text-xs bg-gray-700 text-white t-input">
+                      {STATUSSEN.map(s => <option key={s} value={s}>{STATUS_LABELS[s]||s}</option>)}
+                    </select>
+                    {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
+                      <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>↪ {t('batch_move_tank')}</Btn>
+                    )}
+                    <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>🖨 Print</Btn>
+                    <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
+                    <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                   </div>
                 </div>
-                <div className="flex gap-2 items-center flex-shrink-0 ml-3">
+                <div className="flex sm:hidden flex-wrap gap-2 mt-2">
                   <select value={selB.status} onChange={e=>handleStatusChange(e.target.value)}
-                    className="border border-gray-600 rounded px-2 py-1 text-xs bg-gray-700 text-white t-input">
+                    className="border border-gray-600 rounded px-2 py-1 text-xs bg-gray-700 text-white t-input flex-1 min-w-0">
                     {STATUSSEN.map(s => <option key={s} value={s}>{STATUS_LABELS[s]||s}</option>)}
                   </select>
                   {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
                     <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>↪ {t('batch_move_tank')}</Btn>
                   )}
-                  <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>🖨 Print</Btn>
+                  <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>🖨</Btn>
                   <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
                   <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                 </div>
@@ -1066,6 +1095,45 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   <Btn s="sm" v="secondary" onClick={()=>{setMoveTankOpen(false);setMoveTankTarget('')}}>{t('btn_cancel')}</Btn>
                 </div>
               )}
+
+              {/* Gistingsvoortgang — altijd zichtbaar */}
+              {(() => {
+                const sgPct = sgProgress(selB)
+                const latestM = latestMeting(selB.id)
+                if (sgPct === null && !latestM) return null
+                return (
+                  <div className="px-4 py-3 border-b">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      {t('dashboard_fermentation_progress')}
+                    </div>
+                    {sgPct !== null && (
+                      <>
+                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                          <span>OG {selB.OG}</span>
+                          <span className="font-medium text-gray-600">
+                            {t('dashboard_sg_progress').replace('{pct}', String(Math.round(sgPct)))}
+                          </span>
+                          <span>FG {selB.FG}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                            style={{width: `${sgPct}%`}}
+                          />
+                        </div>
+                      </>
+                    )}
+                    {latestM && (
+                      <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                        {latestM.sg   && <span className="font-semibold text-gray-700">SG {Number(latestM.sg).toFixed(3)}</span>}
+                        {latestM.ph   && <span className="text-gray-500">pH {latestM.ph}</span>}
+                        {latestM.temp && <span className="text-gray-500">{latestM.temp}°C</span>}
+                        <span className="text-gray-400">{fmtD(latestM.datum)}</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Info collapse */}
               <div className="px-4 py-2 flex items-center gap-2 cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
@@ -1201,7 +1269,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   const kostenPerLiter = totLiterVerpakt>0 ? totK/totLiterVerpakt : (tankLiter>0 ? totK/tankLiter : null)
                   return (
                     <div className="mt-3 pt-3 border-t space-y-2 text-sm">
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                         <div className="flex justify-between text-gray-600">
                           <span className="text-xs">{t('nav_ingredienten')}</span>
                           <span className={ingK>0?'':'text-gray-400'}>{ingK>0?fmt(ingK):'—'}</span>

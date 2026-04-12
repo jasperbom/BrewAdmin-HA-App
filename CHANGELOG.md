@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.28] — 2026-04-12
+
+### Improved — Batch info UI responsive + gistingsvoortgang
+- **BatchesPage**: Header-knoppen wrappen nu op mobiel (status dropdown
+  full-width, compactere knoppen).
+- **BatchesPage**: Gistingsvoortgangsbalk (SG progress) is nu zichtbaar in de
+  batch-detailweergave, identiek aan het dashboard — altijd zichtbaar boven de
+  inklapbare info-sectie.
+- **BatchesPage**: Batch info-sectie is standaard ingeklapt.
+- **BatchesPage**: Kostenoverzicht grid is responsive (1 kolom op mobiel,
+  2 kolommen op tablet+).
+
 ## [1.8.27] — 2026-04-12
 
 ### Fixed — Vergistingsprofiel duur uit Brewfather
