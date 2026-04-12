@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.29] — 2026-04-12
+
+### Changed — Tank in batch header
+- **BatchesPage**: Huidige tank wordt getoond in de batch header (naast
+  batchnummer/stijl) met een icoontje (🫙 fermentatie, 🛢 barrel). Alleen
+  zichtbaar als de batch actief in een tank zit (status Vergisten/Conditioneren).
+
 ## [1.8.28] — 2026-04-12
 
 ### Improved — Batch info UI responsive + gistingsvoortgang
