@@ -1042,6 +1042,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       {selB.batch_nummer ? `#${selB.batch_nummer}` : ''}
                       {selB.stijl ? `${selB.batch_nummer ? ' · ' : ''}${selB.stijl}` : ''}
                       {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}🍺 ${selB.biernaam}` : ''}
+                      {selB.tank && ['Vergisten','Conditioneren'].includes(selB.status) && (
+                        <span className="ml-1 inline-flex items-center gap-0.5 bg-white/15 rounded px-1.5 py-0.5 text-white/90 text-[10px] font-medium">{(() => {
+                          const tkInfo = (tanks||[]).find((tk: any) => tk.id === selB.tank)
+                          const soort = tkInfo?.soort || 'fermentatie'
+                          const icon = soort === 'barrel' ? '🛢' : '🫙'
+                          return `${icon} ${selB.tank}`
+                        })()}</span>
+                      )}
                     </div>
                   </div>
                   <div className="hidden sm:flex gap-2 items-center flex-shrink-0 ml-3">
