@@ -4,6 +4,8 @@ export interface Ingredient {
   type: string
   fabrikant?: string
   beschikbaar?: boolean
+  brewfather_id?: string
+  brewfather_cat?: string
 }
 
 export interface Lot {

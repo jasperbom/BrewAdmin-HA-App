@@ -41,6 +41,7 @@ API_DATA_PREFIX = '/api/data/'
 BF_API_BASE = 'https://api.brewfather.app/v2'
 BF_PROXY_PREFIX = '/api/brewfather/'
 BF_TEST_PATH = '/api/brewfather/test'
+BF_PATCH_PREFIX = '/api/brewfather/patch/'
 
 WC_API_PATH    = '/wp-json/wc/v3'
 WC_PROXY_PREFIX = '/api/woocommerce/'
@@ -256,12 +257,14 @@ def _load_bf_creds() -> tuple[str, str] | None:
         return None
 
 
-def _bf_request(uid: str, api_key: str, url: str) -> tuple[int, bytes]:
+def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET', data: bytes | None = None) -> tuple[int, bytes]:
     """Make a request to the Brewfather API; returns (status, body)."""
     auth = base64.b64encode(f'{uid}:{api_key}'.encode()).decode()
+    headers = {'Authorization': f'Basic {auth}', 'Accept': 'application/json'}
+    if data is not None:
+        headers['Content-Type'] = 'application/json'
     req = urllib.request.Request(
-        url,
-        headers={'Authorization': f'Basic {auth}', 'Accept': 'application/json'},
+        url, data=data, headers=headers, method=method,
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -584,6 +587,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
         path = self.path.split('?')[0]
 
+        # Brewfather PATCH proxy (voorraad push)
+        if BF_PATCH_PREFIX in path:
+            self._bf_proxy_patch()
+            return
+
         # Brewfather credential test endpoint
         if BF_TEST_PATH in path:
             self._bf_test()
@@ -658,6 +666,35 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         uid, api_key = creds
         status, data = _bf_request(uid, api_key, f'{BF_API_BASE}/{bf_subpath}')
 
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', len(data))
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _bf_proxy_patch(self):
+        """Proxy a PATCH request to Brewfather, delivered as browser POST."""
+        full = self.path
+        idx = full.find(BF_PATCH_PREFIX)
+        bf_subpath = full[idx + len(BF_PATCH_PREFIX):]
+        if not _valid_bf_path(bf_subpath):
+            self._json(400, {'error': 'invalid path'})
+            return
+        creds = _load_bf_creds()
+        if creds is None:
+            self._json(401, {'error': 'no credentials configured'})
+            return
+        body = self._read_body()
+        if body is None:
+            return
+        try:
+            json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        uid, api_key = creds
+        status, data = _bf_request(uid, api_key, f'{BF_API_BASE}/{bf_subpath}', 'PATCH', body)
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(data))
