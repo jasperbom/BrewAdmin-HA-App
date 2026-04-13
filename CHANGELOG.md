@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.47] — 2026-04-13
+
+### Enhanced — Alle Brewfather ingrediënt-eigenschappen ophalen
+- **Complete data**: Brewfather ingrediënt sync haalt nu alle beschikbare
+  eigenschappen op (`complete=true`): alfazuur, kleur, rendement, vergistingsgraad,
+  temperatuurbereik, uitvlokking, herkomst, etc.
+- **bf_props veld**: Extra Brewfather-eigenschappen worden opgeslagen in `bf_props`
+  op het Ingredient object (behalve voorraad, THT en productiedatum).
+- **Detail weergave**: Bij het selecteren van een ingrediënt worden alle
+  Brewfather-eigenschappen getoond in een compact grid onder de lots tabel.
+- **i18n**: Labels voor 30+ Brewfather-veldnamen in alle 5 talen.
+
+---
+
 ## [1.8.46] — 2026-04-13
 
 ### Fixed — Gist afboeken eenheidsconversie (stuk/stuks/pkg)
