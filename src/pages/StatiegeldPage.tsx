@@ -6,6 +6,7 @@ import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
+import { logAudit } from '../utils/audit'
 
 interface Props {
   verpakkingen: any[]
@@ -15,6 +16,8 @@ interface Props {
   factuurCounter?: any
   setFactuurCounter?: any
   bankKoppelingen?: any
+  auditLog?: any[]
+  setAuditLog?: any
 }
 
 type Tab = 'config' | 'snd' | 'fust' | 'mutaties'
@@ -30,7 +33,8 @@ const klantLabel = (f: any) => f?.klant_naam || t('lbl_onbekend')
 
 const StatiegeldPage: React.FC<Props> = ({
   verpakkingen, setVerpakkingen, verkoopFacturen, setVerkoopFacturen,
-  factuurCounter, setFactuurCounter = () => {}, bankKoppelingen = {}
+  factuurCounter, setFactuurCounter = () => {}, bankKoppelingen = {},
+  auditLog = [] as any[], setAuditLog = (() => {}) as any
 }) => {
   const [tab, setTab] = useState<Tab>('config')
   const [aangifteYear, setAangifteYear] = useState(new Date().getFullYear())
@@ -129,6 +133,8 @@ const StatiegeldPage: React.FC<Props> = ({
   // ---------- Verpakking inline edit ----------
   const updateVerpakking = (id: number, patch: any) => {
     setVerpakkingen((prev: any[]) => (prev || []).map((v: any) => v.id === id ? { ...v, ...patch } : v))
+    const naam = verpakkingen.find((v: any) => v.id === id)?.naam || ''
+    logAudit(auditLog, setAuditLog, {entiteit:'Verpakking', entiteit_id:id, actie:'gewijzigd', omschrijving:`Statiegeld: ${naam}`})
   }
 
   // ---------- Retour / creditnota ----------
@@ -199,6 +205,7 @@ const StatiegeldPage: React.FC<Props> = ({
     }
 
     setVerkoopFacturen((prev: any[]) => [...(prev || []), nieuw])
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Creditnota statiegeld`})
     setRetourFor(null)
     setRetourQty({})
   }

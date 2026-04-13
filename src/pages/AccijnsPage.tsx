@@ -79,6 +79,7 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
       const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       return k === monthKey && !a.betaald ? {...a, betaald:true, betaal_datum:tod()} : a;
     }));
+    logAudit(auditLog, setAuditLog, {entiteit:'Accijns', entiteit_id:0, actie:'gewijzigd', omschrijving:`Maand ${monthKey} als betaald gemarkeerd`});
     setIngeklapt((prev: any) => ({...prev, [monthKey]: true}));
   };
 
@@ -95,6 +96,7 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
       if (existing) return prev.map((x: any) => x.maand === monthKey ? {...x, status, [datumKey]: datum} : x)
       return [...prev, {maand: monthKey, status, [datumKey]: datum}]
     })
+    logAudit(auditLog, setAuditLog, {entiteit:'Accijnsaangifte', entiteit_id:0, actie:'gewijzigd', omschrijving:`Aangifte ${monthKey} → ${status}`});
     if (status === 'betaald') markMonthPaid(monthKey)
   }
   const aangifteStatusColor: Record<string,string> = {open:'bg-gray-100 text-gray-600', berekend:'bg-blue-100 text-blue-700', ingediend:'bg-orange-100 text-orange-700', betaald:'bg-green-100 text-green-700'}

@@ -3,8 +3,9 @@ import { t } from '../i18n'
 import { fmtD } from '../utils/format'
 import { bfGetRecipes } from '../utils/api'
 import Btn from '../components/ui/Btn'
+import { logAudit } from '../utils/audit'
 
-function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch}: any) {
+function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[] as any[], setAuditLog=()=>{} as any}: any) {
   const {useState} = React;
   const [sel, setSel]         = useState(null);
   const [syncing, setSyncing] = useState(false);
@@ -46,6 +47,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
     try {
       const recs = await bfGetRecipes();
       setRecepten(recs);
+      logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving:`Brewfather sync: ${recs.length} recepten`})
       setMsg(`✓ ${recs.length} recept${recs.length!==1?'en':''} gesynchroniseerd`);
     } catch(e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e))); }
     setSyncing(false);

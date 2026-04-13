@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.40] — 2026-04-13
+
+### Added — Uitgebreide audit trail logging
+- **Alle pagina's** loggen nu mutaties naar de audit trail via `logAudit()`:
+  - BatchesPage (11): status, tank, aanmaken, bewerken, afvullen, metingen
+  - IngredientenPage (21): ingrediënt/lot CRUD, correcties, afboeken, ontvangst
+  - InstellingenPage (31): tanks, credentials, thema, taal, accijns, BTW, hygiëne, ingTypes
+  - BoekhoudingPage (22): in-/verkoopfacturen, klanten, bankkoppelingen, kapitaal
+  - ProductenPage (9): producten, artikelen, WooCommerce sync
+  - BestellingenPage (9): orders, picks, afronden, annuleren, vrije regels
+  - AccijnsPage (5): aangifte status, maand betaald, e-AD documenten
+  - StatiegeldPage (3): verpakkingen, creditnota's
+  - InventarisatiePage (3): inventarisaties aanmaken/afronden
+  - DashboardPage (2): gistmetingen
+  - ReceptenPage (2): Brewfather sync
+- **118 logAudit calls** in totaal, waardoor elke data-mutatie in de app
+  wordt vastgelegd met entiteit, actie, omschrijving en timestamp.
+
+## [1.8.39] — 2026-04-13
+
+### Fixed — Race condition HA gist_metingen sync
+- **api.ts**: `useStore` retourneert nu een derde `refresh()`-functie die
+  server-data ophaalt en lokaal bijwerkt **zonder** terug te posten naar de
+  server. Voorkomt dat de periodieke sync lokale wijzigingen overschrijft.
+- **App.tsx**: HA gist_metingen periodic sync gebruikt nu `refresh()` in
+  plaats van de save-functie. Dit voorkomt de race condition waarbij net
+  toegevoegde metingen werden overschreven met verouderde server-data.
+
 ## [1.8.38] — 2026-04-13
 
 ### Fixed — Brewfather sync overschrijft handmatige status niet meer

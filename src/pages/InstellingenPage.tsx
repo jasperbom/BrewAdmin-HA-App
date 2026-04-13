@@ -4,6 +4,7 @@ import Btn from '../components/ui/Btn'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
+import { logAudit } from '../utils/audit'
 
 const ServerStatusCard = () => {
   const [s, setS]     = useState('loading');
@@ -190,6 +191,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     if (isNaN(r1)||isNaN(r2)) { alert(t('err_valid_numbers')); return; }
     if (customFormulaEnabled && !testFormula(customFormula)) return;
     setAccijnsInst({tarief_per_hl_abv: r1, tarief_per_hl: r2, customFormulaEnabled, customFormula});
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Accijnstarieven opgeslagen'});
     setSaved(true);
     setTimeout(()=>setSaved(false), 2000);
   };
@@ -200,12 +202,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setCustomFormula('');
     setFormulaError('');
     setAccijnsInst({tarief_per_hl_abv:7.51, tarief_per_hl:24.17, customFormulaEnabled:false, customFormula:''});
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Accijnstarieven gereset naar standaard'});
     setSaved(true);
     setTimeout(()=>setSaved(false), 2000);
   };
 
   const clearLog = () => {
     if (!window.confirm(t('error_confirm_clear_log') + ` (${(log||[]).length} regels)`)) return;
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Foutlog gewist (${(log||[]).length} regels)`});
     setLog([]);
   };
 
@@ -220,10 +224,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     // @ts-ignore
     if (tanks.find(t=>t.id===id)) { alert(t('err_tank_exists').replace('{id}',id)); return; }
     setTanks((prev: any)=>[...prev, {id, soort: tankSoortInput}]);
+    logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'aangemaakt', omschrijving:`Tank ${id} (${tankSoortInput}) toegevoegd`});
     setTankInput('');
   };
   const setTankSoort = (id: string, soort: 'fermentatie'|'bright'|'barrel') => {
     setTanks((prev: any)=>prev.map((x: any)=>x.id===id ? {...x, soort} : x));
+    logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'gewijzigd', omschrijving:`Tank ${id} soort → ${soort}`});
   };
 
   const [bfForm, setBfForm]   = React.useState({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false});
@@ -240,6 +246,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
   const saveBf = () => {
     setBfCreds((prev: any) => ({...prev, ...bfForm}));
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Brewfather credentials ${bfForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setBfMsg('✓ Opgeslagen');
     setTimeout(() => setBfMsg(''), 2000);
   };
@@ -262,6 +269,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
   const saveWc = () => {
     setWcCreds((prev: any) => ({...prev, ...wcForm}));
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`WooCommerce credentials ${wcForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setWcMsg('✓ Opgeslagen');
     setTimeout(() => setWcMsg(''), 2000);
   };
@@ -335,9 +343,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     const sensors = Array.isArray(haInst?.sensors) ? haInst.sensors : []
     const nextId = sensors.length ? Math.max(...sensors.map((s: any) => s.id)) + 1 : 1
     setHaInst((p: any) => ({...p, sensors: [...sensors, {id: nextId, tank: '', entity: ''}]}))
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:nextId, actie:'aangemaakt', omschrijving:'HA sensor toegevoegd'})
   }
 
   const removeSensor = (id: number) => {
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:id, actie:'verwijderd', omschrijving:`HA sensor #${id} verwijderd`})
     setHaInst((p: any) => ({...p, sensors: (p?.sensors||[]).filter((s: any) => s.id !== id)}))
     setSensorTests((t: any) => { const n = {...t}; delete n[id]; return n })
   }
@@ -347,6 +357,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   }
   const saveClaude = () => {
     setClaudeCreds((prev: any) => ({...prev, ...claudeForm}));
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Claude AI ${claudeForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setClaudeMsg('✓ Opgeslagen');
     setTimeout(() => setClaudeMsg(''), 2000);
   };
@@ -402,7 +413,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             {id:'red',    label:t('nav_color_red'),    colors:['#450a0a','#7f1d1d','#dc2626','#fecaca','#fef2f2']},
             {id:'purple', label:t('nav_color_purple'), colors:['#2e1065','#4c1d95','#7c3aed','#ddd6fe','#f5f3ff']},
           ].map(c => (
-            <button key={c.id} onClick={()=>setNavTheme(c.id)}
+            <button key={c.id} onClick={()=>{setNavTheme(c.id);logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Thema → ${c.id}`})}}
               className={`flex flex-col items-center gap-1.5 p-1 rounded-xl border-2 transition-all ${navTheme===c.id ? 't-border scale-105' : 'border-transparent hover:border-gray-300'}`}>
               <div className="w-[70px] h-8 rounded-lg shadow-sm overflow-hidden flex">
                 {c.colors.map((col,i) => <div key={i} className="flex-1 h-full" style={{backgroundColor:col}} />)}
@@ -425,7 +436,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             {code:'fr', label:'Français',   flag:'🇫🇷'},
             {code:'es', label:'Español',    flag:'🇪🇸'},
           ].map(lng => (
-            <button key={lng.code} onClick={()=>setLang(lng.code)}
+            <button key={lng.code} onClick={()=>{setLang(lng.code);logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Taal → ${lng.code}`})}}
               className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${lang===lng.code ? 't-nav' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
               <span className="text-xl">{lng.flag}</span>
               <span>{lng.label}</span>
@@ -490,7 +501,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <option value="bright">{t('tank_soort_bright')}</option>
                 <option value="barrel">{t('tank_soort_barrel')}</option>
               </select>
-              <button onClick={()=>setTanks((prev: any)=>prev.filter((x: any)=>x.id!==tnk.id))}
+              <button onClick={()=>{logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'verwijderd', omschrijving:`Tank ${tnk.id} verwijderd`});setTanks((prev: any)=>prev.filter((x: any)=>x.id!==tnk.id))}}
                 className="text-gray-400 hover:text-red-500 text-xs ml-1 leading-none">✕</button>
             </div>
             );
@@ -928,7 +939,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
           <div className="relative">
             <input type="checkbox" checked={haInst?.enabled||false}
-              onChange={e => setHaInst((p: any) => ({...p, enabled: e.target.checked}))} className="sr-only peer" />
+              onChange={e => {setHaInst((p: any) => ({...p, enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`HA sensoren ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
             <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
           </div>
           <span className="text-sm font-medium text-gray-700">Ingeschakeld</span>
@@ -1060,7 +1071,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('settings_btw_period_desc')}</p>
         <div className="flex gap-3">
           {[{id:'kwartaal', label:t('settings_btw_period_quarterly')}, {id:'maand', label:t('settings_btw_period_monthly')}].map(opt => (
-            <button key={opt.id} onClick={()=>setBtwInst((prev: any)=>({...prev, periode:opt.id}))}
+            <button key={opt.id} onClick={()=>{setBtwInst((prev: any)=>({...prev, periode:opt.id}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`BTW-periode → ${opt.id}`})}}
               className={`px-5 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${(btwInst?.periode||'kwartaal')===opt.id ? 'tbtn border-transparent shadow' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
               {opt.label}
             </button>
@@ -1080,6 +1091,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 onChange={(e: any) => {
                   const arr: number[] = Array.isArray(btwTarieven) ? [...btwTarieven] : [0, 9, 21];
                   setBtwTarieven(e.target.checked ? [...arr, pct].sort((a,b)=>a-b) : arr.filter(v=>v!==pct));
+                  logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`BTW-tarief ${pct}% ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`});
                 }}
                 className="w-4 h-4 rounded border-gray-300 t-checkbox" />
               <span className="text-sm font-medium text-gray-700">{pct}%</span>
@@ -1183,6 +1195,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   onClick={()=>{
                     if(ing.some((i: any)=>i.type===typ)){alert(t('err_ingredient_type_in_use_detail').replace('{typ}',typ));return;}
                     if(!confirm(t('confirm_ingredient_type_delete').replace('{typ}',typ)))return;
+                    logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:idx, actie:'verwijderd', omschrijving:`Type "${typ}" verwijderd`});
                     setIngTypes((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
                     setIngTypeBtw((prev: any)=>{const next={...prev};delete next[typ];return next;});
                   }}
@@ -1193,8 +1206,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p className="text-xs text-gray-400 mb-3">{t('settings_ingredient_btw_desc')}</p>
           <div className="flex gap-2">
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_new_ingredient_type')} value={newIngType} onChange={(e: any)=>setNewIngType(e.target.value)}
-              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}} />
-            <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);setNewIngType('');}}>{t('btn_add')}</Btn>
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:0, actie:'aangemaakt', omschrijving:`Type "${val}" toegevoegd`});setNewIngType('');}}} />
+            <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:0, actie:'aangemaakt', omschrijving:`Type "${val}" toegevoegd`});setNewIngType('');}}>{t('btn_add')}</Btn>
           </div>
         </div>
       )}
@@ -1215,6 +1228,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   title={t('btn_delete')}
                   onClick={()=>{
                     if(!confirm(t('confirm_ingredient_type_delete').replace('{typ}',ks)))return;
+                    logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:idx, actie:'verwijderd', omschrijving:`Kostensoort "${ks}" verwijderd`});
                     setKostenSoorten((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
                   }}
                   className="text-sm px-2 py-1.5 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>
@@ -1223,8 +1237,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
           <div className="flex gap-2">
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_kostensoort')} value={newKostenSoort} onChange={(e: any)=>setNewKostenSoort(e.target.value)}
-              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);setNewKostenSoort('');}}} />
-            <Btn onClick={()=>{const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);setNewKostenSoort('');}}>{t('btn_add')}</Btn>
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:0, actie:'aangemaakt', omschrijving:`Kostensoort "${val}" toegevoegd`});setNewKostenSoort('');}}} />
+            <Btn onClick={()=>{const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:0, actie:'aangemaakt', omschrijving:`Kostensoort "${val}" toegevoegd`});setNewKostenSoort('');}}>{t('btn_add')}</Btn>
           </div>
         </div>
       )}
@@ -1247,6 +1261,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   title={t('btn_delete')}
                   onClick={()=>{
                     if(!confirm(t('confirm_gn_code_delete').replace('{code}',gc.code)))return;
+                    logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:idx, actie:'verwijderd', omschrijving:`GN-code "${gc.code}" verwijderd`});
                     setGnCodes((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
                   }}
                   className="text-sm px-2 py-1.5 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>
@@ -1256,8 +1271,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <div className="flex gap-2">
             <input className="w-32 border rounded px-2 py-1.5 text-sm t-input font-mono" placeholder={t('ph_gn_code')} value={newGnCode} onChange={(e: any)=>setNewGnCode(e.target.value)} />
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_gn_naam')} value={newGnNaam} onChange={(e: any)=>setNewGnNaam(e.target.value)}
-              onKeyDown={(e: any)=>{if(e.key==='Enter'){const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);setNewGnCode('');setNewGnNaam('');}}} />
-            <Btn onClick={()=>{const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);setNewGnCode('');setNewGnNaam('');}}>{t('btn_add')}</Btn>
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:0, actie:'aangemaakt', omschrijving:`GN-code "${code}" toegevoegd`});setNewGnCode('');setNewGnNaam('');}}} />
+            <Btn onClick={()=>{const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:0, actie:'aangemaakt', omschrijving:`GN-code "${code}" toegevoegd`});setNewGnCode('');setNewGnNaam('');}}>{t('btn_add')}</Btn>
           </div>
         </div>
       )}
@@ -1274,6 +1289,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           if (groups.find((g: any)=>(g.naam||'').toLowerCase()===naam.toLowerCase())) { alert(t('err_group_exists')); return; }
           const maxId = groups.length ? Math.max(...groups.map((g: any)=>g.id)) : 0;
           setHygieneGroups([...groups, {id: maxId+1, naam, volgorde: groups.length}]);
+          logAudit(auditLog, setAuditLog, {entiteit:'Hygiënegroep', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Groep "${naam}" toegevoegd`});
           setNieuwGroep('');
         };
         const removeGroep = (id: any) => {
@@ -1281,6 +1297,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             if (!confirm(t('settings_hygiene_group_has_items'))) return;
             setHygieneItems(items.map((i: any)=>i.group_id===id ? {...i, group_id:null} : i));
           }
+          const g = groups.find((g: any)=>g.id===id);
+          logAudit(auditLog, setAuditLog, {entiteit:'Hygiënegroep', entiteit_id:id, actie:'verwijderd', omschrijving:`Groep "${g?.naam||id}" verwijderd`});
           setHygieneGroups(groups.filter((g: any)=>g.id!==id));
         };
         const moveGroep = (id: any, dir: number) => {
@@ -1299,9 +1317,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           const maxId = items.length ? Math.max(...items.map((i: any)=>i.id)) : 0;
           const group_id = nieuwHygieneItemGroep ? Number(nieuwHygieneItemGroep) : null;
           setHygieneItems([...items, {id: maxId+1, label, group_id, volgorde: items.length}]);
+          logAudit(auditLog, setAuditLog, {entiteit:'Hygiëne-item', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Item "${label}" toegevoegd`});
           setNieuwHygieneItem('');
         };
-        const removeItem = (id: any) => setHygieneItems(items.filter((i: any)=>i.id!==id));
+        const removeItem = (id: any) => {const it=items.find((i: any)=>i.id===id);logAudit(auditLog, setAuditLog, {entiteit:'Hygiëne-item', entiteit_id:id, actie:'verwijderd', omschrijving:`Item "${it?.label||id}" verwijderd`});setHygieneItems(items.filter((i: any)=>i.id!==id))};
         const moveItem = (id: any, dir: number) => {
           const idx = items.findIndex((i: any)=>i.id===id);
           if (idx<0) return;
@@ -1312,7 +1331,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           setHygieneItems(next);
         };
         const setItemGroep = (id: any, group_id: any) => setHygieneItems(items.map((i: any)=>i.id===id?{...i,group_id:group_id?Number(group_id):null}:i));
-        const resetAlles = () => { if(confirm(t('settings_hygiene_reset_confirm'))) { setHygieneGroups(DEFAULT_HYGIENE_GROUPS); setHygieneItems(DEFAULT_HYGIENE_ITEMS); }};
+        const resetAlles = () => { if(confirm(t('settings_hygiene_reset_confirm'))) { setHygieneGroups(DEFAULT_HYGIENE_GROUPS); setHygieneItems(DEFAULT_HYGIENE_ITEMS); logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Hygiëne-items gereset naar standaard'}); }};
 
         return (
           <div className={card}>

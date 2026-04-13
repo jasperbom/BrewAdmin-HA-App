@@ -5,6 +5,7 @@ import { newId } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
+import { logAudit } from '../utils/audit'
 
 interface InventarisatieTelling {
   id: number
@@ -41,11 +42,14 @@ interface InventarisatiePageProps {
   setLots: any
   log: any[]
   setLog: any
+  auditLog?: any[]
+  setAuditLog?: any
 }
 
 const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
   lots, ing, av, bat, uit, afboekingen, bestellingPicks, bestellingen,
-  inventarisaties, setInventarisaties, setLots, log, setLog
+  inventarisaties, setInventarisaties, setLots, log, setLog,
+  auditLog = [] as any[], setAuditLog = (() => {}) as any
 }) => {
   const [selected, setSelected] = useState<Inventarisatie | null>(null)
   const [showNew, setShowNew] = useState(false)
@@ -133,6 +137,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
     }
 
     setInventarisaties((prev: Inventarisatie[]) => [...(prev || []), inv])
+    logAudit(auditLog, setAuditLog, {entiteit:'Inventarisatie', entiteit_id:inv.id, actie:'aangemaakt', omschrijving:`${inv.type} — ${inv.datum}`})
     setShowNew(false)
     setSelected(inv)
   }
@@ -192,6 +197,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
     setInventarisaties((prev: Inventarisatie[]) =>
       (prev || []).map(inv => inv.id === updated.id ? updated : inv)
     )
+    logAudit(auditLog, setAuditLog, {entiteit:'Inventarisatie', entiteit_id:updated.id, actie:'gewijzigd', omschrijving:`Afgerond: ${updated.type}`})
     setShowConfirm(false)
   }
 
