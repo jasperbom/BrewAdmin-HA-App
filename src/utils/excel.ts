@@ -67,6 +67,14 @@ export const excelExport = (data: any) => {
     addSheet('AccijnsAangiftes',     data.accijns_aangiftes)
     addSheet('Producten',            data.producten)
     addSheet('ProductArtikelen',     data.product_artikelen)
+    addSheet('HACCPSchoonmaakTaken', data.haccp_schoonmaak_taken)
+    addSheet('HACCPSchoonmaakLog',   data.haccp_schoonmaak_log)
+    addSheet('HACCPCcpDefinities',   data.haccp_ccp_definities)
+    addSheet('HACCPCcpMetingen',     data.haccp_ccp_metingen)
+    addSheet('HACCPCapa',            data.haccp_capa)
+    addSheet('HACCPWaterkwaliteit',  data.haccp_waterkwaliteit)
+    addSheet('HACCPOngedierte',      data.haccp_ongedierte)
+    addSheet('HACCPOpleidingen',     data.haccp_opleidingen)
 
     // Simpele primitieve arrays — wrap in object voor Excel
     addSheet('BtwTarieven', (data.btw_tarieven || []).map((v: any) => ({tarief: v})))
@@ -170,6 +178,14 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         accijns_aangiftes:            parse('AccijnsAangiftes'),
         producten:                    parse('Producten'),
         product_artikelen:            parse('ProductArtikelen'),
+        haccp_schoonmaak_taken:       parse('HACCPSchoonmaakTaken'),
+        haccp_schoonmaak_log:         parse('HACCPSchoonmaakLog'),
+        haccp_ccp_definities:         parse('HACCPCcpDefinities'),
+        haccp_ccp_metingen:           parse('HACCPCcpMetingen'),
+        haccp_capa:                   parse('HACCPCapa'),
+        haccp_waterkwaliteit:         parse('HACCPWaterkwaliteit'),
+        haccp_ongedierte:             parse('HACCPOngedierte'),
+        haccp_opleidingen:            parse('HACCPOpleidingen'),
 
         // Primitieve arrays
         btw_tarieven: gs('BtwTarieven').map((r: any) => r.tarief).filter((v: any) => v != null),

@@ -1,3 +1,6 @@
+export type Allergeen = 'gluten' | 'gerst' | 'tarwe' | 'rogge' | 'haver' |
+  'lactose' | 'soja' | 'noten' | 'sulfiet' | 'overig'
+
 export interface Ingredient {
   id: number
   naam: string
@@ -7,6 +10,7 @@ export interface Ingredient {
   brewfather_id?: string
   brewfather_cat?: string
   bf_props?: Record<string, any>
+  allergenen?: Allergeen[]
 }
 
 export interface Lot {
@@ -60,6 +64,8 @@ export interface Batch {
   product_id?: number
   created_at?: string
   tank_historie?: TankHistorieEntry[]
+  hygiene_checks?: Record<number, boolean>
+  allergeen_notities?: string
 }
 
 export interface TankHistorieEntry {
@@ -649,4 +655,104 @@ export interface AccijnsAangifte {
   berekend_datum?: string
   ingediend_datum?: string
   betaald_datum?: string
+}
+
+// ── NVWA/HACCP Compliance Types ─────────────────────────────────────────────
+
+export type SchoonmaakFrequentie = 'dagelijks' | 'wekelijks' | 'maandelijks' | 'per_batch' | 'anders'
+
+export interface SchoonmaakTaak {
+  id: number
+  naam: string
+  omschrijving?: string
+  frequentie: SchoonmaakFrequentie
+  locatie?: string
+  tank_id?: string
+  verantwoordelijke?: string
+  actief?: boolean
+}
+
+export interface SchoonmaakLog {
+  id: number
+  taak_id: number
+  datum: string
+  uitgevoerd_door: string
+  opmerking?: string
+  middel?: string
+  cip?: boolean
+}
+
+export type CCPCategorie = 'koken' | 'koelen' | 'vergisting' | 'verpakken' | 'opslag' | 'overig'
+
+export interface CCPDefinitie {
+  id: number
+  naam: string
+  categorie: CCPCategorie
+  kritische_grens: string
+  grens_min?: number
+  grens_max?: number
+  eenheid?: string
+  monitoring_methode?: string
+  corrigerende_actie?: string
+  actief?: boolean
+}
+
+export interface CCPMeting {
+  id: number
+  ccp_id: number
+  batch_id: number
+  datum: string
+  waarde: number
+  eenheid?: string
+  binnen_limiet: boolean
+  uitgevoerd_door?: string
+  opmerking?: string
+  corrigerende_actie?: string
+}
+
+export type CAPAStatus = 'open' | 'in_behandeling' | 'afgerond'
+
+export interface CorrigierendeActie {
+  id: number
+  datum: string
+  omschrijving: string
+  oorzaak?: string
+  actie: string
+  verantwoordelijke?: string
+  status: CAPAStatus
+  afgerond_datum?: string
+  batch_id?: number
+  ccp_meting_id?: number
+}
+
+export interface WaterkwaliteitTest {
+  id: number
+  datum: string
+  bron?: string
+  ph?: number
+  hardheid?: number
+  chlor?: number
+  resultaat: 'goed' | 'afwijkend'
+  opmerking?: string
+  uitgevoerd_door?: string
+}
+
+export interface OngedierteLog {
+  id: number
+  datum: string
+  type: 'controle' | 'waarneming'
+  locatie?: string
+  bevinding?: string
+  actie?: string
+  uitgevoerd_door?: string
+}
+
+export interface Opleiding {
+  id: number
+  medewerker: string
+  onderwerp: string
+  datum: string
+  geldig_tot?: string
+  certificaat?: string
+  opmerking?: string
 }
