@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.34] — 2026-04-13
+
+### Fixed — Actief-bolletje gistgrafiek header
+- **BatchesPage**: Pulserend groen bolletje terug bij "Actief" indicator in de
+  gistgrafiek header (was verloren gegaan bij t-hdr omzetting).
+
 ## [1.8.33] — 2026-04-13
 
 ### Changed — Automatische metingen zonder punten in grafiek

@@ -1400,7 +1400,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold" style={{display:'inline-block',transition:'transform 0.15s',transform:isOpen?'rotate(90deg)':'none'}}>▶</span>
                       <span>{t('batch_gist_chart')}</span>
-                      {selB.status === 'Vergisten' && <span className="text-xs opacity-75">{t('batch_gist_active')}</span>}
+                      {selB.status === 'Vergisten' && <span className="text-xs opacity-75 flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>{t('batch_gist_active')}</span>}
                       {batchMetingen.length > 0 && <span className="text-xs opacity-75">({batchMetingen.length} {t('batch_gist_measurements')})</span>}
                     </div>
                     <span className="text-xs opacity-75">→</span>
