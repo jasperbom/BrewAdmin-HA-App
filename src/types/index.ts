@@ -6,6 +6,7 @@ export interface Ingredient {
   beschikbaar?: boolean
   brewfather_id?: string
   brewfather_cat?: string
+  bf_props?: Record<string, any>
 }
 
 export interface Lot {

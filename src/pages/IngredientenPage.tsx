@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
-import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory } from '../utils/api'
+import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory, extractBfProps } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS } from '../utils/constants'
 import Modal from '../components/ui/Modal'
@@ -53,6 +53,7 @@ const IngredientenPage: React.FC<Props> = ({
   const [lotEdit, setLotEdit] = useState<any>({})
   const [lotCorr, setLotCorr] = useState({ delta: '', richting: '+', reden: '', eenheid: '' })
   const [ingZoek, setIngZoek] = useState('')
+  const [alleenOpVoorraad, setAlleenOpVoorraad] = useStore('ing_alleen_voorraad', false)
   const [groepDicht, setGroepDicht] = useStore('ing_groep_dicht', {})
   const [showIngEdit, setShowIngEdit] = useState(false)
   const [ingEditForm, setIngEditForm] = useState({ naam: '', type: '', fabrikant: '' })
@@ -102,19 +103,18 @@ const IngredientenPage: React.FC<Props> = ({
         const naam = (bfItem.name || '').trim()
         if (!naam) return
         const fabrikant = typeof bfItem.supplier === 'object' ? (bfItem.supplier?.name || '') : (bfItem.supplier || '')
+        const bfProps = extractBfProps(bfItem)
         let existing = updated.find((i: any) => i.brewfather_id === bfItem._id)
         if (!existing) existing = updated.find((i: any) => i.naam.toLowerCase() === naam.toLowerCase())
         if (existing) {
-          const upd: any = {}
+          const upd: any = { bf_props: bfProps }
           if (!existing.brewfather_id) upd.brewfather_id = bfItem._id
           if (!existing.brewfather_cat) upd.brewfather_cat = cat
           if (!existing.fabrikant && fabrikant) upd.fabrikant = fabrikant
-          if (Object.keys(upd).length > 0) {
-            updated = updated.map((i: any) => i.id === existing.id ? { ...i, ...upd } : i)
-            gekoppeld++
-          }
+          updated = updated.map((i: any) => i.id === existing.id ? { ...i, ...upd } : i)
+          gekoppeld++
         } else {
-          updated.push({ id: newId(updated), naam, type: appType, fabrikant: fabrikant || undefined, beschikbaar: true, brewfather_id: bfItem._id, brewfather_cat: cat })
+          updated.push({ id: newId(updated), naam, type: appType, fabrikant: fabrikant || undefined, beschikbaar: true, brewfather_id: bfItem._id, brewfather_cat: cat, bf_props: bfProps })
           nieuw++
         }
       }
@@ -438,10 +438,14 @@ const IngredientenPage: React.FC<Props> = ({
       {tab === 'ingredienten' && (
         <div className="flex flex-col md:flex-row gap-4 md:items-start">
           <div className={`w-full md:w-60 md:flex-shrink-0${sel ? ' hidden md:block' : ''}`}>
-            <div className="mb-2">
+            <div className="mb-2 space-y-1.5">
               <input type="text" placeholder={t('search_ingredient')}
                 className="w-full border rounded-lg px-3 py-2 text-sm t-input"
                 value={ingZoek} onChange={e => { setIngZoek(e.target.value); setSel(null) }} />
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input type="checkbox" className="t-checkbox" checked={alleenOpVoorraad} onChange={e => { setAlleenOpVoorraad(e.target.checked); setSel(null) }} />
+                <span className="text-xs text-gray-500">{t('lbl_only_in_stock')}</span>
+              </label>
             </div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <table className="w-full text-sm">
@@ -452,7 +456,8 @@ const IngredientenPage: React.FC<Props> = ({
                   ? <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_no_ingredients')}</td></tr></tbody>
                   : (() => {
                     const zoek = ingZoek.trim().toLowerCase()
-                    const filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek)) : ing
+                    let filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek)) : ing
+                    if (alleenOpVoorraad) filtered = filtered.filter((i: any) => totalQty(i.id) > 0)
                     if (filtered.length === 0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen resultaten voor "{ingZoek}"</td></tr></tbody>
                     const allTypes = [...ingTypes, ...filtered.map((i: any) => i.type || 'Overig').filter((tp: string) => !ingTypes.includes(tp)).filter((tp: string, i: number, a: string[]) => a.indexOf(tp) === i)]
                     return allTypes.map((ingTyp: string) => {
@@ -537,6 +542,26 @@ const IngredientenPage: React.FC<Props> = ({
                 </tbody>
               </table>
             </div>
+            {selIng.bf_props && Object.keys(selIng.bf_props).length > 0 && (
+              <div className="bg-white rounded-xl shadow-card mt-3 overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brewfather</span>
+                </div>
+                <div className="px-4 py-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
+                  {Object.entries(selIng.bf_props).map(([k, v]: [string, any]) => {
+                    if (typeof v === 'object' && v !== null) return null
+                    const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
+                    const display = typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '')) : String(v)
+                    return (
+                      <div key={k} className="flex flex-col">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
+                        <span className="text-sm text-gray-700 truncate" title={display}>{display}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </>)}
         </div>
       )}

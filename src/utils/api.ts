@@ -256,7 +256,7 @@ export const bfGetIngredients = async (): Promise<{fermentables: any[], hops: an
     const all: any[] = []
     let startAfter: string | null = null
     for (;;) {
-      const r = await bfFetch(`inventory/${endpoint}?limit=50${startAfter ? '&start_after=' + startAfter : ''}`)
+      const r = await bfFetch(`inventory/${endpoint}?complete=true&limit=50${startAfter ? '&start_after=' + startAfter : ''}`)
       if (!r.ok) break
       const d = await r.json()
       all.push(...d)
@@ -269,6 +269,18 @@ export const bfGetIngredients = async (): Promise<{fermentables: any[], hops: an
     ['fermentables', 'hops', 'yeasts', 'miscs'].map(fetchAll)
   )
   return { fermentables, hops, yeasts, miscs }
+}
+
+// Velden die we NIET opslaan in bf_props (worden apart verwerkt of uitgesloten)
+const BF_SKIP_FIELDS = new Set(['_id', '_rev', 'name', 'supplier', 'inventory', 'bestBeforeDate', 'manufacturingDate', '_timestamp', '_timestamp_ms', '_created', '_version'])
+
+export const extractBfProps = (item: any): Record<string, any> => {
+  const props: Record<string, any> = {}
+  for (const [k, v] of Object.entries(item)) {
+    if (BF_SKIP_FIELDS.has(k) || v === null || v === undefined || v === '') continue
+    props[k] = v
+  }
+  return props
 }
 
 export const BF_FERM_TYPE_MAP: Record<string, string> = {
