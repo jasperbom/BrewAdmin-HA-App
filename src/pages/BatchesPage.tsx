@@ -1390,14 +1390,15 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
                   {/* Klikbare header */}
-                  <div className="px-4 py-2.5 bg-gray-50 border-b flex items-center justify-between cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
                     onClick={() => setGrafiekOpen((p: any) => ({...p, [selB.id]: !isOpen}))}>
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-400 text-xs">{isOpen ? '▼' : '▶'}</span>
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">{t('batch_gist_chart')}</span>
-                      {selB.status === 'Vergisten' && <span className="text-xs text-green-500 font-medium">{t('batch_gist_active')}</span>}
-                      {batchMetingen.length > 0 && <span className="text-xs text-gray-400">({batchMetingen.length} {t('batch_gist_measurements')})</span>}
+                      <span className="text-xs font-bold" style={{display:'inline-block',transition:'transform 0.15s',transform:isOpen?'rotate(90deg)':'none'}}>▶</span>
+                      <span>{t('batch_gist_chart')}</span>
+                      {selB.status === 'Vergisten' && <span className="text-xs opacity-75">{t('batch_gist_active')}</span>}
+                      {batchMetingen.length > 0 && <span className="text-xs opacity-75">({batchMetingen.length} {t('batch_gist_measurements')})</span>}
                     </div>
+                    <span className="text-xs opacity-75">→</span>
                   </div>
 
                   {/* Invulrij — altijd zichtbaar als geopend */}

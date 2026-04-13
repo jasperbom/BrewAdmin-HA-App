@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.31] — 2026-04-13
+
+### Fixed — Vergistingsgrafiek header kleurstelling
+- **BatchesPage**: Header van de gistgrafiek gebruikt nu `t-hdr` themastyling
+  (was `bg-gray-50` grijs) met `→` pijl, consistent met alle andere secties.
+
 ## [1.8.30] — 2026-04-13
 
 ### Added — Product & SKU selectie bij afvullen
