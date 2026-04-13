@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.36] — 2026-04-13
+
+### Fixed — Dubbel puntje gistgrafiek header
+- **BatchesPage**: Groen pulserend bolletje vervangt nu de ▶ chevron bij actieve
+  vergisting, zodat er geen twee puntjes naast elkaar staan.
+
 ## [1.8.35] — 2026-04-13
 
 ### Changed — Alleen handmatige metingen tellen in header

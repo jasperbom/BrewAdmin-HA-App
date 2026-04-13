@@ -1398,9 +1398,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
                     onClick={() => setGrafiekOpen((p: any) => ({...p, [selB.id]: !isOpen}))}>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold" style={{display:'inline-block',transition:'transform 0.15s',transform:isOpen?'rotate(90deg)':'none'}}>▶</span>
+                      {selB.status === 'Vergisten'
+                        ? <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                        : <span className="text-xs font-bold" style={{display:'inline-block',transition:'transform 0.15s',transform:isOpen?'rotate(90deg)':'none'}}>▶</span>}
                       <span>{t('batch_gist_chart')}</span>
-                      {selB.status === 'Vergisten' && <span className="text-xs opacity-75 flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>{t('batch_gist_active')}</span>}
+                      {selB.status === 'Vergisten' && <span className="text-xs opacity-75">{t('batch_gist_active')}</span>}
                       {batchMetingen.length > 0 && <span className="text-xs opacity-75">({batchMetingen.filter((m:any)=>!m.auto).length} {t('batch_gist_measurements')})</span>}
                     </div>
                     <span className="text-xs opacity-75">→</span>
