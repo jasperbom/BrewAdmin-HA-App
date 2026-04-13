@@ -5,6 +5,7 @@ import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
+import { logAudit } from '../utils/audit'
 
 type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
 
@@ -22,7 +23,7 @@ const REDEN_COLORS: Record<AfboekingReden, string> = {
   overig:         'text-gray-600 bg-gray-100',
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[] as any[], setAuditLog=()=>{} as any}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -147,9 +148,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const exists = (producten||[]).find((p: any) => p.id === form.id);
     if (exists) {
       setProducten((prev: any[]) => prev.map((p: any) => p.id === form.id ? updated : p));
+      logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: form.id, actie: 'gewijzigd', omschrijving: `Product "${updated.naam}" gewijzigd`});
     } else {
       setProducten((prev: any[]) => [...(prev||[]), updated]);
       setSel(form.id);
+      logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: form.id, actie: 'aangemaakt', omschrijving: `Product "${updated.naam}" aangemaakt`});
     }
     setEditMode(false);
     setMsg('');
@@ -157,6 +160,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   const deleteProduct = () => {
     if (!confirm(t('confirm_product_verwijderen'))) return;
+    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
     setProducten((prev: any[]) => prev.filter((p: any) => p.id !== sel));
     setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.product_id !== sel));
     setBat((prev: any[]) => prev.map((b: any) => b.product_id === sel ? {...b, product_id: undefined} : b));
@@ -166,6 +170,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const toggleArchiveer = () => {
     const newStatus = selProduct?.status === 'gearchiveerd' ? 'actief' : 'gearchiveerd';
     setProducten((prev: any[]) => prev.map((p: any) => p.id === sel ? {...p, status: newStatus} : p));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'gewijzigd', omschrijving: `Product "${selProduct?.naam || ''}" status → ${newStatus}`});
   };
 
   // Foto upload (max 2MB per foto)
@@ -223,13 +228,17 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const exists = (productArtikelen||[]).find((a: any) => a.id === artForm.id);
     if (exists) {
       setProductArtikelen((prev: any[]) => prev.map((a: any) => a.id === artForm.id ? updated : a));
+      logAudit(auditLog, setAuditLog, {entiteit: 'Artikel', entiteit_id: artForm.id, actie: 'gewijzigd', omschrijving: `Artikel "${updated.verpakking_naam || updated.artikelnummer || ''}" gewijzigd`});
     } else {
       setProductArtikelen((prev: any[]) => [...(prev||[]), updated]);
+      logAudit(auditLog, setAuditLog, {entiteit: 'Artikel', entiteit_id: artForm.id, actie: 'aangemaakt', omschrijving: `Artikel "${updated.verpakking_naam || updated.artikelnummer || ''}" aangemaakt`});
     }
     setArtForm(null);
   };
 
   const deleteArtikel = (id: number) => {
+    const art = (productArtikelen||[]).find((a: any) => a.id === id);
+    logAudit(auditLog, setAuditLog, {entiteit: 'Artikel', entiteit_id: id, actie: 'verwijderd', omschrijving: `Artikel "${art?.verpakking_naam || art?.artikelnummer || ''}" verwijderd`});
     setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.id !== id));
   };
 
@@ -270,6 +279,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       created_at: new Date().toISOString(),
     };
     if (setAfboekingen) setAfboekingen((prev: any[]) => [...(prev||[]), nieuw]);
+    logAudit(auditLog, setAuditLog, {entiteit: 'Afboeking', entiteit_id: nieuw.id, actie: 'aangemaakt', omschrijving: `Afboeking ${aantal}× ${afboekModal.verpakking_naam || afboekModal.verpakking_type || ''} (${afboekForm.reden})`});
     const redenLabel = t(AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.lKey || afboekForm.reden);
     const batch = (bat||[]).find((b: any) => b.id === afboekModal.batch_id);
     if (setLog) setLog((prev: any[]) => [...(prev||[]), {

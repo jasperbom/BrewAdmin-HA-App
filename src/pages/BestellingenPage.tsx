@@ -299,7 +299,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         nieuw.push(nb)
         imported++
       }
-      if (nieuw.length) setBestellingen((prev: any[]) => [...(prev||[]), ...nieuw])
+      if (nieuw.length) {
+        setBestellingen((prev: any[]) => [...(prev||[]), ...nieuw])
+        nieuw.forEach((o: any) => logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:o.id, actie:'aangemaakt', omschrijving:`WC import — ${o.klant_naam||'onbekend'}`}))
+      }
       setWcMsg(t('msg_wc_orders_imported').replace('{n}', String(imported)))
     } catch(e: any) {
       setWcMsg(t('msg_wc_import_failed').replace('{msg}', e.message))
@@ -335,6 +338,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       wc_order_nummer: null,
     }
     setBestellingen((prev: any[]) => [...(prev||[]), nb])
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:nb.id, actie:'aangemaakt', omschrijving:`Handmatig — ${nb.klant_naam}`})
     setShowManualModal(false)
     setManualForm(emptyManual)
     setManualVerzending({enabled: false, naam: '', prijs: '', btw_pct: '21'})
@@ -415,6 +419,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, status: allFull ? 'gepickt' : 'nieuw'} : b
     ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Picks opgeslagen — ${selectedOrder.klant_naam} (${allFull?'volledig':'deels'} gepickt)`})
     setShowPickModal(false)
     setDraftPicks({})
   }
@@ -617,6 +622,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, status: 'geannuleerd'} : b
     ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Geannuleerd — ${selectedOrder.klant_naam}`})
     setShowAnnuleerModal(false)
     setView('list')
   }
@@ -640,6 +646,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, regels: [...(b.regels||[]), newRegel]} : b
     ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Vrije regel toegevoegd: ${omschr}`})
     setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
     setShowVrijeRegelModal(false)
   }
@@ -668,11 +675,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, regels: [...(b.regels||[]), newRegel]} : b
     ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Verzendkosten toegevoegd: ${naam}`})
     setShowVerzendkostenModal(false)
   }
 
   const removeRegel = (regelId: number) => {
     if (!selectedOrder) return
+    const regel = (selectedOrder.regels||[]).find((r: any) => r.id === regelId)
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Regel verwijderd: ${regel?.bier_naam||regelId}`})
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, regels: (b.regels||[]).filter((r: any) => r.id !== regelId)} : b
     ))

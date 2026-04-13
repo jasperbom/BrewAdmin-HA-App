@@ -9,6 +9,7 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import { useStore } from '../utils/api'
+import { logAudit } from '../utils/audit'
 
 interface Props {
   ing: any[]
@@ -33,7 +34,8 @@ const IngredientenPage: React.FC<Props> = ({
   ing, setIng, lots, setLots, verpakkingen, setVerpakkingen,
   onderdelen = [], setOnderdelen, log, setLog,
   bi = [], bat = [], setInkoopFacturen = () => {}, claudeCreds = null,
-  ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {}
+  ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {},
+  auditLog = [] as any[], setAuditLog = () => {} as any
 }) => {
   const [tab, setTab] = useState('ingredienten')
   const [sel, setSel] = useState<number | null>(null)
@@ -117,6 +119,7 @@ const IngredientenPage: React.FC<Props> = ({
       ead_arc: lotEdit.ead_arc || undefined,
       beschikbaar: (Number(lotEdit.hoeveelheid) || 0) > 0,
     }))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: showLot.id, actie: 'gewijzigd', omschrijving: showLot.lotnummer || `Lot #${showLot.id}` })
     setShowLot(null)
   }
 
@@ -129,6 +132,7 @@ const IngredientenPage: React.FC<Props> = ({
     if (lotCorr.richting === '-' && deltaInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${lot.hoeveelheid} ${lot.eenheid}`)); return }
     const nieuweQty = lotCorr.richting === '+' ? Number(lot.hoeveelheid) + deltaInLot : Number(lot.hoeveelheid) - deltaInLot
     setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: nieuweQty, beschikbaar: nieuweQty > 0 }))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'gewijzigd', omschrijving: `Correctie ${lotCorr.richting}${delta} ${corrEenh}` })
     addLog({ ingredient_id: lot.ingredient_id, ingredient_naam: ing.find((i: any) => i.id === lot.ingredient_id)?.naam || '', lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'correctie', hoeveelheid: lotCorr.richting === '-' ? -delta : delta, eenheid: corrEenh, referentie: lotCorr.reden || 'Handmatige correctie' })
     setLotCorr({ delta: '', richting: '+', reden: '', eenheid: lot.eenheid })
     setShowLot((prev: any) => ({ ...prev, hoeveelheid: nieuweQty, beschikbaar: nieuweQty > 0 }))
@@ -143,6 +147,7 @@ const IngredientenPage: React.FC<Props> = ({
     if (qInLot === null) { alert(t('err_convert_units').replace('{from}', van).replace('{to}', lot.eenheid)); return }
     if (qInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${lot.hoeveelheid} ${lot.eenheid}`)); return }
     setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: Number(l.hoeveelheid) - qInLot, beschikbaar: Number(l.hoeveelheid) - qInLot > 0 }))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'gewijzigd', omschrijving: `Afgeboekt ${q} ${van}` })
     addLog({ ingredient_id: lot.ingredient_id, ingredient_naam: ing.find((i: any) => i.id === lot.ingredient_id)?.naam || '', lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'afboeking', hoeveelheid: q, eenheid: van, referentie: 'Handmatig afgeboekt' })
     setShowA(null); setAfQty(''); setAfEenheid('')
   }
@@ -174,9 +179,14 @@ const IngredientenPage: React.FC<Props> = ({
     if (!n || n <= 0) { alert(t('err_count_required')); return }
     if (vOntvForm.verpakking_id) {
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === Number(vOntvForm.verpakking_id) ? { ...v, voorraad: Number(v.voorraad || 0) + n, leverancier: vOntvForm.leverancier || v.leverancier || '', factuurnummer: vOntvForm.factuurnummer || v.factuurnummer || '' } : v))
+      logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: Number(vOntvForm.verpakking_id), actie: 'gewijzigd', omschrijving: `Ontvangst +${n}` })
     } else {
       if (!vOntvForm.naam.trim()) { alert(t('err_name_required')); return }
-      setVerpakkingen((prev: any[]) => [...prev, { id: newId(prev), naam: vOntvForm.naam.trim(), inhoud_liter: Number(vOntvForm.inhoud_liter || 0), type: vOntvForm.type || '', voorraad: n, kosten_verpakking: vOntvForm.kosten_verpakking ? Number(vOntvForm.kosten_verpakking) : 0, kosten_afsluiting: vOntvForm.kosten_afsluiting ? Number(vOntvForm.kosten_afsluiting) : 0, kosten_label: vOntvForm.kosten_label ? Number(vOntvForm.kosten_label) : 0, leverancier: vOntvForm.leverancier || '', factuurnummer: vOntvForm.factuurnummer || '' }])
+      setVerpakkingen((prev: any[]) => {
+        const id = newId(prev)
+        logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: id, actie: 'aangemaakt', omschrijving: vOntvForm.naam.trim() })
+        return [...prev, { id, naam: vOntvForm.naam.trim(), inhoud_liter: Number(vOntvForm.inhoud_liter || 0), type: vOntvForm.type || '', voorraad: n, kosten_verpakking: vOntvForm.kosten_verpakking ? Number(vOntvForm.kosten_verpakking) : 0, kosten_afsluiting: vOntvForm.kosten_afsluiting ? Number(vOntvForm.kosten_afsluiting) : 0, kosten_label: vOntvForm.kosten_label ? Number(vOntvForm.kosten_label) : 0, leverancier: vOntvForm.leverancier || '', factuurnummer: vOntvForm.factuurnummer || '' }]
+      })
     }
     setShowVOntv(false); setVOntvForm(emptyVO)
   }
@@ -189,6 +199,7 @@ const IngredientenPage: React.FC<Props> = ({
   const saveVEdit = () => {
     if (!vEditForm.naam.trim()) { alert(t('err_name_required')); return }
     setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVEdit.id ? { ...v, naam: vEditForm.naam.trim(), inhoud_liter: Number(vEditForm.inhoud_liter || 0), type: vEditForm.type || v.type || '', kosten_verpakking: Number(vEditForm.kosten_verpakking || 0), kosten_afsluiting: Number(vEditForm.kosten_afsluiting || 0), kosten_label: Number(vEditForm.kosten_label || 0), leverancier: vEditForm.leverancier || '', factuurnummer: vEditForm.factuurnummer || '' } : v))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: showVEdit.id, actie: 'gewijzigd', omschrijving: vEditForm.naam.trim() })
     setShowVEdit(null)
   }
 
@@ -196,12 +207,14 @@ const IngredientenPage: React.FC<Props> = ({
     const q = Number(vAfQty)
     if (!q || q <= 0) { alert(t('err_valid_count')); return }
     setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVAfboek.id ? { ...v, voorraad: Math.max(0, Number(v.voorraad || 0) - q) } : v))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: showVAfboek.id, actie: 'gewijzigd', omschrijving: `Afgeboekt ${q} ${showVAfboek.naam}` })
     setShowVAfboek(null); setVAfQty('')
   }
 
   const saveODEdit = () => {
     if (!odEditForm.naam.trim()) { alert(t('err_name_required')); return }
     setOnderdelen((prev: any[]) => prev.map((o: any) => o.id === showODEdit.id ? { ...o, ...odEditForm, kosten_per_stuk: odEditForm.kosten_per_stuk ? Number(odEditForm.kosten_per_stuk) : 0, voorraad: odEditForm.voorraad !== '' ? Number(odEditForm.voorraad) : Number(o.voorraad || 0) } : o))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: showODEdit.id, actie: 'gewijzigd', omschrijving: odEditForm.naam.trim() })
     setShowODEdit(null)
   }
 
@@ -210,8 +223,13 @@ const IngredientenPage: React.FC<Props> = ({
     if (!odQty || Number(odQty) <= 0) { alert(t('err_qty_required')); return }
     if (odAddForm.od_id) {
       setOnderdelen((prev: any[]) => prev.map((o: any) => o.id === Number(odAddForm.od_id) ? { ...o, voorraad: Number(o.voorraad || 0) + Number(odQty), lotnr: odAddForm.lotnr || o.lotnr || '', ...(odPrijs ? { kosten_per_stuk: Number(odPrijs) } : {}) } : o))
+      logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: Number(odAddForm.od_id), actie: 'gewijzigd', omschrijving: `Ontvangst +${odQty}` })
     } else {
-      setOnderdelen((prev: any[]) => [...prev, { id: newId(prev), naam: odAddForm.naam.trim(), type: odAddForm.type || 'overig', lotnr: odAddForm.lotnr || '', kosten_per_stuk: odPrijs ? Number(odPrijs) : 0, leverancier: odAddForm.leverancier || '', factuurnummer: odAddForm.factuurnummer || '', voorraad: Number(odQty) }])
+      setOnderdelen((prev: any[]) => {
+        const id = newId(prev)
+        logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: id, actie: 'aangemaakt', omschrijving: odAddForm.naam.trim() })
+        return [...prev, { id, naam: odAddForm.naam.trim(), type: odAddForm.type || 'overig', lotnr: odAddForm.lotnr || '', kosten_per_stuk: odPrijs ? Number(odPrijs) : 0, leverancier: odAddForm.leverancier || '', factuurnummer: odAddForm.factuurnummer || '', voorraad: Number(odQty) }]
+      })
     }
     setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(false)
   }
@@ -222,8 +240,13 @@ const IngredientenPage: React.FC<Props> = ({
     const stSoort: 'snd' | 'fust' | null = vtForm.statiegeld_soort === 'snd' || vtForm.statiegeld_soort === 'fust' ? vtForm.statiegeld_soort : null
     if (showVEdit) {
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVEdit.id ? { ...v, naam: vtForm.naam.trim(), inhoud_liter: Number(vtForm.inhoud_liter || 0), type: vtForm.type || '', onderdelen: vtForm.onderdelen, statiegeld_bedrag: stBedrag, statiegeld_soort: stSoort } : v))
+      logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: showVEdit.id, actie: 'gewijzigd', omschrijving: vtForm.naam.trim() })
     } else {
-      setVerpakkingen((prev: any[]) => [...prev, { id: newId(prev), naam: vtForm.naam.trim(), inhoud_liter: Number(vtForm.inhoud_liter || 0), type: vtForm.type || '', onderdelen: vtForm.onderdelen, voorraad: 0, statiegeld_bedrag: stBedrag, statiegeld_soort: stSoort }])
+      setVerpakkingen((prev: any[]) => {
+        const id = newId(prev)
+        logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: id, actie: 'aangemaakt', omschrijving: vtForm.naam.trim() })
+        return [...prev, { id, naam: vtForm.naam.trim(), inhoud_liter: Number(vtForm.inhoud_liter || 0), type: vtForm.type || '', onderdelen: vtForm.onderdelen, voorraad: 0, statiegeld_bedrag: stBedrag, statiegeld_soort: stSoort }]
+      })
     }
     setVtForm(emptyVT); setVtOnderdeel({ onderdeel_id: '', aantal: '1' }); setShowVTAdd(false); setShowVEdit(null)
   }
@@ -245,12 +268,14 @@ const IngredientenPage: React.FC<Props> = ({
     const dup = ing.find((i: any) => i.id !== sel && i.naam.toLowerCase().trim() === ingEditForm.naam.trim().toLowerCase())
     if (dup) { alert(t('agp_duplicaat_ingrediënt')); return }
     setIng((prev: any[]) => prev.map((i: any) => i.id === sel ? { ...i, naam: ingEditForm.naam.trim(), type: ingEditForm.type, fabrikant: ingEditForm.fabrikant } : i))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: sel!, actie: 'gewijzigd', omschrijving: ingEditForm.naam.trim() })
     setShowIngEdit(false)
   }
   const deleteIng = () => {
     if (!selIng) return
     if (activeLots(sel!).length > 0) { alert('Kan niet verwijderen: er zijn nog actieve lots.'); return }
     if (!confirm(t('confirm_delete_ingredient').replace('{naam}', selIng.naam))) return
+    logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: sel!, actie: 'verwijderd', omschrijving: selIng.naam })
     setIng((prev: any[]) => prev.filter((i: any) => i.id !== sel))
     setLots((prev: any[]) => prev.filter((l: any) => l.ingredient_id !== sel))
     setSel(null)
@@ -268,10 +293,12 @@ const IngredientenPage: React.FC<Props> = ({
         else {
           const n = { id: newId(updatedIng), naam: p.nieuw.trim(), type: p.type, fabrikant: p.fabrikant }
           updatedIng = [...updatedIng, n]; iid = n.id
+          logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: n.id, actie: 'aangemaakt', omschrijving: n.naam })
         }
       }
       const lot = { id: newId([...lots, ...newLots]), ingredient_id: iid, hoeveelheid: Number(p.qty), eenheid: p.eenh, houdbaarheid: p.tht || null, lotnummer: p.lotnr || '', leverancier: factuurForm.leverancier || '', prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: factuurForm.factuur || '', aankoop_datum: factuurForm.datum || tod(), btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true, created_at: new Date().toISOString() }
       newLots.push(lot)
+      logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'aangemaakt', omschrijving: `${updatedIng.find((i: any) => i.id === iid)?.naam || p.nieuw.trim()} ${p.qty} ${p.eenh}` })
       addLog({ ingredient_id: iid, ingredient_naam: updatedIng.find((i: any) => i.id === iid)?.naam || p.nieuw.trim(), lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'ontvangst', hoeveelheid: Number(p.qty), eenheid: p.eenh, referentie: factuurForm.factuur || factuurForm.leverancier || '' })
     })
     setIng(updatedIng)
@@ -282,8 +309,13 @@ const IngredientenPage: React.FC<Props> = ({
       const bestaand = v.od_id ? onderdelen.find((o: any) => o.id === Number(v.od_id)) : onderdelen.find((o: any) => o.naam.toLowerCase() === naam.toLowerCase())
       if (bestaand) {
         setOnderdelen((prev: any[]) => prev.map((o: any) => o.id === bestaand.id ? { ...o, voorraad: Number(o.voorraad || 0) + n, lotnr: v.lotnr || o.lotnr || '', leverancier: factuurForm.leverancier || o.leverancier || '', factuurnummer: factuurForm.factuur || o.factuurnummer || '' } : o))
+        logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: bestaand.id, actie: 'gewijzigd', omschrijving: `Ontvangst +${n} ${bestaand.naam}` })
       } else {
-        setOnderdelen((prev: any[]) => [...prev, { id: newId(prev), naam, type: v.type || 'overig', lotnr: v.lotnr || '', kosten_per_stuk: v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0, leverancier: factuurForm.leverancier || '', factuurnummer: factuurForm.factuur || '', voorraad: n }])
+        setOnderdelen((prev: any[]) => {
+          const id = newId(prev)
+          logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: id, actie: 'aangemaakt', omschrijving: naam })
+          return [...prev, { id, naam, type: v.type || 'overig', lotnr: v.lotnr || '', kosten_per_stuk: v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0, leverancier: factuurForm.leverancier || '', factuurnummer: factuurForm.factuur || '', voorraad: n }]
+        })
       }
     })
     const factuurRegels: any[] = []
@@ -482,7 +514,7 @@ const IngredientenPage: React.FC<Props> = ({
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1 justify-end">
                             <Btn s="sm" v="ghost" onClick={() => openVTEdit(v)}>✏️</Btn>
-                            <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) setVerpakkingen((prev: any[]) => prev.filter((x: any) => x.id !== v.id)) }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                            <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) { logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: v.id, actie: 'verwijderd', omschrijving: v.naam }); setVerpakkingen((prev: any[]) => prev.filter((x: any) => x.id !== v.id)) } }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                           </div>
                         </td>
                       </tr>
@@ -525,7 +557,7 @@ const IngredientenPage: React.FC<Props> = ({
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1 justify-end">
                           <Btn s="sm" v="ghost" onClick={() => { setOdEditForm({ naam: od.naam, type: od.type || '', kosten_per_stuk: String(od.kosten_per_stuk || ''), leverancier: od.leverancier || '', factuurnummer: od.factuurnummer || '', voorraad: String(od.voorraad || 0) }); setShowODEdit(od) }}>✏️</Btn>
-                          <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) setOnderdelen((prev: any[]) => prev.filter((x: any) => x.id !== od.id)) }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                          <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) { logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: od.id, actie: 'verwijderd', omschrijving: od.naam }); setOnderdelen((prev: any[]) => prev.filter((x: any) => x.id !== od.id)) } }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                       </td>
                     </tr>

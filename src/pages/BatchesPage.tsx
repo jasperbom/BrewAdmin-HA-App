@@ -4,6 +4,7 @@ import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe
 import { fmt, fmtD, tod } from '../utils/format'
 import { resolveTankHistorie, appendTankHistorie } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, convertEenheid } from '../utils/constants'
+import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -408,7 +409,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   gistMetingen=[], setGistMetingen=()=>{}, haInst,
   acc=[],
   openBatchId=null,
-  preNieuwBatch=null, setPreNieuwBatch=()=>{}
+  preNieuwBatch=null, setPreNieuwBatch=()=>{},
+  auditLog=[] as any[], setAuditLog=()=>{} as any
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   React.useEffect(() => {
@@ -702,6 +704,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (oudeStatus === nieuweStatus) return
     setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, status:nieuweStatus} : b))
     addLog({type:'status', batch_id:selB.id, referentie:`${oudeStatus} → ${nieuweStatus}`})
+    logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', velden:{status:{oud:oudeStatus,nieuw:nieuweStatus}}, omschrijving:`Status: ${oudeStatus} → ${nieuweStatus}`})
   }
 
   const handleMoveTank = () => {
@@ -722,6 +725,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       ? `${t('lbl_tank')}: ${oudeTank} → ${moveTankTarget} | ${oudeStatus} → ${nieuweStatus}`
       : `${t('lbl_tank')}: ${oudeTank} → ${moveTankTarget}`
     addLog({type:'gewijzigd', batch_id:selB.id, referentie:ref})
+    logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', velden:{tank:{oud:oudeTank,nieuw:moveTankTarget},...(nieuweStatus!==oudeStatus?{status:{oud:oudeStatus,nieuw:nieuweStatus}}:{})}, omschrijving:ref})
     setMoveTankOpen(false)
     setMoveTankTarget('')
   }
@@ -752,12 +756,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       }
       setBat((p: any[]) => p.map((b: any) => b.id===editId ? {...b,...bForm,...extraPatch} : b))
       if (wijz.length > 0) addLog({type:'gewijzigd', batch_id:editId, referentie:wijz.join(' | ')})
+      if (wijz.length > 0) logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:editId!, actie:'gewijzigd', omschrijving:wijz.join(' | ')})
       setEditId(null)
       setShowForm(false); setBForm(emptyB)
     } else {
       const nb = {id:newId(bat), ...bForm, created_at: new Date().toISOString()}
       setBat((prev: any[]) => [...prev, nb])
       addLog({type:'aangemaakt', batch_id:nb.id, referentie:nb.naam})
+      logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:nb.id, actie:'aangemaakt', omschrijving:nb.naam})
       if (pendingBatchIngredienten.length > 0) {
         setBi((prev: any[]) => {
           const startId = prev.length ? Math.max(...prev.map((x: any) => x.id)) + 1 : 1
@@ -903,6 +909,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const removeBatch = (id: number) => {
     if (confirm(t('error_confirm_delete_batch'))) {
+      const naam = bat.find((b: any) => b.id === id)?.naam || ''
+      logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:id, actie:'verwijderd', omschrijving:naam})
       setBat((prev: any[]) => prev.filter((b: any) => b.id !== id))
       setBi((prev: any[]) => prev.filter((x: any) => x.batch_id !== id))
       setSel(null)
@@ -976,6 +984,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       verpakking_type:vp.naam||avF.verpakking_type, hoeveelheid:n, eenheid:'stuks',
       referentie:`${(n*Number(avF.inhoud_per_eenheid||0)).toFixed(1)}L`,
       omschrijving:`${selB?.naam||''} — ${prod?.naam ? prod.naam + ' · ' : ''}${vp.naam||avF.verpakking_type||''} × ${n} (${Number(avF.inhoud_per_eenheid||0).toFixed(1)}L)`})
+    logAudit(auditLog, setAuditLog, {entiteit:'Afvulling', entiteit_id:avId, actie:'aangemaakt', omschrijving:`${selB?.naam||''}: ${n}× ${vp.naam||avF.verpakking_type||''}`})
     setAvF({...emptyAv, product_id: avF.product_id})
     setAvSkuForm(null)
   }
@@ -983,6 +992,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const delAv = (id: number) => {
     if ((uit||[]).some((u: any) => u.afvulling_id === id)) { alert(t('err_cannot_delete_has_releases')); return }
+    const a = (av||[]).find((a: any) => a.id === id)
+    logAudit(auditLog, setAuditLog, {entiteit:'Afvulling', entiteit_id:id, actie:'verwijderd', omschrijving:`Batch ${selB?.naam||''}`})
     setAv((prev: any[]) => (prev||[]).filter((a: any) => a.id !== id))
   }
 
@@ -1385,10 +1396,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   opmerking: metingForm.opmerking,
                 }
                 setGistMetingen((prev: any[]) => [...(prev||[]), nieuw])
+                logAudit(auditLog, setAuditLog, {entiteit:'Gistmeting', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Batch ${selB?.naam||''}: SG=${nieuw.sg||'-'} pH=${nieuw.ph||'-'} T=${nieuw.temp||'-'}°C`})
                 setMetingForm(emptyMeting)
               }
 
               const deleteMeting = (id: number) => {
+                logAudit(auditLog, setAuditLog, {entiteit:'Gistmeting', entiteit_id:id, actie:'verwijderd', omschrijving:`Batch ${selB?.naam||''}`})
                 setGistMetingen((prev: any[]) => (prev||[]).filter((m: any) => m.id !== id))
               }
 
@@ -1924,7 +1937,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <div className="text-sm font-medium text-green-800">{t('batch_ready_confirm')}</div>
                         <div className="text-xs text-green-600 mt-0.5">{t('batch_ready_text')}</div>
                       </div>
-                      <Btn v="green" onClick={()=>{if(confirm(t('err_confirm_mark_packed').replace('{name}',selB.naam))){setBat((prev: any[])=>prev.map((b: any)=>b.id===sel?{...b,status:'Verpakt'}:b));addLog({type:'status',batch_id:sel,referentie:`${selB.status} → Verpakt`})}}}>
+                      <Btn v="green" onClick={()=>{if(confirm(t('err_confirm_mark_packed').replace('{name}',selB.naam))){setBat((prev: any[])=>prev.map((b: any)=>b.id===sel?{...b,status:'Verpakt'}:b));addLog({type:'status',batch_id:sel,referentie:`${selB.status} → Verpakt`});logAudit(auditLog,setAuditLog,{entiteit:'Batch',entiteit_id:sel!,actie:'gewijzigd',velden:{status:{oud:selB.status,nieuw:'Verpakt'}},omschrijving:`Status: ${selB.status} → Verpakt`})}}}>
                         {t('batch_ready_button')}
                       </Btn>
                     </div>

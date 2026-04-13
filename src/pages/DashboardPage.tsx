@@ -3,8 +3,9 @@ import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
 import { resolveTankHistorie } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
+import { logAudit } from '../utils/audit'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[] as any[], setAuditLog=()=>{} as any}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -113,6 +114,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     if (mForm.ph)   nieuw.ph   = Number(mForm.ph);
     if (mForm.temp) nieuw.temp = Number(mForm.temp);
     setGistMetingen((prev: any[]) => [...(prev||[]), nieuw]);
+    logAudit(auditLog, setAuditLog, {entiteit:'Gistmeting', entiteit_id:newId, actie:'aangemaakt', omschrijving:`Batch ${metingBatchId} — SG:${mForm.sg||'-'} pH:${mForm.ph||'-'} T:${mForm.temp||'-'}`});
     setMetingBatchId(null);
     setMForm({sg: '', ph: '', temp: ''});
   };

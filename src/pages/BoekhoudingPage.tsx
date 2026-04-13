@@ -9,6 +9,7 @@ import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
+import { logAudit } from '../utils/audit'
 
 // ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
 const _crcTbl = (() => {
@@ -143,6 +144,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         setInkoopFacturen((prev: any) => prev.map((f: any) =>
           f.id === factuurId ? {...f, bijlage: {naam: file.name, bestand: filename}} : f
         ));
+        logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:`Bijlage "${file.name}" geüpload`});
       }
     } catch(e) { /* upload failed silently */ }
     setBijlageUploading(null);
@@ -393,6 +395,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const deleteFactuur = (id: any) => {
     if (!confirm(t('err_confirm_delete_inkoop'))) return;
     const f = inkoopFacturen.find((x: any)=>x.id===id);
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'verwijderd', omschrijving:`${f?.leverancier||''} — ${f?.factuurnummer||''}`});
     if (f?.bijlage?.bestand) {
       fetch(`${ADDON_BASE}api/delete_upload/${f.bijlage.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
     }
@@ -428,6 +431,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       bruto: totaalNetto + totaalBtw,
     }
     setVerkoopFacturen((prev: any) => [...(prev||[]), nieuw])
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`${nieuw.klant_naam||''} — ${nieuw.factuurnummer||''}`});
     setShowLosseFactuur(false)
     setLosseFactuurForm(emptyLosseFactuur())
   };
@@ -511,8 +515,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
     const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
     const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
+    const nieuwFactuurId = newId(inkoopFacturen||[]);
     setInkoopFacturen((prev: any) => [...prev, {
-      id: newId(prev),
+      id: nieuwFactuurId,
       datum: factuurForm.datum || now.toISOString().slice(0,10),
       factuurnummer: factuurForm.factuur || '',
       leverancier: factuurForm.leverancier || '',
@@ -522,6 +527,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       totaal_bruto,
       bijlage,
     }]);
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuwFactuurId, actie:'aangemaakt', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}`});
     setShowVrijeFactuur(false);
   };
 
@@ -562,6 +568,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       totaal_netto, totaal_btw, totaal_bruto,
       bijlage: bijlage || f.bijlage,
     }));
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:(editingFactuur as any).id, actie:'gewijzigd', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}`});
     setEditingFactuur(null);
   };
 
@@ -639,6 +646,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === factuurId ? {...f, status: 'betaald'} : f
     ));
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Status → betaald'});
   };
 
   const markeerHerinnering = (factuurId: any) => {
@@ -646,6 +654,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === factuurId ? {...f, status: 'herinnering', herinnering_datum: vandaag} : f
     ));
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Status → herinnering'});
   };
 
   const markeerTweedeHerinnering = (factuurId: any) => {
@@ -653,6 +662,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === factuurId ? {...f, status: 'tweede_herinnering', tweede_herinnering_datum: vandaag} : f
     ));
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Status → tweede herinnering'});
   };
 
   const markeerAanmaning = (factuurId: any) => {
@@ -660,6 +670,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === factuurId ? {...f, status: 'aanmaning', aanmaning_datum: vandaag} : f
     ));
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Status → aanmaning'});
   };
 
   // Genereer herinnering/aanmaning PDF én update status
@@ -876,8 +887,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const key = txKey(tx)
       if (factuurId) {
         setBankKoppelingen((k: any) => ({...k, [key]: {soort, factuurId}}))
+        logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:factuurId, actie:'aangemaakt', omschrijving:`${soort}factuur #${factuurId} gekoppeld`})
       } else {
         setBankKoppelingen((k: any) => { const c = {...k}; delete c[key]; return c })
+        logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'verwijderd', omschrijving:'Koppeling ongedaan gemaakt'})
       }
       return prev.map((t, i) =>
         i===txIndex ? {
@@ -898,9 +911,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       setBankKoppelingen((k: any) => ({...k, [key]: {soort: 'btw', periodeKey}}));
       return prev.map((t, i) => i === txIndex ? {...t, gekoppeldBtwPeriode: periodeKey} : t);
     });
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt', omschrijving:`BTW-periode ${periodeKey} gekoppeld`});
   };
 
   const ontkoppelBtwBetaling = (periodeKey: string) => {
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'verwijderd', omschrijving:`BTW-periode ${periodeKey} ontkoppeld`});
     setBankKoppelingen((k: any) => {
       const c = {...k};
       Object.keys(c).forEach(key => { if (c[key]?.soort === 'btw' && c[key].periodeKey === periodeKey) delete c[key]; });
@@ -915,6 +930,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === id ? {...f, status: 'betaald'} : f
     ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'gewijzigd', omschrijving:'Status → betaald'});
   }
 
   const saveNieuweBoeking = () => {
@@ -940,6 +956,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         status: 'betaald',
       }
       setInkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
+      logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boeking debet — ${nieuw.leverancier}`});
       koppelBankTransactie(txIdx, nieuw.id, 'inkoop')
     } else {
       // Credit → VerkoopFactuur
@@ -955,6 +972,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         status: 'betaald',
       }
       setVerkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
+      logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boeking credit — ${nieuw.klant_naam}`});
       koppelBankTransactie(txIdx, nieuw.id, 'verkoop')
     }
     setBoekingTxIndex(null)
@@ -988,6 +1006,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       bijlage: bijlage || null,
     }
     setInkoopFacturen((prev: any[]) => [...(prev||[]), factuur])
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuur.id, actie:'aangemaakt', omschrijving:`Boekingfactuur — ${factuur.leverancier}`});
     koppelBankTransactie(txIdx, factuur.id, 'inkoop')
     setBoekingTxIndex(null)
     setBoekingInitialData(null)
@@ -1006,6 +1025,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       eigenaar: kapitaalForm.eigenaar.trim() || undefined,
     }
     setKapitaalBoekingen((prev: any[]) => [...(prev || []), nieuw])
+    logAudit(auditLog, setAuditLog, {entiteit:'Kapitaalboeking', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`${nieuw.type} — ${nieuw.omschrijving}`});
     if (kapitaalTxIndex !== null) {
       const tx = bankTransacties[kapitaalTxIndex]
       const key = txKey(tx)
@@ -1024,14 +1044,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const form = {...klantForm, betalingstermijn: klantForm.betalingstermijn ? Number(klantForm.betalingstermijn) : undefined}
     if (editingKlant) {
       setKlanten((prev: any[]) => prev.map((k: any) => k.id===editingKlant.id ? {...k,...form} : k))
+      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:editingKlant.id, actie:'gewijzigd', omschrijving:form.naam||''});
     } else {
-      setKlanten((prev: any[]) => [...(prev||[]), {id:newId(prev||[]), ...form}])
+      const nid = newId(klanten||[]);
+      setKlanten((prev: any[]) => [...(prev||[]), {id:nid, ...form}])
+      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:nid, actie:'aangemaakt', omschrijving:form.naam||''});
     }
     setShowKlantModal(false); setEditingKlant(null); setKlantForm(emptyKlantForm())
   }
 
   const deleteKlant = (id: number) => {
     if (!confirm(t('btn_delete') + '?')) return
+    const k = (klanten||[]).find((k: any) => k.id === id);
+    logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:id, actie:'verwijderd', omschrijving:k?.naam||''});
     setKlanten((prev: any[]) => prev.filter((k: any) => k.id !== id))
     if (viewingKlantId === id) setViewingKlantId(null)
   }
