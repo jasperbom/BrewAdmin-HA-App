@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.32] — 2026-04-13
+
+### Changed — Server-side automatische gistingsmetingen
+- **server.py**: Automatische 10-minuut temperatuurmetingen draaien nu server-side
+  in een achtergrondthread, onafhankelijk van of de app open is in de browser.
+- **App.tsx**: Client-side auto-fetch verwijderd; periodieke sync (5 min) haalt
+  server-side metingen op zodat ze zichtbaar worden in de UI.
+
 ## [1.8.31] — 2026-04-13
 
 ### Fixed — Vergistingsgrafiek header kleurstelling
