@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.33] — 2026-04-13
+
+### Changed — Automatische metingen zonder punten in grafiek
+- **BatchesPage**: Automatische metingen (server-side) tonen alleen de lijn in de
+  gistgrafiek, geen puntjes. Handmatige metingen behouden hun punten.
+
 ## [1.8.32] — 2026-04-13
 
 ### Changed — Server-side automatische gistingsmetingen
