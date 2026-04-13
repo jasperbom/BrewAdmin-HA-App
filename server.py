@@ -113,7 +113,7 @@ _CSP = (
     "base-uri 'self'; "
     "form-action 'self'"
 )
-_HTML_EXTRA = [('Content-Security-Policy', _CSP)]
+_HTML_EXTRA = [('Content-Security-Policy', _CSP), ('Cache-Control', 'no-cache, must-revalidate')]
 
 
 _TRUSTED_ORIGINS = frozenset((
@@ -490,6 +490,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(body))
+        self.send_header('Cache-Control', 'no-store')
         self._add_security_headers()
         self.end_headers()
         self.wfile.write(body)
@@ -557,6 +558,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', len(body))
+                self.send_header('Cache-Control', 'no-store')
                 self._add_security_headers()
                 self.end_headers()
                 self.wfile.write(body)

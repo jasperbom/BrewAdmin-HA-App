@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.37] — 2026-04-13
+
+### Fixed — Caching-problemen opgelost
+- **server.py**: `Cache-Control: no-store` header toegevoegd aan alle API-responses,
+  `Cache-Control: no-cache, must-revalidate` aan de SPA HTML-response. Voorkomt
+  dat browsers verouderde data of een oude app-versie serveren.
+- **api.ts**: `modified` flag in `useStore` reset nu na succesvolle server-sync,
+  zodat server-updates niet permanent genegeerd worden na een lokale wijziging.
+- **api.ts**: `_syncErrors` teller reset naar 0 bij succesvolle sync, zodat de
+  sync-indicator (SyncDot) niet permanent op fout blijft staan na een tijdelijke
+  netwerkstoring.
+- **api.ts**: `Cache-Control: no-cache` header toegevoegd aan fetch-calls om
+  browser-caching van API-requests te voorkomen.
+
 ## [1.8.36] — 2026-04-13
 
 ### Fixed — Dubbel puntje gistgrafiek header
