@@ -250,6 +250,45 @@ export const bfGetBatches = async (): Promise<any[]> => {
   return all
 }
 
+// Brewfather ingrediënt inventory import
+export const bfGetIngredients = async (): Promise<{fermentables: any[], hops: any[], yeasts: any[], miscs: any[]}> => {
+  const fetchAll = async (endpoint: string): Promise<any[]> => {
+    const all: any[] = []
+    let startAfter: string | null = null
+    for (;;) {
+      const r = await bfFetch(`inventory/${endpoint}?limit=50${startAfter ? '&start_after=' + startAfter : ''}`)
+      if (!r.ok) break
+      const d = await r.json()
+      all.push(...d)
+      if (d.length < 50) break
+      startAfter = d[d.length - 1]._id
+    }
+    return all
+  }
+  const [fermentables, hops, yeasts, miscs] = await Promise.all(
+    ['fermentables', 'hops', 'yeasts', 'miscs'].map(fetchAll)
+  )
+  return { fermentables, hops, yeasts, miscs }
+}
+
+export const BF_FERM_TYPE_MAP: Record<string, string> = {
+  'Grain': 'Mout', 'Extract': 'Mout', 'Dry Extract': 'Mout',
+  'Sugar': 'Suiker', 'Honey': 'Suiker',
+  'Adjunct': 'Overig', 'Juice': 'Overig', 'Other': 'Overig',
+}
+
+// Push voorraad naar Brewfather via PATCH proxy
+export const bfPushInventory = async (cat: string, bfId: string, amount: number): Promise<boolean> => {
+  try {
+    const r = await fetch(`${ADDON_BASE}api/brewfather/patch/inventory/${cat}/${bfId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inventory: amount }),
+    })
+    return r.ok
+  } catch { return false }
+}
+
 import { tod } from './format'
 import { BF_TO_APP } from './constants'
 

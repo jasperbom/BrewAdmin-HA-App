@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.45] — 2026-04-13
+
+### Added — Brewfather ingrediënten import + voorraad push
+- **Ingrediënten sync**: Nieuwe "Sync Brewfather" knop op de ingrediëntenpagina
+  importeert alle ingrediënten (fermentables, hops, yeasts, miscs) vanuit
+  Brewfather's inventory API. Deduplicatie op `brewfather_id` of naam.
+- **Type mapping**: Brewfather fermentable subtypes worden correct gemapt
+  (Grain/Extract → Mout, Sugar/Honey → Suiker, Adjunct/Juice → Overig).
+- **Voorraad push**: Per ingrediënt met Brewfather-koppeling kan de totale
+  voorraad gepusht worden naar Brewfather via PATCH API.
+- **Server PATCH proxy**: Nieuwe `_bf_proxy_patch()` route in server.py
+  voor write-operaties naar de Brewfather API.
+
+---
+
 ## [1.8.44] — 2026-04-13
 
 ### Fixed — Kostensoort in inkoop popup op ingrediëntenpagina

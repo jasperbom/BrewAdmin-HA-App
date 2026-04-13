@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
-import { newId } from '../utils/api'
+import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS } from '../utils/constants'
 import Modal from '../components/ui/Modal'
@@ -29,6 +29,7 @@ interface Props {
   ingTypes?: string[]
   ingTypeBtw?: Record<string, any>
   kostenSoorten?: string[]
+  bfCreds?: any
 }
 
 const IngredientenPage: React.FC<Props> = ({
@@ -36,7 +37,7 @@ const IngredientenPage: React.FC<Props> = ({
   onderdelen = [], setOnderdelen, log, setLog,
   bi = [], bat = [], setInkoopFacturen = () => {}, claudeCreds = null,
   ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {}, kostenSoorten = BUILTIN_KOSTEN_SOORTEN,
-  auditLog = [], setAuditLog = () => {}
+  bfCreds = null, auditLog = [], setAuditLog = () => {}
 }) => {
   const [tab, setTab] = useState('ingredienten')
   const [sel, setSel] = useState<number | null>(null)
@@ -78,11 +79,67 @@ const IngredientenPage: React.FC<Props> = ({
   const [vtForm, setVtForm] = useState(emptyVT)
   const [vtOnderdeel, setVtOnderdeel] = useState({ onderdeel_id: '', aantal: '1' })
 
+  const [bfSyncing, setBfSyncing] = useState(false)
+  const [bfMsg, setBfMsg] = useState('')
+  const [bfPushing, setBfPushing] = useState(false)
+
   const addLog = (entry: any) => setLog((prev: any[]) => [...prev, { id: newId(prev || []), datum: tod(), ...entry }])
 
   const activeLots = (iid: number) => lots.filter((l: any) => l.ingredient_id === iid && l.beschikbaar && Number(l.hoeveelheid || 0) > 0)
   const archiefLots = (iid: number) => lots.filter((l: any) => l.ingredient_id === iid && (!l.beschikbaar || Number(l.hoeveelheid || 0) === 0))
   const totalQty = (iid: number) => activeLots(iid).reduce((s: number, l: any) => s + Number(l.hoeveelheid || 0), 0)
+
+  const runBfIngSync = async () => {
+    if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
+      setBfMsg('⚠ ' + t('settings_brewfather_section')); return
+    }
+    setBfSyncing(true); setBfMsg('')
+    try {
+      const { fermentables, hops, yeasts, miscs } = await bfGetIngredients()
+      let updated = [...ing]
+      let nieuw = 0, gekoppeld = 0
+      const processItem = (bfItem: any, appType: string, cat: string) => {
+        const naam = (bfItem.name || '').trim()
+        if (!naam) return
+        const fabrikant = typeof bfItem.supplier === 'object' ? (bfItem.supplier?.name || '') : (bfItem.supplier || '')
+        let existing = updated.find((i: any) => i.brewfather_id === bfItem._id)
+        if (!existing) existing = updated.find((i: any) => i.naam.toLowerCase() === naam.toLowerCase())
+        if (existing) {
+          const upd: any = {}
+          if (!existing.brewfather_id) upd.brewfather_id = bfItem._id
+          if (!existing.brewfather_cat) upd.brewfather_cat = cat
+          if (!existing.fabrikant && fabrikant) upd.fabrikant = fabrikant
+          if (Object.keys(upd).length > 0) {
+            updated = updated.map((i: any) => i.id === existing.id ? { ...i, ...upd } : i)
+            gekoppeld++
+          }
+        } else {
+          updated.push({ id: newId(updated), naam, type: appType, fabrikant: fabrikant || undefined, beschikbaar: true, brewfather_id: bfItem._id, brewfather_cat: cat })
+          nieuw++
+        }
+      }
+      fermentables.forEach((f: any) => processItem(f, BF_FERM_TYPE_MAP[f.type] || 'Mout', 'fermentables'))
+      hops.forEach((h: any) => processItem(h, 'Hop', 'hops'))
+      yeasts.forEach((y: any) => processItem(y, 'Gist', 'yeasts'))
+      miscs.forEach((m: any) => processItem(m, 'Overig', 'miscs'))
+      setIng(updated)
+      logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `Brewfather ingrediënt sync: ${nieuw} nieuw, ${gekoppeld} gekoppeld` })
+      setBfMsg(t('msg_bf_ing_sync_success').replace('{n}', String(nieuw)).replace('{m}', String(gekoppeld)))
+    } catch (e: any) { setBfMsg(t('msg_bf_sync_failed').replace('{msg}', e.message || String(e))) }
+    setBfSyncing(false)
+  }
+
+  const pushBfStock = async (ingredient: any) => {
+    if (!ingredient.brewfather_id || !ingredient.brewfather_cat) return
+    setBfPushing(true); setBfMsg('')
+    try {
+      const amount = totalQty(ingredient.id)
+      const ok = await bfPushInventory(ingredient.brewfather_cat, ingredient.brewfather_id, amount)
+      setBfMsg(ok ? t('msg_bf_push_success') : t('msg_bf_push_failed').replace('{msg}', 'HTTP error'))
+    } catch (e: any) { setBfMsg(t('msg_bf_push_failed').replace('{msg}', e.message || String(e))) }
+    setBfPushing(false)
+  }
+
   const lotBatches = (lotId: number) => {
     const usages = bi.filter((x: any) => x.lot_id === lotId && x.afgeboekt)
     return usages.map((x: any) => ({ ...x, batch: bat.find((b: any) => b.id === x.batch_id) }))
@@ -367,7 +424,13 @@ const IngredientenPage: React.FC<Props> = ({
           {tabBtn('verpakkingen', `${t('ing_tab_packaging')}${verpakkingen.some((v: any) => Number(v.voorraad || 0) === 0) ? ' ⚠️' : ''}`)}
           {tabBtn('mutaties', t('ing_tab_mutations'))}
         </div>
-        {tab === 'ingredienten' && <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>}
+        {tab === 'ingredienten' && (
+          <div className="flex items-center gap-2">
+            {bfMsg && <span className={`text-xs ${bfMsg.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>{bfMsg}</span>}
+            {bfCreds?.enabled && <Btn v="secondary" onClick={runBfIngSync} disabled={bfSyncing}>{bfSyncing ? t('ing_bf_syncing') : t('ing_bf_sync')}</Btn>}
+            <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>
+          </div>
+        )}
         {tab === 'verpakkingen' && <Btn onClick={() => { setOntvangstInitTab('verpakkingen'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>}
         {tab === 'mutaties' && <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>}
       </div>
@@ -429,6 +492,9 @@ const IngredientenPage: React.FC<Props> = ({
               <div className="px-4 py-2.5 t-hdr text-white flex items-center justify-between rounded-t-xl">
                 <span className="font-medium text-sm">{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</span>
                 <div className="flex items-center gap-1">
+                  {selIng.brewfather_id && selIng.brewfather_cat && bfCreds?.enabled && (
+                    <Btn s="sm" v="header" onClick={() => pushBfStock(selIng)} disabled={bfPushing}>{bfPushing ? '...' : t('btn_push_bf_stock')}</Btn>
+                  )}
                   <Btn s="sm" v="header" onClick={openIngEdit}>✏️</Btn>
                   <button title={activeLots(sel).length > 0 ? t('err_delete_has_active_lots') : t('title_delete_ingredient')} onClick={deleteIng} disabled={activeLots(sel).length > 0} className={`text-xs px-2 py-1 rounded transition-colors ${activeLots(sel).length > 0 ? 'opacity-40 cursor-not-allowed text-white/60' : 'text-white/80 hover:text-white hover:bg-white/20'}`}>🗑</button>
                   <Btn s="sm" v="header" onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(String(sel)); setShowO(true) }}>{t('btn_add_lot')}</Btn>
