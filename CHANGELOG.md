@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.38] — 2026-04-13
+
+### Fixed — Brewfather sync overschrijft handmatige status niet meer
+- **App.tsx / BatchesPage.tsx**: Brewfather sync kan batchstatus alleen nog
+  *vooruit* zetten in de lifecycle (Gepland→Brouwen→Vergisten→Conditioneren→
+  Verpakt→Gesloten), niet meer achteruit. Voorkomt dat handmatige statuswijzigingen
+  (bijv. "Conditioneren") worden teruggedraaid naar een eerdere Brewfather-status
+  (bijv. "Vergisten").
+- **api.ts**: `_syncErrors` reset verplaatst naar na `r.ok` check, zodat
+  foutstatussen niet gemaskeerd worden.
+
 ## [1.8.37] — 2026-04-13
 
 ### Fixed — Caching-problemen opgelost
