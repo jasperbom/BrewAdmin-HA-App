@@ -493,7 +493,8 @@ const IngredientenPage: React.FC<Props> = ({
           </div>
           {sel && selIng && (<>
             <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={() => setSel(null)}>{t('btn_back')}</button>
-            <div className="flex-1 min-w-0 bg-white rounded-xl shadow-card overflow-x-auto">
+            <div className="flex-1 min-w-0">
+            <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <div className="px-4 py-2.5 t-hdr text-white flex items-center justify-between rounded-t-xl">
                 <span className="font-medium text-sm">{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</span>
                 <div className="flex items-center gap-1">
@@ -562,6 +563,7 @@ const IngredientenPage: React.FC<Props> = ({
                 </div>
               </div>
             )}
+            </div>
           </>)}
         </div>
       )}
