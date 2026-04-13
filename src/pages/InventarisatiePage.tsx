@@ -49,7 +49,7 @@ interface InventarisatiePageProps {
 const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
   lots, ing, av, bat, uit, afboekingen, bestellingPicks, bestellingen,
   inventarisaties, setInventarisaties, setLots, log, setLog,
-  auditLog = [] as any[], setAuditLog = (() => {}) as any
+  auditLog = [], setAuditLog = (() => {})
 }) => {
   const [selected, setSelected] = useState<Inventarisatie | null>(null)
   const [showNew, setShowNew] = useState(false)
