@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.49] — 2026-04-13
+
+### Fixed — Lot-informatie verdwenen door Brewfather-eigenschappen
+- **Layout fix**: Het Brewfather-properties blok was een apart flex-item in de
+  desktop layout waardoor de lots tabel weggedrukt werd. Nu zitten de lots card
+  en het Brewfather blok samen in één `flex-1` wrapper zodat ze verticaal
+  gestapeld worden.
+
+---
+
 ## [1.8.48] — 2026-04-13
 
 ### Added — Filter "Alleen op voorraad" op ingrediëntenpagina
