@@ -37,7 +37,9 @@ interface BatchesPageProps {
   wcCreds?: any
   artikelen?: any[]
   producten?: any[]
+  setProducten?: any
   productArtikelen?: any[]
+  setProductArtikelen?: any
   gistMetingen?: any[]
   setGistMetingen?: any
   haInst?: any
@@ -397,7 +399,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
   log, setLog, bfCreds, bfSync, tanks, accijnsInst,
-  hygieneItems, hygieneGroups, wcCreds, artikelen, producten=[], productArtikelen=[],
+  hygieneItems, hygieneGroups, wcCreds, artikelen, producten=[], setProducten=()=>{}, productArtikelen=[], setProductArtikelen=()=>{},
   gistMetingen=[], setGistMetingen=()=>{}, haInst,
   acc=[],
   openBatchId=null,
@@ -453,8 +455,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [ingFormOpen, setIngFormOpen] = useState(false)
   const [batchZoek, setBatchZoek] = useState('')
 
-  const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:'',gn_code:''}
+  const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:'',gn_code:'',product_id:''}
   const [avF, setAvF] = useState<any>(emptyAv)
+  const [nieuwProductNaam, setNieuwProductNaam] = useState('')
+  const [toonNieuwProduct, setToonNieuwProduct] = useState(false)
+  const [avSkuForm, setAvSkuForm] = useState<any>(null)
+
+  // Pre-fill product_id wanneer batch geselecteerd wordt
+  React.useEffect(() => {
+    const b = bat.find((b: any) => b.id === sel)
+    setAvF((f: any) => ({...f, product_id: b?.product_id || ''}))
+    setToonNieuwProduct(false)
+    setNieuwProductNaam('')
+    setAvSkuForm(null)
+  }, [sel])
 
   const addLog = (entry: any) => setLog((prev: any[]) => [...prev, {id:newId(prev||[]), datum:tod(), ...entry}])
 
@@ -930,6 +944,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   }
 
   const doAfvullen = () => {
+    if (!avF.product_id) { alert(t('err_select_product')); return }
     if (!avF.verpakking_id || !avF.hoeveelheid) { alert(t('err_select_packaging_qty')); return }
     const n = Number(avF.hoeveelheid)
     const vp = (verpakkingen||[]).find((v: any) => v.id === Number(avF.verpakking_id))
@@ -945,16 +960,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id===Number(avF.verpakking_id) ? {...v, voorraad:Number(v.voorraad||0)-n} : v))
     }
     const avId = newId(av||[])
-    // Zoek artikel SKU: eerst via productArtikelen (nieuw), daarna via oude artikelen (fallback)
-    const pArt = selB?.product_id ? (productArtikelen||[]).find((a: any) => a.product_id === selB.product_id && a.verpakking_id === Number(avF.verpakking_id)) : null;
+    // Zoek artikel SKU: eerst via geselecteerd product, daarna via oude artikelen (fallback)
+    const prodId = Number(avF.product_id)
+    const pArt = prodId ? (productArtikelen||[]).find((a: any) => a.product_id === prodId && a.verpakking_id === Number(avF.verpakking_id)) : null
     const avArtKey = `${selB?.biernaam || selB?.naam || ''}|||${vp.naam||avF.verpakking_type||''}`.toLowerCase()
     const avArt = pArt || (artikelen||[]).find((a: any) => a.key?.toLowerCase() === avArtKey)
-    setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, artikel_sku: avArt?.artikelnummer || null, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
+    setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, ...avF, product_id: prodId, artikel_sku: avArt?.artikelnummer || null, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
+    const prod = (producten||[]).find((p: any) => p.id === prodId)
     addLog({type:'afvullen', batch_id:sel, batch_naam:selB?.naam||'', afvulling_id:avId,
       verpakking_type:vp.naam||avF.verpakking_type, hoeveelheid:n, eenheid:'stuks',
       referentie:`${(n*Number(avF.inhoud_per_eenheid||0)).toFixed(1)}L`,
-      omschrijving:`${selB?.naam||''} — ${vp.naam||avF.verpakking_type||''} × ${n} (${Number(avF.inhoud_per_eenheid||0).toFixed(1)}L)`})
-    setAvF(emptyAv)
+      omschrijving:`${selB?.naam||''} — ${prod?.naam ? prod.naam + ' · ' : ''}${vp.naam||avF.verpakking_type||''} × ${n} (${Number(avF.inhoud_per_eenheid||0).toFixed(1)}L)`})
+    setAvF({...emptyAv, product_id: avF.product_id})
+    setAvSkuForm(null)
   }
 
 
@@ -1773,13 +1791,52 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       <span className={`text-xs font-bold ${!afvullenIngeklapt?'rotate-90':''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
                       <span>{t('batch_filling_register')}</span>
                     </div>
-                    {!afvullenIngeklapt && <div className="p-3">
+                    {!afvullenIngeklapt && <div className="p-3 space-y-3">
+                      {/* Product selectie */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_afvulling_product')} <span className="text-red-500">*</span></label>
+                        {!toonNieuwProduct ? (
+                          <div className="flex gap-1">
+                            <select value={avF.product_id||''} onChange={e=>{
+                              if (e.target.value === '__new__') {
+                                setToonNieuwProduct(true)
+                                setNieuwProductNaam('')
+                                setAvF((f: any)=>({...f, product_id: ''}))
+                              } else {
+                                setAvF((f: any)=>({...f, product_id: e.target.value ? Number(e.target.value) : ''}))
+                                setAvSkuForm(null)
+                              }
+                            }} className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+                              <option value="">{t('ph_select_product')}</option>
+                              {(producten||[]).filter((p: any) => p.status !== 'gearchiveerd').sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||'')).map((p: any) => (
+                                <option key={p.id} value={p.id}>{p.naam}{p.stijl ? ` (${p.stijl})` : ''}</option>
+                              ))}
+                              <option value="__new__">{t('lbl_afvulling_nieuw_product')}</option>
+                            </select>
+                            {avF.product_id && <button type="button" onClick={()=>{setAvF((f: any)=>({...f, product_id: ''})); setAvSkuForm(null)}} className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>}
+                          </div>
+                        ) : (
+                          <div className="flex gap-1">
+                            <input type="text" value={nieuwProductNaam} onChange={e=>setNieuwProductNaam(e.target.value)} placeholder={t('ph_nieuw_product_naam')} className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
+                            <Btn s="sm" onClick={()=>{
+                              const naam = nieuwProductNaam.trim()
+                              if (!naam) { alert(t('err_product_naam_leeg')); return }
+                              const id = newId(producten||[])
+                              setProducten((prev: any[]) => [...(prev||[]), {id, naam, status: 'actief', created_at: tod()}])
+                              setAvF((f: any)=>({...f, product_id: id}))
+                              setToonNieuwProduct(false)
+                              setNieuwProductNaam('')
+                            }}>{t('btn_product_toevoegen')}</Btn>
+                            <button type="button" onClick={()=>{setToonNieuwProduct(false); setNieuwProductNaam('')}} className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>
+                          </div>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_packaging')} <span className="text-red-500">*</span></label>
                           {(verpakkingen||[]).length===0
                             ? <div className="border border-dashed border-orange-300 bg-orange-50 rounded px-2 py-1.5 text-xs text-orange-600">{t('batch_add_packaging_hint')}</div>
-                            : <select value={avF.verpakking_id} onChange={e=>{const vp=(verpakkingen||[]).find((v: any)=>v.id===Number(e.target.value));setAvF((f: any)=>({...f,verpakking_id:e.target.value,verpakking_type:vp?.naam||'',inhoud_per_eenheid:vp?.inhoud_liter||''}))}}
+                            : <select value={avF.verpakking_id} onChange={e=>{const vp=(verpakkingen||[]).find((v: any)=>v.id===Number(e.target.value));setAvF((f: any)=>({...f,verpakking_id:e.target.value,verpakking_type:vp?.naam||'',inhoud_per_eenheid:vp?.inhoud_liter||''})); setAvSkuForm(null)}}
                                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input bg-white">
                                 <option value="">{t('batch_filling_select_ph')}</option>
                                 {(verpakkingen||[]).map((vp: any) => (
@@ -1810,7 +1867,43 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           </select>
                         </div>
                       </div>
-                      <div className="mt-2 flex items-center justify-between">
+                      {/* SKU-indicator */}
+                      {avF.product_id && avF.verpakking_id && (() => {
+                        const matchedArt = (productArtikelen||[]).find((a: any) => a.product_id === Number(avF.product_id) && a.verpakking_id === Number(avF.verpakking_id))
+                        if (matchedArt?.artikelnummer) {
+                          return <div className="flex items-center gap-2 px-2.5 py-1.5 bg-green-50 border border-green-200 rounded text-sm">
+                            <span className="font-medium text-green-700">SKU:</span>
+                            <span className="font-mono text-green-800">{matchedArt.artikelnummer}</span>
+                            {matchedArt.ean && <span className="text-green-600 text-xs ml-2">EAN: {matchedArt.ean}</span>}
+                          </div>
+                        }
+                        if (avSkuForm) {
+                          return <div className="px-2.5 py-2 bg-amber-50 border border-amber-200 rounded space-y-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              <input type="text" value={avSkuForm.artikelnummer||''} onChange={e=>setAvSkuForm((f: any)=>({...f, artikelnummer: e.target.value}))} placeholder={t('ph_artikelnummer')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
+                              <input type="text" value={avSkuForm.ean||''} onChange={e=>setAvSkuForm((f: any)=>({...f, ean: e.target.value}))} placeholder={t('ph_ean_optioneel')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
+                              <div className="flex gap-1">
+                                <Btn s="sm" onClick={()=>{
+                                  if (!avSkuForm.artikelnummer?.trim()) return
+                                  const vp = (verpakkingen||[]).find((v: any) => v.id === Number(avF.verpakking_id))
+                                  const newArt = {...avSkuForm, artikelnummer: avSkuForm.artikelnummer.trim(), ean: avSkuForm.ean?.trim() || '', verpakking_naam: vp?.naam || '', verpakking_type: vp?.type || vp?.naam || '', inhoud_liter: vp?.inhoud_liter || ''}
+                                  setProductArtikelen((prev: any[]) => [...(prev||[]), newArt])
+                                  setAvSkuForm(null)
+                                }}>{t('btn_sku_opslaan')}</Btn>
+                                <button type="button" onClick={()=>setAvSkuForm(null)} className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>
+                              </div>
+                            </div>
+                          </div>
+                        }
+                        return <div className="flex items-center gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-sm">
+                          <span className="text-amber-700">{t('lbl_geen_sku')}</span>
+                          <button type="button" onClick={()=>{
+                            const vp = (verpakkingen||[]).find((v: any) => v.id === Number(avF.verpakking_id))
+                            setAvSkuForm({id: newId(productArtikelen||[]), product_id: Number(avF.product_id), verpakking_id: Number(avF.verpakking_id), artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: '', gn_code: avF.gn_code || ''})
+                          }} className="text-xs font-medium underline" style={{color:'var(--t-accent)'}}>{t('btn_sku_toevoegen')}</button>
+                        </div>
+                      })()}
+                      <div className="flex items-center justify-between">
                         {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}
                         <Btn onClick={doAfvullen} cls="ml-auto">{t('batch_filling_register_btn')}</Btn>
                       </div>
@@ -1838,6 +1931,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       <table className="w-full text-sm">
                         <thead className="text-xs text-gray-500 bg-gray-50">
                           <tr>
+                            <th className="px-3 py-2 text-left">{t('lbl_afvulling_product')}</th>
                             <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
                             <th className="px-3 py-2 text-right">{t('lbl_content')}</th>
                             <th className="px-3 py-2 text-right">{t('lbl_filled')}</th>
@@ -1849,12 +1943,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {bAv.length===0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400">{t('batch_no_filled')}</td></tr>}
+                          {bAv.length===0 && <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">{t('batch_no_filled')}</td></tr>}
                           {bAv.map((a: any) => {
                             const uitg = uitgeslVanAv(a.id)
                             const rest = Number(a.hoeveelheid||0) - uitg
+                            const avProd = a.product_id ? (producten||[]).find((p: any) => p.id === a.product_id) : null
                             return (
                               <tr key={a.id} className={rest===0?'bg-gray-50 text-gray-400':''}>
+                                <td className="px-3 py-2">
+                                  <div>{avProd?.naam || '—'}</div>
+                                  {a.artikel_sku && <div className="text-xs font-mono text-gray-400">{a.artikel_sku}</div>}
+                                </td>
                                 <td className="px-3 py-2">{a.verpakking_type}</td>
                                 <td className="px-3 py-2 text-right">{a.inhoud_per_eenheid}L</td>
                                 <td className="px-3 py-2 text-right">{a.hoeveelheid}× ({(a.inhoud_per_eenheid*a.hoeveelheid).toFixed(1)}L)</td>

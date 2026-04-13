@@ -1125,5 +1125,17 @@
   "btn_bewerken": "Edit",
   "lbl_product_abv": "ABV %",
   "lbl_product_ebc": "EBC (colour)",
-  "lbl_product_ibu": "IBU (bitterness)"
+  "lbl_product_ibu": "IBU (bitterness)",
+  "lbl_afvulling_product": "Product",
+  "ph_select_product": "Select product...",
+  "lbl_afvulling_nieuw_product": "+ New product",
+  "ph_nieuw_product_naam": "New product name...",
+  "btn_product_toevoegen": "Add",
+  "lbl_geen_sku": "No SKU for this combination",
+  "btn_sku_toevoegen": "Add SKU",
+  "ph_artikelnummer": "Article number / SKU",
+  "ph_ean_optioneel": "EAN (optional)",
+  "btn_sku_opslaan": "Save",
+  "err_select_product": "Select a product",
+  "err_product_naam_leeg": "Enter a product name"
 }

@@ -88,7 +88,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const pBatches = (bat||[]).filter((b: any) => b.product_id === p.id);
       const batchIds = new Set(pBatches.map((b: any) => b.id));
       const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
-      const pAv = (av||[]).filter((a: any) => batchIds.has(a.batch_id));
+      const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
       const voorraad = pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
       let totaalKosten = 0;
       for (const b of pBatches) {
@@ -116,7 +116,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const selVoorraad = useMemo(() => {
     if (!sel) return [];
     const batchIds = new Set(selBatches.map((b: any) => b.id));
-    const pAv = (av||[]).filter((a: any) => batchIds.has(a.batch_id));
+    const pAv = (av||[]).filter((a: any) => a.product_id === sel || (!a.product_id && batchIds.has(a.batch_id)));
     const vTypes = [...new Set(pAv.map((a: any) => a.verpakking_type).filter(Boolean))].sort() as string[];
     return vTypes.map(vt => {
       const rows = pAv.filter((a: any) => a.verpakking_type === vt);
