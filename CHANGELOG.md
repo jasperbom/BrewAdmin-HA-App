@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.35] — 2026-04-13
+
+### Changed — Alleen handmatige metingen tellen in header
+- **BatchesPage**: Aantal metingen in gistgrafiek header telt alleen handmatige
+  metingen, niet de automatische.
+
 ## [1.8.34] — 2026-04-13
 
 ### Fixed — Actief-bolletje gistgrafiek header
