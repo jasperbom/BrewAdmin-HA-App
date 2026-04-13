@@ -38,7 +38,8 @@ export const _postToServer = (key: string, data: any): Promise<boolean> => {
   .then(r => {
     _syncPending = Math.max(0, _syncPending - 1)
     _serverReachable = true
-    if (!r.ok) _syncErrors++
+    if (r.ok) _syncErrors = 0
+    else _syncErrors++
     return r.ok
   })
   .catch(() => {
@@ -60,9 +61,10 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   const modified = useRef(false)
 
   useEffect(() => {
-    fetch(API_BASE + key)
+    fetch(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } })
       .then(r => {
         _serverReachable = true
+        _syncErrors = 0
         if (r.ok) {
           if (secure) localStorage.removeItem('craftery_' + key)
           return r.json()
@@ -93,7 +95,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     setData((prev: any) => {
       const next = typeof val === 'function' ? val(prev) : val
       if (!secure) lsSet(key, next)
-      _postToServer(key, next)
+      _postToServer(key, next).then(ok => { if (ok) modified.current = false })
       return next
     })
   }
