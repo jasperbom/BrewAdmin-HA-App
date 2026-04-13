@@ -1531,6 +1531,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 const groep = item?.group_id ? groups.find((g: any) => g.id===item.group_id) : null
                 const label = groep ? `${groep.naam} — ${item?.label}` : item?.label||`item ${itemId}`
                 addLog({type:'hygiene', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
+                logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Hygiëne ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
               }
               const ungrouped = items.filter((i: any) => !i.group_id)
               const gegroepeerd = groups.map((g: any) => ({
@@ -1586,7 +1587,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <div className={`text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
                           {alleOk ? '✅ ' + t('hygiene_all_checked') : `${gedaan} ${t('hygiene_of')} ${totaal} ${t('hygiene_checked')}`}
                           {gedaan>0 && !alleOk && (
-                            <button onClick={()=>{setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b,hygiene_checks:{}}:b)); addLog({type:'hygiene', batch_id:selB.id, referentie:'Checklist gereset'})}}
+                            <button onClick={()=>{setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b,hygiene_checks:{}}:b)); addLog({type:'hygiene', batch_id:selB.id, referentie:'Checklist gereset'}); logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:'Hygiëne checklist gereset'})}}
                               className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">{t('batch_hygiene_reset')}</button>
                           )}
                         </div>

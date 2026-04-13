@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.42] — 2026-04-13
+
+### Added — Hygiëne checklist in audit trail
+- **BatchesPage**: Elk afvinken/ongedaan maken van een hygiëne-item per batch
+  wordt nu gelogd in de audit trail, inclusief groep- en itemnaam.
+- Ook de "checklist reset" actie wordt gelogd.
+
 ## [1.8.41] — 2026-04-13
 
 ### Fixed — Build error: esbuild `as` casts in parameter defaults
