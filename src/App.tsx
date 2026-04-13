@@ -3,7 +3,9 @@ import { t, setLang as i18nSetLang } from './i18n'
 import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, API_BASE } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
+import { logAudit, setAuditUser } from './utils/audit'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
+import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
 import DashboardPage from './pages/DashboardPage'
 import IngredientenPage from './pages/IngredientenPage'
@@ -100,14 +102,61 @@ function App() {
     i18nSetLang(l);
   };
 
-  // Detecteer HA-gebruiker voor audit trail (f.03)
-  const getAuditGebruiker = (): string | undefined => {
-    try {
-      const hass = (window as any).__hass;
-      if (hass?.user?.name) return hass.user.name;
-    } catch (_) { /* geen HA omgeving */ }
-    return breweryDetails?.accijns_verantwoordelijke || undefined;
-  };
+  // HA-gebruiker state en login-tracking
+  const [currentUser, setCurrentUser] = useState<HAUser | null>(null);
+  const loginLoggedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (loginLoggedRef.current) return;
+    if (!auditLog) return;
+
+    const detect = () => {
+      let user: HAUser | null = null;
+      try {
+        const hass = (window as any).__hass;
+        if (hass?.user) {
+          user = {
+            id: hass.user.id || '',
+            name: hass.user.name || '',
+            is_admin: !!hass.user.is_admin,
+            is_owner: !!hass.user.is_owner,
+          };
+        }
+      } catch (_) { /* geen HA omgeving */ }
+
+      setCurrentUser(user);
+      loginLoggedRef.current = true;
+
+      const userName = user?.name || breweryDetails?.accijns_verantwoordelijke || undefined;
+      setAuditUser(userName);
+
+      if (!userName) return;
+
+      // Dedup: log niet opnieuw als dezelfde gebruiker binnen 5 min al ingelogd was
+      const recentLogin = (auditLog || [])
+        .filter((e: any) => e.actie === 'ingelogd' && e.gebruiker === userName)
+        .sort((a: any, b: any) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+        [0];
+      const DEDUP_MS = 5 * 60 * 1000;
+      if (recentLogin?.timestamp) {
+        const elapsed = Date.now() - new Date(recentLogin.timestamp).getTime();
+        if (elapsed < DEDUP_MS) return;
+      }
+
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Sessie', entiteit_id: 0, actie: 'ingelogd',
+        omschrijving: t('audit_app_geopend'), gebruiker: userName,
+      });
+    };
+
+    // window.__hass kan iets later beschikbaar zijn in ingress iframe
+    if ((window as any).__hass?.user) {
+      detect();
+    } else {
+      const timer = setTimeout(detect, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [auditLog, breweryDetails?.accijns_verantwoordelijke]);
 
   const [page, setPage] = useState('dashboard');
   const [openMenu, setOpenMenu] = useState<string|null>(null);

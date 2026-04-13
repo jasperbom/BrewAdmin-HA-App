@@ -625,10 +625,17 @@ export interface AuditEntry {
   timestamp: string
   entiteit: string
   entiteit_id: number
-  actie: 'aangemaakt' | 'gewijzigd' | 'verwijderd'
+  actie: 'aangemaakt' | 'gewijzigd' | 'verwijderd' | 'ingelogd'
   velden?: Record<string, {oud?: any, nieuw?: any}>
   omschrijving?: string
   gebruiker?: string
+}
+
+export interface HAUser {
+  id: string
+  name: string
+  is_admin: boolean
+  is_owner: boolean
 }
 
 export type AccijnsAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'

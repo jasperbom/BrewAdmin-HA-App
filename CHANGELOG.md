@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.43] — 2026-04-13
+
+### Added — HA User Login Tracking & Audit Trail Gebruiker
+- **Login-tracking**: Bij het openen van de app wordt automatisch gedetecteerd
+  welke Home Assistant gebruiker ingelogd is (via `window.__hass.user`).
+  Er wordt een audit trail entry aangemaakt met actie "Ingelogd" (met 5-min dedup).
+- **Automatische gebruiker in audit trail**: Alle bestaande audit entries krijgen
+  nu automatisch de naam van de ingelogde HA-gebruiker mee via `setAuditUser()`.
+- **Gebruiker-kolom in audit trail**: De audit trail tabel in Instellingen toont
+  nu een "Gebruiker" kolom zodat zichtbaar is wie elke actie heeft uitgevoerd.
+- **HAUser type**: Nieuw `HAUser` interface (id, name, is_admin, is_owner) als
+  voorbereiding op toekomstig accountbeheer en restricties.
+- **i18n**: Nieuwe vertaalsleutels voor login-tracking in alle 5 talen.
+
 ## [1.8.42] — 2026-04-13
 
 ### Added — Hygiëne checklist in audit trail
