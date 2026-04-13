@@ -1560,6 +1560,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <thead>
                   <tr className="text-left text-xs text-gray-500 uppercase border-b">
                     <th className="py-2 pr-3">{t('audit_timestamp')}</th>
+                    <th className="py-2 pr-3">{t('audit_gebruiker')}</th>
                     <th className="py-2 pr-3">{t('audit_entiteit')}</th>
                     <th className="py-2 pr-3">{t('audit_actie')}</th>
                     <th className="py-2">{t('audit_omschrijving')}</th>
@@ -1569,11 +1570,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   {shown.map((e: any) => (
                     <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-2 pr-3 text-gray-500 whitespace-nowrap">{fmtTs(e.timestamp)}</td>
+                      <td className="py-2 pr-3 text-gray-500">{e.gebruiker || '—'}</td>
                       <td className="py-2 pr-3 font-medium text-gray-700">{e.entiteit}</td>
                       <td className="py-2 pr-3">
                         <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
                           e.actie==='aangemaakt' ? 'bg-green-100 text-green-700' :
                           e.actie==='verwijderd' ? 'bg-red-100 text-red-700' :
+                          e.actie==='ingelogd' ? 'bg-purple-100 text-purple-700' :
                           'bg-blue-100 text-blue-700'
                         }`}>{actieLabel(e.actie)}</span>
                       </td>
