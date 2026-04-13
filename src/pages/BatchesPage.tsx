@@ -224,6 +224,11 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   const sgPts:   [number,number][] = inView.filter(m=>m.sg!=null).map(m=>[toX(mkTs(m)), toYsg(m.sg)])
   const phPts:   [number,number][] = inView.filter(m=>m.ph!=null).map(m=>[toX(mkTs(m)), toYph(m.ph)])
   const tempPts: [number,number][] = inView.filter(m=>m.temp!=null).map(m=>[toX(mkTs(m)), toYtemp(m.temp)])
+  // Punten alleen voor handmatige metingen (auto-metingen tonen alleen de lijn)
+  const manual = inView.filter(m => !m.auto)
+  const sgDots:   [number,number][] = manual.filter(m=>m.sg!=null).map(m=>[toX(mkTs(m)), toYsg(m.sg)])
+  const phDots:   [number,number][] = manual.filter(m=>m.ph!=null).map(m=>[toX(mkTs(m)), toYph(m.ph)])
+  const tempDots: [number,number][] = manual.filter(m=>m.temp!=null).map(m=>[toX(mkTs(m)), toYtemp(m.temp)])
 
   const sgLinePath   = sgPts.length   >= 2 ? catmullRomPath(sgPts)   : ''
   const sgAreaPath   = sgLinePath ? sgLinePath + ` L ${sgPts[sgPts.length-1][0]},${PAD.t+CH} L ${sgPts[0][0]},${PAD.t+CH} Z` : ''
@@ -307,10 +312,10 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
           {phLinePath && <path d={phLinePath} fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="5 3"/>}
         </g>
 
-        {/* Punten */}
-        {sgPts.map(([x,y],i)   => <circle key={i} cx={x} cy={y} r="3.5" fill="#d97706" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
-        {tempPts.map(([x,y],i) => <circle key={i} cx={x} cy={y} r="3"   fill="#ef4444" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
-        {phPts.map(([x,y],i)   => <circle key={i} cx={x} cy={y} r="3"   fill="#3b82f6" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
+        {/* Punten (alleen handmatige metingen) */}
+        {sgDots.map(([x,y],i)   => <circle key={i} cx={x} cy={y} r="3.5" fill="#d97706" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
+        {tempDots.map(([x,y],i) => <circle key={i} cx={x} cy={y} r="3"   fill="#ef4444" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
+        {phDots.map(([x,y],i)   => <circle key={i} cx={x} cy={y} r="3"   fill="#3b82f6" stroke="white" strokeWidth="1.5" clipPath="url(#fc)"/>)}
 
         {/* Hover tooltip */}
         {tooltip && (() => {
