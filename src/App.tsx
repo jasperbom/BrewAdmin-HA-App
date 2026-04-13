@@ -80,7 +80,7 @@ function App() {
   const [afboekingen, setAfboekingen] = useStore('afboekingen', []);
   const [breweryDetails, setBreweryDetails] = useStore('brewery_details', {naam:'',straat:'',huisnummer:'',postcode:'',stad:'',btw_nummer:'',kvk_nummer:'',iban:'',betalingstermijn:14});
   const [factuurCounter, setFactuurCounter] = useStore('factuur_counter', {jaar:0,nr:0});
-  const [gistMetingen, setGistMetingen] = useStore('gist_metingen', []);
+  const [gistMetingen, setGistMetingen, refreshGistMetingen] = useStore('gist_metingen', []);
   const [haInst, setHaInst] = useStore('ha_instellingen', {enabled: false, sensors: []});
   const [klanten, setKlanten] = useStore('klanten', []);
   const [bankKoppelingen, setBankKoppelingen] = useStore('bank_koppelingen', {});
@@ -253,15 +253,10 @@ function App() {
 
   // Automatische metingen elke 10 min draaien nu server-side (server.py _auto_metingen_loop)
   // Periodiek server-data ophalen zodat nieuwe metingen zichtbaar worden
+  // Gebruikt refresh (geen POST terug) om race conditions te voorkomen
   React.useEffect(() => {
     if (!haInst?.enabled) return
-    const sync = () => {
-      fetch(API_BASE + 'gist_metingen')
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (Array.isArray(d)) setGistMetingen(d) })
-        .catch(() => {})
-    }
-    const id = setInterval(sync, 5 * 60 * 1000)
+    const id = setInterval(refreshGistMetingen, 5 * 60 * 1000)
     return () => clearInterval(id)
   }, [haInst?.enabled])
 

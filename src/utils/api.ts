@@ -54,7 +54,7 @@ const lsGet = (k: string, d: any = []) => {
   try { return JSON.parse(localStorage.getItem('craftery_' + k) ?? 'null') ?? d } catch(e) { return d }
 }
 
-export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void] => {
+export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void, () => void] => {
   const { secure = false } = opts
   _allKeys.add(key)
   const [data, setData] = useState(() => secure ? initial : lsGet(key, initial))
@@ -99,7 +99,20 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       return next
     })
   }
-  return [data, save]
+
+  const refresh = () => {
+    fetch(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } })
+      .then(r => { _serverReachable = true; return r.ok ? r.json() : null })
+      .then(d => {
+        if (d !== null && d !== undefined) {
+          setData(d)
+          if (!secure) lsSet(key, d)
+        }
+      })
+      .catch(() => { _serverReachable = false })
+  }
+
+  return [data, save, refresh]
 }
 
 export const newId = (arr: any[]): number =>

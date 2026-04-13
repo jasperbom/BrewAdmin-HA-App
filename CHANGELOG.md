@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.39] — 2026-04-13
+
+### Fixed — Race condition HA gist_metingen sync
+- **api.ts**: `useStore` retourneert nu een derde `refresh()`-functie die
+  server-data ophaalt en lokaal bijwerkt **zonder** terug te posten naar de
+  server. Voorkomt dat de periodieke sync lokale wijzigingen overschrijft.
+- **App.tsx**: HA gist_metingen periodic sync gebruikt nu `refresh()` in
+  plaats van de save-functie. Dit voorkomt de race condition waarbij net
+  toegevoegde metingen werden overschreven met verouderde server-data.
+
 ## [1.8.38] — 2026-04-13
 
 ### Fixed — Brewfather sync overschrijft handmatige status niet meer
