@@ -66,6 +66,7 @@
   "lbl_total": "Total",
   "lbl_available": "Available",
   "lbl_stock": "Stock",
+  "lbl_only_in_stock": "In stock only",
   "lbl_lot": "Lot",
   "lbl_tht": "Best before",
   "lbl_type": "Type",

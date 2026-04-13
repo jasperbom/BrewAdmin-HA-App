@@ -53,6 +53,7 @@ const IngredientenPage: React.FC<Props> = ({
   const [lotEdit, setLotEdit] = useState<any>({})
   const [lotCorr, setLotCorr] = useState({ delta: '', richting: '+', reden: '', eenheid: '' })
   const [ingZoek, setIngZoek] = useState('')
+  const [alleenOpVoorraad, setAlleenOpVoorraad] = useStore('ing_alleen_voorraad', false)
   const [groepDicht, setGroepDicht] = useStore('ing_groep_dicht', {})
   const [showIngEdit, setShowIngEdit] = useState(false)
   const [ingEditForm, setIngEditForm] = useState({ naam: '', type: '', fabrikant: '' })
@@ -437,10 +438,14 @@ const IngredientenPage: React.FC<Props> = ({
       {tab === 'ingredienten' && (
         <div className="flex flex-col md:flex-row gap-4 md:items-start">
           <div className={`w-full md:w-60 md:flex-shrink-0${sel ? ' hidden md:block' : ''}`}>
-            <div className="mb-2">
+            <div className="mb-2 space-y-1.5">
               <input type="text" placeholder={t('search_ingredient')}
                 className="w-full border rounded-lg px-3 py-2 text-sm t-input"
                 value={ingZoek} onChange={e => { setIngZoek(e.target.value); setSel(null) }} />
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input type="checkbox" className="t-checkbox" checked={alleenOpVoorraad} onChange={e => { setAlleenOpVoorraad(e.target.checked); setSel(null) }} />
+                <span className="text-xs text-gray-500">{t('lbl_only_in_stock')}</span>
+              </label>
             </div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <table className="w-full text-sm">
@@ -451,7 +456,8 @@ const IngredientenPage: React.FC<Props> = ({
                   ? <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_no_ingredients')}</td></tr></tbody>
                   : (() => {
                     const zoek = ingZoek.trim().toLowerCase()
-                    const filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek)) : ing
+                    let filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek)) : ing
+                    if (alleenOpVoorraad) filtered = filtered.filter((i: any) => totalQty(i.id) > 0)
                     if (filtered.length === 0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen resultaten voor "{ingZoek}"</td></tr></tbody>
                     const allTypes = [...ingTypes, ...filtered.map((i: any) => i.type || 'Overig').filter((tp: string) => !ingTypes.includes(tp)).filter((tp: string, i: number, a: string[]) => a.indexOf(tp) === i)]
                     return allTypes.map((ingTyp: string) => {

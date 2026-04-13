@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.48] — 2026-04-13
+
+### Added — Filter "Alleen op voorraad" op ingrediëntenpagina
+- **Checkbox**: Boven de ingrediëntenlijst staat nu een vinkbox "Alleen op voorraad"
+  die ingrediënten zonder voorraad verbergt. Instelling wordt onthouden via `useStore`.
+
+---
+
 ## [1.8.47] — 2026-04-13
 
 ### Enhanced — Alle Brewfather ingrediënt-eigenschappen ophalen
