@@ -336,7 +336,7 @@ export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
   const r = b.recipe || {}
   ;(r.fermentables||[]).forEach((f: any) => rows.push({batch_id:batchId, ingredient_naam:f.name||'', ingredient_type:'Mout', hoeveelheid:Number(f.amount||0).toFixed(3), eenheid:'kg'}))
   ;(r.hops||[]).forEach((h: any) =>        rows.push({batch_id:batchId, ingredient_naam:h.name||'', ingredient_type:'Hop',  hoeveelheid:Number(h.amount||0).toFixed(1), eenheid:'g'}))
-  ;(r.yeasts||[]).forEach((y: any) =>      rows.push({batch_id:batchId, ingredient_naam:y.name||'', ingredient_type:'Gist', hoeveelheid:Number(y.amount||1),            eenheid:'stuk'}))
+  ;(r.yeasts||[]).forEach((y: any) =>      rows.push({batch_id:batchId, ingredient_naam:y.name||'', ingredient_type:'Gist', hoeveelheid:Number(y.amount||1),            eenheid:'stuks'}))
   ;(r.miscs||[]).forEach((m: any) =>       rows.push({batch_id:batchId, ingredient_naam:m.name||'', ingredient_type:'Overig', hoeveelheid:Number(m.amount||1),          eenheid:m.amountType||'g'}))
   return rows.map((row,i) => ({...row, id: startId+i, ingredient_id:null, lot_id:'', kosten:'', afboeken:false}))
 }

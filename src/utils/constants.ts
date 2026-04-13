@@ -35,7 +35,8 @@ export const EENHEDEN = ["kg","g","L","mL","pkg","stuks"]
 
 export const UNIT_BASE: Record<string, {group:string, f:number}> = {
   mL:{group:'volume',f:1}, L:{group:'volume',f:1000},
-  g:{group:'mass',f:1}, kg:{group:'mass',f:1000}
+  g:{group:'mass',f:1}, kg:{group:'mass',f:1000},
+  stuks:{group:'count',f:1}, stuk:{group:'count',f:1}, pkg:{group:'count',f:1}
 }
 
 export const convertEenheid = (amount: any, van: string, naar: string): number | null => {

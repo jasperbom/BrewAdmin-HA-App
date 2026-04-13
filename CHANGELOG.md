@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.46] — 2026-04-13
+
+### Fixed — Gist afboeken eenheidsconversie (stuk/stuks/pkg)
+- **Bug fix**: Bij het afboeken van gist in een batch kwam de foutmelding
+  "Kan stuk niet omrekenen naar stuks". De eenheden `stuk`, `stuks` en `pkg`
+  zijn nu als equivalente count-eenheden geregistreerd in `UNIT_BASE`.
+- **Data fix**: Brewfather batch import gebruikte `'stuk'` als eenheid voor
+  gist, gewijzigd naar `'stuks'` (de standaard eenheid in de app).
+
+---
+
 ## [1.8.45] — 2026-04-13
 
 ### Added — Brewfather ingrediënten import + voorraad push
