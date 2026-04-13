@@ -34,7 +34,7 @@ const klantLabel = (f: any) => f?.klant_naam || t('lbl_onbekend')
 const StatiegeldPage: React.FC<Props> = ({
   verpakkingen, setVerpakkingen, verkoopFacturen, setVerkoopFacturen,
   factuurCounter, setFactuurCounter = () => {}, bankKoppelingen = {},
-  auditLog = [] as any[], setAuditLog = (() => {}) as any
+  auditLog = [], setAuditLog = (() => {})
 }) => {
   const [tab, setTab] = useState<Tab>('config')
   const [aangifteYear, setAangifteYear] = useState(new Date().getFullYear())

@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.41] — 2026-04-13
+
+### Fixed — Build error: esbuild `as` casts in parameter defaults
+- Verwijderd `as any[]` / `as any` type casts uit destructured parameter defaults
+  in 7 pagina-bestanden. Esbuild ondersteunt deze syntax niet in default values.
+
 ## [1.8.40] — 2026-04-13
 
 ### Added — Uitgebreide audit trail logging

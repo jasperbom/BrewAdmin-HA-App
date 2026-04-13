@@ -410,7 +410,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   acc=[],
   openBatchId=null,
   preNieuwBatch=null, setPreNieuwBatch=()=>{},
-  auditLog=[] as any[], setAuditLog=()=>{} as any
+  auditLog=[], setAuditLog=()=>{}
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   React.useEffect(() => {

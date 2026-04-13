@@ -35,7 +35,7 @@ const IngredientenPage: React.FC<Props> = ({
   onderdelen = [], setOnderdelen, log, setLog,
   bi = [], bat = [], setInkoopFacturen = () => {}, claudeCreds = null,
   ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {},
-  auditLog = [] as any[], setAuditLog = () => {} as any
+  auditLog = [], setAuditLog = () => {}
 }) => {
   const [tab, setTab] = useState('ingredienten')
   const [sel, setSel] = useState<number | null>(null)
