@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.44] — 2026-04-13
+
+### Fixed — Kostensoort in inkoop popup op ingrediëntenpagina
+- **Bug fix**: De kostensoort-dropdown in de inkoop boeken popup op de ingrediëntenpagina
+  gebruikte altijd de standaard kostensoorten in plaats van de aangepaste instellingen.
+  De `kostenSoorten` prop wordt nu correct doorgegeven van App → IngredientenPage → InkoopFactuurModal.
+
+---
+
 ## [1.8.43] — 2026-04-13
 
 ### Added — HA User Login Tracking & Audit Trail Gebruiker

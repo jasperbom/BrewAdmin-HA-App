@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS } from '../utils/constants'
+import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS } from '../utils/constants'
 import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -28,13 +28,14 @@ interface Props {
   claudeCreds?: any
   ingTypes?: string[]
   ingTypeBtw?: Record<string, any>
+  kostenSoorten?: string[]
 }
 
 const IngredientenPage: React.FC<Props> = ({
   ing, setIng, lots, setLots, verpakkingen, setVerpakkingen,
   onderdelen = [], setOnderdelen, log, setLog,
   bi = [], bat = [], setInkoopFacturen = () => {}, claudeCreds = null,
-  ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {},
+  ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {}, kostenSoorten = BUILTIN_KOSTEN_SOORTEN,
   auditLog = [], setAuditLog = () => {}
 }) => {
   const [tab, setTab] = useState('ingredienten')
@@ -618,6 +619,7 @@ const IngredientenPage: React.FC<Props> = ({
           claudeCreds={claudeCreds}
           ingTypes={ingTypes}
           ingTypeBtw={ingTypeBtw}
+          kostenSoorten={kostenSoorten}
         />
       )}
 
