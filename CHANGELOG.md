@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.50] — 2026-04-13
+
+### Added — Hygiëne groepen hernoembaar in instellingen
+- **Inline hernoemen**: Klik op een groepsnaam in Instellingen → Hygiëne om deze
+  te hernoemen. Enter bevestigt, Escape annuleert. Duplicaatnamen worden geblokkeerd.
+
+---
+
 ## [1.8.49] — 2026-04-13
 
 ### Fixed — Lot-informatie verdwenen door Brewfather-eigenschappen

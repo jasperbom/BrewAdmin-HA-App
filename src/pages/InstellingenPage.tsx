@@ -218,6 +218,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [nieuwHygieneItem, setNieuwHygieneItem] = React.useState('');
   const [nieuwHygieneItemGroep, setNieuwHygieneItemGroep] = React.useState('');
   const [nieuwGroep, setNieuwGroep] = React.useState('');
+  const [editGroepId, setEditGroepId] = React.useState<number|null>(null);
+  const [editGroepNaam, setEditGroepNaam] = React.useState('');
   const addTank = () => {
     const id = tankInput.trim().toUpperCase();
     if (!id) return;
@@ -1310,6 +1312,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           [next[idx],next[swap]]=[next[swap],next[idx]];
           setHygieneGroups(next);
         };
+        const renameGroep = (id: number) => {
+          const naam = editGroepNaam.trim();
+          if (!naam) { setEditGroepId(null); return; }
+          if (groups.find((g: any) => g.id !== id && (g.naam||'').toLowerCase() === naam.toLowerCase())) { alert(t('err_group_exists')); return; }
+          const old = groups.find((g: any) => g.id === id);
+          setHygieneGroups(groups.map((g: any) => g.id === id ? { ...g, naam } : g));
+          logAudit(auditLog, setAuditLog, { entiteit: 'Hygiënegroep', entiteit_id: id, actie: 'gewijzigd', omschrijving: `Groep "${old?.naam}" hernoemd naar "${naam}"` });
+          setEditGroepId(null);
+        };
 
         const addItem = () => {
           const label = nieuwHygieneItem.trim();
@@ -1347,7 +1358,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 {groups.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_groups_none')}</p>}
                 {groups.map((g: any, idx: number)=>(
                   <div key={g.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
-                    <span className="flex-1 text-sm font-medium text-teal-800">{g.naam}</span>
+                    {editGroepId === g.id ? (
+                      <input type="text" value={editGroepNaam} onChange={(e: any) => setEditGroepNaam(e.target.value)}
+                        onKeyDown={(e: any) => { if (e.key === 'Enter') renameGroep(g.id); if (e.key === 'Escape') setEditGroepId(null); }}
+                        onBlur={() => renameGroep(g.id)}
+                        autoFocus
+                        className="flex-1 text-sm font-medium text-teal-800 bg-white border border-teal-300 rounded px-2 py-0.5 focus:outline-none focus:border-teal-500" />
+                    ) : (
+                      <span className="flex-1 text-sm font-medium text-teal-800 cursor-pointer hover:underline" onClick={() => { setEditGroepId(g.id); setEditGroepNaam(g.naam); }}>{g.naam}</span>
+                    )}
                     <span className="text-xs text-teal-500">{items.filter((i: any)=>i.group_id===g.id).length} items</span>
                     <button onClick={()=>moveGroep(g.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
                     <button onClick={()=>moveGroep(g.id,1)} disabled={idx===groups.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
