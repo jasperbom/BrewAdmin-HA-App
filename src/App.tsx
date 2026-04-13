@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from './utils/api'
+import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, API_BASE } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
@@ -251,36 +251,19 @@ function App() {
     return () => clearInterval(id)
   }, [haInst?.enabled, haFetchTankTemps])
 
-  // Record temperature to fermentation log every 10 min for Vergisten/Conditioneren batches
-  const haAutoFetch = React.useCallback(async () => {
-    if (!haInst?.enabled) return
-    const sensors: any[] = haInst?.sensors || []
-    if (!sensors.length) return
-    const recordBatches = (bat||[]).filter((b: any) => b.tank && (b.status === 'Vergisten' || b.status === 'Conditioneren'))
-    for (const batch of recordBatches) {
-      const sensor = sensors.find((s: any) => s.tank === batch.tank)
-      if (!sensor?.entity) continue
-      try {
-        const d = await haGetState(sensor.entity)
-        const val = parseFloat(d.state)
-        if (isNaN(val)) continue
-        const now = new Date()
-        const datum = now.toISOString().split('T')[0]
-        const tijd = now.toTimeString().slice(0, 5)
-        setGistMetingen((prev: any[]) => {
-          const all = prev || []
-          const id = all.length ? Math.max(0, ...all.map((m: any) => Number(m.id)||0)) + 1 : 1
-          return [...all, { id, batch_id: batch.id, datum, tijd, temp: val, auto: true }]
-        })
-      } catch {}
-    }
-  }, [bat, haInst])
-
+  // Automatische metingen elke 10 min draaien nu server-side (server.py _auto_metingen_loop)
+  // Periodiek server-data ophalen zodat nieuwe metingen zichtbaar worden
   React.useEffect(() => {
     if (!haInst?.enabled) return
-    const id = setInterval(haAutoFetch, 10 * 60 * 1000)
+    const sync = () => {
+      fetch(API_BASE + 'gist_metingen')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (Array.isArray(d)) setGistMetingen(d) })
+        .catch(() => {})
+    }
+    const id = setInterval(sync, 5 * 60 * 1000)
     return () => clearInterval(id)
-  }, [haInst?.enabled, haAutoFetch])
+  }, [haInst?.enabled])
 
   const doExport = () => {
     excelExport({

@@ -329,6 +329,111 @@ def _backup_loop(interval: float = 86400.0) -> None:
         time.sleep(interval)
 
 
+# ── Automatische gistmetingen ─────────────────────────────────────────────
+
+_data_lock = threading.Lock()
+
+
+def _read_json(key: str, default=None):
+    """Lees een JSON-databestand uit /data/. Geeft default terug als bestand niet bestaat."""
+    filepath = DATA_DIR / f'{key}.json'
+    if not filepath.exists():
+        return default
+    try:
+        return json.loads(filepath.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, OSError):
+        return default
+
+
+def _write_json(key: str, data) -> None:
+    """Schrijf data als JSON naar /data/."""
+    filepath = DATA_DIR / f'{key}.json'
+    filepath.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+
+
+def _ha_fetch_state(entity_id: str) -> float | None:
+    """Haal de huidige waarde van een HA-entiteit op. Geeft None terug bij fout."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token:
+        return None
+    try:
+        req = urllib.request.Request(
+            f'{HA_SUPERVISOR_BASE}/states/{entity_id}',
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read())
+            val = float(data.get('state', ''))
+            return val
+    except (urllib.error.URLError, ValueError, TypeError, OSError):
+        return None
+
+
+def _auto_metingen_loop(interval: float = 600.0) -> None:
+    """Achtergrondloop: haal elke 10 minuten temperatuurmetingen op van HA sensoren
+    voor batches in status Vergisten of Conditioneren, en sla deze op."""
+    time.sleep(30)  # wacht even tot server volledig opgestart is
+    while True:
+        try:
+            _auto_metingen_tick()
+        except Exception as exc:
+            print(f'[auto-metingen] error: {exc}', flush=True)
+        time.sleep(interval)
+
+
+def _auto_metingen_tick() -> None:
+    """Eén ronde automatische metingen: check HA-instellingen, lees batches,
+    haal temperatuur op voor elke actieve batch met sensor, en sla metingen op."""
+    with _data_lock:
+        ha_inst = _read_json('ha_instellingen', {})
+    if not ha_inst.get('enabled'):
+        return
+    sensors = ha_inst.get('sensors', [])
+    if not sensors:
+        return
+
+    with _data_lock:
+        batches = _read_json('batches', [])
+    active = [b for b in batches
+              if b.get('tank') and b.get('status') in ('Vergisten', 'Conditioneren')]
+    if not active:
+        return
+
+    new_entries = []
+    now = datetime.datetime.now()
+    datum = now.strftime('%Y-%m-%d')
+    tijd = now.strftime('%H:%M')
+
+    for batch in active:
+        sensor = next((s for s in sensors if s.get('tank') == batch.get('tank')), None)
+        if not sensor or not sensor.get('entity'):
+            continue
+        val = _ha_fetch_state(sensor['entity'])
+        if val is None:
+            continue
+        new_entries.append({
+            'batch_id': batch['id'],
+            'datum': datum,
+            'tijd': tijd,
+            'temp': val,
+            'auto': True,
+        })
+
+    if not new_entries:
+        return
+
+    with _data_lock:
+        metingen = _read_json('gist_metingen', [])
+        max_id = max((m.get('id', 0) for m in metingen), default=0)
+        for entry in new_entries:
+            max_id += 1
+            entry['id'] = max_id
+            metingen.append(entry)
+        _write_json('gist_metingen', metingen)
+
+    print(f'[auto-metingen] {len(new_entries)} meting(en) opgeslagen', flush=True)
+
+
 def _list_backups() -> list[dict]:
     """Return list of available backups with date and file count."""
     result = []
@@ -905,6 +1010,11 @@ if __name__ == '__main__':
     _backup_thread = threading.Thread(target=_backup_loop, daemon=True)
     _backup_thread.start()
     print(f'Backup thread gestart (dagelijks naar {BACKUP_DIR})', flush=True)
+
+    # Start background auto-measurement thread (every 10 minutes)
+    _metingen_thread = threading.Thread(target=_auto_metingen_loop, daemon=True)
+    _metingen_thread.start()
+    print('Auto-metingen thread gestart (elke 10 minuten)', flush=True)
 
     server = http.server.HTTPServer(('0.0.0.0', port), BrouwerijHandler)
     server.serve_forever()
