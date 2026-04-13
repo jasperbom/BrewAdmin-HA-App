@@ -4,7 +4,7 @@ import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetSt
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
 import DashboardPage from './pages/DashboardPage'
@@ -19,6 +19,7 @@ import InstellingenPage from './pages/InstellingenPage'
 import InventarisatiePage from './pages/InventarisatiePage'
 import ProductenPage from './pages/ProductenPage'
 import VoorraadverloopPage from './pages/VoorraadverloopPage'
+import HACCPPage from './pages/HACCPPage'
 
 class PageErrorBoundary extends React.Component<{children: React.ReactNode, page: string}, {err: string|null}> {
   state = { err: null as string|null }
@@ -93,6 +94,14 @@ function App() {
   const [accijnsAangiftes, setAccijnsAangiftes] = useStore('accijns_aangiftes', []);
   const [producten, setProducten] = useStore('producten', []);
   const [productArtikelen, setProductArtikelen] = useStore('product_artikelen', []);
+  const [haccpSchoonmaakTaken, setHaccpSchoonmaakTaken] = useStore('haccp_schoonmaak_taken', []);
+  const [haccpSchoonmaakLog, setHaccpSchoonmaakLog] = useStore('haccp_schoonmaak_log', []);
+  const [haccpCcpDefinities, setHaccpCcpDefinities] = useStore('haccp_ccp_definities', DEFAULT_CCP_DEFINITIES);
+  const [haccpCcpMetingen, setHaccpCcpMetingen] = useStore('haccp_ccp_metingen', []);
+  const [haccpCapa, setHaccpCapa] = useStore('haccp_capa', []);
+  const [haccpWaterkwaliteit, setHaccpWaterkwaliteit] = useStore('haccp_waterkwaliteit', []);
+  const [haccpOngedierte, setHaccpOngedierte] = useStore('haccp_ongedierte', []);
+  const [haccpOpleidingen, setHaccpOpleidingen] = useStore('haccp_opleidingen', []);
 
   // Sync lang to i18n module on each render (equivalent to _lang = lang in source)
   i18nSetLang(lang);
@@ -333,6 +342,10 @@ function App() {
       accijns_aangiftes: accijnsAangiftes,
       producten, product_artikelen: productArtikelen,
       bank_koppelingen: bankKoppelingen,
+      haccp_schoonmaak_taken: haccpSchoonmaakTaken, haccp_schoonmaak_log: haccpSchoonmaakLog,
+      haccp_ccp_definities: haccpCcpDefinities, haccp_ccp_metingen: haccpCcpMetingen,
+      haccp_capa: haccpCapa, haccp_waterkwaliteit: haccpWaterkwaliteit,
+      haccp_ongedierte: haccpOngedierte, haccp_opleidingen: haccpOpleidingen,
       brewery_details: breweryDetails, factuur_counter: factuurCounter,
       ha_instellingen: haInst,
       app_logo: logo, factuur_logo: factuurLogo, app_name: appName, nav_theme: navTheme,
@@ -379,6 +392,14 @@ function App() {
       if (Array.isArray(d.accijns_aangiftes)) setAccijnsAangiftes(d.accijns_aangiftes);
       if (Array.isArray(d.producten)) setProducten(d.producten);
       if (Array.isArray(d.product_artikelen)) setProductArtikelen(d.product_artikelen);
+      if (Array.isArray(d.haccp_schoonmaak_taken)) setHaccpSchoonmaakTaken(d.haccp_schoonmaak_taken);
+      if (Array.isArray(d.haccp_schoonmaak_log)) setHaccpSchoonmaakLog(d.haccp_schoonmaak_log);
+      if (Array.isArray(d.haccp_ccp_definities)) setHaccpCcpDefinities(d.haccp_ccp_definities);
+      if (Array.isArray(d.haccp_ccp_metingen)) setHaccpCcpMetingen(d.haccp_ccp_metingen);
+      if (Array.isArray(d.haccp_capa)) setHaccpCapa(d.haccp_capa);
+      if (Array.isArray(d.haccp_waterkwaliteit)) setHaccpWaterkwaliteit(d.haccp_waterkwaliteit);
+      if (Array.isArray(d.haccp_ongedierte)) setHaccpOngedierte(d.haccp_ongedierte);
+      if (Array.isArray(d.haccp_opleidingen)) setHaccpOpleidingen(d.haccp_opleidingen);
       if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
       if (Array.isArray(d.btw_tarieven) && d.btw_tarieven.length) setBtwTarieven(d.btw_tarieven);
       if (Array.isArray(d.ing_types) && d.ing_types.length) setIngTypes(d.ing_types);
@@ -421,6 +442,10 @@ function App() {
     setFactuurCounter({jaar:0,nr:0}); setHaInst({enabled: false, sensors: []});
     setAccijnsInst({tarief_per_hl_abv:7.51,tarief_per_hl:24.17});
     setBankKoppelingen({});
+    setHaccpSchoonmaakTaken([]); setHaccpSchoonmaakLog([]);
+    setHaccpCcpDefinities(DEFAULT_CCP_DEFINITIES); setHaccpCcpMetingen([]);
+    setHaccpCapa([]); setHaccpWaterkwaliteit([]);
+    setHaccpOngedierte([]); setHaccpOpleidingen([]);
     setLogo(null); setFactuurLogo(null); setAppName(''); setNavTheme('amber');
     setWcSyncLog([]);
   };
@@ -436,6 +461,7 @@ function App() {
     ]},
     {id:'producten',l:t('nav_producten')},
     {id:'bestellingen',l:t('nav_bestellingen')},
+    {id:'haccp',l:t('nav_haccp')},
     {id:'administratie',l:t('nav_administratie'),sub:[
       {id:'boekhouding',l:t('nav_boekhouding')},
       {id:'inventarisatie',l:t('nav_inventarisatie')},
@@ -532,6 +558,7 @@ function App() {
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} />}
+        {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} gistMetingen={gistMetingen} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} ccpDefinities={haccpCcpDefinities} setCcpDefinities={setHaccpCcpDefinities} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} />}
         {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} resetApp={resetApp} />}
       </main>

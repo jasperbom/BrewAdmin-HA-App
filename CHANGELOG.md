@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.51] — 2026-04-13
+
+### Added — NVWA/HACCP Compliance pagina
+- **Nieuwe HACCP-pagina** met 9 tabs: Dashboard, Schoonmaak, CCP Monitoring,
+  Allergenen, Traceerbaarheid, CAPA, Waterkwaliteit, Ongedierte, Opleidingen
+- **Schoonmaakschema**: Definieer terugkerende schoonmaaktaken (dagelijks/wekelijks/
+  maandelijks/per batch) met logboek en achterstallig-indicator
+- **CCP Monitoring**: Definieer Critical Control Points met grenswaarden, registreer
+  metingen per batch. Automatische CAPA-aanmaak bij afwijkingen
+- **Allergenenbeheer**: Allergeenmatrix op ingrediënten met automatische per-batch
+  allergeendeclaratie afgeleid uit batch-ingrediënten
+- **Traceerbaarheidstool**: Trace forward (lot → batch → verpakking → klant) en
+  backward (batch → lot → leverancier) met mock recall rapportgenerator
+- **CAPA**: Corrigerende acties registratie met statusworkflow (open → in behandeling → afgerond)
+- **Waterkwaliteit**: Testregistratie met pH, hardheid, chloor en waarschuwing bij >6 maanden
+- **Ongediertebestrijding**: Controle- en waarnemingslogboek
+- **Opleidingen**: Medewerkersopleidingen met geldigheid en verloopwaarschuwing
+- **Dashboard**: Compliance-overzicht met kleurgecodeerde statuscards
+- **8 nieuwe data keys** voor HACCP-registraties (haccp_schoonmaak_taken, etc.)
+- **Excel backup**: Alle HACCP-data meegenomen in export/import
+- **i18n**: Alle 5 talen (NL/EN/DE/FR/ES) voorzien van ~120 HACCP-sleutels
+- **Allergeen-veld** toegevoegd aan Ingredient type (gluten, gerst, tarwe, etc.)
+
+---
+
 ## [1.8.50] — 2026-04-13
 
 ### Added — Hygiëne groepen hernoembaar in instellingen

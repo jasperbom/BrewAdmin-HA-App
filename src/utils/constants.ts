@@ -100,6 +100,36 @@ export const DEFAULT_HYGIENE_ITEMS = [
   {id:5,label:'Hydrometer gesteriliseerd',group_id:2,volgorde:1},
 ]
 
+// ── NVWA/HACCP Defaults ─────────────────────────────────────────────────────
+
+export const DEFAULT_CCP_DEFINITIES = [
+  {id:1, naam:'Kooktemperatuur', categorie:'koken' as const, kritische_grens:'≥100 °C gedurende ≥60 min', grens_min:100, eenheid:'°C', monitoring_methode:'Thermometer in brouwketel', corrigerende_actie:'Kooktijd verlengen tot minimaal 60 min bij 100 °C', actief:true},
+  {id:2, naam:'Koelsnelheid', categorie:'koelen' as const, kritische_grens:'<20 °C binnen 90 min na koken', grens_max:20, eenheid:'°C', monitoring_methode:'Thermometer na koeler', corrigerende_actie:'Extra koeling inzetten; batch evalueren bij >90 min', actief:true},
+  {id:3, naam:'Vergistingstemperatuur', categorie:'vergisting' as const, kritische_grens:'Volgens gistprofiel', eenheid:'°C', monitoring_methode:'Sensoren / handmatige meting', corrigerende_actie:'Temperatuurregeling bijstellen', actief:true},
+  {id:4, naam:'pH wort na koelen', categorie:'koelen' as const, kritische_grens:'pH 4.0 – 5.5', grens_min:4.0, grens_max:5.5, eenheid:'pH', monitoring_methode:'pH-meter', corrigerende_actie:'pH corrigeren of batch evalueren', actief:true},
+]
+
+export const ALLERGENEN_LIJST = [
+  {key:'gluten',  label:'haccp_allergen_gluten'},
+  {key:'gerst',   label:'haccp_allergen_gerst'},
+  {key:'tarwe',   label:'haccp_allergen_tarwe'},
+  {key:'rogge',   label:'haccp_allergen_rogge'},
+  {key:'haver',   label:'haccp_allergen_haver'},
+  {key:'lactose', label:'haccp_allergen_lactose'},
+  {key:'soja',    label:'haccp_allergen_soja'},
+  {key:'noten',   label:'haccp_allergen_noten'},
+  {key:'sulfiet', label:'haccp_allergen_sulfiet'},
+  {key:'overig',  label:'haccp_allergen_overig'},
+]
+
+export const SCHOONMAAK_FREQUENTIES = [
+  {key:'dagelijks',   label:'haccp_freq_dagelijks'},
+  {key:'wekelijks',   label:'haccp_freq_wekelijks'},
+  {key:'maandelijks', label:'haccp_freq_maandelijks'},
+  {key:'per_batch',   label:'haccp_freq_per_batch'},
+  {key:'anders',      label:'haccp_freq_anders'},
+]
+
 export const BF_TO_APP: Record<string,string> = {
   Planning:'Gepland',Brewing:'Brouwen',Fermenting:'Vergisten',
   Conditioning:'Conditioneren',Carbonating:'Conditioneren',
