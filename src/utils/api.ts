@@ -64,8 +64,8 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     fetch(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } })
       .then(r => {
         _serverReachable = true
-        _syncErrors = 0
         if (r.ok) {
+          _syncErrors = 0
           if (secure) localStorage.removeItem('craftery_' + key)
           return r.json()
         }

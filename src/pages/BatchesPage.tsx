@@ -620,7 +620,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           added++
         } else {
           const ch: any = {brewfather_id: bfB._id}
-          if (existing.status !== appStatus) ch.status = appStatus
+          if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus
           if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize)
           if (bfB.measuredOg) {
             ch.OG = bfNumSafe(bfB.measuredOg);

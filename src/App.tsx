@@ -3,7 +3,7 @@ import { t, setLang as i18nSetLang } from './i18n'
 import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, API_BASE } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import SyncDot from './components/ui/SyncDot'
 import DashboardPage from './pages/DashboardPage'
 import IngredientenPage from './pages/IngredientenPage'
@@ -163,7 +163,7 @@ function App() {
             newBis.push(...nbis);
           } else {
             const ch: any = {brewfather_id: bfB._id};
-            if (existing.status !== appStatus) ch.status = appStatus;
+            if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus;
             if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize);
             if (bfB.measuredOg)  ch.OG  = bfNumSafe(bfB.measuredOg);
             if (bfB.measuredFg)  ch.FG  = bfNumSafe(bfB.measuredFg);
