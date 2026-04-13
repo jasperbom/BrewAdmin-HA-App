@@ -109,6 +109,8 @@ export interface VerpakkingOnderdeel {
 export interface Afvulling {
   id: number
   batch_id: number
+  product_id?: number
+  artikel_sku?: string | null
   verpakking_id?: number
   verpakking_naam?: string
   verpakking_type?: string

@@ -1122,5 +1122,17 @@
   "btn_bewerken": "Modifier",
   "lbl_product_abv": "ABV %",
   "lbl_product_ebc": "EBC (couleur)",
-  "lbl_product_ibu": "IBU (amertume)"
+  "lbl_product_ibu": "IBU (amertume)",
+  "lbl_afvulling_product": "Produit",
+  "ph_select_product": "Sélectionner un produit...",
+  "lbl_afvulling_nieuw_product": "+ Nouveau produit",
+  "ph_nieuw_product_naam": "Nom du nouveau produit...",
+  "btn_product_toevoegen": "Ajouter",
+  "lbl_geen_sku": "Pas de SKU pour cette combinaison",
+  "btn_sku_toevoegen": "Ajouter SKU",
+  "ph_artikelnummer": "Numéro d'article / SKU",
+  "ph_ean_optioneel": "EAN (optionnel)",
+  "btn_sku_opslaan": "Enregistrer",
+  "err_select_product": "Sélectionnez un produit",
+  "err_product_naam_leeg": "Entrez un nom de produit"
 }

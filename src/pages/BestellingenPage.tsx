@@ -192,7 +192,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         if (!batch) return false
         if (batch.naam.toLowerCase() === regelBierNaam.toLowerCase()) return true
         if (batch.biernaam && batch.biernaam.toLowerCase() === regelBierNaam.toLowerCase()) return true
-        if (prod && batch.product_id === prod.id) return true
+        if (prod && (a.product_id === prod.id || batch.product_id === prod.id)) return true
         return false
       })
       .sort(fefo)

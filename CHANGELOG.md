@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.30] — 2026-04-13
+
+### Added — Product & SKU selectie bij afvullen
+- **BatchesPage**: Verplicht productveld toegevoegd aan het afvulformulier. Een
+  batch kan nu naar verschillende producten afgevuld worden.
+- **BatchesPage**: Automatische SKU-weergave op basis van product + verpakking
+  combinatie. Als geen SKU bestaat, kan deze inline worden aangemaakt.
+- **BatchesPage**: Inline nieuw product aanmaken via simpel naamveld.
+- **BatchesPage**: Product- en SKU-kolom toegevoegd aan afgevulde voorraad-tabel.
+- **ProductenPage**: Voorraadberekening prefereert nu `afvulling.product_id`
+  boven `batch.product_id` voor nauwkeurigere productkoppeling.
+- **BestellingenPage**: Picking-logica uitgebreid met `afvulling.product_id`.
+- **Types**: `product_id` en `artikel_sku` toegevoegd aan Afvulling interface.
+
 ## [1.8.29] — 2026-04-12
 
 ### Changed — Tank in batch header
