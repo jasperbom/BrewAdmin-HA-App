@@ -1336,5 +1336,7 @@
   "lbl_datum": "Date",
   "lbl_opmerking": "Remarque",
   "lbl_uitgevoerd_door": "Effectué par",
-  "lbl_actief": "Actif"
+  "lbl_actief": "Actif",
+  "lbl_invoice_date": "Date de facture",
+  "lbl_paid_on": "Payé le"
 }

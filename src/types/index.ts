@@ -204,6 +204,7 @@ export interface InkoopFactuur {
   totaal_btw?: number
   totaal_bruto?: number
   status?: 'open' | 'betaald'
+  betaald_datum?: string
 }
 
 export interface FactuurRegel {

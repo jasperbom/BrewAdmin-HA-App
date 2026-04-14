@@ -1352,5 +1352,7 @@
   "lbl_datum": "Datum",
   "lbl_opmerking": "Opmerking",
   "lbl_uitgevoerd_door": "Uitgevoerd door",
-  "lbl_actief": "Actief"
+  "lbl_actief": "Actief",
+  "lbl_invoice_date": "Factuurdatum",
+  "lbl_paid_on": "Betaald op"
 }
