@@ -149,6 +149,28 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeleverd)
   }
 
+  // Beschikbaar per locatie voor een afvulling: fysieke voorraad per locatie
+  // (voorraadPerLocatie) minus actieve picks per locatie (van andere orders).
+  const beschikbaarPerLocatieVoorAfvulling = (a: any, excludeBestellingId?: number): Record<number, number> => {
+    if (!a || !(locaties||[]).length) return {}
+    const fysiek = voorraadPerLocatie(a, locaties as any, uit as any, verplaatsingen as any, afboekingen as any)
+    const res: Record<number, number> = {...fysiek}
+    const agp = getAgpLocatie(locaties as any)
+    for (const p of ((bestellingPicks||[]) as any[])) {
+      if (p.afvulling_id !== a.id) continue
+      if (excludeBestellingId && p.bestelling_id === excludeBestellingId) continue
+      const b = (bestellingen||[]).find((bs: any) => bs.id === p.bestelling_id)
+      if (!b || b.status === 'afgerond' || b.status === 'geannuleerd') continue
+      const locId = p.bron_locatie_id ?? agp.id
+      res[locId] = (res[locId] || 0) - Number(p.aantal || 0)
+    }
+    for (const k of Object.keys(res)) {
+      const id = Number(k)
+      if (res[id] < 0) res[id] = 0
+    }
+    return res
+  }
+
   // Compact label met voorraad per locatie voor één afvulling, bv. "AGP: 20, Magazijn: 10".
   // Geeft lege string terug als slechts één locatie voorraad heeft (info niet nuttig).
   const voorraadPerLocLabel = (a: any): string => {
@@ -411,6 +433,31 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         return
       }
     }
+    // Valideer per-locatie wanneer een bron_locatie_id is gekozen
+    const perLocTotals: Record<string, number> = {}
+    for (const picks of Object.values(draftPicks)) {
+      for (const p of picks as any[]) {
+        if (!p.aantal || p.aantal <= 0) continue
+        if (p.bron_locatie_id == null) continue
+        const key = `${p.afvulling_id}|${p.bron_locatie_id}`
+        perLocTotals[key] = (perLocTotals[key]||0) + Number(p.aantal)
+      }
+    }
+    for (const [key, totaal] of Object.entries(perLocTotals)) {
+      const [afvIdStr, locIdStr] = key.split('|')
+      const afvItem = (av||[]).find((a: any) => a.id === Number(afvIdStr))
+      if (!afvItem) continue
+      const perLoc = beschikbaarPerLocatieVoorAfvulling(afvItem, selectedOrder.id)
+      const beschik = perLoc[Number(locIdStr)] || 0
+      if (totaal > beschik) {
+        const loc = (locaties||[]).find((l: any) => l.id === Number(locIdStr))
+        alert(t('err_locatie_voorraad_ontoereikend')
+          .replace('{locatie}', loc?.naam || '?')
+          .replace('{beschikbaar}', String(beschik))
+          .replace('{verpakking}', afvItem.verpakking_type||''))
+        return
+      }
+    }
     const newPicks: any[] = []
     let pickId = newId(bestellingPicks||[])
     for (const [regelIdStr, picks] of Object.entries(draftPicks)) {
@@ -426,6 +473,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           afvulling_id: p.afvulling_id,
           batch_id: batch?.id || 0,
           aantal: Number(p.aantal),
+          bron_locatie_id: p.bron_locatie_id ?? undefined,
           uitlevering_id: null,
           accijns_id: null,
         })
@@ -488,20 +536,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // Huidige voorraad per locatie voor deze afvulling
       const voorraad = voorraadPerLocatie(avItem, locaties, lokaleUitleveringen, verplaatsingen, afboekingen)
 
-      // Locatie-volgorde: niet-AGP eerst, dan AGP
+      // Locatie-volgorde
       const locOrder: number[] = []
-      for (const l of (locaties||[])) {
-        if (!l.is_agp && (voorraad[l.id]||0) > 0) locOrder.push(l.id)
+      if (pick.bron_locatie_id != null) {
+        // Gebruiker heeft expliciet een locatie gekozen bij het picken.
+        // Gebruik die exclusief (AGP mag negatief gaan, zie aantalDeel-berekening).
+        locOrder.push(pick.bron_locatie_id)
+      } else {
+        // Automatische allocatie: niet-AGP eerst, dan AGP
+        for (const l of (locaties||[])) {
+          if (!l.is_agp && (voorraad[l.id]||0) > 0) locOrder.push(l.id)
+        }
+        if ((voorraad[agpLoc.id]||0) > 0) locOrder.push(agpLoc.id)
+        // Eventuele locaties die niet meer in `locaties` staan maar wel voorraad hebben
+        for (const k of Object.keys(voorraad)) {
+          const id = Number(k)
+          if (!locOrder.includes(id) && (voorraad[id]||0) > 0) locOrder.push(id)
+        }
+        // Als nergens voorraad is gevonden, val terug op AGP zodat er altijd één
+        // uitslag wordt gemaakt (back-compat met legacy data zonder seed).
+        if (locOrder.length === 0) locOrder.push(agpLoc.id)
       }
-      if ((voorraad[agpLoc.id]||0) > 0) locOrder.push(agpLoc.id)
-      // Eventuele locaties die niet meer in `locaties` staan maar wel voorraad hebben
-      for (const k of Object.keys(voorraad)) {
-        const id = Number(k)
-        if (!locOrder.includes(id) && (voorraad[id]||0) > 0) locOrder.push(id)
-      }
-      // Als nergens voorraad is gevonden, val terug op AGP zodat er altijd één
-      // uitslag wordt gemaakt (back-compat met legacy data zonder seed).
-      if (locOrder.length === 0) locOrder.push(agpLoc.id)
 
       let resterend = Number(pick.aantal||0)
       for (const locId of locOrder) {
@@ -1022,16 +1077,39 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         : avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.biernaam||avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
                       const maxBeschik = beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id) + Number(dp.aantal||0)
                       const locLabel = avItem ? voorraadPerLocLabel(avItem) : ''
+                      const perLoc = avItem ? beschikbaarPerLocatieVoorAfvulling(avItem, selectedOrder.id) : {}
+                      const locOpties = (locaties||[])
+                        .filter((l: any) => (perLoc[l.id] || 0) + (dp.bron_locatie_id === l.id ? Number(dp.aantal||0) : 0) > 0)
                       return (
                         <div key={idx} className="mt-1 text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="flex-1 text-gray-600">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="flex-1 min-w-0 text-gray-600">
                               <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
                               {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
                               {' · '}{avItem?.verpakking_type}
                               {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
                               {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · Lot {avBatch.batch_nummer}</span>}
                             </span>
+                            {(locaties||[]).length > 1 && (
+                              <select value={dp.bron_locatie_id ?? ''}
+                                onChange={e => {
+                                  const val = e.target.value === '' ? undefined : Number(e.target.value)
+                                  setDraftPicks(prev => {
+                                    const list = [...(prev[r.id]||[])]
+                                    list[idx] = {...list[idx], bron_locatie_id: val}
+                                    return {...prev, [r.id]: list}
+                                  })
+                                }}
+                                title={t('picking_bron_locatie')}
+                                className="border border-gray-300 rounded px-1 py-0.5 text-xs bg-white">
+                                <option value="">{t('picking_locatie_auto')}</option>
+                                {locOpties.map((l: any) => (
+                                  <option key={l.id} value={l.id}>
+                                    {l.naam} ({perLoc[l.id] || 0}×)
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                             <input type="number" min="0" max={maxBeschik}
                               value={dp.aantal}
                               onChange={e => {

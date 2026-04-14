@@ -6,6 +6,7 @@ import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
+import { voorraadPerLocatie } from '../utils/calculations'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 
@@ -21,7 +22,7 @@ const REDEN_COLORS: Record<AfboekingReden, string> = {
   overig:         'text-gray-600 bg-gray-100',
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -79,6 +80,29 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   const afgeboektVoorAfvulling = (a: any): number =>
     ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id).reduce((s: number, ab: any) => s + Number(ab.aantal||0), 0);
+
+  // Beschikbaar per locatie voor één afvulling: fysieke voorraad per locatie
+  // (uit voorraadPerLocatie) minus de actieve picks per locatie.
+  const beschikbaarPerLocatie = (a: any): Record<number, number> => {
+    if (!a || !(locaties||[]).length) return {};
+    const fysiek = voorraadPerLocatie(a, locaties as any, uit as any, verplaatsingen as any, afboekingen as any);
+    const res: Record<number, number> = {...fysiek};
+    const agp = (locaties||[]).find((l: any) => l.is_agp) || (locaties||[])[0];
+    const agpId = agp?.id;
+    // Actieve picks op deze afvulling aftrekken op hun bron-locatie (of AGP)
+    for (const p of ((bestellingPicks||[]) as any[])) {
+      if (p.afvulling_id !== a.id) continue;
+      const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
+      if (!b || b.status === 'afgerond' || b.status === 'geannuleerd') continue;
+      const locId = p.bron_locatie_id ?? agpId;
+      res[locId] = (res[locId] || 0) - Number(p.aantal || 0);
+    }
+    for (const k of Object.keys(res)) {
+      const id = Number(k);
+      if (res[id] < 0) res[id] = 0;
+    }
+    return res;
+  };
 
   // Statistieken per product
   const productStats = useMemo(() => {
@@ -712,6 +736,17 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     </div>
                     {rows.map((a: any) => {
                       const beschikbaar = beschikbaarVoorAfvulling(a);
+                      const perLoc = beschikbaarPerLocatie(a);
+                      const perLocEntries = Object.entries(perLoc)
+                        .map(([k, n]) => ({locId: Number(k), n: Number(n)}))
+                        .filter(e => e.n > 0)
+                        .sort((x, y) => {
+                          const lx = (locaties||[]).find((l: any) => l.id === x.locId);
+                          const ly = (locaties||[]).find((l: any) => l.id === y.locId);
+                          // Niet-AGP eerst, dan AGP
+                          if (!!lx?.is_agp !== !!ly?.is_agp) return lx?.is_agp ? 1 : -1;
+                          return (lx?.naam || '').localeCompare(ly?.naam || '');
+                        });
                       const batch = (bat||[]).find((b: any) => b.id === a.batch_id);
                       const thtDays = a.tht ? Math.ceil((new Date(a.tht).getTime() - new Date().getTime()) / 86400000) : null;
                       const thtExp = thtDays !== null && thtDays < 0;
@@ -738,6 +773,23 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                   {t('msg_n_beschikbaar').replace('{n}', String(beschikbaar))}
                                 </span>
                               </div>
+                              {perLocEntries.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs pt-0.5">
+                                  {perLocEntries.map(e => {
+                                    const loc = (locaties||[]).find((l: any) => l.id === e.locId);
+                                    const isAgp = !!loc?.is_agp;
+                                    return (
+                                      <span
+                                        key={e.locId}
+                                        className={`px-1.5 py-0.5 rounded font-medium ${isAgp ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}
+                                        title={isAgp ? t('lbl_agp_voorraad') : t('lbl_niet_agp_voorraad')}
+                                      >
+                                        {loc?.naam || t('lbl_onbekend')}: <strong>{e.n}×</strong>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                             {beschikbaar > 0 && (
                               <button onClick={e => openAfboekModal(a, e)}
