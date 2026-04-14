@@ -1193,5 +1193,16 @@
   "haccp_ongd_titel":"Schädlingsbekämpfung","haccp_ongd_nieuw":"Neuer Eintrag","haccp_ongd_type":"Typ","haccp_ongd_controle":"Kontrolle","haccp_ongd_waarneming":"Sichtung","haccp_ongd_locatie":"Standort","haccp_ongd_bevinding":"Befund","haccp_ongd_actie":"Ergriffene Maßnahme","haccp_ongd_geen":"Keine Schädlingsbekämpfungseinträge.","haccp_ongd_warn":"Letzte Kontrolle länger als 1 Monat her",
   "haccp_opl_titel":"Schulungen & Weiterbildung","haccp_opl_nieuw":"Neue Schulung","haccp_opl_medewerker":"Mitarbeiter","haccp_opl_onderwerp":"Thema","haccp_opl_datum":"Datum","haccp_opl_geldig_tot":"Gültig bis","haccp_opl_certificaat":"Zertifikat","haccp_opl_geen":"Keine Schulungseinträge.","haccp_opl_verlopen":"Abgelaufen",
   "lbl_datum":"Datum","lbl_opmerking":"Bemerkung","lbl_uitgevoerd_door":"Durchgeführt von","lbl_actief":"Aktiv",
-  "lbl_invoice_date":"Rechnungsdatum","lbl_paid_on":"Bezahlt am"
+  "lbl_invoice_date":"Rechnungsdatum","lbl_paid_on":"Bezahlt am",
+  "lbl_naam":"Name","lbl_adres":"Adresse",
+  "nav_agp":"Steuerlager",
+  "agp_titel":"Steuerlager-Bestand","agp_locatie":"Standort","agp_locatie_beheren":"Standorte verwalten","agp_locaties_beheren":"Standorte verwalten","agp_bestaande_locaties":"Vorhandene Standorte","agp_locatie_bewerken":"Standort bearbeiten","agp_locatie_nieuw":"Neuer Standort",
+  "agp_kpi_liter_verpakt":"Liter verpackt im Steuerlager","agp_kpi_liter_tank":"Liter in Tanks","agp_kpi_accijns_verpakt":"Verbrauchsteuerwert verpackt","agp_kpi_accijns_tank":"Verbrauchsteuerwert Tanks",
+  "agp_sec_tanks":"In Tanks (geschätzt)","agp_sec_verpakt_agp":"Verpackt im Steuerlager","agp_sec_buiten_agp":"Bestand außerhalb des Steuerlagers","agp_sec_mutaties":"Letzte Bewegungen",
+  "agp_geen_tank":"Keine aktiven Chargen im Tank.","agp_geen_verpakt":"Kein verpackter Bestand im Steuerlager.","agp_geen_buiten":"Kein Bestand außerhalb des Steuerlagers.","agp_geen_mutaties":"Noch keine Bewegungen erfasst.",
+  "agp_geschat":"geschätzt","agp_aantal":"Menge","agp_max":"max","agp_van":"Von","agp_naar":"Nach",
+  "agp_verplaatsen":"Verschieben","agp_verplaats_titel":"Bestand verschieben","agp_verplaats_opslaan":"Bewegung speichern","agp_accijns_betaald":"Verbrauchsteuer bezahlt",
+  "agp_info_accijns_boeken":"Beim Verlassen des Steuerlagers wird Verbrauchsteuer gebucht:","agp_info_geen_accijns_retour":"Keine Verbrauchsteuer bei Rückkehr in das Steuerlager.","agp_info_geen_accijns_buiten":"Bewegung zwischen Nicht-Steuerlager-Standorten: keine Verbrauchsteuerbuchung.",
+  "agp_err_aantal_verplicht":"Geben Sie eine gültige Menge ein.","agp_err_locatie_verplicht":"Wählen Sie einen Quell- und Zielstandort.","agp_err_zelfde_locatie":"Quelle und Ziel müssen unterschiedlich sein.","agp_err_te_weinig_voorraad":"Nur {n} Stück an diesem Standort verfügbar.","agp_err_naam_verplicht":"Name ist erforderlich.","agp_err_agp_niet_verwijderen":"Der Steuerlager-Standort kann nicht gelöscht werden.","agp_err_locatie_in_gebruik":"Dieser Standort hat noch Bestand und kann nicht gelöscht werden.",
+  "agp_confirm_loc_verwijderen":"Standort löschen?"
 }

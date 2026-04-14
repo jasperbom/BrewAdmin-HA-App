@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.56] — 2026-04-14
+
+### Added — AGP-inzicht & verplaats-flow
+- Nieuw `Locatie`-model met `is_agp`-vlag; standaardlocatie "AGP" wordt automatisch geseed
+- Nieuw `Verplaatsing`-model voor stockmutaties tussen locaties (met automatische accijnsboeking bij vertrek uit AGP)
+- Nieuw tabblad **AGP** in Accijns-pagina toont voorraad en accijnswaarde van bier in tank (geschat ABV uit OG) en verpakt
+- Verplaats-modal: stock buiten AGP halen → genereert AccijnsRecord met bron `'verplaatsing'`
+- Locatiebeheer-modal: locaties toevoegen, hernoemen, verwijderen (AGP beschermd)
+- Verkoop-flow splitst pick per locatie: niet-AGP eerst (geen extra accijns), AGP-deel boekt accijns
+- `Uitslag.bron_locatie_id`, `AccijnsRecord.bron`/`verplaatsing_id`, `BestellingPick.uitslag_ids/accijns_ids` toegevoegd
+- Locaties + verplaatsingen meegenomen in Excel backup/restore
+
+---
+
 ## [1.8.55] — 2026-04-14
 
 ### Fixed — Accijns pagina crash
