@@ -6,13 +6,41 @@ import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import { logAudit } from '../utils/audit'
-import { agpOverzicht, getAgpLocatie, accijnsCalc, voorraadPerLocatie } from '../utils/calculations'
+import { agpOverzicht, getAgpLocatie, accijnsCalc, voorraadPerLocatie, gemAgpInPeriode } from '../utils/calculations'
 
 function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, auditLog, setAuditLog}: any) {
   const {useState, useMemo} = React;
 
   const ovz = useMemo(() => agpOverzicht(bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst),
     [bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst]);
+
+  // Historische gemiddelden van AGP-waarde
+  const histAvg = useMemo(() => {
+    const now = new Date();
+    const isJanuari = now.getMonth() === 0;
+
+    // Vorige maand: hele kalendermaand
+    const vmStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const vmEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const vorigeMaand = gemAgpInPeriode(vmStart, vmEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst);
+
+    // Dit jaar: 1 jan tot vandaag
+    const djStart = new Date(now.getFullYear(), 0, 1);
+    const djEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const ditJaar = gemAgpInPeriode(djStart, djEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst);
+
+    // In januari: ook vorig jaar tonen
+    let vorigJaar = null as null | { tank: number; verpakt: number; totaal: number };
+    if (isJanuari) {
+      const vjStart = new Date(now.getFullYear() - 1, 0, 1);
+      const vjEnd = new Date(now.getFullYear() - 1, 11, 31);
+      vorigJaar = gemAgpInPeriode(vjStart, vjEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst);
+    }
+
+    return { vorigeMaand, ditJaar, vorigJaar, isJanuari, year: now.getFullYear(), prevYear: now.getFullYear() - 1 };
+  }, [bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst]);
+
+  const totaal_accijns_agp = ovz.totaal_accijns_agp + ovz.totaal_accijns_tank;
 
   const agp = getAgpLocatie(locaties);
   const r1 = accijnsInst?.tarief_per_hl_abv ?? 7.51;
@@ -147,7 +175,8 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
         <Btn v="secondary" onClick={()=>setLocModal({naam:'', adres:'', opmerking:''})}>{t('agp_locatie_beheren')}</Btn>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      {/* Liter-tegels */}
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-white rounded-xl shadow-card p-4">
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('agp_kpi_liter_verpakt')}</div>
           <div className="text-2xl font-bold mt-1" style={{color:'var(--t-accent)'}}>{ovz.totaal_liter_agp.toFixed(1)}L</div>
@@ -156,14 +185,27 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('agp_kpi_liter_tank')}</div>
           <div className="text-2xl font-bold mt-1" style={{color:'var(--t-accent)'}}>{ovz.totaal_liter_tank.toFixed(1)}L</div>
         </div>
-        <div className="bg-white rounded-xl shadow-card p-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('agp_kpi_accijns_verpakt')}</div>
-          <div className="text-2xl font-bold mt-1 text-amber-700">{fmt(ovz.totaal_accijns_agp)}</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-card p-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('agp_kpi_accijns_tank')}</div>
-          <div className="text-2xl font-bold mt-1 text-amber-700">{fmt(ovz.totaal_accijns_tank)}</div>
-        </div>
+      </div>
+
+      {/* Accijns-tegels met historische gemiddelden */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        {[
+          { label: t('agp_kpi_accijns_verpakt'), waarde: ovz.totaal_accijns_agp, vm: histAvg.vorigeMaand.verpakt, dj: histAvg.ditJaar.verpakt, vj: histAvg.vorigJaar?.verpakt },
+          { label: t('agp_kpi_accijns_tank'),    waarde: ovz.totaal_accijns_tank, vm: histAvg.vorigeMaand.tank,    dj: histAvg.ditJaar.tank,    vj: histAvg.vorigJaar?.tank },
+          { label: t('agp_kpi_accijns_totaal'),  waarde: totaal_accijns_agp,      vm: histAvg.vorigeMaand.totaal,  dj: histAvg.ditJaar.totaal,  vj: histAvg.vorigJaar?.totaal },
+        ].map((tile, i) => (
+          <div key={i} className="bg-white rounded-xl shadow-card p-4">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{tile.label}</div>
+            <div className="text-2xl font-bold mt-1 text-amber-700">{fmt(tile.waarde)}</div>
+            <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
+              <div>{t('agp_kpi_gem_vorige_maand')}: <span className="font-medium text-gray-700">{fmt(tile.vm)}</span></div>
+              <div>{t('agp_kpi_gem_dit_jaar').replace('{jaar}', String(histAvg.year))}: <span className="font-medium text-gray-700">{fmt(tile.dj)}</span></div>
+              {histAvg.isJanuari && histAvg.vorigJaar && (
+                <div>{t('agp_kpi_gem_vorig_jaar').replace('{jaar}', String(histAvg.prevYear))}: <span className="font-medium text-gray-700">{fmt(tile.vj || 0)}</span></div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">

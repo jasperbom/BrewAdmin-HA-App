@@ -1197,7 +1197,7 @@
   "lbl_naam":"Name","lbl_adres":"Adresse",
   "nav_agp":"Steuerlager",
   "agp_titel":"Steuerlager-Bestand","agp_locatie":"Standort","agp_locatie_beheren":"Standorte verwalten","agp_locaties_beheren":"Standorte verwalten","agp_bestaande_locaties":"Vorhandene Standorte","agp_locatie_bewerken":"Standort bearbeiten","agp_locatie_nieuw":"Neuer Standort",
-  "agp_kpi_liter_verpakt":"Liter verpackt im Steuerlager","agp_kpi_liter_tank":"Liter in Tanks","agp_kpi_accijns_verpakt":"Verbrauchsteuerwert verpackt","agp_kpi_accijns_tank":"Verbrauchsteuerwert Tanks",
+  "agp_kpi_liter_verpakt":"Liter verpackt im Steuerlager","agp_kpi_liter_tank":"Liter in Tanks (Steuerlager)","agp_kpi_accijns_verpakt":"Verbrauchsteuerwert verpackt im Steuerlager","agp_kpi_accijns_tank":"Verbrauchsteuerwert Tanks im Steuerlager","agp_kpi_accijns_totaal":"Gesamt-Verbrauchsteuerwert Steuerlager","agp_kpi_gem_vorige_maand":"Ø Vormonat","agp_kpi_gem_dit_jaar":"Ø {jaar}","agp_kpi_gem_vorig_jaar":"Ø {jaar}",
   "agp_sec_tanks":"In Tanks (geschätzt)","agp_sec_verpakt_agp":"Verpackt im Steuerlager","agp_sec_buiten_agp":"Bestand außerhalb des Steuerlagers","agp_sec_mutaties":"Letzte Bewegungen",
   "agp_geen_tank":"Keine aktiven Chargen im Tank.","agp_geen_verpakt":"Kein verpackter Bestand im Steuerlager.","agp_geen_buiten":"Kein Bestand außerhalb des Steuerlagers.","agp_geen_mutaties":"Noch keine Bewegungen erfasst.",
   "agp_geschat":"geschätzt","agp_aantal":"Menge","agp_max":"max","agp_van":"Von","agp_naar":"Nach",

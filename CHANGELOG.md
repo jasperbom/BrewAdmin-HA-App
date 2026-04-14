@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.58] — 2026-04-14
+
+### Added — Historische gemiddelden op AGP-tegels
+- Nieuwe tegel "Totale accijnswaarde AGP" (verpakt + tank)
+- Onder elke accijnstegel staan nu kleine subregels met:
+  - Gemiddelde waarde van vorige maand
+  - Gemiddelde waarde van dit jaar
+  - In januari ook het gemiddelde van vorig jaar (omdat dit jaar nog kort is)
+- Tegellabels expliciet voorzien van "in AGP" / "(AGP)" zodat duidelijk
+  is dat de waarden over de accijnsgoederenplaats gaan
+- Nieuwe helpers `agpValueAt(datum,...)` en `gemAgpInPeriode(start,end,...)`
+  in `calculations.ts` die de AGP-waarde reconstrueren uit historische
+  events (afvullingen, uitslagen, verplaatsingen, afboekingen)
+
+---
+
 ## [1.8.57] — 2026-04-14
 
 ### Changed — AGP als top-level menu + correctie tank-statussen

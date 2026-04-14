@@ -1197,7 +1197,7 @@
   "lbl_naam":"Name","lbl_adres":"Address",
   "nav_agp":"Excise warehouse",
   "agp_titel":"Excise warehouse stock","agp_locatie":"Location","agp_locatie_beheren":"Manage locations","agp_locaties_beheren":"Manage locations","agp_bestaande_locaties":"Existing locations","agp_locatie_bewerken":"Edit location","agp_locatie_nieuw":"New location",
-  "agp_kpi_liter_verpakt":"Litres packaged in warehouse","agp_kpi_liter_tank":"Litres in tanks","agp_kpi_accijns_verpakt":"Excise value packaged","agp_kpi_accijns_tank":"Excise value tanks",
+  "agp_kpi_liter_verpakt":"Litres packaged in warehouse","agp_kpi_liter_tank":"Litres in tanks (warehouse)","agp_kpi_accijns_verpakt":"Excise value packaged in warehouse","agp_kpi_accijns_tank":"Excise value tanks in warehouse","agp_kpi_accijns_totaal":"Total excise value in warehouse","agp_kpi_gem_vorige_maand":"Avg. last month","agp_kpi_gem_dit_jaar":"Avg. {jaar}","agp_kpi_gem_vorig_jaar":"Avg. {jaar}",
   "agp_sec_tanks":"In tanks (estimated)","agp_sec_verpakt_agp":"Packaged in warehouse","agp_sec_buiten_agp":"Stock outside warehouse","agp_sec_mutaties":"Recent movements",
   "agp_geen_tank":"No active batches in tank.","agp_geen_verpakt":"No packaged stock in the warehouse.","agp_geen_buiten":"No stock outside the warehouse.","agp_geen_mutaties":"No movements recorded yet.",
   "agp_geschat":"estimated","agp_aantal":"Quantity","agp_max":"max","agp_van":"From","agp_naar":"To",

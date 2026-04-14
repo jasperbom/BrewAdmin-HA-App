@@ -350,3 +350,98 @@ export const agpOverzicht = (
     totaal_accijns_tank,
   }
 }
+
+// ── Historische AGP-waarde ──────────────────────────────────────────────────
+// Berekent de AGP-waarde (tank + verpakt) op een specifieke datum. Bouwt
+// snapshot op uit historische events (afvullingen, uitslagen, verplaatsingen,
+// afboekingen) — geen status-history vereist.
+export const agpValueAt = (
+  datum: string,
+  batches: any[],
+  afvullingen: Afvulling[],
+  uitslagen: Uitslag[],
+  verplaatsingen: Verplaatsing[],
+  afboekingen: Afboeking[],
+  locaties: Locatie[],
+  inst: AccijnsInst | null = null
+): { tank: number; verpakt: number; totaal: number } => {
+  const agp = getAgpLocatie(locaties)
+  const r1 = inst?.tarief_per_hl_abv ?? 7.51
+  const r2 = inst?.tarief_per_hl ?? 24.17
+  const D = String(datum)
+
+  // Tank: voor elke batch — liter_vergist minus afvullingen tot en met D.
+  // We tellen alleen mee als batch.datum <= D (anders bestond de batch nog niet).
+  let tankAcc = 0
+  for (const b of batches || []) {
+    const bDatum = String(b?.datum || '')
+    if (bDatum && bDatum > D) continue
+    const totaal = Number(b?.liter_vergist || b?.kook_volume || 0)
+    if (!totaal) continue
+    const afgevuld = (afvullingen || [])
+      .filter(a => a.batch_id === b.id && String(a.datum || '') <= D)
+      .reduce((s, a) => s + afvAantal(a) * afvInhoud(a), 0)
+    const rest = totaal - afgevuld
+    if (rest <= 0) continue
+    const { abv } = schatABV(b)
+    const plato = Number(b?.platogehalte || 0)
+    tankAcc += accijnsCalc(rest, abv, r1, r2, inst, plato)
+  }
+
+  // Verpakt in AGP: voor elke afvulling met datum <= D, bereken hoeveelheid
+  // op AGP-locatie op datum D.
+  let verpaktAcc = 0
+  for (const av of afvullingen || []) {
+    const avDatum = String(av?.datum || '')
+    if (avDatum && avDatum > D) continue
+    let inAgp = afvAantal(av)
+    for (const v of (verplaatsingen || []).filter(x => x.afvulling_id === av.id && String(x.datum || '') <= D)) {
+      const aantal = Number(v.aantal || 0)
+      if (v.van_locatie_id === agp.id) inAgp -= aantal
+      if (v.naar_locatie_id === agp.id) inAgp += aantal
+    }
+    for (const u of (uitslagen || []).filter(x => x.afvulling_id === av.id && String((x as any).datum || '') <= D)) {
+      const locId = u.bron_locatie_id ?? agp.id
+      if (locId === agp.id) inAgp -= Number(u.aantal || 0)
+    }
+    for (const af of (afboekingen || []).filter(x => x.afvulling_id === av.id && String((x as any).datum || '') <= D)) {
+      inAgp -= Number(af.aantal || 0)
+    }
+    if (inAgp <= 0) continue
+    const liter = inAgp * afvInhoud(av)
+    if (liter <= 0) continue
+    const batch = (batches || []).find(b => b.id === av.batch_id)
+    const abv = Number(batch?.ABV || 0)
+    const plato = Number(batch?.platogehalte || 0)
+    verpaktAcc += accijnsCalc(liter, abv, r1, r2, inst, plato)
+  }
+
+  return { tank: tankAcc, verpakt: verpaktAcc, totaal: tankAcc + verpaktAcc }
+}
+
+// Berekent het gemiddelde van AGP-waarden over een datumbereik [start..end].
+// Itereert per dag. Voor lege periodes (start > end) geeft 0 terug.
+export const gemAgpInPeriode = (
+  start: Date,
+  end: Date,
+  batches: any[],
+  afvullingen: Afvulling[],
+  uitslagen: Uitslag[],
+  verplaatsingen: Verplaatsing[],
+  afboekingen: Afboeking[],
+  locaties: Locatie[],
+  inst: AccijnsInst | null = null
+): { tank: number; verpakt: number; totaal: number } => {
+  if (!start || !end || start > end) return { tank: 0, verpakt: 0, totaal: 0 }
+  let nDays = 0, sTank = 0, sVerp = 0, sTot = 0
+  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const stop = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+  while (cur <= stop) {
+    const ds = cur.toISOString().slice(0, 10)
+    const v = agpValueAt(ds, batches, afvullingen, uitslagen, verplaatsingen, afboekingen, locaties, inst)
+    sTank += v.tank; sVerp += v.verpakt; sTot += v.totaal; nDays++
+    cur.setDate(cur.getDate() + 1)
+  }
+  if (nDays === 0) return { tank: 0, verpakt: 0, totaal: 0 }
+  return { tank: sTank / nDays, verpakt: sVerp / nDays, totaal: sTot / nDays }
+}
