@@ -1192,5 +1192,6 @@
   "haccp_water_titel":"Wasserqualitätstests","haccp_water_nieuw":"Neuer Test","haccp_water_bron":"Wasserquelle","haccp_water_bron_leiding":"Leitungswasser","haccp_water_bron_bron":"Quellwasser","haccp_water_bron_osmose":"Osmosewasser","haccp_water_ph":"pH","haccp_water_hardheid":"Härte (°dH)","haccp_water_chlor":"Chlor (mg/L)","haccp_water_resultaat":"Ergebnis","haccp_water_goed":"Gut","haccp_water_afwijkend":"Abweichend","haccp_water_geen":"Keine Wasserqualitätstests.","haccp_water_warn":"Letzter Test länger als 6 Monate her",
   "haccp_ongd_titel":"Schädlingsbekämpfung","haccp_ongd_nieuw":"Neuer Eintrag","haccp_ongd_type":"Typ","haccp_ongd_controle":"Kontrolle","haccp_ongd_waarneming":"Sichtung","haccp_ongd_locatie":"Standort","haccp_ongd_bevinding":"Befund","haccp_ongd_actie":"Ergriffene Maßnahme","haccp_ongd_geen":"Keine Schädlingsbekämpfungseinträge.","haccp_ongd_warn":"Letzte Kontrolle länger als 1 Monat her",
   "haccp_opl_titel":"Schulungen & Weiterbildung","haccp_opl_nieuw":"Neue Schulung","haccp_opl_medewerker":"Mitarbeiter","haccp_opl_onderwerp":"Thema","haccp_opl_datum":"Datum","haccp_opl_geldig_tot":"Gültig bis","haccp_opl_certificaat":"Zertifikat","haccp_opl_geen":"Keine Schulungseinträge.","haccp_opl_verlopen":"Abgelaufen",
-  "lbl_datum":"Datum","lbl_opmerking":"Bemerkung","lbl_uitgevoerd_door":"Durchgeführt von","lbl_actief":"Aktiv"
+  "lbl_datum":"Datum","lbl_opmerking":"Bemerkung","lbl_uitgevoerd_door":"Durchgeführt von","lbl_actief":"Aktiv",
+  "lbl_invoice_date":"Rechnungsdatum","lbl_paid_on":"Bezahlt am"
 }

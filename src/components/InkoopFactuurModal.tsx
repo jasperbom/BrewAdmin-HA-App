@@ -345,6 +345,12 @@ function InkoopFactuurModal({
             <span>{t('modal_edit_warning')}</span>
           </div>
         )}
+        {initialData?.betaald_datum && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+            <span className="flex-shrink-0">✓</span>
+            <span className="font-medium">{t('lbl_paid_on')}: {initialData.betaald_datum}</span>
+          </div>
+        )}
 
         {/* Factuurgegevens */}
         <div className="t-panel border rounded-lg p-3">
@@ -371,7 +377,7 @@ function InkoopFactuurModal({
               )}
             </div>
             <Inp label={t('lbl_invoice')} value={factuurNr} onChange={setFactuurNr} placeholder="F-2025-001" />
-            <Inp label={t('ing_buy_date')} type="date" value={datum} onChange={setDatum} />
+            <Inp label={t('lbl_invoice_date')} type="date" value={datum} onChange={setDatum} />
           </div>
           {/* Bijlage */}
           <div className="mt-2">

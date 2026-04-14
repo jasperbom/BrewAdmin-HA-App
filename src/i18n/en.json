@@ -1192,5 +1192,6 @@
   "haccp_water_titel":"Water quality tests","haccp_water_nieuw":"New test","haccp_water_bron":"Water source","haccp_water_bron_leiding":"Tap water","haccp_water_bron_bron":"Spring water","haccp_water_bron_osmose":"RO water","haccp_water_ph":"pH","haccp_water_hardheid":"Hardness (°dH)","haccp_water_chlor":"Chlorine (mg/L)","haccp_water_resultaat":"Result","haccp_water_goed":"Good","haccp_water_afwijkend":"Deviant","haccp_water_geen":"No water quality tests.","haccp_water_warn":"Last test more than 6 months ago",
   "haccp_ongd_titel":"Pest Control","haccp_ongd_nieuw":"New record","haccp_ongd_type":"Type","haccp_ongd_controle":"Check","haccp_ongd_waarneming":"Sighting","haccp_ongd_locatie":"Location","haccp_ongd_bevinding":"Finding","haccp_ongd_actie":"Action taken","haccp_ongd_geen":"No pest control records.","haccp_ongd_warn":"Last check more than 1 month ago",
   "haccp_opl_titel":"Training & education","haccp_opl_nieuw":"New training","haccp_opl_medewerker":"Employee","haccp_opl_onderwerp":"Subject","haccp_opl_datum":"Date","haccp_opl_geldig_tot":"Valid until","haccp_opl_certificaat":"Certificate","haccp_opl_geen":"No training records.","haccp_opl_verlopen":"Expired",
-  "lbl_datum":"Date","lbl_opmerking":"Note","lbl_uitgevoerd_door":"Performed by","lbl_actief":"Active"
+  "lbl_datum":"Date","lbl_opmerking":"Note","lbl_uitgevoerd_door":"Performed by","lbl_actief":"Active",
+  "lbl_invoice_date":"Invoice date","lbl_paid_on":"Paid on"
 }

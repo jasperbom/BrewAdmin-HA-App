@@ -926,9 +926,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     ));
   };
 
-  const markeerInkoopBetaald = (id: number) => {
+  const markeerInkoopBetaald = (id: number, betaaldDatum?: string) => {
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
-      f.id === id ? {...f, status: 'betaald'} : f
+      f.id === id ? {...f, status: 'betaald', betaald_datum: betaaldDatum || new Date().toISOString().slice(0,10)} : f
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'gewijzigd', omschrijving:'Status → betaald'});
   }
@@ -1852,7 +1852,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                     ))}
                                   </select>
                                   {gekoppeldInkoop && gekoppeldInkoop.status !== 'betaald' && (
-                                    <button onClick={()=>{ markeerInkoopBetaald(gekoppeldInkoop.id); koppelBankTransactie(i,null,'inkoop') }}
+                                    <button onClick={()=>{ markeerInkoopBetaald(gekoppeldInkoop.id, tx.datum); koppelBankTransactie(i,null,'inkoop') }}
                                       className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                       {t('btn_mark_paid')}
                                     </button>
@@ -1897,7 +1897,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 ))}
                               </select>
                               {gekoppeldInkoop && gekoppeldInkoop.status !== 'betaald' && (
-                                <button onClick={()=>{ markeerInkoopBetaald(gekoppeldInkoop.id); koppelBankTransactie(i,null,'inkoop') }}
+                                <button onClick={()=>{ markeerInkoopBetaald(gekoppeldInkoop.id, tx.datum); koppelBankTransactie(i,null,'inkoop') }}
                                   className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   {t('btn_mark_paid')}
                                 </button>
