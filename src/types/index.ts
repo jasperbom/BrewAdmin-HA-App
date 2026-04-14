@@ -559,6 +559,9 @@ export interface BestellingPick {
   afvulling_id: number
   batch_id: number
   aantal: number
+  // Bron-locatie van deze pick. Indien niet gezet, valt rondeAf terug op de
+  // automatische allocatie (niet-AGP eerst, dan AGP).
+  bron_locatie_id?: number
   uitlevering_id?: number | null
   accijns_id?: number | null
   // Wanneer een pick gesplitst is over meerdere locaties (bv. deels uit AGP

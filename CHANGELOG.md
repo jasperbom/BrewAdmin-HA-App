@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.61] — 2026-04-14
+
+### Added — Voorraad per locatie + locatie-keuze bij picken
+- **ProductenPage**: elke afvulling toont nu per locatie hoeveel er beschikbaar
+  is (bv. `AGP: 20×`, `Magazijn: 10×`) als pills onder de regel. Voorraad in AGP
+  krijgt een paarse badge, voorraad buiten AGP een blauwe.
+- **Picking modal (BestellingenPage)**: bij elke pick-regel verschijnt een
+  locatie-dropdown waarin de gebruiker kan kiezen uit welke voorraad-locatie
+  het bier gepakt wordt. De opties tonen de huidige beschikbare hoeveelheid
+  per locatie. "Automatisch" laat het systeem zelf kiezen (niet-AGP eerst,
+  dan AGP) — bestaand gedrag.
+- **Validatie**: bij het opslaan van picks wordt gecontroleerd of de gekozen
+  locatie voldoende voorraad heeft; anders foutmelding met locatie-naam.
+- **`BestellingPick.bron_locatie_id`**: nieuw optioneel veld; bij order
+  afronden wordt de `Uitlevering` met deze locatie aangemaakt (accijns wordt
+  alleen geboekt als de gekozen locatie AGP is).
+
+### i18n (nl/en/de/fr/es)
+- Nieuw: `picking_bron_locatie`, `picking_locatie_auto`,
+  `err_locatie_voorraad_ontoereikend`, `lbl_agp_voorraad`,
+  `lbl_niet_agp_voorraad`.
+
+---
+
 ## [1.8.60] — 2026-04-14
 
 ### Changed — "Uitslaan" terminologie opschonen
