@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { accijnsCalc } from '../utils/calculations'
+import { accijnsCalc, voorraadPerLocatie, getAgpLocatie } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -41,6 +41,9 @@ interface BestellingenPageProps {
   setAuditLog?: any
   producten?: any[]
   productArtikelen?: any[]
+  locaties?: any[]
+  verplaatsingen?: any[]
+  afboekingen?: any[]
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -63,7 +66,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   log=[], setLog=()=>{}, factuurLogo=null,
   openOrderId=null, setOpenOrderId=()=>{},
   auditLog=[], setAuditLog=()=>{},
-  producten=[], productArtikelen=[]
+  producten=[], productArtikelen=[],
+  locaties=[], verplaatsingen=[], afboekingen=[]
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -435,62 +439,109 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const factuurNummer = genFactuurNummer()
     const pakbonNummer = genPakbonNummer()
 
-    // 1. Uitslag records (één per pick)
+    // 1+2. Uitslag- en AccijnsRecord-records, gesplitst per bron-locatie.
+    //   - Voorraad buiten AGP wordt eerst aangesproken (al accijns betaald).
+    //   - Voorraad in AGP genereert nieuwe AccijnsRecord-boekingen.
+    // Per pick kunnen er meerdere Uitslagen ontstaan wanneer voorraad gemengd is.
+    const agpLoc = getAgpLocatie(locaties)
     const nieuweUitslagen: any[] = []
+    const nieuweAccijns: any[] = []
+    // Map pick.id → arrays met gegenereerde uitslag-/accijns-ids (voor pick-update)
+    const pickResult: Record<number, {uitslag_ids: number[], accijns_ids: number[]}> = {}
     let uitId = newId(uit||[])
+    let accId = newId(acc||[])
+
+    // Houd lokale mutaties bij zodat opvolgende picks van dezelfde afvulling
+    // de bijgewerkte voorraad zien (i.p.v. de oorspronkelijke).
+    const lokaleUitslagen: any[] = [...(uit||[])]
+
     for (const pick of picks) {
       const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
       if (!avItem) continue
       const batch = bat.find((b: any) => b.id === pick.batch_id)
-      const liter = Number(pick.aantal) * Number(avItem.inhoud_per_eenheid||0)
-      nieuweUitslagen.push({
-        id: uitId++,
-        batch_id: pick.batch_id,
-        afvulling_id: pick.afvulling_id,
-        batch_naam: batch?.naam || '',
-        verpakking_naam: avItem.verpakking_type || '',
-        verpakking_type: avItem.verpakking_type || '',
-        inhoud_per_eenheid: Number(avItem.inhoud_per_eenheid||0),
-        inhoud_liter: liter,
-        aantal: Number(pick.aantal),
-        verkocht_stuks: Number(pick.aantal),
-        datum: vandaag,
-        tht: avItem.tht||null,
-        accijns_betaald: false,
-        type_uitslag: uitslagForm.type_uitslag || 'binnenland',
-        bestemming_naam: uitslagForm.bestemming_naam || '',
-        bestemming_adres: uitslagForm.bestemming_adres || '',
-        bestemming_land: uitslagForm.bestemming_land || '',
-        vervoerder: uitslagForm.vervoerder || '',
-        created_at: new Date().toISOString(),
-      })
-    }
+      const inhoud = Number(avItem.inhoud_per_eenheid||0)
+      const abv = Number(batch?.ABV || 0)
+      const plato = Number(batch?.platogehalte || 0)
+      pickResult[pick.id] = {uitslag_ids: [], accijns_ids: []}
 
-    // 2. AccijnsRecord records (één per pick)
-    const nieuweAccijns: any[] = []
-    let accId = newId(acc||[])
-    for (let i = 0; i < picks.length; i++) {
-      const pick = picks[i]
-      const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
-      if (!avItem) continue
-      const batch = bat.find((b: any) => b.id === pick.batch_id)
-      const liter = Number(pick.aantal) * Number(avItem.inhoud_per_eenheid||0)
-      const accBed = accijnsCalc(liter, batch?.ABV||0, r1, r2, accijnsInst)
-      nieuweAccijns.push({
-        id: accId++,
-        batch_id: pick.batch_id,
-        batch_naam: batch?.naam || '',
-        batch_nummer: batch?.batch_nummer||'',
-        uitslag_id: nieuweUitslagen[i]?.id || null,
-        verpakking_type: avItem.verpakking_type || '',
-        datum: vandaag,
-        aantal: Number(pick.aantal),
-        liter,
-        abv: batch?.ABV||0,
-        accijns: accBed,
-        betaald: false,
-        betaal_datum: null,
-      })
+      // Huidige voorraad per locatie voor deze afvulling
+      const voorraad = voorraadPerLocatie(avItem, locaties, lokaleUitslagen, verplaatsingen, afboekingen)
+
+      // Locatie-volgorde: niet-AGP eerst, dan AGP
+      const locOrder: number[] = []
+      for (const l of (locaties||[])) {
+        if (!l.is_agp && (voorraad[l.id]||0) > 0) locOrder.push(l.id)
+      }
+      if ((voorraad[agpLoc.id]||0) > 0) locOrder.push(agpLoc.id)
+      // Eventuele locaties die niet meer in `locaties` staan maar wel voorraad hebben
+      for (const k of Object.keys(voorraad)) {
+        const id = Number(k)
+        if (!locOrder.includes(id) && (voorraad[id]||0) > 0) locOrder.push(id)
+      }
+      // Als nergens voorraad is gevonden, val terug op AGP zodat er altijd één
+      // uitslag wordt gemaakt (back-compat met legacy data zonder seed).
+      if (locOrder.length === 0) locOrder.push(agpLoc.id)
+
+      let resterend = Number(pick.aantal||0)
+      for (const locId of locOrder) {
+        if (resterend <= 0) break
+        const beschikbaar = voorraad[locId] || 0
+        if (beschikbaar <= 0 && locId !== agpLoc.id) continue
+        // AGP mag negatief gaan (we forceren de pick door); andere locaties niet.
+        const aantalDeel = locId === agpLoc.id ? resterend : Math.min(resterend, beschikbaar)
+        if (aantalDeel <= 0) continue
+        const liter = aantalDeel * inhoud
+        const isAgp = locId === agpLoc.id
+        const uitslagRec = {
+          id: uitId++,
+          batch_id: pick.batch_id,
+          afvulling_id: pick.afvulling_id,
+          batch_naam: batch?.naam || '',
+          verpakking_naam: avItem.verpakking_type || '',
+          verpakking_type: avItem.verpakking_type || '',
+          inhoud_per_eenheid: inhoud,
+          inhoud_liter: liter,
+          aantal: aantalDeel,
+          verkocht_stuks: aantalDeel,
+          datum: vandaag,
+          tht: avItem.tht||null,
+          accijns_betaald: !isAgp,
+          type_uitslag: uitslagForm.type_uitslag || 'binnenland',
+          bestemming_naam: uitslagForm.bestemming_naam || '',
+          bestemming_adres: uitslagForm.bestemming_adres || '',
+          bestemming_land: uitslagForm.bestemming_land || '',
+          vervoerder: uitslagForm.vervoerder || '',
+          created_at: new Date().toISOString(),
+          bron_locatie_id: locId,
+        }
+        nieuweUitslagen.push(uitslagRec)
+        lokaleUitslagen.push(uitslagRec)
+        pickResult[pick.id].uitslag_ids.push(uitslagRec.id)
+
+        if (isAgp) {
+          const accBed = accijnsCalc(liter, abv, r1, r2, accijnsInst, plato)
+          const accRec = {
+            id: accId++,
+            batch_id: pick.batch_id,
+            batch_naam: batch?.naam || '',
+            batch_nummer: batch?.batch_nummer||'',
+            uitslag_id: uitslagRec.id,
+            verpakking_type: avItem.verpakking_type || '',
+            datum: vandaag,
+            aantal: aantalDeel,
+            liter,
+            abv,
+            accijns: accBed,
+            betaald: false,
+            betaal_datum: null,
+            bron: 'uitslag' as const,
+          }
+          nieuweAccijns.push(accRec)
+          pickResult[pick.id].accijns_ids.push(accRec.id)
+        }
+
+        resterend -= aantalDeel
+      }
     }
 
     // 3. VerkoopFactuur
@@ -569,14 +620,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       status: 'open',
     }
 
-    // 4. Updates uitvoeren
-    const pickIdxMap: Record<number, number> = {}
-    picks.forEach((p: any, i: number) => { pickIdxMap[p.id] = i })
+    // 4. Updates uitvoeren — pick krijgt arrays met alle uitslag/accijns ids,
+    // plus enkelvoudige id voor back-compat (eerste id).
     setBestellingPicks((prev: any[]) => (prev||[]).map((p: any) => {
       if (p.bestelling_id !== selectedOrder.id) return p
-      const idx = pickIdxMap[p.id]
-      if (idx === undefined) return p
-      return {...p, uitslag_id: nieuweUitslagen[idx]?.id||null, accijns_id: nieuweAccijns[idx]?.id||null}
+      const res = pickResult[p.id]
+      if (!res) return p
+      return {
+        ...p,
+        uitslag_id: res.uitslag_ids[0] || null,
+        accijns_id: res.accijns_ids[0] || null,
+        uitslag_ids: res.uitslag_ids,
+        accijns_ids: res.accijns_ids,
+      }
     }))
     setUit((prev: any[]) => [...(prev||[]), ...nieuweUitslagen])
     setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])

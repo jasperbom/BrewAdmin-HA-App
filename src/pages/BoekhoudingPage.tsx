@@ -64,7 +64,7 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, eadDocumenten=[], setEadDocumenten=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, eadDocumenten=[], setEadDocumenten=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, locaties=[], setLocaties=()=>{}, verplaatsingen=[], setVerplaatsingen=()=>{}}: any) {
   const now = new Date();
   const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -2249,7 +2249,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       </>)}
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
-      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} />}
+      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} />}
 
       {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
       {mainTab==='btw_aangifte' && (()=>{

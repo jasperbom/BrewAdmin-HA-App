@@ -75,6 +75,8 @@ export const excelExport = (data: any) => {
     addSheet('HACCPWaterkwaliteit',  data.haccp_waterkwaliteit)
     addSheet('HACCPOngedierte',      data.haccp_ongedierte)
     addSheet('HACCPOpleidingen',     data.haccp_opleidingen)
+    addSheet('Locaties',             data.locaties)
+    addSheet('Verplaatsingen',       data.verplaatsingen)
 
     // Simpele primitieve arrays — wrap in object voor Excel
     addSheet('BtwTarieven', (data.btw_tarieven || []).map((v: any) => ({tarief: v})))
@@ -186,6 +188,8 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         haccp_waterkwaliteit:         parse('HACCPWaterkwaliteit'),
         haccp_ongedierte:             parse('HACCPOngedierte'),
         haccp_opleidingen:            parse('HACCPOpleidingen'),
+        locaties:                     parse('Locaties'),
+        verplaatsingen:               parse('Verplaatsingen'),
 
         // Primitieve arrays
         btw_tarieven: gs('BtwTarieven').map((r: any) => r.tarief).filter((v: any) => v != null),

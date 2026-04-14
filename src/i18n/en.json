@@ -1193,5 +1193,16 @@
   "haccp_ongd_titel":"Pest Control","haccp_ongd_nieuw":"New record","haccp_ongd_type":"Type","haccp_ongd_controle":"Check","haccp_ongd_waarneming":"Sighting","haccp_ongd_locatie":"Location","haccp_ongd_bevinding":"Finding","haccp_ongd_actie":"Action taken","haccp_ongd_geen":"No pest control records.","haccp_ongd_warn":"Last check more than 1 month ago",
   "haccp_opl_titel":"Training & education","haccp_opl_nieuw":"New training","haccp_opl_medewerker":"Employee","haccp_opl_onderwerp":"Subject","haccp_opl_datum":"Date","haccp_opl_geldig_tot":"Valid until","haccp_opl_certificaat":"Certificate","haccp_opl_geen":"No training records.","haccp_opl_verlopen":"Expired",
   "lbl_datum":"Date","lbl_opmerking":"Note","lbl_uitgevoerd_door":"Performed by","lbl_actief":"Active",
-  "lbl_invoice_date":"Invoice date","lbl_paid_on":"Paid on"
+  "lbl_invoice_date":"Invoice date","lbl_paid_on":"Paid on",
+  "lbl_naam":"Name","lbl_adres":"Address",
+  "nav_agp":"Excise warehouse",
+  "agp_titel":"Excise warehouse stock","agp_locatie":"Location","agp_locatie_beheren":"Manage locations","agp_locaties_beheren":"Manage locations","agp_bestaande_locaties":"Existing locations","agp_locatie_bewerken":"Edit location","agp_locatie_nieuw":"New location",
+  "agp_kpi_liter_verpakt":"Litres packaged in warehouse","agp_kpi_liter_tank":"Litres in tanks","agp_kpi_accijns_verpakt":"Excise value packaged","agp_kpi_accijns_tank":"Excise value tanks",
+  "agp_sec_tanks":"In tanks (estimated)","agp_sec_verpakt_agp":"Packaged in warehouse","agp_sec_buiten_agp":"Stock outside warehouse","agp_sec_mutaties":"Recent movements",
+  "agp_geen_tank":"No active batches in tank.","agp_geen_verpakt":"No packaged stock in the warehouse.","agp_geen_buiten":"No stock outside the warehouse.","agp_geen_mutaties":"No movements recorded yet.",
+  "agp_geschat":"estimated","agp_aantal":"Quantity","agp_max":"max","agp_van":"From","agp_naar":"To",
+  "agp_verplaatsen":"Move","agp_verplaats_titel":"Move stock","agp_verplaats_opslaan":"Save movement","agp_accijns_betaald":"Excise paid",
+  "agp_info_accijns_boeken":"Excise is recorded when stock leaves the warehouse:","agp_info_geen_accijns_retour":"No excise is recorded when returning stock to the warehouse.","agp_info_geen_accijns_buiten":"Movement between non-warehouse locations: no excise booking.",
+  "agp_err_aantal_verplicht":"Enter a valid quantity.","agp_err_locatie_verplicht":"Select a source and destination location.","agp_err_zelfde_locatie":"Source and destination must differ.","agp_err_te_weinig_voorraad":"Only {n} units available at this location.","agp_err_naam_verplicht":"Name is required.","agp_err_agp_niet_verwijderen":"The warehouse location cannot be deleted.","agp_err_locatie_in_gebruik":"This location still has stock and cannot be deleted.",
+  "agp_confirm_loc_verwijderen":"Delete location?"
 }

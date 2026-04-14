@@ -380,6 +380,9 @@ export interface Uitslag {
   vervoerder?: string
   ead_arc?: string
   created_at?: string
+  // Vanaf welke locatie de uitslag is geleverd. Default = AGP-locatie voor
+  // back-compat; bepaalt of er nog accijns wordt geboekt.
+  bron_locatie_id?: number
 }
 
 export interface AccijnsRecord {
@@ -394,6 +397,36 @@ export interface AccijnsRecord {
   datum?: string
   betaald?: boolean
   uitslag_id?: number
+  // Bron van de boeking: 'uitslag' (verkoop uit AGP) of 'verplaatsing'
+  // (bier verlaat AGP zonder verkoop). Default 'uitslag' voor oude records.
+  bron?: 'uitslag' | 'verplaatsing'
+  verplaatsing_id?: number
+}
+
+// ── Locaties & AGP-voorraad ──────────────────────────────────────────────────
+
+export interface Locatie {
+  id: number
+  naam: string
+  // Exact één locatie heeft is_agp = true; dit is de accijnsgoederenplaats.
+  is_agp?: boolean
+  adres?: string
+  opmerking?: string
+}
+
+export interface Verplaatsing {
+  id: number
+  afvulling_id: number
+  batch_id: number
+  datum: string
+  aantal: number
+  van_locatie_id: number
+  naar_locatie_id: number
+  // Alleen gevuld wanneer van_locatie = AGP en naar_locatie ≠ AGP
+  accijns?: number
+  accijns_record_id?: number
+  opmerking?: string
+  created_at?: string
 }
 
 export interface VerkoopFactuurRegel {
@@ -525,6 +558,10 @@ export interface BestellingPick {
   aantal: number
   uitslag_id?: number | null
   accijns_id?: number | null
+  // Wanneer een pick gesplitst is over meerdere locaties (bv. deels uit AGP
+  // en deels uit een andere voorraad), bewaren we alle gegenereerde ids.
+  uitslag_ids?: number[]
+  accijns_ids?: number[]
 }
 
 export type BestellingStatus = 'nieuw' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
