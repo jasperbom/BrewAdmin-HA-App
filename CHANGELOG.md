@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.57] — 2026-04-14
+
+### Changed — AGP als top-level menu + correctie tank-statussen
+- AGP-overzicht verplaatst van Accijns-tab naar eigen pagina in hoofdmenu (`AgpPage`)
+- TANK_STATUSSEN gecorrigeerd: `Vergisten` (i.p.v. `Gisten`) — tanks met bier in vergisting waren onzichtbaar
+- Afvulling-veldnamen genormaliseerd: gebruikt nu `hoeveelheid`/`inhoud_per_eenheid` met fallback op `aantal`/`inhoud_liter` — verpakte voorraad werd niet getoond
+
+---
+
 ## [1.8.56] — 2026-04-14
 
 ### Added — AGP-inzicht & verplaats-flow
