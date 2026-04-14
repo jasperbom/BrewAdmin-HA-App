@@ -4,11 +4,12 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.8.53] — 2026-04-14
+## [1.8.54] — 2026-04-14
 
 ### Changed — Inkoop factuur modal
 - Label "Aankoopdatum" hernoemd naar "Factuurdatum" in het inkoop factuur formulier
-- Bij een betaalde factuur wordt bovenin de modal "Betaald op: [datum]" getoond wanneer een bankmutatie gekoppeld is
+- Bij een betaalde factuur wordt bovenin de modal "Betaald op: [datum]" getoond
+- Betaaldatum wordt ook opgehaald uit eerder gekoppelde bankmutaties (bankTransacties + bankKoppelingen fallback)
 
 ---
 
