@@ -933,6 +933,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'gewijzigd', omschrijving:'Status → betaald'});
   }
 
+  const getBetaaldDatum = (factuur: any): string | undefined => {
+    if (factuur.betaald_datum) return factuur.betaald_datum
+    if (factuur.status !== 'betaald') return undefined
+    const tx = bankTransacties.find((t: any) => t.gekoppeldInkoopId === factuur.id)
+    if (tx) return tx.datum
+    const entry = Object.entries(bankKoppelingen as any).find(
+      ([, v]: any) => v?.soort === 'inkoop' && v.factuurId === factuur.id
+    )
+    if (entry) return entry[0].split('|')[0]
+    return undefined
+  }
+
   const saveNieuweBoeking = () => {
     const txIdx = boekingTxIndex
     if (txIdx === null) return
@@ -1506,7 +1518,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               <tbody>
                 {inkoopGefilterd.map((f: any) => (<React.Fragment key={f.id}>
                   <tr className="border-b border-gray-50 hover:bg-amber-50 transition-colors cursor-pointer"
-                      onClick={()=>setEditingFactuur(f)}>
+                      onClick={()=>{const bd=getBetaaldDatum(f);setEditingFactuur(bd?{...f,betaald_datum:bd}:f)}}>
                     <td className="py-2 pr-2 text-gray-400 text-xs text-center">✎</td>
                     <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                     <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
