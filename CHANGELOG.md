@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.52] — 2026-04-14
+
+### Added — CCP Monitoring in batch detail
+- **CCP-sectie** bij de hygiëne-checklist in de batch-detailweergave
+- Snel CCP-metingen registreren per batch met dropdown, waarde, datum en uitvoerder
+- Automatische limiet-check met visuele groen/rood indicator
+- Bij afwijking wordt automatisch een CAPA aangemaakt
+- Metingenlog met status per batch
+- Badge toont aantal metingen en eventuele afwijkingen
+
+---
+
 ## [1.8.51] — 2026-04-13
 
 ### Added — NVWA/HACCP Compliance pagina

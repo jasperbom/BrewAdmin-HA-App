@@ -46,6 +46,11 @@ interface BatchesPageProps {
   haInst?: any
   acc?: any[]
   openBatchId?: number | null
+  ccpDefinities?: any[]
+  ccpMetingen?: any[]
+  setCcpMetingen?: any
+  capa?: any[]
+  setCapa?: any
 }
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
@@ -410,7 +415,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   acc=[],
   openBatchId=null,
   preNieuwBatch=null, setPreNieuwBatch=()=>{},
-  auditLog=[], setAuditLog=()=>{}
+  auditLog=[], setAuditLog=()=>{},
+  ccpDefinities=[], ccpMetingen=[], setCcpMetingen=()=>{},
+  capa=[], setCapa=()=>{}
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   React.useEffect(() => {
@@ -454,6 +461,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
   const [hygieneIngeklapt, setHygieneIngeklapt] = useStore('batches_hygiene_ingeklapt', true)
+  const [ccpIngeklapt, setCcpIngeklapt] = useStore('batches_ccp_ingeklapt', true)
+  const [ccpMetingForm, setCcpMetingForm] = useState<any>(null)
   const [metingLogIngeklapt, setMetingLogIngeklapt] = useStore('batches_meting_log_ingeklapt', true)
   const [logIngeklapt, setLogIngeklapt] = useStore('batches_log_ingeklapt', true)
   const [ingIngeklapt, setIngIngeklapt] = useStore('batches_ing_ingeklapt', false)
@@ -1598,6 +1607,98 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
 
+            {/* CCP Monitoring per batch */}
+            {(() => {
+              const defs = (ccpDefinities||[]).filter((d: any)=>d.actief!==false)
+              const batchMetingen = (ccpMetingen||[]).filter((m: any)=>m.batch_id===selB.id).sort((a: any,b: any)=>(b.datum||'').localeCompare(a.datum||''))
+              const afwijkingen = batchMetingen.filter((m: any)=>!m.binnen_limiet).length
+              const checkLimiet = (ccp: any, waarde: number) => {
+                if(ccp.grens_min!=null && waarde < ccp.grens_min) return false
+                if(ccp.grens_max!=null && waarde > ccp.grens_max) return false
+                return true
+              }
+              const saveCcpMeting = () => {
+                if(!ccpMetingForm?.ccp_id || ccpMetingForm.waarde==='' || ccpMetingForm.waarde==null) return
+                const ccp = defs.find((d: any)=>d.id===ccpMetingForm.ccp_id)
+                const binnen = ccp ? checkLimiet(ccp, Number(ccpMetingForm.waarde)) : true
+                const id = newId(ccpMetingen||[])
+                const meting = {id, ccp_id:ccpMetingForm.ccp_id, batch_id:selB.id, datum:ccpMetingForm.datum||tod(), waarde:Number(ccpMetingForm.waarde), eenheid:ccp?.eenheid, binnen_limiet:binnen, uitgevoerd_door:ccpMetingForm.uitgevoerd_door||'', opmerking:ccpMetingForm.opmerking||''}
+                setCcpMetingen((prev: any[])=>[...prev, meting])
+                addLog({type:'ccp', batch_id:selB.id, referentie:`CCP ${ccp?.naam}: ${ccpMetingForm.waarde} ${ccp?.eenheid||''} ${binnen?'OK':'AFWIJKING'}`})
+                logAudit(auditLog, setAuditLog, {entiteit:'CCPMeting', entiteit_id:id, actie:'aangemaakt', omschrijving:`${ccp?.naam}: ${ccpMetingForm.waarde} ${ccp?.eenheid||''} ${binnen?'OK':'AFWIJKING'}`})
+                if(!binnen && ccp) {
+                  const capaId = newId(capa||[])
+                  setCapa((prev: any[])=>[...prev, {id:capaId, datum:tod(), omschrijving:`CCP ${ccp.naam} = ${ccpMetingForm.waarde} ${ccp.eenheid||''} (${ccp.kritische_grens})`, oorzaak:'', actie:ccp.corrigerende_actie||'', verantwoordelijke:ccpMetingForm.uitgevoerd_door||'', status:'open', batch_id:selB.id, ccp_meting_id:id}])
+                  logAudit(auditLog, setAuditLog, {entiteit:'CAPA', entiteit_id:capaId, actie:'aangemaakt', omschrijving:t('haccp_ccp_afwijking_capa')})
+                }
+                setCcpMetingForm(null)
+              }
+              return defs.length > 0 ? (
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${ccpIngeklapt?'rounded-xl':'rounded-t-xl'}`}
+                    onClick={()=>setCcpIngeklapt((p: any)=>!p)}>
+                    <span className="flex items-center gap-2">
+                      <span className="text-white/70 text-xs">{ccpIngeklapt?'▶':'▼'}</span>
+                      {t('haccp_ccp')}
+                    </span>
+                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${afwijkingen>0?'bg-red-500 text-white':'bg-green-500/80 text-white'}`}>
+                      {batchMetingen.length} {batchMetingen.length===1?'meting':'metingen'}{afwijkingen>0?` · ${afwijkingen} ⚠`:''}
+                    </span>
+                  </div>
+                  {!ccpIngeklapt && (
+                    <div className="p-3 space-y-3">
+                      {/* Quick-add meting */}
+                      {!ccpMetingForm ? (
+                        <button onClick={()=>setCcpMetingForm({ccp_id:defs[0]?.id, datum:tod(), waarde:'', uitgevoerd_door:'', opmerking:''})}
+                          className="text-xs font-medium px-2.5 py-1 rounded-lg tbtn text-white">{t('haccp_ccp_meting_nieuw')}</button>
+                      ) : (
+                        <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_ccp_selecteer_ccp')}</label>
+                              <select value={ccpMetingForm.ccp_id||''} onChange={e=>setCcpMetingForm({...ccpMetingForm, ccp_id:Number(e.target.value)})} className="t-input w-full text-sm px-2 py-1 rounded border">
+                                {defs.map((d: any)=><option key={d.id} value={d.id}>{d.naam} ({d.kritische_grens})</option>)}
+                              </select>
+                            </div>
+                            <Inp label={t('haccp_ccp_waarde')} type="number" value={ccpMetingForm.waarde??''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, waarde:v})} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum||tod()} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, datum:v})} />
+                            <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door||''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, uitgevoerd_door:v})} />
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <Btn s="sm" v="secondary" onClick={()=>setCcpMetingForm(null)}>{t('btn_cancel')}</Btn>
+                            <Btn s="sm" onClick={saveCcpMeting}>{t('btn_save')}</Btn>
+                          </div>
+                        </div>
+                      )}
+                      {/* Metingen log */}
+                      {batchMetingen.length>0 && (
+                        <div className="space-y-1">
+                          {batchMetingen.map((m: any)=>{
+                            const ccp = defs.find((d: any)=>d.id===m.ccp_id)
+                            return (
+                              <div key={m.id} className={`text-sm px-2.5 py-1.5 rounded flex items-center justify-between ${m.binnen_limiet?'bg-green-50':'bg-red-50'}`}>
+                                <div>
+                                  <span className="font-medium">{ccp?.naam||'?'}</span>
+                                  <span className="ml-2 font-mono">{m.waarde} {m.eenheid||''}</span>
+                                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${m.binnen_limiet?'bg-green-200 text-green-800':'bg-red-200 text-red-800'}`}>
+                                    {m.binnen_limiet?'OK':t('haccp_ccp_buiten_limiet')}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-gray-500">{fmtD(m.datum)}{m.uitgevoerd_door?` · ${m.uitgevoerd_door}`:''}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {batchMetingen.length===0 && <p className="text-xs text-gray-400 italic">{t('haccp_ccp_geen_metingen')}</p>}
+                    </div>
+                  )}
+                </div>
+              ) : null
+            })()}
+
             {/* Ingredienten */}
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${ingIngeklapt?'rounded-xl':'rounded-t-xl'}`}
@@ -2082,6 +2183,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 aangemaakt:  {icon:'✨', label:t('batch_log_type_created'),  cls:'text-indigo-700 bg-indigo-50'},
                 gewijzigd:   {icon:'✏️', label:t('batch_log_type_changed'),  cls:'text-amber-700 bg-amber-50'},
                 hygiene:     {icon:'🧹', label:t('batch_log_type_hygiene'),  cls:'text-teal-700 bg-teal-50'},
+                ccp:         {icon:'🎯', label:'CCP',                         cls:'text-blue-700 bg-blue-50'},
               }
               const bLog = (log||[]).filter((l: any) => l.batch_id===selB.id).slice().reverse()
               if (!bLog.length) return null
