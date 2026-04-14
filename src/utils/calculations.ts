@@ -165,7 +165,15 @@ export const appendTankHistorie = (
 
 // ── AGP-voorraad helpers ─────────────────────────────────────────────────────
 // Statussen waarbij bier nog "in tank" zit (gistend / lagering / brouwen).
-export const TANK_STATUSSEN = ['Brouwen', 'Gisten', 'Conditioneren']
+// Let op: het echte gistingsstatus-label in de app is 'Vergisten' (niet 'Gisten').
+export const TANK_STATUSSEN = ['Brouwen', 'Vergisten', 'Conditioneren']
+
+// Helpers voor uniforme veld-toegang op afvullingen (oude data kan
+// `aantal`/`inhoud_liter` gebruiken, nieuwe `hoeveelheid`/`inhoud_per_eenheid`).
+const afvAantal = (a: any): number =>
+  Number(a?.hoeveelheid ?? a?.aantal ?? 0)
+const afvInhoud = (a: any): number =>
+  Number(a?.inhoud_per_eenheid ?? a?.inhoud_liter ?? 0)
 
 // Schat ABV op basis van OG (target FG = 1.010) als batch.ABV ontbreekt.
 // Formule: ABV ≈ (OG − FG) × 131.25. We hanteren FG = 1.010 als aanname voor
@@ -188,7 +196,7 @@ export const tankRestVolume = (batch: any, afvullingen: Afvulling[] = []): numbe
   if (!totaal) return 0
   const afgevuld = (afvullingen || [])
     .filter(a => a.batch_id === batch?.id)
-    .reduce((s, a) => s + Number(a.aantal || 0) * Number(a.inhoud_liter || a.inhoud_per_eenheid || 0), 0)
+    .reduce((s, a) => s + afvAantal(a) * afvInhoud(a), 0)
   return Math.max(0, totaal - afgevuld)
 }
 
@@ -229,7 +237,7 @@ export const voorraadPerLocatie = (
   const agp = getAgpLocatie(locaties)
   const result: Record<number, number> = {}
   // Initieel staat alle voorraad op AGP
-  result[agp.id] = Number(afv?.aantal || 0)
+  result[agp.id] = afvAantal(afv)
 
   // Verplaatsingen toepassen (chronologisch)
   const verpl = (verplaatsingen || [])
@@ -322,7 +330,7 @@ export const agpOverzicht = (
     }
     const batch = (batches || []).find(b => b.id === av.batch_id)
     const abv = Number(batch?.ABV || 0)
-    const liter_in_agp = in_agp * Number(av.inhoud_liter || av.inhoud_per_eenheid || 0)
+    const liter_in_agp = in_agp * afvInhoud(av)
     const plato = Number(batch?.platogehalte || 0)
     const accijns_in_agp = liter_in_agp > 0 ? accijnsCalc(liter_in_agp, abv, r1, r2, inst, plato) : 0
     return { afv: av, batch, voorraad, in_agp, buiten_agp, liter_in_agp, accijns_in_agp, abv }
