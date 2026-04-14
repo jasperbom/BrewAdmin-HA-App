@@ -63,7 +63,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
   const afvullingBeschikbaar = useMemo(() => {
     const map: Record<number, number> = {}
     for (const a of av) {
-      const uitgeslagen = (uit || [])
+      const uitgeleverd = (uit || [])
         .filter((u: any) => u.afvulling_id === a.id)
         .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
       const afgeboekt = (afboekingen || [])
@@ -75,7 +75,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
       const gepickt = (bestellingPicks || [])
         .filter((p: any) => p.afvulling_id === a.id && openOrders.includes(p.bestelling_id))
         .reduce((s: number, p: any) => s + Number(p.aantal || 0), 0)
-      map[a.id] = Math.max(0, Number(a.hoeveelheid || 0) - gepickt - uitgeslagen - afgeboekt)
+      map[a.id] = Math.max(0, Number(a.hoeveelheid || 0) - gepickt - uitgeleverd - afgeboekt)
     }
     return map
   }, [av, uit, afboekingen, bestellingPicks, bestellingen])

@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.60] — 2026-04-14
+
+### Changed — "Uitslaan" terminologie opschonen
+Volledige rename van de verkoop-entiteit naar `Uitlevering` conform de AGP-definitie:
+"Uitslaan = bier uit de AGP halen" (via uitlevering óf verplaatsing AGP → niet-AGP).
+
+- **Datamodel**: `Uitslag` → `Uitlevering`, `TypeUitslag` → `TypeUitlevering` met nieuwe
+  waarde `'intern'`. `AccijnsRecord.uitslag_id` → `uitlevering_id`,
+  `bron: 'uitslag'` → `'uitlevering'`. `EADDocument.uitslag_id` → `uitlevering_id`.
+- **Afboeking**: reden `'intern_gebruik'` verwijderd — verhuisd naar de
+  uitlevering-flow mét accijnsboeking (`type_uitlevering = 'intern'`).
+- **AgpPage**: bij AGP → niet-AGP verplaatsing wordt nu ook een `voorraad_log`
+  entry met type `'uitslaan'` aangemaakt (dit is óók AGP-exit).
+- **VoorraadPage**: misleidende instructie "Sla bier uit via de Batches pagina"
+  verwijderd uit de leegstaat.
+- **UI-labels**: "Uitgeslagen" → **"Uitgeleverd"** in verkoopcontext
+  (ProductenPage-tegel, VoorraadPage, BatchesPage, AfvullenPage, DashboardPage).
+  AGP-context behoudt terecht "Uitslag/Uitgeslagen voorraad".
+- **Backup (Excel)**: sheet `Uitslagen` → `Uitleveringen`, met fallback-migratie
+  voor oude backups.
+- **Data-migratie**: one-shot bij app-load — oude `uitslagen`-sleutel wordt
+  omgezet naar `uitleveringen`, `AccijnsRecord`-velden worden hernoemd, en
+  `intern_gebruik`-afboekingen worden geconverteerd naar uitleveringen mét
+  accijnsboeking. Beveiligd met een localStorage-flag `brewadmin_migrated_uitlevering_v1`.
+
+### i18n (nl/en/de/fr/es)
+- Nieuw: `lbl_product_uitgeleverd`, `voorraad_uitgeleverd`, `batch_stat_uitgeleverd`,
+  `filling_summary_uitgeleverd`, `stock_date_uitgeleverd`, `stock_no_uitgeleverd`,
+  `lbl_units_uitgeleverd`, `lbl_type_uitlevering`, `ead_gekoppelde_uitlevering`,
+  `type_uitlevering_intern`.
+- `stock_no_uitgeleverd` bevat geen verwijzing meer naar de Batches-pagina.
+- `stock_archive_count` gebruikt nu "gearchiveerd" i.p.v. "uitgeslagen".
+
+---
+
 ## [1.8.59] — 2026-04-14
 
 ### Added — Voorraad per locatie zichtbaar bij picken + uitgeslagen-tegel

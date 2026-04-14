@@ -4,6 +4,7 @@ import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetSt
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
+import { accijnsCalc } from './utils/calculations'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
@@ -44,7 +45,7 @@ function App() {
   const [bat, setBat] = useStore('batches');
   const [bi, setBi] = useStore('batch_ingredienten');
   const [av, setAv] = useStore('afvullingen');
-  const [uit, setUit] = useStore('uitslagen');
+  const [uit, setUit] = useStore('uitleveringen');
   const [acc, setAcc] = useStore('accijns');
   const [verpakkingen, setVerpakkingen] = useStore('verpakkingen');
   const [onderdelen, setOnderdelen] = useStore('onderdelen', []);
@@ -270,6 +271,122 @@ function App() {
     if (Object.keys(updates).length) setHaTankTemps(prev => ({ ...prev, ...updates }))
   }, [haInst])
 
+  // Eenmalige migratie: uitslagen → uitleveringen + accijns veldrenames +
+  // afboekingen(reden='intern_gebruik') → uitleveringen(type='intern') + accijns
+  const uitleveringMigrated = React.useRef(false);
+  React.useEffect(() => {
+    if (uitleveringMigrated.current) return;
+    try {
+      if (localStorage.getItem('brewadmin_migrated_uitlevering_v1') === '1') {
+        uitleveringMigrated.current = true;
+        return;
+      }
+    } catch (_) {}
+    // Wacht tot relevante stores geladen zijn (uit [] betekent: fetch klaar, leeg)
+    if (!uit || !acc || !afboekingen) return;
+    uitleveringMigrated.current = true;
+    (async () => {
+      try {
+        // 1) Oude uitslagen-sleutel ophalen en migreren naar uitleveringen
+        let oudeUitslagen: any[] = [];
+        try {
+          const res = await fetch(API_BASE + 'uitslagen');
+          if (res.ok) oudeUitslagen = await res.json();
+        } catch (_) {}
+        const gemigreerdeUitl = (Array.isArray(oudeUitslagen) ? oudeUitslagen : []).map((u: any) => {
+          const {type_uitslag, ...rest} = u || {};
+          const out: any = {...rest};
+          if (type_uitslag !== undefined && out.type_uitlevering === undefined) {
+            out.type_uitlevering = type_uitslag;
+          }
+          return out;
+        });
+        let nieuweUit: any[] = [...(uit||[])];
+        if (gemigreerdeUitl.length && !(uit||[]).length) {
+          nieuweUit = gemigreerdeUitl;
+        }
+
+        // 2) Accijns veldrenames: uitslag_id → uitlevering_id, bron 'uitslag' → 'uitlevering'
+        const nieuweAcc = (acc||[]).map((a: any) => {
+          const out: any = {...a};
+          if (out.uitslag_id !== undefined && out.uitlevering_id === undefined) {
+            out.uitlevering_id = out.uitslag_id;
+          }
+          delete out.uitslag_id;
+          if (out.bron === 'uitslag') out.bron = 'uitlevering';
+          return out;
+        });
+
+        // 3) Afboekingen(reden='intern_gebruik') → Uitleveringen(type='intern') + accijns
+        const internAfb = (afboekingen||[]).filter((a: any) => a.reden === 'intern_gebruik');
+        const overigeAfb = (afboekingen||[]).filter((a: any) => a.reden !== 'intern_gebruik');
+        let nextUitId = (nieuweUit.reduce((m: number, u: any) => Math.max(m, u.id || 0), 0) || 0) + 1;
+        let nextAccId = (nieuweAcc.reduce((m: number, a: any) => Math.max(m, a.id || 0), 0) || 0) + 1;
+        for (const afb of internAfb) {
+          const afv = (av||[]).find((x: any) => x.id === afb.afvulling_id) || {};
+          const batch = (bat||[]).find((b: any) => b.id === afb.batch_id) || {};
+          const inhoud = Number(afv.inhoud_liter) || 0;
+          const aantal = Number(afb.aantal) || 0;
+          const liter = inhoud * aantal;
+          const abv = Number(batch.abv) || 0;
+          const plato = Number(batch.plato) || undefined;
+          const uitlId = nextUitId++;
+          const uitl: any = {
+            id: uitlId,
+            batch_id: afb.batch_id,
+            afvulling_id: afb.afvulling_id,
+            batch_naam: batch.naam || afv.batch_naam || '',
+            verpakking_naam: afv.verpakking_naam || afv.verpakking_type || '',
+            inhoud_liter: inhoud,
+            aantal,
+            datum: afb.datum || (afb.created_at ? afb.created_at.slice(0,10) : new Date().toISOString().slice(0,10)),
+            type_uitlevering: 'intern',
+            accijns_betaald: false,
+            created_at: afb.created_at || new Date().toISOString(),
+            bestemming_naam: afb.opmerking || 'Intern gebruik',
+          };
+          nieuweUit.push(uitl);
+          if (liter > 0 && abv > 0) {
+            const accBedrag = accijnsCalc(liter, abv, accijnsInst?.tarief_per_hl_abv, accijnsInst?.tarief_per_hl, accijnsInst, plato);
+            nieuweAcc.push({
+              id: nextAccId++,
+              batch_id: afb.batch_id,
+              batch_naam: batch.naam || '',
+              verpakking_naam: afv.verpakking_naam || afv.verpakking_type || '',
+              liter,
+              abv,
+              totaal_accijns: accBedrag,
+              datum: uitl.datum,
+              betaald: false,
+              uitlevering_id: uitlId,
+              bron: 'uitlevering',
+            });
+          }
+        }
+
+        // Persisteer migraties
+        if (gemigreerdeUitl.length || internAfb.length) setUit(nieuweUit);
+        if ((acc||[]).some((a: any) => a.uitslag_id !== undefined || a.bron === 'uitslag') || internAfb.length) setAcc(nieuweAcc);
+        if (internAfb.length) setAfboekingen(overigeAfb);
+
+        // Leeg oude sleutel zodat hij niet nog eens gemigreerd wordt
+        if (gemigreerdeUitl.length) {
+          try {
+            await fetch(API_BASE + 'uitslagen', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify([]),
+            });
+          } catch (_) {}
+        }
+
+        try { localStorage.setItem('brewadmin_migrated_uitlevering_v1', '1'); } catch (_) {}
+      } catch (err) {
+        console.error('Uitlevering-migratie fout:', err);
+      }
+    })();
+  }, [uit, acc, afboekingen, av, bat, accijnsInst]);
+
   // Eenmalige migratie: maak Product-entiteiten aan uit bestaande biernamen en artikelen
   const productMigrated = React.useRef(false);
   React.useEffect(() => {
@@ -324,7 +441,7 @@ function App() {
   const doExport = () => {
     excelExport({
       ingredienten: ing, lots, batches: bat, batch_ingredienten: bi,
-      afvullingen: av, uitslagen: uit, accijns: acc,
+      afvullingen: av, uitleveringen: uit, accijns: acc,
       verpakkingen, onderdelen,
       voorraad_log: log, voorraad_archief: archief, voorraad_gesloten_bieren: geslotenBieren,
       accijns_instellingen: accijnsInst,
@@ -366,7 +483,7 @@ function App() {
       if (Array.isArray(d.batches)) setBat(d.batches);
       if (Array.isArray(d.batch_ingredienten)) setBi(d.batch_ingredienten);
       if (Array.isArray(d.afvullingen)) setAv(d.afvullingen);
-      if (Array.isArray(d.uitslagen)) setUit(d.uitslagen);
+      if (Array.isArray(d.uitleveringen)) setUit(d.uitleveringen);
       if (Array.isArray(d.accijns)) setAcc(d.accijns);
       if (Array.isArray(d.verpakkingen)) setVerpakkingen(d.verpakkingen);
       if (Array.isArray(d.onderdelen)) setOnderdelen(d.onderdelen);
@@ -566,7 +683,7 @@ function App() {
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} />}
-        {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} />}
+        {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} gistMetingen={gistMetingen} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} ccpDefinities={haccpCcpDefinities} setCcpDefinities={setHaccpCcpDefinities} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} />}
         {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} resetApp={resetApp} />}

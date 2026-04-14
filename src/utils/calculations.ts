@@ -1,4 +1,4 @@
-import { AccijnsInst, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitslag, Afboeking } from '../types'
+import { AccijnsInst, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking } from '../types'
 
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
   const liter = L; const hl = L / 100
@@ -226,11 +226,11 @@ export const getAgpLocatie = (locaties: Locatie[] = []): Locatie => {
 
 // Berekent de huidige voorraad per locatie voor één afvulling. Begint met het
 // totale aantal op de AGP-locatie, verwerkt vervolgens alle verplaatsingen
-// (in chronologische volgorde) en trekt uitslagen + afboekingen af.
+// (in chronologische volgorde) en trekt uitleveringen + afboekingen af.
 export const voorraadPerLocatie = (
   afv: Afvulling,
   locaties: Locatie[],
-  uitslagen: Uitslag[] = [],
+  uitleveringen: Uitlevering[] = [],
   verplaatsingen: Verplaatsing[] = [],
   afboekingen: Afboeking[] = []
 ): Record<number, number> => {
@@ -251,8 +251,8 @@ export const voorraadPerLocatie = (
     result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + aantal
   }
 
-  // Uitslagen aftrekken op de bron-locatie (default = AGP)
-  const uits = (uitslagen || []).filter(u => u.afvulling_id === afv?.id)
+  // Uitleveringen aftrekken op de bron-locatie (default = AGP)
+  const uits = (uitleveringen || []).filter(u => u.afvulling_id === afv?.id)
   for (const u of uits) {
     const locId = u.bron_locatie_id ?? agp.id
     result[locId] = (result[locId] || 0) - Number(u.aantal || 0)
@@ -303,7 +303,7 @@ export interface AgpOverzicht {
 export const agpOverzicht = (
   batches: any[],
   afvullingen: Afvulling[],
-  uitslagen: Uitslag[],
+  uitleveringen: Uitlevering[],
   verplaatsingen: Verplaatsing[],
   afboekingen: Afboeking[],
   locaties: Locatie[],
@@ -321,7 +321,7 @@ export const agpOverzicht = (
 
   // Afvullingen met enige voorraad (in of buiten AGP)
   const avRijen: AgpAfvullingRij[] = (afvullingen || []).map(av => {
-    const voorraad = voorraadPerLocatie(av, locaties, uitslagen, verplaatsingen, afboekingen)
+    const voorraad = voorraadPerLocatie(av, locaties, uitleveringen, verplaatsingen, afboekingen)
     const in_agp = voorraad[agp.id] || 0
     let buiten_agp = 0
     for (const k of Object.keys(voorraad)) {
@@ -353,13 +353,13 @@ export const agpOverzicht = (
 
 // ── Historische AGP-waarde ──────────────────────────────────────────────────
 // Berekent de AGP-waarde (tank + verpakt) op een specifieke datum. Bouwt
-// snapshot op uit historische events (afvullingen, uitslagen, verplaatsingen,
+// snapshot op uit historische events (afvullingen, uitleveringen, verplaatsingen,
 // afboekingen) — geen status-history vereist.
 export const agpValueAt = (
   datum: string,
   batches: any[],
   afvullingen: Afvulling[],
-  uitslagen: Uitslag[],
+  uitleveringen: Uitlevering[],
   verplaatsingen: Verplaatsing[],
   afboekingen: Afboeking[],
   locaties: Locatie[],
@@ -400,7 +400,7 @@ export const agpValueAt = (
       if (v.van_locatie_id === agp.id) inAgp -= aantal
       if (v.naar_locatie_id === agp.id) inAgp += aantal
     }
-    for (const u of (uitslagen || []).filter(x => x.afvulling_id === av.id && String((x as any).datum || '') <= D)) {
+    for (const u of (uitleveringen || []).filter(x => x.afvulling_id === av.id && String((x as any).datum || '') <= D)) {
       const locId = u.bron_locatie_id ?? agp.id
       if (locId === agp.id) inAgp -= Number(u.aantal || 0)
     }
@@ -426,7 +426,7 @@ export const gemAgpInPeriode = (
   end: Date,
   batches: any[],
   afvullingen: Afvulling[],
-  uitslagen: Uitslag[],
+  uitleveringen: Uitlevering[],
   verplaatsingen: Verplaatsing[],
   afboekingen: Afboeking[],
   locaties: Locatie[],
@@ -438,7 +438,7 @@ export const gemAgpInPeriode = (
   const stop = new Date(end.getFullYear(), end.getMonth(), end.getDate())
   while (cur <= stop) {
     const ds = cur.toISOString().slice(0, 10)
-    const v = agpValueAt(ds, batches, afvullingen, uitslagen, verplaatsingen, afboekingen, locaties, inst)
+    const v = agpValueAt(ds, batches, afvullingen, uitleveringen, verplaatsingen, afboekingen, locaties, inst)
     sTank += v.tank; sVerp += v.verpakt; sTot += v.totaal; nDays++
     cur.setDate(cur.getDate() + 1)
   }

@@ -8,7 +8,7 @@ import Inp from '../components/ui/Inp'
 import { logAudit } from '../utils/audit'
 import { agpOverzicht, getAgpLocatie, accijnsCalc, voorraadPerLocatie, gemAgpInPeriode } from '../utils/calculations'
 
-function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, auditLog, setAuditLog}: any) {
+function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog}: any) {
   const {useState, useMemo} = React;
 
   const ovz = useMemo(() => agpOverzicht(bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst),
@@ -128,6 +128,24 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
       created_at: new Date().toISOString(),
     };
     setVerplaatsingen((prev: any[]) => [...(prev||[]), verpl]);
+    // Verplaatsing AGP → niet-AGP is een vorm van uitslaan (bier verlaat AGP).
+    // Leg dit vast in de voorraad_log met type 'uitslaan' zodat het zichtbaar
+    // wordt in het voorraadverloop naast verkoop-uitleveringen.
+    if (van.is_agp && !naar.is_agp && setLog) {
+      setLog((prev: any[]) => [...(prev||[]), {
+        id: newId(prev||[]),
+        datum: vplModal.datum,
+        type: 'uitslaan',
+        batch_id: vplModal.batch_id,
+        batch_naam: batch?.naam || '',
+        afvulling_id: vplModal.afvulling_id,
+        verpakking_type: afv?.verpakking_naam || afv?.verpakking_type || '',
+        hoeveelheid: aantal,
+        eenheid: 'stuks',
+        referentie: `${van.naam} → ${naar.naam}`,
+        omschrijving: `${t('agp_verplaats_titel')}: ${van.naam} → ${naar.naam}${accijnsBedrag?` (accijns ${fmt(accijnsBedrag)})`:''}`,
+      }]);
+    }
     logAudit(auditLog, setAuditLog, {
       entiteit: 'Verplaatsing', entiteit_id: verplId, actie: 'aangemaakt',
       omschrijving: `${aantal}× ${afv?.verpakking_naam||''} (${batch?.naam||''}): ${van.naam} → ${naar.naam}${accijnsBedrag?` (accijns ${fmt(accijnsBedrag)})`:''}`,

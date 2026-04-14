@@ -532,7 +532,7 @@ function TraceTab({lots, bat, bi, av, uit, ing}: any) {
     const matchedAv = (av||[]).filter((a:any)=>batchIds.has(a.batch_id))
     const avIds = new Set(matchedAv.map((a:any)=>a.id))
     const matchedUit = (uit||[]).filter((u:any)=>batchIds.has(u.batch_id) || avIds.has(u.afvulling_id))
-    setResults({lots:matchedLots, batches:matchedBat, afvullingen:matchedAv, uitslagen:matchedUit})
+    setResults({lots:matchedLots, batches:matchedBat, afvullingen:matchedAv, uitleveringen:matchedUit})
   }
 
   const traceBackward = () => {
@@ -558,7 +558,7 @@ function TraceTab({lots, bat, bi, av, uit, ing}: any) {
     ${results.lots?.length?`<h2>${t('haccp_trace_lots')}</h2><table><tr><th>Lot</th><th>${t('nav_ingredienten')}</th><th>Leverancier</th></tr>${results.lots.map((l:any)=>`<tr><td>${l.lotnr}</td><td>${(ing||[]).find((i:any)=>i.id===l.ingredient_id)?.naam||''}</td><td>${l.leverancier||''}</td></tr>`).join('')}</table>`:''}
     ${results.batches?.length?`<h2>${t('haccp_trace_batches')}</h2><table><tr><th>Batch</th><th>Status</th><th>Datum</th></tr>${results.batches.map((b:any)=>`<tr><td>${b.naam}</td><td>${b.status}</td><td>${b.datum||''}</td></tr>`).join('')}</table>`:''}
     ${results.afvullingen?.length?`<h2>${t('haccp_trace_afvullingen')}</h2><table><tr><th>Verpakking</th><th>Aantal</th><th>THT</th></tr>${results.afvullingen.map((a:any)=>`<tr><td>${a.verpakking_naam||''}</td><td>${a.aantal}</td><td>${a.tht||''}</td></tr>`).join('')}</table>`:''}
-    ${results.uitslagen?.length?`<h2>${t('haccp_trace_klanten')}</h2><table><tr><th>Bestemming</th><th>Datum</th><th>Aantal</th></tr>${results.uitslagen.map((u:any)=>`<tr><td>${u.bestemming_naam||''}</td><td>${u.datum||''}</td><td>${u.aantal}</td></tr>`).join('')}</table>`:''}
+    ${results.uitleveringen?.length?`<h2>${t('haccp_trace_klanten')}</h2><table><tr><th>Bestemming</th><th>Datum</th><th>Aantal</th></tr>${results.uitleveringen.map((u:any)=>`<tr><td>${u.bestemming_naam||''}</td><td>${u.datum||''}</td><td>${u.aantal}</td></tr>`).join('')}</table>`:''}
     </body></html>`
     w.document.write(html); w.document.close(); w.print()
   }
@@ -601,9 +601,9 @@ function TraceTab({lots, bat, bi, av, uit, ing}: any) {
                 <div key={a.id} className="text-sm bg-gray-50 rounded p-2">{a.verpakking_naam} x{a.aantal} <span className="text-gray-400">THT: {a.tht||'-'}</span></div>
               ))}</div>
             </div>}
-            {results.uitslagen?.length>0 && <div>
+            {results.uitleveringen?.length>0 && <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_trace_klanten')}</h4>
-              <div className="space-y-1">{results.uitslagen.map((u:any)=>(
+              <div className="space-y-1">{results.uitleveringen.map((u:any)=>(
                 <div key={u.id} className="text-sm bg-gray-50 rounded p-2">{u.bestemming_naam||'?'} <span className="text-gray-500">{fmtD(u.datum)} x{u.aantal}</span></div>
               ))}</div>
             </div>}

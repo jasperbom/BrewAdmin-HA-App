@@ -87,7 +87,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
 
   const getBatch = (bid: number) => bat.find((b: any) => b.id === bid)
 
-  const archiveerUitslag = (u: any) => {
+  const archiveerUitlevering = (u: any) => {
     const b = getBatch(u.batch_id)
     setArchief((prev: any[]) => [...(prev||[]), {
       ...u,
@@ -115,14 +115,14 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
         const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`)
         if (!prods?.length) continue
         const wcStock = Number(prods[0].stock_quantity||0)
-        const uitslagenVoorDitArtikel = (uit||[]).filter((u: any) => {
+        const uitleveringenVoorDitArtikel = (uit||[]).filter((u: any) => {
           const b = bat.find((bx: any) => bx.id===u.batch_id)
           return b?.naam===art.biernaam && u.verpakking_type===art.verpakking_type
         })
-        const brewBeschikbaar = uitslagenVoorDitArtikel.reduce((s: number, u: any) => s + Math.max(0, Number(u.aantal||0) - Number(u.verkocht_stuks||0)), 0)
+        const brewBeschikbaar = uitleveringenVoorDitArtikel.reduce((s: number, u: any) => s + Math.max(0, Number(u.aantal||0) - Number(u.verkocht_stuks||0)), 0)
         const diff = brewBeschikbaar - wcStock
         if (diff <= 0) continue
-        const gesorteerd = [...uitslagenVoorDitArtikel].sort((a: any, b: any) => a.id - b.id)
+        const gesorteerd = [...uitleveringenVoorDitArtikel].sort((a: any, b: any) => a.id - b.id)
         let teDelen = diff
         const updates: Record<number,number> = {}
         for (const u of gesorteerd) {
@@ -139,7 +139,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
         }
       }
       setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}))
-      const pullMsg = `${bijgewerkt} uitslag${bijgewerkt!==1?'en':''} bijgewerkt`
+      const pullMsg = `${bijgewerkt} uitlevering${bijgewerkt!==1?'en':''} bijgewerkt`
       setWcSyncMsg(`✓ Pull klaar — ${pullMsg}`)
       addWcLog('pull', `↓ Pull verkopen — ${pullMsg}`)
     } catch(e: any) {
@@ -236,7 +236,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
       )}
 
       {uit.length === 0 && (
-        <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">{t('stock_no_released')}</div>
+        <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">{t('stock_no_uitgeleverd')}</div>
       )}
 
       <div className="space-y-6">
@@ -324,13 +324,13 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
                               const thtDays = u.tht ? Math.ceil((new Date(u.tht).getTime() - new Date().getTime())/86400000) : null
                               const thtExp = thtDays !== null && thtDays < 0
                               const thtSoon = thtDays !== null && thtDays >= 0 && thtDays <= 60
-                              const accNietBetaald = acc.some((a: any) => a.uitslag_id === u.id && !a.betaald)
+                              const accNietBetaald = acc.some((a: any) => a.uitlevering_id === u.id && !a.betaald)
                               return (
                                 <div key={u.id} className={`px-4 py-3 border-b last:border-b-0 border-l-4 ${accNietBetaald ? 'border-l-red-400 bg-red-50' : 'border-l-transparent'}`}>
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0 flex-1">
                                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                                        <span>{t('stock_date_released')}: <strong className="text-gray-700">{fmtD(u.datum)}</strong></span>
+                                        <span>{t('stock_date_uitgeleverd')}: <strong className="text-gray-700">{fmtD(u.datum)}</strong></span>
                                         {u.tht
                                           ? <span className={thtExp?'text-red-600 font-medium':thtSoon?'text-yellow-600 font-medium':'text-gray-600'}>
                                               {t('lbl_tht')}: <strong>{fmtD(u.tht)}</strong>
@@ -345,12 +345,12 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
                                     </div>
                                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                                       {beschik === 0 && (
-                                        <button onClick={()=>archiveerUitslag(u)}
+                                        <button onClick={()=>archiveerUitlevering(u)}
                                           className="px-2 py-1 rounded text-xs font-medium bg-green-100 hover:bg-green-200 text-green-700 whitespace-nowrap transition-colors">
                                           {t('stock_archive')}
                                         </button>
                                       )}
-                                      <button onClick={()=>{ if(confirm(t('error_confirm_delete'))) { setUit((prev: any[])=>prev.filter((x: any)=>x.id!==u.id)); setAcc((prev: any[])=>prev.filter((a: any)=>a.uitslag_id!==u.id)); } }}
+                                      <button onClick={()=>{ if(confirm(t('error_confirm_delete'))) { setUit((prev: any[])=>prev.filter((x: any)=>x.id!==u.id)); setAcc((prev: any[])=>prev.filter((a: any)=>a.uitlevering_id!==u.id)); } }}
                                         className="text-red-400 hover:text-red-600 text-xs">✕</button>
                                     </div>
                                   </div>
@@ -430,7 +430,7 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
                   <th className="px-3 py-2 text-right">{t('stock_archive_qty')}</th>
                   <th className="px-3 py-2 text-right">{t('stock_archive_liters')}</th>
                   <th className="px-3 py-2 text-right">{t('nav_accijns')}</th>
-                  <th className="px-3 py-2 text-left">{t('filling_summary_released')}</th>
+                  <th className="px-3 py-2 text-left">{t('filling_summary_uitgeleverd')}</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>

@@ -22,6 +22,18 @@ const fromRow = (o: any) => {
 
 const prep = (d: any[]) => (d?.length ? d.map(toRow) : [{}])
 
+// Migratiehulp: oude backup-sheet 'Uitslagen' gebruikt de velden type_uitslag,
+// bron: 'uitslag'. Zet deze om naar type_uitlevering / bron: 'uitlevering'.
+const migreerUitleveringen = (nieuw: any[], oud: any[]): any[] => {
+  if (nieuw && nieuw.length) return nieuw
+  return (oud || []).map((u: any) => {
+    const {type_uitslag, ...rest} = u || {}
+    const out: any = {...rest}
+    if (type_uitslag !== undefined) out.type_uitlevering = type_uitslag
+    return out
+  })
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 // Verwacht hetzelfde object als de JSON-backup (alle app-data).
 export const excelExport = (data: any) => {
@@ -37,7 +49,7 @@ export const excelExport = (data: any) => {
     addSheet('Batches',               data.batches)
     addSheet('BatchIngredienten',     data.batch_ingredienten)
     addSheet('Afvullingen',           data.afvullingen)
-    addSheet('Uitslagen',             data.uitslagen)
+    addSheet('Uitleveringen',         data.uitleveringen)
     addSheet('Accijns',               data.accijns)
     addSheet('Verpakkingen',          data.verpakkingen)
     addSheet('Onderdelen',            data.onderdelen)
@@ -150,7 +162,8 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         batches:                      parse('Batches'),
         batch_ingredienten:           parse('BatchIngredienten'),
         afvullingen:                  parse('Afvullingen'),
-        uitslagen:                    parse('Uitslagen'),
+        // Fallback: oude backups hebben nog sheet 'Uitslagen' met veld type_uitslag/uitslag_id
+        uitleveringen:                migreerUitleveringen(parse('Uitleveringen'), parse('Uitslagen')),
         accijns:                      parse('Accijns'),
         verpakkingen:                 parse('Verpakkingen'),
         onderdelen:                   parse('Onderdelen'),

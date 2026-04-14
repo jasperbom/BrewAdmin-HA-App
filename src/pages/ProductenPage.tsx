@@ -7,18 +7,16 @@ import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 
-type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
+type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 
 const AFBOEKING_REDENEN: { v: AfboekingReden; lKey: string }[] = [
   { v: 'vermis',        lKey: 'lbl_afboeking_vermis' },
-  { v: 'intern_gebruik',lKey: 'lbl_afboeking_intern_gebruik' },
   { v: 'vernietiging',  lKey: 'lbl_afboeking_vernietiging' },
   { v: 'overig',        lKey: 'lbl_afboeking_overig' },
 ]
 
 const REDEN_COLORS: Record<AfboekingReden, string> = {
   vermis:         'text-red-600 bg-red-50',
-  intern_gebruik: 'text-blue-600 bg-blue-50',
   vernietiging:   'text-orange-600 bg-orange-50',
   overig:         'text-gray-600 bg-gray-100',
 }
@@ -64,9 +62,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
       return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
     }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
-    const uitgeslagen = ((uit||[]) as any[]).filter((u: any) => u.afvulling_id === a.id).reduce((s: number, u: any) => s + Number(u.aantal||0), 0);
+    const uitgeleverd = ((uit||[]) as any[]).filter((u: any) => u.afvulling_id === a.id).reduce((s: number, u: any) => s + Number(u.aantal||0), 0);
     const afgeboekt = ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id).reduce((s: number, ab: any) => s + Number(ab.aantal||0), 0);
-    return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeslagen - afgeboekt);
+    return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeleverd - afgeboekt);
   };
 
   const gepicktVoorAfvulling = (a: any): number =>
@@ -76,7 +74,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
     }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
 
-  const uitgeslagenVoorAfvulling = (a: any): number =>
+  const uitgeleverdVoorAfvulling = (a: any): number =>
     ((uit||[]) as any[]).filter((u: any) => u.afvulling_id === a.id).reduce((s: number, u: any) => s + Number(u.aantal||0), 0);
 
   const afgeboektVoorAfvulling = (a: any): number =>
@@ -84,21 +82,21 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   // Statistieken per product
   const productStats = useMemo(() => {
-    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeslagen: number, kostprijs: number}> = {};
+    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number}> = {};
     for (const p of (producten||[])) {
       const pBatches = (bat||[]).filter((b: any) => b.product_id === p.id);
       const batchIds = new Set(pBatches.map((b: any) => b.id));
       const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
       const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
       const voorraad = pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
-      const uitgeslagen = pAv.reduce((s: number, a: any) => s + uitgeslagenVoorAfvulling(a), 0);
+      const uitgeleverd = pAv.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
       let totaalKosten = 0;
       for (const b of pBatches) {
         const batchBi = (bi||[]).filter((i: any) => i.batch_id === b.id);
         for (const ingredient of batchBi) totaalKosten += Number(ingredient.kosten||0);
         totaalKosten += Number(b.electra_kosten||0) + Number(b.water_kosten||0) + Number(b.schoonmaak_kosten||0) + Number(b.overige_kosten||0);
       }
-      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeslagen, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
+      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
     }
     return stats;
   }, [producten, bat, av, uit, bi, bestellingen, bestellingPicks, afboekingen]);
@@ -124,10 +122,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const rows = pAv.filter((a: any) => a.verpakking_type === vt);
       const totAfgevuld = rows.reduce((s: number, a: any) => s + Number(a.hoeveelheid||0), 0);
       const totGepickt = rows.reduce((s: number, a: any) => s + gepicktVoorAfvulling(a), 0);
-      const totUitgeslagen = rows.reduce((s: number, a: any) => s + uitgeslagenVoorAfvulling(a), 0);
+      const totUitgeleverd = rows.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
       const totAfgeboekt = rows.reduce((s: number, a: any) => s + afgeboektVoorAfvulling(a), 0);
       const totBeschikbaar = rows.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
-      return {vt, rows, totAfgevuld, totGepickt, totUitgeslagen, totAfgeboekt, totBeschikbaar};
+      return {vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totBeschikbaar};
     });
   }, [sel, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen]);
 
@@ -683,7 +681,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 {label: t('lbl_product_batches'), value: productStats[sel]?.batches || 0},
                 {label: t('lbl_product_totaal_liter'), value: `${(productStats[sel]?.liter || 0).toFixed(0)} L`},
                 {label: t('lbl_product_voorraad'), value: productStats[sel]?.voorraad || 0},
-                {label: t('lbl_product_uitgeslagen'), value: productStats[sel]?.uitgeslagen || 0},
+                {label: t('lbl_product_uitgeleverd'), value: productStats[sel]?.uitgeleverd || 0},
                 {label: t('lbl_product_kostprijs_liter'), value: productStats[sel]?.kostprijs > 0 ? fmt(productStats[sel].kostprijs) : '-'},
               ].map((s, i) => (
                 <div key={i} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
@@ -700,14 +698,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   <span>{t('lbl_product_voorraad')}</span>
                   <span className="text-xs opacity-75">{voorraadOpen ? '▼' : '▶'}</span>
                 </div>
-                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeslagen, totAfgeboekt, totBeschikbaar}) => (
+                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totBeschikbaar}) => (
                   <div key={vt}>
                     <div className="px-4 py-2 bg-gray-50 border-b border-t flex items-center justify-between text-sm">
                       <span className="font-medium text-gray-700">{vt}</span>
                       <div className="flex gap-3 text-xs text-gray-500">
                         <span className="text-gray-400">{t('voorraad_afgevuld')}: <strong>{totAfgevuld}×</strong></span>
                         {totGepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>{totGepickt}×</strong></span>}
-                        {totUitgeslagen > 0 && <span className="text-blue-500">{t('voorraad_uitgeslagen')}: <strong>{totUitgeslagen}×</strong></span>}
+                        {totUitgeleverd > 0 && <span className="text-blue-500">{t('voorraad_uitgeleverd')}: <strong>{totUitgeleverd}×</strong></span>}
                         {totAfgeboekt > 0 && <span className="text-red-400">{t('voorraad_afgeboekt')}: <strong>{totAfgeboekt}×</strong></span>}
                         <span className={`font-bold ${totBeschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>{t('voorraad_beschikbaar')}: {totBeschikbaar}×</span>
                       </div>
