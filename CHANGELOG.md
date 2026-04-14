@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.55] — 2026-04-14
+
+### Fixed — Accijns pagina crash
+- `getGn(a.batch_id)` → `getGnForRecord(a)` — niet-bestaande functie veroorzaakte runtime error
+
+---
+
 ## [1.8.54] — 2026-04-14
 
 ### Changed — Inkoop factuur modal

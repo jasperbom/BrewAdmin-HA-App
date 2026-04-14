@@ -329,7 +329,7 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
                                   {getNaam(a.batch_id)}
                                 </td>
                                 <td className="px-3 py-2 text-gray-500">{a.batch_nummer?`#${a.batch_nummer}`:'—'}</td>
-                                <td className="px-3 py-2 text-gray-500 text-xs font-mono">{getGn(a.batch_id)}</td>
+                                <td className="px-3 py-2 text-gray-500 text-xs font-mono">{getGnForRecord(a)}</td>
                                 <td className="px-3 py-2 text-gray-600">{a.verpakking_type||'—'}</td>
                                 <td className="px-3 py-2 text-gray-600">{fmtD(a.datum)}</td>
                                 <td className="px-3 py-2 text-right">{getLiter(a).toFixed(1)}L</td>
