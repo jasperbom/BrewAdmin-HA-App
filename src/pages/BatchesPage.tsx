@@ -951,10 +951,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const selB = bat.find((b: any) => b.id === sel)
   const bAv = sel ? (av||[]).filter((a: any) => a.batch_id === sel) : []
-  const uitgeslVanAv = (avId: number) => (uit||[]).filter((u: any) => u.afvulling_id===avId).reduce((s: number, u: any) => s+Number(u.aantal||0), 0)
-  const resterendAv = (a: any) => Number(a.hoeveelheid||0) - uitgeslVanAv(a.id)
+  const uitgelVanAv = (avId: number) => (uit||[]).filter((u: any) => u.afvulling_id===avId).reduce((s: number, u: any) => s+Number(u.aantal||0), 0)
+  const resterendAv = (a: any) => Number(a.hoeveelheid||0) - uitgelVanAv(a.id)
   const totAfgevuld = bAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
-  const totUitgeslagen = bAv.reduce((s: number, a: any) => s + uitgeslVanAv(a.id)*Number(a.inhoud_per_eenheid||0), 0)
+  const totUitgeleverd = bAv.reduce((s: number, a: any) => s + uitgelVanAv(a.id)*Number(a.inhoud_per_eenheid||0), 0)
 
   const vpVoorraadB = (vp: any) => {
     if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad||0)
@@ -1892,7 +1892,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             {selB.status==='Conditioneren' && (() => {
               const vergist = Number(selB.liter_vergist||0)
               const inTank = Math.max(0, vergist - totAfgevuld)
-              const opVoorraad = totAfgevuld - totUitgeslagen
+              const opVoorraad = totAfgevuld - totUitgeleverd
               const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51)
               const r2 = Number(accijnsInst?.tarief_per_hl||24.17)
               return (
@@ -1902,7 +1902,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       [t('batch_stat_fermented'), selB.liter_vergist?`${selB.liter_vergist}L`:'—', ''],
                       [t('batch_stat_in_tank'), vergist?`${inTank.toFixed(1)}L`:'—', inTank>0?'text-orange-600':'text-gray-400'],
                       [t('lbl_filled'), `${totAfgevuld.toFixed(1)}L`, 'text-green-700'],
-                      [t('batch_stat_released'), `${totUitgeslagen.toFixed(1)}L`, 'text-blue-700'],
+                      [t('batch_stat_uitgeleverd'), `${totUitgeleverd.toFixed(1)}L`, 'text-blue-700'],
                       [t('batch_stat_in_stock'), `${opVoorraad.toFixed(1)}L`, 'text-amber-700'],
                     ] as any[]).map(([l,v,c]: any) => (
                       <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className={`font-medium ${c}`}>{v}</div></div>
@@ -2058,7 +2058,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
                             <th className="px-3 py-2 text-right">{t('lbl_content')}</th>
                             <th className="px-3 py-2 text-right">{t('lbl_filled')}</th>
-                            <th className="px-3 py-2 text-right">{t('filling_summary_released')}</th>
+                            <th className="px-3 py-2 text-right">{t('filling_summary_uitgeleverd')}</th>
                             <th className="px-3 py-2 text-right font-semibold text-amber-700">{t('lbl_remaining')}</th>
                             <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                             <th className="px-3 py-2 text-left">{t('lbl_tht')}</th>
@@ -2068,7 +2068,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <tbody className="divide-y divide-gray-100">
                           {bAv.length===0 && <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">{t('batch_no_filled')}</td></tr>}
                           {bAv.map((a: any) => {
-                            const uitg = uitgeslVanAv(a.id)
+                            const uitg = uitgelVanAv(a.id)
                             const rest = Number(a.hoeveelheid||0) - uitg
                             const avProd = a.product_id ? (producten||[]).find((p: any) => p.id === a.product_id) : null
                             return (

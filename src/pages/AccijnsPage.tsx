@@ -10,14 +10,14 @@ import { logAudit } from '../utils/audit'
 function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{}, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState, useMemo} = React;
   const [activeTab, setActiveTab] = useState<'accijns'|'ead'>('accijns');
-  // acc records: {id, batch_id, batch_nummer, uitslag_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
+  // acc records: {id, batch_id, batch_nummer, uitlevering_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
   const getAccijns = (a: any) => Number(a.accijns ?? a.totaal_accijns ?? 0);
   const getLiter   = (a: any) => Number(a.liter   ?? a.totaal_liter   ?? 0);
   const getNaam    = (bid: any) => bat.find((b: any)=>b.id===bid)?.naam||'—';
   const getBatch   = (bid: any) => bat.find((b: any)=>b.id===bid);
-  // GN-code: eerst op afvulling zoeken (via uitslag → afvulling), dan fallback op batch
+  // GN-code: eerst op afvulling zoeken (via uitlevering → afvulling), dan fallback op batch
   const getGnForRecord = (a: any) => {
-    const u = uit.find((u: any) => u.id === a.uitslag_id);
+    const u = uit.find((u: any) => u.id === a.uitlevering_id);
     if (u?.afvulling_id) {
       const afv = av.find((af: any) => af.id === u.afvulling_id);
       if (afv?.gn_code) return afv.gn_code;
@@ -178,11 +178,11 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
   const [eadModal, setEadModal] = useState<any>(null)
   const [eadFilter, setEadFilter] = useState('')
 
-  const emptyEad = {type: 'e-ad', status: 'aangemaakt', arc_nummer: '', uitslag_id: '', dispatch_type: 'binnenland', bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: '', datum_aanmaak: tod(), datum_verzending: '', datum_ontvangst: '', notities: ''}
+  const emptyEad = {type: 'e-ad', status: 'aangemaakt', arc_nummer: '', uitlevering_id: '', dispatch_type: 'binnenland', bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: '', datum_aanmaak: tod(), datum_verzending: '', datum_ontvangst: '', notities: ''}
 
   const saveEad = () => {
     if (!eadModal) return
-    const doc = {...eadModal, uitslag_id: eadModal.uitslag_id ? Number(eadModal.uitslag_id) : undefined}
+    const doc = {...eadModal, uitlevering_id: eadModal.uitlevering_id ? Number(eadModal.uitlevering_id) : undefined}
     const isNew = !doc.id
     if (doc.id) {
       setEadDocumenten((prev: any[]) => prev.map((d: any) => d.id === doc.id ? doc : d))
@@ -384,15 +384,15 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
                   <th className="px-3 py-2 text-left">{t('ead_arc_nummer')}</th>
                   <th className="px-3 py-2 text-left">{t('ead_type')}</th>
                   <th className="px-3 py-2 text-left">{t('ead_status')}</th>
-                  <th className="px-3 py-2 text-left">{t('lbl_type_uitslag')}</th>
+                  <th className="px-3 py-2 text-left">{t('lbl_type_uitlevering')}</th>
                   <th className="px-3 py-2 text-left">{t('lbl_bestemming')}</th>
                   <th className="px-3 py-2 text-left">{t('ead_datum_aanmaak')}</th>
-                  <th className="px-3 py-2 text-left">{t('ead_gekoppelde_uitslag')}</th>
+                  <th className="px-3 py-2 text-left">{t('ead_gekoppelde_uitlevering')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredEad.map((d: any) => {
-                  const linkedUit = d.uitslag_id ? uit.find((u: any) => u.id === d.uitslag_id) : null
+                  const linkedUit = d.uitlevering_id ? uit.find((u: any) => u.id === d.uitlevering_id) : null
                   return (
                     <tr key={d.id} className="hover:bg-gray-50 cursor-pointer" onClick={()=>setEadModal({...d})}>
                       <td className="px-3 py-2 font-mono font-medium">{d.arc_nummer || '—'}</td>
@@ -434,7 +434,7 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t('lbl_type_uitslag')}</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t('lbl_type_uitlevering')}</label>
                   <select value={eadModal.dispatch_type||''} onChange={e=>setEadModal((f: any)=>({...f,dispatch_type:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
                     <option value="binnenland">{t('opt_binnenland')}</option>
                     <option value="intracommunautair">{t('opt_intracommunautair')}</option>
@@ -454,8 +454,8 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
                 <Inp label={t('ead_datum_ontvangst')} type="date" value={eadModal.datum_ontvangst||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,datum_ontvangst:v}))} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">{t('ead_gekoppelde_uitslag')}</label>
-                <select value={eadModal.uitslag_id||''} onChange={e=>setEadModal((f: any)=>({...f,uitslag_id:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
+                <label className="block text-xs text-gray-500 mb-1">{t('ead_gekoppelde_uitlevering')}</label>
+                <select value={eadModal.uitlevering_id||''} onChange={e=>setEadModal((f: any)=>({...f,uitlevering_id:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
                   <option value="">—</option>
                   {(uit||[]).slice(-50).reverse().map((u: any) => (
                     <option key={u.id} value={u.id}>{fmtD(u.datum)} — {u.batch_naam} ({u.verpakking_naam}, {u.aantal}x)</option>

@@ -89,7 +89,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [showManualModal, setShowManualModal] = useState(false)
   const [showPickModal, setShowPickModal] = useState(false)
   const [showAfrondModal, setShowAfrondModal] = useState(false)
-  const [uitslagForm, setUitslagForm] = useState({type_uitslag: 'binnenland' as string, bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: ''})
+  const [uitleveringForm, setUitleveringForm] = useState({type_uitlevering: 'binnenland' as string, bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: ''})
   const [showAnnuleerModal, setShowAnnuleerModal] = useState(false)
   const [showVrijeRegelModal, setShowVrijeRegelModal] = useState(false)
   const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
@@ -143,10 +143,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         return b && b.status !== 'afgerond' && b.status !== 'geannuleerd'
       })
       .reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
-    const uitgeslagen = (uit||[])
+    const uitgeleverd = (uit||[])
       .filter((u: any) => u.afvulling_id === a.id)
       .reduce((s: number, u: any) => s + Number(u.aantal||0), 0)
-    return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeslagen)
+    return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeleverd)
   }
 
   // Compact label met voorraad per locatie voor één afvulling, bv. "AGP: 20, Magazijn: 10".
@@ -426,7 +426,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           afvulling_id: p.afvulling_id,
           batch_id: batch?.id || 0,
           aantal: Number(p.aantal),
-          uitslag_id: null,
+          uitlevering_id: null,
           accijns_id: null,
         })
       }
@@ -460,21 +460,21 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const factuurNummer = genFactuurNummer()
     const pakbonNummer = genPakbonNummer()
 
-    // 1+2. Uitslag- en AccijnsRecord-records, gesplitst per bron-locatie.
+    // 1+2. Uitlevering- en AccijnsRecord-records, gesplitst per bron-locatie.
     //   - Voorraad buiten AGP wordt eerst aangesproken (al accijns betaald).
     //   - Voorraad in AGP genereert nieuwe AccijnsRecord-boekingen.
-    // Per pick kunnen er meerdere Uitslagen ontstaan wanneer voorraad gemengd is.
+    // Per pick kunnen er meerdere Uitleveringen ontstaan wanneer voorraad gemengd is.
     const agpLoc = getAgpLocatie(locaties)
-    const nieuweUitslagen: any[] = []
+    const nieuweUitleveringen: any[] = []
     const nieuweAccijns: any[] = []
-    // Map pick.id → arrays met gegenereerde uitslag-/accijns-ids (voor pick-update)
-    const pickResult: Record<number, {uitslag_ids: number[], accijns_ids: number[]}> = {}
+    // Map pick.id → arrays met gegenereerde uitlevering-/accijns-ids (voor pick-update)
+    const pickResult: Record<number, {uitlevering_ids: number[], accijns_ids: number[]}> = {}
     let uitId = newId(uit||[])
     let accId = newId(acc||[])
 
     // Houd lokale mutaties bij zodat opvolgende picks van dezelfde afvulling
     // de bijgewerkte voorraad zien (i.p.v. de oorspronkelijke).
-    const lokaleUitslagen: any[] = [...(uit||[])]
+    const lokaleUitleveringen: any[] = [...(uit||[])]
 
     for (const pick of picks) {
       const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
@@ -483,10 +483,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       const inhoud = Number(avItem.inhoud_per_eenheid||0)
       const abv = Number(batch?.ABV || 0)
       const plato = Number(batch?.platogehalte || 0)
-      pickResult[pick.id] = {uitslag_ids: [], accijns_ids: []}
+      pickResult[pick.id] = {uitlevering_ids: [], accijns_ids: []}
 
       // Huidige voorraad per locatie voor deze afvulling
-      const voorraad = voorraadPerLocatie(avItem, locaties, lokaleUitslagen, verplaatsingen, afboekingen)
+      const voorraad = voorraadPerLocatie(avItem, locaties, lokaleUitleveringen, verplaatsingen, afboekingen)
 
       // Locatie-volgorde: niet-AGP eerst, dan AGP
       const locOrder: number[] = []
@@ -513,7 +513,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         if (aantalDeel <= 0) continue
         const liter = aantalDeel * inhoud
         const isAgp = locId === agpLoc.id
-        const uitslagRec = {
+        const uitleveringRec = {
           id: uitId++,
           batch_id: pick.batch_id,
           afvulling_id: pick.afvulling_id,
@@ -527,17 +527,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           datum: vandaag,
           tht: avItem.tht||null,
           accijns_betaald: !isAgp,
-          type_uitslag: uitslagForm.type_uitslag || 'binnenland',
-          bestemming_naam: uitslagForm.bestemming_naam || '',
-          bestemming_adres: uitslagForm.bestemming_adres || '',
-          bestemming_land: uitslagForm.bestemming_land || '',
-          vervoerder: uitslagForm.vervoerder || '',
+          type_uitlevering: uitleveringForm.type_uitlevering || 'binnenland',
+          bestemming_naam: uitleveringForm.bestemming_naam || '',
+          bestemming_adres: uitleveringForm.bestemming_adres || '',
+          bestemming_land: uitleveringForm.bestemming_land || '',
+          vervoerder: uitleveringForm.vervoerder || '',
           created_at: new Date().toISOString(),
           bron_locatie_id: locId,
         }
-        nieuweUitslagen.push(uitslagRec)
-        lokaleUitslagen.push(uitslagRec)
-        pickResult[pick.id].uitslag_ids.push(uitslagRec.id)
+        nieuweUitleveringen.push(uitleveringRec)
+        lokaleUitleveringen.push(uitleveringRec)
+        pickResult[pick.id].uitlevering_ids.push(uitleveringRec.id)
 
         if (isAgp) {
           const accBed = accijnsCalc(liter, abv, r1, r2, accijnsInst, plato)
@@ -546,7 +546,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             batch_id: pick.batch_id,
             batch_naam: batch?.naam || '',
             batch_nummer: batch?.batch_nummer||'',
-            uitslag_id: uitslagRec.id,
+            uitlevering_id: uitleveringRec.id,
             verpakking_type: avItem.verpakking_type || '',
             datum: vandaag,
             aantal: aantalDeel,
@@ -555,7 +555,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             accijns: accBed,
             betaald: false,
             betaal_datum: null,
-            bron: 'uitslag' as const,
+            bron: 'uitlevering' as const,
           }
           nieuweAccijns.push(accRec)
           pickResult[pick.id].accijns_ids.push(accRec.id)
@@ -649,13 +649,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       if (!res) return p
       return {
         ...p,
-        uitslag_id: res.uitslag_ids[0] || null,
+        uitlevering_id: res.uitlevering_ids[0] || null,
         accijns_id: res.accijns_ids[0] || null,
-        uitslag_ids: res.uitslag_ids,
+        uitlevering_ids: res.uitlevering_ids,
         accijns_ids: res.accijns_ids,
       }
     }))
-    setUit((prev: any[]) => [...(prev||[]), ...nieuweUitslagen])
+    setUit((prev: any[]) => [...(prev||[]), ...nieuweUitleveringen])
     setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
     setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
     setBestellingen((prev: any[]) => prev.map((b: any) => b.id === selectedOrder.id ? {
@@ -666,10 +666,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       factuur_nummer: factuurNummer,
       pakbon_nummer: pakbonNummer,
     } : b))
-    // Log entries: één per uitgeslagen pick
+    // Log entries: één per uitgeleverde pick
     setLog((prev: any[]) => {
       let logId = newId(prev||[])
-      const nieuweLogEntries = nieuweUitslagen.map((u: any) => ({
+      const nieuweLogEntries = nieuweUitleveringen.map((u: any) => ({
         id: logId++,
         datum: vandaag,
         type: 'uitslaan',
@@ -689,7 +689,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       entiteit: 'Bestelling',
       entiteit_id: selectedOrder.id,
       actie: 'gewijzigd',
-      omschrijving: `${selectedOrder.klant_naam} — ${factuurNummer} (${nieuweUitslagen.length} uitslagen)`,
+      omschrijving: `${selectedOrder.klant_naam} — ${factuurNummer} (${nieuweUitleveringen.length} uitleveringen)`,
     })
     setShowAfrondModal(false)
   }
@@ -951,33 +951,33 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <p>Je staat op het punt om deze bestelling af te ronden. Dit doet het volgende automatisch:</p>
                 <ul className="mt-2 space-y-1 list-disc list-inside text-xs">
                   <li>Accijnsrecords aanmaken voor alle gepickte items</li>
-                  <li>Uitslag registreren (formele vrijgave voor accijns)</li>
+                  <li>Uitlevering registreren (formele vrijgave voor accijns)</li>
                   <li>Verkoopfactuur aanmaken in de boekhouding</li>
                   <li>Pakbon- en factuurnummer genereren</li>
                 </ul>
               </div>
-              {/* AGP: Type uitslag en bestemmingsgegevens */}
+              {/* AGP: Type uitlevering en bestemmingsgegevens */}
               <div className="border border-gray-200 rounded-lg p-3 space-y-3">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_type_uitslag')}</div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_type_uitlevering')}</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <select value={uitslagForm.type_uitslag} onChange={e => setUitslagForm(f => ({...f, type_uitslag: e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
+                    <select value={uitleveringForm.type_uitlevering} onChange={e => setUitleveringForm(f => ({...f, type_uitlevering: e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
                       <option value="binnenland">{t('opt_binnenland')}</option>
                       <option value="intracommunautair">{t('opt_intracommunautair')}</option>
                       <option value="export">{t('opt_export')}</option>
                     </select>
                   </div>
                   <div>
-                    <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_vervoerder')} value={uitslagForm.vervoerder} onChange={e => setUitslagForm(f => ({...f, vervoerder: e.target.value}))} />
+                    <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_vervoerder')} value={uitleveringForm.vervoerder} onChange={e => setUitleveringForm(f => ({...f, vervoerder: e.target.value}))} />
                   </div>
                 </div>
-                {uitslagForm.type_uitslag !== 'binnenland' && (
+                {uitleveringForm.type_uitlevering !== 'binnenland' && (
                   <>
                     <div className="grid grid-cols-2 gap-3">
-                      <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_naam')} value={uitslagForm.bestemming_naam} onChange={e => setUitslagForm(f => ({...f, bestemming_naam: e.target.value}))} />
-                      <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_land')} value={uitslagForm.bestemming_land} onChange={e => setUitslagForm(f => ({...f, bestemming_land: e.target.value}))} />
+                      <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_naam')} value={uitleveringForm.bestemming_naam} onChange={e => setUitleveringForm(f => ({...f, bestemming_naam: e.target.value}))} />
+                      <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_land')} value={uitleveringForm.bestemming_land} onChange={e => setUitleveringForm(f => ({...f, bestemming_land: e.target.value}))} />
                     </div>
-                    <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_adres')} value={uitslagForm.bestemming_adres} onChange={e => setUitslagForm(f => ({...f, bestemming_adres: e.target.value}))} />
+                    <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_adres')} value={uitleveringForm.bestemming_adres} onChange={e => setUitleveringForm(f => ({...f, bestemming_adres: e.target.value}))} />
                     <div className="text-xs text-amber-600 font-medium">{t('msg_ead_vereist')}</div>
                   </>
                 )}

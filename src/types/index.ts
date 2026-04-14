@@ -359,9 +359,11 @@ export interface Periode {
   maand?: number
 }
 
-export type TypeUitslag = 'binnenland' | 'intracommunautair' | 'export'
+// Type van uitlevering (AGP-exit richting extern/klant of intern gebruik).
+// 'intern' = bier verlaat AGP voor eigen consumptie binnen de brouwerij.
+export type TypeUitlevering = 'binnenland' | 'intracommunautair' | 'export' | 'intern'
 
-export interface Uitslag {
+export interface Uitlevering {
   id: number
   batch_id: number
   afvulling_id?: number
@@ -373,14 +375,14 @@ export interface Uitslag {
   datum?: string
   tht?: string
   accijns_betaald?: boolean
-  type_uitslag?: TypeUitslag
+  type_uitlevering?: TypeUitlevering
   bestemming_naam?: string
   bestemming_adres?: string
   bestemming_land?: string
   vervoerder?: string
   ead_arc?: string
   created_at?: string
-  // Vanaf welke locatie de uitslag is geleverd. Default = AGP-locatie voor
+  // Vanaf welke locatie de uitlevering is geleverd. Default = AGP-locatie voor
   // back-compat; bepaalt of er nog accijns wordt geboekt.
   bron_locatie_id?: number
 }
@@ -396,10 +398,11 @@ export interface AccijnsRecord {
   totaal_accijns?: number
   datum?: string
   betaald?: boolean
-  uitslag_id?: number
-  // Bron van de boeking: 'uitslag' (verkoop uit AGP) of 'verplaatsing'
-  // (bier verlaat AGP zonder verkoop). Default 'uitslag' voor oude records.
-  bron?: 'uitslag' | 'verplaatsing'
+  uitlevering_id?: number
+  // Bron van de boeking: 'uitlevering' (bier verlaat AGP richting klant of
+  // voor intern gebruik) of 'verplaatsing' (bier verlaat AGP naar een andere
+  // voorraadlocatie). Default 'uitlevering' voor oude records.
+  bron?: 'uitlevering' | 'verplaatsing'
   verplaatsing_id?: number
 }
 
@@ -556,11 +559,11 @@ export interface BestellingPick {
   afvulling_id: number
   batch_id: number
   aantal: number
-  uitslag_id?: number | null
+  uitlevering_id?: number | null
   accijns_id?: number | null
   // Wanneer een pick gesplitst is over meerdere locaties (bv. deels uit AGP
   // en deels uit een andere voorraad), bewaren we alle gegenereerde ids.
-  uitslag_ids?: number[]
+  uitlevering_ids?: number[]
   accijns_ids?: number[]
 }
 
@@ -611,7 +614,9 @@ export interface HaInst {
   sensors: HaSensor[]
 }
 
-export type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
+// 'intern_gebruik' is verhuisd naar Uitlevering (type_uitlevering = 'intern'),
+// omdat het daadwerkelijk een AGP-exit is waarvoor accijns verschuldigd is.
+export type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 
 export interface Afboeking {
   id: number
@@ -634,8 +639,8 @@ export interface EADDocument {
   arc_nummer?: string
   type: EADType
   status: EADStatus
-  uitslag_id?: number
-  dispatch_type?: TypeUitslag
+  uitlevering_id?: number
+  dispatch_type?: TypeUitlevering
   bestemming_naam?: string
   bestemming_adres?: string
   bestemming_land?: string

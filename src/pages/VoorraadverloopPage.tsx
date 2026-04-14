@@ -234,19 +234,19 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       ).reduce((s: number, a: any) => s + Number(a.hoeveelheid || 0), 0)
 
       // Uitslagen in period by type
-      const uitslagenInPeriod = uit.filter((u: any) =>
+      const uitleveringenInPeriod = uit.filter((u: any) =>
         batch_ids.has(u.batch_id) &&
         u.verpakking_naam === verpakking_naam &&
         inRange(u.datum, van, tot)
       )
-      const binnenland = uitslagenInPeriod
-        .filter((u: any) => !u.type_uitslag || u.type_uitslag === 'binnenland')
+      const binnenland = uitleveringenInPeriod
+        .filter((u: any) => !u.type_uitlevering || u.type_uitlevering === 'binnenland')
         .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-      const intracommunautair = uitslagenInPeriod
-        .filter((u: any) => u.type_uitslag === 'intracommunautair' || u.type_uitslag === 'eu')
+      const intracommunautair = uitleveringenInPeriod
+        .filter((u: any) => u.type_uitlevering === 'intracommunautair' || u.type_uitlevering === 'eu')
         .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-      const exportUit = uitslagenInPeriod
-        .filter((u: any) => u.type_uitslag === 'export')
+      const exportUit = uitleveringenInPeriod
+        .filter((u: any) => u.type_uitlevering === 'export')
         .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
 
       // Bijzondere mutaties in period (afboekingen)

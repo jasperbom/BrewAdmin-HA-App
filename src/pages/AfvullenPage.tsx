@@ -35,14 +35,14 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
   const selB = bat.find((b: any) => b.id === sel)
   const bAv = sel ? av.filter((a: any) => a.batch_id === sel) : []
 
-  const uitgeslagenVanAfvulling = (avId: number) =>
+  const uitgeleverdVanAfvulling = (avId: number) =>
     uit.filter((u: any) => u.afvulling_id===avId).reduce((s: number, u: any) => s+Number(u.aantal||0), 0)
 
-  const resterend = (a: any) => Number(a.hoeveelheid||0) - uitgeslagenVanAfvulling(a.id)
+  const resterend = (a: any) => Number(a.hoeveelheid||0) - uitgeleverdVanAfvulling(a.id)
 
   const totAfgevuld = bAv.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
-  const totUitgeslagen = bAv.reduce((s: number, a: any) => {
-    const used = uitgeslagenVanAfvulling(a.id)
+  const totUitgeleverd = bAv.reduce((s: number, a: any) => {
+    const used = uitgeleverdVanAfvulling(a.id)
     return s + used * Number(a.inhoud_per_eenheid||0)
   }, 0)
 
@@ -118,7 +118,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
             {(() => {
               const vergist = Number(selB.liter_vergist||0)
               const inTank = Math.max(0, vergist - totAfgevuld)
-              const opVoorraad = totAfgevuld - totUitgeslagen
+              const opVoorraad = totAfgevuld - totUitgeleverd
               const inTankPct = vergist > 0 ? Math.round(inTank/vergist*100) : null
               return (
                 <div className="bg-white rounded-xl shadow-card p-3 grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
@@ -126,7 +126,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
                     ['Vergist', selB.liter_vergist?`${selB.liter_vergist}L`:'—', ''],
                     ['In tank', vergist?`${inTank.toFixed(1)}L${inTankPct!==null?` (${inTankPct}%)`:''}`:'—', inTank>0?'text-orange-600':'text-gray-400'],
                     [t('lbl_filled'), `${totAfgevuld.toFixed(1)}L`, 'text-green-700'],
-                    [t('batch_stat_released'), `${totUitgeslagen.toFixed(1)}L`, 'text-blue-700'],
+                    [t('batch_stat_uitgeleverd'), `${totUitgeleverd.toFixed(1)}L`, 'text-blue-700'],
                     [t('batch_stat_in_stock'), `${opVoorraad.toFixed(1)}L`, 'text-amber-700'],
                   ] as any[]).map(([l,v,c]: any) => (
                     <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className={`font-medium ${c}`}>{v}</div></div>
@@ -211,7 +211,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
                     <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
                     <th className="px-3 py-2 text-right">{t('lbl_content')}</th>
                     <th className="px-3 py-2 text-right">{t('lbl_total_filled')}</th>
-                    <th className="px-3 py-2 text-right">{t('filling_summary_released')}</th>
+                    <th className="px-3 py-2 text-right">{t('filling_summary_uitgeleverd')}</th>
                     <th className="px-3 py-2 text-right font-semibold text-amber-700">{t('lbl_remaining')}</th>
                     <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                     <th className="px-3 py-2 text-left">{t('lbl_tht')}</th>
@@ -221,20 +221,20 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
                 <tbody className="divide-y divide-gray-100">
                   {bAv.length===0 && <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-400">{t('batch_no_filled')}</td></tr>}
                   {bAv.map((a: any) => {
-                    const uitgeslagen = uitgeslagenVanAfvulling(a.id)
-                    const rest = Number(a.hoeveelheid||0) - uitgeslagen
+                    const uitgeleverd = uitgeleverdVanAfvulling(a.id)
+                    const rest = Number(a.hoeveelheid||0) - uitgeleverd
                     return (
                       <tr key={a.id} className={rest===0?'bg-gray-50 text-gray-400':''}>
                         <td className="px-3 py-2">{a.verpakking_type}</td>
                         <td className="px-3 py-2 text-right">{a.inhoud_per_eenheid}L</td>
                         <td className="px-3 py-2 text-right">{a.hoeveelheid}× ({(a.inhoud_per_eenheid*a.hoeveelheid).toFixed(1)}L)</td>
-                        <td className="px-3 py-2 text-right text-blue-600">{uitgeslagen>0?`${uitgeslagen}×`:'—'}</td>
+                        <td className="px-3 py-2 text-right text-blue-600">{uitgeleverd>0?`${uitgeleverd}×`:'—'}</td>
                         <td className={`px-3 py-2 text-right font-semibold ${rest>0?'text-amber-700':'text-gray-400'}`}>{rest>0?`${rest}×`:t('lbl_empty')}</td>
                         <td className="px-3 py-2 text-gray-500">{fmtD(a.datum)}</td>
                         <td className="px-3 py-2 text-gray-500">{a.tht ? fmtD(a.tht) : '—'}</td>
                         <td className="px-3 py-2">
                           <div className="flex gap-1">
-                            {uitgeslagen===0 && <button onClick={()=>delAv(a.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
+                            {uitgeleverd===0 && <button onClick={()=>delAv(a.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
                           </div>
                         </td>
                       </tr>
