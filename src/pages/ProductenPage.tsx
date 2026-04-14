@@ -84,20 +84,21 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   // Statistieken per product
   const productStats = useMemo(() => {
-    const stats: Record<number, {batches: number, liter: number, voorraad: number, kostprijs: number}> = {};
+    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeslagen: number, kostprijs: number}> = {};
     for (const p of (producten||[])) {
       const pBatches = (bat||[]).filter((b: any) => b.product_id === p.id);
       const batchIds = new Set(pBatches.map((b: any) => b.id));
       const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
       const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
       const voorraad = pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
+      const uitgeslagen = pAv.reduce((s: number, a: any) => s + uitgeslagenVoorAfvulling(a), 0);
       let totaalKosten = 0;
       for (const b of pBatches) {
         const batchBi = (bi||[]).filter((i: any) => i.batch_id === b.id);
         for (const ingredient of batchBi) totaalKosten += Number(ingredient.kosten||0);
         totaalKosten += Number(b.electra_kosten||0) + Number(b.water_kosten||0) + Number(b.schoonmaak_kosten||0) + Number(b.overige_kosten||0);
       }
-      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
+      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeslagen, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
     }
     return stats;
   }, [producten, bat, av, uit, bi, bestellingen, bestellingPicks, afboekingen]);
@@ -677,11 +678,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             </div>
 
             {/* Statistieken */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
                 {label: t('lbl_product_batches'), value: productStats[sel]?.batches || 0},
                 {label: t('lbl_product_totaal_liter'), value: `${(productStats[sel]?.liter || 0).toFixed(0)} L`},
                 {label: t('lbl_product_voorraad'), value: productStats[sel]?.voorraad || 0},
+                {label: t('lbl_product_uitgeslagen'), value: productStats[sel]?.uitgeslagen || 0},
                 {label: t('lbl_product_kostprijs_liter'), value: productStats[sel]?.kostprijs > 0 ? fmt(productStats[sel].kostprijs) : '-'},
               ].map((s, i) => (
                 <div key={i} className="bg-white rounded-xl border border-gray-200 p-3 text-center">

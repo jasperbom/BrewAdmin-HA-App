@@ -149,6 +149,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeslagen)
   }
 
+  // Compact label met voorraad per locatie voor één afvulling, bv. "AGP: 20, Magazijn: 10".
+  // Geeft lege string terug als slechts één locatie voorraad heeft (info niet nuttig).
+  const voorraadPerLocLabel = (a: any): string => {
+    if (!a || !(locaties||[]).length) return ''
+    const v = voorraadPerLocatie(a, locaties as any, uit as any, verplaatsingen as any, afboekingen as any)
+    const entries = Object.entries(v)
+      .map(([k, n]) => ({locId: Number(k), n: Number(n)}))
+      .filter(e => e.n > 0)
+    if (entries.length === 0) return ''
+    if (entries.length === 1) {
+      const loc = (locaties||[]).find((l: any) => l.id === entries[0].locId)
+      return loc ? `${loc.naam}: ${entries[0].n}` : ''
+    }
+    return entries
+      .map(e => {
+        const loc = (locaties||[]).find((l: any) => l.id === e.locId)
+        return `${loc?.naam || '?'}: ${e.n}`
+      })
+      .join(', ')
+  }
+
   // Beschikbare afvullingen voor een orderregel (gefilterd op SKU of bier + verpakking)
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string, regelSku?: string) => {
     // Bepaal SKU: direct uit regel, of via artikel_key lookup
@@ -1000,30 +1021,34 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         ? (artikelen||[]).find((a: any) => a.artikelnummer === avItem.artikel_sku)
                         : avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.biernaam||avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
                       const maxBeschik = beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id) + Number(dp.aantal||0)
+                      const locLabel = avItem ? voorraadPerLocLabel(avItem) : ''
                       return (
-                        <div key={idx} className="flex items-center gap-2 mt-1 text-sm">
-                          <span className="flex-1 text-gray-600">
-                            <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
-                            {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
-                            {' · '}{avItem?.verpakking_type}
-                            {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
-                            {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · Lot {avBatch.batch_nummer}</span>}
-                          </span>
-                          <input type="number" min="0" max={maxBeschik}
-                            value={dp.aantal}
-                            onChange={e => {
-                              const val = Math.min(Number(e.target.value)||0, maxBeschik)
-                              setDraftPicks(prev => {
-                                const list = [...(prev[r.id]||[])]
-                                list[idx] = {...list[idx], aantal: val}
-                                return {...prev, [r.id]: list}
-                              })
-                            }}
-                            className="w-16 border border-gray-300 rounded px-1 py-0.5 text-sm text-center" />
-                          <button onClick={() => setDraftPicks(prev => {
-                            const list = (prev[r.id]||[]).filter((_: any, i: number) => i !== idx)
-                            return {...prev, [r.id]: list}
-                          })} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        <div key={idx} className="mt-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 text-gray-600">
+                              <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
+                              {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
+                              {' · '}{avItem?.verpakking_type}
+                              {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
+                              {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · Lot {avBatch.batch_nummer}</span>}
+                            </span>
+                            <input type="number" min="0" max={maxBeschik}
+                              value={dp.aantal}
+                              onChange={e => {
+                                const val = Math.min(Number(e.target.value)||0, maxBeschik)
+                                setDraftPicks(prev => {
+                                  const list = [...(prev[r.id]||[])]
+                                  list[idx] = {...list[idx], aantal: val}
+                                  return {...prev, [r.id]: list}
+                                })
+                              }}
+                              className="w-16 border border-gray-300 rounded px-1 py-0.5 text-sm text-center" />
+                            <button onClick={() => setDraftPicks(prev => {
+                              const list = (prev[r.id]||[]).filter((_: any, i: number) => i !== idx)
+                              return {...prev, [r.id]: list}
+                            })} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                          </div>
+                          {locLabel && <div className="text-xs text-gray-400 ml-1">{t('picking_voorraad_per_locatie')}: {locLabel}</div>}
                         </div>
                       )
                     })}
@@ -1049,9 +1074,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                               ? (artikelen||[]).find((art: any) => art.artikelnummer === a.artikel_sku)
                               : avBatch ? (artikelen||[]).find((art: any) => art.key === `${avBatch.naam}|||${a.verpakking_type}`) : null
                             const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
+                            const locLabel = voorraadPerLocLabel(a)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar
+                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar{locLabel ? ` · ${locLabel}` : ''}
                               </option>
                             )
                           })}

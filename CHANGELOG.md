@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.59] — 2026-04-14
+
+### Added — Voorraad per locatie zichtbaar bij picken + uitgeslagen-tegel
+- **Picking modal**: per afvulling-optie wordt nu de voorraadverdeling per locatie
+  getoond (bv. "AGP: 20, Magazijn: 10"). Per reeds toegevoegde pick-regel
+  verschijnt onder de regel een kleine info-tekst met de huidige verdeling.
+- **ProductenPage**: extra KPI-tegel "Uitgeslagen" naast Beschikbare voorraad,
+  toont totaal aantal uitgeslagen eenheden per product.
+- Nieuwe helper `voorraadPerLocLabel(a)` in `BestellingenPage` die compact
+  voorraad per locatie weergeeft.
+
+### Changed — Naamswijziging "Voorraad buiten AGP" → "Uitgeslagen voorraad"
+- Sectie-titel op AGP-pagina hernoemd in alle 5 talen
+- Bijbehorende empty-state melding aangepast
+
+### i18n
+- Nieuw: `lbl_product_uitgeslagen`, `picking_voorraad_per_locatie` in
+  nl/en/de/fr/es
+
+---
+
 ## [1.8.58] — 2026-04-14
 
 ### Added — Historische gemiddelden op AGP-tegels
