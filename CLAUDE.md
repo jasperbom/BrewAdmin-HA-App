@@ -337,6 +337,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `afboekingen` | array | Biervoorraadbewegingen |
 | `klanten` | array | Klanten |
 | `gist_metingen` | array | Gistingsmetingen per batch |
+| `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
 | `kapitaal_boekingen` | array | Kapitaalstortingen / -onttrekkingen |
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
