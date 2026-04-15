@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.63] — 2026-04-15
+
+### Added — Carbonisatie: tanktemperatuur uit HA-sensor
+- **BatchesPage**: in de Carbonisatie-sectie wordt de actuele tanktemperatuur
+  nu automatisch gebruikt als pre-fill wanneer er een Home Assistant-sensor
+  aan de tank van de batch gekoppeld is. Een **🌡 HA: x.x°C** knop onder het
+  tanktemperatuur-veld neemt de meting met één klik over.
+- **Placeholder**: het invoerveld toont de live sensorwaarde als placeholder
+  zodat de gebruiker direct ziet welke temperatuur de tank heeft.
+- **i18n**: nieuwe sleutel `carb_use_sensor_tooltip` (NL/EN/DE/FR/ES).
+
+---
+
 ## [1.8.62] — 2026-04-15
 
 ### Added — Carbonisatie per batch (CO₂ + carb stone of kopdruk)

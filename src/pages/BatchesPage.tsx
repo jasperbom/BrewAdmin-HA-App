@@ -46,6 +46,7 @@ interface BatchesPageProps {
   carbSessies?: any[]
   setCarbSessies?: any
   haInst?: any
+  haTankTemps?: Record<string, number>
   acc?: any[]
   openBatchId?: number | null
   ccpDefinities?: any[]
@@ -416,6 +417,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   gistMetingen=[], setGistMetingen=()=>{},
   carbSessies=[], setCarbSessies=()=>{},
   haInst,
+  haTankTemps={},
   acc=[],
   openBatchId=null,
   preNieuwBatch=null, setPreNieuwBatch=()=>{},
@@ -1912,7 +1914,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               // Pre-fill defaults voor nieuwe sessie
               const defaultVols = defaultCarbVols(selB.stijl)
               const curVols = Number(carbForm.doel_co2_vol) || defaultVols
-              const curTemp = carbForm.tank_temp_c === '' ? 2 : (Number(carbForm.tank_temp_c) || 0)
+              // Tank-temperatuur uit HA-sensor indien beschikbaar voor deze tank
+              const sensorTempRaw = selB.tank != null ? (haTankTemps as any)[selB.tank] : undefined
+              const sensorTemp = (typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw)) ? sensorTempRaw : null
+              const curTemp = carbForm.tank_temp_c === '' ? (sensorTemp ?? 2) : (Number(carbForm.tank_temp_c) || 0)
               const curVerliesPct = carbForm.methode === 'stone' ? (Number(carbForm.verlies_factor) || 0) : 0
               const curVerlies = curVerliesPct / 100
               const batchLiter = Number(selB.liter_vergist||0)
@@ -1924,7 +1929,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 if (!batchLiter) { alert(t('carb_no_batch_liter')); return }
                 if (actief) { alert(t('carb_already_active')); return }
                 const vols = Number(carbForm.doel_co2_vol) || defaultVols
-                const temp = carbForm.tank_temp_c === '' ? 2 : Number(carbForm.tank_temp_c)
+                const temp = carbForm.tank_temp_c === '' ? (sensorTemp ?? 2) : Number(carbForm.tank_temp_c)
                 const verliesFactor = (carbForm.methode === 'stone' ? (Number(carbForm.verlies_factor) || 0) : 0) / 100
                 const now = new Date()
                 const nieuw: any = {
@@ -2087,7 +2092,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         </div>
                         <div className={`grid grid-cols-2 ${carbForm.methode==='stone'?'sm:grid-cols-3':'sm:grid-cols-2'} gap-2`}>
                           <Inp label={t('carb_target_vols')} type="number" value={carbForm.doel_co2_vol} onChange={(v: string)=>setCarbForm((f: any)=>({...f, doel_co2_vol: v}))} placeholder={defaultVols.toFixed(1)} step="0.1" />
-                          <Inp label={t('carb_tank_temp')} type="number" value={carbForm.tank_temp_c} onChange={(v: string)=>setCarbForm((f: any)=>({...f, tank_temp_c: v}))} placeholder="2" step="0.5" />
+                          <div>
+                            <Inp label={t('carb_tank_temp')} type="number" value={carbForm.tank_temp_c} onChange={(v: string)=>setCarbForm((f: any)=>({...f, tank_temp_c: v}))} placeholder={sensorTemp != null ? sensorTemp.toFixed(1) : '2'} step="0.5" />
+                            {sensorTemp != null && (
+                              <button type="button" onClick={()=>setCarbForm((f: any)=>({...f, tank_temp_c: sensorTemp.toFixed(1)}))} className="mt-1 text-xs hover:underline" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
+                                🌡 HA: {sensorTemp.toFixed(1)}°C
+                              </button>
+                            )}
+                          </div>
                           {carbForm.methode==='stone' && (
                             <Inp label={t('carb_loss_factor')} type="number" value={carbForm.verlies_factor} onChange={(v: string)=>setCarbForm((f: any)=>({...f, verlies_factor: v}))} placeholder="25" step="1" />
                           )}

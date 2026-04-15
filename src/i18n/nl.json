@@ -225,6 +225,7 @@
   "carb_method_kopdruk": "Kopdruk",
   "carb_target_vols": "Doel CO₂ (vols)",
   "carb_tank_temp": "Tank temp (°C)",
+  "carb_use_sensor_tooltip": "Klik om de actuele tanktemperatuur uit Home Assistant over te nemen",
   "carb_loss_factor": "Verliesfactor (%)",
   "carb_calculated_pressure": "Berekende druk",
   "carb_actual_pressure": "Werkelijke druk (bar)",

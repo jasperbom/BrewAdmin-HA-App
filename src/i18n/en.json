@@ -225,6 +225,7 @@
   "carb_method_kopdruk": "Head pressure",
   "carb_target_vols": "Target CO₂ (vols)",
   "carb_tank_temp": "Tank temp (°C)",
+  "carb_use_sensor_tooltip": "Click to use the current tank temperature from Home Assistant",
   "carb_loss_factor": "Loss factor (%)",
   "carb_calculated_pressure": "Calculated pressure",
   "carb_actual_pressure": "Actual pressure (bar)",
