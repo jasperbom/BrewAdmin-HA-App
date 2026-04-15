@@ -4,6 +4,46 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.62] — 2026-04-15
+
+### Added — Carbonisatie per batch (CO₂ + carb stone of kopdruk)
+- **BatchesPage**: nieuwe **Carbonisatie**-sectie in de `Conditioneren`-fase
+  per batch. Brouwer kiest methode (carb stone of kopdruk), doel-CO₂ in vols
+  en tanktemperatuur. De app berekent live de benodigde **kopdruk in bar +
+  PSI** (Henry's-law lineaire benadering) én het benodigde **CO₂-gewicht** in
+  gram (opgelost + totaalverbruik incl. verliesfactor). Dit laat een brouwer
+  met een weegschaal onder de fles werken zonder Zahm-Nagel meter.
+- **Live indicator** tijdens een actieve sessie: groen / geel / rood naast
+  het verbruikt-CO₂-veld — vergelijkt de werkelijke gewichtsname tegen het
+  doel (±10% groen, ±25% geel, >25% rood).
+- **Standaard CO₂-volumes per bierstijl** (case-insensitive `includes` op
+  `batch.stijl`): Pils/Lager/IPA → 2.5, Weizen → 3.2, Stout → 2.0, Saison →
+  3.0, Cider → 3.5 (fallback 2.5). Pre-fillt het doel-veld bij start.
+- **Sessie-historie**: tabel onder de actieve sessie met alle voltooide en
+  afgebroken sessies (datum, methode, doel, druk, verbruikt CO₂, gemeten,
+  duur, status). Eén actieve sessie per batch tegelijk.
+- **Verpakt-overgang**: bij `Conditioneren → Verpakt` waarschuwt de app als
+  er geen voltooide carbonisatie is geregistreerd. Niet blokkerend.
+
+### Data
+- Nieuwe datasleutel `carbonatie_sessies` (array). Volgt het `gist_metingen`-
+  patroon: gepersisteerd in `/data/carbonatie_sessies.json`, opgenomen in
+  Excel-backup als sheet `CarbonatieSessies`, audit-log via entiteit
+  `Carbonatiesessie`.
+- Nieuw type `CarbonatieSessie` in `src/types/index.ts`.
+
+### Helpers (calculations.ts)
+- `carbDrukBar(vols, tempC)` — lineaire Henry's-law benadering (±0.05 bar
+  in 0–10 °C / 1.8–3.8 vols)
+- `co2GramOpgelost(vols, L)` — opgeloste massa via `1.9632 g/L per vol`
+- `co2GramTotaalVerbruik(vols, L, verlies)` — opgelost × (1 + verlies)
+- `barToPsi(bar)` — eenheidsconversie
+- `defaultCarbVols(stijl)` — pre-fill via `CARB_DEFAULT_VOLS` lookup
+
+### i18n (nl/en/de/fr/es)
+- Nieuw: 41 `carb_*`-sleutels (titel, methode, doel, indicatorlabels,
+  status, knoppen, bevestigingsdialogen).
+
 ## [1.8.61] — 2026-04-14
 
 ### Added — Voorraad per locatie + locatie-keuze bij picken

@@ -606,6 +606,32 @@ export interface GistMeting {
   auto?: boolean
 }
 
+// Carbonisatie-sessie per batch. Meerdere sessies per batch mogelijk (bv.
+// eerste poging niet op doel → tweede ronde). Per batch mag er slechts één
+// sessie met status 'actief' bestaan.
+export interface CarbonatieSessie {
+  id: number
+  batch_id: number
+  methode: 'stone' | 'kopdruk'        // carb stone of alleen kopdruk
+  start_datum: string                  // ISO datum (YYYY-MM-DD)
+  start_tijd?: string                  // HH:MM
+  eind_datum?: string
+  eind_tijd?: string
+  doel_co2_vol: number                 // target volumes CO2 (bv 2.5)
+  tank_temp_c: number                  // tanktemperatuur in °C
+  batch_liter: number                  // snapshot van liter_vergist bij start
+  verlies_factor: number               // fractie verlies, bv 0.25 (= 25%)
+  doel_druk_bar: number                // afgeleid, opgeslagen voor audit
+  doel_co2_gram_opgelost: number       // vols × 1.9632 × L
+  doel_co2_gram_verbruik: number       // opgelost × (1 + verlies)
+  werkelijke_druk_bar?: number         // daadwerkelijk ingestelde kopdruk
+  verbruikt_co2_gram?: number          // fles-gewicht voor − na
+  gemeten_co2_vol?: number             // gemeten via Zahm-Nagel (optioneel)
+  status: 'actief' | 'voltooid' | 'afgebroken'
+  opmerking?: string
+  created_at?: string
+}
+
 export interface HaSensor {
   id: number
   tank: string

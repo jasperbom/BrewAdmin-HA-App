@@ -110,6 +110,65 @@ export const berekenProductKostprijs = (
   }
 }
 
+// ── Carbonisatie ────────────────────────────────────────────────────────────
+// Helpers voor geforceerde carbonisatie met carb stone of kopdruk. Alle
+// berekeningen zijn metrisch (bar, °C, gram, liter).
+
+// 1 vol CO2 ≈ 1.9632 g/L opgelost (standaard brouwersconstante).
+export const CO2_G_PER_L_PER_VOL = 1.9632
+
+// Benodigde kopdruk voor een gewenst CO2-gehalte bij een gegeven
+// tanktemperatuur. Lineaire benadering van Henry's-law die binnen ±0.05 bar
+// correct is voor 0–10 °C en 1.8–3.8 vols (99% van het brouwersbereik).
+// Geijkt op: V=2.5 vols, T=2 °C → P ≈ 0.85 bar (12.3 PSI).
+export const carbDrukBar = (volsCO2: number, tempC: number): number => {
+  const v = Number(volsCO2) || 0
+  const t = Number(tempC) || 0
+  return 0.85 + (v - 2.5) * 0.30 + (t - 2) * 0.035
+}
+
+// Bar → PSI conversie (1 bar = 14.5038 PSI).
+export const barToPsi = (bar: number): number => (Number(bar) || 0) * 14.5038
+
+// Massa CO2 die opgelost moet worden in het bier om het doel te halen (g).
+export const co2GramOpgelost = (volsCO2: number, batchLiter: number): number => {
+  return (Number(volsCO2) || 0) * CO2_G_PER_L_PER_VOL * (Number(batchLiter) || 0)
+}
+
+// Totaal verbruik uit de CO2-fles, inclusief verlies door carb stone /
+// venting. Default verliesfactor 0.25 (= 25%) is een praktijkwaarde voor een
+// stone bij lage debietinstelling; voor kopdruk is verlies verwaarloosbaar
+// (gebruik dan factor 0).
+export const co2GramTotaalVerbruik = (
+  volsCO2: number,
+  batchLiter: number,
+  verliesFactor: number = 0.25
+): number => {
+  return co2GramOpgelost(volsCO2, batchLiter) * (1 + (Number(verliesFactor) || 0))
+}
+
+// Default-carbonatie (vols) per bierstijl. Case-insensitive `includes`-match op
+// de batch-stijl. Fallback: 2.5 vols (algemeen gemiddeld ale/lager).
+export const CARB_DEFAULT_VOLS: Record<string, number> = {
+  pils: 2.5, lager: 2.5, ipa: 2.5, 'pale ale': 2.5,
+  weizen: 3.2, witbier: 3.0, 'wit bier': 3.0, hefeweizen: 3.2, saison: 3.0,
+  stout: 2.0, porter: 2.3,
+  tripel: 3.0, dubbel: 2.4, quadrupel: 2.4, quad: 2.4,
+  cider: 3.5, fruitbier: 3.3, sour: 3.3,
+}
+export const CARB_DEFAULT_FALLBACK = 2.5
+
+// Geeft de default-CO2-volumes voor een bierstijl. Zoekt case-insensitive
+// een trefwoord in `stijl` en valt terug op `CARB_DEFAULT_FALLBACK`.
+export const defaultCarbVols = (stijl?: string): number => {
+  const s = String(stijl || '').toLowerCase()
+  if (!s) return CARB_DEFAULT_FALLBACK
+  for (const [key, val] of Object.entries(CARB_DEFAULT_VOLS)) {
+    if (s.includes(key)) return val
+  }
+  return CARB_DEFAULT_FALLBACK
+}
+
 // ── Tank-geschiedenis ───────────────────────────────────────────────────────
 // Retourneert het geresolveerde verloop van tanks voor een batch. Als er nog
 // geen expliciete `tank_historie` is (legacy batches), wordt één entry
