@@ -225,6 +225,7 @@
   "carb_method_kopdruk": "Pression de tête",
   "carb_target_vols": "Cible CO₂ (vols)",
   "carb_tank_temp": "Temp. cuve (°C)",
+  "carb_use_sensor_tooltip": "Cliquez pour utiliser la température actuelle de la cuve depuis Home Assistant",
   "carb_loss_factor": "Facteur de perte (%)",
   "carb_calculated_pressure": "Pression calculée",
   "carb_actual_pressure": "Pression réelle (bar)",
