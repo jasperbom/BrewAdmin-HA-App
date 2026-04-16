@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.65] — 2026-04-16
+
+### Added — Dashboard: HACCP taken widget
+- Nieuwe widget op het dashboard toont achterstallige en vandaag-te-doen
+  schoonmaaktaken direct, zonder naar de HACCP-pagina te hoeven navigeren.
+- Per taak is een **Uitvoeren**-knop beschikbaar die een inline formulier opent
+  (Uitgevoerd door, Opmerking, CIP-cyclus) — analoog aan de bestaande inline
+  gistmeting op tankkaarten.
+- Open CAPA's worden eveneens in de widget getoond met status-badge.
+- Bij alle taken bijgewerkt toont de widget een groene "Alles bijgewerkt ✓" staat.
+- De widget-header is klikbaar en navigeert naar de volledige HACCP-pagina.
+- Vertaald in alle 5 talen (nl/en/de/fr/es).
+
+---
+
 ## [1.8.64] — 2026-04-16
 
 ### Fixed — Bestellingen: verwarrende dubbele "Annuleren" knoppen
