@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.66] — 2026-04-16
+
+### Added — Bierverlies-registratie module
+- Nieuwe "Verliesregistratie" sectie op de batch-detailweergave waar verlies
+  per bron (tankrest, leidingrest, schuim, monsters, afgekeurde flessen,
+  overig) met datum, liters en notitie kan worden vastgelegd.
+- Per batch tonen we het totaal geregistreerde verlies, het afgeleide verlies
+  (liter_vergist − totaal afgevuld) en het nog-niet-toegewezen deel, plus een
+  uitsplitsing per bron.
+- Het kostprijsblok toont onder "Verlies" een klikbare snelkoppeling naar de
+  registratie-sectie. De kostprijs per liter blijft afgeleid van het
+  werkelijk afgevulde volume.
+- Nieuwe data-sleutel `verlies_registraties` (patroon van `gist_metingen` /
+  `carbonatie_sessies`); opgenomen in Excel-backup en -restore.
+- Vertaald in alle 5 talen (nl/en/de/fr/es).
+
+---
+
 ## [1.8.65] — 2026-04-16
 
 ### Added — Dashboard: HACCP taken widget
