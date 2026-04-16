@@ -5,12 +5,14 @@ import { resolveTankHistorie } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[]}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
   const [metingBatchId, setMetingBatchId] = useState<number|null>(null);
   const [mForm, setMForm] = useState({sg: '', ph: '', temp: ''});
+  const [haccpFormTaakId, setHaccpFormTaakId] = useState<number|null>(null);
+  const [haccpForm, setHaccpForm] = useState({uitgevoerd_door: '', opmerking: '', cip: false});
 
   // ── Lot expiry ────────────────────────────────────────────────────────────
   const activeLots   = lots.filter((l: any) => l.beschikbaar && Number(l.hoeveelheid||0) > 0);
@@ -118,6 +120,55 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     setMetingBatchId(null);
     setMForm({sg: '', ph: '', temp: ''});
   };
+
+  // ── HACCP helpers ─────────────────────────────────────────────────────────
+  const FREQ_D: Record<string,number> = {dagelijks:1, wekelijks:7, maandelijks:30, per_batch:30, anders:30};
+
+  const taakStatus = (taak: any): 'ok'|'vandaag'|'te_laat' => {
+    const logs = (haccpLog as any[]).filter((l: any) => l.taak_id === taak.id);
+    const last = logs.sort((a: any, b: any) => b.datum.localeCompare(a.datum))[0];
+    const freq = FREQ_D[taak.frequentie] ?? 30;
+    if (!last) return 'te_laat';
+    const nu = new Date(); nu.setHours(0,0,0,0);
+    const ld = new Date(last.datum); ld.setHours(0,0,0,0);
+    const dagen = Math.floor((nu.getTime() - ld.getTime()) / 86400000);
+    if (dagen >= freq) return 'te_laat';
+    if (dagen >= freq - 1) return 'vandaag';
+    return 'ok';
+  };
+
+  const dagonTeLaat = (taak: any): number => {
+    const logs = (haccpLog as any[]).filter((l: any) => l.taak_id === taak.id);
+    const last = logs.sort((a: any, b: any) => b.datum.localeCompare(a.datum))[0];
+    const freq = FREQ_D[taak.frequentie] ?? 30;
+    if (!last) return freq;
+    const nu = new Date(); nu.setHours(0,0,0,0);
+    const ld = new Date(last.datum); ld.setHours(0,0,0,0);
+    const dagen = Math.floor((nu.getTime() - ld.getTime()) / 86400000);
+    return Math.max(0, dagen - freq + 1);
+  };
+
+  const saveHaccpTaak = () => {
+    if (!haccpForm.uitgevoerd_door.trim() || haccpFormTaakId == null) return;
+    const entry: any = {
+      id: Date.now(),
+      taak_id: haccpFormTaakId,
+      datum: new Date().toISOString().slice(0, 10),
+      uitgevoerd_door: haccpForm.uitgevoerd_door.trim(),
+    };
+    if (haccpForm.opmerking) entry.opmerking = haccpForm.opmerking;
+    if (haccpForm.cip) entry.cip = true;
+    setHaccpLog([...(haccpLog as any[]), entry]);
+    setHaccpFormTaakId(null);
+    setHaccpForm({uitgevoerd_door: '', opmerking: '', cip: false});
+  };
+
+  const activeTaken = (haccpTaken as any[]).filter((t: any) => t.actief !== false);
+  const openTaken = activeTaken
+    .map((t: any) => ({...t, _status: taakStatus(t), _dagen: dagonTeLaat(t)}))
+    .filter((t: any) => t._status !== 'ok')
+    .sort((a: any, b: any) => (a._status === 'te_laat' && b._status !== 'te_laat') ? -1 : (b._status === 'te_laat' && a._status !== 'te_laat') ? 1 : b._dagen - a._dagen);
+  const openCapasHaccp = (haccpCapa as any[]).filter((c: any) => c.status !== 'afgerond');
 
   // ── Sub-components ────────────────────────────────────────────────────────
   const StatCard = ({label, value, sub, color='gray', onClick}: any) => {
@@ -865,6 +916,160 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                 {t('msg_n_meer').replace('{n}', String(vervallenFacturen.length - 5))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── HACCP taken widget ───────────────────────────────────────────── */}
+      {(openTaken.length > 0 || openCapasHaccp.length > 0 || activeTaken.length > 0) && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
+          {/* Header */}
+          <div
+            className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer"
+            onClick={() => setPage('haccp')}
+          >
+            <div className="flex items-center gap-2">
+              <span>{t('haccp_widget_titel')}</span>
+              {openTaken.filter((t: any) => t._status === 'te_laat').length > 0 && (
+                <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                  {openTaken.filter((t: any) => t._status === 'te_laat').length} {t('haccp_widget_te_laat')}
+                </span>
+              )}
+              {openCapasHaccp.length > 0 && (
+                <span className="bg-orange-400 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                  {openCapasHaccp.length} {t('haccp_widget_open_capas')}
+                </span>
+              )}
+            </div>
+            <span className="text-xs opacity-75">→</span>
+          </div>
+
+          <div className="p-4 space-y-1">
+            {/* Leeg-staat */}
+            {openTaken.length === 0 && openCapasHaccp.length === 0 && (
+              <p className="text-sm text-emerald-600 font-medium py-1">{t('haccp_widget_geen_open')}</p>
+            )}
+
+            {/* Schoonmaaktaken */}
+            {openTaken.slice(0, 5).map((taak: any) => {
+              const isOpen = haccpFormTaakId === taak.id;
+              const isLate = taak._status === 'te_laat';
+              return (
+                <div key={taak.id} className={`rounded-lg border ${isLate ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'} px-3 py-2`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`flex-shrink-0 w-2 h-2 rounded-full ${isLate ? 'bg-red-500' : 'bg-yellow-400'}`} />
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-gray-800 truncate block">{taak.naam}</span>
+                        <span className="text-xs text-gray-500">
+                          {t(`haccp_freq_${taak.frequentie}`) || taak.frequentie}
+                          {' · '}
+                          {taak._status === 'vandaag'
+                            ? t('haccp_widget_vandaag')
+                            : t('haccp_widget_dagen_te_laat').replace('{n}', String(taak._dagen))}
+                        </span>
+                      </div>
+                    </div>
+                    {!isOpen && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setHaccpFormTaakId(taak.id); setHaccpForm({uitgevoerd_door:'', opmerking:'', cip:false}); }}
+                        className="flex-shrink-0 text-xs font-medium px-2 py-1 rounded hover:opacity-80 transition-opacity"
+                        style={{color:'var(--t-accent)'}}
+                      >
+                        {t('haccp_widget_uitvoeren')}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Inline uitvoer-formulier */}
+                  {isOpen && (
+                    <div className="mt-2 pt-2 border-t border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-0.5">{t('haccp_schoonmaak_door')} *</label>
+                          <input
+                            type="text"
+                            value={haccpForm.uitgevoerd_door}
+                            onChange={(e) => setHaccpForm(f => ({...f, uitgevoerd_door: e.target.value}))}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs t-input"
+                            autoFocus
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 block mb-0.5">{t('haccp_schoonmaak_opmerking')}</label>
+                          <input
+                            type="text"
+                            value={haccpForm.opmerking}
+                            onChange={(e) => setHaccpForm(f => ({...f, opmerking: e.target.value}))}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs t-input"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={haccpForm.cip}
+                          onChange={(e) => setHaccpForm(f => ({...f, cip: e.target.checked}))}
+                          className="t-checkbox"
+                        />
+                        {t('haccp_schoonmaak_cip')}
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={saveHaccpTaak}
+                          disabled={!haccpForm.uitgevoerd_door.trim()}
+                          className="tbtn text-white text-xs px-3 py-1.5 rounded disabled:opacity-40"
+                        >
+                          {t('btn_save')}
+                        </button>
+                        <button
+                          onClick={() => setHaccpFormTaakId(null)}
+                          className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5"
+                        >
+                          {t('btn_cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {openTaken.length > 5 && (
+              <div className="text-xs text-gray-400 px-1 cursor-pointer hover:text-gray-600" onClick={() => setPage('haccp')}>
+                {t('msg_n_meer').replace('{n}', String(openTaken.length - 5))}
+              </div>
+            )}
+
+            {/* Open CAPA's */}
+            {openCapasHaccp.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{t('haccp_dash_open_capa')}</div>
+                {openCapasHaccp.slice(0, 3).map((c: any) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between py-1 cursor-pointer hover:bg-gray-50 rounded px-1"
+                    onClick={() => setPage('haccp')}
+                  >
+                    <span className="text-xs text-gray-700 truncate flex-1 mr-2">{c.omschrijving}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${c.status === 'open' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {c.status === 'open' ? t('haccp_capa_status_open') : t('haccp_capa_status_in_behandeling')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Footer link */}
+            <div className="pt-2 text-right">
+              <button
+                onClick={() => setPage('haccp')}
+                className="text-xs font-medium hover:underline"
+                style={{color:'var(--t-accent)'}}
+              >
+                {t('haccp_widget_naar_haccp')}
+              </button>
+            </div>
           </div>
         </div>
       )}
