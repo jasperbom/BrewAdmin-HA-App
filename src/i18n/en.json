@@ -757,6 +757,7 @@
   "order_print_pakbon": "Print packing slip",
   "order_print_factuur": "Print invoice",
   "order_cancel": "Cancel",
+  "order_cancel_bevestig": "Yes, cancel",
   "manual_order_title": "New order",
   "manual_order_klant_naam": "Customer name",
   "manual_order_klant_email": "Email address",

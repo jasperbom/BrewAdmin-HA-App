@@ -754,6 +754,7 @@
   "order_print_pakbon": "Imprimir albarán",
   "order_print_factuur": "Imprimir factura",
   "order_cancel": "Cancelar",
+  "order_cancel_bevestig": "Sí, cancelar",
   "manual_order_title": "Nuevo pedido",
   "manual_order_klant_naam": "Nombre del cliente",
   "manual_order_klant_email": "Correo electrónico",

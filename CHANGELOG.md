@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.64] — 2026-04-16
+
+### Fixed — Bestellingen: verwarrende dubbele "Annuleren" knoppen
+- In de bevestigingsdialoog voor het annuleren van een bestelling stonden twee
+  knoppen met exact dezelfde tekst "Annuleren". De bevestig-knop toont nu
+  "Ja, annuleren" zodat duidelijk is welke knop de bestelling daadwerkelijk
+  annuleert en welke de dialoog sluit.
+
+---
+
 ## [1.8.63] — 2026-04-15
 
 ### Added — Carbonisatie: tanktemperatuur uit HA-sensor

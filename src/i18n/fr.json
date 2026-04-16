@@ -754,6 +754,7 @@
   "order_print_pakbon": "Imprimer bon de livraison",
   "order_print_factuur": "Imprimer facture",
   "order_cancel": "Annuler",
+  "order_cancel_bevestig": "Oui, annuler",
   "manual_order_title": "Nouvelle commande",
   "manual_order_klant_naam": "Nom du client",
   "manual_order_klant_email": "Adresse e-mail",

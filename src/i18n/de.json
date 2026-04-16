@@ -757,6 +757,7 @@
   "order_print_pakbon": "Lieferschein drucken",
   "order_print_factuur": "Rechnung drucken",
   "order_cancel": "Stornieren",
+  "order_cancel_bevestig": "Ja, stornieren",
   "manual_order_title": "Neue Bestellung",
   "manual_order_klant_naam": "Kundenname",
   "manual_order_klant_email": "E-Mail-Adresse",

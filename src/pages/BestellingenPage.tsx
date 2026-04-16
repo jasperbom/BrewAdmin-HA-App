@@ -1183,7 +1183,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               <p className="text-sm text-gray-600">{t('msg_order_cancel_confirm')}</p>
               <div className="flex justify-end gap-2">
                 <Btn v="secondary" onClick={() => setShowAnnuleerModal(false)}>{t('btn_cancel')}</Btn>
-                <Btn v="danger" onClick={annuleerOrder}>{t('order_cancel')}</Btn>
+                <Btn v="danger" onClick={annuleerOrder}>{t('order_cancel_bevestig')}</Btn>
               </div>
             </div>
           </Modal>

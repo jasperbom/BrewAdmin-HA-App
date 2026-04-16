@@ -757,6 +757,7 @@
   "order_print_pakbon": "Pakbon afdrukken",
   "order_print_factuur": "Factuur afdrukken",
   "order_cancel": "Annuleren",
+  "order_cancel_bevestig": "Ja, annuleren",
   "manual_order_title": "Nieuwe bestelling",
   "manual_order_klant_naam": "Klantnaam",
   "manual_order_klant_email": "E-mailadres",
