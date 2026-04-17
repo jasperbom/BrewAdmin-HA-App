@@ -332,6 +332,99 @@ export const voorraadPerLocatie = (
   return result
 }
 
+// Raw variant van voorraadPerLocatie: geeft negatieve waarden NIET terug naar 0.
+// Gebruikt voor S-5 negatieve-voorraad-signalering om data-inconsistenties
+// zichtbaar te maken.
+export const voorraadPerLocatieRaw = (
+  afv: Afvulling,
+  locaties: Locatie[],
+  uitleveringen: Uitlevering[] = [],
+  verplaatsingen: Verplaatsing[] = [],
+  afboekingen: Afboeking[] = []
+): Record<number, number> => {
+  const agp = getAgpLocatie(locaties)
+  const result: Record<number, number> = {}
+  result[agp.id] = afvAantal(afv)
+
+  const verpl = (verplaatsingen || [])
+    .filter(v => v.afvulling_id === afv?.id)
+    .slice()
+    .sort((a, b) => String(a.datum || '').localeCompare(String(b.datum || '')))
+  for (const v of verpl) {
+    const aantal = Number(v.aantal || 0)
+    if (!aantal) continue
+    result[v.van_locatie_id] = (result[v.van_locatie_id] || 0) - aantal
+    result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + aantal
+  }
+
+  const uits = (uitleveringen || []).filter(u => u.afvulling_id === afv?.id)
+  for (const u of uits) {
+    const locId = u.bron_locatie_id ?? agp.id
+    result[locId] = (result[locId] || 0) - Number(u.aantal || 0)
+  }
+
+  const afb = (afboekingen || []).filter(a => a.afvulling_id === afv?.id)
+  for (const a of afb) {
+    result[agp.id] = (result[agp.id] || 0) - Number(a.aantal || 0)
+  }
+  return result
+}
+
+export interface NegatieveVoorraadPositie {
+  afvulling_id: number
+  batch_id: number
+  batch_naam: string
+  batch_nummer: string | number
+  verpakking_naam: string
+  locatie_id: number
+  locatie_naam: string
+  voorraad: number
+}
+
+// S-5: Bepaalt alle voorraadposities met een negatieve waarde.
+// Dit signaleert data-inconsistenties (bijv. uitleveringen groter dan
+// voorraad op locatie, onjuiste verplaatsingen of dubbele afboekingen).
+export const getNegatieveVoorraadPosities = (
+  afvullingen: Afvulling[],
+  locaties: Locatie[],
+  uitleveringen: Uitlevering[] = [],
+  verplaatsingen: Verplaatsing[] = [],
+  afboekingen: Afboeking[] = [],
+  batches: any[] = []
+): NegatieveVoorraadPositie[] => {
+  const rows: NegatieveVoorraadPositie[] = []
+  const locNaam: Record<number, string> = {}
+  ;(locaties || []).forEach(l => { locNaam[l.id] = l.naam })
+  const batchMap: Record<number, any> = {}
+  ;(batches || []).forEach((b: any) => { batchMap[b.id] = b })
+
+  for (const afv of (afvullingen || [])) {
+    const voor = voorraadPerLocatieRaw(afv, locaties, uitleveringen, verplaatsingen, afboekingen)
+    for (const k of Object.keys(voor)) {
+      const locId = Number(k)
+      const v = voor[locId]
+      if (v < 0) {
+        const batch = batchMap[(afv as any).batch_id] || {}
+        rows.push({
+          afvulling_id: (afv as any).id,
+          batch_id: (afv as any).batch_id,
+          batch_naam: batch.bier || batch.naam || '',
+          batch_nummer: batch.batch_nummer || '',
+          verpakking_naam: (afv as any).verpakking_naam || (afv as any).verpakking || '',
+          locatie_id: locId,
+          locatie_naam: locNaam[locId] || String(locId),
+          voorraad: v,
+        })
+      }
+    }
+  }
+  return rows.sort((a, b) =>
+    a.batch_naam.localeCompare(b.batch_naam) ||
+    a.verpakking_naam.localeCompare(b.verpakking_naam) ||
+    a.locatie_naam.localeCompare(b.locatie_naam)
+  )
+}
+
 // Compacte AGP-overzichts­data voor het dashboard.
 export interface AgpTankRij {
   batch: any

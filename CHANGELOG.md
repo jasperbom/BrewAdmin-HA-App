@@ -4,6 +4,63 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.68] — 2026-04-17
+
+### Added — S-5: Negatieve-voorraad-signalering
+- **DashboardPage**: nieuwe rode stat-card "Negatieve voorraad" die alleen
+  verschijnt als er één of meer voorraadposities met een negatief saldo zijn.
+  Klik navigeert naar de voorraadverloop-pagina.
+- **VoorraadverloopPage**: nieuwe tab **Controle negatieve voorraad** met
+  detaillijst (batch #, product, verpakking, locatie, voorraad) en een
+  **CSV-export**-knop. Toont uitleg over oorzaken (uitlevering groter dan
+  voorraad op locatie, onjuiste verplaatsingen, dubbele afboekingen) en
+  suggereert correctie via inventarisatie of mutatie-aanpassing.
+- **utils/calculations.ts**: nieuwe helpers `voorraadPerLocatieRaw()` (zonder
+  normalisatie naar 0) en `getNegatieveVoorraadPosities()` bouwen op de
+  bestaande `voorraadPerLocatie`-logica; geen nieuwe data-stores nodig.
+- Vertaald in alle 5 talen (nl/en/de/fr/es).
+
+---
+
+## [1.8.67] — 2026-04-17
+
+### Added — S-4: Brouwdag- & botteldag-checklists (HACCP Bijlage A.1 / A.2)
+- **BatchesPage**: twee nieuwe checklists per batch, uitklapbaar en standaard
+  ingeklapt. De **brouwdag-checklist** (12 items — A.1) verschijnt in de
+  `Brouwen`-fase naast de bestaande hygiëne-checklist. De **botteldag-checklist**
+  (9 items — A.2) verschijnt bij de afvul-/botteling-stap.
+- Voortgang wordt per batch opgeslagen in de nieuwe velden `brouwdag_checks`
+  en `botteldag_checks` op `Batch` (beide `Record<number, boolean>`) en via
+  de bestaande Excel-backup automatisch meegenomen.
+- Elk item (vinken/ontvinken/reset) logt naar de audit-trail.
+- Routinekarakter — helpend, niet blokkerend voor batch-statuswijzigingen.
+- **constants.ts**: `DEFAULT_BROUWDAG_CHECKLIST` (12) en
+  `DEFAULT_BOTTELDAG_CHECKLIST` (9) met i18n-labelKeys.
+- Vertaald in alle 5 talen (nl/en/de/fr/es).
+
+---
+
+## [1.8.66] — 2026-04-17
+
+### Added — M-1: Bijzondere mutaties (vermis / intern gebruik / vernietiging)
+- **ProductenPage**: het afboek-modaal kreeg tabbladen per reden. Voor de reden
+  **vernietiging** is een Douane-compliance-paneel toegevoegd met verplichte
+  velden: toestemming Douane (checkbox), toestemmingsdatum, kenmerk/referentie
+  en minimaal één bewijsbijlage (foto of PDF). Zonder deze velden kan de
+  afboeking niet worden opgeslagen.
+- Bewijsmateriaal wordt via `/api/upload/{filename}` op de add-on-server
+  opgeslagen. Toegestane formaten: PDF, JPG, PNG, GIF, WebP, TIFF, BMP,
+  HEIC/HEIF (video niet ondersteund — expliciet alleen in-app, geen
+  automatische Douane-e-mail).
+- **types/index.ts**: Afboeking uitgebreid met `toestemming_douane`,
+  `toestemming_datum`, `kenmerk_douane` en `bijlagen: AfboekingBijlage[]`;
+  nieuwe `AfboekingBijlage`-interface.
+- Audit-log registreert iedere vernietigings-afboeking met verwijzing naar
+  de bijlagen.
+- Vertaald in alle 5 talen (nl/en/de/fr/es).
+
+---
+
 ## [1.8.65] — 2026-04-16
 
 ### Added — Dashboard: HACCP taken widget

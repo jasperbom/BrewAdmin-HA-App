@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD } from '../utils/format'
-import { resolveTankHistorie } from '../utils/calculations'
+import { resolveTankHistorie, getNegatieveVoorraadPosities } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[]}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -33,6 +33,12 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   const beschVoorraad  = uit.reduce((s: any, u: any) => s + Number(u.aantal||0) - Number(u.verkocht_stuks||0), 0);
   const openBestellingen = bi.filter((b: any) => ['nieuw','gepickt'].includes(b.status));
   const actiefBatches  = bat.filter((b: any) => b.status !== 'Gesloten');
+
+  // S-5: Negatieve voorraad-signalering — aantal posities met voorraad < 0
+  const negatievePosities = React.useMemo(
+    () => getNegatieveVoorraadPosities(av, locaties, uit, verplaatsingen, afboekingen, bat),
+    [av, locaties, uit, verplaatsingen, afboekingen, bat]
+  );
 
   // ── Vervallen verkoopfacturen ─────────────────────────────────────────────
   const vervallenFacturen = React.useMemo(() => {
@@ -590,6 +596,19 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
         <StatCard label={t('lbl_vervallen_facturen')} value={vervallenFacturen.length}   sub={t('lbl_factuur_vervallen_dagen').replace('{n}','')}    color={vervallenFacturen.length > 0 ? 'red' : 'gray'}       onClick={() => setPage('boekhouding')} />
         <StatCard label={t('lbl_open_orders')}        value={openBestellingen.length}    sub={t('lbl_orders_to_pick')}                              color={openBestellingen.length > 0 ? 'orange' : 'gray'}     onClick={() => setPage('bestellingen')} />
       </div>
+
+      {/* S-5: Negatieve-voorraad-signalering — alleen tonen als er posities zijn */}
+      {negatievePosities.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 mb-8">
+          <StatCard
+            label={t('stat_negatieve_voorraad')}
+            value={negatievePosities.length}
+            sub={t('stat_negatieve_voorraad_sub')}
+            color="red"
+            onClick={() => setPage('voorraadverloop')}
+          />
+        </div>
+      )}
 
       {/* ── THT alerts ────────────────────────────────────────────────────── */}
       {hasAlerts ? (

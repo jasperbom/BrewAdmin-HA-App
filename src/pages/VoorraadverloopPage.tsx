@@ -1,6 +1,7 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
 import { fmt, fmtD, tod } from '../utils/format'
+import { getNegatieveVoorraadPosities } from '../utils/calculations'
 import * as XLSX from 'xlsx'
 
 /* ── Period helpers ──────────────────────────────────────────────────────────── */
@@ -59,12 +60,51 @@ const colorClass = (v: number) =>
 
 /* ── Component ───────────────────────────────────────────────────────────────── */
 
-function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], afboekingen = [], log = [], ing = [], accijnsInst = null, producten = [] }: any) {
+function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], afboekingen = [], log = [], ing = [], accijnsInst = null, producten = [], locaties = [], verplaatsingen = [] }: any) {
   const { useState, useMemo } = React
   const now = new Date()
+  const [tab, setTab] = useState<'verloop' | 'negatief'>('verloop')
   const [periodType, setPeriodType] = useState<PeriodType>('maand')
   const [year, setYear] = useState(now.getFullYear())
   const [period, setPeriod] = useState(periodType === 'kwartaal' ? Math.ceil((now.getMonth() + 1) / 3) : now.getMonth() + 1)
+
+  // S-5: negatieve-voorraad-controle
+  const negatievePosities = useMemo(
+    () => getNegatieveVoorraadPosities(av, locaties, uit, verplaatsingen, afboekingen, bat),
+    [av, locaties, uit, verplaatsingen, afboekingen, bat]
+  )
+
+  const exportNegatiefCsv = () => {
+    const headers = [
+      t('neg_col_batch'),
+      t('neg_col_product'),
+      t('neg_col_verpakking'),
+      t('neg_col_locatie'),
+      t('stat_negatieve_voorraad_col_voorraad'),
+    ]
+    const rows = negatievePosities.map(p => [
+      String(p.batch_nummer || ''),
+      p.batch_naam,
+      p.verpakking_naam,
+      p.locatie_naam,
+      String(p.voorraad),
+    ])
+    const esc = (v: string) => {
+      const s = String(v ?? '')
+      return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const csv = [headers, ...rows].map(r => r.map(esc).join(';')).join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const today = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `negatieve_voorraad_${today}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   const { van, tot } = useMemo(() => getPeriodRange(year, period, periodType), [year, period, periodType])
   const label = useMemo(() => periodLabel(year, period, periodType), [year, period, periodType])
@@ -345,6 +385,84 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-800">{t('nav_voorraadverloop')}</h2>
+
+      {/* Tab switcher */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setTab('verloop')}
+          className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
+            tab === 'verloop' ? 'text-white' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+          }`}
+          style={tab === 'verloop' ? { backgroundColor: 'var(--t-accent)' } : undefined}
+        >
+          {t('gpa_tab_verloop')}
+        </button>
+        <button
+          onClick={() => setTab('negatief')}
+          className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors flex items-center gap-2 ${
+            tab === 'negatief' ? 'text-white' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+          }`}
+          style={tab === 'negatief' ? { backgroundColor: 'var(--t-accent)' } : undefined}
+        >
+          {t('gpa_tab_negatief')}
+          {negatievePosities.length > 0 && (
+            <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${tab === 'negatief' ? 'bg-white text-red-600' : 'bg-red-600 text-white'}`}>
+              {negatievePosities.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {tab === 'negatief' ? (
+        <div className="bg-white rounded-xl shadow-card overflow-hidden">
+          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between">
+            <span>{t('stat_negatieve_voorraad')}</span>
+            {negatievePosities.length > 0 && (
+              <button
+                onClick={exportNegatiefCsv}
+                className="text-xs px-3 py-1 rounded bg-white/20 hover:bg-white/30 text-white transition-colors"
+              >
+                {t('gpa_export_csv')}
+              </button>
+            )}
+          </div>
+          {negatievePosities.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-sm">
+              <div className="text-green-600 text-base font-semibold mb-1">{t('stat_negatieve_voorraad_leeg_titel')}</div>
+              <div>{t('stat_negatieve_voorraad_leeg_sub')}</div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="px-4 py-3 bg-red-50 border-b border-red-200 text-red-700 text-sm">
+                {t('stat_negatieve_voorraad_uitleg')}
+              </div>
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-500 bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">{t('neg_col_batch')}</th>
+                    <th className="px-3 py-2 text-left">{t('neg_col_product')}</th>
+                    <th className="px-3 py-2 text-left">{t('neg_col_verpakking')}</th>
+                    <th className="px-3 py-2 text-left">{t('neg_col_locatie')}</th>
+                    <th className="px-3 py-2 text-right">{t('stat_negatieve_voorraad_col_voorraad')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {negatievePosities.map((p, idx) => (
+                    <tr key={`${p.afvulling_id}-${p.locatie_id}-${idx}`} className="hover:bg-red-50/50">
+                      <td className="px-3 py-2 text-gray-600 font-mono text-xs">{p.batch_nummer || '—'}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800">{p.batch_naam || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.verpakking_naam || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.locatie_naam}</td>
+                      <td className="px-3 py-2 text-right font-bold text-red-600">{p.voorraad}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Period selector */}
       <div className="bg-white rounded-xl shadow-card p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -488,6 +606,8 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   )
 }

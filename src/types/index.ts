@@ -65,6 +65,8 @@ export interface Batch {
   created_at?: string
   tank_historie?: TankHistorieEntry[]
   hygiene_checks?: Record<number, boolean>
+  brouwdag_checks?: Record<number, boolean>  // S-4: Brouwdag-checklist (12 items)
+  botteldag_checks?: Record<number, boolean> // S-4: Botteldag-checklist (9 items)
   allergeen_notities?: string
 }
 
@@ -647,6 +649,12 @@ export interface HaInst {
 // omdat het daadwerkelijk een AGP-exit is waarvoor accijns verschuldigd is.
 export type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 
+// Bijlage-referentie (opgeslagen bestand op server via /api/upload)
+export interface AfboekingBijlage {
+  naam: string        // originele bestandsnaam (zoals door gebruiker geüpload)
+  bestand: string     // unieke bestandsnaam op server (onder /data/inkoop_facturen/)
+}
+
 export interface Afboeking {
   id: number
   afvulling_id: number
@@ -656,6 +664,12 @@ export interface Afboeking {
   reden: AfboekingReden
   opmerking: string
   created_at?: string
+  // ── M-1 Bijzondere mutaties (vernietiging) ─────────────────────────────────
+  // Voor reden='vernietiging': vereist voor Douane-compliance
+  toestemming_douane?: boolean    // vinkje: Douane-toestemming aanwezig
+  toestemming_datum?: string      // datum waarop toestemming is verleend (YYYY-MM-DD)
+  kenmerk_douane?: string         // referentienummer/kenmerk van Douane
+  bijlagen?: AfboekingBijlage[]   // foto's/PDF's van vernietiging
 }
 
 // ── AGP Compliance Types ─────────────────────────────────────────────────────
