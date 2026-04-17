@@ -1,4 +1,4 @@
-import { AccijnsInst, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking } from '../types'
+import { AccijnsInst, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron } from '../types'
 
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
   const liter = L; const hl = L / 100
@@ -257,6 +257,55 @@ export const tankRestVolume = (batch: any, afvullingen: Afvulling[] = []): numbe
     .filter(a => a.batch_id === batch?.id)
     .reduce((s, a) => s + afvAantal(a) * afvInhoud(a), 0)
   return Math.max(0, totaal - afgevuld)
+}
+
+// Afgeleid bierverlies = liter_vergist minus totaal afgevuld. Alleen berekend
+// zodra er daadwerkelijk is afgevuld; anders null (we weten nog niet of er
+// verlies is). Negatief resultaat wordt op null gezet.
+export const verliesAfgeleid = (batch: any, afvullingen: Afvulling[] = []): number | null => {
+  const tankLiter = Number(batch?.liter_vergist || 0)
+  if (tankLiter <= 0) return null
+  const totLiterVerpakt = (afvullingen || [])
+    .filter(a => a.batch_id === batch?.id)
+    .reduce((s, a) => s + afvAantal(a) * afvInhoud(a), 0)
+  if (totLiterVerpakt <= 0) return null
+  const v = tankLiter - totLiterVerpakt
+  return v >= 0 ? v : 0
+}
+
+// Som van geregistreerde verliesposten voor een batch.
+export const verliesTotaal = (regs: VerliesRegistratie[] = [], batch_id: number): number =>
+  (regs || [])
+    .filter(r => r.batch_id === batch_id)
+    .reduce((s, r) => s + Number(r.liter || 0), 0)
+
+// Aggregatie per bron; alle zes sleutels altijd aanwezig (default 0).
+export const verliesPerBron = (
+  regs: VerliesRegistratie[] = [],
+  batch_id: number
+): Record<VerliesBron, number> => {
+  const out: Record<VerliesBron, number> = {
+    tankrest: 0, leiding: 0, schuim: 0, monster: 0, afgekeurd: 0, overig: 0,
+  }
+  for (const r of regs || []) {
+    if (r.batch_id !== batch_id) continue
+    const b = r.bron as VerliesBron
+    if (b in out) out[b] += Number(r.liter || 0)
+  }
+  return out
+}
+
+// Deel van afgeleid verlies dat nog niet is toegewezen aan een registratiepost.
+// 0 als alles (of meer) is geregistreerd, of als er geen afgeleid verlies is.
+export const verliesOngeregistreerd = (
+  batch: any,
+  afvullingen: Afvulling[] = [],
+  regs: VerliesRegistratie[] = []
+): number => {
+  const af = verliesAfgeleid(batch, afvullingen)
+  if (af == null) return 0
+  const tot = verliesTotaal(regs, batch?.id)
+  return Math.max(0, af - tot)
 }
 
 // Accijnswaarde van bier dat nog in tank zit (volume × geschat ABV × tarief).

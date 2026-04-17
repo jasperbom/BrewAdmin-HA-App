@@ -2,8 +2,8 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols } from '../utils/calculations'
-import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, convertEenheid } from '../utils/constants'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd } from '../utils/calculations'
+import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -45,6 +45,8 @@ interface BatchesPageProps {
   setGistMetingen?: any
   carbSessies?: any[]
   setCarbSessies?: any
+  verliesRegistraties?: any[]
+  setVerliesRegistraties?: any
   haInst?: any
   haTankTemps?: Record<string, number>
   acc?: any[]
@@ -416,6 +418,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   hygieneItems, hygieneGroups, wcCreds, artikelen, producten=[], setProducten=()=>{}, productArtikelen=[], setProductArtikelen=()=>{},
   gistMetingen=[], setGistMetingen=()=>{},
   carbSessies=[], setCarbSessies=()=>{},
+  verliesRegistraties=[], setVerliesRegistraties=()=>{},
   haInst,
   haTankTemps={},
   acc=[],
@@ -481,6 +484,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [carbForm, setCarbForm] = useState<any>(emptyCarb)
   const [carbComplete, setCarbComplete] = useState<any>({werkelijke_druk_bar:'', verbruikt_co2_gram:'', gemeten_co2_vol:'', opmerking:''})
   const [voorraadIngeklapt, setVoorraadIngeklapt] = useStore('batches_voorraad_ingeklapt', false)
+  const [verliesOpen, setVerliesOpen] = useStore('batches_verlies_open', {} as Record<string, boolean>)
+  const emptyVerlies = { datum: tod(), bron: 'tankrest' as const, liter: '', notitie: '' }
+  const [verliesForm, setVerliesForm] = useState<any>(emptyVerlies)
   const [ingFormOpen, setIngFormOpen] = useState(false)
   const [batchZoek, setBatchZoek] = useState('')
 
@@ -1328,8 +1334,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
                   const totStuks = batchAv.reduce((s: number, a: any) => s+Number(a.hoeveelheid||0), 0)
                   const tankLiter = Number(selB.liter_vergist||0)
-                  const verlies = tankLiter>0 && totLiterVerpakt>0 ? tankLiter-totLiterVerpakt : null
+                  const verlies = verliesAfgeleid(selB, av || [])
                   const verliesPct = verlies!==null && tankLiter>0 ? (verlies/tankLiter*100) : null
+                  const regPosten = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
+                  const totReg = regPosten.reduce((s: number, r: any) => s + Number(r.liter || 0), 0)
                   const kostenPerLiter = totLiterVerpakt>0 ? totK/totLiterVerpakt : (tankLiter>0 ? totK/tankLiter : null)
                   return (
                     <div className="mt-3 pt-3 border-t space-y-2 text-sm">
@@ -1384,6 +1392,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                   {verlies.toFixed(1)}L
                                 </span>
                                 {verliesPct!==null && <span className="text-xs text-gray-400 ml-1">({verliesPct.toFixed(1)}%)</span>}
+                                <span
+                                  className="block text-xs mt-0.5 cursor-pointer hover:underline"
+                                  style={{color: 'var(--t-accent)'}}
+                                  onClick={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !p?.[selB.id]}))}>
+                                  {t('batch_verlies_geregistreerd')}: {totReg.toFixed(1)}L ({regPosten.length} {t('batch_verlies_posten')})
+                                </span>
                               </div>
                             )}
                           </div>
@@ -1530,6 +1544,155 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             </div>
                           )}
                         </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Verliesregistratie */}
+            {(() => {
+              const isOpen = !!(verliesOpen && typeof verliesOpen === 'object' && !Array.isArray(verliesOpen) ? (verliesOpen as any)[selB.id] : false)
+              const batchRegs = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
+                .slice().sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || '')))
+              const totReg = batchRegs.reduce((s: number, r: any) => s + Number(r.liter || 0), 0)
+              const afgeleid = verliesAfgeleid(selB, av || [])
+              const nietToegewezen = afgeleid != null ? Math.max(0, afgeleid - totReg) : null
+              const perBron = verliesPerBron(verliesRegistraties || [], selB.id)
+              const tankLiter = Number(selB.liter_vergist || 0)
+              const pctRef = tankLiter > 0 ? (totReg / tankLiter * 100) : null
+
+              const addVerlies = () => {
+                const liter = Number(verliesForm.liter)
+                if (!liter || liter <= 0) return
+                const nieuw = {
+                  id: newId(verliesRegistraties || []),
+                  batch_id: selB.id,
+                  datum: verliesForm.datum || tod(),
+                  bron: verliesForm.bron,
+                  liter,
+                  notitie: verliesForm.notitie || '',
+                  created_at: new Date().toISOString(),
+                }
+                setVerliesRegistraties((prev: any[]) => [...(prev || []), nieuw])
+                const bronLbl = VERLIES_BRONNEN.find(b => b.key === nieuw.bron)?.label
+                logAudit(auditLog, setAuditLog, {entiteit:'Verliesregistratie', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Batch ${selB?.naam||''}: ${liter}L ${bronLbl ? t(bronLbl) : nieuw.bron}`})
+                setVerliesForm({...emptyVerlies, datum: verliesForm.datum})
+              }
+
+              const deleteVerlies = (id: number) => {
+                if (!confirm(t('batch_verlies_confirm_delete'))) return
+                logAudit(auditLog, setAuditLog, {entiteit:'Verliesregistratie', entiteit_id:id, actie:'verwijderd', omschrijving:`Batch ${selB?.naam||''}`})
+                setVerliesRegistraties((prev: any[]) => (prev || []).filter((r: any) => r.id !== id))
+              }
+
+              return (
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
+                    onClick={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !isOpen}))}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold" style={{display:'inline-block', transition:'transform 0.15s', transform: isOpen ? 'rotate(90deg)' : 'none'}}>▶</span>
+                      <span>{t('batch_verlies_header')}</span>
+                      {batchRegs.length > 0 && (
+                        <span className="text-xs opacity-75">
+                          ({batchRegs.length} {t('batch_verlies_posten')} · {totReg.toFixed(1)}L{pctRef != null ? ` · ${pctRef.toFixed(1)}%` : ''})
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs opacity-75">→</span>
+                  </div>
+
+                  {isOpen && (
+                    <div className="px-4 py-2.5 border-b bg-gray-50/50 flex flex-wrap items-center gap-2">
+                      <input type="date" value={verliesForm.datum}
+                        onChange={e => setVerliesForm((f: any) => ({...f, datum: e.target.value}))}
+                        className="border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      <Sel value={verliesForm.bron}
+                        onChange={(v: string) => setVerliesForm((f: any) => ({...f, bron: v || 'tankrest'}))}
+                        opts={VERLIES_BRONNEN.map(b => ({v: b.key, l: t(b.label)}))}
+                        ph={t('lbl_bron')}
+                        cls="w-36"
+                      />
+                      <Inp type="number" step="0.1" min="0" placeholder={t('batch_verlies_liter_label')}
+                        value={verliesForm.liter}
+                        onChange={(v: string) => setVerliesForm((f: any) => ({...f, liter: v}))}
+                        cls="w-28" />
+                      <Inp placeholder={t('batch_verlies_notitie')} value={verliesForm.notitie}
+                        onChange={(v: string) => setVerliesForm((f: any) => ({...f, notitie: v}))}
+                        cls="flex-1 min-w-[180px]" />
+                      <Btn s="sm" onClick={addVerlies}>{t('batch_verlies_add')}</Btn>
+                    </div>
+                  )}
+
+                  {isOpen && (
+                    <div className="p-4 space-y-4">
+                      {batchRegs.length === 0 ? (
+                        <div className="text-center text-gray-400 text-sm py-6">{t('batch_verlies_none')}</div>
+                      ) : (
+                        <>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-gray-50 text-gray-500 border-b">
+                                <tr>
+                                  <th className="px-2 py-1.5 text-left font-medium">{t('lbl_date')}</th>
+                                  <th className="px-2 py-1.5 text-left font-medium">{t('lbl_bron')}</th>
+                                  <th className="px-2 py-1.5 text-right font-medium">L</th>
+                                  <th className="px-2 py-1.5 text-left font-medium text-gray-400">{t('batch_verlies_notitie')}</th>
+                                  <th className="px-2 py-1.5"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {batchRegs.map((r: any) => {
+                                  const bronLbl = VERLIES_BRONNEN.find(b => b.key === r.bron)?.label
+                                  return (
+                                    <tr key={r.id} className="hover:bg-gray-50">
+                                      <td className="px-2 py-1.5 text-gray-600">{fmtD(r.datum)}</td>
+                                      <td className="px-2 py-1.5 text-gray-700">{bronLbl ? t(bronLbl) : r.bron}</td>
+                                      <td className="px-2 py-1.5 text-right font-mono">{Number(r.liter || 0).toFixed(2)}</td>
+                                      <td className="px-2 py-1.5 text-gray-400 italic">{r.notitie || ''}</td>
+                                      <td className="px-2 py-1.5">
+                                        <button onClick={() => deleteVerlies(r.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="pt-3 border-t grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                            <div>
+                              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide block">{t('batch_verlies_geregistreerd')}</span>
+                              <span className="font-medium" style={{color: 'var(--t-accent)'}}>{totReg.toFixed(1)}L</span>
+                              {pctRef != null && <span className="text-xs text-gray-400 ml-1">({pctRef.toFixed(1)}%)</span>}
+                            </div>
+                            {afgeleid != null && (
+                              <div>
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide block">{t('batch_verlies_afgeleid')}</span>
+                                <span className="font-medium text-gray-700">{afgeleid.toFixed(1)}L</span>
+                              </div>
+                            )}
+                            {nietToegewezen != null && (
+                              <div>
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide block">{t('batch_verlies_ongeregistreerd')}</span>
+                                <span className={`font-medium ${nietToegewezen > 0 ? 'text-orange-600' : 'text-green-700'}`}>{nietToegewezen.toFixed(1)}L</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{t('batch_verlies_per_bron')}</div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs">
+                              {VERLIES_BRONNEN.filter(b => (perBron as any)[b.key] > 0).map(b => (
+                                <div key={b.key} className="flex justify-between text-gray-600">
+                                  <span>{t(b.label)}</span>
+                                  <span className="font-mono">{((perBron as any)[b.key] || 0).toFixed(1)}L</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </>
                       )}
                     </div>
                   )}

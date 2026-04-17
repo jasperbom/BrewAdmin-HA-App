@@ -634,6 +634,28 @@ export interface CarbonatieSessie {
   created_at?: string
 }
 
+// Bron van een bierverliespost. Identifier wordt opgeslagen; UI vertaalt via i18n.
+export type VerliesBron =
+  | 'tankrest'
+  | 'leiding'
+  | 'schuim'
+  | 'monster'
+  | 'afgekeurd'
+  | 'overig'
+
+// Registratie van bierverlies per batch. Meerdere posten per batch toegestaan;
+// elke post beschrijft één bron/hoeveelheid. Afgeleid verlies (tankrest minus
+// afgevuld) blijft los berekend — deze log is puur voor inzicht/uitsplitsing.
+export interface VerliesRegistratie {
+  id: number
+  batch_id: number
+  datum: string          // YYYY-MM-DD
+  bron: VerliesBron
+  liter: number
+  notitie?: string
+  created_at?: string
+}
+
 export interface HaSensor {
   id: number
   tank: string

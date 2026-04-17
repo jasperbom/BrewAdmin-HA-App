@@ -155,6 +155,17 @@ export const ALLERGENEN_LIJST = [
   {key:'overig',  label:'haccp_allergen_overig'},
 ]
 
+// Bronnen voor bierverlies-registratie. De `key` wordt als identifier
+// opgeslagen; `label` verwijst naar een i18n-sleutel.
+export const VERLIES_BRONNEN = [
+  {key:'tankrest',  label:'verlies_bron_tankrest'},
+  {key:'leiding',   label:'verlies_bron_leiding'},
+  {key:'schuim',    label:'verlies_bron_schuim'},
+  {key:'monster',   label:'verlies_bron_monster'},
+  {key:'afgekeurd', label:'verlies_bron_afgekeurd'},
+  {key:'overig',    label:'verlies_bron_overig'},
+]
+
 export const SCHOONMAAK_FREQUENTIES = [
   {key:'dagelijks',   label:'haccp_freq_dagelijks'},
   {key:'wekelijks',   label:'haccp_freq_wekelijks'},

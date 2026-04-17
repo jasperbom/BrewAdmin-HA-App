@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.8.68] — 2026-04-17
+## [1.8.69] — 2026-04-17
 
 ### Added — S-5: Negatieve-voorraad-signalering
 - **DashboardPage**: nieuwe rode stat-card "Negatieve voorraad" die alleen
@@ -22,7 +22,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.8.67] — 2026-04-17
+## [1.8.68] — 2026-04-17
 
 ### Added — S-4: Brouwdag- & botteldag-checklists (HACCP Bijlage A.1 / A.2)
 - **BatchesPage**: twee nieuwe checklists per batch, uitklapbaar en standaard
@@ -40,7 +40,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.8.66] — 2026-04-17
+## [1.8.67] — 2026-04-17
 
 ### Added — M-1: Bijzondere mutaties (vermis / intern gebruik / vernietiging)
 - **ProductenPage**: het afboek-modaal kreeg tabbladen per reden. Voor de reden
@@ -57,6 +57,24 @@ All notable changes to this project are documented here.
   nieuwe `AfboekingBijlage`-interface.
 - Audit-log registreert iedere vernietigings-afboeking met verwijzing naar
   de bijlagen.
+- Vertaald in alle 5 talen (nl/en/de/fr/es).
+
+---
+
+## [1.8.66] — 2026-04-16
+
+### Added — Bierverlies-registratie module
+- Nieuwe "Verliesregistratie" sectie op de batch-detailweergave waar verlies
+  per bron (tankrest, leidingrest, schuim, monsters, afgekeurde flessen,
+  overig) met datum, liters en notitie kan worden vastgelegd.
+- Per batch tonen we het totaal geregistreerde verlies, het afgeleide verlies
+  (liter_vergist − totaal afgevuld) en het nog-niet-toegewezen deel, plus een
+  uitsplitsing per bron.
+- Het kostprijsblok toont onder "Verlies" een klikbare snelkoppeling naar de
+  registratie-sectie. De kostprijs per liter blijft afgeleid van het
+  werkelijk afgevulde volume.
+- Nieuwe data-sleutel `verlies_registraties` (patroon van `gist_metingen` /
+  `carbonatie_sessies`); opgenomen in Excel-backup en -restore.
 - Vertaald in alle 5 talen (nl/en/de/fr/es).
 
 ---
