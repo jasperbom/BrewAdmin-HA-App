@@ -100,6 +100,39 @@ export const DEFAULT_HYGIENE_ITEMS = [
   {id:5,label:'Hydrometer gesteriliseerd',group_id:2,volgorde:1},
 ]
 
+// ── Brouwdag-checklist (Bijlage A.1 Gap-analyse) ────────────────────────────
+// 12 procedurele checks die op een brouwdag afgevinkt moeten worden.
+// i18n-keys worden via t(labelKey) opgelost — zo werkt de checklist in alle
+// 5 talen ook als er geen eigen hygiene_items zijn geconfigureerd.
+export const DEFAULT_BROUWDAG_CHECKLIST = [
+  {id:1,  labelKey:'brouwdag_check_1_water',        volgorde:0},
+  {id:2,  labelKey:'brouwdag_check_2_maischen',     volgorde:1},
+  {id:3,  labelKey:'brouwdag_check_3_jodiumtest',   volgorde:2},
+  {id:4,  labelKey:'brouwdag_check_4_spoelen',      volgorde:3},
+  {id:5,  labelKey:'brouwdag_check_5_kook_start',   volgorde:4},
+  {id:6,  labelKey:'brouwdag_check_6_hop_toevoeg',  volgorde:5},
+  {id:7,  labelKey:'brouwdag_check_7_koelen',       volgorde:6},
+  {id:8,  labelKey:'brouwdag_check_8_og_meting',    volgorde:7},
+  {id:9,  labelKey:'brouwdag_check_9_ph_meting',    volgorde:8},
+  {id:10, labelKey:'brouwdag_check_10_gist',        volgorde:9},
+  {id:11, labelKey:'brouwdag_check_11_fermentor',   volgorde:10},
+  {id:12, labelKey:'brouwdag_check_12_waterslot',   volgorde:11},
+]
+
+// ── Botteldag-checklist (Bijlage A.2 Gap-analyse) ───────────────────────────
+// 9 procedurele checks die op een botteldag afgevinkt moeten worden.
+export const DEFAULT_BOTTELDAG_CHECKLIST = [
+  {id:1, labelKey:'botteldag_check_1_reiniging',       volgorde:0},
+  {id:2, labelKey:'botteldag_check_2_sanitair',        volgorde:1},
+  {id:3, labelKey:'botteldag_check_3_fg_meting',       volgorde:2},
+  {id:4, labelKey:'botteldag_check_4_suikeroplossing', volgorde:3},
+  {id:5, labelKey:'botteldag_check_5_vulniveau',       volgorde:4},
+  {id:6, labelKey:'botteldag_check_6_sluiting',        volgorde:5},
+  {id:7, labelKey:'botteldag_check_7_etiketten',       volgorde:6},
+  {id:8, labelKey:'botteldag_check_8_tht_gecontroleerd',volgorde:7},
+  {id:9, labelKey:'botteldag_check_9_opslag',          volgorde:8},
+]
+
 // ── NVWA/HACCP Defaults ─────────────────────────────────────────────────────
 
 export const DEFAULT_CCP_DEFINITIES = [

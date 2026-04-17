@@ -1,6 +1,6 @@
 import React from 'react'
 import { t } from '../i18n'
-import { newId, wcGet, wcPut } from '../utils/api'
+import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
@@ -9,6 +9,7 @@ import { logAudit } from '../utils/audit'
 import { voorraadPerLocatie } from '../utils/calculations'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
+type Bijlage = { naam: string; bestand: string }
 
 const AFBOEKING_REDENEN: { v: AfboekingReden; lKey: string }[] = [
   { v: 'vermis',        lKey: 'lbl_afboeking_vermis' },
@@ -20,6 +21,27 @@ const REDEN_COLORS: Record<AfboekingReden, string> = {
   vermis:         'text-red-600 bg-red-50',
   vernietiging:   'text-orange-600 bg-orange-50',
   overig:         'text-gray-600 bg-gray-100',
+}
+
+// M-1: upload helper voor bijlagen (foto's / PDF) bij bijzondere mutaties
+const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null> => {
+  try {
+    const ext = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (!['pdf','jpg','jpeg','png','gif','webp','tiff','bmp','heic','heif'].includes(ext)) return null
+    const filename = `${prefix}_${Date.now()}_${Math.floor(Math.random()*9999)}.${ext}`
+    const b64 = await new Promise<string>((res, rej) => {
+      const reader = new FileReader()
+      reader.onload = () => res((reader.result as string).split(',')[1])
+      reader.onerror = rej
+      reader.readAsDataURL(file)
+    })
+    const resp = await fetch(`${ADDON_BASE}api/upload/${filename}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data: b64}),
+    })
+    if (!resp.ok) return null
+    return { naam: file.name, bestand: filename }
+  } catch { return null }
 }
 
 function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
@@ -35,8 +57,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const [receptSelectOpen, setReceptSelectOpen] = useState(false);
   const [voorraadOpen, setVoorraadOpen] = useState(true);
   const [afboekModal, setAfboekModal] = useState<any>(null);
-  const [afboekForm, setAfboekForm] = useState<{aantal: string; reden: AfboekingReden; opmerking: string}>({aantal: '1', reden: 'vermis', opmerking: ''});
+  const [afboekForm, setAfboekForm] = useState<{
+    aantal: string; reden: AfboekingReden; opmerking: string;
+    toestemming_douane: boolean; toestemming_datum: string; kenmerk_douane: string;
+    bijlagen: Bijlage[];
+  }>({aantal: '1', reden: 'vermis', opmerking: '', toestemming_douane: false, toestemming_datum: '', kenmerk_douane: '', bijlagen: []});
   const [afboekError, setAfboekError] = useState('');
+  const [afboekUploading, setAfboekUploading] = useState(false);
   const [prijsInclBtw, setPrijsInclBtw] = useState(false);
   const [b2bPrijsInclBtw, setB2bPrijsInclBtw] = useState(false);
   const [logboekOpen, setLogboekOpen] = useState(false);
@@ -278,9 +305,29 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // Afboeken
   const openAfboekModal = (a: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    setAfboekForm({aantal: '1', reden: 'vermis', opmerking: ''});
+    setAfboekForm({aantal: '1', reden: 'vermis', opmerking: '', toestemming_douane: false, toestemming_datum: '', kenmerk_douane: '', bijlagen: []});
     setAfboekError('');
     setAfboekModal(a);
+  };
+
+  const doAfboekUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setAfboekUploading(true);
+    const nieuwe: Bijlage[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const b = await uploadBijlage(files[i], 'afboek');
+      if (b) nieuwe.push(b);
+    }
+    if (nieuwe.length > 0) setAfboekForm(f => ({...f, bijlagen: [...(f.bijlagen||[]), ...nieuwe]}));
+    setAfboekUploading(false);
+  };
+
+  const doAfboekRemoveBijlage = (idx: number) => {
+    const b = afboekForm.bijlagen[idx];
+    if (b?.bestand) {
+      fetch(`${ADDON_BASE}api/delete_upload/${b.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
+    }
+    setAfboekForm(f => ({...f, bijlagen: (f.bijlagen||[]).filter((_, i) => i !== idx)}));
   };
 
   const doAfboeken = () => {
@@ -291,7 +338,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const max = beschikbaarVoorAfvulling(afboekModal);
       if (aantal > max) { setAfboekError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
     }
-    const nieuw = {
+    // M-1: vernietiging vereist Douane-toestemming + minimaal 1 bijlage
+    if (afboekForm.reden === 'vernietiging') {
+      if (!afboekForm.toestemming_douane) { setAfboekError(t('err_afboeking_toestemming_required')); return; }
+      if (!afboekForm.toestemming_datum) { setAfboekError(t('err_afboeking_toestemming_datum_required')); return; }
+      if (!(afboekForm.bijlagen||[]).length) { setAfboekError(t('err_afboeking_bijlage_required')); return; }
+    }
+    const nieuw: any = {
       id: newId(afboekingen||[]),
       afvulling_id: afboekModal.id,
       batch_id: afboekModal.batch_id,
@@ -301,8 +354,17 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       opmerking: afboekForm.opmerking.trim(),
       created_at: new Date().toISOString(),
     };
+    if (afboekForm.reden === 'vernietiging') {
+      nieuw.toestemming_douane = afboekForm.toestemming_douane;
+      nieuw.toestemming_datum = afboekForm.toestemming_datum;
+      if (afboekForm.kenmerk_douane.trim()) nieuw.kenmerk_douane = afboekForm.kenmerk_douane.trim();
+      nieuw.bijlagen = afboekForm.bijlagen;
+    }
     if (setAfboekingen) setAfboekingen((prev: any[]) => [...(prev||[]), nieuw]);
-    logAudit(auditLog, setAuditLog, {entiteit: 'Afboeking', entiteit_id: nieuw.id, actie: 'aangemaakt', omschrijving: `Afboeking ${aantal}× ${afboekModal.verpakking_naam || afboekModal.verpakking_type || ''} (${afboekForm.reden})`});
+    const extraAudit = afboekForm.reden === 'vernietiging'
+      ? ` — ${t('lbl_toestemming_douane')}: ${fmtD(afboekForm.toestemming_datum)}${afboekForm.kenmerk_douane ? ` (${afboekForm.kenmerk_douane})` : ''}, ${(afboekForm.bijlagen||[]).length} ${t('lbl_bijlagen')}`
+      : '';
+    logAudit(auditLog, setAuditLog, {entiteit: 'Afboeking', entiteit_id: nieuw.id, actie: 'aangemaakt', omschrijving: `Afboeking ${aantal}× ${afboekModal.verpakking_naam || afboekModal.verpakking_type || ''} (${afboekForm.reden})${extraAudit}`});
     const redenLabel = t(AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.lKey || afboekForm.reden);
     const batch = (bat||[]).find((b: any) => b.id === afboekModal.batch_id);
     if (setLog) setLog((prev: any[]) => [...(prev||[]), {
@@ -995,35 +1057,106 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         )}
       </div>
 
-      {/* Afboeken modal */}
+      {/* Afboeken modal — M-1 Bijzondere mutaties */}
       {afboekModal && (
-        <Modal title={t('title_afboeken_modal').replace('{verpakking}', afboekModal.verpakking_naam || afboekModal.verpakking_type || '')} onClose={() => setAfboekModal(null)}>
+        <Modal title={t('title_bijzondere_mutatie_modal').replace('{verpakking}', afboekModal.verpakking_naam || afboekModal.verpakking_type || '')} onClose={() => setAfboekModal(null)}>
           <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4">
+            <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4 flex-wrap">
               <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
               {afboekModal.tht && <span>{t('lbl_tht')}: <strong>{fmtD(afboekModal.tht)}</strong></span>}
             </div>
+
+            {/* Tabs per type mutatie */}
+            <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-lg">
+              {AFBOEKING_REDENEN.map(r => (
+                <button key={r.v} onClick={() => { setAfboekForm(f => ({...f, reden: r.v})); setAfboekError(''); }}
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${afboekForm.reden === r.v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}>
+                  {t(r.lKey)}
+                </button>
+              ))}
+            </div>
+
+            <div className={`rounded-lg p-3 text-xs ${afboekForm.reden === 'vernietiging' ? 'bg-orange-50 border border-orange-200 text-orange-800' : afboekForm.reden === 'vermis' ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-gray-50 border border-gray-200 text-gray-700'}`}>
+              {afboekForm.reden === 'vermis' && t('info_mutatie_vermis')}
+              {afboekForm.reden === 'vernietiging' && t('info_mutatie_vernietiging')}
+              {afboekForm.reden === 'overig' && t('info_mutatie_overig')}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_reden')} <span className="text-red-400">*</span></label>
-                <Sel value={afboekForm.reden} onChange={(v: string) => setAfboekForm(f => ({...f, reden: v as AfboekingReden}))}
-                  opts={AFBOEKING_REDENEN.map(r => ({v: r.v, l: t(r.lKey)}))} />
-              </div>
-              <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
-                <input type="number" value={afboekForm.aantal} onChange={e => setAfboekForm(f => ({...f, aantal: e.target.value}))} placeholder="1"
+                <input type="number" value={afboekForm.aantal} onChange={e => { setAfboekForm(f => ({...f, aantal: e.target.value})); setAfboekError(''); }} placeholder="1"
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                <input type="date" value={new Date().toISOString().slice(0,10)} readOnly
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-500" />
+              </div>
             </div>
+
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking_required')} <span className="text-red-400">*</span></label>
               <textarea value={afboekForm.opmerking} onChange={e => { setAfboekForm(f => ({...f, opmerking: e.target.value})); setAfboekError(''); }} rows={3}
+                placeholder={afboekForm.reden === 'vernietiging' ? t('ph_opmerking_vernietiging') : afboekForm.reden === 'vermis' ? t('ph_opmerking_vermis') : t('ph_opmerking_overig')}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm t-input resize-none" />
             </div>
+
+            {/* Vernietiging: Douane-toestemming + bijlagen */}
+            {afboekForm.reden === 'vernietiging' && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
+                <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">{t('lbl_douane_compliance')}</p>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={afboekForm.toestemming_douane}
+                    onChange={e => { setAfboekForm(f => ({...f, toestemming_douane: e.target.checked})); setAfboekError(''); }}
+                    className="mt-0.5 t-checkbox" />
+                  <span className="text-sm text-gray-700">{t('lbl_toestemming_douane_required')} <span className="text-red-400">*</span></span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_toestemming_datum')} <span className="text-red-400">*</span></label>
+                    <input type="date" value={afboekForm.toestemming_datum} onChange={e => { setAfboekForm(f => ({...f, toestemming_datum: e.target.value})); setAfboekError(''); }}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_kenmerk_douane')}</label>
+                    <input type="text" value={afboekForm.kenmerk_douane} onChange={e => setAfboekForm(f => ({...f, kenmerk_douane: e.target.value}))}
+                      placeholder={t('ph_kenmerk_douane')}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_bijlagen_vernietiging')} <span className="text-red-400">*</span></label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
+                      <span>📎</span>
+                      <span>{afboekUploading ? t('lbl_uploading') : t('lbl_choose_files')}</span>
+                      <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
+                        className="hidden" disabled={afboekUploading}
+                        onChange={e => { doAfboekUpload(e.target.files); e.target.value = ''; }} />
+                    </label>
+                    <span className="text-xs text-gray-500">{t('lbl_allowed_formats_photo')}</span>
+                  </div>
+                  {afboekForm.bijlagen.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {afboekForm.bijlagen.map((b, i) => (
+                        <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
+                          <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
+                            📎 <span className="truncate">{b.naam}</span>
+                          </a>
+                          <button onClick={() => doAfboekRemoveBijlage(i)} className="text-gray-400 hover:text-red-500 ml-2" title={t('btn_remove_bijlage')}>✕</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
             {afboekError && <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">{afboekError}</div>}
             <div className="flex justify-end gap-2 pt-1 border-t">
               <Btn v="secondary" onClick={() => setAfboekModal(null)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={doAfboeken} v="danger">{t('btn_afboeken_bevestigen')}</Btn>
+              <Btn onClick={doAfboeken} v="danger" disabled={afboekUploading}>{t('btn_mutatie_bevestigen')}</Btn>
             </div>
           </div>
         </Modal>

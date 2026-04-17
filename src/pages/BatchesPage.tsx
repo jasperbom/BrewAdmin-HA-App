@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd } from '../utils/calculations'
-import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
+import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -470,6 +470,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
   const [hygieneIngeklapt, setHygieneIngeklapt] = useStore('batches_hygiene_ingeklapt', true)
+  const [brouwdagIngeklapt, setBrouwdagIngeklapt] = useStore('batches_brouwdag_ingeklapt', true)
+  const [botteldagIngeklapt, setBotteldagIngeklapt] = useStore('batches_botteldag_ingeklapt', true)
   const [ccpIngeklapt, setCcpIngeklapt] = useStore('batches_ccp_ingeklapt', true)
   const [ccpMetingForm, setCcpMetingForm] = useState<any>(null)
   const [metingLogIngeklapt, setMetingLogIngeklapt] = useStore('batches_meting_log_ingeklapt', true)
@@ -1781,6 +1783,58 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
 
+            {/* S-4: Brouwdag-checklist (12 items — Bijlage A.1) */}
+            {(() => {
+              const items = DEFAULT_BROUWDAG_CHECKLIST
+              const checks = selB.brouwdag_checks || {}
+              const totaal = items.length
+              const gedaan = items.filter((i: any) => checks[i.id]).length
+              const alleOk = totaal > 0 && gedaan === totaal
+              const toggleCheck = (itemId: number) => {
+                const wordtAangevinkt = !checks[itemId]
+                const nieuweChecks = {...checks, [itemId]: wordtAangevinkt}
+                setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, brouwdag_checks: nieuweChecks} : b))
+                const item = items.find((i: any) => i.id===itemId)
+                const label = item ? t(item.labelKey) : `item ${itemId}`
+                addLog({type:'brouwdag', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
+                logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Brouwdag ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
+              }
+              return (
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${brouwdagIngeklapt?'rounded-xl':'rounded-t-xl'}`}
+                    onClick={()=>setBrouwdagIngeklapt((p: any)=>!p)}>
+                    <span className="flex items-center gap-2">
+                      <span className="text-white/70 text-xs">{brouwdagIngeklapt?'▶':'▼'}</span>
+                      {t('batch_brouwdag_title')}
+                    </span>
+                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${alleOk ? 'bg-green-500 text-white' : gedaan>0 ? 'bg-amber-400 text-white' : 'bg-teal-600 text-teal-200'}`}>
+                      {`${gedaan}/${totaal}`}
+                    </span>
+                  </div>
+                  {!brouwdagIngeklapt && (
+                    <div className="p-3 space-y-0.5">
+                      {items.map((item: any, idx: number) => (
+                        <label key={item.id} className="flex items-start gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
+                          <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
+                            className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
+                          <span className="text-xs text-gray-400 w-5 flex-shrink-0 mt-0.5">{idx+1}.</span>
+                          <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t(item.labelKey)}</span>
+                          {checks[item.id] && <span className="ml-auto text-teal-500 text-xs mt-0.5">✓</span>}
+                        </label>
+                      ))}
+                      <div className={`mt-2 text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                        {alleOk ? '✅ ' + t('brouwdag_all_checked') : `${gedaan} ${t('hygiene_of')} ${totaal} ${t('hygiene_checked')}`}
+                        {gedaan>0 && !alleOk && (
+                          <button onClick={()=>{setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b,brouwdag_checks:{}}:b)); addLog({type:'brouwdag', batch_id:selB.id, referentie:'Brouwdag-checklist gereset'}); logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:'Brouwdag checklist gereset'})}}
+                            className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">{t('batch_hygiene_reset')}</button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* CCP Monitoring per batch */}
             {(() => {
               const defs = (ccpDefinities||[]).filter((d: any)=>d.actief!==false)
@@ -2373,6 +2427,58 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className={`font-medium ${c}`}>{v}</div></div>
                     ))}
                   </div>
+
+                  {/* S-4: Botteldag-checklist (9 items — Bijlage A.2) */}
+                  {(() => {
+                    const items = DEFAULT_BOTTELDAG_CHECKLIST
+                    const checks = selB.botteldag_checks || {}
+                    const totaal = items.length
+                    const gedaan = items.filter((i: any) => checks[i.id]).length
+                    const alleOk = totaal > 0 && gedaan === totaal
+                    const toggleCheck = (itemId: number) => {
+                      const wordtAangevinkt = !checks[itemId]
+                      const nieuweChecks = {...checks, [itemId]: wordtAangevinkt}
+                      setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, botteldag_checks: nieuweChecks} : b))
+                      const item = items.find((i: any) => i.id===itemId)
+                      const label = item ? t(item.labelKey) : `item ${itemId}`
+                      addLog({type:'botteldag', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
+                      logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Botteldag ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
+                    }
+                    return (
+                      <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                        <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${botteldagIngeklapt?'rounded-xl':'rounded-t-xl'}`}
+                          onClick={()=>setBotteldagIngeklapt((p: any)=>!p)}>
+                          <span className="flex items-center gap-2">
+                            <span className="text-white/70 text-xs">{botteldagIngeklapt?'▶':'▼'}</span>
+                            {t('batch_botteldag_title')}
+                          </span>
+                          <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${alleOk ? 'bg-green-500 text-white' : gedaan>0 ? 'bg-amber-400 text-white' : 'bg-teal-600 text-teal-200'}`}>
+                            {`${gedaan}/${totaal}`}
+                          </span>
+                        </div>
+                        {!botteldagIngeklapt && (
+                          <div className="p-3 space-y-0.5">
+                            {items.map((item: any, idx: number) => (
+                              <label key={item.id} className="flex items-start gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
+                                <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
+                                  className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
+                                <span className="text-xs text-gray-400 w-5 flex-shrink-0 mt-0.5">{idx+1}.</span>
+                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t(item.labelKey)}</span>
+                                {checks[item.id] && <span className="ml-auto text-teal-500 text-xs mt-0.5">✓</span>}
+                              </label>
+                            ))}
+                            <div className={`mt-2 text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                              {alleOk ? '✅ ' + t('botteldag_all_checked') : `${gedaan} ${t('hygiene_of')} ${totaal} ${t('hygiene_checked')}`}
+                              {gedaan>0 && !alleOk && (
+                                <button onClick={()=>{setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b,botteldag_checks:{}}:b)); addLog({type:'botteldag', batch_id:selB.id, referentie:'Botteldag-checklist gereset'}); logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:'Botteldag checklist gereset'})}}
+                                  className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">{t('batch_hygiene_reset')}</button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   <div className="bg-white rounded-xl shadow-card overflow-hidden">
                     <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none" onClick={()=>setAfvullenIngeklapt((v: any)=>!v)}>
