@@ -73,6 +73,7 @@ export const excelExport = (data: any) => {
     addSheet('Klanten',               data.klanten)
     addSheet('GistMetingen',          data.gist_metingen)
     addSheet('CarbonatieSessies',     data.carbonatie_sessies)
+    addSheet('VerliesRegistraties',   data.verlies_registraties)
     addSheet('KapitaalBoekingen',     data.kapitaal_boekingen)
     addSheet('EADDocumenten',         data.ead_documenten)
     addSheet('Inventarisaties',       data.inventarisaties)
@@ -188,6 +189,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         klanten:                      parse('Klanten'),
         gist_metingen:                parse('GistMetingen'),
         carbonatie_sessies:           parse('CarbonatieSessies'),
+        verlies_registraties:         parse('VerliesRegistraties'),
         kapitaal_boekingen:           parse('KapitaalBoekingen'),
         ead_documenten:               parse('EADDocumenten'),
         inventarisaties:              parse('Inventarisaties'),
