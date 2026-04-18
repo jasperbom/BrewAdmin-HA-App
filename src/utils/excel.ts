@@ -65,6 +65,8 @@ export const excelExport = (data: any) => {
     addSheet('Artikelen',             data.artikelen)
     addSheet('HygieneItems',          data.hygiene_items)
     addSheet('HygieneGroups',         data.hygiene_groups)
+    addSheet('BrouwdagChecklist',     data.brouwdag_checklist)
+    addSheet('BotteldagChecklist',    data.botteldag_checklist)
     addSheet('InkoopFacturen',        data.inkoop_facturen)
     addSheet('VerkoopFacturen',       data.verkoop_facturen)
     addSheet('Bestellingen',          data.bestellingen)
@@ -182,6 +184,8 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         artikelen:                    parse('Artikelen'),
         hygiene_items:                parse('HygieneItems'),
         hygiene_groups:               parse('HygieneGroups'),
+        brouwdag_checklist:           parse('BrouwdagChecklist'),
+        botteldag_checklist:          parse('BotteldagChecklist'),
         inkoop_facturen:              parse('InkoopFacturen'),
         verkoop_facturen:             parse('VerkoopFacturen'),
         bestellingen:                 parse('Bestellingen'),

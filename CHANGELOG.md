@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.87] — 2026-04-22
+
+### Added — Aanpasbare brouwdag- en botteldag-checklists
+- **Instellingen → Checklists**: nieuwe sectie waar de items van de
+  Brouwdag- en Botteldag-checklist volledig aanpasbaar zijn. De
+  standaardlijst (12 brouwdag- + 9 botteldag-items) staat vooringevuld,
+  maar items kunnen worden verwijderd, hernoemd (klik op een item om te
+  bewerken), herschikt met pijltjes omhoog/omlaag, en nieuwe items
+  kunnen worden toegevoegd. Knoppen voor "Terugzetten naar standaard"
+  per checklist. De per-batch checklist op de detailpagina gebruikt
+  automatisch de ingestelde items.
+- Nieuwe datasleutels `brouwdag_checklist` en `botteldag_checklist`
+  (incl. Excel-backup/restore).
+
+---
+
 ## [1.8.86] — 2026-04-22
 
 ### Added — Batch-ingredienten koppelen aan voorraad-ingredienten
