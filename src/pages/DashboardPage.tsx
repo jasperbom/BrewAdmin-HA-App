@@ -6,7 +6,7 @@ import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import SectionHeader from '../components/ui/SectionHeader'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -34,6 +34,18 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   const beschVoorraad  = uit.reduce((s: any, u: any) => s + Number(u.aantal||0) - Number(u.verkocht_stuks||0), 0);
   const openBestellingen = bi.filter((b: any) => ['nieuw','gepickt'].includes(b.status));
   const actiefBatches  = bat.filter((b: any) => b.status !== 'Gesloten');
+
+  // ── Aankomende geplande brouwsels (voor agenda-widget) ────────────────────
+  const komendeBrouwsels = React.useMemo(() => {
+    return (bat || [])
+      .filter((b: any) => b.status === 'Gepland' && b.datum)
+      .filter((b: any) => {
+        const d = new Date(b.datum); d.setHours(0, 0, 0, 0);
+        return d.getTime() >= today.getTime();
+      })
+      .sort((a: any, b: any) => String(a.datum).localeCompare(String(b.datum)))
+      .slice(0, 8);
+  }, [bat, today]);
 
   // S-5: Negatieve voorraad-signalering — aantal posities met voorraad < 0
   const negatievePosities = React.useMemo(
@@ -738,6 +750,57 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
             ))}
           </div>
         </details>
+      )}
+
+      {/* ── Planning agenda (aankomende geplande brouwsels) ────────────────── */}
+      {komendeBrouwsels.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
+          <SectionHeader
+            title={t('plan_agenda')}
+            info={<span className="text-xs text-gray-500">{komendeBrouwsels.length}</span>}
+            rounded
+          />
+          <div className="divide-y divide-gray-100">
+            {komendeBrouwsels.map((b: any) => {
+              const d = new Date(b.datum); d.setHours(0, 0, 0, 0);
+              const days = Math.round((d.getTime() - today.getTime()) / dayMs);
+              const rel = days === 0
+                ? t('plan_vandaag')
+                : t('plan_over_n_dagen').replace('{n}', String(days));
+              return (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => { setPlanningPreselect(b.id); setPage('planning'); }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-gray-800">{b.naam || t('lbl_naamloos')}</span>
+                      {b.batch_nummer && <span className="text-xs text-gray-400">#{b.batch_nummer}</span>}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {fmtD(b.datum)} · {rel}
+                      {b.liter_vergist ? <> · {fmt(b.liter_vergist)} L</> : null}
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ml-3 ${(STATUS_CLR as any)[b.status] || 'bg-gray-100 text-gray-600'}`}>
+                    {b.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="px-5 py-3 border-t border-gray-100">
+            <button
+              type="button"
+              className="text-sm font-medium hover:underline"
+              style={{ color: 'var(--t-accent)' }}
+              onClick={() => setPage('planning')}
+            >
+              {t('plan_open')} →
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Tanks (visueel) ───────────────────────────────────────────────── */}

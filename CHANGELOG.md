@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.74] — 2026-04-18
+
+### Added — Planningsmodule: brouwagenda + bestellijst
+- **DashboardPage**: nieuwe sectie "Brouwagenda" toont de eerstvolgende 8
+  geplande brouwsels (status `Gepland` met `datum ≥ vandaag`). Klik op een
+  regel opent de Planning-pagina met die batch vooraf-geselecteerd.
+- **Nieuwe Planning-pagina** (`src/pages/PlanningPage.tsx`) met twee
+  weergaven: maand-grid (7×6, maandag-eerst) en lijst. Multi-select van
+  geplande brouwdagen via checkboxes plus "Alles deze maand" / "Selectie
+  leegmaken"-shortcuts. Zoek in de lijstweergave op biernaam.
+- **Behoefte vs voorraad**: voor de geselecteerde batches wordt de
+  aggregaat-ingrediëntbehoefte per categorie (mout/hop/gist/overig)
+  afgezet tegen de huidige voorraad (som van actieve lots).
+  Eenheidverschillen worden automatisch omgerekend waar mogelijk;
+  incompatibele eenheden krijgen een waarschuwing.
+- **BestellijstModal** (`src/components/BestellijstModal.tsx`): bekijkbare
+  lijst met alleen de tekorten, gegroepeerd per categorie, met laatste
+  leverancier uit de meest recente lot. Sessie-lokale "besteld"-checkboxes.
+- Nieuwe helpers in `src/utils/calculations.ts`: `scaleRecipeNeeds`,
+  `aggregateBatchNeeds`, `compareNeedsToStock`.
+- Navigatie: nieuwe submenu-entry "Planning" onder "Brouwerij".
+- i18n-sleutels (`nav_planning`, `plan_*`) toegevoegd in nl/en/de/fr/es.
+
+---
+
 ## [1.8.73] — 2026-04-18
 
 ### Added — BTW-aangifte indienen + dashboard-signalering openstaande aangiftes
