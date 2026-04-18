@@ -437,7 +437,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   React.useEffect(() => {
     if (!preNieuwBatch) return
     const { _receptIngredienten, ...batchData } = preNieuwBatch
-    setBForm({...emptyB, ...batchData})
+    const autoNr = batchData.batch_nummer ? {} : { batch_nummer: nextBatchNummer() }
+    setBForm({...emptyB, ...batchData, ...autoNr})
     setEditId(null)
     setShowForm(true)
     setPendingBatchIngredienten(_receptIngredienten || [])
@@ -448,6 +449,31 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',tank_dagen:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
+
+  // Stel het volgende batchnummer voor op basis van de meest recente batch.
+  // Pakt de numerieke staart uit `batch_nummer` en telt er 1 bij op, met
+  // behoud van prefix, eventuele jaar-segmenten en zero-padding.
+  // Fallback: 'B-YYYY-001' als er nog geen bestaande batches zijn.
+  const nextBatchNummer = (): string => {
+    const metNr = (bat || []).filter((b: any) => String(b.batch_nummer || '').trim())
+    if (metNr.length === 0) {
+      const y = new Date().getFullYear()
+      return `B-${y}-001`
+    }
+    // "Meest recente" = hoogste id (fallback op created_at als id gelijk is)
+    const laatste = [...metNr].sort((a: any, b: any) => {
+      const di = Number(b.id || 0) - Number(a.id || 0)
+      if (di !== 0) return di
+      return String(b.created_at || '').localeCompare(String(a.created_at || ''))
+    })[0]
+    const nr = String(laatste.batch_nummer).trim()
+    // Zoek trailing numeriek deel (evt. met suffix-letters erachter)
+    const m = nr.match(/^(.*?)(\d+)(\D*)$/)
+    if (!m) return `${nr}-1`
+    const [, prefix, num, suffix] = m
+    const volg = String(Number(num) + 1).padStart(num.length, '0')
+    return `${prefix}${volg}${suffix}`
+  }
 
   const safeStr = (v: any): string => {
     if (!v && v !== 0) return ''
@@ -1104,7 +1130,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
             {bfSyncing ? t('batch_syncing') : t('batch_sync_brewfather')}
           </Btn>
-          <Btn onClick={()=>{setEditId(null);setBForm(emptyB);setShowForm(true)}}>{t('batch_add_btn')}</Btn>
+          <Btn onClick={()=>{setEditId(null);setBForm({...emptyB, batch_nummer: nextBatchNummer()});setShowForm(true)}}>{t('batch_add_btn')}</Btn>
         </div>
       </div>
 

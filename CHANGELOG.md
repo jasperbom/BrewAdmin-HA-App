@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.79] — 2026-04-18
+
+### Added — Auto-invul batchnummer bij nieuwe batch
+- Het veld **Batch #** wordt bij het aanmaken van een nieuwe batch
+  automatisch ingevuld met het volgende opeenvolgende nummer, afgeleid
+  van de meest recente bestaande batch. De numerieke staart wordt met 1
+  verhoogd met behoud van prefix en zero-padding (bv. `B-2026-012` →
+  `B-2026-013`). Werkt zowel voor de gewone "Nieuwe batch"-knop als voor
+  batches die vanuit een recept worden aangemaakt. Fallback bij een lege
+  lijst: `B-{huidigjaar}-001`.
+
+---
+
 ## [1.8.78] — 2026-04-18
 
 ### Added — Visuele tank-bezetting + slimme tank-keuze in batchformulier
