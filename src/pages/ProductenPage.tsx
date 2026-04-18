@@ -477,7 +477,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           {wcCreds?.enabled && (
             <button onClick={wcPushAll} disabled={wcSyncing}
               title={t('wc_push_stock_title')}
-              className="wc-btn flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40">
+              className="wc-btn flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
               {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
             </button>
           )}
