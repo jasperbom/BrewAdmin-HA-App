@@ -6,7 +6,7 @@ import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import SectionHeader from '../components/ui/SectionHeader'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
+function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -84,6 +84,52 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
     }
     return past;
   }, [btwInst, bankKoppelingen]);
+
+  // Laatste afgelopen BTW-periode waarvan de aangifte nog NIET is ingediend
+  const laatsteBtwNietIngediend = React.useMemo(() => {
+    const periodeType = (btwInst as any)?.periode ?? 'kwartaal';
+    const nu = new Date(); nu.setHours(0,0,0,0);
+    const ingediendSet = new Set((btwAangiftes||[]).map((a: any) => a.periodeKey));
+    // Zoek meest recent afgelopen periode (kan ook in vorig jaar liggen)
+    for (let offset = 0; offset < 12; offset++) {
+      const refDatum = new Date(nu.getFullYear(), nu.getMonth() - offset, 1);
+      const jaar = refDatum.getFullYear();
+      let key = '';
+      let labelKey = '';
+      let to: Date;
+      if (periodeType === 'kwartaal') {
+        const q = Math.floor(refDatum.getMonth() / 3) + 1;
+        to = new Date(jaar, q * 3, 0);
+        key = `${jaar}-Q${q}`;
+        labelKey = `Q${q} ${jaar}`;
+      } else {
+        const m = refDatum.getMonth() + 1;
+        to = new Date(jaar, m, 0);
+        key = `${jaar}-M${String(m).padStart(2, '0')}`;
+        labelKey = `${String(m).padStart(2, '0')}-${jaar}`;
+      }
+      if (to >= nu) continue;
+      if (ingediendSet.has(key)) return null;
+      return {key, label: labelKey};
+    }
+    return null;
+  }, [btwInst, btwAangiftes]);
+
+  // Laatste afgelopen accijns-maand waarvan de aangifte nog NIET is ingediend
+  const laatsteAccijnsMaandNietIngediend = React.useMemo(() => {
+    const nu = new Date(); nu.setHours(0,0,0,0);
+    const vorigeMaand = new Date(nu.getFullYear(), nu.getMonth() - 1, 1);
+    const maandKey = `${vorigeMaand.getFullYear()}-${String(vorigeMaand.getMonth() + 1).padStart(2, '0')}`;
+    const aangifte = (accijnsAangiftes||[]).find((a: any) => a.maand === maandKey);
+    const status = aangifte?.status || 'open';
+    if (status === 'ingediend' || status === 'betaald') return null;
+    const heeftAccijnsInPeriode = (acc||[]).some((a: any) => {
+      const d = a.datum || a.created_at || '';
+      return d.slice(0, 7) === maandKey;
+    });
+    if (!heeftAccijnsInPeriode) return null;
+    return {maand: maandKey, label: maandKey};
+  }, [accijnsAangiftes, acc]);
 
   // ── SG helpers ────────────────────────────────────────────────────────────
   const latestMeting = (batchId: number) => {
@@ -608,6 +654,30 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
             color="red"
             onClick={() => setPage('voorraadverloop')}
           />
+        </div>
+      )}
+
+      {/* Aangiftes afgelopen periode nog niet ingediend */}
+      {(laatsteBtwNietIngediend || laatsteAccijnsMaandNietIngediend) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          {laatsteBtwNietIngediend && (
+            <StatCard
+              label={t('stat_btw_niet_ingediend')}
+              value={laatsteBtwNietIngediend.label}
+              sub={t('stat_btw_niet_ingediend_sub')}
+              color="orange"
+              onClick={() => setPage('boekhouding')}
+            />
+          )}
+          {laatsteAccijnsMaandNietIngediend && (
+            <StatCard
+              label={t('stat_accijns_niet_ingediend')}
+              value={laatsteAccijnsMaandNietIngediend.label}
+              sub={t('stat_accijns_niet_ingediend_sub')}
+              color="orange"
+              onClick={() => setPage('boekhouding')}
+            />
+          )}
         </div>
       )}
 
