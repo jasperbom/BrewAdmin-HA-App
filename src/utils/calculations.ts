@@ -1,4 +1,5 @@
-import { AccijnsInst, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron } from '../types'
+import { AccijnsInst, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot } from '../types'
+import { convertEenheid } from './constants'
 
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
   const liter = L; const hl = L / 100
@@ -646,3 +647,172 @@ export const gemAgpInPeriode = (
   if (nDays === 0) return { tank: 0, verpakt: 0, totaal: 0 }
   return { tank: sTank / nDays, verpakt: sVerp / nDays, totaal: sTot / nDays }
 }
+
+// ── Planning: schaling, aggregatie en voorraadcheck ─────────────────────────
+// Helpers voor de Planning-module: schaal recept-ingrediënten naar het
+// doelvolume van een (geplande) batch, som behoefte op over meerdere batches
+// en vergelijk met de huidige voorraad (lots).
+
+export type ReceptCategorie = 'mout' | 'hop' | 'gist' | 'overig'
+
+export interface GeschaaldeBehoefte {
+  naam: string
+  hoeveelheid: number
+  eenheid: string
+  categorie: ReceptCategorie
+}
+
+// Schaalt één recept naar het doelvolume van een batch. Fallback: schaal=1 als
+// batch_size of targetL ontbreekt of 0 is (zodat de hoeveelheden uit het
+// recept minimaal doorkomen en de UI kan waarschuwen).
+export const scaleRecipeNeeds = (recept: Recept, targetL: number): GeschaaldeBehoefte[] => {
+  const batchSize = Number(recept?.batch_size || 0)
+  const doel = Number(targetL || 0)
+  const f = (batchSize > 0 && doel > 0) ? doel / batchSize : 1
+  const out: GeschaaldeBehoefte[] = []
+  const categorieen: ReceptCategorie[] = ['mout', 'hop', 'gist', 'overig']
+  for (const cat of categorieen) {
+    const lijst = (recept as any)[cat] as Array<{naam: string, hoeveelheid: number, eenheid: string}> | undefined
+    if (!Array.isArray(lijst)) continue
+    for (const ri of lijst) {
+      const q = Number(ri?.hoeveelheid || 0) * f
+      if (!ri?.naam || q <= 0) continue
+      out.push({
+        naam: String(ri.naam).trim(),
+        hoeveelheid: q,
+        eenheid: String(ri.eenheid || ''),
+        categorie: cat,
+      })
+    }
+  }
+  return out
+}
+
+export interface AggregaatBehoefte {
+  naam: string
+  eenheid: string
+  categorie: ReceptCategorie
+  totaal: number
+}
+
+// Map ingredient_type (zoals op Batch) naar de recept-categorie die we voor
+// de planning gebruiken. Onbekende types vallen terug op 'overig'.
+const typeToCategorie = (t?: string): ReceptCategorie => {
+  const s = String(t || '').toLowerCase()
+  if (s.includes('mout')) return 'mout'
+  if (s.includes('hop')) return 'hop'
+  if (s.includes('gist')) return 'gist'
+  return 'overig'
+}
+
+// Aggregeert ingrediëntbehoefte over meerdere batches. Primaire bron: de
+// `batch_ingredienten` die bij elke batch horen (die zijn al per-batch
+// geschaald op het moment dat de batch uit een recept werd aangemaakt). Als
+// een batch nog géén batch_ingredienten heeft (bv. handmatig aangemaakte
+// geplande batch), dan proberen we het recept te vinden via
+// `recipeResolver(batch)` en schalen we alsnog naar `batch.liter_vergist`.
+export const aggregateBatchNeeds = (
+  batches: any[],
+  batchIngredienten: any[],
+  recepten: Recept[] = [],
+  recipeResolver?: (batch: any) => string | undefined
+): AggregaatBehoefte[] => {
+  const map = new Map<string, AggregaatBehoefte>()
+  const add = (naam: string, eenheid: string, cat: ReceptCategorie, qty: number) => {
+    const key = `${cat}::${naam.toLowerCase().trim()}::${eenheid.toLowerCase()}`
+    const prev = map.get(key)
+    if (prev) prev.totaal += qty
+    else map.set(key, { naam: naam.trim(), eenheid, categorie: cat, totaal: qty })
+  }
+  for (const b of batches || []) {
+    const bi = (batchIngredienten || []).filter((i: any) => i.batch_id === b.id)
+    if (bi.length > 0) {
+      for (const i of bi) {
+        const q = Number(i.hoeveelheid || 0)
+        if (!i?.ingredient_naam || q <= 0) continue
+        add(String(i.ingredient_naam), String(i.eenheid || ''), typeToCategorie(i.ingredient_type), q)
+      }
+      continue
+    }
+    // Fallback: schaal uit recept
+    const receptId = recipeResolver ? recipeResolver(b) : undefined
+    const recept = receptId ? (recepten || []).find(r => String(r.id) === String(receptId)) : undefined
+    if (!recept) continue
+    for (const r of scaleRecipeNeeds(recept, Number(b.liter_vergist || 0))) {
+      add(r.naam, r.eenheid, r.categorie, r.hoeveelheid)
+    }
+  }
+  const order: Record<ReceptCategorie, number> = { mout: 0, hop: 1, gist: 2, overig: 3 }
+  return Array.from(map.values()).sort((a, b) =>
+    (order[a.categorie] - order[b.categorie]) || a.naam.localeCompare(b.naam)
+  )
+}
+
+export interface VoorraadVergelijking {
+  naam: string
+  eenheid: string
+  categorie: ReceptCategorie
+  nodig: number
+  opVoorraad: number
+  opVoorraadEenheid: string   // eenheid van de voorraad (kan afwijken van nodig)
+  tekort: number              // nodig - opVoorraad (omgerekend), ≥0
+  ingredient_id?: number
+  eenheidMismatch?: boolean   // true als lots een incompatibele eenheid hebben
+}
+
+// Vergelijkt aggregaat-behoefte met de actuele voorraad (som van actieve lots
+// per ingredient). Match tussen behoefte en ingredient gebeurt op naam
+// (lowercase trim). Eenheden worden omgerekend via `convertEenheid` als ze
+// tot dezelfde groep (massa/volume/count) behoren; anders wordt
+// `eenheidMismatch` gezet en nemen we de ruwe lot-som over.
+export const compareNeedsToStock = (
+  needs: AggregaatBehoefte[],
+  ingredienten: Ingredient[],
+  lots: Lot[]
+): VoorraadVergelijking[] => {
+  const ingByNaam = new Map<string, Ingredient>()
+  for (const i of ingredienten || []) {
+    if (i?.naam) ingByNaam.set(String(i.naam).toLowerCase().trim(), i)
+  }
+  const out: VoorraadVergelijking[] = []
+  for (const n of needs) {
+    const ing = ingByNaam.get(n.naam.toLowerCase().trim())
+    const activeLots = ing
+      ? (lots || []).filter((l: any) => l.ingredient_id === ing.id && l.beschikbaar && Number(l.hoeveelheid || 0) > 0)
+      : []
+    // Bepaal totaal voorraad in de eenheid van de behoefte als mogelijk.
+    let voorraadInNeed = 0
+    let mismatch = false
+    let voorraadEenheid = n.eenheid
+    for (const l of activeLots) {
+      const raw = Number(l.hoeveelheid || 0)
+      const lotE = String(l.eenheid || '')
+      voorraadEenheid = lotE || voorraadEenheid
+      if (lotE === n.eenheid) {
+        voorraadInNeed += raw
+      } else {
+        const conv = convertEenheid(raw, lotE, n.eenheid)
+        if (conv == null) {
+          mismatch = true
+          voorraadInNeed += raw   // toon ruwe som zodat de gebruiker iets ziet
+        } else {
+          voorraadInNeed += conv
+        }
+      }
+    }
+    const tekort = Math.max(0, n.totaal - voorraadInNeed)
+    out.push({
+      naam: n.naam,
+      eenheid: n.eenheid,
+      categorie: n.categorie,
+      nodig: n.totaal,
+      opVoorraad: voorraadInNeed,
+      opVoorraadEenheid: voorraadEenheid,
+      tekort,
+      ingredient_id: ing?.id,
+      eenheidMismatch: mismatch,
+    })
+  }
+  return out
+}
+

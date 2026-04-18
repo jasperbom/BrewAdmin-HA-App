@@ -22,6 +22,7 @@ import ProductenPage from './pages/ProductenPage'
 import VoorraadverloopPage from './pages/VoorraadverloopPage'
 import HACCPPage from './pages/HACCPPage'
 import AgpPage from './pages/AgpPage'
+import PlanningPage from './pages/PlanningPage'
 
 class PageErrorBoundary extends React.Component<{children: React.ReactNode, page: string}, {err: string|null}> {
   state = { err: null as string|null }
@@ -180,6 +181,7 @@ function App() {
   const [openOrderId, setOpenOrderId] = useState<number | null>(null);
   const [navBatchId, setNavBatchId] = useState<number | null>(null);
   const [preNieuwBatch, setPreNieuwBatch] = useState<any>(null);
+  const [planningPreselect, setPlanningPreselect] = useState<number|null>(null);
   const importRef = useRef<any>(null);
   const bfAutoSynced = React.useRef(false);
 
@@ -592,6 +594,7 @@ function App() {
       {id:'ingredienten',l:t('nav_ingredienten')},
       {id:'recepten',l:t('nav_recepten')},
       {id:'batches',l:t('nav_batches')},
+      {id:'planning',l:t('nav_planning')},
     ]},
     {id:'producten',l:t('nav_producten')},
     {id:'bestellingen',l:t('nav_bestellingen')},
@@ -684,7 +687,8 @@ function App() {
       </nav>
       <PageErrorBoundary page={page}>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} av={av} setPage={setPage} tanks={tanks} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} haTankTemps={haTankTemps} setNavBatchId={setNavBatchId} btwInst={btwInst} btwAangiftes={btwAangiftes} accijnsAangiftes={accijnsAangiftes} bankKoppelingen={bankKoppelingen} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} haccpTaken={haccpSchoonmaakTaken} haccpLog={haccpSchoonmaakLog} setHaccpLog={setHaccpSchoonmaakLog} haccpCapa={haccpCapa} locaties={locaties} verplaatsingen={verplaatsingen} afboekingen={afboekingen} />}
+        {page==='dashboard'    && <DashboardPage ing={ing} lots={lots} bat={bat} bi={bi} uit={uit} acc={acc} av={av} setPage={setPage} tanks={tanks} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} haInst={haInst} haTankTemps={haTankTemps} setNavBatchId={setNavBatchId} setPlanningPreselect={setPlanningPreselect} btwInst={btwInst} btwAangiftes={btwAangiftes} accijnsAangiftes={accijnsAangiftes} bankKoppelingen={bankKoppelingen} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} haccpTaken={haccpSchoonmaakTaken} haccpLog={haccpSchoonmaakLog} setHaccpLog={setHaccpSchoonmaakLog} haccpCapa={haccpCapa} locaties={locaties} verplaatsingen={verplaatsingen} afboekingen={afboekingen} />}
+        {page==='planning' && <PlanningPage bat={bat} bi={bi} recepten={recepten} ing={ing} lots={lots} producten={producten} preselectBatchId={planningPreselect} onPreselectConsumed={() => setPlanningPreselect(null)} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} av={av} uit={uit} bi={bi} lots={lots} acc={acc} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} />}
