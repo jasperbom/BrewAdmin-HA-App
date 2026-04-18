@@ -4,6 +4,61 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.79] — 2026-04-18
+
+### Added — Auto-invul batchnummer bij nieuwe batch
+- Het veld **Batch #** wordt bij het aanmaken van een nieuwe batch
+  automatisch ingevuld met het volgende opeenvolgende nummer, afgeleid
+  van de meest recente bestaande batch. De numerieke staart wordt met 1
+  verhoogd met behoud van prefix en zero-padding (bv. `B-2026-012` →
+  `B-2026-013`). Werkt zowel voor de gewone "Nieuwe batch"-knop als voor
+  batches die vanuit een recept worden aangemaakt. Fallback bij een lege
+  lijst: `B-{huidigjaar}-001`.
+
+---
+
+## [1.8.78] — 2026-04-18
+
+### Added — Visuele tank-bezetting + slimme tank-keuze in batchformulier
+- **PlanningPage**: de oude gegroepeerde "Tank-planning" is vervangen door
+  een horizontale Gantt-achtige tijdlijn. Één rij per tank, bars met de
+  bezetting per batch (datum → datum + tank_dagen). Kleuren markeren de
+  status: Gepland (amber), Vergisten (groen), Conditioneren (paars).
+  Gestippelde rand betekent dat er geen `tank_dagen` is ingevuld en er een
+  default van 14 dagen wordt getoond. Lopende batches in Vergisten/
+  Conditioneren tellen mee, niet alleen de geplande.
+- **BatchesPage** (nieuw-/bewerk-formulier):
+  - Tank-dropdown toont naast elke tank of hij vrij is of bezet door welke
+    batch (met bezettingsperiode) — gebaseerd op datum-overlap, niet meer
+    alleen "is er ergens een actieve batch".
+  - Nieuw veld **Tanktijd (dgn)** naast Tank en Datum; wordt opgeslagen
+    als `batch.tank_dagen`.
+  - Inline waarschuwing onder de tank-dropdown als de geselecteerde tank
+    overlapt in de planning.
+  - Bij opslaan: confirm-dialog bij niet-blokkerende datum-overlap (Gepland);
+    harde block blijft voor actief gebruik (Vergisten/Conditioneren) zoals
+    voorheen.
+- i18n: nieuwe sleutels `plan_status_gepland`, `plan_status_vergisten`,
+  `plan_status_conditioneren`, `plan_tank_legend_schatting`,
+  `plan_tank_schatting`, `plan_geen_tanks`, `tank_vrij`, `tank_bezet`,
+  `tank_overlap_waarschuwing`, `err_tank_overlap` (nl/en/de/fr/es).
+
+---
+
+## [1.8.77] — 2026-04-18
+
+### Fixed — Gist-grafiek: data van verwijderde batch niet meer zichtbaar op nieuwe batch
+- `removeBatch` (BatchesPage) cascade-ruimt nu alle aan de batch gekoppelde
+  records op: `afvullingen`, `gist_metingen`, `carbonatie_sessies`,
+  `verlies_registraties`, `ccp_metingen` en batch-log-entries. Voorheen bleven
+  deze achter met `batch_id` dat verwees naar de verwijderde batch.
+- `newId` hergebruikt het laagste vrije id, dus een nieuw aangemaakte
+  (geplande) batch kon het id van een eerder verwijderde batch overerven,
+  waardoor oude gistmetingen plotseling in de gist-grafiek van de nieuwe
+  geplande batch verschenen. Cascade-cleanup voorkomt deze "spookdata".
+
+---
+
 ## [1.8.76] — 2026-04-18
 
 ### Fixed — Planning behoefte: reeds afgeboekte ingrediënten niet meer meegeteld

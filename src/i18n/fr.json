@@ -1564,7 +1564,17 @@
   "plan_sluiten": "Fermer",
   "plan_tank_tijd": "Durée cuve (j)",
   "plan_tank_vrij_op": "Cuve libre le",
-  "plan_tank_planning": "Planning des cuves",
+  "plan_tank_planning": "Occupation des cuves",
   "plan_zonder_tank": "Sans cuve",
-  "plan_dagen": "j"
+  "plan_dagen": "j",
+  "plan_status_gepland": "Prévu",
+  "plan_status_vergisten": "Fermentation",
+  "plan_status_conditioneren": "Garde",
+  "plan_tank_legend_schatting": "Bordure pointillée = durée estimée (aucune durée de cuve saisie)",
+  "plan_tank_schatting": "estimé",
+  "plan_geen_tanks": "Aucune cuve configurée",
+  "tank_vrij": "libre",
+  "tank_bezet": "occupée par",
+  "tank_overlap_waarschuwing": "Chevauchement de planning avec",
+  "err_tank_overlap": "La cuve {tank} se chevauche dans le planning avec : {names}. Enregistrer quand même ?"
 }

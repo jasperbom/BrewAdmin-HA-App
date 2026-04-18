@@ -437,7 +437,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   React.useEffect(() => {
     if (!preNieuwBatch) return
     const { _receptIngredienten, ...batchData } = preNieuwBatch
-    setBForm({...emptyB, ...batchData})
+    const autoNr = batchData.batch_nummer ? {} : { batch_nummer: nextBatchNummer() }
+    setBForm({...emptyB, ...batchData, ...autoNr})
     setEditId(null)
     setShowForm(true)
     setPendingBatchIngredienten(_receptIngredienten || [])
@@ -446,8 +447,33 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
 
-  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
+  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',tank_dagen:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
+
+  // Stel het volgende batchnummer voor op basis van de meest recente batch.
+  // Pakt de numerieke staart uit `batch_nummer` en telt er 1 bij op, met
+  // behoud van prefix, eventuele jaar-segmenten en zero-padding.
+  // Fallback: 'B-YYYY-001' als er nog geen bestaande batches zijn.
+  const nextBatchNummer = (): string => {
+    const metNr = (bat || []).filter((b: any) => String(b.batch_nummer || '').trim())
+    if (metNr.length === 0) {
+      const y = new Date().getFullYear()
+      return `B-${y}-001`
+    }
+    // "Meest recente" = hoogste id (fallback op created_at als id gelijk is)
+    const laatste = [...metNr].sort((a: any, b: any) => {
+      const di = Number(b.id || 0) - Number(a.id || 0)
+      if (di !== 0) return di
+      return String(b.created_at || '').localeCompare(String(a.created_at || ''))
+    })[0]
+    const nr = String(laatste.batch_nummer).trim()
+    // Zoek trailing numeriek deel (evt. met suffix-letters erachter)
+    const m = nr.match(/^(.*?)(\d+)(\D*)$/)
+    if (!m) return `${nr}-1`
+    const [, prefix, num, suffix] = m
+    const volg = String(Number(num) + 1).padStart(num.length, '0')
+    return `${prefix}${volg}${suffix}`
+  }
 
   const safeStr = (v: any): string => {
     if (!v && v !== 0) return ''
@@ -491,6 +517,50 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [verliesForm, setVerliesForm] = useState<any>(emptyVerlies)
   const [ingFormOpen, setIngFormOpen] = useState(false)
   const [batchZoek, setBatchZoek] = useState('')
+
+  // ── Tank-bezetting helpers (voor het batch-formulier) ──────────────
+  // Bepaal start/eind van een batch-periode. Fallback tank_dagen = 14 als
+  // er niets is ingevuld, zodat de visualisatie/overlap-check altijd een
+  // realistische duur pakt.
+  const TANK_STATUSES_ACTIEF = ['Gepland', 'Brouwen', 'Vergisten', 'Conditioneren']
+  const DEFAULT_TANK_DAGEN = 14
+  const _isoPlusDagen = (iso: string, n: number): string | null => {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return null
+    d.setDate(d.getDate() + n)
+    return d.toISOString().slice(0, 10)
+  }
+  const _batchPeriode = (b: any): { van: string; tot: string } | null => {
+    const van = String(b?.datum || '').slice(0, 10)
+    if (!van) return null
+    const dagen = Number(b?.tank_dagen || 0) > 0 ? Number(b.tank_dagen) : DEFAULT_TANK_DAGEN
+    const tot = _isoPlusDagen(van, dagen)
+    if (!tot) return null
+    return { van, tot }
+  }
+  const _overlapt = (a1: string, a2: string, b1: string, b2: string): boolean =>
+    a1 < b2 && b1 < a2
+
+  // Geef voor een tank-id alle conflicterende (overlappende) batches terug,
+  // gegeven de huidige formulier-periode. Excludeert de batch die we nu
+  // bewerken (editId).
+  const tankConflicten = (tankId: string): any[] => {
+    const mijnVan = String(bForm?.datum || '').slice(0, 10)
+    const mijnDagen = Number(bForm?.tank_dagen || 0) > 0 ? Number(bForm.tank_dagen) : DEFAULT_TANK_DAGEN
+    const mijnTot = _isoPlusDagen(mijnVan, mijnDagen)
+    if (!mijnVan || !mijnTot) return []
+    const uit: any[] = []
+    for (const b of bat || []) {
+      if (!b.tank || String(b.tank) !== String(tankId)) continue
+      if (b.id === editId) continue
+      if (!TANK_STATUSES_ACTIEF.includes(b.status)) continue
+      const p = _batchPeriode(b)
+      if (!p) continue
+      if (_overlapt(mijnVan, mijnTot, p.van, p.tot)) uit.push(b)
+    }
+    return uit
+  }
 
   const emptyAv = {verpakking_id:'',verpakking_type:'',inhoud_per_eenheid:'',hoeveelheid:'',datum:tod(),tht:'',gn_code:'',product_id:''}
   const [avF, setAvF] = useState<any>(emptyAv)
@@ -765,9 +835,18 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (!bForm.batch_nummer?.trim()) { alert(t('err_batch_number_required')); return }
     const dupNr = bat.find((b: any) => b.batch_nummer?.trim() === bForm.batch_nummer.trim() && b.id !== editId)
     if (dupNr) { alert(t('err_batch_number_duplicate').replace('{nr}', bForm.batch_nummer).replace('{naam}', dupNr.naam)); return }
-    if (bForm.tank && ['Vergisten','Conditioneren'].includes(bForm.status)) {
+    if (bForm.tank) {
+      // Blokkerend: lopend gebruik (Vergisten/Conditioneren) door een andere batch.
       const bezet = bat.find((b: any) => b.tank===bForm.tank && b.id!==editId && ['Vergisten','Conditioneren'].includes(b.status))
-      if (bezet) { alert(t('err_tank_occupied').replace('{tank}',bForm.tank).replace('{name}',bezet.naam)); return }
+      if (bezet && ['Vergisten','Conditioneren'].includes(bForm.status)) {
+        alert(t('err_tank_occupied').replace('{tank}',bForm.tank).replace('{name}',bezet.naam)); return
+      }
+      // Waarschuwing (niet-blokkerend): datum-overlap met andere batches in de planning.
+      const conflicten = tankConflicten(bForm.tank)
+      if (conflicten.length > 0 && !bezet) {
+        const namen = conflicten.map((c: any) => c.naam).join(', ')
+        if (!confirm(t('err_tank_overlap').replace('{tank}', bForm.tank).replace('{names}', namen))) return
+      }
     }
     if (editId) {
       const oud = bat.find((b: any) => b.id === editId)
@@ -941,8 +1020,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (confirm(t('error_confirm_delete_batch'))) {
       const naam = bat.find((b: any) => b.id === id)?.naam || ''
       logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:id, actie:'verwijderd', omschrijving:naam})
+      // Cascade-cleanup: verwijder alle aan deze batch gekoppelde gegevens.
+      // newId(arr) kan een vrijgekomen id hergebruiken, dus achterblijvende
+      // records zouden anders aan een volgende batch met hetzelfde id plakken.
       setBat((prev: any[]) => prev.filter((b: any) => b.id !== id))
       setBi((prev: any[]) => prev.filter((x: any) => x.batch_id !== id))
+      setAv((prev: any[]) => (prev||[]).filter((x: any) => x.batch_id !== id))
+      setGistMetingen((prev: any[]) => (prev||[]).filter((m: any) => m.batch_id !== id))
+      setCarbSessies((prev: any[]) => (prev||[]).filter((s: any) => s.batch_id !== id))
+      setVerliesRegistraties((prev: any[]) => (prev||[]).filter((r: any) => r.batch_id !== id))
+      setCcpMetingen((prev: any[]) => (prev||[]).filter((m: any) => m.batch_id !== id))
+      setLog((prev: any[]) => (prev||[]).filter((l: any) => l.batch_id !== id))
       setSel(null)
     }
   }
@@ -1042,7 +1130,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
             {bfSyncing ? t('batch_syncing') : t('batch_sync_brewfather')}
           </Btn>
-          <Btn onClick={()=>{setEditId(null);setBForm(emptyB);setShowForm(true)}}>{t('batch_add_btn')}</Btn>
+          <Btn onClick={()=>{setEditId(null);setBForm({...emptyB, batch_nummer: nextBatchNummer()});setShowForm(true)}}>{t('batch_add_btn')}</Btn>
         </div>
       </div>
 
@@ -2841,24 +2929,37 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <Inp label={t('lbl_style')} value={bForm.stijl} onChange={(v: string)=>setBForm((f: any)=>({...f,stijl:v}))} placeholder={t('ph_beer_style')} />
               <Sel label={t('lbl_status')} value={bForm.status} onChange={(v: string)=>setBForm((f: any)=>({...f,status:v}))} opts={STATUSSEN.map(s=>({v:s,l:STATUS_LABELS[s]||s}))} />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {tanks && tanks.length > 0
                 ? <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-0.5">Tank</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_tank')}</label>
                     <select value={bForm.tank||''} onChange={e=>setBForm((f: any)=>({...f,tank:e.target.value}))}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
                       <option value="">{t('batch_no_tank')}</option>
                       {tanks.map((tk: any) => {
-                        const bezet = bat.find((b: any) => b.tank===tk.id && b.id!==editId && ['Vergisten','Conditioneren'].includes(b.status))
-                        return <option key={tk.id} value={tk.id} disabled={!!bezet}>
-                          {tk.id}{bezet ? ` — bezet (${bezet.naam})` : ''}
+                        const conflicten = tankConflicten(tk.id)
+                        const vrij = conflicten.length === 0
+                        const eerste = conflicten[0]
+                        const eersteP = eerste ? _batchPeriode(eerste) : null
+                        const label = tk.naam ? `${tk.naam} (${tk.id})` : String(tk.id)
+                        const tag = vrij
+                          ? ` · ${t('tank_vrij')}`
+                          : ` · ${t('tank_bezet')} ${eerste?.naam || ''}${eersteP ? ` (${fmtD(eersteP.van)}→${fmtD(eersteP.tot)})` : ''}`
+                        return <option key={tk.id} value={tk.id}>
+                          {label}{tag}
                         </option>
                       })}
                     </select>
+                    {bForm.tank && tankConflicten(bForm.tank).length > 0 && (
+                      <p className="mt-1 text-xs text-orange-600">
+                        ⚠ {t('tank_overlap_waarschuwing')}: {tankConflicten(bForm.tank).map((c: any) => c.naam).join(', ')}
+                      </p>
+                    )}
                   </div>
                 : <Inp label={t('lbl_tank')} value={bForm.tank} onChange={(v: string)=>setBForm((f: any)=>({...f,tank:v}))} placeholder="FV1" />
               }
               <Inp label={t('lbl_date')} type="date" value={bForm.datum} onChange={(v: string)=>setBForm((f: any)=>({...f,datum:v}))} />
+              <Inp label={t('plan_tank_tijd')} type="number" value={String(bForm.tank_dagen ?? '')} onChange={(v: string)=>setBForm((f: any)=>({...f,tank_dagen:v}))} placeholder={String(DEFAULT_TANK_DAGEN)} />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Inp label={t('lbl_liters_fermented')} type="number" value={bForm.liter_vergist} onChange={(v: string)=>setBForm((f: any)=>({...f,liter_vergist:v}))} placeholder="0" />

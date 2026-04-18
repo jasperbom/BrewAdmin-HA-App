@@ -1374,7 +1374,17 @@
   "plan_sluiten": "Schließen",
   "plan_tank_tijd": "Tankzeit (T)",
   "plan_tank_vrij_op": "Tank frei ab",
-  "plan_tank_planning": "Tankplanung",
+  "plan_tank_planning": "Tankbelegung",
   "plan_zonder_tank": "Ohne Tank",
-  "plan_dagen": "T"
+  "plan_dagen": "T",
+  "plan_status_gepland": "Geplant",
+  "plan_status_vergisten": "Gärung",
+  "plan_status_conditioneren": "Reifung",
+  "plan_tank_legend_schatting": "Gestrichelter Rand = geschätzte Dauer (keine Tankzeit eingegeben)",
+  "plan_tank_schatting": "geschätzt",
+  "plan_geen_tanks": "Noch keine Tanks konfiguriert",
+  "tank_vrij": "frei",
+  "tank_bezet": "belegt von",
+  "tank_overlap_waarschuwing": "Planungsüberschneidung mit",
+  "err_tank_overlap": "Tank {tank} überschneidet sich in der Planung mit: {names}. Trotzdem speichern?"
 }

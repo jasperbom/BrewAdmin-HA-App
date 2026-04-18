@@ -1564,7 +1564,17 @@
   "plan_sluiten": "Cerrar",
   "plan_tank_tijd": "Tiempo tanque (d)",
   "plan_tank_vrij_op": "Tanque libre el",
-  "plan_tank_planning": "Planificación tanques",
+  "plan_tank_planning": "Ocupación de tanques",
   "plan_zonder_tank": "Sin tanque",
-  "plan_dagen": "d"
+  "plan_dagen": "d",
+  "plan_status_gepland": "Planeado",
+  "plan_status_vergisten": "Fermentación",
+  "plan_status_conditioneren": "Maduración",
+  "plan_tank_legend_schatting": "Borde discontinuo = duración estimada (sin tiempo de tanque)",
+  "plan_tank_schatting": "estimado",
+  "plan_geen_tanks": "Aún no hay tanques configurados",
+  "tank_vrij": "libre",
+  "tank_bezet": "ocupado por",
+  "tank_overlap_waarschuwing": "Solapamiento de planificación con",
+  "err_tank_overlap": "El tanque {tank} se solapa en la planificación con: {names}. ¿Guardar de todos modos?"
 }
