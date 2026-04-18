@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.77] — 2026-04-18
+
+### Fixed — Gist-grafiek: data van verwijderde batch niet meer zichtbaar op nieuwe batch
+- `removeBatch` (BatchesPage) cascade-ruimt nu alle aan de batch gekoppelde
+  records op: `afvullingen`, `gist_metingen`, `carbonatie_sessies`,
+  `verlies_registraties`, `ccp_metingen` en batch-log-entries. Voorheen bleven
+  deze achter met `batch_id` dat verwees naar de verwijderde batch.
+- `newId` hergebruikt het laagste vrije id, dus een nieuw aangemaakte
+  (geplande) batch kon het id van een eerder verwijderde batch overerven,
+  waardoor oude gistmetingen plotseling in de gist-grafiek van de nieuwe
+  geplande batch verschenen. Cascade-cleanup voorkomt deze "spookdata".
+
+---
+
 ## [1.8.76] — 2026-04-18
 
 ### Fixed — Planning behoefte: reeds afgeboekte ingrediënten niet meer meegeteld

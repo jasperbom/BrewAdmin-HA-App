@@ -941,8 +941,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (confirm(t('error_confirm_delete_batch'))) {
       const naam = bat.find((b: any) => b.id === id)?.naam || ''
       logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:id, actie:'verwijderd', omschrijving:naam})
+      // Cascade-cleanup: verwijder alle aan deze batch gekoppelde gegevens.
+      // newId(arr) kan een vrijgekomen id hergebruiken, dus achterblijvende
+      // records zouden anders aan een volgende batch met hetzelfde id plakken.
       setBat((prev: any[]) => prev.filter((b: any) => b.id !== id))
       setBi((prev: any[]) => prev.filter((x: any) => x.batch_id !== id))
+      setAv((prev: any[]) => (prev||[]).filter((x: any) => x.batch_id !== id))
+      setGistMetingen((prev: any[]) => (prev||[]).filter((m: any) => m.batch_id !== id))
+      setCarbSessies((prev: any[]) => (prev||[]).filter((s: any) => s.batch_id !== id))
+      setVerliesRegistraties((prev: any[]) => (prev||[]).filter((r: any) => r.batch_id !== id))
+      setCcpMetingen((prev: any[]) => (prev||[]).filter((m: any) => m.batch_id !== id))
+      setLog((prev: any[]) => (prev||[]).filter((l: any) => l.batch_id !== id))
       setSel(null)
     }
   }
