@@ -4,6 +4,7 @@ import { fmt, fmtD } from '../utils/format'
 import { resolveTankHistorie, getNegatieveVoorraadPosities } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
+import SectionHeader from '../components/ui/SectionHeader'
 
 function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setGistMetingen=()=>{}, btwInst={}, bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
@@ -859,13 +860,11 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
       {/* ── Open bestellingen ─────────────────────────────────────────────── */}
       {openBestellingen.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
-          <div
-            className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer"
-            onClick={() => setPage('bestellingen')}
-          >
-            <span>{t('lbl_open_orders')} ({openBestellingen.length})</span>
-            <span className="text-xs opacity-75">→</span>
-          </div>
+          <SectionHeader
+            onToggle={() => setPage('bestellingen')}
+            title={t('lbl_open_orders')}
+            info={openBestellingen.length}
+          />
           <div className="divide-y divide-gray-100">
             {openBestellingen.slice(0, 5).map((b: any) => (
               <div
@@ -943,12 +942,10 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
       {(openTaken.length > 0 || openCapasHaccp.length > 0 || activeTaken.length > 0) && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           {/* Header */}
-          <div
-            className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer"
-            onClick={() => setPage('haccp')}
-          >
-            <div className="flex items-center gap-2">
-              <span>{t('haccp_widget_titel')}</span>
+          <SectionHeader
+            onToggle={() => setPage('haccp')}
+            title={t('haccp_widget_titel')}
+            info={<>
               {openTaken.filter((t: any) => t._status === 'te_laat').length > 0 && (
                 <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                   {openTaken.filter((t: any) => t._status === 'te_laat').length} {t('haccp_widget_te_laat')}
@@ -959,9 +956,8 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                   {openCapasHaccp.length} {t('haccp_widget_open_capas')}
                 </span>
               )}
-            </div>
-            <span className="text-xs opacity-75">→</span>
-          </div>
+            </>}
+          />
 
           <div className="p-4 space-y-1">
             {/* Leeg-staat */}
@@ -1096,10 +1092,7 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
       {/* ── Fallback: actieve batches zonder tanks ────────────────────────── */}
       {actiefBatches.length > 0 && tanks.length === 0 && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setPage('batches')}>
-            <span>{t('dashboard_active_batches')}</span>
-            <span className="text-xs opacity-75">→</span>
-          </div>
+          <SectionHeader onToggle={() => setPage('batches')} title={t('dashboard_active_batches')} />
           <div className="divide-y divide-gray-100">
             {actiefBatches.map((b: any) => {
               const pct     = sgProgress(b);

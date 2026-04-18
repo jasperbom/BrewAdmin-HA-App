@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
+import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
@@ -383,7 +384,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* ── Links navigatie ── */}
       <div className="w-full md:w-44 md:flex-shrink-0 bg-white rounded-xl shadow-card overflow-hidden">
-        <div className="hidden md:block px-4 py-2.5 t-hdr text-white text-xs font-semibold uppercase tracking-widest rounded-t-xl">{t('nav_instellingen')}</div>
+        <div className="hidden md:block"><SectionHeader title={<span className="text-xs uppercase tracking-widest">{t('nav_instellingen')}</span>} /></div>
         <div className="flex md:block overflow-x-auto">
           {navItems.map(n => (
             <button key={n.id} onClick={()=>setActiveSection(n.id)}

@@ -192,15 +192,19 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 
 | Situatie | Klasse/patroon |
 |----------|---------------|
-| Sectie-header van een lijst/kaart | `t-hdr text-white font-medium text-sm px-4 py-2.5` |
-| Klikbare sectie-header | Voeg altijd toe: `flex items-center justify-between cursor-pointer` + `<span className="text-xs opacity-75">→</span>` als laatste child |
+| Sectie-header (statisch of klikbaar) | Gebruik `<SectionHeader>` uit `src/components/ui/SectionHeader.tsx` — geen inline `t-hdr` meer |
+| Zoek/filter-invoer | Gebruik `<SearchInput>` uit `src/components/ui/SearchInput.tsx` |
 | Accent-kleur inline tekst/link | `style={{color: 'var(--t-accent)'}}` — nooit `text-amber-*` hardcoden |
 | Sectie-label binnen een card | `text-xs font-semibold text-gray-500 uppercase tracking-wide` |
 | Fallback tekst (onbekende naam) | Altijd via i18n: `t('lbl_onbekend')` of `t('lbl_naamloos')` |
 
 **Regels:**
-- Gebruik **uitsluitend** de bestaande `t-hdr` class uit `src/index.css` voor sectie-headers — geen nieuwe varianten aanmaken
-- Alle klikbare headers krijgen een `→` pijl zodat de gebruiker weet dat navigatie mogelijk is
+- Gebruik `<SectionHeader title=... open=... onToggle=... info=... solid? rounded?>`
+  voor alle sectie-headers. Eén links-roterend `▶` toont automatisch bij `onToggle`;
+  extra info (telling, voortgang, status-pill) gaat rechts via `info`.
+- Zet **geen emoji's of icon-afbeeldingen** in de bruine headerbalk; gebruik
+  tekstlabels via `t()`.
+- Zoekbalken altijd via `<SearchInput value onChange placeholder cls? onKeyDown?>`.
 - Gebruik `style={{color: 'var(--t-accent)'}}` voor themagevoelige kleuren — dit werkt correct bij alle 6 thema's
 
 ---

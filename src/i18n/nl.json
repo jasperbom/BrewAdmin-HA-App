@@ -1,5 +1,6 @@
 {
   "nav_statiegeld": "Statiegeld",
+  "lbl_items": "items",
   "lbl_kwartaal": "Per kwartaal",
   "lbl_maand": "Per maand",
   "lbl_creditnota_titel": "CREDITNOTA",
@@ -46,6 +47,7 @@
   "btn_delete": "Verwijderen",
   "btn_add": "+ Toevoegen",
   "btn_edit": "Bewerken",
+  "btn_print": "Afdrukken",
   "btn_back": "← Terug naar overzicht",
   "btn_testing": "Testen…",
   "btn_reset": "Reset naar standaard",
@@ -1370,6 +1372,8 @@
   "haccp_ccp_corrigerende_actie": "Standaard corrigerende actie",
   "haccp_ccp_geen": "Geen CCP's gedefinieerd.",
   "haccp_ccp_metingen": "CCP-metingen",
+  "haccp_ccp_meting_plural": "metingen",
+  "haccp_ccp_afwijkingen_short": "afwijkingen",
   "haccp_ccp_meting_nieuw": "Meting toevoegen",
   "haccp_ccp_selecteer_batch": "Selecteer batch",
   "haccp_ccp_selecteer_ccp": "Selecteer CCP",

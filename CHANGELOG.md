@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.70] — 2026-04-18
+
+### Changed — Uniforme sectieheaders & zoekbalken
+- Nieuwe UI-primitives `SectionHeader` en `SearchInput` in `src/components/ui/`.
+- Alle klikbare sectieheaders gebruiken nu dezelfde afgeronde bruine `t-hdr`
+  balk met links één roterend `▶` en extra info rechts zonder achtergrondkleur.
+- Alle zoekvelden op Recepten, Batches, Ingrediënten, Producten en HACCP
+  delen dezelfde stijl (border, padding, focus-ring).
+- **AccijnsPage**: maand-kaart-header is niet meer groen/amber afhankelijk van
+  status; de statuspill blijft semantisch gekleurd maar staat rechts in de
+  headerbalk.
+- **BatchesPage**: emoji's 🍺, 🛢, 🫙, 🖨, ↪ verwijderd uit de batch-detail-
+  header en knoplabels.
+- **Dashboard**: navigatieheaders (open bestellingen, HACCP-widget, actieve
+  batches) tonen nu het links-roterende `▶` in plaats van `→` rechts.
+
+---
+
 ## [1.8.69] — 2026-04-17
 
 ### Added — S-5: Negatieve-voorraad-signalering

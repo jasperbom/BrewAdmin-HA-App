@@ -2,6 +2,7 @@ import React from 'react'
 import { t, getLang } from '../i18n'
 import { fmt, fmtD, tod } from '../utils/format'
 import { getNegatieveVoorraadPosities } from '../utils/calculations'
+import SectionHeader from '../components/ui/SectionHeader'
 import * as XLSX from 'xlsx'
 
 /* ── Period helpers ──────────────────────────────────────────────────────────── */
@@ -415,9 +416,9 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
 
       {tab === 'negatief' ? (
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between">
-            <span>{t('stat_negatieve_voorraad')}</span>
-            {negatievePosities.length > 0 && (
+          <SectionHeader
+            title={t('stat_negatieve_voorraad')}
+            info={negatievePosities.length > 0 && (
               <button
                 onClick={exportNegatiefCsv}
                 className="text-xs px-3 py-1 rounded bg-white/20 hover:bg-white/30 text-white transition-colors"
@@ -425,7 +426,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
                 {t('gpa_export_csv')}
               </button>
             )}
-          </div>
+          />
           {negatievePosities.length === 0 ? (
             <div className="p-8 text-center text-gray-500 text-sm">
               <div className="text-green-600 text-base font-semibold mb-1">{t('stat_negatieve_voorraad_leeg_titel')}</div>
@@ -504,7 +505,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
 
       {/* Section 1: Grondstoffen */}
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
-        <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('gpa_grondstoffen')}</div>
+        <SectionHeader title={t('gpa_grondstoffen')} />
         {grondstofRows.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">{t('gpa_geen_data')}</div>
         ) : (
@@ -552,7 +553,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
 
       {/* Section 2: Gereed product */}
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
-        <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('gpa_gereed_product')}</div>
+        <SectionHeader title={t('gpa_gereed_product')} />
         {gereedRows.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-sm">{t('gpa_geen_data')}</div>
         ) : (

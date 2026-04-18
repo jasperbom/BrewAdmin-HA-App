@@ -8,6 +8,8 @@ import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
+import SectionHeader from '../components/ui/SectionHeader'
+import SearchInput from '../components/ui/SearchInput'
 import { useStore } from '../utils/api'
 import { logAudit } from '../utils/audit'
 
@@ -439,9 +441,7 @@ const IngredientenPage: React.FC<Props> = ({
         <div className="flex flex-col md:flex-row gap-4 md:items-start">
           <div className={`w-full md:w-60 md:flex-shrink-0${sel ? ' hidden md:block' : ''}`}>
             <div className="mb-2 space-y-1.5">
-              <input type="text" placeholder={t('search_ingredient')}
-                className="w-full border rounded-lg px-3 py-2 text-sm t-input"
-                value={ingZoek} onChange={e => { setIngZoek(e.target.value); setSel(null) }} />
+              <SearchInput placeholder={t('search_ingredient')} value={ingZoek} onChange={v => { setIngZoek(v); setSel(null) }} />
               <label className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input type="checkbox" className="t-checkbox" checked={alleenOpVoorraad} onChange={e => { setAlleenOpVoorraad(e.target.checked); setSel(null) }} />
                 <span className="text-xs text-gray-500">{t('lbl_only_in_stock')}</span>
@@ -495,17 +495,17 @@ const IngredientenPage: React.FC<Props> = ({
             <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={() => setSel(null)}>{t('btn_back')}</button>
             <div className="flex-1 min-w-0">
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className="px-4 py-2.5 t-hdr text-white flex items-center justify-between rounded-t-xl">
-                <span className="font-medium text-sm">{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</span>
-                <div className="flex items-center gap-1">
+              <SectionHeader
+                title={<>{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</>}
+                info={<>
                   {selIng.brewfather_id && selIng.brewfather_cat && bfCreds?.enabled && (
                     <Btn s="sm" v="header" onClick={() => pushBfStock(selIng)} disabled={bfPushing}>{bfPushing ? '...' : t('btn_push_bf_stock')}</Btn>
                   )}
-                  <Btn s="sm" v="header" onClick={openIngEdit}>✏️</Btn>
-                  <button title={activeLots(sel).length > 0 ? t('err_delete_has_active_lots') : t('title_delete_ingredient')} onClick={deleteIng} disabled={activeLots(sel).length > 0} className={`text-xs px-2 py-1 rounded transition-colors ${activeLots(sel).length > 0 ? 'opacity-40 cursor-not-allowed text-white/60' : 'text-white/80 hover:text-white hover:bg-white/20'}`}>🗑</button>
+                  <Btn s="sm" v="header" onClick={openIngEdit}>{t('btn_edit')}</Btn>
+                  <button title={activeLots(sel).length > 0 ? t('err_delete_has_active_lots') : t('title_delete_ingredient')} onClick={deleteIng} disabled={activeLots(sel).length > 0} className={`text-xs px-2 py-1 rounded transition-colors ${activeLots(sel).length > 0 ? 'opacity-40 cursor-not-allowed text-white/60' : 'text-white/80 hover:text-white hover:bg-white/20'}`}>{t('btn_delete')}</button>
                   <Btn s="sm" v="header" onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(String(sel)); setShowO(true) }}>{t('btn_add_lot')}</Btn>
-                </div>
-              </div>
+                </>}
+              />
               <table className="w-full text-sm">
                 <thead className="text-xs text-gray-500 bg-gray-50">
                   <tr><th className="px-3 py-2 text-left">{t('lbl_lot_short')}</th><th className="px-3 py-2 text-right">{t('lbl_quantity_short')}</th><th className="px-3 py-2 text-left">{t('lbl_tht')}</th><th className="px-3 py-2 text-right">€/E</th></tr>
@@ -572,10 +572,13 @@ const IngredientenPage: React.FC<Props> = ({
         <div className="space-y-6">
           <div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none hover:opacity-90 ${vtIngeklapt ? 'rounded-xl' : 'rounded-t-xl'}`} onClick={() => setVtIngeklapt((v: boolean) => !v)}>
-                <span className="flex items-center gap-2"><span className="text-white/70 text-xs">{vtIngeklapt ? '▶' : '▼'}</span>{t('verpakking_components_section')}</span>
-                <Btn s="sm" v="header" onClick={(e: any) => { e.stopPropagation(); setVtForm(emptyVT); setVtOnderdeel({ onderdeel_id: '', aantal: '1' }); setShowVEdit(null); setShowVTAdd(true) }}>{t('verpakking_add_btn')}</Btn>
-              </div>
+              <SectionHeader
+                open={!vtIngeklapt}
+                onToggle={() => setVtIngeklapt((v: boolean) => !v)}
+                rounded={vtIngeklapt ? 'full' : 'top'}
+                title={t('verpakking_components_section')}
+                info={<Btn s="sm" v="header" onClick={(e: any) => { e.stopPropagation(); setVtForm(emptyVT); setVtOnderdeel({ onderdeel_id: '', aantal: '1' }); setShowVEdit(null); setShowVTAdd(true) }}>{t('verpakking_add_btn')}</Btn>}
+              />
               {!vtIngeklapt && <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                   <tr>
@@ -620,10 +623,13 @@ const IngredientenPage: React.FC<Props> = ({
           </div>
           <div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none hover:opacity-90 ${odIngeklapt ? 'rounded-xl' : 'rounded-t-xl'}`} onClick={() => setOdIngeklapt((v: boolean) => !v)}>
-                <span className="flex items-center gap-2"><span className="text-white/70 text-xs">{odIngeklapt ? '▶' : '▼'}</span>{t('tab_onderdelen')}</span>
-                <Btn s="sm" v="header" onClick={(e: any) => { e.stopPropagation(); setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(true) }}>{t('onderdeel_add_btn')}</Btn>
-              </div>
+              <SectionHeader
+                open={!odIngeklapt}
+                onToggle={() => setOdIngeklapt((v: boolean) => !v)}
+                rounded={odIngeklapt ? 'full' : 'top'}
+                title={t('tab_onderdelen')}
+                info={<Btn s="sm" v="header" onClick={(e: any) => { e.stopPropagation(); setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(true) }}>{t('onderdeel_add_btn')}</Btn>}
+              />
               {!odIngeklapt && <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                   <tr>

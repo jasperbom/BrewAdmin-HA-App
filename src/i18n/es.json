@@ -1,5 +1,6 @@
 {
   "nav_statiegeld": "Depósito",
+  "lbl_items": "elementos",
   "lbl_kwartaal": "Trimestral",
   "lbl_maand": "Mensual",
   "lbl_creditnota_titel": "NOTA DE CRÉDITO",
@@ -46,6 +47,7 @@
   "btn_delete": "Eliminar",
   "btn_add": "+ Añadir",
   "btn_edit": "Editar",
+  "btn_print": "Imprimir",
   "btn_back": "← Volver al resumen",
   "btn_testing": "Probando…",
   "btn_reset": "Restablecer",
@@ -1361,6 +1363,8 @@
   "haccp_ccp_corrigerende_actie": "Acción correctiva por defecto",
   "haccp_ccp_geen": "Sin PCC definidos.",
   "haccp_ccp_metingen": "Mediciones PCC",
+  "haccp_ccp_meting_plural": "mediciones",
+  "haccp_ccp_afwijkingen_short": "desviaciones",
   "haccp_ccp_meting_nieuw": "Agregar medición",
   "haccp_ccp_selecteer_batch": "Seleccionar lote",
   "haccp_ccp_selecteer_ccp": "Seleccionar PCC",

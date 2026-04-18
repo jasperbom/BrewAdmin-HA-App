@@ -5,6 +5,7 @@ import { newId } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
+import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
 
 interface InventarisatieTelling {
@@ -245,7 +246,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
 
         {/* Tellingen table */}
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="t-hdr text-white font-medium text-sm px-4 py-2.5">{t('inv_titel')}</div>
+          <SectionHeader title={t('inv_titel')} />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

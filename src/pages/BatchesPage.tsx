@@ -10,6 +10,8 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import Badge from '../components/ui/Badge'
+import SectionHeader from '../components/ui/SectionHeader'
+import SearchInput from '../components/ui/SearchInput'
 
 interface BatchesPageProps {
   ing: any[]
@@ -1048,9 +1050,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         {/* Batch list */}
         <div className={`w-full md:w-60 md:flex-shrink-0${sel?' hidden md:block':''}`}>
           <div className="mb-2">
-            <input type="text" placeholder={t('search_batch')}
-              className="w-full border rounded-lg px-3 py-2 text-sm t-input"
-              value={batchZoek} onChange={e=>{setBatchZoek(e.target.value); setSel(null)}} />
+            <SearchInput
+              placeholder={t('search_batch')}
+              value={batchZoek}
+              onChange={v=>{setBatchZoek(v); setSel(null)}} />
           </div>
           <div className="bg-white rounded-xl shadow-card overflow-x-auto">
             <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 uppercase tracking-wide border-b">
@@ -1069,11 +1072,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             ))}
             {bat.filter((b: any) => b.status==='Gesloten').length > 0 && (
               <div>
-                <div onClick={()=>setBatchArchiefIngeklapt((v: any)=>!v)}
-                  className="px-3 py-2 bg-gray-600 text-white flex items-center gap-2 cursor-pointer hover:bg-gray-500 select-none">
-                  <span className="text-gray-300 text-sm">{batchArchiefIngeklapt?'▶':'▼'}</span>
-                  <span className="text-xs font-medium text-gray-200 uppercase">{t('batch_archived')} ({bat.filter((b: any) => b.status==='Gesloten').length})</span>
-                </div>
+                <SectionHeader
+                  solid
+                  rounded="full"
+                  open={!batchArchiefIngeklapt}
+                  onToggle={()=>setBatchArchiefIngeklapt((v: any)=>!v)}
+                  title={<span className="text-xs font-medium uppercase tracking-wide">{t('batch_archived')}</span>}
+                  info={bat.filter((b: any) => b.status==='Gesloten').length}
+                />
                 {!batchArchiefIngeklapt && bat.filter((b: any) => b.status==='Gesloten').map((b: any) => (
                   <div key={b.id} onClick={()=>setSel(b.id)}
                     className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors ${sel===b.id?'t-sel border-l-2':''}`}>
@@ -1103,14 +1109,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     <div className="text-xs text-gray-400 mt-0.5">
                       {selB.batch_nummer ? `#${selB.batch_nummer}` : ''}
                       {selB.stijl ? `${selB.batch_nummer ? ' · ' : ''}${selB.stijl}` : ''}
-                      {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}🍺 ${selB.biernaam}` : ''}
+                      {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}${selB.biernaam}` : ''}
                       {selB.tank && ['Vergisten','Conditioneren'].includes(selB.status) && (
-                        <span className="ml-1 inline-flex items-center gap-0.5 bg-white/15 rounded px-1.5 py-0.5 text-white/90 text-[10px] font-medium">{(() => {
-                          const tkInfo = (tanks||[]).find((tk: any) => tk.id === selB.tank)
-                          const soort = tkInfo?.soort || 'fermentatie'
-                          const icon = soort === 'barrel' ? '🛢' : '🫙'
-                          return `${icon} ${selB.tank}`
-                        })()}</span>
+                        <span className="ml-1 inline-flex items-center gap-0.5 bg-white/15 rounded px-1.5 py-0.5 text-white/90 text-[10px] font-medium">{`${t('lbl_tank')} ${selB.tank}`}</span>
                       )}
                     </div>
                   </div>
@@ -1120,9 +1121,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       {STATUSSEN.map(s => <option key={s} value={s}>{STATUS_LABELS[s]||s}</option>)}
                     </select>
                     {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
-                      <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>↪ {t('batch_move_tank')}</Btn>
+                      <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>{t('batch_move_tank')}</Btn>
                     )}
-                    <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>🖨 Print</Btn>
+                    <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>{t('btn_print')}</Btn>
                     <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
                     <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                   </div>
@@ -1133,9 +1134,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     {STATUSSEN.map(s => <option key={s} value={s}>{STATUS_LABELS[s]||s}</option>)}
                   </select>
                   {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
-                    <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>↪ {t('batch_move_tank')}</Btn>
+                    <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>{t('batch_move_tank')}</Btn>
                   )}
-                  <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>🖨</Btn>
+                  <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>{t('btn_print')}</Btn>
                   <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
                   <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
                 </div>
@@ -1444,18 +1445,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
                   {/* Klikbare header */}
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
-                    onClick={() => setGrafiekOpen((p: any) => ({...p, [selB.id]: !isOpen}))}>
-                    <div className="flex items-center gap-2">
-                      {selB.status === 'Vergisten'
-                        ? <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                        : <span className="text-xs font-bold" style={{display:'inline-block',transition:'transform 0.15s',transform:isOpen?'rotate(90deg)':'none'}}>▶</span>}
-                      <span>{t('batch_gist_chart')}</span>
-                      {selB.status === 'Vergisten' && <span className="text-xs opacity-75">{t('batch_gist_active')}</span>}
-                      {batchMetingen.length > 0 && <span className="text-xs opacity-75">({batchMetingen.filter((m:any)=>!m.auto).length} {t('batch_gist_measurements')})</span>}
-                    </div>
-                    <span className="text-xs opacity-75">→</span>
-                  </div>
+                  <SectionHeader
+                    open={isOpen}
+                    onToggle={() => setGrafiekOpen((p: any) => ({...p, [selB.id]: !isOpen}))}
+                    title={
+                      <span className="flex items-center gap-2">
+                        {t('batch_gist_chart')}
+                        {selB.status === 'Vergisten' && <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse" title={t('batch_gist_active')}></span>}
+                      </span>
+                    }
+                    info={batchMetingen.length > 0 ? `${batchMetingen.filter((m:any)=>!m.auto).length} ${t('batch_gist_measurements')}` : null}
+                  />
 
                   {/* Invulrij — altijd zichtbaar als geopend */}
                   {isOpen && (
@@ -1589,19 +1589,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
-                    onClick={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !isOpen}))}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold" style={{display:'inline-block', transition:'transform 0.15s', transform: isOpen ? 'rotate(90deg)' : 'none'}}>▶</span>
-                      <span>{t('batch_verlies_header')}</span>
-                      {batchRegs.length > 0 && (
-                        <span className="text-xs opacity-75">
-                          ({batchRegs.length} {t('batch_verlies_posten')} · {totReg.toFixed(1)}L{pctRef != null ? ` · ${pctRef.toFixed(1)}%` : ''})
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs opacity-75">→</span>
-                  </div>
+                  <SectionHeader
+                    open={isOpen}
+                    onToggle={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !isOpen}))}
+                    title={t('batch_verlies_header')}
+                    info={batchRegs.length > 0 ? `${batchRegs.length} ${t('batch_verlies_posten')} · ${totReg.toFixed(1)}L${pctRef != null ? ` · ${pctRef.toFixed(1)}%` : ''}` : null}
+                  />
 
                   {isOpen && (
                     <div className="px-4 py-2.5 border-b bg-gray-50/50 flex flex-wrap items-center gap-2">
@@ -1725,16 +1718,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               })).filter((g: any) => g.items.length > 0)
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${hygieneIngeklapt?'rounded-xl':'rounded-t-xl'}`}
-                    onClick={()=>setHygieneIngeklapt((p: any)=>!p)}>
-                    <span className="flex items-center gap-2">
-                      <span className="text-white/70 text-xs">{hygieneIngeklapt?'▶':'▼'}</span>
-                      {t('batch_hygiene_title')}
-                    </span>
-                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${alleOk ? 'bg-green-500 text-white' : gedaan>0 ? 'bg-amber-400 text-white' : 'bg-teal-600 text-teal-200'}`}>
-                      {totaal===0 ? t('batch_hygiene_no_items_short') : `${gedaan}/${totaal}`}
-                    </span>
-                  </div>
+                  <SectionHeader
+                    open={!hygieneIngeklapt}
+                    onToggle={()=>setHygieneIngeklapt((p: any)=>!p)}
+                    rounded={hygieneIngeklapt ? 'full' : 'top'}
+                    title={t('batch_hygiene_title')}
+                    info={totaal===0 ? t('batch_hygiene_no_items_short') : `${gedaan}/${totaal}`}
+                  />
                   {!hygieneIngeklapt && (
                     <div className="p-3 space-y-3">
                       {totaal === 0 && <p className="text-sm text-gray-400 italic">{t('batch_hygiene_no_items')}</p>}
@@ -1801,16 +1791,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               }
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${brouwdagIngeklapt?'rounded-xl':'rounded-t-xl'}`}
-                    onClick={()=>setBrouwdagIngeklapt((p: any)=>!p)}>
-                    <span className="flex items-center gap-2">
-                      <span className="text-white/70 text-xs">{brouwdagIngeklapt?'▶':'▼'}</span>
-                      {t('batch_brouwdag_title')}
-                    </span>
-                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${alleOk ? 'bg-green-500 text-white' : gedaan>0 ? 'bg-amber-400 text-white' : 'bg-teal-600 text-teal-200'}`}>
-                      {`${gedaan}/${totaal}`}
-                    </span>
-                  </div>
+                  <SectionHeader
+                    open={!brouwdagIngeklapt}
+                    onToggle={()=>setBrouwdagIngeklapt((p: any)=>!p)}
+                    rounded={brouwdagIngeklapt ? 'full' : 'top'}
+                    title={t('batch_brouwdag_title')}
+                    info={`${gedaan}/${totaal}`}
+                  />
                   {!brouwdagIngeklapt && (
                     <div className="p-3 space-y-0.5">
                       {items.map((item: any, idx: number) => (
@@ -1863,16 +1850,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               }
               return defs.length > 0 ? (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${ccpIngeklapt?'rounded-xl':'rounded-t-xl'}`}
-                    onClick={()=>setCcpIngeklapt((p: any)=>!p)}>
-                    <span className="flex items-center gap-2">
-                      <span className="text-white/70 text-xs">{ccpIngeklapt?'▶':'▼'}</span>
-                      {t('haccp_ccp')}
-                    </span>
-                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${afwijkingen>0?'bg-red-500 text-white':'bg-green-500/80 text-white'}`}>
-                      {batchMetingen.length} {batchMetingen.length===1?'meting':'metingen'}{afwijkingen>0?` · ${afwijkingen} ⚠`:''}
-                    </span>
-                  </div>
+                  <SectionHeader
+                    open={!ccpIngeklapt}
+                    onToggle={()=>setCcpIngeklapt((p: any)=>!p)}
+                    rounded={ccpIngeklapt ? 'full' : 'top'}
+                    title={t('haccp_ccp')}
+                    info={`${batchMetingen.length} ${t('haccp_ccp_meting_plural')}${afwijkingen>0?` · ${afwijkingen} ${t('haccp_ccp_afwijkingen_short')}`:''}`}
+                  />
                   {!ccpIngeklapt && (
                     <div className="p-3 space-y-3">
                       {/* Quick-add meting */}
@@ -1929,14 +1913,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
             {/* Ingredienten */}
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${ingIngeklapt?'rounded-xl':'rounded-t-xl'}`}
-                onClick={()=>setIngIngeklapt((p: any)=>!p)}>
-                <span className="flex items-center gap-2">
-                  <span className="text-white/70 text-xs">{ingIngeklapt?'▶':'▼'}</span>
-                  {t('batch_ingredient_header')}
-                </span>
-                <span className="text-xs font-normal text-gray-300">{getBi(selB.id).length} items</span>
-              </div>
+              <SectionHeader
+                open={!ingIngeklapt}
+                onToggle={()=>setIngIngeklapt((p: any)=>!p)}
+                rounded={ingIngeklapt ? 'full' : 'top'}
+                title={t('batch_ingredient_header')}
+                info={`${getBi(selB.id).length} ${t('lbl_items')}`}
+              />
               {!ingIngeklapt && (<>
                 <table className="w-full text-sm">
                   <thead className="text-xs text-gray-500 bg-gray-50">
@@ -2230,19 +2213,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               }
 
               return (
-                <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer select-none"
-                    onClick={() => setCarbIngeklapt((v: any) => !v)}>
-                    <div className="flex items-center gap-2">
-                      {actief
-                        ? <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                        : <span className="text-xs font-bold" style={{display:'inline-block',transition:'transform 0.15s',transform:!carbIngeklapt?'rotate(90deg)':'none'}}>▶</span>}
+                <div className={`bg-white rounded-xl shadow-card ${carbIngeklapt?'':'overflow-hidden'}`}>
+                  <SectionHeader
+                    open={!carbIngeklapt}
+                    onToggle={() => setCarbIngeklapt((v: any) => !v)}
+                    rounded={carbIngeklapt ? 'full' : 'top'}
+                    title={<span className="flex items-center gap-2">
                       <span>{t('carb_title')}</span>
-                      {actief && <span className="text-xs opacity-75">{t('carb_status_active')}</span>}
-                      {!actief && voltooid.length > 0 && <span className="text-xs opacity-75">({voltooid.length} {t('carb_status_completed').toLowerCase()})</span>}
-                    </div>
-                    <span className="text-xs opacity-75">→</span>
-                  </div>
+                      {actief && <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>}
+                    </span>}
+                    info={actief
+                      ? t('carb_status_active')
+                      : (voltooid.length > 0 ? `${voltooid.length} ${t('carb_status_completed').toLowerCase()}` : null)}
+                  />
                   {!carbIngeklapt && <div className="p-3 space-y-3">
                     {actief ? (
                       <div className="border border-green-200 bg-green-50 rounded-lg p-3 space-y-2">
@@ -2445,17 +2428,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Botteldag ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
                     }
                     return (
-                      <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                        <div className={`px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer hover:opacity-90 select-none ${botteldagIngeklapt?'rounded-xl':'rounded-t-xl'}`}
-                          onClick={()=>setBotteldagIngeklapt((p: any)=>!p)}>
-                          <span className="flex items-center gap-2">
-                            <span className="text-white/70 text-xs">{botteldagIngeklapt?'▶':'▼'}</span>
-                            {t('batch_botteldag_title')}
-                          </span>
-                          <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${alleOk ? 'bg-green-500 text-white' : gedaan>0 ? 'bg-amber-400 text-white' : 'bg-teal-600 text-teal-200'}`}>
-                            {`${gedaan}/${totaal}`}
-                          </span>
-                        </div>
+                      <div className={`bg-white rounded-xl shadow-card ${botteldagIngeklapt?'':'overflow-hidden'}`}>
+                        <SectionHeader
+                          open={!botteldagIngeklapt}
+                          onToggle={()=>setBotteldagIngeklapt((p: any)=>!p)}
+                          rounded={botteldagIngeklapt ? 'full' : 'top'}
+                          title={t('batch_botteldag_title')}
+                          info={`${gedaan}/${totaal}`}
+                        />
                         {!botteldagIngeklapt && (
                           <div className="p-3 space-y-0.5">
                             {items.map((item: any, idx: number) => (
@@ -2480,11 +2460,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     )
                   })()}
 
-                  <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none" onClick={()=>setAfvullenIngeklapt((v: any)=>!v)}>
-                      <span className={`text-xs font-bold ${!afvullenIngeklapt?'rotate-90':''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
-                      <span>{t('batch_filling_register')}</span>
-                    </div>
+                  <div className={`bg-white rounded-xl shadow-card ${afvullenIngeklapt?'':'overflow-hidden'}`}>
+                    <SectionHeader
+                      open={!afvullenIngeklapt}
+                      onToggle={()=>setAfvullenIngeklapt((v: any)=>!v)}
+                      rounded={afvullenIngeklapt ? 'full' : 'top'}
+                      title={t('batch_filling_register')}
+                    />
                     {!afvullenIngeklapt && <div className="p-3 space-y-3">
                       {/* Product selectie */}
                       <div>
@@ -2623,11 +2605,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     </div>
                   )}
 
-                  <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                    <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none" onClick={()=>setVoorraadIngeklapt((v: any)=>!v)}>
-                      <span className={`text-xs font-bold ${!voorraadIngeklapt?'rotate-90':''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
-                      <span>{t('batch_filled_stock')}</span>
-                    </div>
+                  <div className={`bg-white rounded-xl shadow-card ${voorraadIngeklapt?'':'overflow-hidden'}`}>
+                    <SectionHeader
+                      open={!voorraadIngeklapt}
+                      onToggle={()=>setVoorraadIngeklapt((v: any)=>!v)}
+                      rounded={voorraadIngeklapt ? 'full' : 'top'}
+                      title={t('batch_filled_stock')}
+                    />
                     {!voorraadIngeklapt && <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="text-xs text-gray-500 bg-gray-50">
@@ -2706,10 +2690,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               const totaalKostprijs = totBrouwkosten + somVerpK + somAcc
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between">
-                    <span className="text-white">{t('batch_costs_summary')}</span>
-                    <span className="text-xs text-gray-400 font-normal">{t('lbl_excl_vat')}</span>
-                  </div>
+                  <SectionHeader
+                    title={t('batch_costs_summary')}
+                    info={t('lbl_excl_vat')}
+                  />
                   <div className="p-4 space-y-4 text-sm">
                     <div>
                       <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{t('batch_costs_ingredients')}</p>
@@ -2766,12 +2750,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               const bLog = (log||[]).filter((l: any) => l.batch_id===selB.id).slice().reverse()
               if (!bLog.length) return null
               return (
-                <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center gap-2 cursor-pointer select-none"
-                    onClick={() => setLogIngeklapt((v: boolean) => !v)}>
-                    <span className="text-xs opacity-70">{logIngeklapt ? '▶' : '▼'}</span>
-                    <span>{t('batch_log')} ({bLog.length})</span>
-                  </div>
+                <div className={`bg-white rounded-xl shadow-card ${logIngeklapt?'':'overflow-hidden'}`}>
+                  <SectionHeader
+                    open={!logIngeklapt}
+                    onToggle={() => setLogIngeklapt((v: boolean) => !v)}
+                    rounded={logIngeklapt ? 'full' : 'top'}
+                    title={t('batch_log')}
+                    info={bLog.length}
+                  />
                   {!logIngeklapt && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">

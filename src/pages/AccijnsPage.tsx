@@ -5,6 +5,7 @@ import { newId } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
+import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
 
 function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{}, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
@@ -270,26 +271,29 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
               const nextStep: Record<string,string> = {open:'berekend', berekend:'ingediend', ingediend:'betaald'}
               const nextLabel: Record<string,string> = {open:'excise_markeer_berekend', berekend:'excise_markeer_ingediend', ingediend:'excise_markeer_betaald'}
               return (
-              <div
-                className={`px-4 py-3 flex items-center justify-between cursor-pointer select-none ${allPaid ? 'bg-green-50 border-b border-green-100' : isCurrent ? 't-hdr text-white' : 'bg-amber-50 border-b border-amber-100'}`}
-                onClick={() => setIngeklapt((prev: any) => ({...prev, [monthKey]: isOpen}))}>
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-bold ${isOpen?'rotate-90':''}`} style={{display:'inline-block',transition:'transform 0.15s'}}>▶</span>
-                  <span className={`font-semibold capitalize text-sm ${isCurrent?'text-white':'text-gray-800'}`}>{fmtMonth(monthKey)}</span>
-                  {isCurrent && <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-white/20 text-white">{t('excise_current_month')}</span>}
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${aangifteStatusColor[wfStatus]||'bg-gray-100 text-gray-600'}`}>{t(`excise_status_${wfStatus}`)}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {nextStep[wfStatus] && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setAangifteStatus(monthKey, nextStep[wfStatus]) }}
-                      className="text-xs px-2.5 py-1 rounded font-medium bg-white/90 text-gray-700 hover:bg-white border border-gray-200 shadow-sm transition-colors">
-                      {t(nextLabel[wfStatus])}
-                    </button>
-                  )}
-                  <span className={`font-bold text-sm ${isCurrent?'text-white':allPaid?'text-green-700':'text-amber-700'}`}>{fmt(monthTotal)}</span>
-                </div>
-              </div>
+              <SectionHeader
+                open={isOpen}
+                onToggle={() => setIngeklapt((prev: any) => ({...prev, [monthKey]: isOpen}))}
+                title={
+                  <span className="flex items-center gap-2 capitalize">
+                    {fmtMonth(monthKey)}
+                    {isCurrent && <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-white/20 text-white normal-case">{t('excise_current_month')}</span>}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium normal-case ${aangifteStatusColor[wfStatus]||'bg-gray-100 text-gray-600'}`}>{t(`excise_status_${wfStatus}`)}</span>
+                  </span>
+                }
+                info={
+                  <>
+                    {nextStep[wfStatus] && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setAangifteStatus(monthKey, nextStep[wfStatus]) }}
+                        className="text-xs px-2.5 py-1 rounded font-medium bg-white/90 text-gray-700 hover:bg-white border border-gray-200 shadow-sm transition-colors">
+                        {t(nextLabel[wfStatus])}
+                      </button>
+                    )}
+                    <span className="font-bold text-sm text-white">{fmt(monthTotal)}</span>
+                  </>
+                }
+              />
               )
             })()}
 
