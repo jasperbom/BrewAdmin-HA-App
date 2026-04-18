@@ -1580,7 +1580,17 @@
   "plan_sluiten": "Sluiten",
   "plan_tank_tijd": "Tanktijd (dgn)",
   "plan_tank_vrij_op": "Tank vrij op",
-  "plan_tank_planning": "Tank-planning",
+  "plan_tank_planning": "Tank-bezetting",
   "plan_zonder_tank": "Zonder tank",
-  "plan_dagen": "dgn"
+  "plan_dagen": "dgn",
+  "plan_status_gepland": "Gepland",
+  "plan_status_vergisten": "Vergisten",
+  "plan_status_conditioneren": "Conditioneren",
+  "plan_tank_legend_schatting": "Gestippelde rand = geschatte duur (geen tanktijd ingevuld)",
+  "plan_tank_schatting": "geschat",
+  "plan_geen_tanks": "Nog geen tanks ingesteld",
+  "tank_vrij": "vrij",
+  "tank_bezet": "bezet door",
+  "tank_overlap_waarschuwing": "Overlap in planning met",
+  "err_tank_overlap": "Tank {tank} overlapt in de planning met: {names}. Toch opslaan?"
 }

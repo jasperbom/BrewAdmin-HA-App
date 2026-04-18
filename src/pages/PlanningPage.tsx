@@ -210,42 +210,107 @@ function PlanningPage({
 
   const geenGeplande = geplandeBatches.length === 0
 
-  // Tank-planning: groepeer geplande batches per tank met hun bezettings-
-  // periode (datum → datum + tank_dagen). Batches zonder tank of zonder
-  // datum worden in een aparte groep '—' verzameld.
-  const tankPlanning = useMemo(() => {
-    type Row = { batch: any; van: string; tot: string | null; dagen: number }
-    const groups = new Map<string, Row[]>()
-    for (const b of geplandeBatches) {
-      const tankId = String(b.tank || '')
-      const dagen = Number(b.tank_dagen || 0)
-      const van = String(b.datum || '').slice(0, 10)
-      const tot = dagen > 0 ? datumPlus(van, dagen) : null
-      const key = tankId || '—'
-      const arr = groups.get(key) || []
-      arr.push({ batch: b, van, tot, dagen })
-      groups.set(key, arr)
-    }
-    // Sorteer per groep op startdatum
-    for (const [, rows] of groups) rows.sort((a, b) => String(a.van).localeCompare(String(b.van)))
-    // Volgorde: eerst genoemde tanks (uit tanks-prop), daarna '—'
-    const order: string[] = []
-    for (const tk of (tanks || [])) {
-      const k = String(tk.id)
-      if (groups.has(k)) order.push(k)
-    }
-    // Tanks die in batches staan maar niet in tanks-prop
-    for (const k of groups.keys()) {
-      if (k !== '—' && !order.includes(k)) order.push(k)
-    }
-    if (groups.has('—')) order.push('—')
-    return order.map(k => ({ tankKey: k, rows: groups.get(k) || [] }))
-  }, [geplandeBatches, tanks])
+  // Tank-bezetting: neem alle batches mee die een tank gebruiken
+  // (Gepland/Vergisten/Conditioneren), niet alleen de geplande. Zo zie je ook
+  // welke tanks nu al bezet zijn door lopende batches.
+  const TANK_STATUSES = ['Gepland', 'Vergisten', 'Conditioneren']
 
-  const tankLabel = (key: string): string => {
-    if (key === '—') return t('plan_zonder_tank')
-    const tk = (tanks || []).find((t: any) => String(t.id) === key)
-    return tk?.naam ? `${tk.naam} (${tk.id})` : key
+  type TankBar = {
+    batch: any
+    van: Date
+    tot: Date
+    dagen: number
+    geschat: boolean   // true als tot is afgeleid van een default (geen tank_dagen)
+    tankId: string
+  }
+
+  const tankBars = useMemo<TankBar[]>(() => {
+    const bars: TankBar[] = []
+    for (const b of bat || []) {
+      if (!TANK_STATUSES.includes(b.status)) continue
+      if (!b.tank) continue
+      const vanIso = String(b.datum || '').slice(0, 10)
+      if (!vanIso) continue
+      const van = new Date(vanIso)
+      if (isNaN(van.getTime())) continue
+      const dagenRaw = Number(b.tank_dagen || 0)
+      const dagen = dagenRaw > 0 ? dagenRaw : 14 // default 14 dagen voor visualisatie
+      const tot = new Date(van)
+      tot.setDate(tot.getDate() + dagen)
+      bars.push({ batch: b, van, tot, dagen: dagenRaw, geschat: dagenRaw <= 0, tankId: String(b.tank) })
+    }
+    return bars
+  }, [bat])
+
+  // Tanks-rijen voor de timeline: altijd alle bekende tanks tonen, plus
+  // onbekende tank-ids die wel in batches voorkomen.
+  const tankRows = useMemo(() => {
+    const byTank = new Map<string, TankBar[]>()
+    for (const bar of tankBars) {
+      const arr = byTank.get(bar.tankId) || []
+      arr.push(bar)
+      byTank.set(bar.tankId, arr)
+    }
+    const rows: { tankId: string; label: string; bars: TankBar[] }[] = []
+    for (const tk of (tanks || [])) {
+      const id = String(tk.id)
+      const bars = (byTank.get(id) || []).sort((a, b) => a.van.getTime() - b.van.getTime())
+      rows.push({ tankId: id, label: tk.naam ? `${tk.naam} (${tk.id})` : id, bars })
+    }
+    for (const [id, bars] of byTank) {
+      if (!rows.find(r => r.tankId === id)) {
+        rows.push({ tankId: id, label: id, bars: bars.sort((a, b) => a.van.getTime() - b.van.getTime()) })
+      }
+    }
+    return rows
+  }, [tankBars, tanks])
+
+  // Start/eind van de timeline: 7 dagen voor 'vandaag', tot de laatste bezettings-
+  // einddatum + 7 dagen (minimaal 60 dagen totaal).
+  const timelineRange = useMemo(() => {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 7)
+    let end = new Date(today)
+    end.setDate(end.getDate() + 60)
+    for (const bar of tankBars) {
+      if (bar.tot > end) end = new Date(bar.tot)
+    }
+    end.setDate(end.getDate() + 7)
+    return { start, end }
+  }, [tankBars, today])
+
+  const totaalDagen = useMemo(() => {
+    const ms = timelineRange.end.getTime() - timelineRange.start.getTime()
+    return Math.max(1, Math.round(ms / 86400000))
+  }, [timelineRange])
+
+  // Helper: offset (in dagen) van een datum tov timelineStart
+  const dagOffset = (d: Date): number => {
+    const ms = d.getTime() - timelineRange.start.getTime()
+    return ms / 86400000
+  }
+
+  // Maandlabels voor de tijd-as (eerste-van-de-maand binnen het bereik)
+  const maandMarkers = useMemo(() => {
+    const out: { offset: number; label: string }[] = []
+    const cur = new Date(timelineRange.start.getFullYear(), timelineRange.start.getMonth(), 1)
+    while (cur <= timelineRange.end) {
+      const offset = dagOffset(cur)
+      if (offset >= 0 && offset <= totaalDagen) {
+        out.push({ offset, label: cur.toLocaleDateString('nl-NL', { month: 'short', year: '2-digit' }) })
+      }
+      cur.setMonth(cur.getMonth() + 1)
+    }
+    return out
+  }, [timelineRange, totaalDagen])
+
+  const vandaagOffset = useMemo(() => dagOffset(today), [today, timelineRange])
+
+  // Statuskleur voor de bar (via CSS vars / Tailwind semantisch)
+  const barKleur = (status: string): { bg: string; border: string; text: string } => {
+    if (status === 'Vergisten') return { bg: 'rgba(34,197,94,0.25)', border: '#16a34a', text: '#166534' }
+    if (status === 'Conditioneren') return { bg: 'rgba(147,51,234,0.22)', border: '#9333ea', text: '#6b21a8' }
+    return { bg: 'rgba(251,191,36,0.22)', border: '#d97706', text: '#92400e' } // Gepland
   }
 
   return (
@@ -442,47 +507,105 @@ function PlanningPage({
         </div>
       )}
 
-      {/* ── Tank-planning ─────────────────────────────────────────────── */}
+      {/* ── Tank-bezetting (tijdlijn) ──────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-card overflow-hidden">
         <SectionHeader
           title={t('plan_tank_planning')}
-          info={<span className="text-xs text-gray-500">{tankPlanning.reduce((s, g) => s + g.rows.length, 0)}</span>}
+          info={<span className="text-xs text-gray-500">{tankBars.length}</span>}
         />
-        {tankPlanning.length === 0 ? (
-          <div className="p-6 text-sm text-gray-500 text-center">{t('plan_geen_geplande')}</div>
+        {tankRows.length === 0 ? (
+          <div className="p-6 text-sm text-gray-500 text-center">{t('plan_geen_tanks')}</div>
         ) : (
-          <div className="divide-y divide-gray-100">
-            {tankPlanning.map(groep => (
-              <div key={groep.tankKey} className="px-4 py-3">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  {tankLabel(groep.tankKey)}
-                  <span className="ml-2 text-gray-400 normal-case">· {groep.rows.length}</span>
-                </div>
-                <div className="space-y-1.5">
-                  {groep.rows.map(({ batch, van, tot, dagen }) => (
-                    <div
-                      key={batch.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-800 truncate">
-                          {batch.biernaam || batch.naam || t('lbl_naamloos')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {van ? fmtD(van) : '—'}
-                          {tot ? <> → {fmtD(tot)}</> : null}
-                          {dagen > 0 ? <> · {dagen} {t('plan_dagen')}</> : null}
-                          {batch.liter_vergist ? <> · {batch.liter_vergist} L</> : null}
-                        </div>
+          <div className="p-4">
+            {/* Legenda */}
+            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600 mb-3">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(251,191,36,0.4)', border: '1px solid #d97706' }}></span>
+                {t('plan_status_gepland')}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(34,197,94,0.35)', border: '1px solid #16a34a' }}></span>
+                {t('plan_status_vergisten')}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(147,51,234,0.3)', border: '1px solid #9333ea' }}></span>
+                {t('plan_status_conditioneren')}
+              </span>
+              <span className="ml-auto text-gray-400 italic">{t('plan_tank_legend_schatting')}</span>
+            </div>
+
+            {/* Scrollbare tijdlijn */}
+            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+              <div style={{ minWidth: `${Math.max(720, totaalDagen * 14)}px` }}>
+                {/* Tijd-as header */}
+                <div className="flex bg-gray-50 border-b border-gray-200">
+                  <div className="shrink-0 w-32 px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-r border-gray-200">
+                    {t('lbl_tank')}
+                  </div>
+                  <div className="relative flex-1 h-8">
+                    {maandMarkers.map((m, i) => (
+                      <div key={i}
+                        className="absolute top-0 h-full flex items-center text-[11px] font-medium text-gray-500 pl-1"
+                        style={{ left: `${(m.offset / totaalDagen) * 100}%` }}>
+                        <span className="border-l border-gray-300 pl-1 capitalize">{m.label}</span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_CLR[batch.status] || ''}`}>
-                        {batch.status}
-                      </span>
-                    </div>
-                  ))}
+                    ))}
+                    {vandaagOffset >= 0 && vandaagOffset <= totaalDagen && (
+                      <div className="absolute top-0 h-full"
+                        style={{ left: `${(vandaagOffset / totaalDagen) * 100}%`, width: '2px', background: 'var(--t-accent)' }}
+                        title={t('plan_vandaag')}
+                      />
+                    )}
+                  </div>
                 </div>
+
+                {/* Eén rij per tank */}
+                {tankRows.map(row => (
+                  <div key={row.tankId} className="flex border-b border-gray-100 last:border-b-0 hover:bg-gray-50/40">
+                    <div className="shrink-0 w-32 px-3 py-2 text-sm text-gray-700 border-r border-gray-200 flex items-center">
+                      <span className="truncate">{row.label}</span>
+                    </div>
+                    <div className="relative flex-1 h-10">
+                      {/* Verticale maand-rasterlijnen */}
+                      {maandMarkers.map((m, i) => (
+                        <div key={i} className="absolute top-0 h-full border-l border-gray-100"
+                          style={{ left: `${(m.offset / totaalDagen) * 100}%` }} />
+                      ))}
+                      {/* Vandaag-lijn */}
+                      {vandaagOffset >= 0 && vandaagOffset <= totaalDagen && (
+                        <div className="absolute top-0 h-full pointer-events-none"
+                          style={{ left: `${(vandaagOffset / totaalDagen) * 100}%`, width: '2px', background: 'var(--t-accent)', opacity: 0.5 }} />
+                      )}
+                      {/* Bars */}
+                      {row.bars.map(bar => {
+                        const left = (dagOffset(bar.van) / totaalDagen) * 100
+                        const width = Math.max(0.5, ((dagOffset(bar.tot) - dagOffset(bar.van)) / totaalDagen) * 100)
+                        const kleuren = barKleur(bar.batch.status)
+                        const label = bar.batch.biernaam || bar.batch.naam || t('lbl_naamloos')
+                        const tipDagen = bar.dagen > 0 ? `${bar.dagen} ${t('plan_dagen')}` : t('plan_tank_schatting')
+                        return (
+                          <div
+                            key={bar.batch.id}
+                            className="absolute top-1 bottom-1 rounded px-1.5 flex items-center text-[11px] font-medium truncate cursor-pointer transition-transform hover:z-10 hover:scale-[1.02]"
+                            style={{
+                              left: `${left}%`,
+                              width: `${width}%`,
+                              background: kleuren.bg,
+                              border: `1px solid ${kleuren.border}`,
+                              color: kleuren.text,
+                              borderStyle: bar.geschat ? 'dashed' : 'solid',
+                            }}
+                            title={`${label} · ${bar.batch.status} · ${fmtD(bar.van.toISOString().slice(0,10))} → ${fmtD(bar.tot.toISOString().slice(0,10))} · ${tipDagen}`}
+                          >
+                            <span className="truncate">{label}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         )}
       </div>

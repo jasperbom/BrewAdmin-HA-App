@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.78] — 2026-04-18
+
+### Added — Visuele tank-bezetting + slimme tank-keuze in batchformulier
+- **PlanningPage**: de oude gegroepeerde "Tank-planning" is vervangen door
+  een horizontale Gantt-achtige tijdlijn. Één rij per tank, bars met de
+  bezetting per batch (datum → datum + tank_dagen). Kleuren markeren de
+  status: Gepland (amber), Vergisten (groen), Conditioneren (paars).
+  Gestippelde rand betekent dat er geen `tank_dagen` is ingevuld en er een
+  default van 14 dagen wordt getoond. Lopende batches in Vergisten/
+  Conditioneren tellen mee, niet alleen de geplande.
+- **BatchesPage** (nieuw-/bewerk-formulier):
+  - Tank-dropdown toont naast elke tank of hij vrij is of bezet door welke
+    batch (met bezettingsperiode) — gebaseerd op datum-overlap, niet meer
+    alleen "is er ergens een actieve batch".
+  - Nieuw veld **Tanktijd (dgn)** naast Tank en Datum; wordt opgeslagen
+    als `batch.tank_dagen`.
+  - Inline waarschuwing onder de tank-dropdown als de geselecteerde tank
+    overlapt in de planning.
+  - Bij opslaan: confirm-dialog bij niet-blokkerende datum-overlap (Gepland);
+    harde block blijft voor actief gebruik (Vergisten/Conditioneren) zoals
+    voorheen.
+- i18n: nieuwe sleutels `plan_status_gepland`, `plan_status_vergisten`,
+  `plan_status_conditioneren`, `plan_tank_legend_schatting`,
+  `plan_tank_schatting`, `plan_geen_tanks`, `tank_vrij`, `tank_bezet`,
+  `tank_overlap_waarschuwing`, `err_tank_overlap` (nl/en/de/fr/es).
+
+---
+
 ## [1.8.77] — 2026-04-18
 
 ### Fixed — Gist-grafiek: data van verwijderde batch niet meer zichtbaar op nieuwe batch

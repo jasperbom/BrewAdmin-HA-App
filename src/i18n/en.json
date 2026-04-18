@@ -1374,7 +1374,17 @@
   "plan_sluiten": "Close",
   "plan_tank_tijd": "Tank time (d)",
   "plan_tank_vrij_op": "Tank free on",
-  "plan_tank_planning": "Tank planning",
+  "plan_tank_planning": "Tank occupancy",
   "plan_zonder_tank": "No tank",
-  "plan_dagen": "d"
+  "plan_dagen": "d",
+  "plan_status_gepland": "Planned",
+  "plan_status_vergisten": "Fermenting",
+  "plan_status_conditioneren": "Conditioning",
+  "plan_tank_legend_schatting": "Dashed border = estimated duration (no tank time set)",
+  "plan_tank_schatting": "estimated",
+  "plan_geen_tanks": "No tanks configured yet",
+  "tank_vrij": "free",
+  "tank_bezet": "occupied by",
+  "tank_overlap_waarschuwing": "Schedule overlap with",
+  "err_tank_overlap": "Tank {tank} overlaps in the schedule with: {names}. Save anyway?"
 }
