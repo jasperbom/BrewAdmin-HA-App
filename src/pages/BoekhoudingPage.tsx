@@ -64,7 +64,7 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, eadDocumenten=[], setEadDocumenten=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, eadDocumenten=[], setEadDocumenten=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN}: any) {
   const now = new Date();
   const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -252,6 +252,27 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     });
     return s;
   }, [bankKoppelingen]);
+
+  // Map van periodeKey → aangifte-object (ingediend)
+  const btwIngediendePerioden = React.useMemo(() => {
+    const m: Record<string, any> = {};
+    (btwAangiftes||[]).forEach((a: any) => { if (a?.periodeKey) m[a.periodeKey] = a; });
+    return m;
+  }, [btwAangiftes]);
+
+  const markeerAangifteIngediend = (periodeKey: string, bedrag: number) => {
+    const today = new Date().toISOString().slice(0,10);
+    setBtwAangiftes((prev: any[]) => {
+      const zonder = (prev||[]).filter((a: any) => a.periodeKey !== periodeKey);
+      return [...zonder, {id: newId(zonder), periodeKey, ingediend_datum: today, bedrag: Math.round(bedrag)}];
+    });
+    logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'aangemaakt', omschrijving:`Aangifte ${periodeKey} ingediend (€ ${Math.round(bedrag)})`});
+  };
+
+  const ontkoppelAangifteIngediend = (periodeKey: string) => {
+    setBtwAangiftes((prev: any[]) => (prev||[]).filter((a: any) => a.periodeKey !== periodeKey));
+    logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'verwijderd', omschrijving:`Aangifte ${periodeKey} teruggezet naar openstaand`});
+  };
 
   const exportInkoopCSV = () => {
     const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_supplier'),t('lbl_netto_inkoop_excl_btw'),'BTW%',t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
@@ -868,6 +889,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           if (retro) {
             nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: retro.id}
             return {...tx, gekoppeldInkoopId:retro.id, autoGematcht:true, retroGematcht:true}
+          }
+          // BTW-aangifte match op ingediende periode (±1 EUR tolerantie voor euro-afronding)
+          const openAangifte = (btwAangiftes||[]).find((a: any) => {
+            if (!a?.periodeKey) return false;
+            if (btwBetaaldePerioden.has(a.periodeKey)) return false;
+            return Math.abs(Math.abs(tx.bedrag) - Math.abs(Number(a.bedrag||0))) <= 1.00;
+          });
+          if (openAangifte) {
+            nieuweKoppelingen[key] = {soort: 'btw', periodeKey: openAangifte.periodeKey}
+            return {...tx, gekoppeldBtwPeriode: openAangifte.periodeKey, autoGematcht: true}
           }
         }
         return tx
@@ -2361,10 +2392,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
               // Periode status
               const isBetaald    = btwBetaaldePerioden.has(p.key);
+              const aangifte     = btwIngediendePerioden[p.key];
+              const isIngediend  = !!aangifte && !isBetaald;
               const isFuture     = p.from > today;
               const isCurrent    = p.from <= today && p.to >= today;
               const isPast       = p.to < today;
-              const isOpenstaand = isPast && !isBetaald;
+              const isOpenstaand = isPast && !isBetaald && !isIngediend;
               const isAfgesloten = isPast && isBetaald;
 
               const statusCls = isFuture
@@ -2373,7 +2406,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   ? 'bg-blue-50 border-blue-100'
                   : isOpenstaand
                     ? 'bg-orange-50 border-orange-200'
-                    : 'bg-green-50 border-green-100';
+                    : isIngediend
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-green-50 border-green-100';
 
               const badgeCls = isFuture
                 ? 'bg-gray-100 text-gray-400'
@@ -2381,11 +2416,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   ? 'bg-blue-100 text-blue-700'
                   : isOpenstaand
                     ? 'bg-orange-100 text-orange-700'
-                    : 'bg-green-100 text-green-700';
+                    : isIngediend
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-green-100 text-green-700';
 
               const badgeLabel = isFuture ? t('lbl_aangifte_toekomstig')
                 : isCurrent    ? t('lbl_aangifte_lopend')
                 : isOpenstaand ? t('lbl_aangifte_openstaand')
+                : isIngediend  ? t('lbl_aangifte_ingediend')
                 : t('lbl_aangifte_afgesloten');
 
               const isSelected = selectedPeriode?.from === p.from;
@@ -2469,29 +2507,70 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         </div>
                       );
                     }
-                    const debitTxns = bankTransacties.filter((tx: any) =>
+                    if (isOpenstaand) {
+                      return (
+                        <div className="border-t border-orange-200 pt-2 flex items-center justify-between gap-2" onClick={(e: any)=>e.stopPropagation()}>
+                          <span className="text-xs text-orange-600 font-medium">{t('lbl_aangifte_nog_indienen')}</span>
+                          <button onClick={()=>markeerAangifteIngediend(p.key, teBetalen)}
+                            className="text-xs font-medium px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors">
+                            {t('btn_aangifte_ingediend')}
+                          </button>
+                        </div>
+                      );
+                    }
+                    // isIngediend: toon koppel-selector met euro-tolerantie rond aangifte-bedrag
+                    const aangifteBedrag = Math.abs(Number(aangifte?.bedrag || 0));
+                    const allDebits = bankTransacties.filter((tx: any) =>
                       tx.type === 'D' && !tx.gekoppeldInkoopId && !tx.gekoppeldBtwPeriode
                     );
+                    const nearMatches = allDebits.filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00);
+                    const otherDebits = allDebits.filter((tx: any) => !nearMatches.includes(tx));
                     return (
-                      <div className="border-t border-orange-200 pt-2" onClick={(e: any)=>e.stopPropagation()}>
-                        {debitTxns.length > 0 ? (
+                      <div className="border-t border-amber-200 pt-2 space-y-1" onClick={(e: any)=>e.stopPropagation()}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-amber-700 font-medium">
+                            {t('lbl_aangifte_ingediend_op').replace('{datum}', aangifte.ingediend_datum || '')} · € {fmt(aangifteBedrag)}
+                          </span>
+                          <button onClick={()=>ontkoppelAangifteIngediend(p.key)}
+                            className="text-xs text-gray-400 hover:text-red-500 transition-colors">
+                            {t('btn_ongedaan')}
+                          </button>
+                        </div>
+                        {allDebits.length > 0 ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-orange-600 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
+                            <span className="text-xs text-amber-700 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
                             <select onChange={(e: any)=>{
                               const idx = bankTransacties.findIndex((tx: any) => txKey(tx) === e.target.value);
                               if (idx >= 0) koppelBtwBetaling(idx, p.key);
                             }} defaultValue=""
-                              className="border border-orange-200 rounded px-2 py-0.5 text-xs focus:outline-none flex-1 min-w-0">
+                              className="border border-amber-200 rounded px-2 py-0.5 text-xs focus:outline-none flex-1 min-w-0">
                               <option value="">— {t('lbl_selecteer_transactie')} —</option>
-                              {debitTxns.map((tx: any) => (
-                                <option key={txKey(tx)} value={txKey(tx)}>
-                                  {tx.datum} · {tx.tegenpartij||tx.omschrijving||'?'} · {fmt(tx.bedrag)}
-                                </option>
-                              ))}
+                              {nearMatches.length > 0 && (
+                                <optgroup label={t('lbl_match_voorgesteld')}>
+                                  {nearMatches.map((tx: any) => {
+                                    const diff = Math.abs(tx.bedrag) - aangifteBedrag;
+                                    const diffLbl = diff === 0 ? '' : ` (${diff > 0 ? '+' : ''}€${fmt(Math.abs(diff))})`;
+                                    return (
+                                      <option key={txKey(tx)} value={txKey(tx)}>
+                                        {tx.datum} · {tx.tegenpartij||tx.omschrijving||'?'} · {fmt(tx.bedrag)}{diffLbl}
+                                      </option>
+                                    );
+                                  })}
+                                </optgroup>
+                              )}
+                              {otherDebits.length > 0 && (
+                                <optgroup label={t('lbl_overige_transacties')}>
+                                  {otherDebits.map((tx: any) => (
+                                    <option key={txKey(tx)} value={txKey(tx)}>
+                                      {tx.datum} · {tx.tegenpartij||tx.omschrijving||'?'} · {fmt(tx.bedrag)}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
                             </select>
                           </div>
                         ) : (
-                          <p className="text-xs text-orange-500 italic">{t('msg_geen_banktxn_geladen')}</p>
+                          <p className="text-xs text-amber-600 italic">{t('msg_geen_banktxn_geladen')}</p>
                         )}
                       </div>
                     );

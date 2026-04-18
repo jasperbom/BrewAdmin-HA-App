@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.73] — 2026-04-18
+
+### Added — BTW-aangifte indienen + dashboard-signalering openstaande aangiftes
+- Nieuwe data-key `btw_aangiftes` (array van `{periodeKey, ingediend_datum,
+  bedrag}`), opgenomen in Excel-backup/-import.
+- **BoekhoudingPage**: openstaande BTW-periode-kaart krijgt nu een knop
+  "Aangifte ingediend". Daarna verandert de status naar "Ingediend"
+  (amber) en verschijnt een koppel-selector met een voorgesteld-match-
+  groep voor banktransacties binnen € 1 van het aangifte-bedrag (BTW
+  wordt afgerond op hele euro's). MT940-import koppelt automatisch een
+  debittransactie met dezelfde tolerantie.
+- **DashboardPage**: nieuwe oranje stat-cards "BTW-aangifte open" en
+  "Accijnsaangifte open" verschijnen alleen als de afgelopen periode
+  resp. afgelopen maand nog niet als ingediend is gemarkeerd. Klik
+  navigeert naar de boekhouding.
+- i18n-sleutels toegevoegd in nl/en/de/fr/es.
+
+---
+
 ## [1.8.72] — 2026-04-18
 
 ### Changed — SearchInput met loep-icoon + uniforme knopmaat Producten
