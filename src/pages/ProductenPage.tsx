@@ -75,15 +75,21 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   const selProduct = useMemo(() => (producten||[]).find((p: any) => p.id === sel), [producten, sel]);
 
-  const visibleProducten = useMemo(() => {
-    let list = (producten||[]) as any[];
-    if (!toonGearchiveerd) list = list.filter((p: any) => p.status !== 'gearchiveerd');
-    if (zoek.trim()) {
-      const q = zoek.toLowerCase();
-      list = list.filter((p: any) => (p.naam||'').toLowerCase().includes(q) || (p.stijl||'').toLowerCase().includes(q) || (p.categorie||'').toLowerCase().includes(q));
-    }
-    return list.sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
-  }, [producten, zoek, toonGearchiveerd]);
+  const filterProducten = (list: any[]) => {
+    if (!zoek.trim()) return list;
+    const q = zoek.toLowerCase();
+    return list.filter((p: any) => (p.naam||'').toLowerCase().includes(q) || (p.stijl||'').toLowerCase().includes(q) || (p.categorie||'').toLowerCase().includes(q));
+  };
+
+  const actieveProducten = useMemo(() => {
+    const list = ((producten||[]) as any[]).filter((p: any) => p.status !== 'gearchiveerd');
+    return filterProducten(list).sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
+  }, [producten, zoek]);
+
+  const gearchiveerdeProducten = useMemo(() => {
+    const list = ((producten||[]) as any[]).filter((p: any) => p.status === 'gearchiveerd');
+    return filterProducten(list).sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
+  }, [producten, zoek]);
 
   // Voorraad helpers
   const beschikbaarVoorAfvulling = (a: any): number => {
@@ -463,147 +469,90 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   }, [log, wcSyncLog, logFilter]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {/* Linker kolom: productlijst */}
-      <div className="md:col-span-1">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="text-xl font-bold text-gray-800">{t('title_producten')}</h2>
-          <div className="flex items-center gap-2">
-            {wcCreds?.enabled && (
-              <button onClick={wcPushAll} disabled={wcSyncing}
-                title={t('wc_push_stock_title')}
-                className="wc-btn flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40">
-                {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
-              </button>
-            )}
-            <Btn onClick={() => startEdit()} s="sm">{t('btn_nieuw_product')}</Btn>
-          </div>
-        </div>
-        {wcSyncMsg && <div className={`text-xs font-medium mb-2 ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</div>}
-
-        <div className="mb-2">
-          <SearchInput value={zoek} onChange={setZoek} placeholder={t('ph_product_zoek')} />
-        </div>
-
-        <label className="flex items-center gap-2 text-xs text-gray-500 mb-3 cursor-pointer select-none">
-          <input type="checkbox" checked={toonGearchiveerd} onChange={e => setToonGearchiveerd(e.target.checked)} className="t-checkbox" />
-          {t('lbl_product_toon_gearchiveerd')}
-        </label>
-
-        {visibleProducten.length === 0 && (
-          <div className="text-center text-gray-400 text-sm py-8">{t('lbl_geen_producten')}</div>
-        )}
-
-        <div className="space-y-2">
-          {visibleProducten.map((p: any) => {
-            const stats = productStats[p.id] || {batches: 0, liter: 0, voorraad: 0};
-            const artCount = (productArtikelen||[]).filter((a: any) => a.product_id === p.id).length;
-            const thumb = p.afbeeldingen?.[0];
-            return (
-              <div key={p.id} onClick={() => { setSel(p.id); setEditMode(false); setArtForm(null); }}
-                className={`rounded-xl border cursor-pointer transition-all hover:shadow-md ${sel === p.id ? 'border-2 shadow-md' : 'border-gray-200 hover:border-gray-300'}`}
-                style={sel === p.id ? {borderColor: 'var(--t-accent)'} : undefined}>
-                <div className="flex items-center gap-3 p-3">
-                  {thumb ? (
-                    <img src={thumb} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-gray-300">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
-                      </svg>
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm truncate">{p.naam}</span>
-                      {p.status === 'gearchiveerd' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-500">{t('lbl_product_gearchiveerd')}</span>}
-                    </div>
-                    {p.stijl && <div className="text-xs text-gray-500 truncate">{p.stijl}</div>}
-                    <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400">
-                      {p.abv && <span>{Number(p.abv).toFixed(1)}%</span>}
-                      <span>{stats.batches} {t('lbl_product_batches').toLowerCase()}</span>
-                      <span className={stats.voorraad > 0 ? 'text-green-600 font-medium' : ''}>{stats.voorraad}x</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Logboek */}
-        <div className={`mt-4 bg-white rounded-xl border border-gray-200 shadow-sm ${logboekOpen?'':'overflow-hidden'}`}>
-          <SectionHeader
-            open={logboekOpen}
-            onToggle={() => setLogboekOpen(!logboekOpen)}
-            rounded={logboekOpen ? 'top' : 'full'}
-            title={t('tab_logboek')}
-            info={beerLogEntries.length > 0 ? beerLogEntries.length : null}
-          />
-          {logboekOpen && (
-            <div>
-              <div className="px-3 py-2 bg-gray-50 border-b flex items-center gap-1">
-                {(['alle', 'voorraad', ...(wcCreds?.enabled ? ['woocommerce'] : [])] as const).map(f => (
-                  <button key={f} onClick={() => setLogFilter(f as any)}
-                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${logFilter === f ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
-                    {f === 'alle' ? t('orders_filter_alle') : f === 'voorraad' ? t('log_filter_voorraad').replace('{n}', String(beerLogEntries.length)) : t('log_filter_woocommerce').replace('{n}', String((wcSyncLog||[]).length))}
-                  </button>
-                ))}
-              </div>
-              {logCombined.length === 0 ? (
-                <div className="p-6 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
-                      <th className="px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
-                      <th className="px-3 py-2 text-left font-medium">{t('lbl_description')}</th>
-                      <th className="px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {logCombined.slice(0, 50).map((l: any) => {
-                      if (l._src === 'wc') {
-                        const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug;
-                        return (
-                          <tr key={`wc-${l.id}`} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum}</td>
-                            <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ws.cls}`}>{ws.icon} {ws.label}</span></td>
-                            <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
-                              <div className="truncate">{l.msg}</div>
-                              {l.details && <div className="text-gray-400 truncate" title={l.details}>{l.details}</div>}
-                            </td>
-                            <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
-                          </tr>
-                        );
-                      }
-                      const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
-                      const qty = l.hoeveelheid != null
-                        ? `${l.type === 'afboeking' ? '−' : '+'}${Math.abs(l.hoeveelheid)} ${l.eenheid || t('unit_stuks')}`
-                        : '—';
-                      return (
-                        <tr key={`v-${l.id}`} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum || '—'}</td>
-                          <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ts.cls}`}>{ts.icon} {ts.label}</span></td>
-                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
-                            <div className="font-medium text-gray-700 truncate">{l.batch_naam || '—'}{l.verpakking_type ? ` · ${l.verpakking_type}` : ''}</div>
-                            {(l.omschrijving || l.referentie) && <div className="text-gray-400 truncate" title={l.omschrijving || l.referentie}>{l.omschrijving || l.referentie}</div>}
-                          </td>
-                          <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : 'text-green-600'}`}>{qty}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
+    <div>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="text-xl font-bold text-gray-800">{t('title_producten')}</h2>
+        <div className="flex items-center gap-2">
+          {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</span>}
+          {wcCreds?.enabled && (
+            <button onClick={wcPushAll} disabled={wcSyncing}
+              title={t('wc_push_stock_title')}
+              className="wc-btn flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40">
+              {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
+            </button>
           )}
+          <Btn onClick={() => startEdit()}>{t('btn_nieuw_product')}</Btn>
         </div>
       </div>
 
+      <div className="flex flex-col md:flex-row gap-4 md:items-start">
+        {/* Productlijst */}
+        <div className={`w-full md:w-60 md:flex-shrink-0${(sel || editMode) ? ' hidden md:block' : ''}`}>
+          <div className="mb-2">
+            <SearchInput value={zoek} onChange={setZoek} placeholder={t('ph_product_zoek')} />
+          </div>
+
+          <div className="bg-white rounded-xl shadow-card overflow-x-auto">
+            <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 uppercase tracking-wide border-b">
+              <span>{t('lbl_name')}</span><span>{t('lbl_stock')}</span>
+            </div>
+            {actieveProducten.length === 0 && <div className="p-6 text-center text-gray-400 text-sm">{t('lbl_geen_producten')}</div>}
+            {actieveProducten.map((p: any) => {
+              const stats = productStats[p.id] || {batches: 0, liter: 0, voorraad: 0};
+              return (
+                <div key={p.id} onClick={() => { setSel(p.id); setEditMode(false); setArtForm(null); }}
+                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors ${sel === p.id ? 't-sel border-l-2' : ''}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-sm truncate">{p.naam}</span>
+                    <span className={`text-xs font-semibold flex-shrink-0 ${stats.voorraad > 0 ? 'text-green-600' : 'text-gray-400'}`}>{stats.voorraad}×</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5 truncate">
+                    {p.stijl || ''}
+                    {p.abv ? `${p.stijl ? ' · ' : ''}${Number(p.abv).toFixed(1)}%` : ''}
+                    {stats.batches ? ` · ${stats.batches} ${t('lbl_product_batches').toLowerCase()}` : ''}
+                  </div>
+                </div>
+              );
+            })}
+            {gearchiveerdeProducten.length > 0 && (
+              <div>
+                <SectionHeader
+                  solid
+                  rounded="full"
+                  open={toonGearchiveerd}
+                  onToggle={() => setToonGearchiveerd(!toonGearchiveerd)}
+                  title={<span className="text-xs font-medium uppercase tracking-wide">{t('lbl_product_toon_gearchiveerd')}</span>}
+                  info={gearchiveerdeProducten.length}
+                />
+                {toonGearchiveerd && gearchiveerdeProducten.map((p: any) => {
+                  const stats = productStats[p.id] || {batches: 0, liter: 0, voorraad: 0};
+                  return (
+                    <div key={p.id} onClick={() => { setSel(p.id); setEditMode(false); setArtForm(null); }}
+                      className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors ${sel === p.id ? 't-sel border-l-2' : ''}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-sm text-gray-500 truncate">{p.naam}</span>
+                        <span className="text-xs font-semibold flex-shrink-0 text-gray-400">{stats.voorraad}×</span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5 truncate">
+                        {p.stijl || ''}
+                        {p.abv ? `${p.stijl ? ' · ' : ''}${Number(p.abv).toFixed(1)}%` : ''}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
       {/* Rechter kolom: product detail */}
-      <div className="md:col-span-2">
+      <div className={`flex-1 min-w-0${(sel || editMode) ? '' : ' hidden md:block'}`}>
+        {(sel || editMode) && (
+          <button onClick={() => { setSel(null); setEditMode(false); }}
+            className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors">
+            {t('btn_back')}
+          </button>
+        )}
         {!sel && !editMode && (
           <div className="text-center text-gray-400 text-sm py-16">{t('lbl_geen_producten')}</div>
         )}
@@ -1058,6 +1007,77 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 {selBatches.length > 10 && <div className="text-xs text-gray-400 text-center py-1">+{selBatches.length - 10}</div>}
               </div>
             </div>
+          </div>
+        )}
+      </div>
+      </div>
+
+      {/* Logboek */}
+      <div className={`mt-4 bg-white rounded-xl border border-gray-200 shadow-sm ${logboekOpen?'':'overflow-hidden'}`}>
+        <SectionHeader
+          open={logboekOpen}
+          onToggle={() => setLogboekOpen(!logboekOpen)}
+          rounded={logboekOpen ? 'top' : 'full'}
+          title={t('tab_logboek')}
+          info={beerLogEntries.length > 0 ? beerLogEntries.length : null}
+        />
+        {logboekOpen && (
+          <div>
+            <div className="px-3 py-2 bg-gray-50 border-b flex items-center gap-1">
+              {(['alle', 'voorraad', ...(wcCreds?.enabled ? ['woocommerce'] : [])] as const).map(f => (
+                <button key={f} onClick={() => setLogFilter(f as any)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${logFilter === f ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                  {f === 'alle' ? t('orders_filter_alle') : f === 'voorraad' ? t('log_filter_voorraad').replace('{n}', String(beerLogEntries.length)) : t('log_filter_woocommerce').replace('{n}', String((wcSyncLog||[]).length))}
+                </button>
+              ))}
+            </div>
+            {logCombined.length === 0 ? (
+              <div className="p-6 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('lbl_description')}</th>
+                    <th className="px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {logCombined.slice(0, 50).map((l: any) => {
+                    if (l._src === 'wc') {
+                      const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug;
+                      return (
+                        <tr key={`wc-${l.id}`} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum}</td>
+                          <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ws.cls}`}>{ws.icon} {ws.label}</span></td>
+                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
+                            <div className="truncate">{l.msg}</div>
+                            {l.details && <div className="text-gray-400 truncate" title={l.details}>{l.details}</div>}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
+                        </tr>
+                      );
+                    }
+                    const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
+                    const qty = l.hoeveelheid != null
+                      ? `${l.type === 'afboeking' ? '−' : '+'}${Math.abs(l.hoeveelheid)} ${l.eenheid || t('unit_stuks')}`
+                      : '—';
+                    return (
+                      <tr key={`v-${l.id}`} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum || '—'}</td>
+                        <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ts.cls}`}>{ts.icon} {ts.label}</span></td>
+                        <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
+                          <div className="font-medium text-gray-700 truncate">{l.batch_naam || '—'}{l.verpakking_type ? ` · ${l.verpakking_type}` : ''}</div>
+                          {(l.omschrijving || l.referentie) && <div className="text-gray-400 truncate" title={l.omschrijving || l.referentie}>{l.omschrijving || l.referentie}</div>}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : 'text-green-600'}`}>{qty}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
