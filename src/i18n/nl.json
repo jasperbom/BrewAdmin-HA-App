@@ -1577,5 +1577,10 @@
   "plan_besteld_afvinken": "Vink af wat je besteld hebt (alleen voor deze sessie)",
   "plan_select_first": "Selecteer eerst één of meer brouwdagen",
   "plan_geen_behoefte": "Geen ingrediëntbehoefte berekend voor deze selectie",
-  "plan_sluiten": "Sluiten"
+  "plan_sluiten": "Sluiten",
+  "plan_tank_tijd": "Tanktijd (dgn)",
+  "plan_tank_vrij_op": "Tank vrij op",
+  "plan_tank_planning": "Tank-planning",
+  "plan_zonder_tank": "Zonder tank",
+  "plan_dagen": "dgn"
 }

@@ -1561,5 +1561,10 @@
   "plan_besteld_afvinken": "Cochez ce que vous avez commandé (session seulement)",
   "plan_select_first": "Sélectionnez d'abord un ou plusieurs jours de brassage",
   "plan_geen_behoefte": "Aucun besoin d'ingrédient calculé pour cette sélection",
-  "plan_sluiten": "Fermer"
+  "plan_sluiten": "Fermer",
+  "plan_tank_tijd": "Durée cuve (j)",
+  "plan_tank_vrij_op": "Cuve libre le",
+  "plan_tank_planning": "Planning des cuves",
+  "plan_zonder_tank": "Sans cuve",
+  "plan_dagen": "j"
 }

@@ -1561,5 +1561,10 @@
   "plan_besteld_afvinken": "Marque lo que ya ha pedido (solo esta sesión)",
   "plan_select_first": "Seleccione primero uno o más días de brasaje",
   "plan_geen_behoefte": "No se ha calculado necesidad de ingredientes para esta selección",
-  "plan_sluiten": "Cerrar"
+  "plan_sluiten": "Cerrar",
+  "plan_tank_tijd": "Tiempo tanque (d)",
+  "plan_tank_vrij_op": "Tanque libre el",
+  "plan_tank_planning": "Planificación tanques",
+  "plan_zonder_tank": "Sin tanque",
+  "plan_dagen": "d"
 }

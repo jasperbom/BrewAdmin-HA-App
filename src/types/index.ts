@@ -42,6 +42,7 @@ export interface Batch {
   FG?: number
   ABV?: number
   tank?: string
+  tank_dagen?: number | string     // geplande tank-bezetting in dagen
   datum?: string
   notities?: string
   electra_kosten?: number | string

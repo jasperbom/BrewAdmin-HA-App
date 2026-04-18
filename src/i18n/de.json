@@ -1371,5 +1371,10 @@
   "plan_besteld_afvinken": "Häkchen setzen bei Bestelltem (nur diese Sitzung)",
   "plan_select_first": "Bitte zuerst einen oder mehrere Brautage auswählen",
   "plan_geen_behoefte": "Kein Zutatenbedarf für diese Auswahl berechnet",
-  "plan_sluiten": "Schließen"
+  "plan_sluiten": "Schließen",
+  "plan_tank_tijd": "Tankzeit (T)",
+  "plan_tank_vrij_op": "Tank frei ab",
+  "plan_tank_planning": "Tankplanung",
+  "plan_zonder_tank": "Ohne Tank",
+  "plan_dagen": "T"
 }

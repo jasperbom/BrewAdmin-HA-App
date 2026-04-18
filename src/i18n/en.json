@@ -1371,5 +1371,10 @@
   "plan_besteld_afvinken": "Check off what you've ordered (session only)",
   "plan_select_first": "First select one or more brew days",
   "plan_geen_behoefte": "No ingredient needs calculated for this selection",
-  "plan_sluiten": "Close"
+  "plan_sluiten": "Close",
+  "plan_tank_tijd": "Tank time (d)",
+  "plan_tank_vrij_op": "Tank free on",
+  "plan_tank_planning": "Tank planning",
+  "plan_zonder_tank": "No tank",
+  "plan_dagen": "d"
 }

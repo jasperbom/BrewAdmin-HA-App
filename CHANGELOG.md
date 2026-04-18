@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.76] — 2026-04-18
+
+### Fixed — Planning behoefte: reeds afgeboekte ingrediënten niet meer meegeteld
+- `aggregateBatchNeeds` negeert nu `batch_ingredienten` met
+  `afgeboekt: true`. Die items zijn al gededuceerd uit de voorraad en horen
+  niet meer als "nodig" in de bestellijst/planning te verschijnen. Dit
+  voorkomt dat ingrediënten van een reeds gebrouwen batch per ongeluk bij
+  de behoefte van een geselecteerde geplande batch opgeteld leken.
+
+---
+
+## [1.8.75] — 2026-04-18
+
+### Changed — Planning: tank-toewijzing + tanktijd per brouwdag
+- Nieuw veld `tank_dagen` op Batch: geplande tank-bezetting in dagen.
+- **PlanningPage** lijstweergave: brouwdag, tank en tanktijd zijn nu
+  inline-bewerkbare invulvelden. Een extra kolom "Tank vrij op" toont de
+  afgeleide einddatum (`datum + tank_dagen`).
+- Nieuwe sectie **"Tank-planning"** groepeert de geplande brouwsels per
+  tank met hun bezettingsperiode (start → eind) en dagen, zodat je in
+  één oogopslag ziet wanneer welke tank bezet is.
+- i18n-sleutels `plan_tank_tijd`, `plan_tank_vrij_op`, `plan_tank_planning`,
+  `plan_zonder_tank`, `plan_dagen` in nl/en/de/fr/es.
+
+---
+
 ## [1.8.74] — 2026-04-18
 
 ### Added — Planningsmodule: brouwagenda + bestellijst

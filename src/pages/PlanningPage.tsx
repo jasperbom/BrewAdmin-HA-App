@@ -15,13 +15,25 @@ import BestellijstModal from '../components/BestellijstModal'
 
 interface PlanningPageProps {
   bat: any[]
+  setBat?: React.Dispatch<React.SetStateAction<any[]>>
   bi: any[]
   recepten: any[]
   ing: any[]
   lots: any[]
   producten?: any[]
+  tanks?: any[]
   preselectBatchId?: number | null
   onPreselectConsumed?: () => void
+}
+
+// Telt `dagen` kalenderdagen op bij een ISO-datum en geeft opnieuw ISO terug.
+// Geeft `null` als de input geen geldige datum is.
+const datumPlus = (iso: string | undefined, dagen: number): string | null => {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  d.setDate(d.getDate() + dagen)
+  return toISO(d)
 }
 
 const CATEGORIE_LABEL_KEY: Record<ReceptCategorie, string> = {
@@ -60,14 +72,28 @@ const buildMonthGrid = (cursor: Date): Date[] => {
 
 function PlanningPage({
   bat,
+  setBat,
   bi,
   recepten,
   ing,
   lots,
   producten,
+  tanks,
   preselectBatchId,
   onPreselectConsumed,
 }: PlanningPageProps) {
+  // Update een batch-veld en persist via setBat (no-op als setBat ontbreekt).
+  const updateBatch = (id: number, patch: Record<string, any>) => {
+    if (!setBat) return
+    setBat((prev: any[]) => (prev || []).map((b: any) => b.id === id ? { ...b, ...patch } : b))
+  }
+
+  const tankOpts = useMemo(() => {
+    return (tanks || []).map((t: any) => ({
+      v: String(t.id),
+      l: t.naam ? `${t.naam} (${t.id})` : String(t.id),
+    }))
+  }, [tanks])
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
   const [view, setView] = useState<'maand' | 'lijst'>('maand')
   const [cursor, setCursor] = useState<Date>(startOfMonth(today))
@@ -184,6 +210,44 @@ function PlanningPage({
 
   const geenGeplande = geplandeBatches.length === 0
 
+  // Tank-planning: groepeer geplande batches per tank met hun bezettings-
+  // periode (datum → datum + tank_dagen). Batches zonder tank of zonder
+  // datum worden in een aparte groep '—' verzameld.
+  const tankPlanning = useMemo(() => {
+    type Row = { batch: any; van: string; tot: string | null; dagen: number }
+    const groups = new Map<string, Row[]>()
+    for (const b of geplandeBatches) {
+      const tankId = String(b.tank || '')
+      const dagen = Number(b.tank_dagen || 0)
+      const van = String(b.datum || '').slice(0, 10)
+      const tot = dagen > 0 ? datumPlus(van, dagen) : null
+      const key = tankId || '—'
+      const arr = groups.get(key) || []
+      arr.push({ batch: b, van, tot, dagen })
+      groups.set(key, arr)
+    }
+    // Sorteer per groep op startdatum
+    for (const [, rows] of groups) rows.sort((a, b) => String(a.van).localeCompare(String(b.van)))
+    // Volgorde: eerst genoemde tanks (uit tanks-prop), daarna '—'
+    const order: string[] = []
+    for (const tk of (tanks || [])) {
+      const k = String(tk.id)
+      if (groups.has(k)) order.push(k)
+    }
+    // Tanks die in batches staan maar niet in tanks-prop
+    for (const k of groups.keys()) {
+      if (k !== '—' && !order.includes(k)) order.push(k)
+    }
+    if (groups.has('—')) order.push('—')
+    return order.map(k => ({ tankKey: k, rows: groups.get(k) || [] }))
+  }, [geplandeBatches, tanks])
+
+  const tankLabel = (key: string): string => {
+    if (key === '—') return t('plan_zonder_tank')
+    const tk = (tanks || []).find((t: any) => String(t.id) === key)
+    return tk?.naam ? `${tk.naam} (${tk.id})` : key
+  }
+
   return (
     <div className="space-y-6">
       {/* ── Hoofd-header + weergaveschakelaar ─────────────────────────── */}
@@ -294,12 +358,16 @@ function PlanningPage({
                     <th className="px-3 py-2 text-left">{t('lbl_style')}</th>
                     <th className="px-3 py-2 text-right">{t('lbl_quantity')}</th>
                     <th className="px-3 py-2 text-left">{t('lbl_tank')}</th>
+                    <th className="px-3 py-2 text-left">{t('plan_tank_tijd')}</th>
+                    <th className="px-3 py-2 text-left">{t('plan_tank_vrij_op')}</th>
                     <th className="px-3 py-2 text-left">{t('lbl_status')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lijstFiltered.map((b: any) => {
                     const on = selected.has(b.id)
+                    const dagen = Number(b.tank_dagen || 0)
+                    const vrijOp = dagen > 0 ? datumPlus(b.datum, dagen) : null
                     return (
                       <tr key={b.id} className={`border-t border-gray-100 ${on ? 'bg-gray-50' : ''}`}>
                         <td className="px-3 py-2">
@@ -310,11 +378,50 @@ function PlanningPage({
                             onChange={() => toggleBatch(b.id)}
                           />
                         </td>
-                        <td className="px-3 py-2">{fmtD(b.datum) || '—'}</td>
+                        <td className="px-3 py-2">
+                          {setBat ? (
+                            <input
+                              type="date"
+                              value={String(b.datum || '').slice(0, 10)}
+                              onChange={e => updateBatch(b.id, { datum: e.target.value })}
+                              className="border border-gray-200 rounded px-2 py-1 text-sm t-input outline-none"
+                            />
+                          ) : (fmtD(b.datum) || '—')}
+                        </td>
                         <td className="px-3 py-2 font-medium text-gray-800">{b.biernaam || b.naam || t('lbl_naamloos')}</td>
                         <td className="px-3 py-2 text-gray-600">{b.stijl || '—'}</td>
                         <td className="px-3 py-2 text-right text-gray-700">{b.liter_vergist ? `${b.liter_vergist} L` : '—'}</td>
-                        <td className="px-3 py-2 text-gray-600">{b.tank || '—'}</td>
+                        <td className="px-3 py-2 text-gray-600">
+                          {setBat ? (
+                            <select
+                              value={String(b.tank || '')}
+                              onChange={e => updateBatch(b.id, { tank: e.target.value })}
+                              className="border border-gray-200 rounded px-2 py-1 text-sm bg-white t-input outline-none"
+                            >
+                              <option value="">—</option>
+                              {tankOpts.map(o => (
+                                <option key={o.v} value={o.v}>{o.l}</option>
+                              ))}
+                            </select>
+                          ) : (b.tank || '—')}
+                        </td>
+                        <td className="px-3 py-2">
+                          {setBat ? (
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={b.tank_dagen ?? ''}
+                              placeholder="0"
+                              onChange={e => {
+                                const v = e.target.value
+                                updateBatch(b.id, { tank_dagen: v === '' ? undefined : Number(v) })
+                              }}
+                              className="w-20 border border-gray-200 rounded px-2 py-1 text-sm t-input outline-none text-right"
+                            />
+                          ) : (dagen > 0 ? dagen : '—')}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 text-xs">{vrijOp ? fmtD(vrijOp) : '—'}</td>
                         <td className="px-3 py-2">
                           <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_CLR[b.status] || ''}`}>{b.status}</span>
                         </td>
@@ -334,6 +441,51 @@ function PlanningPage({
           )}
         </div>
       )}
+
+      {/* ── Tank-planning ─────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-card overflow-hidden">
+        <SectionHeader
+          title={t('plan_tank_planning')}
+          info={<span className="text-xs text-gray-500">{tankPlanning.reduce((s, g) => s + g.rows.length, 0)}</span>}
+        />
+        {tankPlanning.length === 0 ? (
+          <div className="p-6 text-sm text-gray-500 text-center">{t('plan_geen_geplande')}</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {tankPlanning.map(groep => (
+              <div key={groep.tankKey} className="px-4 py-3">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  {tankLabel(groep.tankKey)}
+                  <span className="ml-2 text-gray-400 normal-case">· {groep.rows.length}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {groep.rows.map(({ batch, van, tot, dagen }) => (
+                    <div
+                      key={batch.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-800 truncate">
+                          {batch.biernaam || batch.naam || t('lbl_naamloos')}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {van ? fmtD(van) : '—'}
+                          {tot ? <> → {fmtD(tot)}</> : null}
+                          {dagen > 0 ? <> · {dagen} {t('plan_dagen')}</> : null}
+                          {batch.liter_vergist ? <> · {batch.liter_vergist} L</> : null}
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_CLR[batch.status] || ''}`}>
+                        {batch.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── Behoefte vs voorraad ──────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-card overflow-hidden">
