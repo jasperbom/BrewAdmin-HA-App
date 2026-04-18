@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.71] — 2026-04-18
+
+### Changed — ProductenPage in BatchesPage-stijl
+- Titel en actieknoppen (inclusief `+ Product`) staan nu rechtsboven boven de
+  lijst, consistent met BatchesPage.
+- Lijst is omgezet van thumbnail-kaarten naar compacte rij-weergave met
+  `flex-1 min-w-0` detail-pane, `w-60` sidebar en mobile back-knop.
+- Gearchiveerde producten verhuizen van checkbox-toggle naar ingeklapt
+  `SectionHeader`-blok onderaan de lijst.
+- Logboek staat nu als volledig-brede sectie onder de lijst i.p.v. in de
+  smalle sidebar.
+- Knoplabel `btn_nieuw_product` genormaliseerd naar `+ Product` in nl/en/de/
+  fr/es.
+
+---
+
 ## [1.8.70] — 2026-04-18
 
 ### Changed — Uniforme sectieheaders & zoekbalken
