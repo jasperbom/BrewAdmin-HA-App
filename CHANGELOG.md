@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.76] — 2026-04-18
+
+### Fixed — Planning behoefte: reeds afgeboekte ingrediënten niet meer meegeteld
+- `aggregateBatchNeeds` negeert nu `batch_ingredienten` met
+  `afgeboekt: true`. Die items zijn al gededuceerd uit de voorraad en horen
+  niet meer als "nodig" in de bestellijst/planning te verschijnen. Dit
+  voorkomt dat ingrediënten van een reeds gebrouwen batch per ongeluk bij
+  de behoefte van een geselecteerde geplande batch opgeteld leken.
+
+---
+
 ## [1.8.75] — 2026-04-18
 
 ### Changed — Planning: tank-toewijzing + tanktijd per brouwdag

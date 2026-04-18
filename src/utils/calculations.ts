@@ -725,7 +725,12 @@ export const aggregateBatchNeeds = (
     else map.set(key, { naam: naam.trim(), eenheid, categorie: cat, totaal: qty })
   }
   for (const b of batches || []) {
-    const bi = (batchIngredienten || []).filter((i: any) => i.batch_id === b.id)
+    // Alleen ingrediënten van DEZE batch, en alleen nog niet afgeboekte items
+    // (afgeboekt=true betekent dat de voorraad al is gereserveerd/gededuceerd;
+    // die horen niet meer als 'nodig' in de planning te verschijnen).
+    const bi = (batchIngredienten || []).filter(
+      (i: any) => i.batch_id === b.id && i.afgeboekt !== true
+    )
     if (bi.length > 0) {
       for (const i of bi) {
         const q = Number(i.hoeveelheid || 0)
@@ -734,7 +739,11 @@ export const aggregateBatchNeeds = (
       }
       continue
     }
-    // Fallback: schaal uit recept
+    // Fallback: alleen terugvallen op het recept als er ook geen reeds-
+    // afgeboekte entries bestaan voor deze batch. Anders zijn de ingrediënten
+    // gewoon al verwerkt en is er niets meer nodig.
+    const anyBi = (batchIngredienten || []).some((i: any) => i.batch_id === b.id)
+    if (anyBi) continue
     const receptId = recipeResolver ? recipeResolver(b) : undefined
     const recept = receptId ? (recepten || []).find(r => String(r.id) === String(receptId)) : undefined
     if (!recept) continue
