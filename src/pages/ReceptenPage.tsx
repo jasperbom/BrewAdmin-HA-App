@@ -3,6 +3,7 @@ import { t } from '../i18n'
 import { fmtD } from '../utils/format'
 import { bfGetRecipes } from '../utils/api'
 import Btn from '../components/ui/Btn'
+import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
 
 function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
@@ -185,9 +186,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
         {/* Lijst */}
         <div className={`w-full md:w-60 md:flex-shrink-0${sel?' hidden md:block':''}`}>
           <div className="mb-2">
-            <input type="text" placeholder={t('search_recipe')} value={zoek}
-              onChange={(e: any)=>setZoek(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm t-input"/>
+            <SearchInput placeholder={t('search_recipe')} value={zoek} onChange={setZoek} />
           </div>
           <div className="bg-white rounded-xl shadow-card overflow-hidden">
           <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 uppercase tracking-wide border-b">
@@ -244,7 +243,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                     <button onClick={()=>toggleGroep(tag)}
                       className="flex-1 flex items-center justify-between text-xs font-medium text-gray-500 uppercase tracking-wide">
                       <span className="flex items-center gap-1">
-                        <span className="text-gray-400">{gesloten?'▶':'▼'}</span>
+                        <span className="text-gray-400 inline-block" style={{transition:'transform 150ms ease',transform:gesloten?'none':'rotate(90deg)'}}>▶</span>
                         <span>{tag}</span>
                         <span className="font-normal text-gray-400">({items.length})</span>
                       </span>

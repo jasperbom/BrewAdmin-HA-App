@@ -5,6 +5,8 @@ import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
+import SectionHeader from '../components/ui/SectionHeader'
+import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
 import { voorraadPerLocatie } from '../utils/calculations'
 
@@ -479,8 +481,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         </div>
         {wcSyncMsg && <div className={`text-xs font-medium mb-2 ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</div>}
 
-        <input type="text" value={zoek} onChange={e => setZoek(e.target.value)} placeholder={t('ph_product_zoek')}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 t-input" />
+        <div className="mb-2">
+          <SearchInput value={zoek} onChange={setZoek} placeholder={t('ph_product_zoek')} />
+        </div>
 
         <label className="flex items-center gap-2 text-xs text-gray-500 mb-3 cursor-pointer select-none">
           <input type="checkbox" checked={toonGearchiveerd} onChange={e => setToonGearchiveerd(e.target.checked)} className="t-checkbox" />
@@ -529,14 +532,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         </div>
 
         {/* Logboek */}
-        <div className="mt-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setLogboekOpen(!logboekOpen)}>
-            <span className="flex items-center gap-2">
-              {t('tab_logboek')}
-              {beerLogEntries.length > 0 && <span className="bg-white/20 rounded-full px-1.5 text-xs">{beerLogEntries.length}</span>}
-            </span>
-            <span className="text-xs opacity-75">{logboekOpen ? '▼' : '▶'}</span>
-          </div>
+        <div className={`mt-4 bg-white rounded-xl border border-gray-200 shadow-sm ${logboekOpen?'':'overflow-hidden'}`}>
+          <SectionHeader
+            open={logboekOpen}
+            onToggle={() => setLogboekOpen(!logboekOpen)}
+            rounded={logboekOpen ? 'top' : 'full'}
+            title={t('tab_logboek')}
+            info={beerLogEntries.length > 0 ? beerLogEntries.length : null}
+          />
           {logboekOpen && (
             <div>
               <div className="px-3 py-2 bg-gray-50 border-b flex items-center gap-1">
@@ -608,9 +611,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         {/* Edit/nieuw formulier */}
         {editMode && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between rounded-t-xl">
-              <span className="font-medium text-sm">{form.id && (producten||[]).find((p: any) => p.id === form.id) ? form.naam || t('lbl_product_naam') : t('btn_nieuw_product')}</span>
-            </div>
+            <SectionHeader solid title={form.id && (producten||[]).find((p: any) => p.id === form.id) ? form.naam || t('lbl_product_naam') : t('btn_nieuw_product')} />
             <div className="p-4 space-y-4">
               {msg && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{msg}</div>}
 
@@ -716,17 +717,18 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           <div className="space-y-4">
             {/* Header */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between rounded-t-xl">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{selProduct.naam}</span>
+              <SectionHeader
+                solid
+                title={<span className="flex items-center gap-2">
+                  <span>{selProduct.naam}</span>
                   {selProduct.status === 'gearchiveerd' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20">{t('lbl_product_gearchiveerd')}</span>}
-                </div>
-                <div className="flex items-center gap-1.5">
+                </span>}
+                info={<>
                   <Btn onClick={() => startEdit(selProduct)} s="sm" v="header">{t('btn_bewerken')}</Btn>
                   <Btn onClick={toggleArchiveer} s="sm" v="header">{selProduct.status === 'gearchiveerd' ? t('btn_product_activeren') : t('btn_product_archiveren')}</Btn>
                   <Btn onClick={deleteProduct} s="sm" v="header-danger">{t('btn_product_verwijderen')}</Btn>
-                </div>
-              </div>
+                </>}
+              />
 
               <div className="p-4">
                 <div className="flex gap-4">
@@ -779,11 +781,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
             {/* Voorraad overzicht */}
             {selVoorraad.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setVoorraadOpen(!voorraadOpen)}>
-                  <span>{t('lbl_product_voorraad')}</span>
-                  <span className="text-xs opacity-75">{voorraadOpen ? '▼' : '▶'}</span>
-                </div>
+              <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${voorraadOpen?'':'overflow-hidden'}`}>
+                <SectionHeader
+                  open={voorraadOpen}
+                  onToggle={() => setVoorraadOpen(!voorraadOpen)}
+                  rounded={voorraadOpen ? 'top' : 'full'}
+                  title={t('lbl_product_voorraad')}
+                />
                 {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totBeschikbaar}) => (
                   <div key={vt}>
                     <div className="px-4 py-2 bg-gray-50 border-b border-t flex items-center justify-between text-sm">
@@ -883,7 +887,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
             {/* Recepten */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('lbl_product_recepten')}</div>
+              <SectionHeader title={t('lbl_product_recepten')} />
               <div className="p-3">
                 {selRecepten.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_recepten_gekoppeld')}</div>}
                 {selRecepten.map((r: any) => (
@@ -899,10 +903,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
             {/* Artikelen / SKU's */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between">
-                <span>{t('lbl_product_artikelen')}</span>
-                <Btn onClick={() => startArtEdit()} s="sm" v="header">{t('btn_artikel_toevoegen')}</Btn>
-              </div>
+              <SectionHeader
+                title={t('lbl_product_artikelen')}
+                info={<Btn onClick={() => startArtEdit()} s="sm" v="header">{t('btn_artikel_toevoegen')}</Btn>}
+              />
 
               {artForm && (
                 <div className="p-3 bg-gray-50 border-b border-gray-200">
@@ -1032,10 +1036,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
             {/* Batches */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm flex items-center justify-between cursor-pointer" onClick={() => setPage && setPage('batches')}>
-                <span>{t('lbl_product_batches')} ({selBatches.length})</span>
-                <span className="text-xs opacity-75">&rarr;</span>
-              </div>
+              <SectionHeader
+                onToggle={() => setPage && setPage('batches')}
+                title={t('lbl_product_batches')}
+                info={selBatches.length}
+              />
               <div className="p-3">
                 {selBatches.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_producten')}</div>}
                 {selBatches.slice(0, 10).map((b: any) => (

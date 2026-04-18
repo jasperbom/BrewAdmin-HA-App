@@ -7,6 +7,8 @@ import { ALLERGENEN_LIJST, SCHOONMAAK_FREQUENTIES, DEFAULT_CCP_DEFINITIES } from
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
+import SectionHeader from '../components/ui/SectionHeader'
+import SearchInput from '../components/ui/SearchInput'
 
 type Tab = 'dashboard'|'schoonmaak'|'ccp'|'allergenen'|'traceerbaarheid'|'capa'|'water'|'ongedierte'|'opleidingen'
 
@@ -37,7 +39,7 @@ function HACCPPage(props: any) {
 
   return (
     <div>
-      <h1 className="t-hdr-solid text-white font-bold text-lg px-5 py-3 rounded-xl mb-4">{t('haccp_dash_title')}</h1>
+      <div className="mb-4"><SectionHeader solid rounded="full" title={<span className="font-bold text-lg">{t('haccp_dash_title')}</span>} /></div>
       <div className="flex flex-wrap gap-1 mb-4">
         {tabs.map(tb=>(
           <button key={tb.id} onClick={()=>setTab(tb.id)}
@@ -446,7 +448,7 @@ function AllergenenTab({ing, bat, bi, setIng, auditLog, setAuditLog}: any) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="t-hdr text-white font-medium text-sm px-4 py-2.5 rounded-t-lg">{t('haccp_allergen_matrix')}</h3>
+        <SectionHeader title={t('haccp_allergen_matrix')} />
         <div className="bg-white rounded-b-lg shadow-sm overflow-x-auto">
           {!(ing||[]).length ? <p className="p-4 text-sm text-gray-500 italic">{t('haccp_allergen_geen')}</p> : (
             <table className="w-full text-xs">
@@ -481,7 +483,7 @@ function AllergenenTab({ing, bat, bi, setIng, auditLog, setAuditLog}: any) {
       </div>
 
       <div>
-        <h3 className="t-hdr text-white font-medium text-sm px-4 py-2.5 rounded-t-lg">{t('haccp_allergen_batch_titel')}</h3>
+        <SectionHeader title={t('haccp_allergen_batch_titel')} />
         <div className="bg-white rounded-b-lg shadow-sm p-4">
           <select value={selBatch} onChange={e=>setSelBatch(Number(e.target.value))} className="t-input text-sm px-3 py-1.5 rounded-lg border mb-3">
             <option value={0}>{t('haccp_allergen_selecteer_batch')}</option>
@@ -565,14 +567,14 @@ function TraceTab({lots, bat, bi, av, uit, ing}: any) {
 
   return (
     <div>
-      <h3 className="t-hdr text-white font-medium text-sm px-4 py-2.5 rounded-t-lg">{t('haccp_trace_titel')}</h3>
+      <SectionHeader title={t('haccp_trace_titel')} />
       <div className="bg-white rounded-b-lg shadow-sm p-4">
         <div className="flex gap-2 mb-3">
           <button onClick={()=>{setMode('forward');setResults(null)}} className={`px-3 py-1 rounded text-xs font-medium ${mode==='forward'?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>{t('haccp_trace_forward')}</button>
           <button onClick={()=>{setMode('backward');setResults(null)}} className={`px-3 py-1 rounded text-xs font-medium ${mode==='backward'?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>{t('haccp_trace_backward')}</button>
         </div>
         <div className="flex gap-2 mb-4">
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder={mode==='forward'?t('haccp_trace_lotnr'):t('haccp_trace_batch')} className="t-input text-sm px-3 py-1.5 rounded-lg border flex-1" onKeyDown={e=>e.key==='Enter'&&doSearch()} />
+          <SearchInput value={q} onChange={setQ} placeholder={mode==='forward'?t('haccp_trace_lotnr'):t('haccp_trace_batch')} cls="flex-1" onKeyDown={e=>e.key==='Enter'&&doSearch()} />
           <Btn s="sm" onClick={doSearch}>{t('haccp_trace_zoek')}</Btn>
         </div>
 

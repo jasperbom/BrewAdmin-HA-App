@@ -1,5 +1,6 @@
 {
   "nav_statiegeld": "Consigne",
+  "lbl_items": "éléments",
   "lbl_kwartaal": "Trimestriel",
   "lbl_maand": "Mensuel",
   "lbl_creditnota_titel": "AVOIR",
@@ -46,6 +47,7 @@
   "btn_delete": "Supprimer",
   "btn_add": "+ Ajouter",
   "btn_edit": "Modifier",
+  "btn_print": "Imprimer",
   "btn_back": "← Retour à l'aperçu",
   "btn_testing": "Test en cours…",
   "btn_reset": "Réinitialiser",
@@ -1361,6 +1363,8 @@
   "haccp_ccp_corrigerende_actie": "Action corrective par défaut",
   "haccp_ccp_geen": "Aucun CCP défini.",
   "haccp_ccp_metingen": "Mesures CCP",
+  "haccp_ccp_meting_plural": "mesures",
+  "haccp_ccp_afwijkingen_short": "écarts",
   "haccp_ccp_meting_nieuw": "Ajouter mesure",
   "haccp_ccp_selecteer_batch": "Sélectionner lot",
   "haccp_ccp_selecteer_ccp": "Sélectionner CCP",

@@ -7,6 +7,7 @@ import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
+import SectionHeader from '../components/ui/SectionHeader'
 import { printPakbon, printFactuur } from '../components/PakbonExport'
 import { logAudit } from '../utils/audit'
 
@@ -898,7 +899,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Orderregels */}
         <div className="bg-white rounded-xl shadow-card overflow-x-auto mb-4">
-          <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('orders_lines')}</div>
+          <SectionHeader title={t('orders_lines')} />
           <table className="w-full text-sm">
             <thead className="text-xs text-gray-500 bg-gray-50">
               <tr>
@@ -947,7 +948,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         {/* Picks overzicht (na picking) */}
         {picks.length > 0 && (
           <div className="bg-white rounded-xl shadow-card overflow-x-auto mb-4">
-            <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('picking_title')}</div>
+            <SectionHeader title={t('picking_title')} />
             <table className="w-full text-sm">
               <thead className="text-xs text-gray-500 bg-gray-50">
                 <tr>

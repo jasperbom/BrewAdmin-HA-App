@@ -6,6 +6,7 @@ import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
+import SectionHeader from '../components/ui/SectionHeader'
 
 interface VoorraadPageProps {
   bat: any[]
@@ -263,16 +264,17 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
 
             return (
               <div key={beerName} className="bg-white rounded-xl shadow-card overflow-x-auto">
-                <div onClick={toggleBeer} className="px-4 py-3 t-hdr-solid text-white flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none">
-                  <span className="flex items-center gap-2 font-bold text-base">
-                    <span className="text-gray-400 text-sm">{beerGesloten?'▶':'▼'}</span>
-                    {beerName}
-                  </span>
-                  <div className="flex gap-3 text-sm">
-                    <span className="text-green-300">{t('stock_sold')}: <strong>{bTotVerk + bArchVerk}×</strong></span>
-                    {bBeschik > 0 && <span className="font-bold text-amber-300">{t('stock_available')}: {bBeschik}×</span>}
-                  </div>
-                </div>
+                <SectionHeader
+                  solid
+                  open={!beerGesloten}
+                  onToggle={toggleBeer}
+                  rounded={beerGesloten ? 'full' : 'top'}
+                  title={<span className="font-bold text-base">{beerName}</span>}
+                  info={<>
+                    <span>{t('stock_sold')}: <strong>{bTotVerk + bArchVerk}×</strong></span>
+                    {bBeschik > 0 && <span className="font-bold">{t('stock_available')}: {bBeschik}×</span>}
+                  </>}
+                />
 
                 {!beerGesloten && beerBatchIds.map(bid => {
                   const b = getBatch(bid)
@@ -283,19 +285,19 @@ const VoorraadPage: React.FC<VoorraadPageProps> = ({
 
                   return (
                     <div key={bid}>
-                      <div className="px-4 py-2 t-hdr text-white flex items-center justify-between flex-wrap gap-2 text-sm">
-                        <div className="flex items-center gap-2">
+                      <SectionHeader
+                        title={<span className="flex items-center gap-2">
                           {b?.batch_nummer
                             ? <span className="font-semibold">Batch #{b.batch_nummer}</span>
-                            : <span className="text-gray-400 italic">{t('batch_no_number')}</span>
+                            : <span className="italic opacity-70">{t('batch_no_number')}</span>
                           }
-                          {b?.stijl && <span className="text-xs text-gray-400">{b.stijl}</span>}
-                        </div>
-                        <div className="flex gap-3 text-xs text-gray-300">
-                          <span className="text-green-300">{t('stock_sold')}: <strong>{btVerk}×</strong></span>
-                          {btUit-btVerk > 0 && <span className="font-bold text-amber-300">{t('stock_available')}: {btUit-btVerk}×</span>}
-                        </div>
-                      </div>
+                          {b?.stijl && <span className="text-xs opacity-70">{b.stijl}</span>}
+                        </span>}
+                        info={<>
+                          <span>{t('stock_sold')}: <strong>{btVerk}×</strong></span>
+                          {btUit-btVerk > 0 && <span className="font-bold">{t('stock_available')}: {btUit-btVerk}×</span>}
+                        </>}
+                      />
 
                       {vTypes.map(vt => {
                         const vtRows = bRows.filter((u: any) => u.verpakking_type===vt)

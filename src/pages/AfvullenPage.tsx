@@ -6,6 +6,7 @@ import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Modal from '../components/ui/Modal'
 import Badge from '../components/ui/Badge'
+import SectionHeader from '../components/ui/SectionHeader'
 
 interface AfvullenPageProps {
   bat: any[]
@@ -100,7 +101,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
       </div>
       <div className="flex flex-col md:flex-row gap-4 md:items-start">
         <div className={`w-full md:w-60 md:flex-shrink-0 bg-white rounded-xl shadow-card overflow-x-auto${sel?' hidden md:block':''}`}>
-          <div className="px-4 py-2.5 t-hdr text-white text-xs font-medium uppercase tracking-widest rounded-t-xl">{t('nav_batches')}</div>
+          <SectionHeader title={<span className="text-xs uppercase tracking-widest">{t('nav_batches')}</span>} />
           {activeBat.length===0 && <div className="p-4 text-sm text-gray-400 text-center">{t('filling_no_active')}</div>}
           {activeBat.map((b: any) => (
             <div key={b.id} onClick={()=>setSel(b.id===sel?null:b.id)}
@@ -137,7 +138,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
 
             {/* Afvullen form */}
             <div className="bg-white rounded-xl shadow-card overflow-hidden">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('batch_filling_register')}</div>
+              <SectionHeader title={t('batch_filling_register')} />
               <div className="p-3">
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div>
@@ -204,7 +205,7 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
 
             {/* Afgevulde voorraad tabel */}
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-              <div className="px-4 py-2.5 t-hdr text-white font-medium text-sm">{t('batch_filled_stock')}</div>
+              <SectionHeader title={t('batch_filled_stock')} />
               <table className="w-full text-sm">
                 <thead className="text-xs text-gray-500 bg-gray-50">
                   <tr>

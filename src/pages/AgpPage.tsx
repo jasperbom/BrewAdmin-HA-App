@@ -5,6 +5,7 @@ import { newId } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
+import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
 import { agpOverzicht, getAgpLocatie, accijnsCalc, voorraadPerLocatie, gemAgpInPeriode } from '../utils/calculations'
 
@@ -227,10 +228,12 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
       </div>
 
       <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
-        <div className="t-hdr text-white font-medium text-sm px-4 py-2.5 flex items-center justify-between cursor-pointer" onClick={()=>toggle('tanks')}>
-          <span>{t('agp_sec_tanks')} ({ovz.tanks.length})</span>
-          <span className="text-xs opacity-75">→</span>
-        </div>
+        <SectionHeader
+          open={openSec.tanks}
+          onToggle={()=>toggle('tanks')}
+          title={t('agp_sec_tanks')}
+          info={ovz.tanks.length}
+        />
         {openSec.tanks && (
           ovz.tanks.length === 0 ? (
             <div className="p-6 text-center text-gray-400 text-sm">{t('agp_geen_tank')}</div>
@@ -268,10 +271,12 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
       </div>
 
       <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
-        <div className="t-hdr text-white font-medium text-sm px-4 py-2.5 flex items-center justify-between cursor-pointer" onClick={()=>toggle('agp')}>
-          <span>{t('agp_sec_verpakt_agp')} ({ovz.afvullingen.filter((r: any) => r.in_agp > 0).length})</span>
-          <span className="text-xs opacity-75">→</span>
-        </div>
+        <SectionHeader
+          open={openSec.agp}
+          onToggle={()=>toggle('agp')}
+          title={t('agp_sec_verpakt_agp')}
+          info={ovz.afvullingen.filter((r: any) => r.in_agp > 0).length}
+        />
         {openSec.agp && (
           ovz.afvullingen.filter((r: any) => r.in_agp > 0).length === 0 ? (
             <div className="p-6 text-center text-gray-400 text-sm">{t('agp_geen_verpakt')}</div>
@@ -313,10 +318,12 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
       </div>
 
       <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
-        <div className="t-hdr text-white font-medium text-sm px-4 py-2.5 flex items-center justify-between cursor-pointer" onClick={()=>toggle('buiten')}>
-          <span>{t('agp_sec_buiten_agp')} ({ovz.afvullingen.filter((r: any) => r.buiten_agp > 0).length})</span>
-          <span className="text-xs opacity-75">→</span>
-        </div>
+        <SectionHeader
+          open={openSec.buiten}
+          onToggle={()=>toggle('buiten')}
+          title={t('agp_sec_buiten_agp')}
+          info={ovz.afvullingen.filter((r: any) => r.buiten_agp > 0).length}
+        />
         {openSec.buiten && (
           ovz.afvullingen.filter((r: any) => r.buiten_agp > 0).length === 0 ? (
             <div className="p-6 text-center text-gray-400 text-sm">{t('agp_geen_buiten')}</div>
@@ -361,10 +368,12 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
       </div>
 
       <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
-        <div className="t-hdr text-white font-medium text-sm px-4 py-2.5 flex items-center justify-between cursor-pointer" onClick={()=>toggle('mut')}>
-          <span>{t('agp_sec_mutaties')} ({recenteMutaties.length})</span>
-          <span className="text-xs opacity-75">→</span>
-        </div>
+        <SectionHeader
+          open={openSec.mut}
+          onToggle={()=>toggle('mut')}
+          title={t('agp_sec_mutaties')}
+          info={recenteMutaties.length}
+        />
         {openSec.mut && (
           recenteMutaties.length === 0 ? (
             <div className="p-6 text-center text-gray-400 text-sm">{t('agp_geen_mutaties')}</div>
