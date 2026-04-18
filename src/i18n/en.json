@@ -1275,7 +1275,7 @@
   "ph_product_naam": "Name of the beer",
   "ph_product_stijl": "E.g. IPA, Tripel, Stout",
   "ph_product_categorie": "E.g. Seasonal, Standard",
-  "ph_product_zoek": "Search products...",
+  "ph_product_zoek": "Search product",
   "btn_bewerken": "Edit",
   "lbl_product_abv": "ABV %",
   "lbl_product_ebc": "EBC (colour)",

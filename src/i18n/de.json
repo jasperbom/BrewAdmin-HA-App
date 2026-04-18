@@ -1275,7 +1275,7 @@
   "ph_product_naam": "Name des Bieres",
   "ph_product_stijl": "Z.B. IPA, Tripel, Stout",
   "ph_product_categorie": "Z.B. Saisonbier, Standard",
-  "ph_product_zoek": "Produkte suchen...",
+  "ph_product_zoek": "Produkt suchen",
   "btn_bewerken": "Bearbeiten",
   "lbl_product_abv": "ABV %",
   "lbl_product_ebc": "EBC (Farbe)",

@@ -1272,7 +1272,7 @@
   "ph_product_naam": "Nombre de la cerveza",
   "ph_product_stijl": "Ej. IPA, Tripel, Stout",
   "ph_product_categorie": "Ej. Estacional, Estándar",
-  "ph_product_zoek": "Buscar productos...",
+  "ph_product_zoek": "Buscar producto",
   "btn_bewerken": "Editar",
   "lbl_product_abv": "ABV %",
   "lbl_product_ebc": "EBC (color)",

@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.72] — 2026-04-18
+
+### Changed — SearchInput met loep-icoon + uniforme knopmaat Producten
+- `SearchInput` toont nu links een loep-icoon (inspringing via `pl-9`) —
+  alle zoekvelden in de app krijgen dit vanzelf.
+- Placeholder `ph_product_zoek` vereenvoudigd naar "Zoek product" (nl/en/
+  de/fr/es).
+- `btn_wc_push_stock`-knop op ProductenPage heeft nu dezelfde hoogte en
+  padding als de `+ Product`-knop (`px-4 py-1.5 text-sm rounded-lg`).
+
+---
+
 ## [1.8.71] — 2026-04-18
 
 ### Changed — ProductenPage in BatchesPage-stijl
