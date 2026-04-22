@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -105,7 +105,11 @@ const catmullRomPath = (pts: [number,number][]): string => {
 }
 
 // ── Fermentatie grafiek SVG component ─────────────────────────────────────
-const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
+// `startTs` (optioneel) zet het linkerbegin van de X-as: het moment waarop
+// de batch op Vergisten ging. Ligt die vóór de eerste meting, dan toont de
+// grafiek ook die "aanloop" — zodat je ziet hoe lang de vergisting al loopt
+// voor de eerste meting.
+const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> = ({ metingen, startTs }) => {
   const svgRef = React.useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = React.useState<[number,number]>([0,1])
   const zoomRef = React.useRef<[number,number]>([0,1])
@@ -122,8 +126,12 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   ), [metingen])
 
   const tsAll = sorted.map(m => new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime())
-  const tsMin = tsAll[0] ?? 0
-  const tsMax = tsAll[tsAll.length-1] ?? (tsMin+1)
+  const firstMeting = tsAll[0] ?? 0
+  const lastMeting  = tsAll[tsAll.length-1] ?? (firstMeting+1)
+  // X-as start bij het Vergisten-moment als dat vóór de eerste meting ligt,
+  // anders bij de eerste meting (fallback voor batches zonder starttijdstip).
+  const tsMin = (startTs != null && startTs < firstMeting) ? startTs : firstMeting
+  const tsMax = lastMeting
   const fullRange = tsMax - tsMin || 1
 
   React.useEffect(() => { zoomRef.current = zoom }, [zoom])
@@ -313,6 +321,15 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
           </text>
         ))}
 
+        {/* Vergisten-start-marker (alleen tonen als het vóór de eerste meting ligt en in beeld is) */}
+        {startTs != null && startTs < firstMeting && startTs >= viewMin && startTs <= viewMax && (() => {
+          const x = toX(startTs)
+          return <g>
+            <line x1={x} y1={PAD.t} x2={x} y2={PAD.t+CH} stroke="#10b981" strokeWidth="1" strokeDasharray="3 3" opacity="0.7"/>
+            <text x={x+3} y={PAD.t+9} fontSize="8" fill="#10b981">{t('batch_gist_start')}</text>
+          </g>
+        })()}
+
         {/* Data — geclipd */}
         <g clipPath="url(#fc)">
           {/* SG vlakgebied */}
@@ -437,7 +454,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   React.useEffect(() => {
     if (!preNieuwBatch) return
     const { _receptIngredienten, ...batchData } = preNieuwBatch
-    const autoNr = batchData.batch_nummer ? {} : { batch_nummer: nextBatchNummer() }
+    const autoNr = batchData.batch_nummer ? {} : { batch_nummer: nextBatchNummer(bat) }
     setBForm({...emptyB, ...batchData, ...autoNr})
     setEditId(null)
     setShowForm(true)
@@ -450,30 +467,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',tank_dagen:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
 
-  // Stel het volgende batchnummer voor op basis van de meest recente batch.
-  // Pakt de numerieke staart uit `batch_nummer` en telt er 1 bij op, met
-  // behoud van prefix, eventuele jaar-segmenten en zero-padding.
-  // Fallback: 'B-YYYY-001' als er nog geen bestaande batches zijn.
-  const nextBatchNummer = (): string => {
-    const metNr = (bat || []).filter((b: any) => String(b.batch_nummer || '').trim())
-    if (metNr.length === 0) {
-      const y = new Date().getFullYear()
-      return `B-${y}-001`
-    }
-    // "Meest recente" = hoogste id (fallback op created_at als id gelijk is)
-    const laatste = [...metNr].sort((a: any, b: any) => {
-      const di = Number(b.id || 0) - Number(a.id || 0)
-      if (di !== 0) return di
-      return String(b.created_at || '').localeCompare(String(a.created_at || ''))
-    })[0]
-    const nr = String(laatste.batch_nummer).trim()
-    // Zoek trailing numeriek deel (evt. met suffix-letters erachter)
-    const m = nr.match(/^(.*?)(\d+)(\D*)$/)
-    if (!m) return `${nr}-1`
-    const [, prefix, num, suffix] = m
-    const volg = String(Number(num) + 1).padStart(num.length, '0')
-    return `${prefix}${volg}${suffix}`
-  }
 
   const safeStr = (v: any): string => {
     if (!v && v !== 0) return ''
@@ -711,17 +704,26 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       let added = 0, updated = 0
       const newBatches: any[] = [], newBis: any[] = [], updBatches: any[] = [], refreshBisFor: any[] = []
       for (const bfB of bfBatches) {
-        const existing = bat.find((b: any) => b.brewfather_id === bfB._id ||
-          (bfB.batchNo != null && String(b.batch_nummer) === String(bfB.batchNo)))
+        // Match alléén op brewfather_id — app-`batch_nummer` en BF-`batchNo`
+        // zijn twee onafhankelijke nummerruimten.
+        const existing = bat.find((b: any) => b.brewfather_id === bfB._id)
         const appStatus = BF_TO_APP[bfB.status] || 'Gepland'
         if (!existing) {
-          const nb = {...bfMapBatch(bfB), id: newId([...bat, ...newBatches]), created_at: new Date().toISOString()}
+          const nb = {
+            ...bfMapBatch(bfB),
+            id: newId([...bat, ...newBatches]),
+            batch_nummer: nextBatchNummer([...bat, ...newBatches]),
+            created_at: new Date().toISOString(),
+          }
           newBatches.push(nb)
           const nbis = bfMapBis(bfB, nb.id, newId([...bi, ...newBis]) + newBis.length)
           newBis.push(...nbis)
           added++
         } else {
           const ch: any = {brewfather_id: bfB._id}
+          if (bfB.batchNo != null && !existing.brewfather_batch_nummer) {
+            ch.brewfather_batch_nummer = String(bfB.batchNo)
+          }
           if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus
           if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize)
           if (bfB.measuredOg) {
@@ -1130,7 +1132,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
             {bfSyncing ? t('batch_syncing') : t('batch_sync_brewfather')}
           </Btn>
-          <Btn onClick={()=>{setEditId(null);setBForm({...emptyB, batch_nummer: nextBatchNummer()});setShowForm(true)}}>{t('batch_add_btn')}</Btn>
+          <Btn onClick={()=>{setEditId(null);setBForm({...emptyB, batch_nummer: nextBatchNummer(bat)});setShowForm(true)}}>{t('batch_add_btn')}</Btn>
         </div>
       </div>
 
@@ -1196,8 +1198,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     <div className="text-base font-semibold leading-tight truncate">{selB.naam}</div>
                     <div className="text-xs text-gray-400 mt-0.5">
                       {selB.batch_nummer ? `#${selB.batch_nummer}` : ''}
-                      {selB.stijl ? `${selB.batch_nummer ? ' · ' : ''}${selB.stijl}` : ''}
-                      {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}${selB.biernaam}` : ''}
+                      {selB.brewfather_batch_nummer ? `${selB.batch_nummer ? ' · ' : ''}BF #${selB.brewfather_batch_nummer}` : ''}
+                      {selB.stijl ? `${(selB.batch_nummer||selB.brewfather_batch_nummer) ? ' · ' : ''}${selB.stijl}` : ''}
+                      {selB.biernaam ? `${(selB.batch_nummer||selB.brewfather_batch_nummer||selB.stijl) ? ' · ' : ''}${selB.biernaam}` : ''}
                       {selB.tank && ['Vergisten','Conditioneren'].includes(selB.status) && (
                         <span className="ml-1 inline-flex items-center gap-0.5 bg-white/15 rounded px-1.5 py-0.5 text-white/90 text-[10px] font-medium">{`${t('lbl_tank')} ${selB.tank}`}</span>
                       )}
@@ -1305,6 +1308,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     {([
                       [t('lbl_status'), <Badge s={selB.status} />],
                       [t('batch_info_batch_nr'), selB.batch_nummer||'—'],
+                      selB.brewfather_batch_nummer ? [t('batch_info_bf_batch_nr'), `#${selB.brewfather_batch_nummer}`] : null,
                       [t('lbl_date'), fmtD(selB.datum)],
                       [t('batch_info_style'), selB.stijl||'—'],
                       [t('lbl_tank'), selB.tank||'—'],
@@ -1506,6 +1510,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   const kb = (b.datum||'') + 'T' + (b.tijd||'00:00')
                   return ka.localeCompare(kb)
                 })
+              // Starttijdstip van de vergisting: eerste tank_historie-entry met
+              // status='Vergisten', anders batch.datum als de batch ooit op
+              // Vergisten (of later) heeft gestaan.
+              const vergistStartTs: number | null = (() => {
+                const hist: any[] = Array.isArray(selB.tank_historie) ? selB.tank_historie : []
+                const entry = hist.find((h: any) => h?.status === 'Vergisten')
+                const iso = entry?.from || selB.datum
+                if (!iso) return null
+                const ts = new Date(`${iso}T00:00`).getTime()
+                return isNaN(ts) ? null : ts
+              })()
               const isOpen = grafiekIsOpen
 
               const addMeting = () => {
@@ -1584,7 +1599,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             : t('batch_gist_min_2')}
                         </div>
                       ) : (
-                        <FermentatieGrafiek metingen={batchMetingen} />
+                        <FermentatieGrafiek metingen={batchMetingen} startTs={vergistStartTs} />
                       )}
 
                       {batchMetingen.length > 0 && (

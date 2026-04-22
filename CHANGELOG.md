@@ -4,6 +4,84 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.83] — 2026-04-22
+
+### Added — Brewfather-batchnummer zichtbaar in batch-detail
+
+- In de batch-detail-header wordt nu naast het app-eigen `#batch_nummer`
+  ook `BF #brewfather_batch_nummer` getoond (alleen als dat veld
+  gevuld is, voorafgegaan door een bullet-scheiding).
+- In de info-grid (`BatchesPage.tsx:1309`) is een nieuwe rij
+  "Brewfather #" toegevoegd, alleen zichtbaar voor batches die via
+  Brewfather zijn geïmporteerd.
+- Nieuwe i18n-sleutel `batch_info_bf_batch_nr` in nl/en/de/fr/es.
+
+---
+
+## [1.8.82] — 2026-04-22
+
+### Fixed — Brewfather-sync koppelt geen batches meer verkeerd
+
+Voorheen kon een Brewfather-sync twee verschillende batches per ongeluk
+aan elkaar koppelen omdat matching naast `brewfather_id` ook op een
+toevallige gelijkenis tussen app-`batch_nummer` en BF-`batchNo`
+plaatsvond. Dat overschreef status, OG/FG/ABV, rendement en vergistings-/
+maischprofielen van de verkeerde batch en plakte die permanent aan het
+verkeerde `brewfather_id` vast.
+
+### Changed — App-eigen batchnummering losgekoppeld van Brewfather
+
+- **Nieuw veld** `brewfather_batch_nummer` (zie `src/types/index.ts`) houdt
+  het Brewfather-`batchNo` als losstaande referentie bij; `batch_nummer`
+  blijft het app-eigen nummer. Bij bestaande batches vult de sync
+  `brewfather_batch_nummer` één keer aan (zonder te overschrijven).
+- **Bij nieuwe BF-import** kent de app automatisch een eigen volgnummer
+  toe via de gedeelde helper `nextBatchNummer(batches)` in
+  `src/utils/calculations.ts` (zelfde logica als de "Nieuwe batch"-knop:
+  prefix/jaar/padding behouden, staart met 1 verhoogd).
+- **Sync matcht alléén nog op `brewfather_id`** (in `App.tsx` auto-sync
+  én `BatchesPage.tsx` `runBfSync`). Zo kan toevallige gelijkenis tussen
+  twee onafhankelijke nummerruimten nooit meer leiden tot verstrengelde
+  batches.
+
+---
+
+## [1.8.81] — 2026-04-22
+
+### Changed — Fermentatiegrafiek: X-as vanaf Vergisten-moment
+
+- De X-as van de gistgrafiek (`FermentatieGrafiek` in `BatchesPage.tsx`)
+  start nu bij het moment dat de batch op **Vergisten** ging, niet bij de
+  eerste meting. Bron: eerste `tank_historie`-entry met
+  `status='Vergisten'`, fallback `batch.datum`. Zo is de volledige
+  fermentatie-aanloop zichtbaar — óók als de eerste meting pas later is
+  gedaan.
+- Een groene gestippelde verticale lijn met label "Vergisten" markeert
+  het startmoment in de grafiek (alleen zichtbaar als het vóór de eerste
+  meting ligt en binnen de huidige zoomview valt).
+- Nieuwe i18n-sleutel `batch_gist_start` in alle 5 talen.
+
+---
+
+## [1.8.80] — 2026-04-22
+
+### Fixed — Nette afhandeling van rate-limit-fouten (HTTP 429)
+
+- **Server**: de 429-respons (`{"error":"too many requests"}`) bevat voortaan
+  een `Retry-After`-header met het aantal seconden tot de oudste request in
+  het per-IP-venster vervalt, zodat clients weten hoe lang te wachten.
+- **Frontend (`src/utils/api.ts`)**: alle calls naar `/api/data/`,
+  Brewfather, WooCommerce, Home Assistant en Claude gaan nu via
+  `_fetchWithRetry`, die automatisch opnieuw probeert bij 429 met respect
+  voor de `Retry-After`-header (min. 1s, max. 30s). 429-responses tellen
+  niet meer mee als sync-fout en de client hamert de server niet langer.
+- **UI**: de `SyncDot` heeft een nieuwe oranje pulserende status
+  **rate_limited** met de tooltip "Te veel verzoeken — even wachten"
+  (5 talen), zodat de gebruiker onderscheid ziet tussen een echte
+  verbindingsfout en tijdelijke throttling.
+
+---
+
 ## [1.8.79] — 2026-04-18
 
 ### Added — Auto-invul batchnummer bij nieuwe batch

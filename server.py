@@ -92,6 +92,15 @@ def _check_rate(ip: str) -> bool:
     return True
 
 
+def _retry_after(ip: str) -> int:
+    # Seconden tot de oudste request in het venster vervalt (min. 1s).
+    bucket = _rate_buckets.get(ip) or []
+    if not bucket:
+        return 1
+    wait = _RATE_WINDOW - (time.monotonic() - bucket[0])
+    return max(1, int(wait) + 1)
+
+
 # Security headers added to every response
 _SEC_HEADERS = [
     ('X-Content-Type-Options', 'nosniff'),
@@ -483,17 +492,21 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Vary', 'Origin')
 
     def _rate_check(self) -> bool:
-        if not _check_rate(self.client_address[0]):
-            self._json(429, {'error': 'too many requests'})
+        ip = self.client_address[0]
+        if not _check_rate(ip):
+            self._json(429, {'error': 'too many requests'}, extra_headers=[('Retry-After', str(_retry_after(ip)))])
             return False
         return True
 
-    def _json(self, status: int, data) -> None:
+    def _json(self, status: int, data, extra_headers: list | None = None) -> None:
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(body))
         self.send_header('Cache-Control', 'no-store')
+        if extra_headers:
+            for name, value in extra_headers:
+                self.send_header(name, value)
         self._add_security_headers()
         self.end_headers()
         self.wfile.write(body)
