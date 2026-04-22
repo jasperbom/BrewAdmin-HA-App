@@ -509,6 +509,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const emptyVerlies = { datum: tod(), bron: 'tankrest' as const, liter: '', notitie: '' }
   const [verliesForm, setVerliesForm] = useState<any>(emptyVerlies)
   const [ingFormOpen, setIngFormOpen] = useState(false)
+  // Groep-key van de batch-ingredient waarvan de koppel-picker openstaat.
+  const [koppelGroep, setKoppelGroep] = useState<string | null>(null)
   const [batchZoek, setBatchZoek] = useState('')
 
   // ── Tank-bezetting helpers (voor het batch-formulier) ──────────────
@@ -963,6 +965,25 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     const newIng = {id:newId(ing), naam:biRow.ingredient_naam, type:biRow.ingredient_type||'Overig', fabrikant:''}
     setIng((prev: any[]) => [...prev, newIng])
     setBi((prev: any[]) => prev.map((x: any) => x.id===biRow.id ? {...x, ingredient_id:newIng.id} : x))
+  }
+
+  // Koppel alle batch-ingredient-regels in dezelfde groep aan een bestaand
+  // ingredient uit de catalogus. Match op groep gebeurt via ingredient_id (als
+  // die al gezet is) of op naam (lowercase). newIngId = null ontkoppelt.
+  const koppelBatchIngGroep = (biRow: any, newIngId: number | null) => {
+    setBi((prev: any[]) => prev.map((x: any) => {
+      const sameGroep = biRow.ingredient_id
+        ? x.ingredient_id === biRow.ingredient_id
+        : (!x.ingredient_id && String(x.ingredient_naam||'').toLowerCase() === String(biRow.ingredient_naam||'').toLowerCase())
+      return sameGroep ? {...x, ingredient_id: newIngId} : x
+    }))
+  }
+
+  // Lijst van ingredienten voor de koppel-dropdown, gefilterd op type.
+  const batchIngOptions = (ingType: string): any[] => {
+    const t = ingType || 'Overig'
+    return [...ing.filter((i: any) => i.type === t)]
+      .sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam), 'nl'))
   }
 
   const addIng = (bid: number) => {
@@ -2057,6 +2078,55 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       }
                     }
                     const ING_TYPES: Record<string,string> = {Mout:t('ing_type_mout'),Hop:t('ing_type_hop'),Gist:t('ing_type_gist'),Suiker:t('ing_type_suiker'),Overig:t('ing_type_overig')}
+                    const renderKoppelPill = (biRow: any, groepKey: string) => {
+                      const isOpen = koppelGroep === groepKey
+                      const ingById = biRow.ingredient_id ? ing.find((i: any) => i.id === biRow.ingredient_id) : null
+                      const ingByName = !ingById
+                        ? ing.find((i: any) => i.naam.toLowerCase() === String(biRow.ingredient_naam||'').toLowerCase())
+                        : null
+                      const match = ingById || ingByName
+                      const explicit = !!ingById
+                      if (isOpen) {
+                        return (
+                          <select autoFocus value={biRow.ingredient_id ?? ''}
+                            onClick={(e: any) => e.stopPropagation()}
+                            onBlur={() => setKoppelGroep(null)}
+                            onChange={(e: any) => {
+                              const v = e.target.value
+                              koppelBatchIngGroep(biRow, v === '' ? null : Number(v))
+                              setKoppelGroep(null)
+                            }}
+                            className="text-xs border rounded px-1 py-0.5 bg-white ml-2 align-middle">
+                            <option value="">{t('recipe_link_auto')}</option>
+                            {batchIngOptions(biRow.ingredient_type).map((i: any) => (
+                              <option key={i.id} value={i.id}>{i.naam}</option>
+                            ))}
+                          </select>
+                        )
+                      }
+                      if (match && explicit) {
+                        return (
+                          <span onClick={(e: any) => { e.stopPropagation(); setKoppelGroep(groepKey) }}
+                            className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 cursor-pointer hover:bg-blue-100 ml-2 align-middle"
+                            title={t('recipe_link_edit')}>
+                            🔗 {match.naam}
+                          </span>
+                        )
+                      }
+                      if (!match) {
+                        return (
+                          <button onClick={(e: any) => { e.stopPropagation(); setKoppelGroep(groepKey) }}
+                            className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 ml-2 align-middle">
+                            {t('recipe_link_none')}
+                          </button>
+                        )
+                      }
+                      return (
+                        <button onClick={(e: any) => { e.stopPropagation(); setKoppelGroep(groepKey) }}
+                          className="text-xs px-1 py-0.5 rounded text-gray-400 hover:bg-gray-100 ml-2 align-middle"
+                          title={t('recipe_link_edit')}>🔗</button>
+                      )
+                    }
                     return groupsArr.map(g => {
                       const totalQty  = r3(g.rows.reduce((s: number, r: any) => s+Number(r.hoeveelheid||0), 0))
                       const bookedQty = r3(g.rows.filter((r: any) => r.afgeboekt).reduce((s: number, r: any) => s+Number(r.hoeveelheid||0), 0))
@@ -2067,7 +2137,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <tbody key={g.key} className="divide-y divide-gray-100">
                           {multi && (
                             <tr className="bg-amber-50 border-b border-amber-100">
-                              <td className="px-3 py-1.5 font-medium text-sm">{g.naam}</td>
+                              <td className="px-3 py-1.5 font-medium text-sm">
+                                <span className="align-middle">{g.naam}</span>
+                                {renderKoppelPill(g.rows[0], g.key)}
+                              </td>
                               <td className="px-3 py-1.5 text-gray-500 text-xs">{g.type}</td>
                               <td className="px-3 py-1.5 text-right font-mono text-xs font-semibold text-gray-700">{totalQty} {g.eenheid}</td>
                               <td className="px-3 py-1.5 text-xs" colSpan={2}>
@@ -2129,7 +2202,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             return (
                               <tr key={x.id} className={multi ? 'bg-white' : ''}>
                                 <td className={`px-3 py-1.5 ${multi ? 'pl-5 text-gray-500 text-xs' : ''}`}>
-                                  {multi ? <><span className="text-gray-300 mr-1">↳</span><span>{x.hoeveelheid} {x.eenheid}</span></> : x.ingredient_naam}
+                                  {multi ? (
+                                    <><span className="text-gray-300 mr-1">↳</span><span>{x.hoeveelheid} {x.eenheid}</span></>
+                                  ) : (
+                                    <><span className="align-middle">{x.ingredient_naam}</span>{renderKoppelPill(x, g.key)}</>
+                                  )}
                                 </td>
                                 <td className="px-3 py-1.5 text-gray-500 text-xs">{multi ? '' : (ING_TYPES[x.ingredient_type]||x.ingredient_type)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono text-xs">{multi ? '' : <>{x.hoeveelheid} {x.eenheid}</>}</td>
