@@ -345,8 +345,11 @@ import { BF_TO_APP } from './constants'
 
 export const bfMapBatch = (b: any) => ({
   brewfather_id:  b._id,
+  // Brewfather's eigen batchnummer blijft als referentie bewaard, maar staat
+  // losstaand van het app-eigen `batch_nummer` (zie nextBatchNummer).
+  brewfather_batch_nummer: b.batchNo != null ? String(b.batchNo) : '',
   naam:           b.recipe?.name || b.name || 'Onbekend',
-  batch_nummer:   b.batchNo != null ? String(b.batchNo) : '',
+  batch_nummer:   '',
   stijl:          b.recipe?.style?.name || '',
   status:         BF_TO_APP[b.status] || 'Gepland',
   liter_vergist:  bfNumSafe(b.measuredBatchSize || b.estimatedBatchSize || b.recipe?.batchSize),

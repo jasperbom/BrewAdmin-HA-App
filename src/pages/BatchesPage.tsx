@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -454,7 +454,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   React.useEffect(() => {
     if (!preNieuwBatch) return
     const { _receptIngredienten, ...batchData } = preNieuwBatch
-    const autoNr = batchData.batch_nummer ? {} : { batch_nummer: nextBatchNummer() }
+    const autoNr = batchData.batch_nummer ? {} : { batch_nummer: nextBatchNummer(bat) }
     setBForm({...emptyB, ...batchData, ...autoNr})
     setEditId(null)
     setShowForm(true)
@@ -467,30 +467,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',tank_dagen:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
 
-  // Stel het volgende batchnummer voor op basis van de meest recente batch.
-  // Pakt de numerieke staart uit `batch_nummer` en telt er 1 bij op, met
-  // behoud van prefix, eventuele jaar-segmenten en zero-padding.
-  // Fallback: 'B-YYYY-001' als er nog geen bestaande batches zijn.
-  const nextBatchNummer = (): string => {
-    const metNr = (bat || []).filter((b: any) => String(b.batch_nummer || '').trim())
-    if (metNr.length === 0) {
-      const y = new Date().getFullYear()
-      return `B-${y}-001`
-    }
-    // "Meest recente" = hoogste id (fallback op created_at als id gelijk is)
-    const laatste = [...metNr].sort((a: any, b: any) => {
-      const di = Number(b.id || 0) - Number(a.id || 0)
-      if (di !== 0) return di
-      return String(b.created_at || '').localeCompare(String(a.created_at || ''))
-    })[0]
-    const nr = String(laatste.batch_nummer).trim()
-    // Zoek trailing numeriek deel (evt. met suffix-letters erachter)
-    const m = nr.match(/^(.*?)(\d+)(\D*)$/)
-    if (!m) return `${nr}-1`
-    const [, prefix, num, suffix] = m
-    const volg = String(Number(num) + 1).padStart(num.length, '0')
-    return `${prefix}${volg}${suffix}`
-  }
 
   const safeStr = (v: any): string => {
     if (!v && v !== 0) return ''
@@ -728,17 +704,26 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       let added = 0, updated = 0
       const newBatches: any[] = [], newBis: any[] = [], updBatches: any[] = [], refreshBisFor: any[] = []
       for (const bfB of bfBatches) {
-        const existing = bat.find((b: any) => b.brewfather_id === bfB._id ||
-          (bfB.batchNo != null && String(b.batch_nummer) === String(bfB.batchNo)))
+        // Match alléén op brewfather_id — app-`batch_nummer` en BF-`batchNo`
+        // zijn twee onafhankelijke nummerruimten.
+        const existing = bat.find((b: any) => b.brewfather_id === bfB._id)
         const appStatus = BF_TO_APP[bfB.status] || 'Gepland'
         if (!existing) {
-          const nb = {...bfMapBatch(bfB), id: newId([...bat, ...newBatches]), created_at: new Date().toISOString()}
+          const nb = {
+            ...bfMapBatch(bfB),
+            id: newId([...bat, ...newBatches]),
+            batch_nummer: nextBatchNummer([...bat, ...newBatches]),
+            created_at: new Date().toISOString(),
+          }
           newBatches.push(nb)
           const nbis = bfMapBis(bfB, nb.id, newId([...bi, ...newBis]) + newBis.length)
           newBis.push(...nbis)
           added++
         } else {
           const ch: any = {brewfather_id: bfB._id}
+          if (bfB.batchNo != null && !existing.brewfather_batch_nummer) {
+            ch.brewfather_batch_nummer = String(bfB.batchNo)
+          }
           if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus
           if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize)
           if (bfB.measuredOg) {
@@ -1147,7 +1132,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
             {bfSyncing ? t('batch_syncing') : t('batch_sync_brewfather')}
           </Btn>
-          <Btn onClick={()=>{setEditId(null);setBForm({...emptyB, batch_nummer: nextBatchNummer()});setShowForm(true)}}>{t('batch_add_btn')}</Btn>
+          <Btn onClick={()=>{setEditId(null);setBForm({...emptyB, batch_nummer: nextBatchNummer(bat)});setShowForm(true)}}>{t('batch_add_btn')}</Btn>
         </div>
       </div>
 

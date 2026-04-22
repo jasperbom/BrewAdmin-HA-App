@@ -223,6 +223,30 @@ export const appendTankHistorie = (
   return hist
 }
 
+// ── Batchnummer-volgorde ────────────────────────────────────────────────────
+// Stel het volgende app-eigen `batch_nummer` voor op basis van de meest
+// recente batch. Pakt de numerieke staart en telt er 1 bij op, met behoud
+// van prefix, jaar-segmenten en zero-padding (bv. `B-2026-012` → `B-2026-013`).
+// Fallback: `B-YYYY-001` als er nog geen genummerde batches zijn.
+export const nextBatchNummer = (batches: any[]): string => {
+  const metNr = (batches || []).filter((b: any) => String(b?.batch_nummer || '').trim())
+  if (metNr.length === 0) {
+    const y = new Date().getFullYear()
+    return `B-${y}-001`
+  }
+  const laatste = [...metNr].sort((a: any, b: any) => {
+    const di = Number(b.id || 0) - Number(a.id || 0)
+    if (di !== 0) return di
+    return String(b.created_at || '').localeCompare(String(a.created_at || ''))
+  })[0]
+  const nr = String(laatste.batch_nummer).trim()
+  const m = nr.match(/^(.*?)(\d+)(\D*)$/)
+  if (!m) return `${nr}-1`
+  const [, prefix, num, suffix] = m
+  const volg = String(Number(num) + 1).padStart(num.length, '0')
+  return `${prefix}${volg}${suffix}`
+}
+
 // ── AGP-voorraad helpers ─────────────────────────────────────────────────────
 // Statussen waarbij bier nog "in tank" zit (gistend / lagering / brouwen).
 // Let op: het echte gistingsstatus-label in de app is 'Vergisten' (niet 'Gisten').

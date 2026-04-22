@@ -50,6 +50,7 @@ export interface Batch {
   schoonmaak_kosten?: number | string
   overige_kosten?: number | string
   brewfather_id?: string
+  brewfather_batch_nummer?: string
   brouwzaal_eff?: number | string
   maisch_eff?: number | string
   maisch_ph?: number | string

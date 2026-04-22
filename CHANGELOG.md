@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.82] — 2026-04-22
+
+### Fixed — Brewfather-sync koppelt geen batches meer verkeerd
+
+Voorheen kon een Brewfather-sync twee verschillende batches per ongeluk
+aan elkaar koppelen omdat matching naast `brewfather_id` ook op een
+toevallige gelijkenis tussen app-`batch_nummer` en BF-`batchNo`
+plaatsvond. Dat overschreef status, OG/FG/ABV, rendement en vergistings-/
+maischprofielen van de verkeerde batch en plakte die permanent aan het
+verkeerde `brewfather_id` vast.
+
+### Changed — App-eigen batchnummering losgekoppeld van Brewfather
+
+- **Nieuw veld** `brewfather_batch_nummer` (zie `src/types/index.ts`) houdt
+  het Brewfather-`batchNo` als losstaande referentie bij; `batch_nummer`
+  blijft het app-eigen nummer. Bij bestaande batches vult de sync
+  `brewfather_batch_nummer` één keer aan (zonder te overschrijven).
+- **Bij nieuwe BF-import** kent de app automatisch een eigen volgnummer
+  toe via de gedeelde helper `nextBatchNummer(batches)` in
+  `src/utils/calculations.ts` (zelfde logica als de "Nieuwe batch"-knop:
+  prefix/jaar/padding behouden, staart met 1 verhoogd).
+- **Sync matcht alléén nog op `brewfather_id`** (in `App.tsx` auto-sync
+  én `BatchesPage.tsx` `runBfSync`). Zo kan toevallige gelijkenis tussen
+  twee onafhankelijke nummerruimten nooit meer leiden tot verstrengelde
+  batches.
+
+---
+
 ## [1.8.81] — 2026-04-22
 
 ### Changed — Fermentatiegrafiek: X-as vanaf Vergisten-moment

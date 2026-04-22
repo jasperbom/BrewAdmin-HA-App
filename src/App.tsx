@@ -4,7 +4,7 @@ import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetSt
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
-import { accijnsCalc } from './utils/calculations'
+import { accijnsCalc, nextBatchNummer } from './utils/calculations'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
@@ -220,16 +220,25 @@ function App() {
         const bfBatches = await bfGetBatches();
         const newBatches: any[] = [], newBis: any[] = [], updBatches: any[] = [];
         for (const bfB of bfBatches) {
-          const existing = bat.find((b: any) => b.brewfather_id === bfB._id ||
-            (bfB.batchNo != null && String(b.batch_nummer) === String(bfB.batchNo)));
+          // Matchen gebeurt uitsluitend op brewfather_id om te voorkomen dat
+          // een toevallige gelijkenis tussen app-`batch_nummer` en BF-`batchNo`
+          // twee verschillende batches aan elkaar koppelt.
+          const existing = bat.find((b: any) => b.brewfather_id === bfB._id);
           const appStatus = BF_TO_APP[bfB.status] || 'Gepland';
           if (!existing) {
-            const nb = {...bfMapBatch(bfB), id: newId([...bat, ...newBatches])};
+            const nb = {
+              ...bfMapBatch(bfB),
+              id: newId([...bat, ...newBatches]),
+              batch_nummer: nextBatchNummer([...bat, ...newBatches]),
+            };
             newBatches.push(nb);
             const nbis = bfMapBis(bfB, nb.id, newId([...bi, ...newBis]) + newBis.length);
             newBis.push(...nbis);
           } else {
             const ch: any = {brewfather_id: bfB._id};
+            if (bfB.batchNo != null && !existing.brewfather_batch_nummer) {
+              ch.brewfather_batch_nummer = String(bfB.batchNo);
+            }
             if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus;
             if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize);
             if (bfB.measuredOg)  ch.OG  = bfNumSafe(bfB.measuredOg);
