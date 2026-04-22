@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.85] — 2026-04-22
+
+### Added — Recept-ingredienten koppelen aan voorraad-ingredienten
+
+- In de recept-detailweergave staat nu een extra kolom "Gekoppeld aan"
+  met per rij een koppel-control. Als de recept-ingrediëntnaam exact
+  overeenkomt met een voorraad-ingrediënt wordt die automatisch
+  getoond; bij afwijkende namen verschijnt een oranje "Koppelen"-knop
+  die een dropdown opent met alle ingredienten van het juiste type
+  (Mout/Hop/Gist/Overig — voor "Overig" wordt ook "Suiker" getoond).
+- `ReceptIngredient` uitgebreid met `ingredient_id?: number | null`.
+  De voorraadcheck (`checkStock`) geeft voorrang aan deze expliciete
+  koppeling en valt terug op naam-matching voor backward compat.
+- Bij de "Brouwen"-actie wordt `ingredient_id` meegegeven aan
+  `BatchIngredient`, zodat de batch direct gekoppeld start.
+- De Brewfather-sync bewaart gebruikersgekoppelingen: per recept-id
+  en per sectie wordt op naam gematcht om `ingredient_id` over te
+  nemen van de oude naar de nieuwe receptversie.
+- Versie-snapshots zijn alleen-lezen; koppelen kan alleen op de
+  huidige versie.
+- Nieuwe i18n-sleutels (nl/en/de/fr/es): `recipe_linked_to`,
+  `recipe_link_auto`, `recipe_link_edit`, `recipe_link_none`.
+
+---
+
 ## [1.8.84] — 2026-04-22
 
 ### Added — Brewfather-recept-versies ophalen en tonen

@@ -266,6 +266,7 @@ export interface ReceptIngredient {
   gebruik?: string
   tijd?: number | string
   tijdEenheid?: string
+  ingredient_id?: number | null
 }
 
 export interface VergistingsStap {

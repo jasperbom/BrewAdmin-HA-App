@@ -48,7 +48,29 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
     setSyncing(true); setMsg('');
     try {
       const { recepten: recs, versionsSupported, totalVersions } = await bfGetRecipesWithVersions();
-      setRecepten(recs);
+      // Preserveer gebruikersgekoppelingen (ingredient_id) bij re-sync: voor elk
+      // nieuw recept kijken of er een bestaand recept met hetzelfde id is, en
+      // per sectie (mout/hop/gist/overig) per item op naam de ingredient_id
+      // overnemen als die er was.
+      const byId = new Map<string, any>(recepten.map((r: any) => [r.id, r]));
+      const SECTIES = ['mout', 'hop', 'gist', 'overig'];
+      const merged = recs.map((nw: any) => {
+        const oud = byId.get(nw.id);
+        if (!oud) return nw;
+        const out = { ...nw };
+        for (const s of SECTIES) {
+          const oudeLijst = oud[s] || [];
+          out[s] = (nw[s] || []).map((it: any) => {
+            if (it.ingredient_id != null) return it;
+            const match = oudeLijst.find((o: any) =>
+              o.ingredient_id != null && String(o.naam).toLowerCase().trim() === String(it.naam).toLowerCase().trim()
+            );
+            return match ? { ...it, ingredient_id: match.ingredient_id } : it;
+          });
+        }
+        return out;
+      });
+      setRecepten(merged);
       const parentCount = recs.filter((r: any) => r.is_huidige !== false).length;
       const auditMsg = versionsSupported
         ? `Brewfather sync: ${parentCount} recepten (+${totalVersions} versies)`
@@ -75,29 +97,96 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   const verborgenLijst = huidige.filter((r: any) => verborgen.includes(r.id));
   const selRec = recepten.find((r: any) => r.id === sel);
 
-  const checkStock = (naam: any, benodigdRaw: any) => {
-    const benodigd = Number(benodigdRaw||0);
-    const ingMatch = ing.find((i: any) => i.naam.toLowerCase() === naam.toLowerCase());
-    if (!ingMatch) return {ok:null, totaal:0, ingLots:[]};
+  // Type van een recipe-sectie naar het ingredient.type in de catalogus.
+  const CAT_TO_TYPE: Record<string, string> = {mout:'Mout', hop:'Hop', gist:'Gist', overig:'Overig'};
+
+  const checkStock = (item: any) => {
+    const benodigd = Number(item?.hoeveelheid||0);
+    // Prioriteit: expliciete koppeling via ingredient_id → anders naam-match.
+    let ingMatch: any = null;
+    if (item?.ingredient_id != null) {
+      ingMatch = ing.find((i: any) => i.id === item.ingredient_id);
+    }
+    if (!ingMatch && item?.naam) {
+      ingMatch = ing.find((i: any) => i.naam.toLowerCase() === String(item.naam).toLowerCase());
+    }
+    if (!ingMatch) return {ok:null, totaal:0, ingLots:[], ingMatch:null};
     const ingLots = lots
       .filter((l: any) => l.ingredient_id===ingMatch.id && l.beschikbaar && Number(l.hoeveelheid||0)>0)
       .sort((a: any,b: any)=>(a.houdbaarheid||'9999')<(b.houdbaarheid||'9999')?-1:1);
     const totaal = ingLots.reduce((s: any,l: any)=>s+Number(l.hoeveelheid||0),0);
-    return {ok:totaal>=benodigd, bijna:totaal>0&&totaal<benodigd, totaal, ingLots};
+    return {ok:totaal>=benodigd, bijna:totaal>0&&totaal<benodigd, totaal, ingLots, ingMatch};
   };
 
-  const IngRow = ({item}: any) => {
-    const {ok, bijna, totaal, ingLots} = checkStock(item.naam, item.hoeveelheid);
+  // Wijzig een enkele ingredient-entry in het geselecteerde recept.
+  // cat = 'mout'|'hop'|'gist'|'overig'; idx = index binnen die array.
+  const updateReceptIng = (cat: string, idx: number, patch: any) => {
+    if (!selRec) return;
+    setRecepten((prev: any[]) => prev.map((r: any) => {
+      if (r.id !== selRec.id) return r;
+      const list = [...(r[cat] || [])];
+      if (!list[idx]) return r;
+      list[idx] = { ...list[idx], ...patch };
+      return { ...r, [cat]: list };
+    }));
+  };
+
+  // Lijst van beschikbare ingredienten voor een receptcategorie.
+  const ingOptions = (cat: string): any[] => {
+    const expected = CAT_TO_TYPE[cat];
+    const types = cat === 'overig' ? ['Overig', 'Suiker'] : [expected];
+    return ing
+      .filter((i: any) => types.includes(i.type))
+      .sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam)));
+  };
+
+  const IngRow = ({item, cat, idx, readOnly}: any) => {
+    const {ok, bijna, totaal, ingLots, ingMatch} = checkStock(item);
     const [open, setOpen] = useState(false);
+    const [editKoppel, setEditKoppel] = useState(false);
     const dot = ok===null ? <span className="text-gray-300">●</span>
               : ok        ? <span className="text-green-500">●</span>
               : bijna     ? <span className="text-yellow-500">●</span>
                           : <span className="text-red-500">●</span>;
+    const explicit = item.ingredient_id != null && ingMatch;
+    const koppelCel = (
+      <>
+        {editKoppel && !readOnly ? (
+          <select autoFocus value={item.ingredient_id ?? ''}
+            onClick={(e: any) => e.stopPropagation()}
+            onBlur={() => setEditKoppel(false)}
+            onChange={(e: any) => {
+              const v = e.target.value;
+              updateReceptIng(cat, idx, { ingredient_id: v === '' ? null : Number(v) });
+              setEditKoppel(false);
+            }}
+            className="text-xs border rounded px-1 py-0.5 bg-white">
+            <option value="">{t('recipe_link_auto')}</option>
+            {ingOptions(cat).map((i: any) => (
+              <option key={i.id} value={i.id}>{i.naam}</option>
+            ))}
+          </select>
+        ) : ingMatch ? (
+          <span onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
+            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'':'cursor-pointer hover:bg-gray-100'} ${explicit?'bg-blue-50 text-blue-700':'text-gray-500'}`}
+            title={readOnly ? '' : t('recipe_link_edit')}>
+            {explicit && <span className="mr-1">🔗</span>}{ingMatch.naam}
+          </span>
+        ) : (
+          <button onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
+            disabled={readOnly}
+            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'text-gray-300':'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>
+            {t('recipe_link_none')}
+          </button>
+        )}
+      </>
+    );
     return (
       <>
         <tr className={`border-b border-gray-100 ${ingLots.length>0?'cursor-pointer hover:bg-gray-50':''}`}
             onClick={()=>ingLots.length>0&&setOpen((o: any)=>!o)}>
           <td className="px-3 py-2 text-sm text-gray-800">{item.naam}</td>
+          <td className="px-3 py-2 text-sm text-left">{koppelCel}</td>
           <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap">
             {Number(item.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
           </td>
@@ -121,6 +210,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               <span className="font-mono text-gray-700">{l.lotnummer||'—'}</span>
               {l.leverancier&&<span className="text-gray-400 ml-2">({l.leverancier})</span>}
             </td>
+            <td className="px-3 py-1.5"></td>
             <td className="px-3 py-1.5 text-right font-medium text-gray-700 whitespace-nowrap">
               {Number(l.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {l.eenheid}
             </td>
@@ -136,9 +226,9 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
     );
   };
 
-  const IngSection = ({titel, items}: any) => {
+  const IngSection = ({titel, items, cat}: any) => {
     if (!items?.length) return null;
-    const stocks = items.map((i: any)=>checkStock(i.naam,i.hoeveelheid));
+    const stocks = items.map((i: any)=>checkStock(i));
     const anyRed = stocks.some((s: any)=>s.ok===false&&!s.bijna);
     const anyYellow = stocks.some((s: any)=>s.bijna);
     const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
@@ -146,6 +236,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 : anyYellow? <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">bijna genoeg</span>
                 : allGreen ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">✓ beschikbaar</span>
                 : null;
+    const readOnly = selRec?.is_huidige === false;
     return (
       <div className="mb-5">
         <div className="flex items-center gap-2 mb-1.5">
@@ -157,6 +248,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             <thead>
               <tr className="bg-gray-50 text-xs text-gray-400 uppercase">
                 <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('recipe_linked_to')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('recipe_needed')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('recipe_use')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('stock_available')}</th>
@@ -165,7 +257,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               </tr>
             </thead>
             <tbody>
-              {items.map((item: any,i: any)=><IngRow key={i} item={item}/>)}
+              {items.map((item: any,i: any)=><IngRow key={i} item={item} cat={cat} idx={i} readOnly={readOnly}/>)}
             </tbody>
           </table>
         </div>
@@ -174,10 +266,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   };
 
   const cardStocks = (r: any) => [
-    ...r.mout.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
-    ...r.hop.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
-    ...r.gist.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
-    ...r.overig.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
+    ...r.mout.map((i: any)=>checkStock(i)),
+    ...r.hop.map((i: any)=>checkStock(i)),
+    ...r.gist.map((i: any)=>checkStock(i)),
+    ...r.overig.map((i: any)=>checkStock(i)),
   ];
   const allStock   = selRec ? cardStocks(selRec) : [];
   const overallOk  = allStock.length>0 && allStock.every((s: any)=>s.ok===true);
@@ -387,10 +479,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                       ABV: selRec.ABV || '',
                       liter_vergist: selRec.batch_size || '',
                       _receptIngredienten: [
-                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg'  })),
-                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
-                        ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg' })),
-                        ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
+                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null })),
+                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
+                        ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
+                        ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
                       ],
                     })
                     setPage('batches')
@@ -441,10 +533,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 </div>
               </div>
             )}
-            <IngSection titel={t('recipe_section_grains')} items={selRec.mout}/>
-            <IngSection titel={t('recipe_section_hops')} items={selRec.hop}/>
-            <IngSection titel={t('recipe_section_yeast')} items={selRec.gist}/>
-            <IngSection titel={t('recipe_section_other')} items={selRec.overig}/>
+            <IngSection titel={t('recipe_section_grains')} items={selRec.mout}   cat="mout"/>
+            <IngSection titel={t('recipe_section_hops')}   items={selRec.hop}    cat="hop"/>
+            <IngSection titel={t('recipe_section_yeast')}  items={selRec.gist}   cat="gist"/>
+            <IngSection titel={t('recipe_section_other')}  items={selRec.overig} cat="overig"/>
             {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
