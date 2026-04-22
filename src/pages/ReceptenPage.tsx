@@ -1,7 +1,7 @@
 import React from 'react'
 import { t } from '../i18n'
 import { fmtD } from '../utils/format'
-import { bfGetRecipes } from '../utils/api'
+import { bfGetRecipesWithVersions } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
@@ -14,6 +14,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   const [zoek, setZoek]       = useState('');
   const [verborgenOpen, setVerborgenOpen] = useState(false);
   const [gearchiveerdTagsOpen, setGearchiveerdTagsOpen] = useState(false);
+  const [versiesOpen, setVersiesOpen] = useState<Record<string, boolean>>({});
   const toggleGroep = (tag: any) => setGeslotenGroepen((prev: any) =>
     prev.includes(tag) ? prev.filter((t: any)=>t!==tag) : [...prev, tag]
   );
@@ -46,44 +47,146 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
     }
     setSyncing(true); setMsg('');
     try {
-      const recs = await bfGetRecipes();
-      setRecepten(recs);
-      logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving:`Brewfather sync: ${recs.length} recepten`})
-      setMsg(`✓ ${recs.length} recept${recs.length!==1?'en':''} gesynchroniseerd`);
+      const { recepten: recs, versionsSupported, totalVersions } = await bfGetRecipesWithVersions();
+      // Preserveer gebruikersgekoppelingen (ingredient_id) bij re-sync: voor elk
+      // nieuw recept kijken of er een bestaand recept met hetzelfde id is, en
+      // per sectie (mout/hop/gist/overig) per item op naam de ingredient_id
+      // overnemen als die er was.
+      const byId = new Map<string, any>(recepten.map((r: any) => [r.id, r]));
+      const SECTIES = ['mout', 'hop', 'gist', 'overig'];
+      const merged = recs.map((nw: any) => {
+        const oud = byId.get(nw.id);
+        if (!oud) return nw;
+        const out = { ...nw };
+        for (const s of SECTIES) {
+          const oudeLijst = oud[s] || [];
+          out[s] = (nw[s] || []).map((it: any) => {
+            if (it.ingredient_id != null) return it;
+            const match = oudeLijst.find((o: any) =>
+              o.ingredient_id != null && String(o.naam).toLowerCase().trim() === String(it.naam).toLowerCase().trim()
+            );
+            return match ? { ...it, ingredient_id: match.ingredient_id } : it;
+          });
+        }
+        return out;
+      });
+      setRecepten(merged);
+      const parentCount = recs.filter((r: any) => r.is_huidige !== false).length;
+      const auditMsg = versionsSupported
+        ? `Brewfather sync: ${parentCount} recepten (+${totalVersions} versies)`
+        : `Brewfather sync: ${parentCount} recepten`;
+      logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving: auditMsg})
+      const key = versionsSupported ? 'msg_bf_sync_with_versions' : 'msg_bf_sync_no_versions';
+      setMsg(t(key).replace('{n}', String(parentCount)).replace('{v}', String(totalVersions)));
     } catch(e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e))); }
     setSyncing(false);
   };
 
-  const gefilterd = recepten.filter((r: any) =>
+  // Splits huidige recepten (working versions) van versie-snapshots.
+  // Oude data zonder is_huidige-flag wordt als huidige behandeld (backward compat).
+  const huidige = recepten.filter((r: any) => r.is_huidige !== false);
+  const versiesPerParent: Record<string, any[]> = {};
+  recepten.filter((r: any) => r.is_huidige === false).forEach((v: any) => {
+    if (!v.parent_id) return;
+    (versiesPerParent[v.parent_id] ||= []).push(v);
+  });
+  const gefilterd = huidige.filter((r: any) =>
     !zoek || r.naam.toLowerCase().includes(zoek.toLowerCase()) || (r.stijl||'').toLowerCase().includes(zoek.toLowerCase())
   );
   const zichtbaar     = gefilterd.filter((r: any) => !verborgen.includes(r.id));
-  const verborgenLijst = recepten.filter((r: any) => verborgen.includes(r.id));
+  const verborgenLijst = huidige.filter((r: any) => verborgen.includes(r.id));
   const selRec = recepten.find((r: any) => r.id === sel);
 
-  const checkStock = (naam: any, benodigdRaw: any) => {
-    const benodigd = Number(benodigdRaw||0);
-    const ingMatch = ing.find((i: any) => i.naam.toLowerCase() === naam.toLowerCase());
-    if (!ingMatch) return {ok:null, totaal:0, ingLots:[]};
+  // Type van een recipe-sectie naar het ingredient.type in de catalogus.
+  const CAT_TO_TYPE: Record<string, string> = {mout:'Mout', hop:'Hop', gist:'Gist', overig:'Overig'};
+
+  const checkStock = (item: any) => {
+    const benodigd = Number(item?.hoeveelheid||0);
+    // Prioriteit: expliciete koppeling via ingredient_id → anders naam-match.
+    let ingMatch: any = null;
+    if (item?.ingredient_id != null) {
+      ingMatch = ing.find((i: any) => i.id === item.ingredient_id);
+    }
+    if (!ingMatch && item?.naam) {
+      ingMatch = ing.find((i: any) => i.naam.toLowerCase() === String(item.naam).toLowerCase());
+    }
+    if (!ingMatch) return {ok:null, totaal:0, ingLots:[], ingMatch:null};
     const ingLots = lots
       .filter((l: any) => l.ingredient_id===ingMatch.id && l.beschikbaar && Number(l.hoeveelheid||0)>0)
       .sort((a: any,b: any)=>(a.houdbaarheid||'9999')<(b.houdbaarheid||'9999')?-1:1);
     const totaal = ingLots.reduce((s: any,l: any)=>s+Number(l.hoeveelheid||0),0);
-    return {ok:totaal>=benodigd, bijna:totaal>0&&totaal<benodigd, totaal, ingLots};
+    return {ok:totaal>=benodigd, bijna:totaal>0&&totaal<benodigd, totaal, ingLots, ingMatch};
   };
 
-  const IngRow = ({item}: any) => {
-    const {ok, bijna, totaal, ingLots} = checkStock(item.naam, item.hoeveelheid);
+  // Wijzig een enkele ingredient-entry in het geselecteerde recept.
+  // cat = 'mout'|'hop'|'gist'|'overig'; idx = index binnen die array.
+  const updateReceptIng = (cat: string, idx: number, patch: any) => {
+    if (!selRec) return;
+    setRecepten((prev: any[]) => prev.map((r: any) => {
+      if (r.id !== selRec.id) return r;
+      const list = [...(r[cat] || [])];
+      if (!list[idx]) return r;
+      list[idx] = { ...list[idx], ...patch };
+      return { ...r, [cat]: list };
+    }));
+  };
+
+  // Lijst van beschikbare ingredienten voor een receptcategorie.
+  const ingOptions = (cat: string): any[] => {
+    const expected = CAT_TO_TYPE[cat];
+    const types = cat === 'overig' ? ['Overig', 'Suiker'] : [expected];
+    return ing
+      .filter((i: any) => types.includes(i.type))
+      .sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam)));
+  };
+
+  const IngRow = ({item, cat, idx, readOnly}: any) => {
+    const {ok, bijna, totaal, ingLots, ingMatch} = checkStock(item);
     const [open, setOpen] = useState(false);
+    const [editKoppel, setEditKoppel] = useState(false);
     const dot = ok===null ? <span className="text-gray-300">●</span>
               : ok        ? <span className="text-green-500">●</span>
               : bijna     ? <span className="text-yellow-500">●</span>
                           : <span className="text-red-500">●</span>;
+    const explicit = item.ingredient_id != null && ingMatch;
+    const koppelCel = (
+      <>
+        {editKoppel && !readOnly ? (
+          <select autoFocus value={item.ingredient_id ?? ''}
+            onClick={(e: any) => e.stopPropagation()}
+            onBlur={() => setEditKoppel(false)}
+            onChange={(e: any) => {
+              const v = e.target.value;
+              updateReceptIng(cat, idx, { ingredient_id: v === '' ? null : Number(v) });
+              setEditKoppel(false);
+            }}
+            className="text-xs border rounded px-1 py-0.5 bg-white">
+            <option value="">{t('recipe_link_auto')}</option>
+            {ingOptions(cat).map((i: any) => (
+              <option key={i.id} value={i.id}>{i.naam}</option>
+            ))}
+          </select>
+        ) : ingMatch ? (
+          <span onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
+            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'':'cursor-pointer hover:bg-gray-100'} ${explicit?'bg-blue-50 text-blue-700':'text-gray-500'}`}
+            title={readOnly ? '' : t('recipe_link_edit')}>
+            {explicit && <span className="mr-1">🔗</span>}{ingMatch.naam}
+          </span>
+        ) : (
+          <button onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
+            disabled={readOnly}
+            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'text-gray-300':'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>
+            {t('recipe_link_none')}
+          </button>
+        )}
+      </>
+    );
     return (
       <>
         <tr className={`border-b border-gray-100 ${ingLots.length>0?'cursor-pointer hover:bg-gray-50':''}`}
             onClick={()=>ingLots.length>0&&setOpen((o: any)=>!o)}>
           <td className="px-3 py-2 text-sm text-gray-800">{item.naam}</td>
+          <td className="px-3 py-2 text-sm text-left">{koppelCel}</td>
           <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap">
             {Number(item.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
           </td>
@@ -107,6 +210,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               <span className="font-mono text-gray-700">{l.lotnummer||'—'}</span>
               {l.leverancier&&<span className="text-gray-400 ml-2">({l.leverancier})</span>}
             </td>
+            <td className="px-3 py-1.5"></td>
             <td className="px-3 py-1.5 text-right font-medium text-gray-700 whitespace-nowrap">
               {Number(l.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {l.eenheid}
             </td>
@@ -122,9 +226,9 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
     );
   };
 
-  const IngSection = ({titel, items}: any) => {
+  const IngSection = ({titel, items, cat}: any) => {
     if (!items?.length) return null;
-    const stocks = items.map((i: any)=>checkStock(i.naam,i.hoeveelheid));
+    const stocks = items.map((i: any)=>checkStock(i));
     const anyRed = stocks.some((s: any)=>s.ok===false&&!s.bijna);
     const anyYellow = stocks.some((s: any)=>s.bijna);
     const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
@@ -132,6 +236,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 : anyYellow? <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">bijna genoeg</span>
                 : allGreen ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">✓ beschikbaar</span>
                 : null;
+    const readOnly = selRec?.is_huidige === false;
     return (
       <div className="mb-5">
         <div className="flex items-center gap-2 mb-1.5">
@@ -143,6 +248,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             <thead>
               <tr className="bg-gray-50 text-xs text-gray-400 uppercase">
                 <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('recipe_linked_to')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('recipe_needed')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('recipe_use')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('stock_available')}</th>
@@ -151,7 +257,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               </tr>
             </thead>
             <tbody>
-              {items.map((item: any,i: any)=><IngRow key={i} item={item}/>)}
+              {items.map((item: any,i: any)=><IngRow key={i} item={item} cat={cat} idx={i} readOnly={readOnly}/>)}
             </tbody>
           </table>
         </div>
@@ -160,10 +266,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   };
 
   const cardStocks = (r: any) => [
-    ...r.mout.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
-    ...r.hop.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
-    ...r.gist.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
-    ...r.overig.map((i: any)=>checkStock(i.naam,i.hoeveelheid)),
+    ...r.mout.map((i: any)=>checkStock(i)),
+    ...r.hop.map((i: any)=>checkStock(i)),
+    ...r.gist.map((i: any)=>checkStock(i)),
+    ...r.overig.map((i: any)=>checkStock(i)),
   ];
   const allStock   = selRec ? cardStocks(selRec) : [];
   const overallOk  = allStock.length>0 && allStock.every((s: any)=>s.ok===true);
@@ -205,21 +311,44 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               const allGreen= stocks.length>0 && stocks.every((s: any)=>s.ok===true);
               // @ts-ignore
               const dot = anyRed?'🔴':anyYel?'🟡':allGreen?'🟢':'⚪';
+              const versies = versiesPerParent[r.id] || [];
+              const open = !!versiesOpen[r.id];
               return (
-                <div onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
-                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${sel===r.id?'t-sel border-l-2':''}`}>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium text-sm truncate">{r.naam}</span>
-                    <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
-                      className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-gray-500 text-xs leading-none px-0.5 transition-opacity flex-shrink-0"
-                      title={t('btn_hide')}>✕</button>
+                <>
+                  <div onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
+                    className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${sel===r.id?'t-sel border-l-2':''}`}>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-medium text-sm truncate">{r.naam}</span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {versies.length > 0 && (
+                          <button onClick={(e: any)=>{e.stopPropagation(); setVersiesOpen((o: any)=>({...o, [r.id]: !o[r.id]}));}}
+                            className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full hover:bg-blue-200 transition-colors"
+                            title={t('recipe_versions_count').replace('{n}', String(versies.length))}>
+                            {versies.length + 1}v {open?'▲':'▼'}
+                          </button>
+                        )}
+                        <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-gray-500 text-xs leading-none px-0.5 transition-opacity"
+                          title={t('btn_hide')}>✕</button>
+                      </div>
+                    </div>
+                    {r.stijl&&<div className="text-xs text-gray-500 mt-0.5 truncate">{r.stijl}</div>}
+                    <div className="flex gap-2 mt-0.5 text-xs text-gray-400">
+                      {r.batch_size?<span>{r.batch_size}L</span>:null}
+                      {r.ABV?<span>{Number(r.ABV).toFixed(1)}%</span>:null}
+                    </div>
                   </div>
-                  {r.stijl&&<div className="text-xs text-gray-500 mt-0.5 truncate">{r.stijl}</div>}
-                  <div className="flex gap-2 mt-0.5 text-xs text-gray-400">
-                    {r.batch_size?<span>{r.batch_size}L</span>:null}
-                    {r.ABV?<span>{Number(r.ABV).toFixed(1)}%</span>:null}
-                  </div>
-                </div>
+                  {open && versies.map((v: any) => (
+                    <div key={v.id} onClick={()=>setSel((s: any)=>s===v.id?null:v.id)}
+                      className={`pl-6 pr-3 py-1.5 border-b cursor-pointer t-hover transition-colors text-xs ${sel===v.id?'t-sel border-l-2':''}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-blue-600 font-medium">{v.versie}</span>
+                        <span className="text-gray-600 truncate flex-1">{v.naam}</span>
+                        {v.versie_datum && <span className="text-gray-300 flex-shrink-0">{fmtD(v.versie_datum)}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </>
               );
             };
             const allTagsRaw = [...new Set(zichtbaar.flatMap((r: any)=>r.tags||[]))];
@@ -318,7 +447,18 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           <div className="flex-1 bg-white rounded-xl shadow-card p-4 min-w-0">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <h3 className="text-base font-semibold text-gray-800">{selRec.naam}</h3>
+                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
+                  <span>{selRec.naam}</span>
+                  {selRec.is_huidige === false ? (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-normal">
+                      {selRec.versie || t('recipe_version_snapshot')}
+                    </span>
+                  ) : (versiesPerParent[selRec.id]?.length > 0 && (
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
+                      {t('recipe_version_current')}
+                    </span>
+                  ))}
+                </h3>
                 {selRec.stijl&&<div className="text-sm text-gray-500 mt-0.5">{selRec.stijl}</div>}
                 {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">Door {selRec.auteur}</div>}
               </div>
@@ -326,7 +466,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
                   {overallOk?t('recept_klaar_brouwen'):overallRed?t('recept_tekort'):overallYel?t('recept_controleer'):t('recept_onbekend_voorraad')}
                 </div>
-                {setPage && setPreNieuwBatch && (
+                {selRec.is_huidige === false && (
+                  <span className="text-xs text-gray-400 italic whitespace-nowrap">{t('recipe_version_readonly')}</span>
+                )}
+                {setPage && setPreNieuwBatch && selRec.is_huidige !== false && (
                   <Btn s="sm" v="primary" onClick={() => {
                     setPreNieuwBatch({
                       naam: selRec.naam,
@@ -336,10 +479,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                       ABV: selRec.ABV || '',
                       liter_vergist: selRec.batch_size || '',
                       _receptIngredienten: [
-                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg'  })),
-                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
-                        ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg' })),
-                        ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g'   })),
+                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null })),
+                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
+                        ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
+                        ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
                       ],
                     })
                     setPage('batches')
@@ -390,10 +533,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 </div>
               </div>
             )}
-            <IngSection titel={t('recipe_section_grains')} items={selRec.mout}/>
-            <IngSection titel={t('recipe_section_hops')} items={selRec.hop}/>
-            <IngSection titel={t('recipe_section_yeast')} items={selRec.gist}/>
-            <IngSection titel={t('recipe_section_other')} items={selRec.overig}/>
+            <IngSection titel={t('recipe_section_grains')} items={selRec.mout}   cat="mout"/>
+            <IngSection titel={t('recipe_section_hops')}   items={selRec.hop}    cat="hop"/>
+            <IngSection titel={t('recipe_section_yeast')}  items={selRec.gist}   cat="gist"/>
+            <IngSection titel={t('recipe_section_other')}  items={selRec.overig} cat="overig"/>
             {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
