@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.80] — 2026-04-22
+
+### Fixed — Nette afhandeling van rate-limit-fouten (HTTP 429)
+
+- **Server**: de 429-respons (`{"error":"too many requests"}`) bevat voortaan
+  een `Retry-After`-header met het aantal seconden tot de oudste request in
+  het per-IP-venster vervalt, zodat clients weten hoe lang te wachten.
+- **Frontend (`src/utils/api.ts`)**: alle calls naar `/api/data/`,
+  Brewfather, WooCommerce, Home Assistant en Claude gaan nu via
+  `_fetchWithRetry`, die automatisch opnieuw probeert bij 429 met respect
+  voor de `Retry-After`-header (min. 1s, max. 30s). 429-responses tellen
+  niet meer mee als sync-fout en de client hamert de server niet langer.
+- **UI**: de `SyncDot` heeft een nieuwe oranje pulserende status
+  **rate_limited** met de tooltip "Te veel verzoeken — even wachten"
+  (5 talen), zodat de gebruiker onderscheid ziet tussen een echte
+  verbindingsfout en tijdelijke throttling.
+
+---
+
 ## [1.8.79] — 2026-04-18
 
 ### Added — Auto-invul batchnummer bij nieuwe batch

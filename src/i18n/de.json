@@ -80,6 +80,7 @@
   "msg_saving": "Speichern...",
   "msg_synced": "Mit Server synchronisiert",
   "msg_connection_failed": "Verbindung fehlgeschlagen — Daten nur lokal",
+  "msg_rate_limited": "Zu viele Anfragen — bitte warten",
   "msg_no_ingredients": "Keine Zutaten. '+ Eingang' verwenden.",
   "msg_no_batches": "Keine Chargen",
   "msg_no_packaging": "Keine Verpackung verwaltet. '+ Eingang' klicken.",

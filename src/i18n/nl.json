@@ -80,6 +80,7 @@
   "msg_saving": "Opslaan...",
   "msg_synced": "Gesynchroniseerd met server",
   "msg_connection_failed": "Verbinding mislukt — data alleen lokaal",
+  "msg_rate_limited": "Te veel verzoeken — even wachten",
   "msg_no_ingredients": "Geen ingrediënten. Gebruik '+ Inkoop boeken'.",
   "msg_no_batches": "Geen batches",
   "msg_no_packaging": "Geen verpakkingen beheerd. Klik '+ Inkoop boeken' om te starten.",

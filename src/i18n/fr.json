@@ -80,6 +80,7 @@
   "msg_saving": "Enregistrement...",
   "msg_synced": "Synchronisé avec le serveur",
   "msg_connection_failed": "Connexion échouée — données en local uniquement",
+  "msg_rate_limited": "Trop de requêtes — veuillez patienter",
   "msg_no_ingredients": "Aucun ingrédient. Utiliser '+ Réception'.",
   "msg_no_batches": "Aucun brassin",
   "msg_no_packaging": "Aucun emballage géré. Cliquer '+ Réception'.",

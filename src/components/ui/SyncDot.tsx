@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { t } from '../../i18n'
-import { _allKeys, _fetchedKeys, _syncPending, _syncErrors, _serverReachable } from '../../utils/api'
+import { _allKeys, _fetchedKeys, _syncPending, _syncErrors, _serverReachable, _isRateLimited } from '../../utils/api'
 
 const SyncDot: React.FC = () => {
   const [s, setS] = useState('loading')
@@ -8,6 +8,7 @@ const SyncDot: React.FC = () => {
   useEffect(() => {
     const id = setInterval(() => {
       const allLoaded = _allKeys.size > 0 && _fetchedKeys.size >= _allKeys.size
+      if (_isRateLimited())     { setS('rate_limited'); return }
       if (_serverReachable === false && allLoaded && _syncErrors > 0) { setS('error'); return }
       if (!allLoaded)           { setS('loading'); return }
       if (_syncPending > 0)     { setS('pending'); return }
@@ -19,10 +20,11 @@ const SyncDot: React.FC = () => {
   }, [])
 
   const cfg: Record<string, {cls:string, title:string}> = {
-    loading: { cls: 'bg-gray-400 animate-pulse',  title: t('msg_connecting') },
-    pending: { cls: 'bg-yellow-400 animate-pulse', title: t('msg_saving') },
-    ok:      { cls: 'bg-green-400',                title: t('msg_synced') },
-    error:   { cls: 'bg-red-500',                  title: t('msg_connection_failed') },
+    loading:      { cls: 'bg-gray-400 animate-pulse',   title: t('msg_connecting') },
+    pending:      { cls: 'bg-yellow-400 animate-pulse', title: t('msg_saving') },
+    ok:           { cls: 'bg-green-400',                title: t('msg_synced') },
+    error:        { cls: 'bg-red-500',                  title: t('msg_connection_failed') },
+    rate_limited: { cls: 'bg-orange-400 animate-pulse', title: t('msg_rate_limited') },
   }
   const c = cfg[s] || { cls: 'bg-gray-400', title: '' }
 

@@ -15,8 +15,14 @@ export const _WC_TEST  = (() => { const p = window.location.pathname; return p.r
 export const _WC_PING  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping' })()
 export const _HA_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/homeassistant/' })()
 
+const _rateLimitError = (prefix: string, r: Response): Error => {
+  const secs = Math.ceil(_retryAfterMs(r) / 1000)
+  return new Error(`${prefix} 429: rate limited (retry in ${secs}s)`)
+}
+
 export const haGetState = async (entityId: string): Promise<{state: string, unit: string, attributes: any}> => {
-  const r = await fetch(_HA_PROXY + entityId)
+  const r = await _fetchWithRetry(_HA_PROXY + entityId, undefined, 1)
+  if (r.status === 429) throw _rateLimitError('HA', r)
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
   return r.json()
 }
@@ -27,19 +33,49 @@ export const _fetchedKeys = new Set<string>()
 export let _syncPending   = 0
 export let _syncErrors    = 0
 export let _serverReachable: boolean | null = null
+// Tijdstip (ms epoch) tot wanneer we rate-limited zijn; 0 = niet gelimiteerd.
+export let _rateLimitedUntil = 0
+
+export const _isRateLimited = (): boolean => Date.now() < _rateLimitedUntil
+
+const _retryAfterMs = (r: Response): number => {
+  const h = r.headers.get('Retry-After')
+  const n = h ? parseInt(h, 10) : NaN
+  // Minimaal 1s, maximaal 30s zodat de UI niet onnodig lang blokkeert.
+  return Math.min(30_000, Math.max(1000, (isFinite(n) ? n : 2) * 1000))
+}
+
+// Wrapper om fetch met automatische retry bij 429. Geeft de laatste Response terug.
+export const _fetchWithRetry = async (input: RequestInfo, init?: RequestInit, retries: number = 1): Promise<Response> => {
+  let r = await fetch(input, init)
+  let attempts = retries
+  while (r.status === 429 && attempts > 0) {
+    const wait = _retryAfterMs(r)
+    _rateLimitedUntil = Math.max(_rateLimitedUntil, Date.now() + wait)
+    await new Promise(res => setTimeout(res, wait))
+    r = await fetch(input, init)
+    attempts--
+  }
+  if (r.status === 429) {
+    _rateLimitedUntil = Math.max(_rateLimitedUntil, Date.now() + _retryAfterMs(r))
+  } else if (r.ok) {
+    _rateLimitedUntil = 0
+  }
+  return r
+}
 
 export const _postToServer = (key: string, data: any): Promise<boolean> => {
   _syncPending++
-  return fetch(API_BASE + key, {
+  return _fetchWithRetry(API_BASE + key, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
-  })
+  }, 2)
   .then(r => {
     _syncPending = Math.max(0, _syncPending - 1)
     _serverReachable = true
     if (r.ok) _syncErrors = 0
-    else _syncErrors++
+    else if (r.status !== 429) _syncErrors++
     return r.ok
   })
   .catch(() => {
@@ -61,7 +97,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   const modified = useRef(false)
 
   useEffect(() => {
-    fetch(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } })
+    _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
       .then(r => {
         _serverReachable = true
         if (r.ok) {
@@ -101,7 +137,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   }
 
   const refresh = () => {
-    fetch(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } })
+    _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
       .then(r => { _serverReachable = true; return r.ok ? r.json() : null })
       .then(d => {
         if (d !== null && d !== undefined) {
@@ -120,17 +156,19 @@ export const newId = (arr: any[]): number =>
 
 // WooCommerce helpers
 export const wcGet = async (subpath: string) => {
-  const r = await fetch(_WC_PROXY + subpath.replace(/^\//, ''))
+  const r = await _fetchWithRetry(_WC_PROXY + subpath.replace(/^\//, ''), undefined, 1)
+  if (r.status === 429) throw _rateLimitError('WC', r)
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).message || `WC ${r.status}`) }
   return r.json()
 }
 
 export const wcPut = async (subpath: string, data: any) => {
-  const r = await fetch(_WC_PUT + subpath.replace(/^\//, ''), {
+  const r = await _fetchWithRetry(_WC_PUT + subpath.replace(/^\//, ''), {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data),
-  })
+  }, 1)
+  if (r.status === 429) throw _rateLimitError('WC', r)
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).message || `WC ${r.status}`) }
   return r.json()
 }
@@ -145,7 +183,7 @@ export const wcTestCreds = async (body: any) => {
 }
 
 export const bfFetch = (path: string, opts: RequestInit = {}) =>
-  fetch(_BF_PROXY + path.replace(/^\//, ''), opts)
+  _fetchWithRetry(_BF_PROXY + path.replace(/^\//, ''), opts, 1)
 
 export const bfTest = async (uid: string, key: string): Promise<boolean> => {
   try {
@@ -161,11 +199,12 @@ export const bfTest = async (uid: string, key: string): Promise<boolean> => {
 }
 
 export const callClaudeProxy = async (body: any) => {
-  const r = await fetch(`${ADDON_BASE}api/claude/messages`, {
+  const r = await _fetchWithRetry(`${ADDON_BASE}api/claude/messages`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body),
-  })
+  }, 1)
+  if (r.status === 429) throw _rateLimitError('Claude', r)
   if (!r.ok) {
     const err = await r.json().catch(() => ({}))
     throw new Error((err as any).error || `HTTP ${r.status}`)

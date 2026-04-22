@@ -80,6 +80,7 @@
   "msg_saving": "Saving...",
   "msg_synced": "Synchronised with server",
   "msg_connection_failed": "Connection failed — data local only",
+  "msg_rate_limited": "Too many requests — please wait",
   "msg_no_ingredients": "No ingredients. Use '+ Receipt'.",
   "msg_no_batches": "No batches",
   "msg_no_packaging": "No packaging managed. Click '+ Receipt' to start.",
