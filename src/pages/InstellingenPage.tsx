@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
-import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS } from '../utils/constants'
+import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
 import { logAudit } from '../utils/audit'
@@ -154,7 +154,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, brouwdagChecklist=[], setBrouwdagChecklist=()=>{}, botteldagChecklist=[], setBotteldagChecklist=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -221,6 +221,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [nieuwGroep, setNieuwGroep] = React.useState('');
   const [editGroepId, setEditGroepId] = React.useState<number|null>(null);
   const [editGroepNaam, setEditGroepNaam] = React.useState('');
+  const [nieuwBrouwdagItem, setNieuwBrouwdagItem] = React.useState('');
+  const [nieuwBotteldagItem, setNieuwBotteldagItem] = React.useState('');
+  const [editChecklistId, setEditChecklistId] = React.useState<{kind:'brouwdag'|'botteldag', id:number}|null>(null);
+  const [editChecklistLabel, setEditChecklistLabel] = React.useState('');
   const addTank = () => {
     const id = tankInput.trim().toUpperCase();
     if (!id) return;
@@ -374,6 +378,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     {id:'kostensoorten', label:t('settings_kosten_soorten_title'), icon:'📊'},
     {id:'gncodes',       label:t('settings_gn_codes_title'), icon:'📦'},
     {id:'hygiene',       label:t('settings_hygiene'),      icon:'🧹'},
+    {id:'checklists',    label:t('settings_checklists'),   icon:'📋'},
     {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
 
@@ -1431,6 +1436,121 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         );
       })()}
       </>}
+
+      {/* CHECKLISTS — Brouwdag & Botteldag (aanpasbaar) */}
+      {activeSection==='checklists' && (()=>{
+        const brouwItems  = (brouwdagChecklist  && brouwdagChecklist.length)  ? brouwdagChecklist  : DEFAULT_BROUWDAG_CHECKLIST;
+        const botteldagItems = (botteldagChecklist && botteldagChecklist.length) ? botteldagChecklist : DEFAULT_BOTTELDAG_CHECKLIST;
+        const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '');
+
+        const addItem = (kind: 'brouwdag'|'botteldag') => {
+          const input = kind==='brouwdag' ? nieuwBrouwdagItem : nieuwBotteldagItem;
+          const label = input.trim();
+          if (!label) return;
+          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
+          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
+          const maxId = list.length ? Math.max(...list.map((i: any)=>i.id||0)) : 0;
+          setter([...list, {id: maxId+1, label, volgorde: list.length}]);
+          logAudit(auditLog, setAuditLog, {entiteit:kind==='brouwdag'?'Brouwdag-item':'Botteldag-item', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Item "${label}" toegevoegd`});
+          if (kind==='brouwdag') setNieuwBrouwdagItem(''); else setNieuwBotteldagItem('');
+        };
+        const removeItem = (kind: 'brouwdag'|'botteldag', id: number) => {
+          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
+          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
+          const it = list.find((i: any)=>i.id===id);
+          setter(list.filter((i: any)=>i.id!==id));
+          logAudit(auditLog, setAuditLog, {entiteit:kind==='brouwdag'?'Brouwdag-item':'Botteldag-item', entiteit_id:id, actie:'verwijderd', omschrijving:`Item "${itemLabel(it)||id}" verwijderd`});
+        };
+        const moveItem = (kind: 'brouwdag'|'botteldag', id: number, dir: number) => {
+          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
+          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
+          const idx = list.findIndex((i: any)=>i.id===id);
+          if (idx<0) return;
+          const swap = idx+dir;
+          if (swap<0 || swap>=list.length) return;
+          const next = [...list];
+          [next[idx], next[swap]] = [next[swap], next[idx]];
+          setter(next.map((it: any, i: number)=>({...it, volgorde:i})));
+        };
+        const startEdit = (kind: 'brouwdag'|'botteldag', it: any) => {
+          setEditChecklistId({kind, id: it.id});
+          setEditChecklistLabel(itemLabel(it));
+        };
+        const saveEdit = () => {
+          if (!editChecklistId) return;
+          const {kind, id} = editChecklistId;
+          const label = editChecklistLabel.trim();
+          if (!label) { setEditChecklistId(null); return; }
+          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
+          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
+          const old = list.find((i: any)=>i.id===id);
+          setter(list.map((i: any)=>i.id===id ? ({id:i.id, label, volgorde:i.volgorde}) : i));
+          logAudit(auditLog, setAuditLog, {entiteit:kind==='brouwdag'?'Brouwdag-item':'Botteldag-item', entiteit_id:id, actie:'gewijzigd', omschrijving:`Item "${itemLabel(old)}" → "${label}"`});
+          setEditChecklistId(null);
+        };
+        const resetList = (kind: 'brouwdag'|'botteldag') => {
+          if (!confirm(t('settings_checklist_reset_confirm'))) return;
+          if (kind==='brouwdag') setBrouwdagChecklist(DEFAULT_BROUWDAG_CHECKLIST);
+          else setBotteldagChecklist(DEFAULT_BOTTELDAG_CHECKLIST);
+          logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`${kind==='brouwdag'?'Brouwdag':'Botteldag'}-checklist gereset naar standaard`});
+        };
+
+        const renderSection = (kind: 'brouwdag'|'botteldag', titleKey: string, descKey: string, list: any[], nieuwVal: string, setNieuw: any) => (
+          <div className={card} key={kind}>
+            <h2 className="text-lg font-semibold text-gray-700 mb-1">{t(titleKey)}</h2>
+            <p className="text-sm text-gray-500 mb-5">{t(descKey)}</p>
+
+            <div className="mb-4">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_checklist_items')}</div>
+              <div className="space-y-1 mb-3">
+                {list.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_checklist_items_none')}</p>}
+                {list.map((item: any, idx: number)=>{
+                  const isEditing = editChecklistId && editChecklistId.kind===kind && editChecklistId.id===item.id;
+                  return (
+                    <div key={item.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                      <span className="text-xs text-gray-400 w-5 flex-shrink-0">{idx+1}.</span>
+                      {isEditing ? (
+                        <input type="text" value={editChecklistLabel}
+                          onChange={(e: any)=>setEditChecklistLabel(e.target.value)}
+                          onKeyDown={(e: any)=>{ if(e.key==='Enter') saveEdit(); if(e.key==='Escape') setEditChecklistId(null); }}
+                          onBlur={saveEdit}
+                          autoFocus
+                          className="flex-1 text-sm text-gray-700 bg-white border border-gray-300 rounded px-2 py-0.5 focus:outline-none t-input" />
+                      ) : (
+                        <span className="flex-1 text-sm text-gray-700 cursor-pointer hover:underline"
+                          onClick={()=>startEdit(kind, item)}>{itemLabel(item)}</span>
+                      )}
+                      <button onClick={()=>moveItem(kind,item.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
+                      <button onClick={()=>moveItem(kind,item.id,1)} disabled={idx===list.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
+                      <button onClick={()=>removeItem(kind,item.id)} className="text-gray-400 hover:text-red-500 text-xs ml-1">✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input type="text" value={nieuwVal} onChange={(e: any)=>setNieuw(e.target.value)}
+                  onKeyDown={(e: any)=>e.key==='Enter'&&addItem(kind)}
+                  placeholder={t('settings_checklist_item_add_placeholder')}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1 min-w-[200px] t-input" />
+                <button onClick={()=>addItem(kind)}
+                  className="px-3 py-1.5 tbtn rounded text-sm font-medium transition-colors">
+                  {t('settings_checklist_item_add_btn')}
+                </button>
+              </div>
+            </div>
+
+            <button onClick={()=>resetList(kind)}
+              className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200 transition-colors">
+              {t('settings_checklist_reset_btn')}
+            </button>
+          </div>
+        );
+
+        return (<>
+          {renderSection('brouwdag',  'settings_brouwdag_checklist_title',  'settings_brouwdag_checklist_desc',  brouwItems,     nieuwBrouwdagItem,  setNieuwBrouwdagItem)}
+          {renderSection('botteldag', 'settings_botteldag_checklist_title', 'settings_botteldag_checklist_desc', botteldagItems, nieuwBotteldagItem, setNieuwBotteldagItem)}
+        </>);
+      })()}
 
       {/* DATA */}
       {/* APP — data import/export (moved from data-sectie) */}

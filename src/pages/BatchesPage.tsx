@@ -37,6 +37,8 @@ interface BatchesPageProps {
   accijnsInst?: any
   hygieneItems?: any[]
   hygieneGroups?: any[]
+  brouwdagChecklist?: any[]
+  botteldagChecklist?: any[]
   wcCreds?: any
   artikelen?: any[]
   producten?: any[]
@@ -434,7 +436,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
   log, setLog, bfCreds, bfSync, tanks, accijnsInst,
-  hygieneItems, hygieneGroups, wcCreds, artikelen, producten=[], setProducten=()=>{}, productArtikelen=[], setProductArtikelen=()=>{},
+  hygieneItems, hygieneGroups, brouwdagChecklist, botteldagChecklist, wcCreds, artikelen, producten=[], setProducten=()=>{}, productArtikelen=[], setProductArtikelen=()=>{},
   gistMetingen=[], setGistMetingen=()=>{},
   carbSessies=[], setCarbSessies=()=>{},
   verliesRegistraties=[], setVerliesRegistraties=()=>{},
@@ -1897,19 +1899,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
 
-            {/* S-4: Brouwdag-checklist (12 items — Bijlage A.1) */}
+            {/* S-4: Brouwdag-checklist (aanpasbaar in Instellingen) */}
             {(() => {
-              const items = DEFAULT_BROUWDAG_CHECKLIST
+              const items = (brouwdagChecklist && brouwdagChecklist.length ? brouwdagChecklist : DEFAULT_BROUWDAG_CHECKLIST)
               const checks = selB.brouwdag_checks || {}
               const totaal = items.length
               const gedaan = items.filter((i: any) => checks[i.id]).length
               const alleOk = totaal > 0 && gedaan === totaal
+              const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '')
               const toggleCheck = (itemId: number) => {
                 const wordtAangevinkt = !checks[itemId]
                 const nieuweChecks = {...checks, [itemId]: wordtAangevinkt}
                 setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, brouwdag_checks: nieuweChecks} : b))
                 const item = items.find((i: any) => i.id===itemId)
-                const label = item ? t(item.labelKey) : `item ${itemId}`
+                const label = item ? itemLabel(item) : `item ${itemId}`
                 addLog({type:'brouwdag', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
                 logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Brouwdag ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
               }
@@ -1929,7 +1932,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
                             className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
                           <span className="text-xs text-gray-400 w-5 flex-shrink-0 mt-0.5">{idx+1}.</span>
-                          <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t(item.labelKey)}</span>
+                          <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{itemLabel(item)}</span>
                           {checks[item.id] && <span className="ml-auto text-teal-500 text-xs mt-0.5">✓</span>}
                         </label>
                       ))}
@@ -2591,19 +2594,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     ))}
                   </div>
 
-                  {/* S-4: Botteldag-checklist (9 items — Bijlage A.2) */}
+                  {/* S-4: Botteldag-checklist (aanpasbaar in Instellingen) */}
                   {(() => {
-                    const items = DEFAULT_BOTTELDAG_CHECKLIST
+                    const items = (botteldagChecklist && botteldagChecklist.length ? botteldagChecklist : DEFAULT_BOTTELDAG_CHECKLIST)
                     const checks = selB.botteldag_checks || {}
                     const totaal = items.length
                     const gedaan = items.filter((i: any) => checks[i.id]).length
                     const alleOk = totaal > 0 && gedaan === totaal
+                    const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '')
                     const toggleCheck = (itemId: number) => {
                       const wordtAangevinkt = !checks[itemId]
                       const nieuweChecks = {...checks, [itemId]: wordtAangevinkt}
                       setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, botteldag_checks: nieuweChecks} : b))
                       const item = items.find((i: any) => i.id===itemId)
-                      const label = item ? t(item.labelKey) : `item ${itemId}`
+                      const label = item ? itemLabel(item) : `item ${itemId}`
                       addLog({type:'botteldag', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
                       logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Botteldag ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
                     }
@@ -2623,7 +2627,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
                                   className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
                                 <span className="text-xs text-gray-400 w-5 flex-shrink-0 mt-0.5">{idx+1}.</span>
-                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t(item.labelKey)}</span>
+                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{itemLabel(item)}</span>
                                 {checks[item.id] && <span className="ml-auto text-teal-500 text-xs mt-0.5">✓</span>}
                               </label>
                             ))}
