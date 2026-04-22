@@ -758,6 +758,7 @@
   "excise_collapse": "Colapsar",
   "batch_syncing": "Sincronizando...",
   "batch_info_batch_nr": "Lote #",
+  "batch_info_bf_batch_nr": "Brewfather #",
   "batch_info_style": "Estilo",
   "batch_info_og": "OG",
   "batch_info_fg": "FG",

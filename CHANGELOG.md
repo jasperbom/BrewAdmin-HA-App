@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.83] — 2026-04-22
+
+### Added — Brewfather-batchnummer zichtbaar in batch-detail
+
+- In de batch-detail-header wordt nu naast het app-eigen `#batch_nummer`
+  ook `BF #brewfather_batch_nummer` getoond (alleen als dat veld
+  gevuld is, voorafgegaan door een bullet-scheiding).
+- In de info-grid (`BatchesPage.tsx:1309`) is een nieuwe rij
+  "Brewfather #" toegevoegd, alleen zichtbaar voor batches die via
+  Brewfather zijn geïmporteerd.
+- Nieuwe i18n-sleutel `batch_info_bf_batch_nr` in nl/en/de/fr/es.
+
+---
+
 ## [1.8.82] — 2026-04-22
 
 ### Fixed — Brewfather-sync koppelt geen batches meer verkeerd

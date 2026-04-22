@@ -1198,8 +1198,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     <div className="text-base font-semibold leading-tight truncate">{selB.naam}</div>
                     <div className="text-xs text-gray-400 mt-0.5">
                       {selB.batch_nummer ? `#${selB.batch_nummer}` : ''}
-                      {selB.stijl ? `${selB.batch_nummer ? ' · ' : ''}${selB.stijl}` : ''}
-                      {selB.biernaam ? `${(selB.batch_nummer||selB.stijl) ? ' · ' : ''}${selB.biernaam}` : ''}
+                      {selB.brewfather_batch_nummer ? `${selB.batch_nummer ? ' · ' : ''}BF #${selB.brewfather_batch_nummer}` : ''}
+                      {selB.stijl ? `${(selB.batch_nummer||selB.brewfather_batch_nummer) ? ' · ' : ''}${selB.stijl}` : ''}
+                      {selB.biernaam ? `${(selB.batch_nummer||selB.brewfather_batch_nummer||selB.stijl) ? ' · ' : ''}${selB.biernaam}` : ''}
                       {selB.tank && ['Vergisten','Conditioneren'].includes(selB.status) && (
                         <span className="ml-1 inline-flex items-center gap-0.5 bg-white/15 rounded px-1.5 py-0.5 text-white/90 text-[10px] font-medium">{`${t('lbl_tank')} ${selB.tank}`}</span>
                       )}
@@ -1307,6 +1308,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     {([
                       [t('lbl_status'), <Badge s={selB.status} />],
                       [t('batch_info_batch_nr'), selB.batch_nummer||'—'],
+                      selB.brewfather_batch_nummer ? [t('batch_info_bf_batch_nr'), `#${selB.brewfather_batch_nummer}`] : null,
                       [t('lbl_date'), fmtD(selB.datum)],
                       [t('batch_info_style'), selB.stijl||'—'],
                       [t('lbl_tank'), selB.tank||'—'],
