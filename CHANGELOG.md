@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.86] — 2026-04-22
+
+### Added — Batch-ingredienten koppelen aan voorraad-ingredienten
+
+- In de batch-detailweergave (ingrediënten-tabel) staat nu naast de
+  ingrediëntnaam een koppel-pill. Wanneer de naam niet overeenkomt
+  met een voorraad-ingrediënt verschijnt een oranje "Koppelen"-knop
+  die een dropdown opent met alle voorraad-ingredienten van het
+  juiste type (Mout/Hop/Gist/Suiker/Overig). Bij expliciete koppeling
+  verschijnt een blauwe 🔗-pill.
+- De koppeling werkt op **groepsniveau**: alle batch-regels met
+  hetzelfde `ingredient_id` of dezelfde naam krijgen in één keer de
+  nieuwe koppeling. Handig bij meerdaagse dryhops of gefaseerde
+  giststortingen waar dezelfde ingredient vaker voorkomt.
+- Hergebruikt de i18n-sleutels uit v1.8.85 (`recipe_link_auto`,
+  `recipe_link_edit`, `recipe_link_none`).
+
+---
+
 ## [1.8.85] — 2026-04-22
 
 ### Added — Recept-ingredienten koppelen aan voorraad-ingredienten
