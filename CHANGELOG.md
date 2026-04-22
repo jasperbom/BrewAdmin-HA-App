@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.84] — 2026-04-22
+
+### Added — Brewfather-recept-versies ophalen en tonen
+
+- De Brewfather-sync haalt nu per recept ook de versie-snapshots op via
+  `GET /recipes/{id}/versions`. Snapshots worden als aparte, alleen-
+  lezen entries onder het hoofdrecept getoond met een collapsible
+  versie-lijst en een versie-pill in de detail-header.
+- Nieuwe helpers `bfMapRecipe()`, `bfGetRecipeVersions()` en
+  `bfGetRecipesWithVersions()` in `src/utils/api.ts`. Versies worden
+  in parallelle batches van 10 opgehaald.
+- Defensief: als het versies-endpoint niet beschikbaar is (404/403/501),
+  slaat de sync dit stil over en toont de melding
+  `msg_bf_sync_no_versions`.
+- `Recept` interface uitgebreid met `versie`, `versie_id`, `parent_id`,
+  `is_huidige` en `versie_datum`. Backward compatible: bestaande
+  recepten zonder deze velden gedragen zich als huidige versie, en
+  bestaande batch-/productkoppelingen via `recept_id`/`rid` blijven
+  matchen op de parent `_id`.
+- Brouwen is alleen mogelijk vanaf de huidige versie; snapshots tonen
+  een "alleen-lezen" label.
+- Nieuwe i18n-sleutels (nl/en/de/fr/es): `recipe_version_current`,
+  `recipe_version_snapshot`, `recipe_version_readonly`,
+  `recipe_versions_count`, `msg_bf_sync_with_versions`,
+  `msg_bf_sync_no_versions`.
+
+---
+
 ## [1.8.83] — 2026-04-22
 
 ### Added — Brewfather-batchnummer zichtbaar in batch-detail

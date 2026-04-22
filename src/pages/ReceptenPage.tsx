@@ -1,7 +1,7 @@
 import React from 'react'
 import { t } from '../i18n'
 import { fmtD } from '../utils/format'
-import { bfGetRecipes } from '../utils/api'
+import { bfGetRecipesWithVersions } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
@@ -14,6 +14,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   const [zoek, setZoek]       = useState('');
   const [verborgenOpen, setVerborgenOpen] = useState(false);
   const [gearchiveerdTagsOpen, setGearchiveerdTagsOpen] = useState(false);
+  const [versiesOpen, setVersiesOpen] = useState<Record<string, boolean>>({});
   const toggleGroep = (tag: any) => setGeslotenGroepen((prev: any) =>
     prev.includes(tag) ? prev.filter((t: any)=>t!==tag) : [...prev, tag]
   );
@@ -46,19 +47,32 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
     }
     setSyncing(true); setMsg('');
     try {
-      const recs = await bfGetRecipes();
+      const { recepten: recs, versionsSupported, totalVersions } = await bfGetRecipesWithVersions();
       setRecepten(recs);
-      logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving:`Brewfather sync: ${recs.length} recepten`})
-      setMsg(`✓ ${recs.length} recept${recs.length!==1?'en':''} gesynchroniseerd`);
+      const parentCount = recs.filter((r: any) => r.is_huidige !== false).length;
+      const auditMsg = versionsSupported
+        ? `Brewfather sync: ${parentCount} recepten (+${totalVersions} versies)`
+        : `Brewfather sync: ${parentCount} recepten`;
+      logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving: auditMsg})
+      const key = versionsSupported ? 'msg_bf_sync_with_versions' : 'msg_bf_sync_no_versions';
+      setMsg(t(key).replace('{n}', String(parentCount)).replace('{v}', String(totalVersions)));
     } catch(e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e))); }
     setSyncing(false);
   };
 
-  const gefilterd = recepten.filter((r: any) =>
+  // Splits huidige recepten (working versions) van versie-snapshots.
+  // Oude data zonder is_huidige-flag wordt als huidige behandeld (backward compat).
+  const huidige = recepten.filter((r: any) => r.is_huidige !== false);
+  const versiesPerParent: Record<string, any[]> = {};
+  recepten.filter((r: any) => r.is_huidige === false).forEach((v: any) => {
+    if (!v.parent_id) return;
+    (versiesPerParent[v.parent_id] ||= []).push(v);
+  });
+  const gefilterd = huidige.filter((r: any) =>
     !zoek || r.naam.toLowerCase().includes(zoek.toLowerCase()) || (r.stijl||'').toLowerCase().includes(zoek.toLowerCase())
   );
   const zichtbaar     = gefilterd.filter((r: any) => !verborgen.includes(r.id));
-  const verborgenLijst = recepten.filter((r: any) => verborgen.includes(r.id));
+  const verborgenLijst = huidige.filter((r: any) => verborgen.includes(r.id));
   const selRec = recepten.find((r: any) => r.id === sel);
 
   const checkStock = (naam: any, benodigdRaw: any) => {
@@ -205,21 +219,44 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
               const allGreen= stocks.length>0 && stocks.every((s: any)=>s.ok===true);
               // @ts-ignore
               const dot = anyRed?'🔴':anyYel?'🟡':allGreen?'🟢':'⚪';
+              const versies = versiesPerParent[r.id] || [];
+              const open = !!versiesOpen[r.id];
               return (
-                <div onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
-                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${sel===r.id?'t-sel border-l-2':''}`}>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium text-sm truncate">{r.naam}</span>
-                    <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
-                      className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-gray-500 text-xs leading-none px-0.5 transition-opacity flex-shrink-0"
-                      title={t('btn_hide')}>✕</button>
+                <>
+                  <div onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
+                    className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${sel===r.id?'t-sel border-l-2':''}`}>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-medium text-sm truncate">{r.naam}</span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {versies.length > 0 && (
+                          <button onClick={(e: any)=>{e.stopPropagation(); setVersiesOpen((o: any)=>({...o, [r.id]: !o[r.id]}));}}
+                            className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full hover:bg-blue-200 transition-colors"
+                            title={t('recipe_versions_count').replace('{n}', String(versies.length))}>
+                            {versies.length + 1}v {open?'▲':'▼'}
+                          </button>
+                        )}
+                        <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-gray-500 text-xs leading-none px-0.5 transition-opacity"
+                          title={t('btn_hide')}>✕</button>
+                      </div>
+                    </div>
+                    {r.stijl&&<div className="text-xs text-gray-500 mt-0.5 truncate">{r.stijl}</div>}
+                    <div className="flex gap-2 mt-0.5 text-xs text-gray-400">
+                      {r.batch_size?<span>{r.batch_size}L</span>:null}
+                      {r.ABV?<span>{Number(r.ABV).toFixed(1)}%</span>:null}
+                    </div>
                   </div>
-                  {r.stijl&&<div className="text-xs text-gray-500 mt-0.5 truncate">{r.stijl}</div>}
-                  <div className="flex gap-2 mt-0.5 text-xs text-gray-400">
-                    {r.batch_size?<span>{r.batch_size}L</span>:null}
-                    {r.ABV?<span>{Number(r.ABV).toFixed(1)}%</span>:null}
-                  </div>
-                </div>
+                  {open && versies.map((v: any) => (
+                    <div key={v.id} onClick={()=>setSel((s: any)=>s===v.id?null:v.id)}
+                      className={`pl-6 pr-3 py-1.5 border-b cursor-pointer t-hover transition-colors text-xs ${sel===v.id?'t-sel border-l-2':''}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-blue-600 font-medium">{v.versie}</span>
+                        <span className="text-gray-600 truncate flex-1">{v.naam}</span>
+                        {v.versie_datum && <span className="text-gray-300 flex-shrink-0">{fmtD(v.versie_datum)}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </>
               );
             };
             const allTagsRaw = [...new Set(zichtbaar.flatMap((r: any)=>r.tags||[]))];
@@ -318,7 +355,18 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           <div className="flex-1 bg-white rounded-xl shadow-card p-4 min-w-0">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <h3 className="text-base font-semibold text-gray-800">{selRec.naam}</h3>
+                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
+                  <span>{selRec.naam}</span>
+                  {selRec.is_huidige === false ? (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-normal">
+                      {selRec.versie || t('recipe_version_snapshot')}
+                    </span>
+                  ) : (versiesPerParent[selRec.id]?.length > 0 && (
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
+                      {t('recipe_version_current')}
+                    </span>
+                  ))}
+                </h3>
                 {selRec.stijl&&<div className="text-sm text-gray-500 mt-0.5">{selRec.stijl}</div>}
                 {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">Door {selRec.auteur}</div>}
               </div>
@@ -326,7 +374,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
                   {overallOk?t('recept_klaar_brouwen'):overallRed?t('recept_tekort'):overallYel?t('recept_controleer'):t('recept_onbekend_voorraad')}
                 </div>
-                {setPage && setPreNieuwBatch && (
+                {selRec.is_huidige === false && (
+                  <span className="text-xs text-gray-400 italic whitespace-nowrap">{t('recipe_version_readonly')}</span>
+                )}
+                {setPage && setPreNieuwBatch && selRec.is_huidige !== false && (
                   <Btn s="sm" v="primary" onClick={() => {
                     setPreNieuwBatch({
                       naam: selRec.naam,

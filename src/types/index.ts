@@ -252,6 +252,11 @@ export interface Recept {
   kook_volume?: number | string
   vergistingsprofiel?: VergistingsStap[]
   maischprofiel?: MaischStap[]
+  versie?: string
+  versie_id?: string
+  parent_id?: string
+  is_huidige?: boolean
+  versie_datum?: string
 }
 
 export interface ReceptIngredient {

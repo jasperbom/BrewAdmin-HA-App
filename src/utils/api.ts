@@ -224,6 +224,58 @@ export const bfNumSafe = (v: any): number | string => {
   return isNaN(n) ? '' : n
 }
 
+// Map één Brewfather-recept-object naar het interne Recept-formaat.
+// opts laten de caller de id/versie-metadata overschrijven, zodat dezelfde mapper
+// gebruikt kan worden voor zowel de working version als voor snapshots.
+export const bfMapRecipe = (r: any, opts: {
+  idOverride?: string
+  naamOverride?: string
+  versie?: string
+  versie_id?: string
+  parent_id?: string
+  is_huidige?: boolean
+  versie_datum?: string
+} = {}): any => ({
+  id: opts.idOverride || r._id,
+  naam: opts.naamOverride || r.name || 'Onbekend',
+  auteur: r.author || '',
+  type: r.type || '',
+  stijl: r.style?.name || '',
+  equipment: r.equipment?.name || '',
+  batch_size: r.batchSize || '',
+  OG: r.og || '',
+  FG: r.fg || '',
+  ABV: r.abv || '',
+  IBU: r.ibu || '',
+  notities: r.notes || '',
+  tags:   Array.isArray(r.searchTags) ? r.searchTags : (r.searchTags ? [r.searchTags] : []),
+  mout:   (r.fermentables||[]).map((f: any) => ({naam:f.name||'', hoeveelheid:Number(f.amount||0), eenheid:'kg'})),
+  hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||'', tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min'})),
+  gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
+  overig: (r.miscs||[]).map((m: any) =>       ({naam:m.name||'', hoeveelheid:Number(m.amount||0), eenheid:m.unit||'g', gebruik:m.use||''})),
+  kleur:       bfNumSafe(r.color),
+  kooktijd:    bfNumSafe(r.boilTime),
+  kook_volume: bfNumSafe(r.boilSize),
+  vergistingsprofiel: (r.fermentation?.steps||[]).map((s: any) => ({
+    type: s.type || s.name || '',
+    temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
+    tijd: bfNumSafe(s.stepTime),
+    ramp: bfNumSafe(s.rampTime ?? s.ramp),
+  })),
+  maischprofiel: (r.mash?.steps||[]).map((s: any) => ({
+    naam:     s.name || '',
+    type:     s.type || '',
+    temp:     bfNumSafe(s.stepTemp ?? s.displayTemp),
+    tijd:     bfNumSafe(s.stepTime),
+    rampTijd: bfNumSafe(s.rampTime),
+  })),
+  versie:       opts.versie,
+  versie_id:    opts.versie_id,
+  parent_id:    opts.parent_id,
+  is_huidige:   opts.is_huidige !== undefined ? opts.is_huidige : true,
+  versie_datum: opts.versie_datum,
+})
+
 export const bfGetRecipes = async (): Promise<any[]> => {
   const all: any[] = []
   let startAfter: string | null = null
@@ -235,41 +287,78 @@ export const bfGetRecipes = async (): Promise<any[]> => {
     if (d.length < 50) break
     startAfter = d[d.length-1]._id
   }
-  return all.map((r: any) => ({
-    id: r._id,
-    naam: r.name || 'Onbekend',
-    auteur: r.author || '',
-    type: r.type || '',
-    stijl: r.style?.name || '',
-    equipment: r.equipment?.name || '',
-    batch_size: r.batchSize || '',
-    OG: r.og || '',
-    FG: r.fg || '',
-    ABV: r.abv || '',
-    IBU: r.ibu || '',
-    notities: r.notes || '',
-    tags:   Array.isArray(r.searchTags) ? r.searchTags : (r.searchTags ? [r.searchTags] : []),
-    mout:   (r.fermentables||[]).map((f: any) => ({naam:f.name||'', hoeveelheid:Number(f.amount||0), eenheid:'kg'})),
-    hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||'', tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min'})),
-    gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
-    overig: (r.miscs||[]).map((m: any) =>       ({naam:m.name||'', hoeveelheid:Number(m.amount||0), eenheid:m.unit||'g', gebruik:m.use||''})),
-    kleur:       bfNumSafe(r.color),
-    kooktijd:    bfNumSafe(r.boilTime),
-    kook_volume: bfNumSafe(r.boilSize),
-    vergistingsprofiel: (r.fermentation?.steps||[]).map((s: any) => ({
-      type: s.type || s.name || '',
-      temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
-      tijd: bfNumSafe(s.stepTime),
-      ramp: bfNumSafe(s.rampTime ?? s.ramp),
-    })),
-    maischprofiel: (r.mash?.steps||[]).map((s: any) => ({
-      naam:     s.name || '',
-      type:     s.type || '',
-      temp:     bfNumSafe(s.stepTemp ?? s.displayTemp),
-      tijd:     bfNumSafe(s.stepTime),
-      rampTijd: bfNumSafe(s.rampTime),
-    })),
-  }))
+  return all.map((r: any) => bfMapRecipe(r, { is_huidige: true }))
+}
+
+// Probeert versie-snapshots voor één recept op te halen.
+// Retourneert null als het endpoint niet beschikbaar is (404/403/501) — dit is het
+// signaal voor de caller om overige probes te skippen. Bij andere fouten een lege
+// array (stil falen voor dit recept, verder synchroniseren mag doorgaan).
+export const bfGetRecipeVersions = async (recipeId: string): Promise<any[] | null> => {
+  try {
+    const r = await bfFetch(`recipes/${encodeURIComponent(recipeId)}/versions?complete=true`)
+    if (r.status === 404 || r.status === 403 || r.status === 501) return null
+    if (!r.ok) return []
+    const d = await r.json()
+    return Array.isArray(d) ? d : []
+  } catch { return [] }
+}
+
+// Haalt alle recepten op inclusief versie-snapshots. Defensief: als de eerste
+// versie-probe aangeeft dat het endpoint niet bestaat, wordt de rest geskipt.
+export const bfGetRecipesWithVersions = async (): Promise<{
+  recepten: any[]
+  versionsSupported: boolean
+  totalVersions: number
+}> => {
+  const parents = await bfGetRecipes()
+  if (parents.length === 0) return { recepten: [], versionsSupported: false, totalVersions: 0 }
+
+  // Probe eerste recept om te bepalen of het endpoint überhaupt beschikbaar is.
+  const firstProbe = await bfGetRecipeVersions(parents[0].id)
+  if (firstProbe === null) {
+    return { recepten: parents, versionsSupported: false, totalVersions: 0 }
+  }
+
+  const mapVersions = (parent: any, rawList: any[]): any[] =>
+    rawList.map((v: any, idx: number) => {
+      const raw = v.recipe || v
+      const versieId = v._id || raw._id || String(idx + 1)
+      const label = v.version || v.name || raw.name || `v${idx + 1}`
+      return bfMapRecipe(raw, {
+        idOverride: `${parent.id}__v${versieId}`,
+        naamOverride: raw.name || parent.naam,
+        versie: String(label),
+        versie_id: String(versieId),
+        parent_id: parent.id,
+        is_huidige: false,
+        versie_datum: v.created || v._timestamp || raw._timestamp || raw.created,
+      })
+    })
+
+  const allVersions: any[] = []
+  // Eerste resultaat (probe) direct verwerken.
+  allVersions.push(...mapVersions(parents[0], firstProbe))
+
+  // Overige recepten in batches van 10 parallel.
+  const rest = parents.slice(1)
+  for (let i = 0; i < rest.length; i += 10) {
+    const batch = rest.slice(i, i + 10)
+    try {
+      const results = await Promise.all(batch.map(p => bfGetRecipeVersions(p.id)))
+      results.forEach((vs, j) => {
+        if (Array.isArray(vs) && vs.length > 0) allVersions.push(...mapVersions(batch[j], vs))
+      })
+    } catch (e) {
+      console.debug('[bf] versions batch failed, continuing', e)
+    }
+  }
+
+  return {
+    recepten: [...parents, ...allVersions],
+    versionsSupported: true,
+    totalVersions: allVersions.length,
+  }
 }
 
 export const bfGetBatches = async (): Promise<any[]> => {
