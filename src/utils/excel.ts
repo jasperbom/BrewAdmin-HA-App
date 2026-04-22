@@ -102,7 +102,9 @@ export const excelExport = (data: any) => {
     addSheet('GnCodes', (data.gn_codes || []).map((v: any) => ({code: v.code, naam: v.naam})))
 
     // ── Instellingen-sheet (objects + losse waarden als key-value rijen) ───────
-    // Logo's worden NIET in Excel opgeslagen (te groot voor cellen; worden apart opgeslagen)
+    // Logo's worden als base64 in het Instellingen-sheet opgeslagen. Bij base64
+    // groter dan de Excel-cel-limiet (~32767 chars) wordt de string opgesplitst
+    // in chunks (`key__0`, `key__1`, …) die bij import weer worden samengevoegd.
     const inst: {sleutel: string, waarde: any}[] = [
       {sleutel: '_versie',              waarde: 3},
       {sleutel: '_datum',               waarde: new Date().toISOString()},
@@ -116,6 +118,20 @@ export const excelExport = (data: any) => {
       {sleutel: 'app_name',             waarde: data.app_name  ?? ''},
       {sleutel: 'nav_theme',            waarde: data.nav_theme ?? 'amber'},
     ]
+
+    const LOGO_CHUNK = 30000
+    const pushLogo = (key: string, val: string | null | undefined) => {
+      const s = typeof val === 'string' ? val : ''
+      if (s.length <= LOGO_CHUNK) {
+        inst.push({sleutel: key, waarde: s})
+      } else {
+        for (let i = 0, n = 0; i < s.length; i += LOGO_CHUNK, n++) {
+          inst.push({sleutel: `${key}__${n}`, waarde: s.slice(i, i + LOGO_CHUNK)})
+        }
+      }
+    }
+    pushLogo('app_logo',     data.app_logo)
+    pushLogo('factuur_logo', data.factuur_logo)
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inst), 'Instellingen')
 
     // Genereer buffer en download via Blob URL
@@ -151,6 +167,24 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
       gs('Instellingen').forEach((row: any) => {
         if (row.sleutel != null) instMap[String(row.sleutel)] = row.waarde
       })
+      // Logo's: eerst proberen als losse cel, anders chunks `key__0`, `key__1`, …
+      // samenvoegen. Als de sleutel helemaal niet in de backup staat geven we
+      // `undefined` terug zodat doImport het bestaande logo niet overschrijft.
+      const readLogo = (key: string): string | null | undefined => {
+        if (Object.prototype.hasOwnProperty.call(instMap, key)) {
+          const v = instMap[key]
+          return v === '' || v == null ? null : String(v)
+        }
+        const chunks: string[] = []
+        for (let n = 0; Object.prototype.hasOwnProperty.call(instMap, `${key}__${n}`); n++) {
+          const part = instMap[`${key}__${n}`]
+          chunks.push(part == null ? '' : String(part))
+        }
+        if (chunks.length === 0) return undefined
+        const joined = chunks.join('')
+        return joined === '' ? null : joined
+      }
+
       const parseInst = (key: string): any => {
         const v = instMap[key]
         if (v == null || v === '') return undefined
@@ -230,8 +264,8 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         bank_koppelingen:     parseInst('bank_koppelingen'),
         app_name:             instMap['app_name'] != null ? String(instMap['app_name']) : undefined,
         nav_theme:            instMap['nav_theme'] ? String(instMap['nav_theme']) : undefined,
-        app_logo:             instMap['app_logo']     || null,
-        factuur_logo:         instMap['factuur_logo'] || null,
+        app_logo:             readLogo('app_logo'),
+        factuur_logo:         readLogo('factuur_logo'),
       })
     } catch {
       if (onError) onError()

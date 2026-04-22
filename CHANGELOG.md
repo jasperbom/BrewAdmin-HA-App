@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.88] — 2026-04-22
+
+### Fixed — Logo's raken niet meer weg bij Excel-backup import
+
+Voorheen schreef `excelExport` de logo's wél als argument door, maar ze
+belandden niet in het Instellingen-sheet (het oude compromis "te groot
+voor cellen"). Bij import werd `instMap['app_logo']` dus `undefined` en
+liet de `|| null`-fallback het bestaande logo wissen.
+
+- **Export** (`src/utils/excel.ts`): `app_logo` en `factuur_logo`
+  worden als base64 in het Instellingen-sheet geschreven. Bij base64
+  groter dan de Excel-cel-limiet (~32767 chars) wordt de string
+  opgesplitst in chunks van 30 000 tekens (`app_logo__0`,
+  `app_logo__1`, …).
+- **Import**: nieuwe `readLogo(key)` leest het logo uit een enkele cel
+  óf voegt de chunks weer aaneen. Ontbreekt de sleutel volledig in de
+  backup, dan retourneert het `undefined` zodat `doImport` het
+  bestaande logo ongemoeid laat (eerder werd dat naar `null` gezet).
+- Backward compatible: oudere backups zonder logo-velden overschrijven
+  niets meer, en backups met één enkele logo-cel blijven leesbaar.
+
+---
+
 ## [1.8.87] — 2026-04-22
 
 ### Added — Aanpasbare brouwdag- en botteldag-checklists
