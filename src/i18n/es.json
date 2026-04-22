@@ -237,6 +237,7 @@
   "dashboard_fermentation_progress": "Progreso fermentación",
   "batch_gist_chart": "Gráfico de fermentación",
   "batch_gist_active": "● activo",
+  "batch_gist_start": "Inicio fermentación",
   "batch_gist_measurements": "mediciones",
   "batch_gist_add": "+ Medición",
   "batch_gist_no_measurements": "Añade mediciones usando la barra de entrada de arriba.",

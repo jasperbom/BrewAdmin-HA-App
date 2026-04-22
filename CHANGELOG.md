@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.81] — 2026-04-22
+
+### Changed — Fermentatiegrafiek: X-as vanaf Vergisten-moment
+
+- De X-as van de gistgrafiek (`FermentatieGrafiek` in `BatchesPage.tsx`)
+  start nu bij het moment dat de batch op **Vergisten** ging, niet bij de
+  eerste meting. Bron: eerste `tank_historie`-entry met
+  `status='Vergisten'`, fallback `batch.datum`. Zo is de volledige
+  fermentatie-aanloop zichtbaar — óók als de eerste meting pas later is
+  gedaan.
+- Een groene gestippelde verticale lijn met label "Vergisten" markeert
+  het startmoment in de grafiek (alleen zichtbaar als het vóór de eerste
+  meting ligt en binnen de huidige zoomview valt).
+- Nieuwe i18n-sleutel `batch_gist_start` in alle 5 talen.
+
+---
+
 ## [1.8.80] — 2026-04-22
 
 ### Fixed — Nette afhandeling van rate-limit-fouten (HTTP 429)

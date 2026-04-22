@@ -237,6 +237,7 @@
   "dashboard_fermentation_progress": "Gärverlauf",
   "batch_gist_chart": "Gärkurve",
   "batch_gist_active": "● aktiv",
+  "batch_gist_start": "Gärung Start",
   "batch_gist_measurements": "Messungen",
   "batch_gist_add": "+ Messung",
   "batch_gist_no_measurements": "Fügen Sie Messungen über die Eingabeleiste oben hinzu.",

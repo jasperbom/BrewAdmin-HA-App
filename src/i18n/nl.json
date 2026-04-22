@@ -237,6 +237,7 @@
   "dashboard_fermentation_progress": "Gistingsvoortgang",
   "batch_gist_chart": "Gistgrafiek",
   "batch_gist_active": "● actief",
+  "batch_gist_start": "Vergisten",
   "batch_gist_measurements": "metingen",
   "batch_gist_add": "+ Meting",
   "batch_gist_no_measurements": "Voeg metingen toe via de invoerbar hierboven.",

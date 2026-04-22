@@ -237,6 +237,7 @@
   "dashboard_fermentation_progress": "Fermentation progress",
   "batch_gist_chart": "Fermentation chart",
   "batch_gist_active": "● active",
+  "batch_gist_start": "Fermentation start",
   "batch_gist_measurements": "measurements",
   "batch_gist_add": "+ Measurement",
   "batch_gist_no_measurements": "Add measurements using the input bar above.",

@@ -105,7 +105,11 @@ const catmullRomPath = (pts: [number,number][]): string => {
 }
 
 // ── Fermentatie grafiek SVG component ─────────────────────────────────────
-const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
+// `startTs` (optioneel) zet het linkerbegin van de X-as: het moment waarop
+// de batch op Vergisten ging. Ligt die vóór de eerste meting, dan toont de
+// grafiek ook die "aanloop" — zodat je ziet hoe lang de vergisting al loopt
+// voor de eerste meting.
+const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> = ({ metingen, startTs }) => {
   const svgRef = React.useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = React.useState<[number,number]>([0,1])
   const zoomRef = React.useRef<[number,number]>([0,1])
@@ -122,8 +126,12 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
   ), [metingen])
 
   const tsAll = sorted.map(m => new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime())
-  const tsMin = tsAll[0] ?? 0
-  const tsMax = tsAll[tsAll.length-1] ?? (tsMin+1)
+  const firstMeting = tsAll[0] ?? 0
+  const lastMeting  = tsAll[tsAll.length-1] ?? (firstMeting+1)
+  // X-as start bij het Vergisten-moment als dat vóór de eerste meting ligt,
+  // anders bij de eerste meting (fallback voor batches zonder starttijdstip).
+  const tsMin = (startTs != null && startTs < firstMeting) ? startTs : firstMeting
+  const tsMax = lastMeting
   const fullRange = tsMax - tsMin || 1
 
   React.useEffect(() => { zoomRef.current = zoom }, [zoom])
@@ -312,6 +320,15 @@ const FermentatieGrafiek: React.FC<{metingen: any[]}> = ({ metingen }) => {
             {rightLabel(frac)}
           </text>
         ))}
+
+        {/* Vergisten-start-marker (alleen tonen als het vóór de eerste meting ligt en in beeld is) */}
+        {startTs != null && startTs < firstMeting && startTs >= viewMin && startTs <= viewMax && (() => {
+          const x = toX(startTs)
+          return <g>
+            <line x1={x} y1={PAD.t} x2={x} y2={PAD.t+CH} stroke="#10b981" strokeWidth="1" strokeDasharray="3 3" opacity="0.7"/>
+            <text x={x+3} y={PAD.t+9} fontSize="8" fill="#10b981">{t('batch_gist_start')}</text>
+          </g>
+        })()}
 
         {/* Data — geclipd */}
         <g clipPath="url(#fc)">
@@ -1506,6 +1523,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   const kb = (b.datum||'') + 'T' + (b.tijd||'00:00')
                   return ka.localeCompare(kb)
                 })
+              // Starttijdstip van de vergisting: eerste tank_historie-entry met
+              // status='Vergisten', anders batch.datum als de batch ooit op
+              // Vergisten (of later) heeft gestaan.
+              const vergistStartTs: number | null = (() => {
+                const hist: any[] = Array.isArray(selB.tank_historie) ? selB.tank_historie : []
+                const entry = hist.find((h: any) => h?.status === 'Vergisten')
+                const iso = entry?.from || selB.datum
+                if (!iso) return null
+                const ts = new Date(`${iso}T00:00`).getTime()
+                return isNaN(ts) ? null : ts
+              })()
               const isOpen = grafiekIsOpen
 
               const addMeting = () => {
@@ -1584,7 +1612,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             : t('batch_gist_min_2')}
                         </div>
                       ) : (
-                        <FermentatieGrafiek metingen={batchMetingen} />
+                        <FermentatieGrafiek metingen={batchMetingen} startTs={vergistStartTs} />
                       )}
 
                       {batchMetingen.length > 0 && (
