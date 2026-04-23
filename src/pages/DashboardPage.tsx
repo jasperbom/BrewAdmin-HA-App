@@ -987,6 +987,105 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                   </div>
                 </div>
 
+                {/* SG voortgang */}
+                {batch && (sgPct !== null || latestM) && (
+                  <div className="mt-3 border-t border-gray-100 pt-3">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      {t('dashboard_fermentation_progress')}
+                    </div>
+                    {sgPct !== null && (
+                      <>
+                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                          <span>OG {batch.OG}</span>
+                          <span className="font-medium text-gray-600">
+                            {t('dashboard_sg_progress').replace('{pct}', String(Math.round(sgPct)))}
+                          </span>
+                          <span>FG {batch.FG}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                            style={{width: `${sgPct}%`}}
+                          />
+                        </div>
+                      </>
+                    )}
+                    {latestM && (
+                      <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                        {latestM.sg   && <span className="font-semibold text-gray-700">SG {Number(latestM.sg).toFixed(3)}</span>}
+                        {latestM.ph   && <span className="text-gray-500">pH {latestM.ph}</span>}
+                        {latestM.temp && <span className="text-gray-500">{latestM.temp}°C</span>}
+                        <span className="text-gray-400">{fmtD(latestM.datum)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Meting toevoegen */}
+                {batch && (
+                  <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                    {!isFormOpen ? (
+                      <button
+                        onClick={() => { setMetingBatchId(batch.id); setMForm({sg:'',ph:'',temp:''}); }}
+                        className="text-xs font-medium hover:underline mt-1 flex items-center gap-1"
+                        style={{color: 'var(--t-accent)'}}
+                      >
+                        + {t('dashboard_add_measurement')}
+                      </button>
+                    ) : (
+                      <div className="mt-2 border-t border-gray-100 pt-3 space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-xs text-gray-500 block mb-0.5">SG</label>
+                            <input
+                              type="number" step="0.001" min="0.9" max="1.2"
+                              value={mForm.sg}
+                              onChange={e => setMForm(f => ({...f, sg: e.target.value}))}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
+                              placeholder="1.020"
+                              autoFocus
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 block mb-0.5">pH</label>
+                            <input
+                              type="number" step="0.1" min="0" max="14"
+                              value={mForm.ph}
+                              onChange={e => setMForm(f => ({...f, ph: e.target.value}))}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
+                              placeholder="4.5"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 block mb-0.5">°C</label>
+                            <input
+                              type="number" step="0.1"
+                              value={mForm.temp}
+                              onChange={e => setMForm(f => ({...f, temp: e.target.value}))}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
+                              placeholder="20"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={saveMeting}
+                            className="tbtn text-white text-xs px-3 py-1.5 rounded font-medium hover:opacity-90"
+                          >
+                            {t('btn_save')}
+                          </button>
+                          <button
+                            onClick={() => setMetingBatchId(null)}
+                            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5"
+                          >
+                            {t('btn_cancel')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* ── Climate control + vergistingsschema + cold-crash ── */}
                 {batch && climateForTank(tk.id) && (() => {
                   const climate = climateForTank(tk.id);
@@ -1115,105 +1214,6 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                     </div>
                   );
                 })()}
-
-                {/* SG voortgang */}
-                {batch && (sgPct !== null || latestM) && (
-                  <div className="mt-3 border-t border-gray-100 pt-3">
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                      {t('dashboard_fermentation_progress')}
-                    </div>
-                    {sgPct !== null && (
-                      <>
-                        <div className="flex justify-between text-xs text-gray-400 mb-1">
-                          <span>OG {batch.OG}</span>
-                          <span className="font-medium text-gray-600">
-                            {t('dashboard_sg_progress').replace('{pct}', String(Math.round(sgPct)))}
-                          </span>
-                          <span>FG {batch.FG}</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                            style={{width: `${sgPct}%`}}
-                          />
-                        </div>
-                      </>
-                    )}
-                    {latestM && (
-                      <div className="flex flex-wrap gap-2 mt-2 text-xs">
-                        {latestM.sg   && <span className="font-semibold text-gray-700">SG {Number(latestM.sg).toFixed(3)}</span>}
-                        {latestM.ph   && <span className="text-gray-500">pH {latestM.ph}</span>}
-                        {latestM.temp && <span className="text-gray-500">{latestM.temp}°C</span>}
-                        <span className="text-gray-400">{fmtD(latestM.datum)}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Meting toevoegen */}
-                {batch && (
-                  <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                    {!isFormOpen ? (
-                      <button
-                        onClick={() => { setMetingBatchId(batch.id); setMForm({sg:'',ph:'',temp:''}); }}
-                        className="text-xs font-medium hover:underline mt-1 flex items-center gap-1"
-                        style={{color: 'var(--t-accent)'}}
-                      >
-                        + {t('dashboard_add_measurement')}
-                      </button>
-                    ) : (
-                      <div className="mt-2 border-t border-gray-100 pt-3 space-y-2">
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="text-xs text-gray-500 block mb-0.5">SG</label>
-                            <input
-                              type="number" step="0.001" min="0.9" max="1.2"
-                              value={mForm.sg}
-                              onChange={e => setMForm(f => ({...f, sg: e.target.value}))}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
-                              placeholder="1.020"
-                              autoFocus
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-500 block mb-0.5">pH</label>
-                            <input
-                              type="number" step="0.1" min="0" max="14"
-                              value={mForm.ph}
-                              onChange={e => setMForm(f => ({...f, ph: e.target.value}))}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
-                              placeholder="4.5"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-500 block mb-0.5">°C</label>
-                            <input
-                              type="number" step="0.1"
-                              value={mForm.temp}
-                              onChange={e => setMForm(f => ({...f, temp: e.target.value}))}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
-                              placeholder="20"
-                            />
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={saveMeting}
-                            className="tbtn text-white text-xs px-3 py-1.5 rounded font-medium hover:opacity-90"
-                          >
-                            {t('btn_save')}
-                          </button>
-                          <button
-                            onClick={() => setMetingBatchId(null)}
-                            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5"
-                          >
-                            {t('btn_cancel')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}

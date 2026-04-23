@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.94] — 2026-04-23
+
+### Changed — Tankkaart: metingen nu boven klimaatpaneel
+
+De volgorde op elke tankkaart op het Dashboard is aangepast zodat de
+frequent gebruikte meet-acties bovenaan staan:
+
+1. Tank visueel + batch-info
+2. SG-voortgangsbalk
+3. + Meting toevoegen
+4. Klimaatpaneel (setpoint/HVAC) + vergistingsschema + cold-crash knop
+
+Voorheen stond het klimaatpaneel tussen tank-info en SG-voortgang in.
+
 ## [1.8.93] — 2026-04-23
 
 ### Added — Tank climate control, vergistingsschema & cold-crash op Dashboard
