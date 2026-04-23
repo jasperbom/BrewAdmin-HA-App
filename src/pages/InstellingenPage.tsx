@@ -533,12 +533,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
   const navItems = [
     {id:'brouwerij',     label:t('settings_brewery'),      icon:'🏭'},
+    {id:'bedrijf',       label:t('settings_bedrijf'),      icon:'🏢'},
+    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
     {id:'koppelingen',   label:t('settings_koppelingen'),  icon:'🔗'},
     {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
-    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
-    {id:'ingredienten',  label:'Ingrediënten',             icon:'🌾'},
-    {id:'kostensoorten', label:t('settings_kosten_soorten_title'), icon:'📊'},
-    {id:'gncodes',       label:t('settings_gn_codes_title'), icon:'📦'},
+    {id:'categorieen',   label:t('settings_categorieen'),  icon:'🗂'},
     {id:'taken',         label:t('settings_batch_taken'),  icon:'📋'},
     {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
@@ -716,8 +715,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
-      {/* BEDRIJFSGEGEVENS (factuur) — onderdeel van brouwerij */}
-      {activeSection==='brouwerij' && <>
+      {/* BEDRIJF: bedrijfsgegevens, factuur-logo, factuur-velden, verzendkosten, factuurbijlagen */}
+      {activeSection==='bedrijf' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_company')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_company_desc')}</p>
@@ -1692,8 +1691,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
-      {/* INGREDIËNTEN TYPES */}
-      {activeSection==='ingredienten' && (
+      {/* CATEGORIEËN: ingrediënttypen */}
+      {activeSection==='categorieen' && (
         <div className={card}>
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ingredient_types_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_ingredient_types_desc')}</p>
@@ -1734,8 +1733,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       )}
 
-      {/* KOSTENSOORTEN */}
-      {activeSection==='kostensoorten' && (
+      {/* CATEGORIEËN: kostensoorten */}
+      {activeSection==='categorieen' && (
         <div className={card}>
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_kosten_soorten_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_kosten_soorten_desc')}</p>
@@ -1765,8 +1764,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       )}
 
-      {/* GN-CODES */}
-      {activeSection==='gncodes' && (
+      {/* FINANCIEEL: GN-codes (accijnscodes) */}
+      {activeSection==='financieel' && (
         <div className="bg-white rounded-xl shadow-card p-6">
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_gn_codes_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_gn_codes_desc')}</p>
@@ -2057,8 +2056,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* APP — automatische back-ups */}
       {activeSection==='app' && <BackupCard />}
 
-      {/* FINANCIEEL — inkoop bijlagen downloaden */}
-      {activeSection==='financieel' && (
+      {/* BEDRIJF — inkoop bijlagen downloaden (invoice admin) */}
+      {activeSection==='bedrijf' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_bijlagen_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_bijlagen_desc')}</p>
@@ -2106,8 +2105,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       )}
 
-      {/* INGREDIENTEN — mutatielog wissen */}
-      {activeSection==='ingredienten' && (
+      {/* CATEGORIEËN — ingrediënten mutatielog wissen */}
+      {activeSection==='categorieen' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_data_log_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">

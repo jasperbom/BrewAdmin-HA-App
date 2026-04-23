@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.96] — 2026-04-23
+
+### Changed — Instellingen-pagina herindeling
+
+De Instellingen-pagina had door recente uitbreidingen 9 tabbladen en een
+paar dubbele `activeSection`-blokken, waardoor sommige kaarten op een
+onlogische plek stonden. Navigatie is teruggebracht naar 8 heldere tabs:
+
+- **🏭 Brouwerij** — branding, tanks, planning-defaults
+- **🏢 Bedrijf** *(nieuw)* — bedrijfsgegevens, factuurlogo,
+  factuurvelden, verzendkosten, inkoop-factuurbijlagen-download
+- **💶 Financieel** — accijns, BTW-periode, BTW-tarieven, AGP,
+  GN-codes (uit eigen tab hierheen)
+- **🔗 Koppelingen** — Brewfather, WooCommerce, Claude AI
+- **🏠 Home Assistant** — sensoren, climate, dimmers, switches,
+  cold-crash
+- **🗂 Categorieën** *(nieuw)* — ingrediënttypen, kostensoorten,
+  mutatielog-opruim (drie losse tabs samengevoegd)
+- **📋 Batch-taken** — ongewijzigd
+- **⚙️ App** — thema, taal, data import/export, backup, audit
+
+Geen dubbele `activeSection`-blokken meer. Geen verwijderde
+functionaliteit — alle kaarten verhuisd naar hun logische tab.
+Nieuwe i18n-sleutels `settings_bedrijf` en `settings_categorieen`
+toegevoegd in alle 5 talen.
+
 ## [1.8.95] — 2026-04-23
 
 ### Added — Tanktijd berekenen uit vergistingsprofiel + conditioneren-basis
