@@ -4,9 +4,10 @@ import { fmt, fmtD } from '../utils/format'
 import { resolveTankHistorie, getNegatieveVoorraadPosities } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
+import { haCallService, haGetState } from '../utils/api'
 import SectionHeader from '../components/ui/SectionHeader'
 
-function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
+function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -14,6 +15,106 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
   const [mForm, setMForm] = useState({sg: '', ph: '', temp: ''});
   const [haccpFormTaakId, setHaccpFormTaakId] = useState<number|null>(null);
   const [haccpForm, setHaccpForm] = useState({uitgevoerd_door: '', opmerking: '', cip: false});
+
+  // ── Climate / cold-crash control per tank ─────────────────────────────────
+  // Live climate-state per entity_id (setpoint, huidig, hvac mode). Wordt
+  // ververst elke 60s tegelijk met haTankTemps; lokaal gecachet zodat de
+  // inputs stabiel blijven tussen refreshes.
+  const [climateStates, setClimateStates] = useState<Record<string, {state: string, temperature?: number, current?: number, hvac_modes?: string[]}>>({});
+  const [climateBusy, setClimateBusy] = useState<Record<string, boolean>>({});
+  const [climateMsg,  setClimateMsg]  = useState<Record<string, string>>({});
+
+  const climatesEnabled = !!haInst?.climates_enabled;
+  const climateForTank = (tankId: string) => {
+    if (!climatesEnabled) return null;
+    const list: any[] = haInst?.climates || [];
+    return list.find((c: any) => c.tank === tankId && c.entity) || null;
+  };
+
+  const refreshClimate = React.useCallback(async (entity: string) => {
+    try {
+      const d: any = await haGetState(entity);
+      const a = d.attributes || {};
+      setClimateStates((s: any) => ({...s, [entity]: {
+        state: d.state,
+        temperature: a.temperature,
+        current: a.current_temperature,
+        hvac_modes: a.hvac_modes || [],
+      }}));
+    } catch { /* silent */ }
+  }, []);
+
+  React.useEffect(() => {
+    if (!climatesEnabled) return;
+    const climates: any[] = haInst?.climates || [];
+    const entities = climates.map((c: any) => c.entity).filter(Boolean);
+    if (!entities.length) return;
+    entities.forEach(refreshClimate);
+    const id = setInterval(() => entities.forEach(refreshClimate), 60 * 1000);
+    return () => clearInterval(id);
+  }, [climatesEnabled, haInst?.climates, refreshClimate]);
+
+  const setClimateTemp = async (entity: string, temperature: number) => {
+    setClimateBusy((b: any) => ({...b, [entity]: true}));
+    try {
+      await haCallService('climate', 'set_temperature', {entity_id: entity, temperature});
+      setClimateMsg((m: any) => ({...m, [entity]: `✓ ${temperature}°C`}));
+      refreshClimate(entity);
+    } catch (e: any) {
+      setClimateMsg((m: any) => ({...m, [entity]: `⚠ ${e.message}`}));
+    }
+    setClimateBusy((b: any) => ({...b, [entity]: false}));
+    setTimeout(() => setClimateMsg((m: any) => ({...m, [entity]: ''})), 3000);
+  };
+
+  const setClimateHvac = async (entity: string, hvac_mode: string) => {
+    try {
+      await haCallService('climate', 'set_hvac_mode', {entity_id: entity, hvac_mode});
+      refreshClimate(entity);
+    } catch { /* silent */ }
+  };
+
+  // Vergistingsprofiel: tijd/temp/ramp helpers
+  const stapElapsedDays = (batch: any): number => {
+    const start = batch?.vergisting_stap_start || batch?.datum;
+    if (!start) return 0;
+    return (Date.now() - new Date(start).getTime()) / dayMs;
+  };
+
+  const gaNaarStap = (batch: any, nieuweIdx: number, climate: any) => {
+    const profiel = batch?.vergistingsprofiel || [];
+    if (nieuweIdx < 0 || nieuweIdx >= profiel.length) return;
+    const stap = profiel[nieuweIdx];
+    const nowIso = new Date().toISOString();
+    setBat((prev: any[]) => prev.map((b: any) => b.id === batch.id
+      ? {...b, vergisting_stap_idx: nieuweIdx, vergisting_stap_start: nowIso}
+      : b
+    ));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd', omschrijving: `Vergistingsstap → ${nieuweIdx+1}: ${stap.type||''} ${stap.temp}°C`});
+    // Push nieuwe setpoint naar climate (indien gekoppeld en auto_setpoint aan,
+    // of sowieso — we laten de gebruiker hier expliciet door klikken).
+    if (climate?.entity && stap.temp !== '' && stap.temp != null) {
+      const tempNum = Number(stap.temp);
+      if (!isNaN(tempNum)) setClimateTemp(climate.entity, tempNum);
+    }
+  };
+
+  const startColdCrash = (batch: any, climate: any) => {
+    if (!coldcrashInst?.enabled) {
+      if (!confirm(t('dashboard_coldcrash_confirm_off'))) return;
+    } else if (!confirm(t('dashboard_coldcrash_confirm').replace('{t}', String(coldcrashInst.target_temp)))) {
+      return;
+    }
+    const target = Number(coldcrashInst?.target_temp ?? 2);
+    const ramp   = Number(coldcrashInst?.ramp_per_uur ?? 1);
+    const nowIso = new Date().toISOString();
+    setBat((prev: any[]) => prev.map((b: any) => b.id === batch.id
+      ? {...b, status: 'Conditioneren', cold_crash_datum: nowIso, cold_crash_target: target, cold_crash_ramp: ramp}
+      : b
+    ));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd', omschrijving: `Cold-crash gestart → ${target}°C (${ramp}°C/u), status → Conditioneren`});
+    if (climate?.entity) setClimateTemp(climate.entity, target);
+  };
 
   // ── Lot expiry ────────────────────────────────────────────────────────────
   const activeLots   = lots.filter((l: any) => l.beschikbaar && Number(l.hoeveelheid||0) > 0);
@@ -885,6 +986,135 @@ function DashboardPage({ing, lots, bat, bi, uit, acc, av=[], setPage, tanks, gis
                     )}
                   </div>
                 </div>
+
+                {/* ── Climate control + vergistingsschema + cold-crash ── */}
+                {batch && climateForTank(tk.id) && (() => {
+                  const climate = climateForTank(tk.id);
+                  const cState  = climateStates[climate.entity];
+                  const profiel = batch.vergistingsprofiel || [];
+                  const stapIdx = Math.max(0, Math.min(profiel.length - 1, Number(batch.vergisting_stap_idx ?? 0)));
+                  const huidigeStap = profiel[stapIdx];
+                  const elapsedD = stapElapsedDays(batch);
+                  const plannedD = huidigeStap ? Number(huidigeStap.tijd || 0) : 0;
+                  const remainD  = plannedD > 0 ? Math.max(0, plannedD - elapsedD) : null;
+                  const hasNext  = stapIdx + 1 < profiel.length;
+                  const hasPrev  = stapIdx > 0;
+                  return (
+                    <div className="mt-3 border-t border-gray-100 pt-3 space-y-2" onClick={(e: any) => e.stopPropagation()}>
+                      {/* Climate control */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          {t('dashboard_climate')}
+                        </div>
+                        {cState && (
+                          <span className="text-xs text-gray-500">
+                            {cState.current != null && <>{t('settings_ha_current')}: <strong className="text-gray-700">{cState.current}°C</strong></>}
+                            {cState.state && <> · <span className="text-gray-400">{cState.state}</span></>}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <label className="text-xs text-gray-500">{t('settings_ha_setpoint')}:</label>
+                        <input type="number" step="0.5"
+                          defaultValue={cState?.temperature ?? ''}
+                          key={`${climate.entity}:${cState?.temperature ?? ''}`}
+                          onBlur={(e: any) => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v)) setClimateTemp(climate.entity, v);
+                          }}
+                          className="border border-gray-300 rounded px-2 py-1 text-xs w-16 t-input"
+                          disabled={!!climateBusy[climate.entity]} />
+                        <span className="text-xs text-gray-400">°C</span>
+                        {(cState?.hvac_modes || []).length > 0 && (
+                          <select value={cState?.state || ''}
+                            onChange={(e: any) => setClimateHvac(climate.entity, e.target.value)}
+                            className="border border-gray-300 rounded px-1 py-0.5 text-xs t-input bg-white">
+                            {(cState?.hvac_modes || []).map((m: string) => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        )}
+                        {climateMsg[climate.entity] && (
+                          <span className={`text-xs font-medium ${climateMsg[climate.entity].startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                            {climateMsg[climate.entity]}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Vergistingsschema */}
+                      {profiel.length > 0 && (
+                        <div className="pt-2 border-t border-gray-100">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                              {t('dashboard_ferm_schedule')}
+                            </div>
+                            <span className="text-xs text-gray-400">{stapIdx+1} / {profiel.length}</span>
+                          </div>
+                          <ul className="space-y-0.5 mb-1.5">
+                            {profiel.map((s: any, i: number) => {
+                              const isCurrent = i === stapIdx;
+                              const done = i < stapIdx;
+                              return (
+                                <li key={i} className={`flex items-center justify-between text-xs rounded px-1.5 py-0.5 ${isCurrent ? 't-panel font-semibold' : done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                                  <span className="truncate">{i+1}. {s.type || t('lbl_stap')} {s.temp!=='' && s.temp!=null ? `· ${s.temp}°C` : ''}</span>
+                                  <span className="text-gray-400 flex-shrink-0 ml-2">{s.tijd ? `${s.tijd}d` : ''}{s.ramp ? ` (${s.ramp}u)` : ''}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          {huidigeStap && plannedD > 0 && (
+                            <div className="text-xs text-gray-500 mb-1.5">
+                              {t('dashboard_elapsed').replace('{d}', elapsedD.toFixed(1))}
+                              {' · '}
+                              {remainD != null && remainD > 0
+                                ? t('dashboard_remaining').replace('{d}', remainD.toFixed(1))
+                                : <span className="text-orange-600 font-medium">{t('dashboard_step_overdue')}</span>}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <select value={stapIdx}
+                              onChange={(e: any) => gaNaarStap(batch, Number(e.target.value), climate)}
+                              className="border border-gray-300 rounded px-1 py-0.5 text-xs t-input bg-white flex-1 min-w-0">
+                              {profiel.map((s: any, i: number) => (
+                                <option key={i} value={i}>
+                                  {i+1}. {s.type || t('lbl_stap')} {s.temp!=='' && s.temp!=null ? `${s.temp}°C` : ''}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => gaNaarStap(batch, stapIdx - 1, climate)}
+                              disabled={!hasPrev}
+                              className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                              ◀
+                            </button>
+                            <button
+                              onClick={() => gaNaarStap(batch, stapIdx + 1, climate)}
+                              disabled={!hasNext}
+                              className="text-xs px-1.5 py-0.5 rounded tbtn text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                              {t('dashboard_next_step')} ▶
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cold-crash button */}
+                      <div className="pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => startColdCrash(batch, climate)}
+                          disabled={batch.status === 'Gesloten'}
+                          className="text-xs font-medium px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                          ❄ {t('dashboard_coldcrash_btn')}
+                        </button>
+                        {coldcrashInst?.enabled && (
+                          <span className="text-xs text-gray-500">
+                            → {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}
+                          </span>
+                        )}
+                        {batch.cold_crash_datum && (
+                          <span className="text-xs text-gray-400">{fmtD(batch.cold_crash_datum)}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* SG voortgang */}
                 {batch && (sgPct !== null || latestM) && (

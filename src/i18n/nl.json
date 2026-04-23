@@ -1683,5 +1683,21 @@
   "btn_switch_toevoegen": "+ Switch toevoegen",
   "lbl_ingeschakeld": "Ingeschakeld",
   "opt_select": "— selecteer —",
-  "opt_none": "— geen —"
+  "opt_none": "— geen —",
+  "settings_coldcrash_title": "❄ Cold-crash preset",
+  "settings_coldcrash_desc": "Wanneer je op het Dashboard bij een tank op de cold-crash knop drukt, wordt het gekoppelde climate-apparaat naar onderstaande doeltemperatuur gezet en krijgt de batch de status 'Conditioneren'. De ramp-snelheid is een referentie die op de tankkaart getoond wordt.",
+  "settings_coldcrash_target": "Doeltemperatuur",
+  "settings_coldcrash_ramp": "Ramp-snelheid",
+  "settings_coldcrash_hint": "Tip: typische waarden zijn 1–4°C doeltemp en 0.5–2°C/uur. Een te snelle crash kan gistcellen beschadigen en een volgende generatie aantasten.",
+  "dashboard_climate": "Klimaat",
+  "dashboard_ferm_schedule": "Vergistingsschema",
+  "dashboard_next_step": "Volgende",
+  "dashboard_elapsed": "Verstreken: {d} d",
+  "dashboard_remaining": "resterend: {d} d",
+  "dashboard_step_overdue": "gepland verlopen",
+  "dashboard_coldcrash_btn": "Cold-crash",
+  "dashboard_coldcrash_confirm": "Cold-crash starten naar {t}°C en batch op status Conditioneren zetten?",
+  "dashboard_coldcrash_confirm_off": "Cold-crash preset is niet ingeschakeld in Instellingen. Toch doorgaan met standaardwaarden?",
+  "lbl_stap": "Stap",
+  "lbl_uur": "uur"
 }

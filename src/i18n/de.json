@@ -1477,5 +1477,21 @@
   "btn_switch_toevoegen": "+ Schalter hinzufügen",
   "lbl_ingeschakeld": "Aktiviert",
   "opt_select": "— auswählen —",
-  "opt_none": "— keine —"
+  "opt_none": "— keine —",
+  "settings_coldcrash_title": "❄ Cold-Crash-Preset",
+  "settings_coldcrash_desc": "Wenn du im Dashboard den Cold-Crash-Button bei einem Tank drückst, wird das verknüpfte Klimagerät auf die untenstehende Zieltemperatur gesetzt und die Charge wechselt auf Status 'Reifung'. Die Rampenrate ist ein Referenzwert, der auf der Tankkarte angezeigt wird.",
+  "settings_coldcrash_target": "Zieltemperatur",
+  "settings_coldcrash_ramp": "Rampenrate",
+  "settings_coldcrash_hint": "Tipp: typische Werte sind 1–4°C Ziel und 0.5–2°C/Stunde. Zu schnelles Abkühlen kann Hefezellen schädigen und die nächste Generation beeinträchtigen.",
+  "dashboard_climate": "Klima",
+  "dashboard_ferm_schedule": "Gärplan",
+  "dashboard_next_step": "Weiter",
+  "dashboard_elapsed": "Vergangen: {d} T",
+  "dashboard_remaining": "verbleibend: {d} T",
+  "dashboard_step_overdue": "überfällig",
+  "dashboard_coldcrash_btn": "Cold-Crash",
+  "dashboard_coldcrash_confirm": "Cold-Crash auf {t}°C starten und Charge auf Reifung setzen?",
+  "dashboard_coldcrash_confirm_off": "Cold-Crash-Preset ist in den Einstellungen nicht aktiviert. Trotzdem mit Standardwerten fortfahren?",
+  "lbl_stap": "Schritt",
+  "lbl_uur": "Std"
 }
