@@ -1683,5 +1683,12 @@
   "dashboard_coldcrash_confirm": "¿Iniciar cold-crash a {t}°C y mover el lote a Maduración?",
   "dashboard_coldcrash_confirm_off": "El preajuste cold-crash no está activado en Ajustes. ¿Continuar con los valores por defecto?",
   "lbl_stap": "Paso",
-  "lbl_uur": "h"
+  "lbl_uur": "h",
+  "lbl_dagen": "días",
+  "settings_planning_title": "📅 Valores por defecto de planificación",
+  "settings_planning_desc": "Valores base usados al pulsar el botón 🔢 Calcular junto al tiempo en tanque en Planificación o Info del lote. El tiempo en tanque se establece entonces a suma(perfil_fermentación.días) + días de maduración.",
+  "settings_planning_conditioneren": "Duración de maduración",
+  "settings_planning_hint": "Siempre puedes sobrescribir el valor calculado por lote escribiendo otro número en el campo.",
+  "plan_tanktijd_bereken": "Calcular",
+  "plan_tanktijd_tooltip": "Tiempo en tanque = fermentación + maduración"
 }

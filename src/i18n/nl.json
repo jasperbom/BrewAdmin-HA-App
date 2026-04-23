@@ -1699,5 +1699,12 @@
   "dashboard_coldcrash_confirm": "Cold-crash starten naar {t}°C en batch op status Conditioneren zetten?",
   "dashboard_coldcrash_confirm_off": "Cold-crash preset is niet ingeschakeld in Instellingen. Toch doorgaan met standaardwaarden?",
   "lbl_stap": "Stap",
-  "lbl_uur": "uur"
+  "lbl_uur": "uur",
+  "lbl_dagen": "dagen",
+  "settings_planning_title": "📅 Planning-defaults",
+  "settings_planning_desc": "Basiswaarden die gebruikt worden wanneer je in Planning of Batch-info op de 🔢 Bereken-knop drukt naast de tanktijd. De tanktijd wordt dan gezet op som(vergistingsprofiel.dagen) + conditioneren-dagen.",
+  "settings_planning_conditioneren": "Conditioneren-duur",
+  "settings_planning_hint": "De berekende waarde kun je per batch altijd overschrijven door in het invoerveld een andere waarde te typen.",
+  "plan_tanktijd_bereken": "Bereken",
+  "plan_tanktijd_tooltip": "Tanktijd = vergisting + conditioneren"
 }

@@ -762,6 +762,13 @@ export interface ColdcrashInst {
   ramp_per_uur: number    // °C per uur daling (typisch 0.5–2)
 }
 
+// Globale planning-defaults. `conditioneren_dagen` wordt opgeteld bij de som
+// van de vergistingsstappen wanneer de gebruiker in Planning/BatchInfo op
+// "Bereken" klikt om tanktijd te vullen.
+export interface PlanningInst {
+  conditioneren_dagen: number
+}
+
 // 'intern_gebruik' is verhuisd naar Uitlevering (type_uitlevering = 'intern'),
 // omdat het daadwerkelijk een AGP-exit is waarvoor accijns verschuldigd is.
 export type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
