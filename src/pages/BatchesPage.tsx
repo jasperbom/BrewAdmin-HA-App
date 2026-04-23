@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV } from '../utils/calculations'
-import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
+import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -35,10 +35,8 @@ interface BatchesPageProps {
   bfSync?: () => void
   tanks?: any[]
   accijnsInst?: any
-  hygieneItems?: any[]
-  hygieneGroups?: any[]
-  brouwdagChecklist?: any[]
-  botteldagChecklist?: any[]
+  batchTakenItems?: any[]
+  batchTakenGroepen?: any[]
   wcCreds?: any
   artikelen?: any[]
   producten?: any[]
@@ -55,7 +53,6 @@ interface BatchesPageProps {
   haTankTemps?: Record<string, number>
   acc?: any[]
   openBatchId?: number | null
-  ccpDefinities?: any[]
   ccpMetingen?: any[]
   setCcpMetingen?: any
   capa?: any[]
@@ -436,7 +433,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
   log, setLog, bfCreds, bfSync, tanks, accijnsInst,
-  hygieneItems, hygieneGroups, brouwdagChecklist, botteldagChecklist, wcCreds, artikelen, producten=[], setProducten=()=>{}, productArtikelen=[], setProductArtikelen=()=>{},
+  batchTakenItems=[], batchTakenGroepen=[], wcCreds, artikelen, producten=[], setProducten=()=>{}, productArtikelen=[], setProductArtikelen=()=>{},
   gistMetingen=[], setGistMetingen=()=>{},
   carbSessies=[], setCarbSessies=()=>{},
   verliesRegistraties=[], setVerliesRegistraties=()=>{},
@@ -446,7 +443,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   openBatchId=null,
   preNieuwBatch=null, setPreNieuwBatch=()=>{},
   auditLog=[], setAuditLog=()=>{},
-  ccpDefinities=[], ccpMetingen=[], setCcpMetingen=()=>{},
+  ccpMetingen=[], setCcpMetingen=()=>{},
   capa=[], setCapa=()=>{}
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
@@ -492,10 +489,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [haSyncing, setHaSyncing] = useState(false)
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
-  const [hygieneIngeklapt, setHygieneIngeklapt] = useStore('batches_hygiene_ingeklapt', true)
-  const [brouwdagIngeklapt, setBrouwdagIngeklapt] = useStore('batches_brouwdag_ingeklapt', true)
-  const [botteldagIngeklapt, setBotteldagIngeklapt] = useStore('batches_botteldag_ingeklapt', true)
-  const [ccpIngeklapt, setCcpIngeklapt] = useStore('batches_ccp_ingeklapt', true)
+  const [takenIngeklapt, setTakenIngeklapt] = useStore('batches_taken_ingeklapt', true)
+  const [takenGroepIngeklapt, setTakenGroepIngeklapt] = useStore('batches_taken_groep_ingeklapt', {} as Record<string, boolean>)
   const [ccpMetingForm, setCcpMetingForm] = useState<any>(null)
   const [metingLogIngeklapt, setMetingLogIngeklapt] = useStore('batches_meting_log_ingeklapt', true)
   const [logIngeklapt, setLogIngeklapt] = useStore('batches_log_ingeklapt', true)
@@ -658,28 +653,29 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       html += `</table>`
     }
 
-    const hItems = hygieneItems?.length ? hygieneItems : DEFAULT_HYGIENE_ITEMS
-    const hGroups = hygieneGroups?.length ? hygieneGroups : DEFAULT_HYGIENE_GROUPS
-    const checks = b.hygiene_checks || {}
-    if (hItems.length > 0) {
-      html += `<h2>Hygiëne checklist</h2>`
-      const groepen = [...hGroups].sort((ga: any, gb: any) => ga.volgorde - gb.volgorde)
+    const allItems = (batchTakenItems?.length ? batchTakenItems : DEFAULT_BATCH_TAKEN_ITEMS).filter((it: any) => it.actief !== false && it.type === 'check')
+    const allGroepen = batchTakenGroepen?.length ? batchTakenGroepen : DEFAULT_BATCH_TAKEN_GROEPEN
+    const checks = b.taken_checks || {}
+    const itemLabelExport = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '')
+    if (allItems.length > 0) {
+      html += `<h2>${t('batch_taken_title')}</h2>`
+      const groepen = [...allGroepen].sort((ga: any, gb: any) => (ga.volgorde||0) - (gb.volgorde||0))
       groepen.forEach((g: any) => {
-        const gItems = hItems.filter((hi: any) => hi.group_id === g.id).sort((ha: any, hb: any) => ha.volgorde - hb.volgorde)
+        const gItems = allItems.filter((hi: any) => hi.group_id === g.id).sort((ha: any, hb: any) => (ha.volgorde||0) - (hb.volgorde||0))
         if (!gItems.length) return
         html += `<p style="font-size:8pt;font-weight:bold;color:#555;text-transform:uppercase;margin:3mm 0 1mm">${g.naam}</p><table><tbody>`
         gItems.forEach((item: any) => {
           const checked = !!checks[item.id]
-          html += `<tr><td style="width:6mm;color:${checked?'#059669':'#9ca3af'}">${checked?'✓':'□'}</td><td style="color:${checked?'#6b7280':'#222'};${checked?'text-decoration:line-through':''}">${item.label}</td></tr>`
+          html += `<tr><td style="width:6mm;color:${checked?'#059669':'#9ca3af'}">${checked?'✓':'□'}</td><td style="color:${checked?'#6b7280':'#222'};${checked?'text-decoration:line-through':''}">${itemLabelExport(item)}</td></tr>`
         })
         html += `</tbody></table>`
       })
-      const ungrouped = hItems.filter((hi: any) => !hi.group_id)
+      const ungrouped = allItems.filter((hi: any) => !hi.group_id)
       if (ungrouped.length) {
         html += `<table><tbody>`
         ungrouped.forEach((item: any) => {
           const checked = !!checks[item.id]
-          html += `<tr><td style="width:6mm;color:${checked?'#059669':'#9ca3af'}">${checked?'✓':'□'}</td><td style="color:${checked?'#6b7280':'#222'};${checked?'text-decoration:line-through':''}">${item.label}</td></tr>`
+          html += `<tr><td style="width:6mm;color:${checked?'#059669':'#9ca3af'}">${checked?'✓':'□'}</td><td style="color:${checked?'#6b7280':'#222'};${checked?'text-decoration:line-through':''}">${itemLabelExport(item)}</td></tr>`
         })
         html += `</tbody></table>`
       }
@@ -1885,76 +1881,171 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
 
-            {/* Hygiene checklist */}
+            {/* Unified batch-takensysteem (hygiëne + brouwdag + botteldag + CCP) */}
             {(() => {
-              const items = hygieneItems && hygieneItems.length ? hygieneItems : DEFAULT_HYGIENE_ITEMS
-              const groups = hygieneGroups && hygieneGroups.length ? hygieneGroups : DEFAULT_HYGIENE_GROUPS
-              const checks = selB.hygiene_checks || {}
-              const totaal = items.length
-              const gedaan = items.filter((i: any) => checks[i.id]).length
-              const alleOk = totaal > 0 && gedaan === totaal
+              const items = (batchTakenItems?.length ? batchTakenItems : DEFAULT_BATCH_TAKEN_ITEMS).filter((it: any) => it.actief !== false)
+              const groups = batchTakenGroepen?.length ? batchTakenGroepen : DEFAULT_BATCH_TAKEN_GROEPEN
+              const checks = selB.taken_checks || {}
+              const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '')
+              const checkItems = items.filter((it: any) => it.type === 'check')
+              const metingItems = items.filter((it: any) => it.type === 'meting')
+              const totaalChecks = checkItems.length
+              const gedaanChecks = checkItems.filter((i: any) => checks[i.id]).length
+              const alleChecksOk = totaalChecks > 0 && gedaanChecks === totaalChecks
+              const batchMetingen = (ccpMetingen||[]).filter((m: any)=>m.batch_id===selB.id).sort((a: any,b: any)=>(b.datum||'').localeCompare(a.datum||''))
+              const afwijkingen = batchMetingen.filter((m: any)=>!m.binnen_limiet).length
+              const checkLimiet = (it: any, waarde: number) => {
+                if(it.grens_min!=null && waarde < it.grens_min) return false
+                if(it.grens_max!=null && waarde > it.grens_max) return false
+                return true
+              }
               const toggleCheck = (itemId: any) => {
                 const wordtAangevinkt = !checks[itemId]
                 const nieuweChecks = {...checks, [itemId]: wordtAangevinkt}
-                setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, hygiene_checks: nieuweChecks} : b))
+                setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, taken_checks: nieuweChecks} : b))
                 const item = items.find((i: any) => i.id===itemId)
                 const groep = item?.group_id ? groups.find((g: any) => g.id===item.group_id) : null
-                const label = groep ? `${groep.naam} — ${item?.label}` : item?.label||`item ${itemId}`
+                const label = groep ? `${groep.naam} — ${itemLabel(item)}` : itemLabel(item)||`item ${itemId}`
                 addLog({type:'hygiene', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
-                logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Hygiëne ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
+                logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Taken ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
               }
-              const ungrouped = items.filter((i: any) => !i.group_id)
-              const gegroepeerd = groups.map((g: any) => ({
+              const saveTaakMeting = () => {
+                if(!ccpMetingForm?.taak_id || ccpMetingForm.waarde==='' || ccpMetingForm.waarde==null) return
+                const taak = metingItems.find((d: any)=>d.id===ccpMetingForm.taak_id)
+                const binnen = taak ? checkLimiet(taak, Number(ccpMetingForm.waarde)) : true
+                const id = newId(ccpMetingen||[])
+                const meting = {id, taak_id:ccpMetingForm.taak_id, ccp_id:ccpMetingForm.taak_id, batch_id:selB.id, datum:ccpMetingForm.datum||tod(), waarde:Number(ccpMetingForm.waarde), eenheid:taak?.eenheid, binnen_limiet:binnen, uitgevoerd_door:ccpMetingForm.uitgevoerd_door||'', opmerking:ccpMetingForm.opmerking||''}
+                setCcpMetingen((prev: any[])=>[...prev, meting])
+                const naam = taak ? itemLabel(taak) : '?'
+                addLog({type:'ccp', batch_id:selB.id, referentie:`${naam}: ${ccpMetingForm.waarde} ${taak?.eenheid||''} ${binnen?'OK':'AFWIJKING'}`})
+                logAudit(auditLog, setAuditLog, {entiteit:'CCPMeting', entiteit_id:id, actie:'aangemaakt', omschrijving:`${naam}: ${ccpMetingForm.waarde} ${taak?.eenheid||''} ${binnen?'OK':'AFWIJKING'}`})
+                if(!binnen && taak) {
+                  const capaId = newId(capa||[])
+                  setCapa((prev: any[])=>[...prev, {id:capaId, datum:tod(), omschrijving:`${naam} = ${ccpMetingForm.waarde} ${taak.eenheid||''} (${taak.kritische_grens||''})`, oorzaak:'', actie:taak.corrigerende_actie||'', verantwoordelijke:ccpMetingForm.uitgevoerd_door||'', status:'open', batch_id:selB.id, ccp_meting_id:id}])
+                  logAudit(auditLog, setAuditLog, {entiteit:'CAPA', entiteit_id:capaId, actie:'aangemaakt', omschrijving:t('haccp_ccp_afwijking_capa')})
+                }
+                setCcpMetingForm(null)
+              }
+              const resetChecks = () => {
+                setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b, taken_checks:{}}:b));
+                addLog({type:'taken', batch_id:selB.id, referentie:'Taken-checklist gereset'});
+                logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:'Batch-taken gereset'})
+              }
+              // Groepering: zichtbare groepen in volgorde, met hun items
+              const gegroepeerd = [...groups].sort((a: any, b: any) => (a.volgorde||0) - (b.volgorde||0)).map((g: any) => ({
                 group: g,
-                items: items.filter((i: any) => i.group_id === g.id),
+                items: items.filter((i: any) => i.group_id === g.id).sort((a: any, b: any) => (a.volgorde||0) - (b.volgorde||0)),
               })).filter((g: any) => g.items.length > 0)
+              const ungrouped = items.filter((i: any) => !i.group_id).sort((a: any, b: any) => (a.volgorde||0) - (b.volgorde||0))
+
+              const info = [
+                totaalChecks > 0 ? `${gedaanChecks}/${totaalChecks}` : null,
+                batchMetingen.length > 0 ? `${batchMetingen.length} ${t('haccp_ccp_meting_plural')}` : null,
+                afwijkingen > 0 ? `${afwijkingen} ${t('haccp_ccp_afwijkingen_short')}` : null,
+              ].filter(Boolean).join(' · ') || t('batch_taken_empty_short')
+
+              const renderGroepItems = (gItems: any[], _groupKey: string) => {
+                return (
+                  <>
+                    {gItems.map((item: any, idx: number) => {
+                      if (item.type === 'meting') {
+                        const latest = batchMetingen.find((m: any) => (m.taak_id ?? m.ccp_id) === item.id)
+                        const isAfwijking = latest && !latest.binnen_limiet
+                        const formActive = ccpMetingForm?.taak_id === item.id
+                        return (
+                          <div key={item.id} className={`rounded border ${isAfwijking ? 'border-red-200 bg-red-50' : latest ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                            <div className="flex items-center gap-2 px-2 py-1.5">
+                              <span className="text-xs text-gray-400 w-5 flex-shrink-0">{idx+1}.</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm text-gray-700 truncate">{itemLabel(item)}{item.kritische_grens ? <span className="ml-1 text-xs text-gray-400">({item.kritische_grens})</span> : null}</div>
+                                {latest && (
+                                  <div className="text-xs mt-0.5">
+                                    <span className="font-mono">{latest.waarde} {latest.eenheid||item.eenheid||''}</span>
+                                    <span className={`ml-2 px-1.5 py-0.5 rounded ${latest.binnen_limiet?'bg-green-200 text-green-800':'bg-red-200 text-red-800'}`}>
+                                      {latest.binnen_limiet ? 'OK' : t('haccp_ccp_buiten_limiet')}
+                                    </span>
+                                    <span className="ml-2 text-gray-500">{fmtD(latest.datum)}{latest.uitgevoerd_door?` · ${latest.uitgevoerd_door}`:''}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <button onClick={()=>setCcpMetingForm(formActive ? null : {taak_id:item.id, datum:tod(), waarde:'', uitgevoerd_door:'', opmerking:''})}
+                                className="text-xs font-medium px-2 py-1 rounded tbtn text-white flex-shrink-0">
+                                {formActive ? t('btn_cancel') : t('haccp_ccp_meting_nieuw')}
+                              </button>
+                            </div>
+                            {formActive && (
+                              <div className="bg-gray-50 rounded-b p-2 space-y-2 border-t">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <Inp label={t('haccp_ccp_waarde')} type="number" value={ccpMetingForm.waarde??''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, waarde:v})} />
+                                  <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum||tod()} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, datum:v})} />
+                                </div>
+                                <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door||''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, uitgevoerd_door:v})} />
+                                <div className="flex gap-2 justify-end">
+                                  <Btn s="sm" onClick={saveTaakMeting}>{t('btn_save')}</Btn>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+                      return (
+                        <label key={item.id} className="flex items-start gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
+                          <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
+                            className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
+                          <span className="text-xs text-gray-400 w-5 flex-shrink-0 mt-0.5">{idx+1}.</span>
+                          <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{itemLabel(item)}</span>
+                          {checks[item.id] && <span className="ml-auto text-teal-500 text-xs mt-0.5">✓</span>}
+                        </label>
+                      )
+                    })}
+                  </>
+                )
+              }
+
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-hidden">
                   <SectionHeader
-                    open={!hygieneIngeklapt}
-                    onToggle={()=>setHygieneIngeklapt((p: any)=>!p)}
-                    rounded={hygieneIngeklapt ? 'full' : 'top'}
-                    title={t('batch_hygiene_title')}
-                    info={totaal===0 ? t('batch_hygiene_no_items_short') : `${gedaan}/${totaal}`}
+                    open={!takenIngeklapt}
+                    onToggle={()=>setTakenIngeklapt((p: any)=>!p)}
+                    rounded={takenIngeklapt ? 'full' : 'top'}
+                    title={t('batch_taken_title')}
+                    info={info}
                   />
-                  {!hygieneIngeklapt && (
+                  {!takenIngeklapt && (
                     <div className="p-3 space-y-3">
-                      {totaal === 0 && <p className="text-sm text-gray-400 italic">{t('batch_hygiene_no_items')}</p>}
-                      {gegroepeerd.map(({group, items:gItems}: any) => (
-                        <div key={group.id}>
-                          <div className="text-xs font-semibold text-teal-700 uppercase tracking-wide mb-1.5 pb-1 border-b border-teal-100">{group.naam}</div>
-                          <div className="space-y-0.5">
-                            {gItems.map((item: any) => (
-                              <label key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
-                                <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
-                                  className="w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
-                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item.label}</span>
-                                {checks[item.id] && <span className="ml-auto text-teal-500 text-xs">✓</span>}
-                              </label>
-                            ))}
+                      {items.length === 0 && <p className="text-sm text-gray-400 italic">{t('batch_taken_empty')}</p>}
+                      {gegroepeerd.map(({group, items:gItems}: any) => {
+                        const gKey = `g${group.id}`
+                        const groepOpen = takenGroepIngeklapt[gKey] !== true
+                        const gChecks = gItems.filter((i: any) => i.type === 'check').length
+                        const gDone = gItems.filter((i: any) => i.type === 'check' && checks[i.id]).length
+                        return (
+                          <div key={group.id}>
+                            <button
+                              type="button"
+                              onClick={()=>setTakenGroepIngeklapt((p: any) => ({...p, [gKey]: groepOpen}))}
+                              className="w-full flex items-center gap-2 text-xs font-semibold uppercase tracking-wide mb-1.5 pb-1 border-b border-teal-100"
+                              style={{color:'var(--t-accent)'}}
+                            >
+                              <span className={`inline-block transition-transform ${groepOpen ? 'rotate-90' : ''}`}>▶</span>
+                              <span>{group.naam}</span>
+                              {gChecks > 0 && <span className="ml-auto text-gray-400 normal-case tracking-normal font-normal">{gDone}/{gChecks}</span>}
+                            </button>
+                            {groepOpen && <div className="space-y-0.5 mb-2">{renderGroepItems(gItems, gKey)}</div>}
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                       {ungrouped.length > 0 && (
                         <div>
                           {gegroepeerd.length > 0 && <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5 pb-1 border-b border-gray-100">{t('lbl_other')}</div>}
-                          <div className="space-y-0.5">
-                            {ungrouped.map((item: any) => (
-                              <label key={item.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
-                                <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
-                                  className="w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
-                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item.label}</span>
-                                {checks[item.id] && <span className="ml-auto text-teal-500 text-xs">✓</span>}
-                              </label>
-                            ))}
-                          </div>
+                          <div className="space-y-0.5">{renderGroepItems(ungrouped, 'ungrouped')}</div>
                         </div>
                       )}
-                      {totaal > 0 && (
-                        <div className={`text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-                          {alleOk ? '✅ ' + t('hygiene_all_checked') : `${gedaan} ${t('hygiene_of')} ${totaal} ${t('hygiene_checked')}`}
-                          {gedaan>0 && !alleOk && (
-                            <button onClick={()=>{setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b,hygiene_checks:{}}:b)); addLog({type:'hygiene', batch_id:selB.id, referentie:'Checklist gereset'}); logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:'Hygiëne checklist gereset'})}}
+                      {totaalChecks > 0 && (
+                        <div className={`text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleChecksOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                          {alleChecksOk ? '✅ ' + t('batch_taken_all_checked') : `${gedaanChecks} ${t('hygiene_of')} ${totaalChecks} ${t('hygiene_checked')}`}
+                          {gedaanChecks>0 && !alleChecksOk && (
+                            <button onClick={resetChecks}
                               className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">{t('batch_hygiene_reset')}</button>
                           )}
                         </div>
@@ -1963,145 +2054,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   )}
                 </div>
               )
-            })()}
-
-            {/* S-4: Brouwdag-checklist (aanpasbaar in Instellingen) */}
-            {(() => {
-              const items = (brouwdagChecklist && brouwdagChecklist.length ? brouwdagChecklist : DEFAULT_BROUWDAG_CHECKLIST)
-              const checks = selB.brouwdag_checks || {}
-              const totaal = items.length
-              const gedaan = items.filter((i: any) => checks[i.id]).length
-              const alleOk = totaal > 0 && gedaan === totaal
-              const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '')
-              const toggleCheck = (itemId: number) => {
-                const wordtAangevinkt = !checks[itemId]
-                const nieuweChecks = {...checks, [itemId]: wordtAangevinkt}
-                setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, brouwdag_checks: nieuweChecks} : b))
-                const item = items.find((i: any) => i.id===itemId)
-                const label = item ? itemLabel(item) : `item ${itemId}`
-                addLog({type:'brouwdag', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
-                logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Brouwdag ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
-              }
-              return (
-                <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <SectionHeader
-                    open={!brouwdagIngeklapt}
-                    onToggle={()=>setBrouwdagIngeklapt((p: any)=>!p)}
-                    rounded={brouwdagIngeklapt ? 'full' : 'top'}
-                    title={t('batch_brouwdag_title')}
-                    info={`${gedaan}/${totaal}`}
-                  />
-                  {!brouwdagIngeklapt && (
-                    <div className="p-3 space-y-0.5">
-                      {items.map((item: any, idx: number) => (
-                        <label key={item.id} className="flex items-start gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
-                          <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
-                            className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
-                          <span className="text-xs text-gray-400 w-5 flex-shrink-0 mt-0.5">{idx+1}.</span>
-                          <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{itemLabel(item)}</span>
-                          {checks[item.id] && <span className="ml-auto text-teal-500 text-xs mt-0.5">✓</span>}
-                        </label>
-                      ))}
-                      <div className={`mt-2 text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-                        {alleOk ? '✅ ' + t('brouwdag_all_checked') : `${gedaan} ${t('hygiene_of')} ${totaal} ${t('hygiene_checked')}`}
-                        {gedaan>0 && !alleOk && (
-                          <button onClick={()=>{setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b,brouwdag_checks:{}}:b)); addLog({type:'brouwdag', batch_id:selB.id, referentie:'Brouwdag-checklist gereset'}); logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:'Brouwdag checklist gereset'})}}
-                            className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">{t('batch_hygiene_reset')}</button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-
-            {/* CCP Monitoring per batch */}
-            {(() => {
-              const defs = (ccpDefinities||[]).filter((d: any)=>d.actief!==false)
-              const batchMetingen = (ccpMetingen||[]).filter((m: any)=>m.batch_id===selB.id).sort((a: any,b: any)=>(b.datum||'').localeCompare(a.datum||''))
-              const afwijkingen = batchMetingen.filter((m: any)=>!m.binnen_limiet).length
-              const checkLimiet = (ccp: any, waarde: number) => {
-                if(ccp.grens_min!=null && waarde < ccp.grens_min) return false
-                if(ccp.grens_max!=null && waarde > ccp.grens_max) return false
-                return true
-              }
-              const saveCcpMeting = () => {
-                if(!ccpMetingForm?.ccp_id || ccpMetingForm.waarde==='' || ccpMetingForm.waarde==null) return
-                const ccp = defs.find((d: any)=>d.id===ccpMetingForm.ccp_id)
-                const binnen = ccp ? checkLimiet(ccp, Number(ccpMetingForm.waarde)) : true
-                const id = newId(ccpMetingen||[])
-                const meting = {id, ccp_id:ccpMetingForm.ccp_id, batch_id:selB.id, datum:ccpMetingForm.datum||tod(), waarde:Number(ccpMetingForm.waarde), eenheid:ccp?.eenheid, binnen_limiet:binnen, uitgevoerd_door:ccpMetingForm.uitgevoerd_door||'', opmerking:ccpMetingForm.opmerking||''}
-                setCcpMetingen((prev: any[])=>[...prev, meting])
-                addLog({type:'ccp', batch_id:selB.id, referentie:`CCP ${ccp?.naam}: ${ccpMetingForm.waarde} ${ccp?.eenheid||''} ${binnen?'OK':'AFWIJKING'}`})
-                logAudit(auditLog, setAuditLog, {entiteit:'CCPMeting', entiteit_id:id, actie:'aangemaakt', omschrijving:`${ccp?.naam}: ${ccpMetingForm.waarde} ${ccp?.eenheid||''} ${binnen?'OK':'AFWIJKING'}`})
-                if(!binnen && ccp) {
-                  const capaId = newId(capa||[])
-                  setCapa((prev: any[])=>[...prev, {id:capaId, datum:tod(), omschrijving:`CCP ${ccp.naam} = ${ccpMetingForm.waarde} ${ccp.eenheid||''} (${ccp.kritische_grens})`, oorzaak:'', actie:ccp.corrigerende_actie||'', verantwoordelijke:ccpMetingForm.uitgevoerd_door||'', status:'open', batch_id:selB.id, ccp_meting_id:id}])
-                  logAudit(auditLog, setAuditLog, {entiteit:'CAPA', entiteit_id:capaId, actie:'aangemaakt', omschrijving:t('haccp_ccp_afwijking_capa')})
-                }
-                setCcpMetingForm(null)
-              }
-              return defs.length > 0 ? (
-                <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <SectionHeader
-                    open={!ccpIngeklapt}
-                    onToggle={()=>setCcpIngeklapt((p: any)=>!p)}
-                    rounded={ccpIngeklapt ? 'full' : 'top'}
-                    title={t('haccp_ccp')}
-                    info={`${batchMetingen.length} ${t('haccp_ccp_meting_plural')}${afwijkingen>0?` · ${afwijkingen} ${t('haccp_ccp_afwijkingen_short')}`:''}`}
-                  />
-                  {!ccpIngeklapt && (
-                    <div className="p-3 space-y-3">
-                      {/* Quick-add meting */}
-                      {!ccpMetingForm ? (
-                        <button onClick={()=>setCcpMetingForm({ccp_id:defs[0]?.id, datum:tod(), waarde:'', uitgevoerd_door:'', opmerking:''})}
-                          className="text-xs font-medium px-2.5 py-1 rounded-lg tbtn text-white">{t('haccp_ccp_meting_nieuw')}</button>
-                      ) : (
-                        <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_ccp_selecteer_ccp')}</label>
-                              <select value={ccpMetingForm.ccp_id||''} onChange={e=>setCcpMetingForm({...ccpMetingForm, ccp_id:Number(e.target.value)})} className="t-input w-full text-sm px-2 py-1 rounded border">
-                                {defs.map((d: any)=><option key={d.id} value={d.id}>{d.naam} ({d.kritische_grens})</option>)}
-                              </select>
-                            </div>
-                            <Inp label={t('haccp_ccp_waarde')} type="number" value={ccpMetingForm.waarde??''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, waarde:v})} />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum||tod()} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, datum:v})} />
-                            <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door||''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, uitgevoerd_door:v})} />
-                          </div>
-                          <div className="flex gap-2 justify-end">
-                            <Btn s="sm" v="secondary" onClick={()=>setCcpMetingForm(null)}>{t('btn_cancel')}</Btn>
-                            <Btn s="sm" onClick={saveCcpMeting}>{t('btn_save')}</Btn>
-                          </div>
-                        </div>
-                      )}
-                      {/* Metingen log */}
-                      {batchMetingen.length>0 && (
-                        <div className="space-y-1">
-                          {batchMetingen.map((m: any)=>{
-                            const ccp = defs.find((d: any)=>d.id===m.ccp_id)
-                            return (
-                              <div key={m.id} className={`text-sm px-2.5 py-1.5 rounded flex items-center justify-between ${m.binnen_limiet?'bg-green-50':'bg-red-50'}`}>
-                                <div>
-                                  <span className="font-medium">{ccp?.naam||'?'}</span>
-                                  <span className="ml-2 font-mono">{m.waarde} {m.eenheid||''}</span>
-                                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${m.binnen_limiet?'bg-green-200 text-green-800':'bg-red-200 text-red-800'}`}>
-                                    {m.binnen_limiet?'OK':t('haccp_ccp_buiten_limiet')}
-                                  </span>
-                                </div>
-                                <span className="text-xs text-gray-500">{fmtD(m.datum)}{m.uitgevoerd_door?` · ${m.uitgevoerd_door}`:''}</span>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {batchMetingen.length===0 && <p className="text-xs text-gray-400 italic">{t('haccp_ccp_geen_metingen')}</p>}
-                    </div>
-                  )}
-                </div>
-              ) : null
             })()}
 
             {/* Ingredienten */}
@@ -2659,56 +2611,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className={`font-medium ${c}`}>{v}</div></div>
                     ))}
                   </div>
-
-                  {/* S-4: Botteldag-checklist (aanpasbaar in Instellingen) */}
-                  {(() => {
-                    const items = (botteldagChecklist && botteldagChecklist.length ? botteldagChecklist : DEFAULT_BOTTELDAG_CHECKLIST)
-                    const checks = selB.botteldag_checks || {}
-                    const totaal = items.length
-                    const gedaan = items.filter((i: any) => checks[i.id]).length
-                    const alleOk = totaal > 0 && gedaan === totaal
-                    const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '')
-                    const toggleCheck = (itemId: number) => {
-                      const wordtAangevinkt = !checks[itemId]
-                      const nieuweChecks = {...checks, [itemId]: wordtAangevinkt}
-                      setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, botteldag_checks: nieuweChecks} : b))
-                      const item = items.find((i: any) => i.id===itemId)
-                      const label = item ? itemLabel(item) : `item ${itemId}`
-                      addLog({type:'botteldag', batch_id:selB.id, referentie:`${wordtAangevinkt?'✓ Afgevinkt':'✗ Ongedaan'}: ${label}`})
-                      logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:`Botteldag ${wordtAangevinkt?'afgevinkt':'ongedaan'}: ${label}`})
-                    }
-                    return (
-                      <div className={`bg-white rounded-xl shadow-card ${botteldagIngeklapt?'':'overflow-hidden'}`}>
-                        <SectionHeader
-                          open={!botteldagIngeklapt}
-                          onToggle={()=>setBotteldagIngeklapt((p: any)=>!p)}
-                          rounded={botteldagIngeklapt ? 'full' : 'top'}
-                          title={t('batch_botteldag_title')}
-                          info={`${gedaan}/${totaal}`}
-                        />
-                        {!botteldagIngeklapt && (
-                          <div className="p-3 space-y-0.5">
-                            {items.map((item: any, idx: number) => (
-                              <label key={item.id} className="flex items-start gap-2.5 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer select-none">
-                                <input type="checkbox" checked={!!checks[item.id]} onChange={()=>toggleCheck(item.id)}
-                                  className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer flex-shrink-0" />
-                                <span className="text-xs text-gray-400 w-5 flex-shrink-0 mt-0.5">{idx+1}.</span>
-                                <span className={`text-sm ${checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>{itemLabel(item)}</span>
-                                {checks[item.id] && <span className="ml-auto text-teal-500 text-xs mt-0.5">✓</span>}
-                              </label>
-                            ))}
-                            <div className={`mt-2 text-xs font-medium px-2 py-1.5 rounded flex items-center gap-2 ${alleOk ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
-                              {alleOk ? '✅ ' + t('botteldag_all_checked') : `${gedaan} ${t('hygiene_of')} ${totaal} ${t('hygiene_checked')}`}
-                              {gedaan>0 && !alleOk && (
-                                <button onClick={()=>{setBat((prev: any[])=>prev.map((b: any)=>b.id===selB.id?{...b,botteldag_checks:{}}:b)); addLog({type:'botteldag', batch_id:selB.id, referentie:'Botteldag-checklist gereset'}); logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:'Botteldag checklist gereset'})}}
-                                  className="ml-auto text-xs text-gray-400 hover:text-red-500 underline">{t('batch_hygiene_reset')}</button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })()}
 
                   <div className={`bg-white rounded-xl shadow-card ${afvullenIngeklapt?'':'overflow-hidden'}`}>
                     <SectionHeader

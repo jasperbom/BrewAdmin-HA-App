@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { newId } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { logAudit } from '../utils/audit'
-import { ALLERGENEN_LIJST, SCHOONMAAK_FREQUENTIES, DEFAULT_CCP_DEFINITIES } from '../utils/constants'
+import { ALLERGENEN_LIJST, SCHOONMAAK_FREQUENTIES } from '../utils/constants'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
@@ -16,10 +16,31 @@ function HACCPPage(props: any) {
   const {useState, useMemo} = React
   const {ing, setIng, lots, bat, bi, av, uit, tanks, gistMetingen,
     schoonmaakTaken, setSchoonmaakTaken, schoonmaakLog, setSchoonmaakLog,
-    ccpDefinities, setCcpDefinities, ccpMetingen, setCcpMetingen,
+    batchTakenItems, setBatchTakenItems, ccpMetingen, setCcpMetingen,
     capa, setCapa, waterkwaliteit, setWaterkwaliteit,
     ongedierte, setOngedierte, opleidingen, setOpleidingen,
     auditLog, setAuditLog} = props
+
+  // CCP-definities zijn nu meting-type taken uit het unified batch-takensysteem.
+  // `naam` in de HACCP-UI mapt op `label`/`labelKey` van een BatchTaakItem.
+  const ccpDefinities = React.useMemo(() => (batchTakenItems || [])
+    .filter((i: any) => i.type === 'meting')
+    .map((i: any) => ({...i, naam: i.labelKey ? t(i.labelKey) : (i.label || '')})), [batchTakenItems])
+  const setCcpDefinities = (update: any) => {
+    setBatchTakenItems((prev: any[]) => {
+      const all = prev || []
+      const checks = all.filter((i: any) => i.type !== 'meting')
+      const oldMetingen = all.filter((i: any) => i.type === 'meting').map((i: any) => ({...i, naam: i.labelKey ? t(i.labelKey) : (i.label || '')}))
+      const newMetingen = typeof update === 'function' ? update(oldMetingen) : update
+      const maxId = all.reduce((m: number, x: any) => Math.max(m, x.id || 0), 0)
+      let nextId = maxId + 1
+      return [...checks, ...newMetingen.map((m: any) => {
+        const {naam, ...rest} = m
+        const id = rest.id && all.some((x: any) => x.id === rest.id) ? rest.id : (rest.id || nextId++)
+        return {...rest, id, type: 'meting', label: naam || rest.label, labelKey: undefined}
+      })]
+    })
+  }
 
   const [tab, setTab] = useState<Tab>('dashboard')
   const [modal, setModal] = useState<string|null>(null)
@@ -50,7 +71,7 @@ function HACCPPage(props: any) {
       </div>
       {tab==='dashboard' && <DashTab {...props} setTab={setTab} />}
       {tab==='schoonmaak' && <SchoonmaakTab {...props} modal={modal} setModal={setModal} edit={edit} setEdit={setEdit} />}
-      {tab==='ccp' && <CCPTab {...props} modal={modal} setModal={setModal} edit={edit} setEdit={setEdit} />}
+      {tab==='ccp' && <CCPTab {...props} ccpDefinities={ccpDefinities} setCcpDefinities={setCcpDefinities} modal={modal} setModal={setModal} edit={edit} setEdit={setEdit} />}
       {tab==='allergenen' && <AllergenenTab {...props} />}
       {tab==='traceerbaarheid' && <TraceTab {...props} />}
       {tab==='capa' && <CAPATab {...props} modal={modal} setModal={setModal} edit={edit} setEdit={setEdit} />}
@@ -296,7 +317,7 @@ function CCPTab({bat, ccpDefinities, setCcpDefinities, ccpMetingen, setCcpMeting
     const ccp = (ccpDefinities||[]).find((d:any)=>d.id===edit.ccp_id)
     const binnen = ccp ? checkLimiet(ccp, Number(edit.waarde)) : true
     const id = newId(ccpMetingen)
-    const meting = {...edit, id, binnen_limiet: binnen, datum: edit.datum||tod()}
+    const meting = {...edit, id, taak_id: edit.ccp_id, binnen_limiet: binnen, datum: edit.datum||tod()}
     setCcpMetingen((prev:any[])=>[...prev, meting])
     logAudit(auditLog,setAuditLog,{entiteit:'CCPMeting',entiteit_id:id,actie:'aangemaakt',omschrijving:`${ccp?.naam}: ${edit.waarde} ${ccp?.eenheid||''} ${binnen?'OK':'AFWIJKING'}`})
     if(!binnen && ccp) {

@@ -66,9 +66,10 @@ export interface Batch {
   product_id?: number
   created_at?: string
   tank_historie?: TankHistorieEntry[]
-  hygiene_checks?: Record<number, boolean>
-  brouwdag_checks?: Record<number, boolean>  // S-4: Brouwdag-checklist (12 items)
-  botteldag_checks?: Record<number, boolean> // S-4: Botteldag-checklist (9 items)
+  hygiene_checks?: Record<number, boolean>     // @deprecated: gemigreerd naar taken_checks
+  brouwdag_checks?: Record<number, boolean>    // @deprecated: gemigreerd naar taken_checks
+  botteldag_checks?: Record<number, boolean>   // @deprecated: gemigreerd naar taken_checks
+  taken_checks?: Record<number, boolean>       // Unified batch-takensysteem (check-type items)
   allergeen_notities?: string
 }
 
@@ -302,6 +303,36 @@ export interface HygieneGroup {
   id: number
   naam: string
   volgorde?: number
+}
+
+// ── Unified batch-takensysteem ────────────────────────────────────────────────
+// Vervangt de voorheen gescheiden hygiëne-checklist, brouwdag-checklist,
+// botteldag-checklist en HACCP CCP-definities. Eén taak is ofwel een simpel
+// aanvink-item (`check`) of een numerieke meting met limieten (`meting`).
+export type BatchTaakType = 'check' | 'meting'
+
+export interface BatchTaakGroep {
+  id: number
+  naam: string
+  volgorde?: number
+}
+
+export interface BatchTaakItem {
+  id: number
+  type: BatchTaakType
+  label?: string              // vrije tekst
+  labelKey?: string           // i18n-sleutel (gemigreerde items uit brouwdag/botteldag/CCP)
+  group_id?: number | null
+  volgorde?: number
+  actief?: boolean
+  // Alleen voor type='meting':
+  categorie?: CCPCategorie
+  kritische_grens?: string
+  grens_min?: number
+  grens_max?: number
+  eenheid?: string
+  monitoring_methode?: string
+  corrigerende_actie?: string
 }
 
 export interface WcOrder {

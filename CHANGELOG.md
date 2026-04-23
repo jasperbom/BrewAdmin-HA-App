@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.90] — 2026-04-23
+
+### Changed — Eén unified batch-takensysteem (vervangt 4 losse systemen)
+
+In een batch werden voorheen vier aparte "af te vinken"-lijsten getoond:
+hygiëne-checklist, brouwdag-checklist, botteldag-checklist en CCP-monitoring.
+Dat leverde vier configuratieplekken in Instellingen en vier secties in de
+batch-weergave op.
+
+Vanaf deze versie is dat één systeem geworden: **Batch-taken**. Elke taak is
+ofwel een aanvink-item (`check`) of een numerieke meting met limieten
+(`meting`). Taken worden in zelfgekozen groepen gezet (bv. Voorbereiding,
+Brouwdag, Botteldag, Kritische controlepunten) en samen getoond in één sectie
+per batch. De CCP-afwijking → automatische CAPA-flow blijft identiek.
+
+- Nieuwe data-keys: `batch_taken_items`, `batch_taken_groepen`.
+- Nieuwe instellingensectie: "Batch-taken" (vervangt "Hygiëne" + "Checklists").
+- Nieuw batch-veld: `taken_checks: Record<number, boolean>`.
+- Bestaande gebruikers: bij eerste load worden hygiëne-items, brouwdag- en
+  botteldag-checklists en CCP-definities automatisch samengevoegd tot het
+  nieuwe model; afgevinkte items en metingen blijven behouden.
+- Oude data-keys blijven op de server staan voor veiligheid (read-only).
+- Backup (Excel): nieuwe sheets `BatchTakenItems` en `BatchTakenGroepen`.
+
 ## [1.8.89] — 2026-04-23
 
 ### Added — Live alcoholpercentage uit SG-metingen + expliciet accijns-ABV

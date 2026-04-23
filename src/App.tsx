@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, API_BASE } from './utils/api'
+import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, API_BASE, _fetchedKeys } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
 import { accijnsCalc, nextBatchNummer } from './utils/calculations'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
 import DashboardPage from './pages/DashboardPage'
@@ -74,6 +74,9 @@ function App() {
   const [hygieneGroups, setHygieneGroups] = useStore('hygiene_groups', DEFAULT_HYGIENE_GROUPS);
   const [brouwdagChecklist, setBrouwdagChecklist] = useStore('brouwdag_checklist', DEFAULT_BROUWDAG_CHECKLIST);
   const [botteldagChecklist, setBotteldagChecklist] = useStore('botteldag_checklist', DEFAULT_BOTTELDAG_CHECKLIST);
+  const [batchTakenItems, setBatchTakenItems] = useStore('batch_taken_items', DEFAULT_BATCH_TAKEN_ITEMS);
+  const [batchTakenGroepen, setBatchTakenGroepen] = useStore('batch_taken_groepen', DEFAULT_BATCH_TAKEN_GROEPEN);
+  const [takenMigratie, setTakenMigratie] = useStore('batch_taken_migratie_v1', null);
   const [lang, setLangStore] = useStore('app_lang', detectLang());
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
   const [verkoopFacturen, setVerkoopFacturen] = useStore('verkoop_facturen', []);
@@ -212,6 +215,108 @@ function App() {
     });
     if (dirty) setBat(patched);
   }, [bat]);
+
+  // Eénmalige migratie: oude hygiëne/brouwdag/botteldag-checklists en CCP-
+  // definities samenvoegen tot het unified `batch_taken_items` + `batch_taken_groepen`
+  // systeem. Loopt pas zodra alle relevante server-stores geladen zijn, zodat
+  // de migratie de echte gebruikersaanpassingen meeneemt en niet de defaults.
+  const takenMigratieRef = React.useRef(false);
+  React.useEffect(() => {
+    if (takenMigratieRef.current) return;
+    if (takenMigratie === 'done' || takenMigratie === 'v1') { takenMigratieRef.current = true; return; }
+    const needed = ['hygiene_items','hygiene_groups','brouwdag_checklist','botteldag_checklist','haccp_ccp_definities','haccp_ccp_metingen','batches','batch_taken_items','batch_taken_groepen','batch_taken_migratie_v1'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    const run = () => {
+      if (takenMigratieRef.current) return;
+      takenMigratieRef.current = true;
+
+      // 1. Build groepen: alle bestaande hygiëne-groepen + vaste groepen voor brouwdag/botteldag/CCP
+      const oldGroepen = Array.isArray(hygieneGroups) ? hygieneGroups : [];
+      const maxGroupId = oldGroepen.reduce((m: number, g: any) => Math.max(m, g.id || 0), 0);
+      const brouwdagGroepId = maxGroupId + 1;
+      const botteldagGroepId = maxGroupId + 2;
+      const ccpGroepId = maxGroupId + 3;
+      const nieuweGroepen = [
+        ...oldGroepen.map((g: any) => ({id:g.id, naam:g.naam, volgorde:g.volgorde ?? 0})),
+        {id: brouwdagGroepId, naam: t('batch_taken_groep_brouwdag') || 'Brouwdag', volgorde: (oldGroepen.length || 0) + 0},
+        {id: botteldagGroepId, naam: t('batch_taken_groep_botteldag') || 'Botteldag', volgorde: (oldGroepen.length || 0) + 1},
+        {id: ccpGroepId, naam: t('batch_taken_groep_ccp') || 'Kritische controlepunten (HACCP)', volgorde: (oldGroepen.length || 0) + 2},
+      ];
+
+      // 2. Build items en ID-remapping. Nieuwe IDs zijn uniek per run.
+      const hygMap: Record<number, number> = {};
+      const brwMap: Record<number, number> = {};
+      const botMap: Record<number, number> = {};
+      const ccpMap: Record<number, number> = {};
+      let nextId = 1;
+      const nieuweItems: any[] = [];
+
+      for (const h of (Array.isArray(hygieneItems) ? hygieneItems : [])) {
+        const id = nextId++;
+        hygMap[h.id] = id;
+        nieuweItems.push({id, type:'check', label:h.label, group_id:h.group_id ?? null, volgorde:h.volgorde ?? 0, actief:true});
+      }
+      for (const b of (Array.isArray(brouwdagChecklist) ? brouwdagChecklist : [])) {
+        const id = nextId++;
+        brwMap[b.id] = id;
+        nieuweItems.push({id, type:'check', ...(b.labelKey?{labelKey:b.labelKey}:{label:b.label||''}), group_id: brouwdagGroepId, volgorde:b.volgorde ?? 0, actief:true});
+      }
+      for (const b of (Array.isArray(botteldagChecklist) ? botteldagChecklist : [])) {
+        const id = nextId++;
+        botMap[b.id] = id;
+        nieuweItems.push({id, type:'check', ...(b.labelKey?{labelKey:b.labelKey}:{label:b.label||''}), group_id: botteldagGroepId, volgorde:b.volgorde ?? 0, actief:true});
+      }
+      for (const c of (Array.isArray(haccpCcpDefinities) ? haccpCcpDefinities : [])) {
+        const id = nextId++;
+        ccpMap[c.id] = id;
+        nieuweItems.push({
+          id, type:'meting', label:c.naam, group_id: ccpGroepId, volgorde:nieuweItems.length, actief: c.actief !== false,
+          categorie: c.categorie, kritische_grens: c.kritische_grens,
+          grens_min: c.grens_min, grens_max: c.grens_max, eenheid: c.eenheid,
+          monitoring_methode: c.monitoring_methode, corrigerende_actie: c.corrigerende_actie,
+        });
+      }
+
+      // 3. Per-batch: combineer hygiene_checks + brouwdag_checks + botteldag_checks
+      const remap = (src: Record<number, boolean>|undefined, map: Record<number, number>) => {
+        if (!src) return {};
+        const out: Record<number, boolean> = {};
+        for (const [oldId, val] of Object.entries(src)) {
+          const newIdVal = map[Number(oldId)];
+          if (newIdVal != null) out[newIdVal] = !!val;
+        }
+        return out;
+      };
+      if (Array.isArray(bat)) {
+        const gemigreerdeBat = bat.map((b: any) => ({
+          ...b,
+          taken_checks: {
+            ...(b.taken_checks || {}),
+            ...remap(b.hygiene_checks, hygMap),
+            ...remap(b.brouwdag_checks, brwMap),
+            ...remap(b.botteldag_checks, botMap),
+          }
+        }));
+        setBat(gemigreerdeBat);
+      }
+
+      // 4. CCP-metingen: voeg taak_id toe zodat het unified systeem ze kan vinden
+      if (Array.isArray(haccpCcpMetingen) && haccpCcpMetingen.length > 0) {
+        const gemigreerd = haccpCcpMetingen.map((m: any) => ({...m, taak_id: ccpMap[m.ccp_id] ?? m.taak_id}));
+        setHaccpCcpMetingen(gemigreerd);
+      }
+
+      // 5. Overschrijf batch_taken_items en groepen met gemigreerde versie
+      if (nieuweItems.length > 0) setBatchTakenItems(nieuweItems);
+      if (nieuweGroepen.length > 0) setBatchTakenGroepen(nieuweGroepen);
+
+      setTakenMigratie('v1');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [takenMigratie]);
 
   React.useEffect(() => {
     if (bfAutoSynced.current || !bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) return;
@@ -467,6 +572,7 @@ function App() {
       tanks, artikelen,
       hygiene_items: hygieneItems, hygiene_groups: hygieneGroups,
       brouwdag_checklist: brouwdagChecklist, botteldag_checklist: botteldagChecklist,
+      batch_taken_items: batchTakenItems, batch_taken_groepen: batchTakenGroepen,
       inkoop_facturen: inkoopFacturen, verkoop_facturen: verkoopFacturen,
       btw_instellingen: btwInst, btw_tarieven: btwTarieven,
       ing_types: ingTypes, ing_type_btw: ingTypeBtw, kosten_soorten: kostenSoorten, gn_codes: gnCodes,
@@ -521,6 +627,8 @@ function App() {
       if (Array.isArray(d.hygiene_groups)) setHygieneGroups(d.hygiene_groups);
       if (Array.isArray(d.brouwdag_checklist)) setBrouwdagChecklist(d.brouwdag_checklist);
       if (Array.isArray(d.botteldag_checklist)) setBotteldagChecklist(d.botteldag_checklist);
+      if (Array.isArray(d.batch_taken_items)) setBatchTakenItems(d.batch_taken_items);
+      if (Array.isArray(d.batch_taken_groepen)) setBatchTakenGroepen(d.batch_taken_groepen);
       if (Array.isArray(d.inkoop_facturen)) setInkoopFacturen(d.inkoop_facturen);
       if (Array.isArray(d.verkoop_facturen)) setVerkoopFacturen(d.verkoop_facturen);
       if (Array.isArray(d.bestellingen)) setBestellingen(d.bestellingen);
@@ -577,6 +685,8 @@ function App() {
     setTanks([]); setArtikelen([]);
     setHygieneItems(DEFAULT_HYGIENE_ITEMS); setHygieneGroups(DEFAULT_HYGIENE_GROUPS);
     setBrouwdagChecklist(DEFAULT_BROUWDAG_CHECKLIST); setBotteldagChecklist(DEFAULT_BOTTELDAG_CHECKLIST);
+    setBatchTakenItems(DEFAULT_BATCH_TAKEN_ITEMS); setBatchTakenGroepen(DEFAULT_BATCH_TAKEN_GROEPEN);
+    setTakenMigratie('v1');
     setInkoopFacturen([]); setVerkoopFacturen([]);
     setBestellingen([]); setBestellingPicks([]); setAfboekingen([]);
     setKlanten([]); setGistMetingen([]);
@@ -707,15 +817,15 @@ function App() {
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} av={av} uit={uit} bi={bi} lots={lots} acc={acc} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} />}
-        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} hygieneItems={hygieneItems} hygieneGroups={hygieneGroups} brouwdagChecklist={brouwdagChecklist} botteldagChecklist={botteldagChecklist} wcCreds={wcCreds} artikelen={artikelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} haInst={haInst} haTankTemps={haTankTemps} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} ccpDefinities={haccpCcpDefinities} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} />}
+        {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} accijnsInst={accijnsInst} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} wcCreds={wcCreds} artikelen={artikelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} haInst={haInst} haTankTemps={haTankTemps} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} afboekingen={afboekingen} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} locaties={locaties} verplaatsingen={verplaatsingen} />}
         {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} />}
-        {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} gistMetingen={gistMetingen} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} ccpDefinities={haccpCcpDefinities} setCcpDefinities={setHaccpCcpDefinities} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
+        {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} gistMetingen={gistMetingen} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} eadDocumenten={eadDocumenten} setEadDocumenten={setEadDocumenten} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} hygieneItems={hygieneItems} setHygieneItems={setHygieneItems} hygieneGroups={hygieneGroups} setHygieneGroups={setHygieneGroups} brouwdagChecklist={brouwdagChecklist} setBrouwdagChecklist={setBrouwdagChecklist} botteldagChecklist={botteldagChecklist} setBotteldagChecklist={setBotteldagChecklist} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} resetApp={resetApp} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} resetApp={resetApp} />}
       </main>
       </PageErrorBoundary>
     </div>
