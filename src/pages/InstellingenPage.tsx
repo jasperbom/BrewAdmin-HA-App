@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
-import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_HYGIENE_GROUPS, DEFAULT_HYGIENE_ITEMS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST } from '../utils/constants'
+import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
 import { logAudit } from '../utils/audit'
@@ -154,7 +154,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, hygieneItems, setHygieneItems, hygieneGroups, setHygieneGroups, brouwdagChecklist=[], setBrouwdagChecklist=()=>{}, botteldagChecklist=[], setBotteldagChecklist=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -221,9 +221,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [nieuwGroep, setNieuwGroep] = React.useState('');
   const [editGroepId, setEditGroepId] = React.useState<number|null>(null);
   const [editGroepNaam, setEditGroepNaam] = React.useState('');
-  const [nieuwBrouwdagItem, setNieuwBrouwdagItem] = React.useState('');
-  const [nieuwBotteldagItem, setNieuwBotteldagItem] = React.useState('');
-  const [editChecklistId, setEditChecklistId] = React.useState<{kind:'brouwdag'|'botteldag', id:number}|null>(null);
+  const [editChecklistId, setEditChecklistId] = React.useState<{kind:'taak', id:number}|null>(null);
   const [editChecklistLabel, setEditChecklistLabel] = React.useState('');
   const addTank = () => {
     const id = tankInput.trim().toUpperCase();
@@ -377,8 +375,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     {id:'ingredienten',  label:'Ingrediënten',             icon:'🌾'},
     {id:'kostensoorten', label:t('settings_kosten_soorten_title'), icon:'📊'},
     {id:'gncodes',       label:t('settings_gn_codes_title'), icon:'📦'},
-    {id:'hygiene',       label:t('settings_hygiene'),      icon:'🧹'},
-    {id:'checklists',    label:t('settings_checklists'),   icon:'📋'},
+    {id:'taken',         label:t('settings_batch_taken'),  icon:'📋'},
     {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
 
@@ -1286,28 +1283,29 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       )}
 
       {/* HYGIENE */}
-      {activeSection==='hygiene' && <>
-      {(()=>{
-        const items  = hygieneItems  && hygieneItems.length  ? hygieneItems  : DEFAULT_HYGIENE_ITEMS;
-        const groups = hygieneGroups && hygieneGroups.length ? hygieneGroups : DEFAULT_HYGIENE_GROUPS;
+      {/* BATCH-TAKEN — unified systeem (hygiëne + brouwdag + botteldag + CCP) */}
+      {activeSection==='taken' && (()=>{
+        const items  = batchTakenItems  && batchTakenItems.length  ? batchTakenItems  : DEFAULT_BATCH_TAKEN_ITEMS;
+        const groups = batchTakenGroepen && batchTakenGroepen.length ? batchTakenGroepen : DEFAULT_BATCH_TAKEN_GROEPEN;
+        const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '');
 
         const addGroep = () => {
           const naam = nieuwGroep.trim();
           if (!naam) return;
           if (groups.find((g: any)=>(g.naam||'').toLowerCase()===naam.toLowerCase())) { alert(t('err_group_exists')); return; }
-          const maxId = groups.length ? Math.max(...groups.map((g: any)=>g.id)) : 0;
-          setHygieneGroups([...groups, {id: maxId+1, naam, volgorde: groups.length}]);
-          logAudit(auditLog, setAuditLog, {entiteit:'Hygiënegroep', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Groep "${naam}" toegevoegd`});
+          const maxId = groups.length ? Math.max(...groups.map((g: any)=>g.id||0)) : 0;
+          setBatchTakenGroepen([...groups, {id: maxId+1, naam, volgorde: groups.length}]);
+          logAudit(auditLog, setAuditLog, {entiteit:'BatchTaakGroep', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Groep "${naam}" toegevoegd`});
           setNieuwGroep('');
         };
         const removeGroep = (id: any) => {
           if (items.some((i: any)=>i.group_id===id)) {
             if (!confirm(t('settings_hygiene_group_has_items'))) return;
-            setHygieneItems(items.map((i: any)=>i.group_id===id ? {...i, group_id:null} : i));
+            setBatchTakenItems(items.map((i: any)=>i.group_id===id ? {...i, group_id:null} : i));
           }
           const g = groups.find((g: any)=>g.id===id);
-          logAudit(auditLog, setAuditLog, {entiteit:'Hygiënegroep', entiteit_id:id, actie:'verwijderd', omschrijving:`Groep "${g?.naam||id}" verwijderd`});
-          setHygieneGroups(groups.filter((g: any)=>g.id!==id));
+          logAudit(auditLog, setAuditLog, {entiteit:'BatchTaakGroep', entiteit_id:id, actie:'verwijderd', omschrijving:`Groep "${g?.naam||id}" verwijderd`});
+          setBatchTakenGroepen(groups.filter((g: any)=>g.id!==id));
         };
         const moveGroep = (id: any, dir: number) => {
           const idx = groups.findIndex((g: any)=>g.id===id);
@@ -1316,28 +1314,41 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           const swap = idx+dir;
           if (swap<0||swap>=next.length) return;
           [next[idx],next[swap]]=[next[swap],next[idx]];
-          setHygieneGroups(next);
+          setBatchTakenGroepen(next.map((g: any, i: number)=>({...g, volgorde:i})));
         };
         const renameGroep = (id: number) => {
           const naam = editGroepNaam.trim();
           if (!naam) { setEditGroepId(null); return; }
           if (groups.find((g: any) => g.id !== id && (g.naam||'').toLowerCase() === naam.toLowerCase())) { alert(t('err_group_exists')); return; }
           const old = groups.find((g: any) => g.id === id);
-          setHygieneGroups(groups.map((g: any) => g.id === id ? { ...g, naam } : g));
-          logAudit(auditLog, setAuditLog, { entiteit: 'Hygiënegroep', entiteit_id: id, actie: 'gewijzigd', omschrijving: `Groep "${old?.naam}" hernoemd naar "${naam}"` });
+          setBatchTakenGroepen(groups.map((g: any) => g.id === id ? { ...g, naam } : g));
+          logAudit(auditLog, setAuditLog, { entiteit: 'BatchTaakGroep', entiteit_id: id, actie: 'gewijzigd', omschrijving: `Groep "${old?.naam}" hernoemd naar "${naam}"` });
           setEditGroepId(null);
         };
 
         const addItem = () => {
           const label = nieuwHygieneItem.trim();
           if (!label) return;
-          const maxId = items.length ? Math.max(...items.map((i: any)=>i.id)) : 0;
+          const maxId = items.length ? Math.max(...items.map((i: any)=>i.id||0)) : 0;
           const group_id = nieuwHygieneItemGroep ? Number(nieuwHygieneItemGroep) : null;
-          setHygieneItems([...items, {id: maxId+1, label, group_id, volgorde: items.length}]);
-          logAudit(auditLog, setAuditLog, {entiteit:'Hygiëne-item', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Item "${label}" toegevoegd`});
+          setBatchTakenItems([...items, {id: maxId+1, type:'check', label, group_id, volgorde: items.length, actief:true}]);
+          logAudit(auditLog, setAuditLog, {entiteit:'BatchTaak', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Taak "${label}" toegevoegd`});
           setNieuwHygieneItem('');
         };
-        const removeItem = (id: any) => {const it=items.find((i: any)=>i.id===id);logAudit(auditLog, setAuditLog, {entiteit:'Hygiëne-item', entiteit_id:id, actie:'verwijderd', omschrijving:`Item "${it?.label||id}" verwijderd`});setHygieneItems(items.filter((i: any)=>i.id!==id))};
+        const addMetingItem = () => {
+          const label = nieuwHygieneItem.trim();
+          if (!label) return;
+          const maxId = items.length ? Math.max(...items.map((i: any)=>i.id||0)) : 0;
+          const group_id = nieuwHygieneItemGroep ? Number(nieuwHygieneItemGroep) : null;
+          setBatchTakenItems([...items, {id: maxId+1, type:'meting', label, group_id, volgorde: items.length, actief:true, eenheid:'', kritische_grens:''}]);
+          logAudit(auditLog, setAuditLog, {entiteit:'BatchTaak', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Meting "${label}" toegevoegd`});
+          setNieuwHygieneItem('');
+        };
+        const removeItem = (id: any) => {
+          const it=items.find((i: any)=>i.id===id);
+          logAudit(auditLog, setAuditLog, {entiteit:'BatchTaak', entiteit_id:id, actie:'verwijderd', omschrijving:`Taak "${itemLabel(it)||id}" verwijderd`});
+          setBatchTakenItems(items.filter((i: any)=>i.id!==id));
+        };
         const moveItem = (id: any, dir: number) => {
           const idx = items.findIndex((i: any)=>i.id===id);
           if (idx<0) return;
@@ -1345,24 +1356,44 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           const swap = idx+dir;
           if (swap<0||swap>=next.length) return;
           [next[idx],next[swap]]=[next[swap],next[idx]];
-          setHygieneItems(next);
+          setBatchTakenItems(next.map((it: any, i: number)=>({...it, volgorde:i})));
         };
-        const setItemGroep = (id: any, group_id: any) => setHygieneItems(items.map((i: any)=>i.id===id?{...i,group_id:group_id?Number(group_id):null}:i));
-        const resetAlles = () => { if(confirm(t('settings_hygiene_reset_confirm'))) { setHygieneGroups(DEFAULT_HYGIENE_GROUPS); setHygieneItems(DEFAULT_HYGIENE_ITEMS); logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Hygiëne-items gereset naar standaard'}); }};
+        const setItemGroep = (id: any, group_id: any) => setBatchTakenItems(items.map((i: any)=>i.id===id?{...i,group_id:group_id?Number(group_id):null}:i));
+        const setItemField = (id: number, field: string, val: any) => setBatchTakenItems(items.map((i: any)=>i.id===id?{...i, [field]: val}:i));
+        const resetAlles = () => {
+          if(confirm(t('settings_batch_taken_reset_confirm'))) {
+            setBatchTakenGroepen(DEFAULT_BATCH_TAKEN_GROEPEN);
+            setBatchTakenItems(DEFAULT_BATCH_TAKEN_ITEMS);
+            logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Batch-taken gereset naar standaard'});
+          }
+        };
+        const startEdit = (it: any) => {
+          setEditChecklistId({kind:'taak', id: it.id});
+          setEditChecklistLabel(itemLabel(it));
+        };
+        const saveEdit = () => {
+          if (!editChecklistId) return;
+          const {id} = editChecklistId;
+          const label = editChecklistLabel.trim();
+          if (!label) { setEditChecklistId(null); return; }
+          const old = items.find((i: any)=>i.id===id);
+          // Als item een labelKey heeft: we overschrijven labelKey met label (handmatige override)
+          setBatchTakenItems(items.map((i: any)=>i.id===id ? ({...i, label, labelKey: undefined}) : i));
+          logAudit(auditLog, setAuditLog, {entiteit:'BatchTaak', entiteit_id:id, actie:'gewijzigd', omschrijving:`Taak "${itemLabel(old)}" → "${label}"`});
+          setEditChecklistId(null);
+        };
 
         return (
           <div className={card}>
-            <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_hygiene_title')}</h2>
-            <p className="text-sm text-gray-500 mb-5">
-              {t('settings_hygiene_desc')}
-            </p>
+            <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_batch_taken_title')}</h2>
+            <p className="text-sm text-gray-500 mb-5">{t('settings_batch_taken_desc')}</p>
 
             {/* Groepen beheer */}
             <div className="mb-5">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_hygiene_groups')}</div>
               <div className="space-y-1 mb-3">
                 {groups.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_groups_none')}</p>}
-                {groups.map((g: any, idx: number)=>(
+                {[...groups].sort((a: any, b: any)=>(a.volgorde||0)-(b.volgorde||0)).map((g: any, idx: number)=>(
                   <div key={g.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
                     {editGroepId === g.id ? (
                       <input type="text" value={editGroepNaam} onChange={(e: any) => setEditGroepNaam(e.target.value)}
@@ -1394,22 +1425,57 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
             {/* Items beheer */}
             <div className="mb-4">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_hygiene_items')}</div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_batch_taken_items')}</div>
               <div className="space-y-1 mb-3">
                 {items.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_items_none')}</p>}
-                {items.map((item: any, idx: number)=>(
-                  <div key={item.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                    <span className="flex-1 text-sm text-gray-700">{item.label}</span>
-                    <select value={item.group_id||''} onChange={(e: any)=>setItemGroep(item.id,e.target.value)}
-                      className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 bg-white focus:outline-none focus:border-teal-400 max-w-[130px]">
-                      <option value="">{t('settings_hygiene_item_no_group')}</option>
-                      {groups.map((g: any)=><option key={g.id} value={g.id}>{g.naam}</option>)}
-                    </select>
-                    <button onClick={()=>moveItem(item.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
-                    <button onClick={()=>moveItem(item.id,1)} disabled={idx===items.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
-                    <button onClick={()=>removeItem(item.id)} className="text-gray-400 hover:text-red-500 text-xs ml-1">✕</button>
-                  </div>
-                ))}
+                {items.map((item: any, idx: number)=>{
+                  const isEditing = editChecklistId && editChecklistId.id===item.id;
+                  const isMeting = item.type === 'meting';
+                  return (
+                    <div key={item.id} className={`border rounded-lg px-3 py-1.5 ${isMeting ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${isMeting ? 'bg-purple-200 text-purple-800' : 'bg-teal-200 text-teal-800'}`}>
+                          {isMeting ? t('batch_taken_type_meting') : t('batch_taken_type_check')}
+                        </span>
+                        {isEditing ? (
+                          <input type="text" value={editChecklistLabel}
+                            onChange={(e: any)=>setEditChecklistLabel(e.target.value)}
+                            onKeyDown={(e: any)=>{ if(e.key==='Enter') saveEdit(); if(e.key==='Escape') setEditChecklistId(null); }}
+                            onBlur={saveEdit}
+                            autoFocus
+                            className="flex-1 text-sm text-gray-700 bg-white border border-gray-300 rounded px-2 py-0.5 focus:outline-none t-input" />
+                        ) : (
+                          <span className="flex-1 text-sm text-gray-700 cursor-pointer hover:underline"
+                            onClick={()=>startEdit(item)}>{itemLabel(item)}</span>
+                        )}
+                        <select value={item.group_id||''} onChange={(e: any)=>setItemGroep(item.id,e.target.value)}
+                          className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 bg-white focus:outline-none focus:border-teal-400 max-w-[140px]">
+                          <option value="">{t('settings_hygiene_item_no_group')}</option>
+                          {groups.map((g: any)=><option key={g.id} value={g.id}>{g.naam}</option>)}
+                        </select>
+                        <button onClick={()=>moveItem(item.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
+                        <button onClick={()=>moveItem(item.id,1)} disabled={idx===items.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
+                        <button onClick={()=>removeItem(item.id)} className="text-gray-400 hover:text-red-500 text-xs ml-1">✕</button>
+                      </div>
+                      {isMeting && (
+                        <div className="mt-2 grid grid-cols-4 gap-2">
+                          <input type="number" value={item.grens_min ?? ''} onChange={(e: any)=>setItemField(item.id,'grens_min', e.target.value===''?undefined:Number(e.target.value))}
+                            placeholder={t('batch_taken_limiet_min')}
+                            className="border border-gray-300 rounded px-2 py-1 text-xs t-input" />
+                          <input type="number" value={item.grens_max ?? ''} onChange={(e: any)=>setItemField(item.id,'grens_max', e.target.value===''?undefined:Number(e.target.value))}
+                            placeholder={t('batch_taken_limiet_max')}
+                            className="border border-gray-300 rounded px-2 py-1 text-xs t-input" />
+                          <input type="text" value={item.eenheid || ''} onChange={(e: any)=>setItemField(item.id,'eenheid', e.target.value)}
+                            placeholder={t('batch_taken_eenheid')}
+                            className="border border-gray-300 rounded px-2 py-1 text-xs t-input" />
+                          <input type="text" value={item.kritische_grens || ''} onChange={(e: any)=>setItemField(item.id,'kritische_grens', e.target.value)}
+                            placeholder={t('batch_taken_kritische_grens')}
+                            className="border border-gray-300 rounded px-2 py-1 text-xs t-input" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <input type="text" value={nieuwHygieneItem} onChange={(e: any)=>setNieuwHygieneItem(e.target.value)}
@@ -1423,7 +1489,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 </select>
                 <button onClick={addItem}
                   className="px-3 py-1.5 tbtn rounded text-sm font-medium transition-colors">
-                  {t('settings_hygiene_item_add_btn')}
+                  + {t('batch_taken_type_check')}
+                </button>
+                <button onClick={addMetingItem}
+                  className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors">
+                  + {t('batch_taken_type_meting')}
                 </button>
               </div>
             </div>
@@ -1434,122 +1504,6 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </button>
           </div>
         );
-      })()}
-      </>}
-
-      {/* CHECKLISTS — Brouwdag & Botteldag (aanpasbaar) */}
-      {activeSection==='checklists' && (()=>{
-        const brouwItems  = (brouwdagChecklist  && brouwdagChecklist.length)  ? brouwdagChecklist  : DEFAULT_BROUWDAG_CHECKLIST;
-        const botteldagItems = (botteldagChecklist && botteldagChecklist.length) ? botteldagChecklist : DEFAULT_BOTTELDAG_CHECKLIST;
-        const itemLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '');
-
-        const addItem = (kind: 'brouwdag'|'botteldag') => {
-          const input = kind==='brouwdag' ? nieuwBrouwdagItem : nieuwBotteldagItem;
-          const label = input.trim();
-          if (!label) return;
-          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
-          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
-          const maxId = list.length ? Math.max(...list.map((i: any)=>i.id||0)) : 0;
-          setter([...list, {id: maxId+1, label, volgorde: list.length}]);
-          logAudit(auditLog, setAuditLog, {entiteit:kind==='brouwdag'?'Brouwdag-item':'Botteldag-item', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Item "${label}" toegevoegd`});
-          if (kind==='brouwdag') setNieuwBrouwdagItem(''); else setNieuwBotteldagItem('');
-        };
-        const removeItem = (kind: 'brouwdag'|'botteldag', id: number) => {
-          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
-          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
-          const it = list.find((i: any)=>i.id===id);
-          setter(list.filter((i: any)=>i.id!==id));
-          logAudit(auditLog, setAuditLog, {entiteit:kind==='brouwdag'?'Brouwdag-item':'Botteldag-item', entiteit_id:id, actie:'verwijderd', omschrijving:`Item "${itemLabel(it)||id}" verwijderd`});
-        };
-        const moveItem = (kind: 'brouwdag'|'botteldag', id: number, dir: number) => {
-          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
-          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
-          const idx = list.findIndex((i: any)=>i.id===id);
-          if (idx<0) return;
-          const swap = idx+dir;
-          if (swap<0 || swap>=list.length) return;
-          const next = [...list];
-          [next[idx], next[swap]] = [next[swap], next[idx]];
-          setter(next.map((it: any, i: number)=>({...it, volgorde:i})));
-        };
-        const startEdit = (kind: 'brouwdag'|'botteldag', it: any) => {
-          setEditChecklistId({kind, id: it.id});
-          setEditChecklistLabel(itemLabel(it));
-        };
-        const saveEdit = () => {
-          if (!editChecklistId) return;
-          const {kind, id} = editChecklistId;
-          const label = editChecklistLabel.trim();
-          if (!label) { setEditChecklistId(null); return; }
-          const list   = kind==='brouwdag' ? brouwItems : botteldagItems;
-          const setter = kind==='brouwdag' ? setBrouwdagChecklist : setBotteldagChecklist;
-          const old = list.find((i: any)=>i.id===id);
-          setter(list.map((i: any)=>i.id===id ? ({id:i.id, label, volgorde:i.volgorde}) : i));
-          logAudit(auditLog, setAuditLog, {entiteit:kind==='brouwdag'?'Brouwdag-item':'Botteldag-item', entiteit_id:id, actie:'gewijzigd', omschrijving:`Item "${itemLabel(old)}" → "${label}"`});
-          setEditChecklistId(null);
-        };
-        const resetList = (kind: 'brouwdag'|'botteldag') => {
-          if (!confirm(t('settings_checklist_reset_confirm'))) return;
-          if (kind==='brouwdag') setBrouwdagChecklist(DEFAULT_BROUWDAG_CHECKLIST);
-          else setBotteldagChecklist(DEFAULT_BOTTELDAG_CHECKLIST);
-          logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`${kind==='brouwdag'?'Brouwdag':'Botteldag'}-checklist gereset naar standaard`});
-        };
-
-        const renderSection = (kind: 'brouwdag'|'botteldag', titleKey: string, descKey: string, list: any[], nieuwVal: string, setNieuw: any) => (
-          <div className={card} key={kind}>
-            <h2 className="text-lg font-semibold text-gray-700 mb-1">{t(titleKey)}</h2>
-            <p className="text-sm text-gray-500 mb-5">{t(descKey)}</p>
-
-            <div className="mb-4">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_checklist_items')}</div>
-              <div className="space-y-1 mb-3">
-                {list.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_checklist_items_none')}</p>}
-                {list.map((item: any, idx: number)=>{
-                  const isEditing = editChecklistId && editChecklistId.kind===kind && editChecklistId.id===item.id;
-                  return (
-                    <div key={item.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-gray-400 w-5 flex-shrink-0">{idx+1}.</span>
-                      {isEditing ? (
-                        <input type="text" value={editChecklistLabel}
-                          onChange={(e: any)=>setEditChecklistLabel(e.target.value)}
-                          onKeyDown={(e: any)=>{ if(e.key==='Enter') saveEdit(); if(e.key==='Escape') setEditChecklistId(null); }}
-                          onBlur={saveEdit}
-                          autoFocus
-                          className="flex-1 text-sm text-gray-700 bg-white border border-gray-300 rounded px-2 py-0.5 focus:outline-none t-input" />
-                      ) : (
-                        <span className="flex-1 text-sm text-gray-700 cursor-pointer hover:underline"
-                          onClick={()=>startEdit(kind, item)}>{itemLabel(item)}</span>
-                      )}
-                      <button onClick={()=>moveItem(kind,item.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
-                      <button onClick={()=>moveItem(kind,item.id,1)} disabled={idx===list.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
-                      <button onClick={()=>removeItem(kind,item.id)} className="text-gray-400 hover:text-red-500 text-xs ml-1">✕</button>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <input type="text" value={nieuwVal} onChange={(e: any)=>setNieuw(e.target.value)}
-                  onKeyDown={(e: any)=>e.key==='Enter'&&addItem(kind)}
-                  placeholder={t('settings_checklist_item_add_placeholder')}
-                  className="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1 min-w-[200px] t-input" />
-                <button onClick={()=>addItem(kind)}
-                  className="px-3 py-1.5 tbtn rounded text-sm font-medium transition-colors">
-                  {t('settings_checklist_item_add_btn')}
-                </button>
-              </div>
-            </div>
-
-            <button onClick={()=>resetList(kind)}
-              className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200 transition-colors">
-              {t('settings_checklist_reset_btn')}
-            </button>
-          </div>
-        );
-
-        return (<>
-          {renderSection('brouwdag',  'settings_brouwdag_checklist_title',  'settings_brouwdag_checklist_desc',  brouwItems,     nieuwBrouwdagItem,  setNieuwBrouwdagItem)}
-          {renderSection('botteldag', 'settings_botteldag_checklist_title', 'settings_botteldag_checklist_desc', botteldagItems, nieuwBotteldagItem, setNieuwBotteldagItem)}
-        </>);
       })()}
 
       {/* DATA */}

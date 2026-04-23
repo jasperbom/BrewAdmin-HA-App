@@ -142,6 +142,62 @@ export const DEFAULT_CCP_DEFINITIES = [
   {id:4, naam:'pH wort na koelen', categorie:'koelen' as const, kritische_grens:'pH 4.0 – 5.5', grens_min:4.0, grens_max:5.5, eenheid:'pH', monitoring_methode:'pH-meter', corrigerende_actie:'pH corrigeren of batch evalueren', actief:true},
 ]
 
+// ── Unified batch-taken defaults ────────────────────────────────────────────
+// Default-groepen en -items voor nieuwe installaties. Bestaande installaties
+// krijgen via de migratie in App.tsx hun oude hygiene/brouwdag/botteldag/CCP-
+// definities in dit schema teruggemapt.
+// Groep-IDs 1-6 zijn gereserveerd voor de standaard-categorieën.
+export const DEFAULT_BATCH_TAKEN_GROEPEN = [
+  {id:1, naam:'Voorbereiding', volgorde:0},
+  {id:2, naam:'Brouwen', volgorde:1},
+  {id:3, naam:'Gisting', volgorde:2},
+  {id:4, naam:'Brouwdag', volgorde:3},
+  {id:5, naam:'Botteldag', volgorde:4},
+  {id:6, naam:'Kritische controlepunten (HACCP)', volgorde:5},
+]
+
+// IDs zijn uniek over alle typen heen. Ranges:
+//   1-99   = check-items uit hygiëne-defaults
+//   100-199 = check-items uit brouwdag-checklist (i18n labelKey)
+//   200-299 = check-items uit botteldag-checklist (i18n labelKey)
+//   300-399 = meting-items (CCP-definities)
+export const DEFAULT_BATCH_TAKEN_ITEMS = [
+  // Hygiëne (groepen 1/2/3)
+  {id:1, type:'check' as const, label:'Ketel gereinigd en gespoeld',  group_id:1, volgorde:0, actief:true},
+  {id:2, type:'check' as const, label:'Waterslot gevuld',              group_id:3, volgorde:0, actief:true},
+  {id:3, type:'check' as const, label:'Fermentatie-emmer gesteriliseerd', group_id:3, volgorde:1, actief:true},
+  {id:4, type:'check' as const, label:'Thermometer gesteriliseerd',    group_id:2, volgorde:0, actief:true},
+  {id:5, type:'check' as const, label:'Hydrometer gesteriliseerd',     group_id:2, volgorde:1, actief:true},
+  // Brouwdag (groep 4) — via i18n labelKey zodat alle talen werken
+  {id:101, type:'check' as const, labelKey:'brouwdag_check_1_water',       group_id:4, volgorde:0, actief:true},
+  {id:102, type:'check' as const, labelKey:'brouwdag_check_2_maischen',    group_id:4, volgorde:1, actief:true},
+  {id:103, type:'check' as const, labelKey:'brouwdag_check_3_jodiumtest',  group_id:4, volgorde:2, actief:true},
+  {id:104, type:'check' as const, labelKey:'brouwdag_check_4_spoelen',     group_id:4, volgorde:3, actief:true},
+  {id:105, type:'check' as const, labelKey:'brouwdag_check_5_kook_start',  group_id:4, volgorde:4, actief:true},
+  {id:106, type:'check' as const, labelKey:'brouwdag_check_6_hop_toevoeg', group_id:4, volgorde:5, actief:true},
+  {id:107, type:'check' as const, labelKey:'brouwdag_check_7_koelen',      group_id:4, volgorde:6, actief:true},
+  {id:108, type:'check' as const, labelKey:'brouwdag_check_8_og_meting',   group_id:4, volgorde:7, actief:true},
+  {id:109, type:'check' as const, labelKey:'brouwdag_check_9_ph_meting',   group_id:4, volgorde:8, actief:true},
+  {id:110, type:'check' as const, labelKey:'brouwdag_check_10_gist',       group_id:4, volgorde:9, actief:true},
+  {id:111, type:'check' as const, labelKey:'brouwdag_check_11_fermentor',  group_id:4, volgorde:10, actief:true},
+  {id:112, type:'check' as const, labelKey:'brouwdag_check_12_waterslot',  group_id:4, volgorde:11, actief:true},
+  // Botteldag (groep 5) — via i18n labelKey
+  {id:201, type:'check' as const, labelKey:'botteldag_check_1_reiniging',       group_id:5, volgorde:0, actief:true},
+  {id:202, type:'check' as const, labelKey:'botteldag_check_2_sanitair',        group_id:5, volgorde:1, actief:true},
+  {id:203, type:'check' as const, labelKey:'botteldag_check_3_fg_meting',       group_id:5, volgorde:2, actief:true},
+  {id:204, type:'check' as const, labelKey:'botteldag_check_4_suikeroplossing', group_id:5, volgorde:3, actief:true},
+  {id:205, type:'check' as const, labelKey:'botteldag_check_5_vulniveau',       group_id:5, volgorde:4, actief:true},
+  {id:206, type:'check' as const, labelKey:'botteldag_check_6_sluiting',        group_id:5, volgorde:5, actief:true},
+  {id:207, type:'check' as const, labelKey:'botteldag_check_7_etiketten',       group_id:5, volgorde:6, actief:true},
+  {id:208, type:'check' as const, labelKey:'botteldag_check_8_tht_gecontroleerd', group_id:5, volgorde:7, actief:true},
+  {id:209, type:'check' as const, labelKey:'botteldag_check_9_opslag',          group_id:5, volgorde:8, actief:true},
+  // Kritische controlepunten (groep 6) — numerieke metingen met limieten
+  {id:301, type:'meting' as const, label:'Kooktemperatuur', group_id:6, volgorde:0, actief:true, categorie:'koken' as const, kritische_grens:'≥100 °C gedurende ≥60 min', grens_min:100, eenheid:'°C', monitoring_methode:'Thermometer in brouwketel', corrigerende_actie:'Kooktijd verlengen tot minimaal 60 min bij 100 °C'},
+  {id:302, type:'meting' as const, label:'Koelsnelheid', group_id:6, volgorde:1, actief:true, categorie:'koelen' as const, kritische_grens:'<20 °C binnen 90 min na koken', grens_max:20, eenheid:'°C', monitoring_methode:'Thermometer na koeler', corrigerende_actie:'Extra koeling inzetten; batch evalueren bij >90 min'},
+  {id:303, type:'meting' as const, label:'Vergistingstemperatuur', group_id:6, volgorde:2, actief:true, categorie:'vergisting' as const, kritische_grens:'Volgens gistprofiel', eenheid:'°C', monitoring_methode:'Sensoren / handmatige meting', corrigerende_actie:'Temperatuurregeling bijstellen'},
+  {id:304, type:'meting' as const, label:'pH wort na koelen', group_id:6, volgorde:3, actief:true, categorie:'koelen' as const, kritische_grens:'pH 4.0 – 5.5', grens_min:4.0, grens_max:5.5, eenheid:'pH', monitoring_methode:'pH-meter', corrigerende_actie:'pH corrigeren of batch evalueren'},
+]
+
 export const ALLERGENEN_LIJST = [
   {key:'gluten',  label:'haccp_allergen_gluten'},
   {key:'gerst',   label:'haccp_allergen_gerst'},
