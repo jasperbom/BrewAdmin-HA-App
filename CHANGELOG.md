@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.92] — 2026-04-23
+
+### Changed — HA entity-picker: zoekveld, type-filter en PWM-herdefinitie
+
+Opvolger van 1.8.91. Twee verbeteringen:
+
+- **Zoek- en typefilter**: elke entity-dropdown (sensor, climate, light, switch)
+  heeft nu een zoekveld erboven dat filtert op entity_id én friendly name.
+  Voor elk domein met meerdere `device_class`-waarden komt er bovenin ook
+  een dropdown "Alle types" om bv. alleen temperature-sensoren te tonen.
+  Het aantal gefilterde/totaal wordt in de placeholder getoond.
+- **Dimmers als PWM i.p.v. lamp**: het `light`-domein wordt in brouwsetups
+  vooral gebruikt als PWM-regeling (hitte-elementen, regelbare pompen,
+  ventilatoren) — niet voor verlichting. Sectie hernoemd naar
+  "Dimmers (PWM)", slider-label naar "Vermogen (PWM duty)", placeholders
+  passen daarbij. De onderliggende HA-service-calls blijven identiek
+  (`light.turn_on` met `brightness_pct`).
+
 ## [1.8.91] — 2026-04-23
 
 ### Added — Home Assistant: Climate, Dimmers & Switches

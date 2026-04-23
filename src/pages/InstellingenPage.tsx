@@ -367,6 +367,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [haDiscoverMsg, setHaDiscoverMsg] = React.useState<Record<string, string>>({})
   const [haDiscovering, setHaDiscovering] = React.useState<string>('')
 
+  // Zoek-/filter-state voor entiteit-dropdowns. Sleutel is `${domain}:${rowId}`
+  // zodat elke ingevoerde rij z'n eigen zoekterm heeft en dropdowns elkaar
+  // niet verstoren.
+  const [haSearch, setHaSearch] = React.useState<Record<string, string>>({})
+  // Device-class filter per domein (sensor: temperature|pressure|humidity|…).
+  // Leeg = geen filter.
+  const [haClassFilter, setHaClassFilter] = React.useState<Record<string, string>>({})
+
   // Testresultaten per entity-id voor climate/light/switch.
   const [haEntTests, setHaEntTests] = React.useState<Record<string, string>>({})
   // Lopende service-calls voor spinner/disable in UI.
@@ -416,6 +424,92 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const removeHaEntity = (listKey: 'climates'|'lights'|'switches', id: number) => {
     logAudit(auditLog, setAuditLog, {entiteit: `HA ${listKey}`, entiteit_id: id, actie: 'verwijderd', omschrijving: `HA ${listKey} #${id} verwijderd`})
     setHaInst((p: any) => ({...p, [listKey]: (p?.[listKey]||[]).filter((x: any) => x.id !== id)}))
+  }
+
+  // Unieke device_classes uit de gevonden entities per domein. Wordt gebruikt
+  // om een filter-dropdown te vullen zodat bv. bij 500 sensor-entities alleen
+  // de temperature-sensoren getoond worden.
+  const haDeviceClasses = (domain: string): string[] => {
+    const set = new Set<string>()
+    for (const e of haDiscovered[domain] || []) {
+      if (e.device_class) set.add(e.device_class)
+    }
+    return [...set].sort()
+  }
+
+  // Gefilterde entity-lijst voor een specifieke row. `pickerKey` is uniek per
+  // invulveld zodat elke rij een eigen zoekterm kan hebben. Actuele waarde
+  // (reeds gekoppeld) wordt altijd getoond, ook als-ie buiten de filter valt —
+  // anders zou de dropdown leeg lijken bij een hit voor een andere filter.
+  const filteredEntities = (domain: string, pickerKey: string, currentValue: string): HaStateEntry[] => {
+    const all = haDiscovered[domain] || []
+    if (!all.length) return []
+    const search = (haSearch[pickerKey] || '').toLowerCase().trim()
+    const cls = haClassFilter[domain] || ''
+    const out: HaStateEntry[] = []
+    for (const e of all) {
+      if (e.entity_id === currentValue) { out.push(e); continue }
+      if (cls && e.device_class !== cls) continue
+      if (search) {
+        const hay = (e.entity_id + ' ' + e.friendly_name).toLowerCase()
+        if (!hay.includes(search)) continue
+      }
+      out.push(e)
+    }
+    return out
+  }
+
+  const entityOptionLabel = (e: HaStateEntry): string => {
+    let s = e.entity_id
+    if (e.friendly_name) s += ` — ${e.friendly_name}`
+    if (e.device_class) s += ` [${e.device_class}]`
+    return s
+  }
+
+  // Herbruikbare picker als plain function (niet als React component) zodat
+  // React de input-focus niet verliest bij elke parent-rerender.
+  const renderEntityPicker = (domain: string, pickerKey: string, value: string,
+                              onChange: (v: string) => void, placeholder: string) => {
+    const discovered = haDiscovered[domain] || []
+    if (!discovered.length) {
+      return (
+        <input type="text" placeholder={placeholder} value={value}
+          onChange={e => onChange(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+      )
+    }
+    const opts = filteredEntities(domain, pickerKey, value)
+    return (
+      <div className="flex flex-col gap-1">
+        <input type="text" value={haSearch[pickerKey] || ''}
+          onChange={e => setHaSearch((s: any) => ({...s, [pickerKey]: e.target.value}))}
+          placeholder={t('settings_ha_search_ph')}
+          className="border border-gray-300 rounded px-2 py-1 text-xs w-full t-input" />
+        <select value={value} onChange={e => onChange(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
+          <option value="">{t('opt_select')} ({opts.length}/{discovered.length})</option>
+          {opts.map((e: HaStateEntry) => (
+            <option key={e.entity_id} value={e.entity_id}>{entityOptionLabel(e)}</option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
+  // Render een device_class filter-dropdown voor een domein, indien er
+  // meerdere device_classes gevonden zijn. Voor climate/switch heeft dit
+  // zelden zin, voor sensor juist bijna altijd (temperature/humidity/pressure/…).
+  const renderClassFilter = (domain: string) => {
+    const classes = haDeviceClasses(domain)
+    if (classes.length < 2) return null
+    return (
+      <select value={haClassFilter[domain] || ''}
+        onChange={e => setHaClassFilter((f: any) => ({...f, [domain]: e.target.value}))}
+        className="border border-gray-300 rounded px-2 py-1 text-xs t-input bg-white">
+        <option value="">{t('settings_ha_all_classes')}</option>
+        {classes.map((c: string) => <option key={c} value={c}>{c}</option>)}
+      </select>
+    )
   }
 
   const callService = async (domain: string, service: string, data: Record<string, any>) => {
@@ -1017,10 +1111,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
         </label>
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Btn v="secondary" s="sm" onClick={() => discoverDomain('sensor')} disabled={haDiscovering==='sensor'}>
             {haDiscovering==='sensor' ? t('settings_ha_loading') : t('settings_ha_discover')}
           </Btn>
+          {renderClassFilter('sensor')}
           {haDiscoverMsg['sensor'] && <span className="text-xs text-gray-500">{haDiscoverMsg['sensor']}</span>}
         </div>
 
@@ -1046,21 +1141,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 </div>
                 <div className="flex-1 min-w-48">
                   <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
-                  {(haDiscovered['sensor']||[]).length > 0 ? (
-                    <select value={sensor.entity} onChange={e => updateSensor(sensor.id, 'entity', e.target.value)}
-                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
-                      <option value="">{t('opt_select')}</option>
-                      {(haDiscovered['sensor']||[]).map((s: HaStateEntry) => (
-                        <option key={s.entity_id} value={s.entity_id}>
-                          {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input type="text" placeholder="sensor.vergistingstank_temp" value={sensor.entity}
-                      onChange={e => updateSensor(sensor.id, 'entity', e.target.value)}
-                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
-                  )}
+                  {renderEntityPicker('sensor', `sensor:${sensor.id}`, sensor.entity,
+                    v => updateSensor(sensor.id, 'entity', v), 'sensor.vergistingstank_temp')}
                 </div>
                 <div className="flex items-end gap-1 pt-4">
                   <Btn v="secondary" s="sm" onClick={() => testSensor(sensor.id, sensor.entity)} disabled={sensorTesting === sensor.id || !sensor.entity}>
@@ -1102,10 +1184,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
         </label>
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Btn v="secondary" s="sm" onClick={() => discoverDomain('climate')} disabled={haDiscovering==='climate'}>
             {haDiscovering==='climate' ? t('settings_ha_loading') : t('settings_ha_discover')}
           </Btn>
+          {renderClassFilter('climate')}
           {haDiscoverMsg['climate'] && <span className="text-xs text-gray-500">{haDiscoverMsg['climate']}</span>}
         </div>
 
@@ -1144,21 +1227,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   </div>
                   <div className="flex-1 min-w-48">
                     <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
-                    {(haDiscovered['climate']||[]).length > 0 ? (
-                      <select value={c.entity} onChange={e => updateHaEntity('climates', c.id, 'entity', e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
-                        <option value="">{t('opt_select')}</option>
-                        {(haDiscovered['climate']||[]).map((s: HaStateEntry) => (
-                          <option key={s.entity_id} value={s.entity_id}>
-                            {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input type="text" placeholder="climate.koelcel" value={c.entity}
-                        onChange={e => updateHaEntity('climates', c.id, 'entity', e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
-                    )}
+                    {renderEntityPicker('climate', `climate:${c.id}`, c.entity,
+                      v => updateHaEntity('climates', c.id, 'entity', v), 'climate.koelcel')}
                   </div>
                   <div className="flex items-end gap-1 pt-4">
                     <Btn v="secondary" s="sm" onClick={() => testEntity(c.entity)} disabled={!c.entity}>{t('btn_test')}</Btn>
@@ -1231,10 +1301,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
         </label>
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Btn v="secondary" s="sm" onClick={() => discoverDomain('light')} disabled={haDiscovering==='light'}>
             {haDiscovering==='light' ? t('settings_ha_loading') : t('settings_ha_discover')}
           </Btn>
+          {renderClassFilter('light')}
           {haDiscoverMsg['light'] && <span className="text-xs text-gray-500">{haDiscoverMsg['light']}</span>}
         </div>
 
@@ -1257,21 +1328,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   </div>
                   <div className="flex-1 min-w-48">
                     <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
-                    {(haDiscovered['light']||[]).length > 0 ? (
-                      <select value={lg.entity} onChange={e => updateHaEntity('lights', lg.id, 'entity', e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
-                        <option value="">{t('opt_select')}</option>
-                        {(haDiscovered['light']||[]).map((s: HaStateEntry) => (
-                          <option key={s.entity_id} value={s.entity_id}>
-                            {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input type="text" placeholder="light.brouwzaal" value={lg.entity}
-                        onChange={e => updateHaEntity('lights', lg.id, 'entity', e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
-                    )}
+                    {renderEntityPicker('light', `light:${lg.id}`, lg.entity,
+                      v => updateHaEntity('lights', lg.id, 'entity', v), 'light.pwm_brouwketel')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_min_pct')}</label>
@@ -1298,7 +1356,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                       {isOn ? t('btn_aan') : t('btn_uit')}
                     </Btn>
                     <div className="flex items-center gap-2 flex-1 min-w-48">
-                      <label className="text-xs text-gray-500 whitespace-nowrap">{t('settings_ha_brightness')}:</label>
+                      <label className="text-xs text-gray-500 whitespace-nowrap">{t('settings_ha_brightness_pwm')}:</label>
                       <input type="range" min={minPct} max={maxPct} step="1"
                         defaultValue={brightness ?? minPct}
                         className="flex-1"
@@ -1338,10 +1396,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
         </label>
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Btn v="secondary" s="sm" onClick={() => discoverDomain('switch')} disabled={haDiscovering==='switch'}>
             {haDiscovering==='switch' ? t('settings_ha_loading') : t('settings_ha_discover')}
           </Btn>
+          {renderClassFilter('switch')}
           {haDiscoverMsg['switch'] && <span className="text-xs text-gray-500">{haDiscoverMsg['switch']}</span>}
         </div>
 
@@ -1361,21 +1420,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   </div>
                   <div className="flex-1 min-w-48">
                     <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
-                    {(haDiscovered['switch']||[]).length > 0 ? (
-                      <select value={sw.entity} onChange={e => updateHaEntity('switches', sw.id, 'entity', e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
-                        <option value="">{t('opt_select')}</option>
-                        {(haDiscovered['switch']||[]).map((s: HaStateEntry) => (
-                          <option key={s.entity_id} value={s.entity_id}>
-                            {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input type="text" placeholder="switch.pomp1" value={sw.entity}
-                        onChange={e => updateHaEntity('switches', sw.id, 'entity', e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
-                    )}
+                    {renderEntityPicker('switch', `switch:${sw.id}`, sw.entity,
+                      v => updateHaEntity('switches', sw.id, 'entity', v), 'switch.pomp1')}
                   </div>
                   <div className="flex items-end gap-1 pt-4">
                     <Btn v="secondary" s="sm" onClick={() => testEntity(sw.entity)} disabled={!sw.entity}>{t('btn_test')}</Btn>
