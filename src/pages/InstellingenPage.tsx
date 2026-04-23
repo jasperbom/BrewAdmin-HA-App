@@ -533,12 +533,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
   const navItems = [
     {id:'brouwerij',     label:t('settings_brewery'),      icon:'🏭'},
+    {id:'bedrijf',       label:t('settings_bedrijf'),      icon:'🏢'},
+    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
     {id:'koppelingen',   label:t('settings_koppelingen'),  icon:'🔗'},
     {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
-    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
-    {id:'ingredienten',  label:'Ingrediënten',             icon:'🌾'},
-    {id:'kostensoorten', label:t('settings_kosten_soorten_title'), icon:'📊'},
-    {id:'gncodes',       label:t('settings_gn_codes_title'), icon:'📦'},
+    {id:'categorieen',   label:t('settings_categorieen'),  icon:'🗂'},
     {id:'taken',         label:t('settings_batch_taken'),  icon:'📋'},
     {id:'app',           label:t('settings_app'),          icon:'⚙️'},
   ];
@@ -714,10 +713,50 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_planning_hint')}</p>
       </div>
+
+      {/* Cold-crash preset — brouwproces­instelling, actie via HA-climate op Dashboard */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_coldcrash_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_coldcrash_desc')}</p>
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={coldcrashInst?.enabled||false}
+              onChange={e => {setColdcrashInst((p: any) => ({...p, enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Cold-crash ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
+        </label>
+
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_coldcrash_target')}</label>
+            <div className="flex items-center gap-1">
+              <input type="number" step="0.5" min="-5" max="20"
+                value={coldcrashInst?.target_temp ?? ''}
+                onChange={e => setColdcrashInst((p: any) => ({...p, target_temp: e.target.value === '' ? '' : Number(e.target.value)}))}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
+              <span className="text-xs text-gray-400">°C</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_coldcrash_ramp')}</label>
+            <div className="flex items-center gap-1">
+              <input type="number" step="0.1" min="0.1" max="10"
+                value={coldcrashInst?.ramp_per_uur ?? ''}
+                onChange={e => setColdcrashInst((p: any) => ({...p, ramp_per_uur: e.target.value === '' ? '' : Number(e.target.value)}))}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
+              <span className="text-xs text-gray-400">°C/{t('lbl_uur')}</span>
+            </div>
+          </div>
+        </div>
+
+        <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_coldcrash_hint')}</p>
+      </div>
       </>}
 
-      {/* BEDRIJFSGEGEVENS (factuur) — onderdeel van brouwerij */}
-      {activeSection==='brouwerij' && <>
+      {/* BEDRIJF: bedrijfsgegevens, factuur-logo, factuur-velden, verzendkosten, factuurbijlagen */}
+      {activeSection==='bedrijf' && <>
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_company')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_company_desc')}</p>
@@ -1480,46 +1519,6 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         <Btn v="secondary" s="sm" onClick={() => addHaEntity('switches')}>{t('btn_switch_toevoegen')}</Btn>
       </div>
-
-      {/* ── Cold-crash preset ── */}
-      <div className={card}>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_coldcrash_title')}</h2>
-        <p className="text-sm text-gray-500 mb-4">{t('settings_coldcrash_desc')}</p>
-
-        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
-          <div className="relative">
-            <input type="checkbox" checked={coldcrashInst?.enabled||false}
-              onChange={e => {setColdcrashInst((p: any) => ({...p, enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Cold-crash ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
-            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
-          </div>
-          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
-        </label>
-
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_coldcrash_target')}</label>
-            <div className="flex items-center gap-1">
-              <input type="number" step="0.5" min="-5" max="20"
-                value={coldcrashInst?.target_temp ?? ''}
-                onChange={e => setColdcrashInst((p: any) => ({...p, target_temp: e.target.value === '' ? '' : Number(e.target.value)}))}
-                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
-              <span className="text-xs text-gray-400">°C</span>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_coldcrash_ramp')}</label>
-            <div className="flex items-center gap-1">
-              <input type="number" step="0.1" min="0.1" max="10"
-                value={coldcrashInst?.ramp_per_uur ?? ''}
-                onChange={e => setColdcrashInst((p: any) => ({...p, ramp_per_uur: e.target.value === '' ? '' : Number(e.target.value)}))}
-                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
-              <span className="text-xs text-gray-400">°C/{t('lbl_uur')}</span>
-            </div>
-          </div>
-        </div>
-
-        <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_coldcrash_hint')}</p>
-      </div>
       </>}
 
       {/* FINANCIEEL (accijns + BTW) */}
@@ -1692,8 +1691,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       </>}
 
-      {/* INGREDIËNTEN TYPES */}
-      {activeSection==='ingredienten' && (
+      {/* CATEGORIEËN: ingrediënttypen */}
+      {activeSection==='categorieen' && (
         <div className={card}>
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ingredient_types_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_ingredient_types_desc')}</p>
@@ -1734,8 +1733,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       )}
 
-      {/* KOSTENSOORTEN */}
-      {activeSection==='kostensoorten' && (
+      {/* CATEGORIEËN: kostensoorten */}
+      {activeSection==='categorieen' && (
         <div className={card}>
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_kosten_soorten_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_kosten_soorten_desc')}</p>
@@ -1765,8 +1764,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       )}
 
-      {/* GN-CODES */}
-      {activeSection==='gncodes' && (
+      {/* FINANCIEEL: GN-codes (accijnscodes) */}
+      {activeSection==='financieel' && (
         <div className="bg-white rounded-xl shadow-card p-6">
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_gn_codes_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_gn_codes_desc')}</p>
@@ -2057,8 +2056,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* APP — automatische back-ups */}
       {activeSection==='app' && <BackupCard />}
 
-      {/* FINANCIEEL — inkoop bijlagen downloaden */}
-      {activeSection==='financieel' && (
+      {/* BEDRIJF — inkoop bijlagen downloaden (invoice admin) */}
+      {activeSection==='bedrijf' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_bijlagen_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_bijlagen_desc')}</p>
@@ -2106,8 +2105,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       )}
 
-      {/* INGREDIENTEN — mutatielog wissen */}
-      {activeSection==='ingredienten' && (
+      {/* CATEGORIEËN — ingrediënten mutatielog wissen */}
+      {activeSection==='categorieen' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_data_log_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">

@@ -1500,5 +1500,7 @@
   "settings_planning_conditioneren": "Reifungsdauer",
   "settings_planning_hint": "Den berechneten Wert kannst du pro Charge immer überschreiben, indem du einen anderen Wert ins Eingabefeld tippst.",
   "plan_tanktijd_bereken": "Berechnen",
-  "plan_tanktijd_tooltip": "Tankzeit = Gärung + Reifung"
+  "plan_tanktijd_tooltip": "Tankzeit = Gärung + Reifung",
+  "settings_bedrijf": "Unternehmen",
+  "settings_categorieen": "Kategorien"
 }

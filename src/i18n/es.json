@@ -1690,5 +1690,7 @@
   "settings_planning_conditioneren": "Duración de maduración",
   "settings_planning_hint": "Siempre puedes sobrescribir el valor calculado por lote escribiendo otro número en el campo.",
   "plan_tanktijd_bereken": "Calcular",
-  "plan_tanktijd_tooltip": "Tiempo en tanque = fermentación + maduración"
+  "plan_tanktijd_tooltip": "Tiempo en tanque = fermentación + maduración",
+  "settings_bedrijf": "Empresa",
+  "settings_categorieen": "Categorías"
 }

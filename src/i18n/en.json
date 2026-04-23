@@ -1500,5 +1500,7 @@
   "settings_planning_conditioneren": "Conditioning duration",
   "settings_planning_hint": "You can always override the calculated value per batch by typing a different number in the input.",
   "plan_tanktijd_bereken": "Calculate",
-  "plan_tanktijd_tooltip": "Tank time = fermentation + conditioning"
+  "plan_tanktijd_tooltip": "Tank time = fermentation + conditioning",
+  "settings_bedrijf": "Company",
+  "settings_categorieen": "Categories"
 }

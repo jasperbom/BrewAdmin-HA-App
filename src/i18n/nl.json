@@ -1706,5 +1706,7 @@
   "settings_planning_conditioneren": "Conditioneren-duur",
   "settings_planning_hint": "De berekende waarde kun je per batch altijd overschrijven door in het invoerveld een andere waarde te typen.",
   "plan_tanktijd_bereken": "Bereken",
-  "plan_tanktijd_tooltip": "Tanktijd = vergisting + conditioneren"
+  "plan_tanktijd_tooltip": "Tanktijd = vergisting + conditioneren",
+  "settings_bedrijf": "Bedrijf",
+  "settings_categorieen": "Categorieën"
 }

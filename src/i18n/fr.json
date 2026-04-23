@@ -1690,5 +1690,7 @@
   "settings_planning_conditioneren": "Durée de maturation",
   "settings_planning_hint": "Vous pouvez toujours remplacer la valeur calculée par lot en tapant un autre nombre dans le champ.",
   "plan_tanktijd_bereken": "Calculer",
-  "plan_tanktijd_tooltip": "Temps en cuve = fermentation + maturation"
+  "plan_tanktijd_tooltip": "Temps en cuve = fermentation + maturation",
+  "settings_bedrijf": "Entreprise",
+  "settings_categorieen": "Catégories"
 }
