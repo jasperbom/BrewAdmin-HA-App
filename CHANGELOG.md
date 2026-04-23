@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.97] — 2026-04-23
+
+### Changed — Cold-crash preset verhuist naar Brouwerij-tab
+
+Cold-crash is conceptueel een brouwproces­instelling (doeltemperatuur,
+ramp-snelheid) vergelijkbaar met de conditioneren-duur in Planning-
+defaults — dat de trigger-knop via een HA-climate-call loopt is een
+implementatie­detail. De card is daarom verhuisd van **Home Assistant**
+naar **Brouwerij**, direct onder Planning-defaults. HA-sectie bevat nu
+alleen nog de pure integratie (sensoren, climate/dimmer/switch entities).
+
 ## [1.8.96] — 2026-04-23
 
 ### Changed — Instellingen-pagina herindeling
