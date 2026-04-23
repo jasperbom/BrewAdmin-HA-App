@@ -4,7 +4,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState } from '../utils/api'
+import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry } from '../utils/api'
 import { logAudit } from '../utils/audit'
 
 const ServerStatusCard = () => {
@@ -359,6 +359,76 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
   const updateSensor = (id: number, field: string, value: string) => {
     setHaInst((p: any) => ({...p, sensors: (p?.sensors||[]).map((s: any) => s.id === id ? {...s, [field]: value} : s)}))
+  }
+
+  // ── Climate / Light / Switch — gedeelde helpers ───────────────────────────
+  // Discovered entity-cache per domein; wordt gevuld door "Entities ophalen".
+  const [haDiscovered, setHaDiscovered] = React.useState<Record<string, HaStateEntry[]>>({})
+  const [haDiscoverMsg, setHaDiscoverMsg] = React.useState<Record<string, string>>({})
+  const [haDiscovering, setHaDiscovering] = React.useState<string>('')
+
+  // Testresultaten per entity-id voor climate/light/switch.
+  const [haEntTests, setHaEntTests] = React.useState<Record<string, string>>({})
+  // Lopende service-calls voor spinner/disable in UI.
+  const [haBusy, setHaBusy] = React.useState<Record<string, boolean>>({})
+
+  const discoverDomain = async (domain: string) => {
+    setHaDiscovering(domain)
+    setHaDiscoverMsg((m: any) => ({...m, [domain]: ''}))
+    try {
+      const list = await haListStates(domain)
+      setHaDiscovered((d: any) => ({...d, [domain]: list}))
+      setHaDiscoverMsg((m: any) => ({...m, [domain]: t('settings_ha_discovered').replace('{n}', String(list.length))}))
+    } catch (e: any) {
+      setHaDiscoverMsg((m: any) => ({...m, [domain]: `⚠ ${e.message}`}))
+    }
+    setHaDiscovering('')
+  }
+
+  const testEntity = async (entity: string) => {
+    if (!entity) return
+    setHaEntTests((s: any) => ({...s, [entity]: t('settings_ha_testing')}))
+    try {
+      const d = await haGetState(entity)
+      const val = d.state + (d.unit ? ' ' + d.unit : '')
+      setHaEntTests((s: any) => ({...s, [entity]: `✓ ${val}`}))
+    } catch (e: any) {
+      setHaEntTests((s: any) => ({...s, [entity]: `⚠ ${e.message}`}))
+    }
+  }
+
+  // Generieke list-manipulaties voor climates/lights/switches (zelfde shape).
+  const addHaEntity = (listKey: 'climates'|'lights'|'switches', extra: Record<string,any> = {}) => {
+    setHaInst((p: any) => {
+      const list = Array.isArray(p?.[listKey]) ? p[listKey] : []
+      const nextId = list.length ? Math.max(...list.map((x: any) => x.id || 0)) + 1 : 1
+      const newItem = {id: nextId, label: '', entity: '', ...extra}
+      logAudit(auditLog, setAuditLog, {entiteit: `HA ${listKey}`, entiteit_id: nextId, actie: 'aangemaakt', omschrijving: `HA ${listKey} entry toegevoegd`})
+      return {...p, [listKey]: [...list, newItem]}
+    })
+  }
+  const updateHaEntity = (listKey: 'climates'|'lights'|'switches', id: number, field: string, value: any) => {
+    setHaInst((p: any) => ({
+      ...p,
+      [listKey]: (p?.[listKey]||[]).map((x: any) => x.id === id ? {...x, [field]: value} : x)
+    }))
+  }
+  const removeHaEntity = (listKey: 'climates'|'lights'|'switches', id: number) => {
+    logAudit(auditLog, setAuditLog, {entiteit: `HA ${listKey}`, entiteit_id: id, actie: 'verwijderd', omschrijving: `HA ${listKey} #${id} verwijderd`})
+    setHaInst((p: any) => ({...p, [listKey]: (p?.[listKey]||[]).filter((x: any) => x.id !== id)}))
+  }
+
+  const callService = async (domain: string, service: string, data: Record<string, any>) => {
+    const busyKey = `${domain}:${data.entity_id}`
+    setHaBusy((b: any) => ({...b, [busyKey]: true}))
+    try {
+      await haCallService(domain, service, data)
+      logAudit(auditLog, setAuditLog, {entiteit: 'HA Service', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `${domain}.${service} → ${data.entity_id}`})
+      setHaEntTests((s: any) => ({...s, [data.entity_id]: `✓ ${domain}.${service}`}))
+    } catch (e: any) {
+      setHaEntTests((s: any) => ({...s, [data.entity_id]: `⚠ ${e.message}`}))
+    }
+    setHaBusy((b: any) => ({...b, [busyKey]: false}))
   }
   const saveClaude = () => {
     setClaudeCreds((prev: any) => ({...prev, ...claudeForm}));
@@ -933,34 +1003,37 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* HOME ASSISTANT */}
       {activeSection==='homeassistant' && <>
+      {/* ── Sensoren ── */}
       <div className={card}>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">🏠 Home Assistant Sensoren</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Koppel HA-temperatuursensoren aan vergistingstanks. De <strong>🌡 HA</strong> knop in de gistgrafiek haalt
-          automatisch de waarde op voor de tank van de geselecteerde batch. Werkt alleen als de app als HA-addon draait.
-        </p>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ha_sensors_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_ha_sensors_desc')}</p>
 
-        {/* Global enable toggle */}
         <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
           <div className="relative">
             <input type="checkbox" checked={haInst?.enabled||false}
               onChange={e => {setHaInst((p: any) => ({...p, enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`HA sensoren ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
             <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
           </div>
-          <span className="text-sm font-medium text-gray-700">Ingeschakeld</span>
+          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
         </label>
 
-        {/* Sensor list */}
+        <div className="flex items-center gap-2 mb-3">
+          <Btn v="secondary" s="sm" onClick={() => discoverDomain('sensor')} disabled={haDiscovering==='sensor'}>
+            {haDiscovering==='sensor' ? t('settings_ha_loading') : t('settings_ha_discover')}
+          </Btn>
+          {haDiscoverMsg['sensor'] && <span className="text-xs text-gray-500">{haDiscoverMsg['sensor']}</span>}
+        </div>
+
         <div className="space-y-2 mb-3">
           {(Array.isArray(haInst?.sensors) ? haInst.sensors : []).map((sensor: any) => (
             <div key={sensor.id} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50/50">
               <div className="flex items-center gap-2 flex-wrap">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-0.5">Tank</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('lbl_tank')}</label>
                   {tanks && tanks.length > 0 ? (
                     <select value={sensor.tank} onChange={e => updateSensor(sensor.id, 'tank', e.target.value)}
                       className="border border-gray-300 rounded px-2 py-1.5 text-sm w-32 t-input bg-white">
-                      <option value="">— selecteer —</option>
+                      <option value="">{t('opt_select')}</option>
                       {tanks.map((tk: any) => (
                         <option key={tk.id} value={tk.id}>{tk.naam ? `${tk.id} (${tk.naam})` : tk.id}</option>
                       ))}
@@ -972,15 +1045,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   )}
                 </div>
                 <div className="flex-1 min-w-48">
-                  <label className="block text-xs font-medium text-gray-500 mb-0.5">Entity ID</label>
-                  <input type="text" placeholder="sensor.vergistingstank_temp" value={sensor.entity}
-                    onChange={e => updateSensor(sensor.id, 'entity', e.target.value)}
-                    className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
-                  <p className="text-xs text-gray-400 mt-0.5">Alleen kleine letters, cijfers, underscores. Bijv. <code className="bg-gray-100 px-0.5 rounded">sensor.tank1_temp</code></p>
+                  <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+                  {(haDiscovered['sensor']||[]).length > 0 ? (
+                    <select value={sensor.entity} onChange={e => updateSensor(sensor.id, 'entity', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
+                      <option value="">{t('opt_select')}</option>
+                      {(haDiscovered['sensor']||[]).map((s: HaStateEntry) => (
+                        <option key={s.entity_id} value={s.entity_id}>
+                          {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="text" placeholder="sensor.vergistingstank_temp" value={sensor.entity}
+                      onChange={e => updateSensor(sensor.id, 'entity', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+                  )}
                 </div>
                 <div className="flex items-end gap-1 pt-4">
                   <Btn v="secondary" s="sm" onClick={() => testSensor(sensor.id, sensor.entity)} disabled={sensorTesting === sensor.id || !sensor.entity}>
-                    {sensorTesting === sensor.id ? 'Testen…' : 'Test'}
+                    {sensorTesting === sensor.id ? t('settings_ha_testing') : t('btn_test')}
                   </Btn>
                   <Btn v="danger" s="sm" onClick={() => removeSensor(sensor.id)}>×</Btn>
                 </div>
@@ -993,15 +1077,341 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </div>
           ))}
           {(!Array.isArray(haInst?.sensors) || haInst.sensors.length === 0) && (
-            <p className="text-sm text-gray-400 italic py-1">Geen sensoren geconfigureerd.</p>
+            <p className="text-sm text-gray-400 italic py-1">{t('settings_ha_none_configured')}</p>
           )}
         </div>
         <Btn v="secondary" s="sm" onClick={addSensor}>{t('btn_sensor_toevoegen')}</Btn>
 
         <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
-          <p>Communiceert via <code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code>.</p>
-          {tanks && tanks.length > 0 && <p>Geconfigureerde tanks: <strong className="text-gray-500">{tanks.map((tk: any) => tk.id).join(', ')}</strong></p>}
+          <p>{t('settings_ha_proxy_hint')} <code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code></p>
+          {tanks && tanks.length > 0 && <p>{t('settings_ha_configured_tanks')}: <strong className="text-gray-500">{tanks.map((tk: any) => tk.id).join(', ')}</strong></p>}
         </div>
+      </div>
+
+      {/* ── Climate ── */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ha_climate_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_ha_climate_desc')}</p>
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={haInst?.climates_enabled||false}
+              onChange={e => {setHaInst((p: any) => ({...p, climates_enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`HA climates ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
+        </label>
+
+        <div className="flex items-center gap-2 mb-3">
+          <Btn v="secondary" s="sm" onClick={() => discoverDomain('climate')} disabled={haDiscovering==='climate'}>
+            {haDiscovering==='climate' ? t('settings_ha_loading') : t('settings_ha_discover')}
+          </Btn>
+          {haDiscoverMsg['climate'] && <span className="text-xs text-gray-500">{haDiscoverMsg['climate']}</span>}
+        </div>
+
+        <div className="space-y-2 mb-3">
+          {(Array.isArray(haInst?.climates) ? haInst.climates : []).map((c: any) => {
+            const meta = (haDiscovered['climate']||[]).find((x: HaStateEntry) => x.entity_id === c.entity)
+            const hvacModes: string[] = meta?.hvac_modes || []
+            const minT = meta?.min_temp ?? 0
+            const maxT = meta?.max_temp ?? 40
+            const currentT = meta?.current_temperature
+            const busyKey = `climate:${c.entity}`
+            return (
+              <div key={c.id} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50/50">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_label')}</label>
+                    <input type="text" placeholder={t('settings_ha_label_ph_climate')} value={c.label}
+                      onChange={e => updateHaEntity('climates', c.id, 'label', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-36 t-input" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('lbl_tank')}</label>
+                    {tanks && tanks.length > 0 ? (
+                      <select value={c.tank||''} onChange={e => updateHaEntity('climates', c.id, 'tank', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-32 t-input bg-white">
+                        <option value="">{t('opt_none')}</option>
+                        {tanks.map((tk: any) => (
+                          <option key={tk.id} value={tk.id}>{tk.naam ? `${tk.id} (${tk.naam})` : tk.id}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" placeholder="FV1" value={c.tank||''}
+                        onChange={e => updateHaEntity('climates', c.id, 'tank', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+                    {(haDiscovered['climate']||[]).length > 0 ? (
+                      <select value={c.entity} onChange={e => updateHaEntity('climates', c.id, 'entity', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
+                        <option value="">{t('opt_select')}</option>
+                        {(haDiscovered['climate']||[]).map((s: HaStateEntry) => (
+                          <option key={s.entity_id} value={s.entity_id}>
+                            {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" placeholder="climate.koelcel" value={c.entity}
+                        onChange={e => updateHaEntity('climates', c.id, 'entity', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+                    )}
+                  </div>
+                  <div className="flex items-end gap-1 pt-4">
+                    <Btn v="secondary" s="sm" onClick={() => testEntity(c.entity)} disabled={!c.entity}>{t('btn_test')}</Btn>
+                    <Btn v="danger" s="sm" onClick={() => removeHaEntity('climates', c.id)}>×</Btn>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-gray-600">
+                  <input type="checkbox" className="t-checkbox" checked={!!c.auto_setpoint}
+                    onChange={e => updateHaEntity('climates', c.id, 'auto_setpoint', e.target.checked)} />
+                  {t('settings_ha_climate_auto_setpoint')}
+                </label>
+
+                {c.entity && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+                    {currentT != null && (
+                      <span className="text-xs text-gray-500">{t('settings_ha_current')}: <strong>{currentT}°C</strong></span>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <label className="text-xs text-gray-500">{t('settings_ha_setpoint')}:</label>
+                      <input type="number" step="0.5" min={minT} max={maxT}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm w-20 t-input"
+                        defaultValue={meta?.temperature ?? ''}
+                        onBlur={e => {
+                          const v = parseFloat(e.target.value)
+                          if (!isNaN(v)) callService('climate', 'set_temperature', {entity_id: c.entity, temperature: v})
+                        }} />
+                      <span className="text-xs text-gray-400">°C</span>
+                    </div>
+                    {hvacModes.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs text-gray-500">{t('settings_ha_mode')}:</label>
+                        <select className="border border-gray-300 rounded px-2 py-1 text-sm t-input bg-white"
+                          defaultValue={meta?.state || ''}
+                          onChange={e => callService('climate', 'set_hvac_mode', {entity_id: c.entity, hvac_mode: e.target.value})}>
+                          {hvacModes.map((m: string) => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <Btn v="secondary" s="sm" disabled={!!haBusy[busyKey]} onClick={() => callService('climate', 'turn_off', {entity_id: c.entity})}>{t('btn_uit')}</Btn>
+                  </div>
+                )}
+
+                {haEntTests[c.entity] && (
+                  <span className={`text-sm font-medium ${haEntTests[c.entity].startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                    {haEntTests[c.entity]}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+          {(!Array.isArray(haInst?.climates) || haInst.climates.length === 0) && (
+            <p className="text-sm text-gray-400 italic py-1">{t('settings_ha_none_configured')}</p>
+          )}
+        </div>
+        <Btn v="secondary" s="sm" onClick={() => addHaEntity('climates', {tank: '', auto_setpoint: false})}>{t('btn_climate_toevoegen')}</Btn>
+      </div>
+
+      {/* ── Dimmers / Lights ── */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ha_lights_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_ha_lights_desc')}</p>
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={haInst?.lights_enabled||false}
+              onChange={e => {setHaInst((p: any) => ({...p, lights_enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`HA lights ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
+        </label>
+
+        <div className="flex items-center gap-2 mb-3">
+          <Btn v="secondary" s="sm" onClick={() => discoverDomain('light')} disabled={haDiscovering==='light'}>
+            {haDiscovering==='light' ? t('settings_ha_loading') : t('settings_ha_discover')}
+          </Btn>
+          {haDiscoverMsg['light'] && <span className="text-xs text-gray-500">{haDiscoverMsg['light']}</span>}
+        </div>
+
+        <div className="space-y-2 mb-3">
+          {(Array.isArray(haInst?.lights) ? haInst.lights : []).map((lg: any) => {
+            const meta = (haDiscovered['light']||[]).find((x: HaStateEntry) => x.entity_id === lg.entity)
+            const brightness = meta?.brightness != null ? Math.round((meta.brightness / 255) * 100) : null
+            const isOn = meta?.state === 'on'
+            const busyKey = `light:${lg.entity}`
+            const minPct = Math.max(0, Math.min(100, Number(lg.min_pct ?? 0)))
+            const maxPct = Math.max(minPct, Math.min(100, Number(lg.max_pct ?? 100)))
+            return (
+              <div key={lg.id} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50/50">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_label')}</label>
+                    <input type="text" placeholder={t('settings_ha_label_ph_light')} value={lg.label}
+                      onChange={e => updateHaEntity('lights', lg.id, 'label', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-36 t-input" />
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+                    {(haDiscovered['light']||[]).length > 0 ? (
+                      <select value={lg.entity} onChange={e => updateHaEntity('lights', lg.id, 'entity', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
+                        <option value="">{t('opt_select')}</option>
+                        {(haDiscovered['light']||[]).map((s: HaStateEntry) => (
+                          <option key={s.entity_id} value={s.entity_id}>
+                            {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" placeholder="light.brouwzaal" value={lg.entity}
+                        onChange={e => updateHaEntity('lights', lg.id, 'entity', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_min_pct')}</label>
+                    <input type="number" min="0" max="100" value={lg.min_pct ?? ''}
+                      onChange={e => updateHaEntity('lights', lg.id, 'min_pct', e.target.value === '' ? undefined : Number(e.target.value))}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-16 t-input" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_max_pct')}</label>
+                    <input type="number" min="0" max="100" value={lg.max_pct ?? ''}
+                      onChange={e => updateHaEntity('lights', lg.id, 'max_pct', e.target.value === '' ? undefined : Number(e.target.value))}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-16 t-input" />
+                  </div>
+                  <div className="flex items-end gap-1 pt-4">
+                    <Btn v="secondary" s="sm" onClick={() => testEntity(lg.entity)} disabled={!lg.entity}>{t('btn_test')}</Btn>
+                    <Btn v="danger" s="sm" onClick={() => removeHaEntity('lights', lg.id)}>×</Btn>
+                  </div>
+                </div>
+
+                {lg.entity && (
+                  <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
+                    <Btn v={isOn ? 'green' : 'secondary'} s="sm" disabled={!!haBusy[busyKey]}
+                      onClick={() => callService('light', isOn ? 'turn_off' : 'turn_on', {entity_id: lg.entity})}>
+                      {isOn ? t('btn_aan') : t('btn_uit')}
+                    </Btn>
+                    <div className="flex items-center gap-2 flex-1 min-w-48">
+                      <label className="text-xs text-gray-500 whitespace-nowrap">{t('settings_ha_brightness')}:</label>
+                      <input type="range" min={minPct} max={maxPct} step="1"
+                        defaultValue={brightness ?? minPct}
+                        className="flex-1"
+                        onMouseUp={e => callService('light', 'turn_on', {entity_id: lg.entity, brightness_pct: Number((e.target as HTMLInputElement).value)})}
+                        onTouchEnd={e => callService('light', 'turn_on', {entity_id: lg.entity, brightness_pct: Number((e.target as HTMLInputElement).value)})} />
+                      <span className="text-xs text-gray-500 w-10">{brightness != null ? `${brightness}%` : '—'}</span>
+                    </div>
+                  </div>
+                )}
+
+                {haEntTests[lg.entity] && (
+                  <span className={`text-sm font-medium ${haEntTests[lg.entity].startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                    {haEntTests[lg.entity]}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+          {(!Array.isArray(haInst?.lights) || haInst.lights.length === 0) && (
+            <p className="text-sm text-gray-400 italic py-1">{t('settings_ha_none_configured')}</p>
+          )}
+        </div>
+        <Btn v="secondary" s="sm" onClick={() => addHaEntity('lights', {min_pct: 0, max_pct: 100})}>{t('btn_light_toevoegen')}</Btn>
+      </div>
+
+      {/* ── Switches ── */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ha_switches_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_ha_switches_desc')}</p>
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={haInst?.switches_enabled||false}
+              onChange={e => {setHaInst((p: any) => ({...p, switches_enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`HA switches ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
+        </label>
+
+        <div className="flex items-center gap-2 mb-3">
+          <Btn v="secondary" s="sm" onClick={() => discoverDomain('switch')} disabled={haDiscovering==='switch'}>
+            {haDiscovering==='switch' ? t('settings_ha_loading') : t('settings_ha_discover')}
+          </Btn>
+          {haDiscoverMsg['switch'] && <span className="text-xs text-gray-500">{haDiscoverMsg['switch']}</span>}
+        </div>
+
+        <div className="space-y-2 mb-3">
+          {(Array.isArray(haInst?.switches) ? haInst.switches : []).map((sw: any) => {
+            const meta = (haDiscovered['switch']||[]).find((x: HaStateEntry) => x.entity_id === sw.entity)
+            const isOn = meta?.state === 'on'
+            const busyKey = `switch:${sw.entity}`
+            return (
+              <div key={sw.id} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50/50">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_label')}</label>
+                    <input type="text" placeholder={t('settings_ha_label_ph_switch')} value={sw.label}
+                      onChange={e => updateHaEntity('switches', sw.id, 'label', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-36 t-input" />
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+                    {(haDiscovered['switch']||[]).length > 0 ? (
+                      <select value={sw.entity} onChange={e => updateHaEntity('switches', sw.id, 'entity', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
+                        <option value="">{t('opt_select')}</option>
+                        {(haDiscovered['switch']||[]).map((s: HaStateEntry) => (
+                          <option key={s.entity_id} value={s.entity_id}>
+                            {s.entity_id}{s.friendly_name ? ` — ${s.friendly_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" placeholder="switch.pomp1" value={sw.entity}
+                        onChange={e => updateHaEntity('switches', sw.id, 'entity', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+                    )}
+                  </div>
+                  <div className="flex items-end gap-1 pt-4">
+                    <Btn v="secondary" s="sm" onClick={() => testEntity(sw.entity)} disabled={!sw.entity}>{t('btn_test')}</Btn>
+                    <Btn v="danger" s="sm" onClick={() => removeHaEntity('switches', sw.id)}>×</Btn>
+                  </div>
+                </div>
+
+                {sw.entity && (
+                  <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                    <Btn v={isOn ? 'green' : 'secondary'} s="sm" disabled={!!haBusy[busyKey]}
+                      onClick={() => callService('switch', isOn ? 'turn_off' : 'turn_on', {entity_id: sw.entity})}>
+                      {isOn ? t('btn_aan') : t('btn_uit')}
+                    </Btn>
+                    <Btn v="secondary" s="sm" disabled={!!haBusy[busyKey]}
+                      onClick={() => callService('switch', 'toggle', {entity_id: sw.entity})}>
+                      {t('btn_toggle')}
+                    </Btn>
+                    {meta && (
+                      <span className="text-xs text-gray-500">{t('settings_ha_state')}: <strong>{meta.state}</strong></span>
+                    )}
+                  </div>
+                )}
+
+                {haEntTests[sw.entity] && (
+                  <span className={`text-sm font-medium ${haEntTests[sw.entity].startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                    {haEntTests[sw.entity]}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+          {(!Array.isArray(haInst?.switches) || haInst.switches.length === 0) && (
+            <p className="text-sm text-gray-400 italic py-1">{t('settings_ha_none_configured')}</p>
+          )}
+        </div>
+        <Btn v="secondary" s="sm" onClick={() => addHaEntity('switches')}>{t('btn_switch_toevoegen')}</Btn>
       </div>
       </>}
 

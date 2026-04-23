@@ -27,6 +27,56 @@ export const haGetState = async (entityId: string): Promise<{state: string, unit
   return r.json()
 }
 
+// Vormgebruik per HA-entity in /_list. Attributen zijn gepruimd door de proxy
+// tot alleen de velden die de UI nodig heeft; ruwe attribute-bags komen hier
+// niet terug.
+export interface HaStateEntry {
+  entity_id: string
+  state: any
+  friendly_name: string
+  unit: string
+  hvac_modes: string[]
+  preset_modes: string[]
+  min_temp: number | null
+  max_temp: number | null
+  current_temperature: number | null
+  temperature: number | null
+  supported_color_modes: string[]
+  brightness: number | null
+  device_class: string
+}
+
+// Haal alle HA-entities op, optioneel gefilterd op domein (sensor, climate,
+// light, switch, binary_sensor). Server filtert de lijst; whitelist op de
+// backend voorkomt ongewenste domeinen.
+export const haListStates = async (domain?: string): Promise<HaStateEntry[]> => {
+  const url = _HA_PROXY + '_list' + (domain ? `?domain=${encodeURIComponent(domain)}` : '')
+  const r = await _fetchWithRetry(url, undefined, 1)
+  if (r.status === 429) throw _rateLimitError('HA', r)
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
+  const d = await r.json()
+  return Array.isArray(d.states) ? d.states : []
+}
+
+// Roep een HA service-call aan. `domain.service` moet in de server-whitelist
+// staan (climate.set_temperature, light.turn_on, switch.toggle, …). `data`
+// moet minimaal `entity_id` bevatten; service-specifieke velden daarnaast
+// (bv. `temperature`, `brightness_pct`, `hvac_mode`).
+export const haCallService = async (
+  domain: string,
+  service: string,
+  data: Record<string, any>
+): Promise<void> => {
+  const url = _HA_PROXY + `_service/${encodeURIComponent(domain)}/${encodeURIComponent(service)}`
+  const r = await _fetchWithRetry(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data),
+  }, 1)
+  if (r.status === 429) throw _rateLimitError('HA', r)
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
+}
+
 // Sync state
 export const _allKeys     = new Set<string>()
 export const _fetchedKeys = new Set<string>()

@@ -701,9 +701,44 @@ export interface HaSensor {
   entity: string
 }
 
+// Klimaatapparaat (thermostaat, koelcel, HVAC). Kan optioneel aan een tank
+// gekoppeld worden zodat we het setpoint automatisch op het vergistings­profiel
+// kunnen afstemmen. Laatst bekende waarden worden gecached voor dashboard.
+export interface HaClimate {
+  id: number
+  label: string           // vrije naam: "Koelcel", "Gistkamer", "Tank 3 jacket"
+  entity: string          // entity_id (climate.*)
+  tank?: string           // optionele koppeling aan tank-id
+  auto_setpoint?: boolean // setpoint automatisch volgen uit vergistingsprofiel
+}
+
+// Dimbaar licht (HA domein light). `min_pct`/`max_pct` begrenzen de slider in
+// de UI zodat bv. een waterbad-lamp niet boven 60% kan.
+export interface HaLight {
+  id: number
+  label: string
+  entity: string
+  min_pct?: number
+  max_pct?: number
+}
+
+// Switch-entity (stopcontact, smart plug, relay). Gebruikt voor hardware als
+// koelmotoren, verwarming, pompen, ventilatoren, waterkokers.
+export interface HaSwitch {
+  id: number
+  label: string
+  entity: string
+}
+
 export interface HaInst {
-  enabled: boolean
+  enabled: boolean              // hoofdschakelaar sensoren (bestaand gedrag)
   sensors: HaSensor[]
+  climates_enabled?: boolean
+  climates?: HaClimate[]
+  lights_enabled?: boolean
+  lights?: HaLight[]
+  switches_enabled?: boolean
+  switches?: HaSwitch[]
 }
 
 // 'intern_gebruik' is verhuisd naar Uitlevering (type_uitlevering = 'intern'),
