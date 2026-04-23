@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { accijnsCalc, voorraadPerLocatie, getAgpLocatie } from '../utils/calculations'
+import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -596,7 +596,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         pickResult[pick.id].uitlevering_ids.push(uitleveringRec.id)
 
         if (isAgp) {
-          const accBed = accijnsCalc(liter, abv, r1, r2, accijnsInst, plato)
+          // Kies het tarief dat hoort bij het brouwjaar van de batch — niet bij
+          // de uitslagdatum. Accijns volgt het brouwjaar.
+          const _t = tariefVoorDatum(accijnsInst, batch?.datum)
+          const _eff = {...(accijnsInst || {}), tarief_per_hl_plato: _t.r3}
+          const accBed = accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato)
           const accRec = {
             id: accId++,
             batch_id: pick.batch_id,

@@ -7,7 +7,7 @@ import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
-import { agpOverzicht, getAgpLocatie, accijnsCalc, voorraadPerLocatie, gemAgpInPeriode } from '../utils/calculations'
+import { agpOverzicht, getAgpLocatie, accijnsCalc, tariefVoorDatum, voorraadPerLocatie, gemAgpInPeriode } from '../utils/calculations'
 
 function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog}: any) {
   const {useState, useMemo} = React;
@@ -94,7 +94,9 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
     if (van.is_agp && !naar.is_agp) {
       const abv = Number(batch?.ABV || 0);
       const plato = Number(batch?.platogehalte || 0);
-      accijnsBedrag = accijnsCalc(liter, abv, r1, r2, accijnsInst, plato);
+      const _t = tariefVoorDatum(accijnsInst, batch?.datum);
+      const _eff = {...(accijnsInst || {}), tarief_per_hl_plato: _t.r3};
+      accijnsBedrag = accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato);
       const newAcc = {
         id: newId(acc||[]),
         batch_id: vplModal.batch_id,
@@ -458,7 +460,9 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
                       const liter = Number(vplModal.aantal||0) * inhoud;
                       const abv = Number(batch?.ABV || 0);
                       const plato = Number(batch?.platogehalte || 0);
-                      const bedrag = liter > 0 ? accijnsCalc(liter, abv, r1, r2, accijnsInst, plato) : 0;
+                      const _t = tariefVoorDatum(accijnsInst, batch?.datum);
+                      const _eff = {...(accijnsInst || {}), tarief_per_hl_plato: _t.r3};
+                      const bedrag = liter > 0 ? accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato) : 0;
                       return (
                         <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
                           {t('agp_info_accijns_boeken')} <span className="font-bold">{fmt(bedrag)}</span> ({liter.toFixed(1)}L × {abv||0}% ABV)

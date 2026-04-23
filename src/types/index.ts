@@ -388,6 +388,25 @@ export interface AccijnsInst {
   tarief_per_hl_plato?: number
   customFormulaEnabled?: boolean
   customFormula?: string
+  // Historische tarieven per jaar. Als een batch in jaar X is gebrouwen en er
+  // een entry met `jaar=X` bestaat, worden die tarieven gebruikt. Anders
+  // fallback op het root-level `tarief_per_hl_abv`/`tarief_per_hl`. Zo kun je
+  // tariefwijzigingen (incl. retro-correcties) transparant beheren zonder
+  // historische berekeningen te breken.
+  tarieven_historie?: AccijnsTariefJaar[]
+}
+
+export interface AccijnsTariefJaar {
+  jaar: number
+  tarief_per_hl_abv: number
+  tarief_per_hl: number
+  tarief_per_hl_plato?: number
+  // Optioneel: expliciete ingangsdatum binnen het jaar (YYYY-MM-DD). Ontbreekt
+  // dit veld, dan geldt 1-januari van `jaar`. Wordt voorlopig niet gebruikt
+  // door de lookup (die filtert puur op jaar), maar bewaard voor latere
+  // precisie bij wijzigingen mid-jaar.
+  ingangsdatum?: string
+  notitie?: string
 }
 
 export interface BtwInst {
