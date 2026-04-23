@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.99] — 2026-04-23
+
+### Changed — Instellingen-pagina: multi-column layout op brede schermen
+
+De Instellingen-content zat met een `max-w-2xl` cap (672px), waardoor
+op een breed scherm alle cards smal onder elkaar stonden met veel lege
+ruimte rechts.
+
+- Max-width cap verwijderd; content gebruikt nu de volledige beschikbare
+  breedte naast de linker-navigatie.
+- Op schermen ≥1280px (xl) stromen de cards in 2 kolommen via
+  CSS `columns: 2`. Elke card krijgt `break-inside-avoid` zodat hij
+  niet over de kolom-grens splitst.
+- Brede cards (Auditlog, Accijnstarieven per jaar, Goederenstroom-AGP,
+  Batch-taken) krijgen `[column-span:all]` zodat ze over beide kolommen
+  blijven — dat zijn de secties met een brede tabel of horizontale
+  flow die te smal zou worden in een enkele kolom.
+- Op mobiel/tablet/desktop-tot-1280px blijft alles 1-koloms (zoals
+  voorheen), zonder regressies.
+
 ## [1.8.98] — 2026-04-23
 
 ### Added — Accijnstarieven per jaar + impact-rapport
