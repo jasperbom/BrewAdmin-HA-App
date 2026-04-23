@@ -60,6 +60,16 @@ export interface Batch {
   kook_volume?: number | string
   vergistingsprofiel?: VergistingsStap[]
   maischprofiel?: MaischStap[]
+  // Huidige stap in het vergistingsprofiel (0-indexed) en wanneer die stap
+  // is gestart. Samen bepalen ze "dagen verstreken" en "dagen resterend" op
+  // het Dashboard, en worden ze door de Volgende-stap-knop bijgehouden.
+  vergisting_stap_idx?: number
+  vergisting_stap_start?: string  // ISO timestamp
+  // Cold-crash metadata: timestamp + gebruikte target en ramp. Puur
+  // informatief — de daadwerkelijke setpoint wordt direct naar HA gestuurd.
+  cold_crash_datum?: string       // ISO timestamp
+  cold_crash_target?: number      // °C
+  cold_crash_ramp?: number        // °C/uur
   log?: BatchLogEntry[]
   platogehalte?: number | string
   gn_code?: string
@@ -739,6 +749,17 @@ export interface HaInst {
   lights?: HaLight[]
   switches_enabled?: boolean
   switches?: HaSwitch[]
+}
+
+// Cold-crash preset dat via het Dashboard per tank getriggerd kan worden.
+// De knop zet de climate-entity op `target_temp`, zet de batch-status op
+// 'Conditioneren' en noteert de metadata op de batch. `ramp_per_uur` is
+// een referentiewaarde die op de card getoond wordt; een eigenlijke actieve
+// ramp-controller is er (nog) niet.
+export interface ColdcrashInst {
+  enabled: boolean
+  target_temp: number     // °C doeltemperatuur (typisch 1–4)
+  ramp_per_uur: number    // °C per uur daling (typisch 0.5–2)
 }
 
 // 'intern_gebruik' is verhuisd naar Uitlevering (type_uitlevering = 'intern'),

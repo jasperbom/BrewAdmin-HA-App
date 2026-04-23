@@ -1477,5 +1477,21 @@
   "btn_switch_toevoegen": "+ Add switch",
   "lbl_ingeschakeld": "Enabled",
   "opt_select": "— select —",
-  "opt_none": "— none —"
+  "opt_none": "— none —",
+  "settings_coldcrash_title": "❄ Cold-crash preset",
+  "settings_coldcrash_desc": "When you press the cold-crash button on a tank in the Dashboard, the linked climate device is set to the target temperature below and the batch moves to status 'Conditioning'. The ramp rate is a reference value shown on the tank card.",
+  "settings_coldcrash_target": "Target temperature",
+  "settings_coldcrash_ramp": "Ramp rate",
+  "settings_coldcrash_hint": "Tip: typical values are 1–4°C target and 0.5–2°C/hour. Crashing too fast can damage yeast cells and affect next-generation pitching.",
+  "dashboard_climate": "Climate",
+  "dashboard_ferm_schedule": "Fermentation schedule",
+  "dashboard_next_step": "Next",
+  "dashboard_elapsed": "Elapsed: {d} d",
+  "dashboard_remaining": "remaining: {d} d",
+  "dashboard_step_overdue": "past planned",
+  "dashboard_coldcrash_btn": "Cold-crash",
+  "dashboard_coldcrash_confirm": "Start cold-crash to {t}°C and move batch to Conditioning status?",
+  "dashboard_coldcrash_confirm_off": "Cold-crash preset is not enabled in Settings. Proceed with default values anyway?",
+  "lbl_stap": "Step",
+  "lbl_uur": "hr"
 }

@@ -1667,5 +1667,21 @@
   "btn_switch_toevoegen": "+ Añadir interruptor",
   "lbl_ingeschakeld": "Activado",
   "opt_select": "— seleccionar —",
-  "opt_none": "— ninguno —"
+  "opt_none": "— ninguno —",
+  "settings_coldcrash_title": "❄ Preajuste cold-crash",
+  "settings_coldcrash_desc": "Cuando pulsas el botón cold-crash en un tanque del Panel, el dispositivo climático vinculado se ajusta a la temperatura objetivo indicada y el lote pasa al estado 'Maduración'. La velocidad de rampa es un valor de referencia mostrado en la tarjeta del tanque.",
+  "settings_coldcrash_target": "Temperatura objetivo",
+  "settings_coldcrash_ramp": "Velocidad de rampa",
+  "settings_coldcrash_hint": "Consejo: valores típicos 1–4°C objetivo y 0.5–2°C/hora. Un crash demasiado rápido puede dañar las células de levadura y afectar la siguiente generación.",
+  "dashboard_climate": "Clima",
+  "dashboard_ferm_schedule": "Cronograma de fermentación",
+  "dashboard_next_step": "Siguiente",
+  "dashboard_elapsed": "Transcurrido: {d} d",
+  "dashboard_remaining": "restante: {d} d",
+  "dashboard_step_overdue": "vencido",
+  "dashboard_coldcrash_btn": "Cold-crash",
+  "dashboard_coldcrash_confirm": "¿Iniciar cold-crash a {t}°C y mover el lote a Maduración?",
+  "dashboard_coldcrash_confirm_off": "El preajuste cold-crash no está activado en Ajustes. ¿Continuar con los valores por defecto?",
+  "lbl_stap": "Paso",
+  "lbl_uur": "h"
 }

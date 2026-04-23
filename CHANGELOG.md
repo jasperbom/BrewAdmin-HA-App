@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.93] — 2026-04-23
+
+### Added — Tank climate control, vergistingsschema & cold-crash op Dashboard
+
+Het Dashboard laat nu per tank met een gekoppeld climate-apparaat een
+compacte controlepaneel zien. Daarnaast is er een cold-crash preset dat
+centraal geconfigureerd wordt.
+
+- **Climate op tankkaart**: huidige temperatuur + setpoint + HVAC-modus
+  direct bedienbaar vanuit het Dashboard. Elke 60s ververst gelijk met
+  de bestaande sensor-refresh.
+- **Vergistingsschema**: toont alle stappen uit `batch.vergistingsprofiel`
+  met de actieve stap gehighlight, hoeveel dagen er verstreken zijn en
+  hoeveel er nog gepland staan (inclusief "gepland verlopen"-markering).
+  Met een dropdown of ◀/▶ knoppen kun je direct naar een andere stap;
+  bij doorklikken wordt het setpoint meteen naar het climate-apparaat
+  gestuurd.
+- **Cold-crash preset** in Instellingen → Home Assistant: doeltemperatuur
+  (°C) + ramp-snelheid (°C/uur). De waarden worden getoond op de
+  tankkaart naast de cold-crash knop.
+- **Cold-crash knop** per tank (als er een climate gekoppeld is): zet
+  het climate-setpoint direct naar de doeltemperatuur, wijzigt de batch
+  naar status `Conditioneren` en slaat `cold_crash_datum`, `_target` en
+  `_ramp` op de batch op voor audit/trace.
+- Batch-type: nieuwe velden `vergisting_stap_idx`, `vergisting_stap_start`,
+  `cold_crash_datum`, `cold_crash_target`, `cold_crash_ramp`.
+- Nieuwe data-key `coldcrash_instellingen` + toegevoegd aan Excel-backup
+  (export en import) zodat instellingen meereizen.
+
 ## [1.8.92] — 2026-04-23
 
 ### Changed — HA entity-picker: zoekveld, type-filter en PWM-herdefinitie
