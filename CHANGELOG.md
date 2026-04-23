@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.89] — 2026-04-23
+
+### Added — Live alcoholpercentage uit SG-metingen + expliciet accijns-ABV
+
+Op het batch-detailpaneel toont de sectie "Gistingsvoortgang" nu het
+actuele alcoholpercentage, berekend uit de SG-metingen tijdens de
+vergisting (formule: `ABV = (OG − FG) × 131.25`). Zolang de gisting
+loopt wordt het gemarkeerd als *voorlopig*.
+
+Daarnaast staat naast de berekende waarde een duidelijk invoerveld
+**"ABV voor accijns"** dat direct schrijft naar `batch.ABV` — het veld
+dat `accijnsCalcBatch` gebruikt voor de accijnsberekening. Een
+"Neem over"-knop kopieert de berekende waarde één-op-één naar het
+accijnsveld.
+
+- **Frontend** (`src/pages/BatchesPage.tsx`): nieuwe berekening- en
+  invoerrij in de fermentatie-progressiesectie; gebruikt
+  `berekenLiveABV` om OG (of eerste SG) en laatste SG-meting te
+  combineren.
+- **Utils** (`src/utils/calculations.ts`): nieuwe helpers `berekenABV`
+  (OG/FG → %) en `berekenLiveABV` (batch + metingen → actuele ABV met
+  bron-indicatie).
+- **i18n**: 8 nieuwe sleutels in nl/en/de/fr/es.
+
 ## [1.8.88] — 2026-04-22
 
 ### Fixed — Logo's raken niet meer weg bij Excel-backup import

@@ -273,6 +273,69 @@ export const schatABV = (batch: any): { abv: number; geschat: boolean } => {
   return { abv: 0, geschat: true }
 }
 
+// Standaard ABV-formule uit SG-waarden: ABV ≈ (OG − FG) × 131.25. Geeft 0
+// terug als er geen geldige OG/FG is (OG moet > FG zijn).
+export const berekenABV = (og: number, fg: number): number => {
+  const o = Number(og) || 0
+  const f = Number(fg) || 0
+  if (o <= 0 || f <= 0 || o <= f) return 0
+  return (o - f) * 131.25
+}
+
+// Live ABV op basis van SG-metingen tijdens de vergisting. Gebruikt
+// `batch.OG` als beginwaarde (of de hoogste SG-meting als fallback) en de
+// meest recente SG-meting als actuele FG. `isFinal` is true zodra de batch
+// uit de vergisting is (status Afgevuld/Gesloten) of als een FG is ingevuld.
+export interface LiveABVResult {
+  abv: number
+  og: number | null
+  fg: number | null
+  isFinal: boolean
+  bron: 'none' | 'metingen' | 'og_fg'
+}
+
+export const berekenLiveABV = (batch: any, metingen: any[] = []): LiveABVResult => {
+  const ms = (metingen || [])
+    .filter(m => m && m.batch_id === batch?.id && m.sg != null && Number(m.sg) > 0)
+    .slice()
+    .sort((a, b) => {
+      const ka = String(a.datum || '') + 'T' + String(a.tijd || '00:00')
+      const kb = String(b.datum || '') + 'T' + String(b.tijd || '00:00')
+      return ka.localeCompare(kb)
+    })
+
+  const batchOG = Number(batch?.OG) || 0
+  const batchFG = Number(batch?.FG) || 0
+  const statusFinal = ['Afgevuld', 'Gesloten'].includes(String(batch?.status || ''))
+
+  if (ms.length > 0) {
+    const firstSg = Number(ms[0].sg)
+    const lastSg  = Number(ms[ms.length - 1].sg)
+    const og = batchOG > 0 ? batchOG : firstSg
+    const fg = lastSg
+    const abv = berekenABV(og, fg)
+    return {
+      abv,
+      og,
+      fg,
+      isFinal: statusFinal || batchFG > 0,
+      bron: 'metingen',
+    }
+  }
+
+  if (batchOG > 0 && batchFG > 0) {
+    return {
+      abv: berekenABV(batchOG, batchFG),
+      og: batchOG,
+      fg: batchFG,
+      isFinal: true,
+      bron: 'og_fg',
+    }
+  }
+
+  return { abv: 0, og: batchOG || null, fg: batchFG || null, isFinal: false, bron: 'none' }
+}
+
 // Liters bier dat nog in tank zit voor een batch (= liter_vergist minus reeds
 // afgevulde liters). Negatief resultaat wordt 0.
 export const tankRestVolume = (batch: any, afvullingen: Afvulling[] = []): number => {

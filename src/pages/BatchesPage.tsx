@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -1285,7 +1285,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               {(() => {
                 const sgPct = sgProgress(selB)
                 const latestM = latestMeting(selB.id)
-                if (sgPct === null && !latestM) return null
+                const liveABV = berekenLiveABV(selB, gistMetingen || [])
+                const hasAccijnsABV = Number(selB.ABV) > 0
+                if (sgPct === null && !latestM && liveABV.abv === 0 && !hasAccijnsABV) return null
+                const setAccijnsABV = (waarde: string) => {
+                  const v = waarde === '' ? undefined : Number(waarde)
+                  setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ABV: v} : b))
+                }
                 return (
                   <div className="px-4 py-3 border-b">
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -1316,6 +1322,66 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <span className="text-gray-400">{fmtD(latestM.datum)}</span>
                       </div>
                     )}
+
+                    {/* ABV — berekend + invoer voor accijns */}
+                    <div className="mt-3 pt-3 border-t flex flex-wrap items-end gap-4">
+                      {/* Berekend ABV uit SG-metingen */}
+                      <div className="flex-1 min-w-[12rem]">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                          {t('batch_abv_berekend')}
+                        </div>
+                        {liveABV.abv > 0 ? (
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xl font-semibold" style={{color: 'var(--t-accent)'}}>
+                              {liveABV.abv.toFixed(2)}%
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {t('batch_abv_op_basis_van')
+                                .replace('{og}', liveABV.og != null ? Number(liveABV.og).toFixed(3) : '—')
+                                .replace('{fg}', liveABV.fg != null ? Number(liveABV.fg).toFixed(3) : '—')}
+                            </span>
+                            {!liveABV.isFinal && (
+                              <span className="text-xs text-gray-400 italic">{t('batch_abv_voorlopig')}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400 italic">{t('batch_abv_geen_data')}</div>
+                        )}
+                      </div>
+
+                      {/* Invoerveld voor accijns-ABV */}
+                      <div className="flex flex-col">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                          {t('batch_abv_accijns_label')}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="50"
+                              value={selB.ABV ?? ''}
+                              onChange={e => setAccijnsABV(e.target.value)}
+                              placeholder="5.0"
+                              className="border border-gray-300 rounded px-2 py-1.5 pr-7 text-sm t-input w-24 text-right font-mono"
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
+                          </div>
+                          {liveABV.abv > 0 && Math.abs(Number(selB.ABV || 0) - liveABV.abv) > 0.01 && (
+                            <Btn
+                              s="sm"
+                              v="secondary"
+                              onClick={() => setAccijnsABV(liveABV.abv.toFixed(2))}
+                              title={t('batch_abv_overnemen_tooltip')}
+                            >
+                              {t('batch_abv_overnemen')}
+                            </Btn>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-400 mt-1">{t('batch_abv_accijns_hint')}</div>
+                      </div>
+                    </div>
                   </div>
                 )
               })()}
