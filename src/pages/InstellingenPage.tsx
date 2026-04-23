@@ -6,6 +6,89 @@ import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAK
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry } from '../utils/api'
 import { logAudit } from '../utils/audit'
+import { berekenAccijnsImpact, AccijnsImpactResult } from '../utils/calculations'
+import { fmt, fmtD } from '../utils/format'
+
+// Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
+// bij zodat de gebruiker waardes kan wijzigen, de impact kan bekijken, en pas
+// dán kan opslaan. Impact-knop is enabled zodra de draft afwijkt van entry.
+const JaarRow = ({entry, batchesInJaar, onSave, onDelete, onImpact}: {
+  entry: any, batchesInJaar: number,
+  onSave: (patch: any) => void,
+  onDelete: () => void,
+  onImpact: (patch: any) => void,
+}) => {
+  const [draft, setDraft] = useState({
+    tarief_per_hl_abv: String(entry.tarief_per_hl_abv ?? ''),
+    tarief_per_hl:     String(entry.tarief_per_hl ?? ''),
+    tarief_per_hl_plato: entry.tarief_per_hl_plato != null ? String(entry.tarief_per_hl_plato) : '',
+    notitie: entry.notitie || '',
+  });
+  // Reset draft als entry buiten deze rij veranderd is (bv. na Opslaan). Puur
+  // op jaar refreshen volstaat — het jaar verandert immers niet binnen de rij.
+  React.useEffect(() => {
+    setDraft({
+      tarief_per_hl_abv: String(entry.tarief_per_hl_abv ?? ''),
+      tarief_per_hl:     String(entry.tarief_per_hl ?? ''),
+      tarief_per_hl_plato: entry.tarief_per_hl_plato != null ? String(entry.tarief_per_hl_plato) : '',
+      notitie: entry.notitie || '',
+    });
+  }, [entry.jaar, entry.tarief_per_hl_abv, entry.tarief_per_hl, entry.tarief_per_hl_plato, entry.notitie]);
+
+  const dirty =
+    Number(draft.tarief_per_hl_abv) !== Number(entry.tarief_per_hl_abv) ||
+    Number(draft.tarief_per_hl)     !== Number(entry.tarief_per_hl)     ||
+    Number(draft.tarief_per_hl_plato || 0) !== Number(entry.tarief_per_hl_plato || 0) ||
+    (draft.notitie || '') !== (entry.notitie || '');
+
+  const toPatch = () => ({
+    jaar: Number(entry.jaar),
+    tarief_per_hl_abv: Number(draft.tarief_per_hl_abv),
+    tarief_per_hl:     Number(draft.tarief_per_hl),
+    tarief_per_hl_plato: draft.tarief_per_hl_plato !== '' ? Number(draft.tarief_per_hl_plato) : undefined,
+    notitie: draft.notitie || undefined,
+  });
+
+  const valid = isFinite(Number(draft.tarief_per_hl_abv)) && isFinite(Number(draft.tarief_per_hl));
+
+  const cell = 'border border-gray-200 rounded px-2 py-1 text-sm w-20 t-input';
+  return (
+    <tr className="border-b border-gray-100">
+      <td className="px-2 py-2 font-medium">{entry.jaar}</td>
+      <td className="px-2 py-2"><input type="number" step="0.01" value={draft.tarief_per_hl_abv}
+        onChange={(e: any) => setDraft((d: any) => ({...d, tarief_per_hl_abv: e.target.value}))}
+        className={cell} /></td>
+      <td className="px-2 py-2"><input type="number" step="0.01" value={draft.tarief_per_hl}
+        onChange={(e: any) => setDraft((d: any) => ({...d, tarief_per_hl: e.target.value}))}
+        className={cell} /></td>
+      <td className="px-2 py-2"><input type="number" step="0.01" value={draft.tarief_per_hl_plato}
+        onChange={(e: any) => setDraft((d: any) => ({...d, tarief_per_hl_plato: e.target.value}))}
+        className={cell} /></td>
+      <td className="px-2 py-2"><input type="text" value={draft.notitie}
+        onChange={(e: any) => setDraft((d: any) => ({...d, notitie: e.target.value}))}
+        className="border border-gray-200 rounded px-2 py-1 text-sm w-full min-w-[140px] t-input" /></td>
+      <td className="px-2 py-2 whitespace-nowrap">
+        <div className="flex items-center gap-1">
+          <button onClick={() => valid && onImpact(toPatch())}
+            disabled={!valid || batchesInJaar === 0}
+            title={t('settings_excise_historie_impact_tip').replace('{n}', String(batchesInJaar))}
+            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+            📊 {t('settings_excise_historie_impact')}
+          </button>
+          <button onClick={() => valid && dirty && onSave(toPatch())}
+            disabled={!valid || !dirty}
+            className="text-xs px-2 py-1 rounded tbtn text-white disabled:opacity-40 disabled:cursor-not-allowed">
+            {t('btn_save')}
+          </button>
+          <button onClick={onDelete}
+            className="text-xs px-2 py-1 rounded border border-red-200 text-red-600 bg-red-50 hover:bg-red-100">
+            ✕
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+};
 
 const ServerStatusCard = () => {
   const [s, setS]     = useState('loading');
@@ -154,7 +237,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -191,7 +274,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     const r2 = parseFloat(tarieven.tarief_per_hl);
     if (isNaN(r1)||isNaN(r2)) { alert(t('err_valid_numbers')); return; }
     if (customFormulaEnabled && !testFormula(customFormula)) return;
-    setAccijnsInst({tarief_per_hl_abv: r1, tarief_per_hl: r2, customFormulaEnabled, customFormula});
+    // Preserveer bestaande tarieven_historie — anders zou het opslaan van de
+    // root-tarieven het hele historie-array wissen.
+    setAccijnsInst((prev: any) => ({...(prev || {}), tarief_per_hl_abv: r1, tarief_per_hl: r2, customFormulaEnabled, customFormula}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Accijnstarieven opgeslagen'});
     setSaved(true);
     setTimeout(()=>setSaved(false), 2000);
@@ -202,10 +287,84 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setCustomFormulaEnabled(false);
     setCustomFormula('');
     setFormulaError('');
-    setAccijnsInst({tarief_per_hl_abv:7.51, tarief_per_hl:24.17, customFormulaEnabled:false, customFormula:''});
+    setAccijnsInst((prev: any) => ({...(prev || {}), tarief_per_hl_abv:7.51, tarief_per_hl:24.17, customFormulaEnabled:false, customFormula:''}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Accijnstarieven gereset naar standaard'});
     setSaved(true);
     setTimeout(()=>setSaved(false), 2000);
+  };
+
+  // ── Tarieven per jaar (historie) ──────────────────────────────────────────
+  // Lokale working copy van `accijnsInst.tarieven_historie`; gebruiker kan
+  // toevoegen/verwijderen/aanpassen en daarna met "Opslaan" committen. Impact-
+  // rapport kijkt tegen de al opgeslagen historie aan (niet de working copy).
+  const [jaarForm, setJaarForm] = React.useState({
+    jaar: String(new Date().getFullYear()),
+    tarief_per_hl_abv: '',
+    tarief_per_hl: '',
+    tarief_per_hl_plato: '',
+    notitie: '',
+  });
+  const [impactModal, setImpactModal] = React.useState<null | {
+    jaar: number
+    oudTarief: {r1: number, r2: number, r3?: number}
+    nieuwTarief: {tarief_per_hl_abv: number, tarief_per_hl: number, tarief_per_hl_plato?: number}
+    resultaat: AccijnsImpactResult
+    nogOpslaan: boolean  // true = preview vóór opslaan, false = retrospectief
+  }>(null);
+
+  const historieLijst: any[] = Array.isArray(accijnsInst?.tarieven_historie)
+    ? [...accijnsInst.tarieven_historie].sort((a: any, b: any) => Number(b.jaar) - Number(a.jaar))
+    : [];
+
+  const huidigJaarTarief = (jaar: number) => {
+    const e = historieLijst.find((x: any) => Number(x.jaar) === jaar);
+    return {
+      r1: Number(e?.tarief_per_hl_abv ?? accijnsInst?.tarief_per_hl_abv ?? 7.51),
+      r2: Number(e?.tarief_per_hl ?? accijnsInst?.tarief_per_hl ?? 24.17),
+      r3: e?.tarief_per_hl_plato ?? accijnsInst?.tarief_per_hl_plato,
+    };
+  };
+
+  const saveHistorieEntry = (entry: any) => {
+    setAccijnsInst((prev: any) => {
+      const zonder = (prev?.tarieven_historie || []).filter((x: any) => Number(x.jaar) !== Number(entry.jaar));
+      return {...(prev || {}), tarieven_historie: [...zonder, entry]};
+    });
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Accijnstarief ${entry.jaar}: ABV=${entry.tarief_per_hl_abv} base=${entry.tarief_per_hl}`});
+  };
+
+  const deleteHistorieEntry = (jaar: number) => {
+    if (!confirm(t('settings_excise_historie_confirm_delete').replace('{j}', String(jaar)))) return;
+    setAccijnsInst((prev: any) => ({
+      ...(prev || {}),
+      tarieven_historie: (prev?.tarieven_historie || []).filter((x: any) => Number(x.jaar) !== jaar),
+    }));
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'verwijderd', omschrijving:`Accijnstarief ${jaar} verwijderd`});
+  };
+
+  const openImpact = (jaar: number, nieuwTarief: {tarief_per_hl_abv: number, tarief_per_hl: number, tarief_per_hl_plato?: number}, nogOpslaan: boolean) => {
+    const oud = huidigJaarTarief(jaar);
+    const resultaat = berekenAccijnsImpact(bat, accijnsInst, jaar, nieuwTarief);
+    setImpactModal({jaar, oudTarief: {r1: oud.r1, r2: oud.r2, r3: oud.r3}, nieuwTarief, resultaat, nogOpslaan});
+  };
+
+  const impactExportCsv = () => {
+    if (!impactModal) return;
+    const rows = [
+      ['Datum', 'Batch#', 'Naam', 'Liter', 'ABV%', 'Plato', 'Oud_accijns_EUR', 'Nieuw_accijns_EUR', 'Verschil_EUR'],
+      ...impactModal.resultaat.rijen.map(r => [
+        r.datum, r.batch_nummer || String(r.batch_id), r.naam,
+        r.liter.toFixed(1), r.abv.toFixed(2), String(r.plato),
+        r.oudAccijns.toFixed(2), r.nieuwAccijns.toFixed(2), r.verschil.toFixed(2),
+      ]),
+      ['', '', 'TOTAAL', '', '', '', impactModal.resultaat.totaalOud.toFixed(2), impactModal.resultaat.totaalNieuw.toFixed(2), impactModal.resultaat.totaalVerschil.toFixed(2)],
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const blob = new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `accijns_impact_${impactModal.jaar}.csv`;
+    a.click(); URL.revokeObjectURL(url);
   };
 
   const clearLog = () => {
@@ -1586,6 +1745,107 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       </div>
 
+      {/* Accijnstarieven per jaar */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_excise_historie_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_excise_historie_desc')}</p>
+
+        {historieLijst.length === 0 ? (
+          <p className="text-sm text-gray-400 italic mb-3">{t('settings_excise_historie_none')}</p>
+        ) : (
+          <div className="overflow-x-auto mb-4">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                  <th className="px-2 py-2">{t('lbl_jaar')}</th>
+                  <th className="px-2 py-2">€/hL × ABV%</th>
+                  <th className="px-2 py-2">€/hL {t('settings_excise_base')}</th>
+                  <th className="px-2 py-2">€/hL × Plato</th>
+                  <th className="px-2 py-2">{t('lbl_notitie')}</th>
+                  <th className="px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {historieLijst.map((e: any) => {
+                  const batchesInJaar = (bat || []).filter((b: any) => {
+                    const y = new Date(b?.datum || '').getFullYear();
+                    return y === Number(e.jaar);
+                  }).length;
+                  return (
+                    <JaarRow key={e.jaar} entry={e} batchesInJaar={batchesInJaar}
+                      onSave={(patch: any) => saveHistorieEntry(patch)}
+                      onDelete={() => deleteHistorieEntry(Number(e.jaar))}
+                      onImpact={(patch: any) => openImpact(Number(e.jaar), patch, false)} />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Nieuwe regel */}
+        <div className="border-t pt-4">
+          <h3 className="text-sm font-semibold text-gray-600 mb-2">{t('settings_excise_historie_add')}</h3>
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">{t('lbl_jaar')}</label>
+              <input type="number" min="2000" max="2100" value={jaarForm.jaar}
+                onChange={(e: any) => setJaarForm((f: any) => ({...f, jaar: e.target.value}))}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">€/hL×ABV%</label>
+              <input type="number" step="0.01" value={jaarForm.tarief_per_hl_abv}
+                onChange={(e: any) => setJaarForm((f: any) => ({...f, tarief_per_hl_abv: e.target.value}))}
+                placeholder="7.51"
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">€/hL</label>
+              <input type="number" step="0.01" value={jaarForm.tarief_per_hl}
+                onChange={(e: any) => setJaarForm((f: any) => ({...f, tarief_per_hl: e.target.value}))}
+                placeholder="24.17"
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">€/hL×Plato</label>
+              <input type="number" step="0.01" value={jaarForm.tarief_per_hl_plato}
+                onChange={(e: any) => setJaarForm((f: any) => ({...f, tarief_per_hl_plato: e.target.value}))}
+                placeholder={t('lbl_optioneel')}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-20 t-input" />
+            </div>
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-xs text-gray-500 mb-0.5">{t('lbl_notitie')}</label>
+              <input type="text" value={jaarForm.notitie}
+                onChange={(e: any) => setJaarForm((f: any) => ({...f, notitie: e.target.value}))}
+                placeholder={t('settings_excise_historie_note_ph')}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input" />
+            </div>
+            <Btn v="primary" s="sm" onClick={() => {
+              const j = Number(jaarForm.jaar);
+              const r1 = Number(jaarForm.tarief_per_hl_abv);
+              const r2 = Number(jaarForm.tarief_per_hl);
+              if (!isFinite(j) || !isFinite(r1) || !isFinite(r2) || j < 2000 || j > 2100) {
+                alert(t('err_valid_numbers')); return;
+              }
+              if (historieLijst.some((x: any) => Number(x.jaar) === j)) {
+                alert(t('settings_excise_historie_year_exists').replace('{j}', String(j))); return;
+              }
+              saveHistorieEntry({
+                jaar: j,
+                tarief_per_hl_abv: r1,
+                tarief_per_hl: r2,
+                tarief_per_hl_plato: jaarForm.tarief_per_hl_plato !== '' ? Number(jaarForm.tarief_per_hl_plato) : undefined,
+                notitie: jaarForm.notitie || undefined,
+              });
+              setJaarForm({jaar: String(j + 1), tarief_per_hl_abv: '', tarief_per_hl: '', tarief_per_hl_plato: '', notitie: ''});
+            }}>{t('btn_add')}</Btn>
+          </div>
+        </div>
+
+        <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_excise_historie_hint')}</p>
+      </div>
+
       {/* BTW aangifte periode */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_btw_period_title')}</h2>
@@ -1689,6 +1949,119 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
         </div>
       </div>
+
+      {/* Accijns impact-rapport modal */}
+      {impactModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+          onClick={() => setImpactModal(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+            onClick={(e: any) => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-700">
+                  {t('settings_excise_impact_title').replace('{j}', String(impactModal.jaar))}
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {t('settings_excise_impact_intro')}
+                </p>
+                <div className="flex flex-wrap gap-4 text-xs text-gray-600 mt-3">
+                  <div>
+                    <span className="text-gray-400">{t('settings_excise_impact_old')}:</span>{' '}
+                    <strong>€{fmt(impactModal.oudTarief.r1)}/hL×ABV%</strong>{' · '}
+                    <strong>€{fmt(impactModal.oudTarief.r2)}/hL</strong>
+                    {impactModal.oudTarief.r3 != null && <> · <strong>€{fmt(impactModal.oudTarief.r3)}/hL×Plato</strong></>}
+                  </div>
+                  <div>
+                    <span className="text-gray-400">{t('settings_excise_impact_new')}:</span>{' '}
+                    <strong>€{fmt(impactModal.nieuwTarief.tarief_per_hl_abv)}/hL×ABV%</strong>{' · '}
+                    <strong>€{fmt(impactModal.nieuwTarief.tarief_per_hl)}/hL</strong>
+                    {impactModal.nieuwTarief.tarief_per_hl_plato != null && <> · <strong>€{fmt(impactModal.nieuwTarief.tarief_per_hl_plato)}/hL×Plato</strong></>}
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setImpactModal(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6">
+              {impactModal.resultaat.rijen.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">{t('settings_excise_impact_no_batches')}</p>
+              ) : (
+                <>
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200 sticky top-0 bg-white">
+                        <th className="px-2 py-2">{t('lbl_date')}</th>
+                        <th className="px-2 py-2">{t('lbl_batch_nr')}</th>
+                        <th className="px-2 py-2">{t('lbl_name')}</th>
+                        <th className="px-2 py-2 text-right">L</th>
+                        <th className="px-2 py-2 text-right">ABV%</th>
+                        <th className="px-2 py-2 text-right">{t('settings_excise_impact_old')}</th>
+                        <th className="px-2 py-2 text-right">{t('settings_excise_impact_new')}</th>
+                        <th className="px-2 py-2 text-right">{t('settings_excise_impact_diff')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {impactModal.resultaat.rijen.map((r: any) => (
+                        <tr key={r.batch_id} className="border-b border-gray-100">
+                          <td className="px-2 py-1.5 text-gray-600">{fmtD(r.datum)}</td>
+                          <td className="px-2 py-1.5 text-gray-500 text-xs">{r.batch_nummer || `#${r.batch_id}`}</td>
+                          <td className="px-2 py-1.5">{r.naam}</td>
+                          <td className="px-2 py-1.5 text-right text-gray-600">{r.liter.toFixed(1)}</td>
+                          <td className="px-2 py-1.5 text-right text-gray-600">{r.abv.toFixed(2)}</td>
+                          <td className="px-2 py-1.5 text-right">€{fmt(r.oudAccijns.toFixed(2))}</td>
+                          <td className="px-2 py-1.5 text-right">€{fmt(r.nieuwAccijns.toFixed(2))}</td>
+                          <td className={`px-2 py-1.5 text-right font-medium ${r.verschil > 0 ? 'text-red-600' : r.verschil < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                            {r.verschil > 0 ? '+' : ''}€{fmt(r.verschil.toFixed(2))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-300 font-semibold">
+                        <td className="px-2 py-2" colSpan={5}>{t('settings_excise_impact_total')} ({impactModal.resultaat.rijen.length} batches)</td>
+                        <td className="px-2 py-2 text-right">€{fmt(impactModal.resultaat.totaalOud.toFixed(2))}</td>
+                        <td className="px-2 py-2 text-right">€{fmt(impactModal.resultaat.totaalNieuw.toFixed(2))}</td>
+                        <td className={`px-2 py-2 text-right ${impactModal.resultaat.totaalVerschil > 0 ? 'text-red-600' : impactModal.resultaat.totaalVerschil < 0 ? 'text-green-600' : ''}`}>
+                          {impactModal.resultaat.totaalVerschil > 0 ? '+' : ''}€{fmt(impactModal.resultaat.totaalVerschil.toFixed(2))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
+                  <div className={`mt-4 p-3 rounded-lg ${impactModal.resultaat.totaalVerschil > 0 ? 'bg-red-50 border border-red-200 text-red-800' : impactModal.resultaat.totaalVerschil < 0 ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-gray-50 border border-gray-200 text-gray-700'}`}>
+                    <p className="text-sm font-semibold">
+                      {impactModal.resultaat.totaalVerschil > 0
+                        ? t('settings_excise_impact_owed').replace('{bedrag}', fmt(impactModal.resultaat.totaalVerschil.toFixed(2)))
+                        : impactModal.resultaat.totaalVerschil < 0
+                        ? t('settings_excise_impact_refund').replace('{bedrag}', fmt(Math.abs(impactModal.resultaat.totaalVerschil).toFixed(2)))
+                        : t('settings_excise_impact_nochange')}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex flex-wrap items-center gap-2">
+              <Btn v="secondary" s="sm" onClick={impactExportCsv} disabled={impactModal.resultaat.rijen.length === 0}>
+                💾 {t('btn_export_csv')}
+              </Btn>
+              <Btn v="secondary" s="sm" onClick={() => window.print()} disabled={impactModal.resultaat.rijen.length === 0}>
+                🖨 {t('btn_print')}
+              </Btn>
+              {impactModal.nogOpslaan && (
+                <Btn v="primary" s="sm" onClick={() => {
+                  const m = impactModal;
+                  saveHistorieEntry({jaar: m.jaar, ...m.nieuwTarief});
+                  setImpactModal(null);
+                }}>{t('settings_excise_impact_apply')}</Btn>
+              )}
+              <div className="ml-auto">
+                <Btn v="secondary" s="sm" onClick={() => setImpactModal(null)}>{t('btn_close')}</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </>}
 
       {/* CATEGORIEËN: ingrediënttypen */}
@@ -2056,8 +2429,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* APP — automatische back-ups */}
       {activeSection==='app' && <BackupCard />}
 
-      {/* BEDRIJF — inkoop bijlagen downloaden (invoice admin) */}
-      {activeSection==='bedrijf' && (
+      {/* FINANCIEEL — inkoop bijlagen downloaden (accounting bewaarplicht) */}
+      {activeSection==='financieel' && (
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_bijlagen_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_bijlagen_desc')}</p>

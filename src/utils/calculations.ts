@@ -1,4 +1,4 @@
-import { AccijnsInst, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot } from '../types'
+import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot } from '../types'
 import { convertEenheid } from './constants'
 
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
@@ -18,13 +18,106 @@ export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst:
   return Math.max(abvBased, baseBased, platoBased)
 }
 
+// Zoekt het geldende tarief voor een (brouw)datum. Kijkt eerst in
+// `tarieven_historie` op jaar; anders fallback op het root-level tarief. Zo
+// blijven historische berekeningen correct als je het tarief van een ouder
+// jaar later nog wijzigt.
+export const tariefVoorDatum = (
+  inst: AccijnsInst | null | undefined,
+  datum: string | undefined | null
+): {r1: number, r2: number, r3: number | undefined, entry?: AccijnsTariefJaar} => {
+  const defR1 = inst?.tarief_per_hl_abv ?? 7.51
+  const defR2 = inst?.tarief_per_hl ?? 24.17
+  const defR3 = inst?.tarief_per_hl_plato
+  if (!datum || !Array.isArray(inst?.tarieven_historie) || inst.tarieven_historie.length === 0) {
+    return {r1: defR1, r2: defR2, r3: defR3}
+  }
+  const jaar = new Date(datum).getFullYear()
+  if (!jaar || isNaN(jaar)) return {r1: defR1, r2: defR2, r3: defR3}
+  const entry = inst.tarieven_historie.find(x => Number(x.jaar) === jaar)
+  if (!entry) return {r1: defR1, r2: defR2, r3: defR3}
+  return {
+    r1: Number(entry.tarief_per_hl_abv) || defR1,
+    r2: Number(entry.tarief_per_hl) || defR2,
+    r3: entry.tarief_per_hl_plato ?? defR3,
+    entry,
+  }
+}
+
 export const accijnsCalcBatch = (batch: any, accijnsInst: AccijnsInst | null = null): number => {
-  const r1 = accijnsInst?.tarief_per_hl_abv ?? 7.51
-  const r2 = accijnsInst?.tarief_per_hl ?? 24.17
+  const {r1, r2, r3} = tariefVoorDatum(accijnsInst, batch?.datum)
   const liter = Number(batch.liter_vergist || 0)
   const abv = Number(batch.ABV || 0)
   const plato = Number(batch.platogehalte || 0)
-  return accijnsCalc(liter, abv, r1, r2, accijnsInst, plato)
+  // Geef het jaar-specifieke plato-tarief mee in een effectief inst-object
+  // zodat accijnsCalc() intern de juiste r3 gebruikt.
+  const eff: AccijnsInst = {...(accijnsInst || {}), tarief_per_hl_plato: r3}
+  return accijnsCalc(liter, abv, r1, r2, eff, plato)
+}
+
+// Impact-rapport voor een tariefwijziging in een specifiek jaar: rekent elke
+// batch van dat jaar dubbel door (oud tarief vs. nieuw tarief) en geeft het
+// verschil per batch + totaal. `nieuwTarief` hoeft niet in `tarieven_historie`
+// van het meegegeven `accijnsInst` te staan — de berekening klonet intern.
+export interface AccijnsImpactRow {
+  batch_id: number
+  batch_nummer?: string
+  naam: string
+  datum: string
+  liter: number
+  abv: number
+  plato: number
+  oudAccijns: number
+  nieuwAccijns: number
+  verschil: number     // positief = bijbetalen, negatief = terug te ontvangen
+}
+
+export interface AccijnsImpactResult {
+  jaar: number
+  rijen: AccijnsImpactRow[]
+  totaalOud: number
+  totaalNieuw: number
+  totaalVerschil: number
+}
+
+export const berekenAccijnsImpact = (
+  batches: any[],
+  accijnsInst: AccijnsInst | null,
+  jaar: number,
+  nieuwTarief: {tarief_per_hl_abv: number, tarief_per_hl: number, tarief_per_hl_plato?: number}
+): AccijnsImpactResult => {
+  const rijen: AccijnsImpactRow[] = []
+  let totaalOud = 0
+  let totaalNieuw = 0
+  const histZonderJaar = (accijnsInst?.tarieven_historie || []).filter(x => Number(x.jaar) !== jaar)
+  const effectNieuw: AccijnsInst = {
+    ...(accijnsInst || {}),
+    tarieven_historie: [...histZonderJaar, {jaar, ...nieuwTarief}],
+  }
+  for (const b of batches || []) {
+    if (!b?.datum) continue
+    const y = new Date(b.datum).getFullYear()
+    if (y !== jaar) continue
+    const oud = accijnsCalcBatch(b, accijnsInst)
+    const nieuw = accijnsCalcBatch(b, effectNieuw)
+    const verschil = nieuw - oud
+    rijen.push({
+      batch_id: b.id,
+      batch_nummer: b.batch_nummer,
+      naam: b.naam || '',
+      datum: b.datum,
+      liter: Number(b.liter_vergist) || 0,
+      abv: Number(b.ABV) || 0,
+      plato: Number(b.platogehalte) || 0,
+      oudAccijns: oud,
+      nieuwAccijns: nieuw,
+      verschil,
+    })
+    totaalOud += oud
+    totaalNieuw += nieuw
+  }
+  rijen.sort((a, b) => a.datum.localeCompare(b.datum))
+  return {jaar, rijen, totaalOud, totaalNieuw, totaalVerschil: totaalNieuw - totaalOud}
 }
 
 export interface WinstVerliesResult {
@@ -404,10 +497,10 @@ export const tankAccijnsWaarde = (
 ): { liter: number; abv: number; geschat: boolean; accijns: number } => {
   const liter = tankRestVolume(batch, afvullingen)
   const { abv, geschat } = schatABV(batch)
-  const r1 = inst?.tarief_per_hl_abv ?? 7.51
-  const r2 = inst?.tarief_per_hl ?? 24.17
+  const {r1, r2, r3} = tariefVoorDatum(inst, batch?.datum)
   const plato = Number(batch?.platogehalte || 0)
-  const accijns = liter > 0 ? accijnsCalc(liter, abv, r1, r2, inst, plato) : 0
+  const eff = {...(inst || {}), tarief_per_hl_plato: r3}
+  const accijns = liter > 0 ? accijnsCalc(liter, abv, r1, r2, eff, plato) : 0
   return { liter, abv, geschat, accijns }
 }
 
@@ -621,7 +714,9 @@ export const agpOverzicht = (
     const abv = Number(batch?.ABV || 0)
     const liter_in_agp = in_agp * afvInhoud(av)
     const plato = Number(batch?.platogehalte || 0)
-    const accijns_in_agp = liter_in_agp > 0 ? accijnsCalc(liter_in_agp, abv, r1, r2, inst, plato) : 0
+    const _t = tariefVoorDatum(inst, batch?.datum)
+    const _eff = {...(inst || {}), tarief_per_hl_plato: _t.r3}
+    const accijns_in_agp = liter_in_agp > 0 ? accijnsCalc(liter_in_agp, abv, _t.r1, _t.r2, _eff, plato) : 0
     return { afv: av, batch, voorraad, in_agp, buiten_agp, liter_in_agp, accijns_in_agp, abv }
   }).filter(r => r.in_agp > 0 || r.buiten_agp > 0)
 
@@ -655,8 +750,6 @@ export const agpValueAt = (
   inst: AccijnsInst | null = null
 ): { tank: number; verpakt: number; totaal: number } => {
   const agp = getAgpLocatie(locaties)
-  const r1 = inst?.tarief_per_hl_abv ?? 7.51
-  const r2 = inst?.tarief_per_hl ?? 24.17
   const D = String(datum)
 
   // Tank: voor elke batch — liter_vergist minus afvullingen tot en met D.
@@ -674,7 +767,9 @@ export const agpValueAt = (
     if (rest <= 0) continue
     const { abv } = schatABV(b)
     const plato = Number(b?.platogehalte || 0)
-    tankAcc += accijnsCalc(rest, abv, r1, r2, inst, plato)
+    const _t = tariefVoorDatum(inst, b?.datum)
+    const _eff = {...(inst || {}), tarief_per_hl_plato: _t.r3}
+    tankAcc += accijnsCalc(rest, abv, _t.r1, _t.r2, _eff, plato)
   }
 
   // Verpakt in AGP: voor elke afvulling met datum <= D, bereken hoeveelheid
@@ -702,7 +797,9 @@ export const agpValueAt = (
     const batch = (batches || []).find(b => b.id === av.batch_id)
     const abv = Number(batch?.ABV || 0)
     const plato = Number(batch?.platogehalte || 0)
-    verpaktAcc += accijnsCalc(liter, abv, r1, r2, inst, plato)
+    const _t = tariefVoorDatum(inst, batch?.datum)
+    const _eff = {...(inst || {}), tarief_per_hl_plato: _t.r3}
+    verpaktAcc += accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato)
   }
 
   return { tank: tankAcc, verpakt: verpaktAcc, totaal: tankAcc + verpaktAcc }

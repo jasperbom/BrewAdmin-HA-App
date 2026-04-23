@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.98] — 2026-04-23
+
+### Added — Accijnstarieven per jaar + impact-rapport
+
+Accijnstarieven kunnen nu per jaar worden vastgelegd. Elke batch gebruikt
+bij berekening automatisch het tarief van het brouwjaar (fallback:
+root-level tarief). Historische berekeningen blijven dus correct wanneer
+het tarief mid-jaar of met terugwerkende kracht wijzigt.
+
+- **Nieuwe tab-card "💶 Accijnstarieven per jaar"** in Instellingen →
+  Financieel, onder de bestaande accijns-card. Tabel met kolommen jaar,
+  €/hL×ABV%, €/hL basis, €/hL×Plato, notitie.
+- **📊 Impact-knop** per jaar: opent een modaal rapport dat elke batch
+  van dat jaar herberekent met het voorgestelde nieuwe tarief en toont:
+  oude accijns, nieuwe accijns, verschil per batch, en totaal. Kleurcode:
+  rood = bijbetalen, groen = retour. Inclusief CSV-export en print.
+- **Retro-situatie support**: handig als de bieraccijns met
+  terugwerkende kracht stijgt of daalt — je ziet meteen wat er per batch
+  nog verschuldigd is of terug te ontvangen.
+- `AccijnsInst.tarieven_historie: AccijnsTariefJaar[]` — nieuw veld.
+  `tariefVoorDatum(inst, datum)` helper kiest het geldende tarief.
+  `accijnsCalcBatch` en alle relevante callers (App.tsx, AgpPage,
+  BestellingenPage, tankAccijnsWaarde, agpOverzicht, agpValueAt) kijken
+  nu naar het jaar van de batch.
+- `berekenAccijnsImpact(batches, inst, jaar, nieuwTarief)` helper
+  produceert het impact-rapport.
+
+### Changed
+
+- **Inkoop-factuurbijlagen** verhuizen terug van **Bedrijf** naar
+  **Financieel** (accounting-bewaarplicht hoort bij de financiële
+  administratie).
+
+### Fixed
+
+- `saveTarieven`/`resetTarieven` wisten voorheen het hele `accijnsInst`
+  object; nu wordt `tarieven_historie` en andere velden behouden.
+
 ## [1.8.97] — 2026-04-23
 
 ### Changed — Cold-crash preset verhuist naar Brouwerij-tab
