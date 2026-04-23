@@ -118,7 +118,7 @@ const ServerStatusCard = () => {
   const current = statuses.find(x=>x.key===s) || statuses[0];
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 break-inside-avoid">
       <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_server_sync')}</h2>
       <p className="text-sm text-gray-500 mb-4">{t('settings_server_status_desc')}</p>
 
@@ -199,7 +199,7 @@ const BackupCard = () => {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid">
       <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_backup_titel')}</h2>
       <p className="text-sm text-gray-500 mb-4">{t('settings_backup_retentie')}</p>
 
@@ -462,7 +462,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const inp = 'border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none t-input shadow-sm transition-all';
-  const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4';
+  // `break-inside-avoid` voorkomt dat cards over CSS-column-grenzen worden
+  // gesplitst wanneer de content-container een multi-column layout gebruikt
+  // op brede schermen. Zonder deze klasse zou een kaart aan het einde van
+  // kolom 1 half in kolom 2 doorlopen.
+  const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid';
 
   const [activeSection, setActiveSection] = React.useState('app');
   const [bijlagenJaar, setBijlagenJaar] = React.useState(new Date().getFullYear());
@@ -720,8 +724,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       </div>
 
-      {/* ── Rechts content ── */}
-      <div className="flex-1 min-w-0 max-w-2xl">
+      {/* ── Rechts content ──
+           Op brede schermen (≥xl = 1280px) wordt de content in 2 kolommen
+           gelayoutet via CSS-columns. Cards krijgen `break-inside-avoid`
+           zodat ze niet splitten over de kolom-grens. Brede tabellen
+           (auditlog, accijns-historie) spannen via `[column-span:all]`
+           over beide kolommen zodat ze volledig breed blijven. */}
+      <div className="flex-1 min-w-0 xl:columns-2 xl:gap-4">
 
       {/* APP */}
       {activeSection==='app' && <>
@@ -1745,8 +1754,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       </div>
 
-      {/* Accijnstarieven per jaar */}
-      <div className={card}>
+      {/* Accijnstarieven per jaar — volle breedte vanwege brede tabel */}
+      <div className={`${card} [column-span:all]`}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_excise_historie_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_excise_historie_desc')}</p>
 
@@ -1882,8 +1891,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-xs text-gray-400">{t('settings_btw_tarieven_hint')}</p>
       </div>
 
-      {/* Goederenstroom AGP diagram */}
-      <div className={card}>
+      {/* Goederenstroom AGP diagram — volle breedte vanwege horizontale flow */}
+      <div className={`${card} [column-span:all]`}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('agp_goederenstroom')}</h2>
         <p className="text-sm text-gray-500 mb-4">AGP goederenstroomdiagram</p>
 
@@ -2139,7 +2148,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* FINANCIEEL: GN-codes (accijnscodes) */}
       {activeSection==='financieel' && (
-        <div className="bg-white rounded-xl shadow-card p-6">
+        <div className="bg-white rounded-xl shadow-card p-6 break-inside-avoid">
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_gn_codes_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_gn_codes_desc')}</p>
           <div className="space-y-2 mb-4">
@@ -2273,7 +2282,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         };
 
         return (
-          <div className={card}>
+          <div className={`${card} [column-span:all]`}>
             <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_batch_taken_title')}</h2>
             <p className="text-sm text-gray-500 mb-5">{t('settings_batch_taken_desc')}</p>
 
@@ -2494,9 +2503,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       </div>
       )}
 
-      {/* AUDIT TRAIL */}
+      {/* AUDIT TRAIL — volle breedte vanwege brede tabel */}
       {activeSection==='app' && (
-      <div className={card}>
+      <div className={`${card} [column-span:all]`}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('audit_titel')}</h2>
         <p className="text-sm text-gray-500 mb-4">
           {(auditLog||[]).length} {t('audit_titel').toLowerCase()}
