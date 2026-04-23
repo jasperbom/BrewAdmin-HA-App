@@ -1493,5 +1493,12 @@
   "dashboard_coldcrash_confirm": "Cold-Crash auf {t}°C starten und Charge auf Reifung setzen?",
   "dashboard_coldcrash_confirm_off": "Cold-Crash-Preset ist in den Einstellungen nicht aktiviert. Trotzdem mit Standardwerten fortfahren?",
   "lbl_stap": "Schritt",
-  "lbl_uur": "Std"
+  "lbl_uur": "Std",
+  "lbl_dagen": "Tage",
+  "settings_planning_title": "📅 Planungs-Defaults",
+  "settings_planning_desc": "Basiswerte, die verwendet werden, wenn du in Planung oder Charge-Info auf den 🔢 Berechnen-Knopf neben der Tankzeit drückst. Die Tankzeit wird dann auf Summe(Gärprofil.Tage) + Reifungstage gesetzt.",
+  "settings_planning_conditioneren": "Reifungsdauer",
+  "settings_planning_hint": "Den berechneten Wert kannst du pro Charge immer überschreiben, indem du einen anderen Wert ins Eingabefeld tippst.",
+  "plan_tanktijd_bereken": "Berechnen",
+  "plan_tanktijd_tooltip": "Tankzeit = Gärung + Reifung"
 }

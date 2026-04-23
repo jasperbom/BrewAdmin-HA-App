@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.95] — 2026-04-23
+
+### Added — Tanktijd berekenen uit vergistingsprofiel + conditioneren-basis
+
+De tanktijd op zowel Planning als Batch-info kan nu berekend worden vanuit
+het vergistingsprofiel van de batch plus een instelbare conditioneren-duur.
+
+- **Instellingen → Brouwerij → Planning-defaults**: nieuw card met
+  `Conditioneren-duur` (dagen, default 14). Dit is de basis die bij de
+  som van de vergistingsstappen wordt opgeteld.
+- **Batch-info**: naast het tanktijd-invoerveld verschijnt een 🔢 Bereken
+  knop. Klikken zet tanktijd = som(vergistingsprofiel.tijd + ramp/24) +
+  conditioneren-dagen (afgerond naar boven). De tooltip toont de splitsing.
+  Knop is disabled als er geen vergistingsprofiel is. Het invoerveld
+  blijft vrij editeerbaar — de gebruiker kan de berekende waarde altijd
+  overschrijven.
+- **Planning-tabel**: zelfde 🔢 knop inline naast de tanktijd-cel, zodat
+  je meerdere batches achter elkaar kunt berekenen zonder naar Batch-info
+  te navigeren.
+- Nieuwe data-key `planning_instellingen` + opgenomen in Excel-backup
+  export/import.
+- Nieuwe type `PlanningInst` + utility-functies `sumVergistingDagen()`
+  en `berekenTanktijd()` in `src/utils/calculations.ts`.
+
 ## [1.8.94] — 2026-04-23
 
 ### Changed — Tankkaart: metingen nu boven klimaatpaneel

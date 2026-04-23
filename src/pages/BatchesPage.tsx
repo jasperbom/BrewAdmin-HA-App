@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -51,6 +51,7 @@ interface BatchesPageProps {
   setVerliesRegistraties?: any
   haInst?: any
   haTankTemps?: Record<string, number>
+  planningInst?: {conditioneren_dagen: number}
   acc?: any[]
   openBatchId?: number | null
   ccpMetingen?: any[]
@@ -439,6 +440,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   verliesRegistraties=[], setVerliesRegistraties=()=>{},
   haInst,
   haTankTemps={},
+  planningInst={conditioneren_dagen: 14},
   acc=[],
   openBatchId=null,
   preNieuwBatch=null, setPreNieuwBatch=()=>{},
@@ -3023,7 +3025,29 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 : <Inp label={t('lbl_tank')} value={bForm.tank} onChange={(v: string)=>setBForm((f: any)=>({...f,tank:v}))} placeholder="FV1" />
               }
               <Inp label={t('lbl_date')} type="date" value={bForm.datum} onChange={(v: string)=>setBForm((f: any)=>({...f,datum:v}))} />
-              <Inp label={t('plan_tank_tijd')} type="number" value={String(bForm.tank_dagen ?? '')} onChange={(v: string)=>setBForm((f: any)=>({...f,tank_dagen:v}))} placeholder={String(DEFAULT_TANK_DAGEN)} />
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('plan_tank_tijd')}</label>
+                <div className="flex items-center gap-1">
+                  <input type="number" value={String(bForm.tank_dagen ?? '')}
+                    onChange={(e: any)=>setBForm((f: any)=>({...f,tank_dagen:e.target.value}))}
+                    placeholder={String(DEFAULT_TANK_DAGEN)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24 focus:outline-none t-input shadow-sm transition-all" />
+                  {(() => {
+                    const profiel = bForm.vergistingsprofiel
+                    const berekend = berekenTanktijd(profiel, Number(planningInst?.conditioneren_dagen ?? 14))
+                    const tooltip  = `${t('plan_tanktijd_tooltip')}: ${sumVergistingDagen(profiel)}d + ${planningInst?.conditioneren_dagen ?? 14}d = ${berekend}d`
+                    return (
+                      <button type="button"
+                        onClick={() => setBForm((f: any) => ({...f, tank_dagen: String(berekend)}))}
+                        disabled={!Array.isArray(profiel) || profiel.length === 0}
+                        title={tooltip}
+                        className="text-xs px-2 py-1.5 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                        🔢 {t('plan_tanktijd_bereken')}
+                      </button>
+                    )
+                  })()}
+                </div>
+              </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Inp label={t('lbl_liters_fermented')} type="number" value={bForm.liter_vergist} onChange={(v: string)=>setBForm((f: any)=>({...f,liter_vergist:v}))} placeholder="0" />

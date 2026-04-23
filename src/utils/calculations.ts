@@ -912,3 +912,25 @@ export const compareNeedsToStock = (
   return out
 }
 
+// Som van alle vergistings-stappen in dagen: `tijd` is de staplengte en
+// `ramp` is de rampelingstijd in uren. Waarden die leeg/ongeldig zijn tellen
+// als 0. Retour is afgerond op 1 decimaal.
+export const sumVergistingDagen = (profiel?: {tijd?: any, ramp?: any}[]): number => {
+  if (!Array.isArray(profiel) || profiel.length === 0) return 0
+  let total = 0
+  for (const s of profiel) {
+    const d = Number(s?.tijd); if (!isNaN(d) && d > 0) total += d
+    const r = Number(s?.ramp); if (!isNaN(r) && r > 0) total += r / 24
+  }
+  return Math.round(total * 10) / 10
+}
+
+// Bereken totale tanktijd = vergistingsprofiel-som + conditioneren-basis.
+// Geeft een afgerond (naar boven) aantal dagen terug zodat een halve dag
+// conditioneren alsnog een volle planningsdag krijgt.
+export const berekenTanktijd = (profiel: any[] | undefined, conditionerenDagen: number): number => {
+  const vergisting = sumVergistingDagen(profiel)
+  const cond = Math.max(0, Number(conditionerenDagen) || 0)
+  return Math.ceil(vergisting + cond)
+}
+

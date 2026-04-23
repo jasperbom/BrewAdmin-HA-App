@@ -7,6 +7,8 @@ import {
   compareNeedsToStock,
   ReceptCategorie,
   VoorraadVergelijking,
+  berekenTanktijd,
+  sumVergistingDagen,
 } from '../utils/calculations'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
@@ -22,6 +24,7 @@ interface PlanningPageProps {
   lots: any[]
   producten?: any[]
   tanks?: any[]
+  planningInst?: {conditioneren_dagen: number}
   preselectBatchId?: number | null
   onPreselectConsumed?: () => void
 }
@@ -79,6 +82,7 @@ function PlanningPage({
   lots,
   producten,
   tanks,
+  planningInst = {conditioneren_dagen: 14},
   preselectBatchId,
   onPreselectConsumed,
 }: PlanningPageProps) {
@@ -472,18 +476,35 @@ function PlanningPage({
                         </td>
                         <td className="px-3 py-2">
                           {setBat ? (
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={b.tank_dagen ?? ''}
-                              placeholder="0"
-                              onChange={e => {
-                                const v = e.target.value
-                                updateBatch(b.id, { tank_dagen: v === '' ? undefined : Number(v) })
-                              }}
-                              className="w-20 border border-gray-200 rounded px-2 py-1 text-sm t-input outline-none text-right"
-                            />
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={b.tank_dagen ?? ''}
+                                placeholder="0"
+                                onChange={e => {
+                                  const v = e.target.value
+                                  updateBatch(b.id, { tank_dagen: v === '' ? undefined : Number(v) })
+                                }}
+                                className="w-20 border border-gray-200 rounded px-2 py-1 text-sm t-input outline-none text-right"
+                              />
+                              {(() => {
+                                const profiel = b.vergistingsprofiel
+                                const hasProfiel = Array.isArray(profiel) && profiel.length > 0
+                                const berekend = berekenTanktijd(profiel, Number(planningInst?.conditioneren_dagen ?? 14))
+                                const tooltip  = `${t('plan_tanktijd_tooltip')}: ${sumVergistingDagen(profiel)}d + ${planningInst?.conditioneren_dagen ?? 14}d = ${berekend}d`
+                                return (
+                                  <button type="button"
+                                    onClick={() => updateBatch(b.id, { tank_dagen: berekend })}
+                                    disabled={!hasProfiel}
+                                    title={tooltip}
+                                    className="text-xs px-1.5 py-1 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    🔢
+                                  </button>
+                                )
+                              })()}
+                            </div>
                           ) : (dagen > 0 ? dagen : '—')}
                         </td>
                         <td className="px-3 py-2 text-gray-500 text-xs">{vrijOp ? fmtD(vrijOp) : '—'}</td>

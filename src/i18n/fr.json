@@ -1683,5 +1683,12 @@
   "dashboard_coldcrash_confirm": "Démarrer le cold-crash à {t}°C et passer le lot en Maturation ?",
   "dashboard_coldcrash_confirm_off": "Le préréglage cold-crash n'est pas activé dans les Paramètres. Continuer avec les valeurs par défaut ?",
   "lbl_stap": "Étape",
-  "lbl_uur": "h"
+  "lbl_uur": "h",
+  "lbl_dagen": "jours",
+  "settings_planning_title": "📅 Paramètres de planning",
+  "settings_planning_desc": "Valeurs de base utilisées lorsque vous cliquez sur le bouton 🔢 Calculer à côté du temps en cuve dans Planning ou Info du lot. Le temps en cuve est alors défini comme somme(profil_fermentation.jours) + jours de maturation.",
+  "settings_planning_conditioneren": "Durée de maturation",
+  "settings_planning_hint": "Vous pouvez toujours remplacer la valeur calculée par lot en tapant un autre nombre dans le champ.",
+  "plan_tanktijd_bereken": "Calculer",
+  "plan_tanktijd_tooltip": "Temps en cuve = fermentation + maturation"
 }

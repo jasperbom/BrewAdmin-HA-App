@@ -1493,5 +1493,12 @@
   "dashboard_coldcrash_confirm": "Start cold-crash to {t}°C and move batch to Conditioning status?",
   "dashboard_coldcrash_confirm_off": "Cold-crash preset is not enabled in Settings. Proceed with default values anyway?",
   "lbl_stap": "Step",
-  "lbl_uur": "hr"
+  "lbl_uur": "hr",
+  "lbl_dagen": "days",
+  "settings_planning_title": "📅 Planning defaults",
+  "settings_planning_desc": "Base values used when you click the 🔢 Calculate button next to tank time in Planning or Batch info. Tank time is then set to sum(fermentation_profile.days) + conditioning days.",
+  "settings_planning_conditioneren": "Conditioning duration",
+  "settings_planning_hint": "You can always override the calculated value per batch by typing a different number in the input.",
+  "plan_tanktijd_bereken": "Calculate",
+  "plan_tanktijd_tooltip": "Tank time = fermentation + conditioning"
 }
