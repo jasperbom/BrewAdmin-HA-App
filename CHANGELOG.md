@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.8.91] — 2026-04-23
+
+### Added — Home Assistant: Climate, Dimmers & Switches
+
+De Home Assistant-koppeling ondersteunde tot nu toe alleen temperatuur­sensoren
+(lezen). Vanaf deze versie kunnen ook **klimaatapparaten**, **dimbare
+verlichting** en **switches** gekoppeld én **bestuurd** worden vanuit
+Instellingen → Home Assistant.
+
+- **Climate** (thermostaten, koelcellen, HVAC): koppeling per entiteit,
+  optioneel aan een tank; setpoint (`set_temperature`) en HVAC-modus
+  (`set_hvac_mode`) direct instellen; "Auto setpoint" om het
+  vergistingsprofiel te volgen.
+- **Lampen & dimmers**: aan/uit en helderheidsslider (0–100%) via
+  `light.turn_on` / `light.turn_off`; min%/max% om de slider te begrenzen
+  (bijv. een warmtelamp nooit boven 60%).
+- **Switches**: `switch.turn_on`, `switch.turn_off` en `toggle` voor pompen,
+  ventilatoren, verwarming en andere brouwapparatuur.
+- **Entity-discovery**: een "Entiteiten ophalen"-knop per domein vult een
+  dropdown met alle beschikbare entities (geen handmatig typen meer nodig).
+- **Security**: de HA-proxy (`/api/homeassistant/_service/<domain>/<service>`)
+  heeft een strikte whitelist op toegestane services en valideert dat het
+  entity_id in het juiste domein zit.
+- Instellingen zitten in dezelfde `ha_instellingen` key en reizen dus
+  automatisch mee in de Excel-backup.
+
 ## [1.8.90] — 2026-04-23
 
 ### Changed — Eén unified batch-takensysteem (vervangt 4 losse systemen)

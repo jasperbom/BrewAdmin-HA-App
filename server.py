@@ -62,6 +62,28 @@ CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be lar
 HA_PROXY_PREFIX          = '/api/homeassistant/'
 HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
 
+# Whitelist van toegestane HA service-calls. Houdt de attack-surface klein:
+# alleen schrijfacties die de UI expliciet aanbiedt zijn toegestaan. Voeg een
+# nieuwe service pas toe als er ook een UI-knop of automatisering voor bestaat.
+HA_ALLOWED_SERVICES = {
+    ('climate', 'set_temperature'),
+    ('climate', 'set_hvac_mode'),
+    ('climate', 'set_preset_mode'),
+    ('climate', 'turn_on'),
+    ('climate', 'turn_off'),
+    ('light',   'turn_on'),
+    ('light',   'turn_off'),
+    ('light',   'toggle'),
+    ('switch',  'turn_on'),
+    ('switch',  'turn_off'),
+    ('switch',  'toggle'),
+}
+
+# HA-domeinen die via het list-endpoint uit te filteren zijn. Onbekende waarden
+# worden afgewezen zodat de frontend niet per ongeluk (of kwaadaardig) een
+# heel andere integratie kan opvragen.
+HA_ALLOWED_LIST_DOMAINS = {'sensor', 'climate', 'light', 'switch', 'binary_sensor'}
+
 _ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'bmp', 'heic', 'heif'}
 _CONTENT_TYPES = {
     'pdf':  'application/pdf',
@@ -848,12 +870,49 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _ha_proxy(self, path: str):
-        """Proxy request to Home Assistant Supervisor API to fetch entity state."""
+        """Router voor /api/homeassistant/* requests:
+          GET  <prefix>_list?domain=<x>             → lijst entity-states
+          POST <prefix>_service/<domain>/<service>  → service-call
+          GET  <prefix><entity_id>                  → enkele entity-state
+        """
         idx = path.find(HA_PROXY_PREFIX)
-        entity_id = path[idx + len(HA_PROXY_PREFIX):].split('?')[0].strip('/')
-        if not entity_id:
+        tail = path[idx + len(HA_PROXY_PREFIX):]
+        qs = ''
+        if '?' in tail:
+            tail, qs = tail.split('?', 1)
+        tail = tail.strip('/')
+
+        if not tail:
             self._json(400, {'error': 'entity_id required'})
             return
+
+        # Listing endpoint (vereist HA-token, bevat alleen gefilterde domeinen).
+        if tail == '_list':
+            if self.command != 'GET':
+                self._json(405, {'error': 'method not allowed'})
+                return
+            domain = ''
+            for part in qs.split('&'):
+                if part.startswith('domain='):
+                    domain = part[len('domain='):]
+                    break
+            self._ha_list_states(domain)
+            return
+
+        # Service-call endpoint.
+        if tail.startswith('_service/'):
+            if self.command != 'POST':
+                self._json(405, {'error': 'method not allowed'})
+                return
+            parts = tail[len('_service/'):].split('/')
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                self._json(400, {'error': 'expected _service/<domain>/<service>'})
+                return
+            self._ha_call_service(parts[0], parts[1])
+            return
+
+        # Anders: enkele entity-state ophalen.
+        entity_id = tail
         if not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$', entity_id):
             self._json(400, {'error': f'Ongeldig entity_id formaat. Gebruik bijv. sensor.tank1_temperatuur (alleen kleine letters, cijfers en underscores, met een punt als scheiding)'})
             return
@@ -869,6 +928,116 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             with urllib.request.urlopen(req, timeout=5) as r:
                 data = json.loads(r.read())
                 self._json(200, {'state': data.get('state'), 'unit': data.get('attributes', {}).get('unit_of_measurement', ''), 'attributes': data.get('attributes', {})})
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = json.loads(e.read().decode())
+                msg = err_body.get('message') or err_body.get('error') or f'HA API returned {e.code}'
+            except Exception:
+                msg = f'HA API returned {e.code}'
+            self._json(e.code, {'error': msg})
+        except Exception:
+            self._json(502, {'error': 'could not reach Home Assistant API'})
+
+    def _ha_list_states(self, domain: str):
+        """Haalt alle HA-states op en filtert optioneel op domein. Wordt door de
+        Instellingen-pagina gebruikt om entity-dropdowns te vullen. Geeft alleen
+        `entity_id`, `state`, `attributes.friendly_name` en `unit_of_measurement`
+        terug — ruwe attributes worden niet doorgestuurd om payloads klein te
+        houden en lekken van onnodige metadata te voorkomen."""
+        if domain and domain not in HA_ALLOWED_LIST_DOMAINS:
+            self._json(400, {'error': f'domain not allowed: {domain}'})
+            return
+        token = os.environ.get('SUPERVISOR_TOKEN', '')
+        if not token:
+            self._json(503, {'error': 'SUPERVISOR_TOKEN not available — app must run as HA addon'})
+            return
+        try:
+            req = urllib.request.Request(
+                f'{HA_SUPERVISOR_BASE}/states',
+                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                raw = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            self._json(e.code, {'error': f'HA API returned {e.code}'})
+            return
+        except Exception:
+            self._json(502, {'error': 'could not reach Home Assistant API'})
+            return
+
+        result = []
+        for st in raw if isinstance(raw, list) else []:
+            eid = st.get('entity_id') or ''
+            if '.' not in eid:
+                continue
+            if domain and not eid.startswith(domain + '.'):
+                continue
+            attrs = st.get('attributes') or {}
+            result.append({
+                'entity_id': eid,
+                'state': st.get('state'),
+                'friendly_name': attrs.get('friendly_name', ''),
+                'unit': attrs.get('unit_of_measurement', ''),
+                # Domein-specifieke attributen die de UI nodig heeft om
+                # slim te kunnen renderen (min/max temp, beschikbare modes,
+                # brightness-ondersteuning). Laat lege waarden weg.
+                'hvac_modes':     attrs.get('hvac_modes') or [],
+                'preset_modes':   attrs.get('preset_modes') or [],
+                'min_temp':       attrs.get('min_temp'),
+                'max_temp':       attrs.get('max_temp'),
+                'current_temperature': attrs.get('current_temperature'),
+                'temperature':    attrs.get('temperature'),
+                'supported_color_modes': attrs.get('supported_color_modes') or [],
+                'brightness':     attrs.get('brightness'),
+                'device_class':   attrs.get('device_class', ''),
+            })
+        self._json(200, {'states': result})
+
+    def _ha_call_service(self, domain: str, service: str):
+        """Voert een whitelisted HA service-call uit. Body = JSON met minimaal
+        `entity_id` plus service-specifieke velden (bv. `temperature`,
+        `brightness_pct`, `hvac_mode`). Het entity_id wordt gevalideerd tegen
+        hetzelfde regex-patroon als bij de state-ophaling."""
+        if (domain, service) not in HA_ALLOWED_SERVICES:
+            self._json(403, {'error': f'service not allowed: {domain}.{service}'})
+            return
+        body = self._read_body(max_len=8 * 1024)
+        if body is None:
+            return
+        try:
+            payload = json.loads(body) if body else {}
+        except Exception:
+            self._json(400, {'error': 'invalid JSON body'})
+            return
+        if not isinstance(payload, dict):
+            self._json(400, {'error': 'body must be a JSON object'})
+            return
+        entity_id = payload.get('entity_id', '')
+        if not isinstance(entity_id, str) or not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$', entity_id):
+            self._json(400, {'error': 'invalid or missing entity_id'})
+            return
+        # Domein van entity_id moet overeenkomen met service-domein — voorkomt
+        # bv. een `light.turn_on` op een switch-entity.
+        if not entity_id.startswith(domain + '.'):
+            self._json(400, {'error': f'entity_id domain mismatch: expected {domain}.*'})
+            return
+        token = os.environ.get('SUPERVISOR_TOKEN', '')
+        if not token:
+            self._json(503, {'error': 'SUPERVISOR_TOKEN not available — app must run as HA addon'})
+            return
+        try:
+            req = urllib.request.Request(
+                f'{HA_SUPERVISOR_BASE}/services/{domain}/{service}',
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                try:
+                    resp = json.loads(r.read())
+                except Exception:
+                    resp = []
+                self._json(200, {'ok': True, 'result': resp})
         except urllib.error.HTTPError as e:
             try:
                 err_body = json.loads(e.read().decode())
