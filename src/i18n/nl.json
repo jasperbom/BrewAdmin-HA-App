@@ -1685,7 +1685,7 @@
   "opt_select": "— selecteer —",
   "opt_none": "— geen —",
   "settings_coldcrash_title": "❄ Cold-crash preset",
-  "settings_coldcrash_desc": "Wanneer je op het Dashboard bij een tank op de cold-crash knop drukt, wordt het gekoppelde climate-apparaat naar onderstaande doeltemperatuur gezet en krijgt de batch de status 'Conditioneren'. De ramp-snelheid is een referentie die op de tankkaart getoond wordt.",
+  "settings_coldcrash_desc": "Wanneer je op het Dashboard bij een tank op de cold-crash knop drukt, gaat de batch naar status 'Conditioneren' en verlaagt de app het setpoint van het gekoppelde climate-apparaat elk uur met de ramp-snelheid totdat de doeltemperatuur is bereikt.",
   "settings_coldcrash_target": "Doeltemperatuur",
   "settings_coldcrash_ramp": "Ramp-snelheid",
   "settings_coldcrash_hint": "Tip: typische waarden zijn 1–4°C doeltemp en 0.5–2°C/uur. Een te snelle crash kan gistcellen beschadigen en een volgende generatie aantasten.",

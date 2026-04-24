@@ -1479,7 +1479,7 @@
   "opt_select": "— auswählen —",
   "opt_none": "— keine —",
   "settings_coldcrash_title": "❄ Cold-Crash-Preset",
-  "settings_coldcrash_desc": "Wenn du im Dashboard den Cold-Crash-Button bei einem Tank drückst, wird das verknüpfte Klimagerät auf die untenstehende Zieltemperatur gesetzt und die Charge wechselt auf Status 'Reifung'. Die Rampenrate ist ein Referenzwert, der auf der Tankkarte angezeigt wird.",
+  "settings_coldcrash_desc": "Wenn du im Dashboard den Cold-Crash-Button bei einem Tank drückst, wechselt die Charge auf Status 'Reifung' und die App senkt den Sollwert des verknüpften Klimageräts stündlich um die Rampenrate, bis die Zieltemperatur erreicht ist.",
   "settings_coldcrash_target": "Zieltemperatur",
   "settings_coldcrash_ramp": "Rampenrate",
   "settings_coldcrash_hint": "Tipp: typische Werte sind 1–4°C Ziel und 0.5–2°C/Stunde. Zu schnelles Abkühlen kann Hefezellen schädigen und die nächste Generation beeinträchtigen.",

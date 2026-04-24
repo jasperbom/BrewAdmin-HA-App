@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.0] — 2026-04-24
+
+### Changed — Cold-crash verloopt nu geleidelijk in plaats van direct
+
+Voorheen werd bij het starten van de cold-crash het setpoint van het gekoppelde
+climate-apparaat ineens op de doeltemperatuur gezet; de ramp-snelheid was
+slechts een referentiewaarde.
+
+- Bij klikken op de cold-crash-knop wordt het setpoint nu één ramp-stap onder
+  het huidige setpoint gezet (begrensd door het target).
+- Een achtergrondthread in `server.py` verlaagt vervolgens elk uur het
+  setpoint met de geconfigureerde `ramp_per_uur`, tot de doeltemperatuur is
+  bereikt. De laatste stap wordt per batch bijgehouden in
+  `cold_crash_laatste_stap`, dus onderbrekingen (app gesloten, server
+  herstart) halen hun achterstand automatisch in.
+- `settings_coldcrash_desc` in alle 5 talen bijgewerkt om het nieuwe gedrag
+  te beschrijven.
+
 ## [1.8.99] — 2026-04-23
 
 ### Changed — Instellingen-pagina: multi-column layout op brede schermen

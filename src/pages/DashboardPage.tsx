@@ -108,12 +108,22 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     const target = Number(coldcrashInst?.target_temp ?? 2);
     const ramp   = Number(coldcrashInst?.ramp_per_uur ?? 1);
     const nowIso = new Date().toISOString();
+    // Bepaal een startpunt voor de ramp: het huidige climate-setpoint als dat
+    // bekend is, anders de laatste gemeten tanktemperatuur, anders val terug
+    // op target (zodat we niet per ongeluk warmer worden).
+    const currentSp = climate?.entity ? climateStates[climate.entity]?.temperature : undefined;
+    const tankTemp  = haTankTemps?.[batch.tank];
+    const startTemp = (typeof currentSp === 'number' && !isNaN(currentSp))
+      ? currentSp
+      : (typeof tankTemp === 'number' && !isNaN(tankTemp) ? tankTemp : target);
+    // Eerste stap: één ramp naar beneden, niet onder het target.
+    const firstStep = Math.max(target, Math.round((startTemp - ramp) * 100) / 100);
     setBat((prev: any[]) => prev.map((b: any) => b.id === batch.id
-      ? {...b, status: 'Conditioneren', cold_crash_datum: nowIso, cold_crash_target: target, cold_crash_ramp: ramp}
+      ? {...b, status: 'Conditioneren', cold_crash_datum: nowIso, cold_crash_target: target, cold_crash_ramp: ramp, cold_crash_laatste_stap: nowIso}
       : b
     ));
-    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd', omschrijving: `Cold-crash gestart → ${target}°C (${ramp}°C/u), status → Conditioneren`});
-    if (climate?.entity) setClimateTemp(climate.entity, target);
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd', omschrijving: `Cold-crash gestart → ${target}°C (${ramp}°C/u), eerste stap ${firstStep}°C, status → Conditioneren`});
+    if (climate?.entity) setClimateTemp(climate.entity, firstStep);
   };
 
   // ── Lot expiry ────────────────────────────────────────────────────────────

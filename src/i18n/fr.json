@@ -1669,7 +1669,7 @@
   "opt_select": "— sélectionner —",
   "opt_none": "— aucun —",
   "settings_coldcrash_title": "❄ Préréglage cold-crash",
-  "settings_coldcrash_desc": "Lorsque vous cliquez sur le bouton cold-crash d'une cuve dans le Tableau de bord, l'appareil climatique associé est réglé sur la température cible ci-dessous et le lot passe au statut 'Maturation'. La vitesse de rampe est une valeur de référence affichée sur la carte de la cuve.",
+  "settings_coldcrash_desc": "Lorsque vous cliquez sur le bouton cold-crash d'une cuve dans le Tableau de bord, le lot passe au statut 'Maturation' et l'application abaisse chaque heure la consigne de l'appareil climatique associé selon la vitesse de rampe, jusqu'à atteindre la température cible.",
   "settings_coldcrash_target": "Température cible",
   "settings_coldcrash_ramp": "Vitesse de rampe",
   "settings_coldcrash_hint": "Conseil : valeurs typiques 1–4°C cible et 0.5–2°C/heure. Un crash trop rapide peut endommager les cellules de levure et affecter l'ensemencement suivant.",

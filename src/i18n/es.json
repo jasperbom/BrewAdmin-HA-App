@@ -1669,7 +1669,7 @@
   "opt_select": "— seleccionar —",
   "opt_none": "— ninguno —",
   "settings_coldcrash_title": "❄ Preajuste cold-crash",
-  "settings_coldcrash_desc": "Cuando pulsas el botón cold-crash en un tanque del Panel, el dispositivo climático vinculado se ajusta a la temperatura objetivo indicada y el lote pasa al estado 'Maduración'. La velocidad de rampa es un valor de referencia mostrado en la tarjeta del tanque.",
+  "settings_coldcrash_desc": "Cuando pulsas el botón cold-crash en un tanque del Panel, el lote pasa al estado 'Maduración' y la app baja cada hora el setpoint del dispositivo climático vinculado según la velocidad de rampa, hasta alcanzar la temperatura objetivo.",
   "settings_coldcrash_target": "Temperatura objetivo",
   "settings_coldcrash_ramp": "Velocidad de rampa",
   "settings_coldcrash_hint": "Consejo: valores típicos 1–4°C objetivo y 0.5–2°C/hora. Un crash demasiado rápido puede dañar las células de levadura y afectar la siguiente generación.",
