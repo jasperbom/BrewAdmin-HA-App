@@ -445,14 +445,23 @@ def _ha_set_climate_temperature(entity_id: str, temperature: float) -> bool:
 
 def _auto_metingen_loop(interval: float = 600.0) -> None:
     """Achtergrondloop: haal elke 10 minuten temperatuurmetingen op van HA sensoren
-    voor batches in status Vergisten of Conditioneren, en sla deze op. Draait
-    daarnaast de cold-crash-stapper die per uur één ramp-stap naar beneden zet."""
+    voor batches in status Vergisten of Conditioneren, en sla deze op."""
     time.sleep(30)  # wacht even tot server volledig opgestart is
     while True:
         try:
             _auto_metingen_tick()
         except Exception as exc:
             print(f'[auto-metingen] error: {exc}', flush=True)
+        time.sleep(interval)
+
+
+def _cold_crash_loop(interval: float = 60.0) -> None:
+    """Achtergrondloop: check elke minuut of er een cold-crash-batch is die
+    een stap naar beneden moet. De daadwerkelijke stap gebeurt alleen als er
+    >= 1 uur is verstreken sinds de vorige stap — dit interval bepaalt slechts
+    hoe snel de app na dat uur reageert."""
+    time.sleep(20)  # kort wachten zodat eerste tick snel na start draait
+    while True:
         try:
             _cold_crash_tick()
         except Exception as exc:
@@ -518,47 +527,48 @@ def _cold_crash_tick() -> None:
     climate-setpoint één ramp-stap naar beneden zodra er minstens een uur is
     verstreken sinds de vorige stap. Stopt wanneer het target is bereikt."""
     with _data_lock:
+        batches = _read_json('batches', []) or []
+    active = [b for b in batches
+              if b.get('status') == 'Conditioneren' and b.get('cold_crash_datum')]
+    if not active:
+        return  # niets te doen — blijf stil in de logs
+
+    with _data_lock:
         ha_inst = _read_json('ha_instellingen', {}) or {}
-        cc_inst = _read_json('coldcrash_instellingen', {}) or {}
     if not ha_inst.get('climates_enabled'):
+        print(f"[cold-crash] {len(active)} actieve batch(es), maar climates_enabled=false in ha_instellingen — skip", flush=True)
         return
     climates = ha_inst.get('climates', []) or []
     if not climates:
-        return
-    try:
-        ramp = float(cc_inst.get('ramp_per_uur', 1) or 1)
-    except (TypeError, ValueError):
-        ramp = 1.0
-    if ramp <= 0:
+        print(f"[cold-crash] {len(active)} actieve batch(es), maar geen climates geconfigureerd — skip", flush=True)
         return
 
-    with _data_lock:
-        batches = _read_json('batches', []) or []
-
-    now = datetime.datetime.now()
-    now_iso = now.isoformat()
+    # Gebruik UTC met tzinfo: de frontend slaat `new Date().toISOString()` op
+    # (altijd UTC met `Z`), dus `last_dt` is offset-aware. Een naive `now()`
+    # zou `can't subtract offset-naive and offset-aware datetimes` opleveren.
+    now = datetime.datetime.now(datetime.timezone.utc)
     updated: list[dict] = []
 
-    for batch in batches:
-        if batch.get('status') != 'Conditioneren':
-            continue
-        if not batch.get('cold_crash_datum'):
-            continue
+    for batch in active:
+        batch_id = batch.get('id')
         # cold_crash_target blijft leidend: zonder target weten we niet waar
         # heen te stappen, dus die batch slaan we over.
         try:
             target = float(batch.get('cold_crash_target'))
         except (TypeError, ValueError):
+            print(f"[cold-crash] batch {batch_id}: ongeldig cold_crash_target — skip", flush=True)
             continue
         try:
-            batch_ramp = float(batch.get('cold_crash_ramp') or ramp)
+            batch_ramp = float(batch.get('cold_crash_ramp') or 1)
         except (TypeError, ValueError):
-            batch_ramp = ramp
+            batch_ramp = 1.0
         if batch_ramp <= 0:
+            print(f"[cold-crash] batch {batch_id}: ramp<=0 — skip", flush=True)
             continue
 
         climate = next((c for c in climates if c.get('tank') == batch.get('tank') and c.get('entity')), None)
         if not climate:
+            print(f"[cold-crash] batch {batch_id}: geen climate gekoppeld aan tank {batch.get('tank')!r} — skip", flush=True)
             continue
         entity_id = climate['entity']
 
@@ -567,18 +577,32 @@ def _cold_crash_tick() -> None:
         # stap lager gezet). Pas daarna volgen uurlijkse stappen.
         last_iso = batch.get('cold_crash_laatste_stap') or batch.get('cold_crash_datum')
         try:
-            last_dt = datetime.datetime.fromisoformat(last_iso)
+            # `Z`-suffix expliciet vervangen — Python <3.11 slikt dat niet in
+            # fromisoformat, en ook oudere records zonder offset normaliseren
+            # we naar UTC zodat arithmetiek met `now` (aware) werkt.
+            iso_norm = (last_iso or '').replace('Z', '+00:00')
+            last_dt = datetime.datetime.fromisoformat(iso_norm)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=datetime.timezone.utc)
         except (TypeError, ValueError):
+            print(f"[cold-crash] batch {batch_id}: ongeldig timestamp {last_iso!r} — skip", flush=True)
             continue
         elapsed_h = (now - last_dt).total_seconds() / 3600.0
         if elapsed_h < 1.0:
+            # Geen ruis in de logs: alleen één keer per 10 minuten melden dat
+            # we wachten. (int(min) % 10 == 0)
+            mins = int((now - last_dt).total_seconds() / 60)
+            if mins > 0 and mins % 10 == 0:
+                print(f"[cold-crash] batch {batch_id}: wacht op volgend uur (elapsed {mins} min)", flush=True)
             continue
 
         current_sp = _ha_fetch_climate_setpoint(entity_id)
         if current_sp is None:
+            print(f"[cold-crash] batch {batch_id}: kon setpoint van {entity_id} niet lezen — skip", flush=True)
             continue
         if current_sp <= target + 1e-6:
-            continue  # klaar
+            print(f"[cold-crash] batch {batch_id}: setpoint {current_sp}°C <= target {target}°C — klaar", flush=True)
+            continue
 
         # Doe zoveel hele uur-stappen als mogelijk in één tick — voorkomt
         # dat een korte serveronderbreking de ramp uit de pas laat lopen.
@@ -590,6 +614,7 @@ def _cold_crash_tick() -> None:
         new_sp = round(new_sp, 2)
 
         if not _ha_set_climate_temperature(entity_id, new_sp):
+            print(f"[cold-crash] batch {batch_id}: set_temperature({entity_id}, {new_sp}) faalde — skip", flush=True)
             continue
 
         # Verplaats de "laatste stap"-ijkpunt vooruit per hele uur, zodat
@@ -1388,6 +1413,11 @@ if __name__ == '__main__':
     _metingen_thread = threading.Thread(target=_auto_metingen_loop, daemon=True)
     _metingen_thread.start()
     print('Auto-metingen thread gestart (elke 10 minuten)', flush=True)
+
+    # Start background cold-crash thread (every minute — ramp-steps are hourly)
+    _coldcrash_thread = threading.Thread(target=_cold_crash_loop, daemon=True)
+    _coldcrash_thread.start()
+    print('Cold-crash thread gestart (elke minuut)', flush=True)
 
     server = http.server.HTTPServer(('0.0.0.0', port), BrouwerijHandler)
     server.serve_forever()
