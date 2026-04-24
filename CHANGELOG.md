@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.4] — 2026-04-24
+
+### Fixed — Dashboard toonde "Invalid Date" bij cold-crash start
+
+`fmtD` plakte altijd `T12:00:00` achter de input, wat prima werkt voor
+`YYYY-MM-DD`-strings maar een volledige ISO-timestamp corrumpeerde
+(`…Z` + `T12:00:00` → onparseerbaar). `cold_crash_datum` wordt opgeslagen
+als `new Date().toISOString()`, dus op het dashboard stond altijd
+"Gestart: Invalid Date".
+
+- `fmtD` detecteert nu of de input al een `T`-separator bevat en parseert
+  ISO-timestamps direct. Bestaande callsites met `YYYY-MM-DD` blijven werken.
+- Ongeldige input levert lege string i.p.v. "Invalid Date".
+
 ## [1.9.3] — 2026-04-24
 
 ### Fixed — Cold-crash tick crashte op "can't subtract offset-naive and offset-aware datetimes"
