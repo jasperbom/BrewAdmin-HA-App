@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.2] — 2026-04-24
+
+### Fixed — Cold-crash reageert nu binnen een minuut en logt diagnostisch
+
+De cold-crash-stapper zat mee in de auto-metingen-loop (elke 10 min). Daardoor
+kon er na het uur-moment nog tot 10 min vertraging zitten voor het setpoint
+werd verlaagd, en waren er geen logregels om te zien waarom een stap niet
+gebeurde.
+
+- Eigen `_cold_crash_loop` thread gestart die elke 60 seconden tikt. De
+  ramp-stap blijft strikt uurlijks (alleen de reactietijd is sneller).
+- `_cold_crash_tick` logt nu expliciet waarom een batch wordt overgeslagen:
+  `climates_enabled=false`, geen climate gekoppeld, setpoint niet te lezen,
+  target bereikt, set_temperature faalde. Als er >0 actieve batches zijn en
+  het uur nog niet voorbij is, volgt elke 10 min een heartbeat-regel.
+- Iedere geslaagde stap logt `batch X: setpoint → Y°C (N stap(pen))` zoals
+  voorheen.
+
+Bekijk `Addons → BrewAdmin → Log` om te zien wat de thread aan het doen is.
+
 ## [1.9.1] — 2026-04-24
 
 ### Added — Cold-crash toggle en live voortgangsindicator op het Dashboard
