@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.1] — 2026-04-24
+
+### Added — Cold-crash toggle en live voortgangsindicator op het Dashboard
+
+Aanvulling op 1.9.0: de cold-crash-ramp draait in de achtergrond-thread van de
+server (dus ook als de app-tab dicht staat), maar dat was op het Dashboard niet
+zichtbaar.
+
+- Cold-crash-knop gedraagt zich nu als een toggle. Tijdens een actieve
+  cold-crash verschijnt een knipperende paarse pill ("Cold-crash actief")
+  met daarnaast een **Stop**-knop. Als het setpoint het target bereikt,
+  wordt de pill groen ("Target bereikt").
+- Onder de pill staat een regel met het huidige setpoint → target, de
+  ramp-snelheid, en een aftelling "Volgende stap over X min" (elke 30s
+  ververst op de UI). Zo is in één oogopslag te zien dat de app bezig is.
+- Stoppen wist alleen de cold-crash-metadata op de batch; het status-veld
+  blijft op Conditioneren staan.
+
 ## [1.9.0] — 2026-04-24
 
 ### Changed — Cold-crash verloopt nu geleidelijk in plaats van direct
