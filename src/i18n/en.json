@@ -1479,7 +1479,7 @@
   "opt_select": "— select —",
   "opt_none": "— none —",
   "settings_coldcrash_title": "❄ Cold-crash preset",
-  "settings_coldcrash_desc": "When you press the cold-crash button on a tank in the Dashboard, the linked climate device is set to the target temperature below and the batch moves to status 'Conditioning'. The ramp rate is a reference value shown on the tank card.",
+  "settings_coldcrash_desc": "When you press the cold-crash button on a tank in the Dashboard, the batch moves to status 'Conditioning' and the app lowers the linked climate device's setpoint by the ramp rate every hour until the target temperature is reached.",
   "settings_coldcrash_target": "Target temperature",
   "settings_coldcrash_ramp": "Ramp rate",
   "settings_coldcrash_hint": "Tip: typical values are 1–4°C target and 0.5–2°C/hour. Crashing too fast can damage yeast cells and affect next-generation pitching.",

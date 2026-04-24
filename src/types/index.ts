@@ -65,11 +65,13 @@ export interface Batch {
   // het Dashboard, en worden ze door de Volgende-stap-knop bijgehouden.
   vergisting_stap_idx?: number
   vergisting_stap_start?: string  // ISO timestamp
-  // Cold-crash metadata: timestamp + gebruikte target en ramp. Puur
-  // informatief — de daadwerkelijke setpoint wordt direct naar HA gestuurd.
-  cold_crash_datum?: string       // ISO timestamp
-  cold_crash_target?: number      // °C
-  cold_crash_ramp?: number        // °C/uur
+  // Cold-crash metadata: timestamp van start + gebruikte target en ramp.
+  // `cold_crash_laatste_stap` wordt door de backend-loop opgehoogd elk uur
+  // dat er een stap naar beneden is gezet, totdat het target is bereikt.
+  cold_crash_datum?: string            // ISO timestamp — start
+  cold_crash_target?: number           // °C — doeltemperatuur
+  cold_crash_ramp?: number             // °C per uur
+  cold_crash_laatste_stap?: string     // ISO timestamp — ijkpunt voor volgende stap
   log?: BatchLogEntry[]
   platogehalte?: number | string
   gn_code?: string

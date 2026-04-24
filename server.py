@@ -403,15 +403,60 @@ def _ha_fetch_state(entity_id: str) -> float | None:
         return None
 
 
+def _ha_fetch_climate_setpoint(entity_id: str) -> float | None:
+    """Haal het huidige setpoint (`attributes.temperature`) van een climate-entity op."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token:
+        return None
+    try:
+        req = urllib.request.Request(
+            f'{HA_SUPERVISOR_BASE}/states/{entity_id}',
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read())
+            attrs = data.get('attributes', {}) or {}
+            sp = attrs.get('temperature')
+            return float(sp) if sp is not None else None
+    except (urllib.error.URLError, ValueError, TypeError, OSError):
+        return None
+
+
+def _ha_set_climate_temperature(entity_id: str, temperature: float) -> bool:
+    """Stuur een climate.set_temperature service-call naar HA. Return True bij success."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token:
+        return False
+    if not re.match(r'^climate\.[a-z0-9][a-z0-9_-]*$', entity_id):
+        return False
+    try:
+        payload = json.dumps({'entity_id': entity_id, 'temperature': temperature}).encode('utf-8')
+        req = urllib.request.Request(
+            f'{HA_SUPERVISOR_BASE}/services/climate/set_temperature',
+            data=payload,
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=10):
+            return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def _auto_metingen_loop(interval: float = 600.0) -> None:
     """Achtergrondloop: haal elke 10 minuten temperatuurmetingen op van HA sensoren
-    voor batches in status Vergisten of Conditioneren, en sla deze op."""
+    voor batches in status Vergisten of Conditioneren, en sla deze op. Draait
+    daarnaast de cold-crash-stapper die per uur één ramp-stap naar beneden zet."""
     time.sleep(30)  # wacht even tot server volledig opgestart is
     while True:
         try:
             _auto_metingen_tick()
         except Exception as exc:
             print(f'[auto-metingen] error: {exc}', flush=True)
+        try:
+            _cold_crash_tick()
+        except Exception as exc:
+            print(f'[cold-crash] error: {exc}', flush=True)
         time.sleep(interval)
 
 
@@ -466,6 +511,113 @@ def _auto_metingen_tick() -> None:
         _write_json('gist_metingen', metingen)
 
     print(f'[auto-metingen] {len(new_entries)} meting(en) opgeslagen', flush=True)
+
+
+def _cold_crash_tick() -> None:
+    """Zet voor elke batch in Conditioneren met een actieve cold-crash de
+    climate-setpoint één ramp-stap naar beneden zodra er minstens een uur is
+    verstreken sinds de vorige stap. Stopt wanneer het target is bereikt."""
+    with _data_lock:
+        ha_inst = _read_json('ha_instellingen', {}) or {}
+        cc_inst = _read_json('coldcrash_instellingen', {}) or {}
+    if not ha_inst.get('climates_enabled'):
+        return
+    climates = ha_inst.get('climates', []) or []
+    if not climates:
+        return
+    try:
+        ramp = float(cc_inst.get('ramp_per_uur', 1) or 1)
+    except (TypeError, ValueError):
+        ramp = 1.0
+    if ramp <= 0:
+        return
+
+    with _data_lock:
+        batches = _read_json('batches', []) or []
+
+    now = datetime.datetime.now()
+    now_iso = now.isoformat()
+    updated: list[dict] = []
+
+    for batch in batches:
+        if batch.get('status') != 'Conditioneren':
+            continue
+        if not batch.get('cold_crash_datum'):
+            continue
+        # cold_crash_target blijft leidend: zonder target weten we niet waar
+        # heen te stappen, dus die batch slaan we over.
+        try:
+            target = float(batch.get('cold_crash_target'))
+        except (TypeError, ValueError):
+            continue
+        try:
+            batch_ramp = float(batch.get('cold_crash_ramp') or ramp)
+        except (TypeError, ValueError):
+            batch_ramp = ramp
+        if batch_ramp <= 0:
+            continue
+
+        climate = next((c for c in climates if c.get('tank') == batch.get('tank') and c.get('entity')), None)
+        if not climate:
+            continue
+        entity_id = climate['entity']
+
+        # Tijdstip van de laatste stap: bij de allereerste tick is dat het
+        # moment dat de cold-crash werd gestart (frontend heeft dan al één
+        # stap lager gezet). Pas daarna volgen uurlijkse stappen.
+        last_iso = batch.get('cold_crash_laatste_stap') or batch.get('cold_crash_datum')
+        try:
+            last_dt = datetime.datetime.fromisoformat(last_iso)
+        except (TypeError, ValueError):
+            continue
+        elapsed_h = (now - last_dt).total_seconds() / 3600.0
+        if elapsed_h < 1.0:
+            continue
+
+        current_sp = _ha_fetch_climate_setpoint(entity_id)
+        if current_sp is None:
+            continue
+        if current_sp <= target + 1e-6:
+            continue  # klaar
+
+        # Doe zoveel hele uur-stappen als mogelijk in één tick — voorkomt
+        # dat een korte serveronderbreking de ramp uit de pas laat lopen.
+        steps = int(elapsed_h)
+        if steps < 1:
+            continue
+        new_sp = max(target, current_sp - batch_ramp * steps)
+        # Rond af op één decimaal om gekke floats te vermijden.
+        new_sp = round(new_sp, 2)
+
+        if not _ha_set_climate_temperature(entity_id, new_sp):
+            continue
+
+        # Verplaats de "laatste stap"-ijkpunt vooruit per hele uur, zodat
+        # fracties van het uur bewaard blijven voor de volgende tick.
+        next_last = (last_dt + datetime.timedelta(hours=steps)).isoformat()
+        updated.append({
+            'id': batch.get('id'),
+            'new_sp': new_sp,
+            'steps': steps,
+            'next_last': next_last,
+        })
+
+    if not updated:
+        return
+
+    # Her-lees batches onder de lock en merge alleen het cold-crash-tijdpunt
+    # terug, zodat we gelijktijdige UI-schrijfacties niet overschrijven.
+    step_map = {u['id']: u['next_last'] for u in updated}
+    with _data_lock:
+        current = _read_json('batches', []) or []
+        for b in current:
+            nl = step_map.get(b.get('id'))
+            if nl is not None:
+                b['cold_crash_laatste_stap'] = nl
+        _write_json('batches', current)
+
+    for u in updated:
+        print(f"[cold-crash] batch {u['id']}: setpoint → {u['new_sp']}°C ({u['steps']} stap(pen))", flush=True)
 
 
 def _list_backups() -> list[dict]:
