@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.3] — 2026-04-24
+
+### Fixed — Cold-crash tick crashte op "can't subtract offset-naive and offset-aware datetimes"
+
+De frontend slaat `cold_crash_laatste_stap` op met `new Date().toISOString()`,
+wat altijd UTC met `Z`-suffix oplevert (offset-aware). De backend deed echter
+`datetime.datetime.now()` (offset-naive) en kon daarom geen `now - last_dt`
+uitrekenen. Gevolg: in elke tick een exception en geen enkele stap.
+
+- `now` gebruikt nu `datetime.datetime.now(datetime.timezone.utc)`.
+- `last_dt` wordt genormaliseerd: `Z` → `+00:00` vóór `fromisoformat`, en
+  naive timestamps uit oudere batches krijgen alsnog UTC-tzinfo.
+
 ## [1.9.2] — 2026-04-24
 
 ### Fixed — Cold-crash reageert nu binnen een minuut en logt diagnostisch

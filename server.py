@@ -543,7 +543,10 @@ def _cold_crash_tick() -> None:
         print(f"[cold-crash] {len(active)} actieve batch(es), maar geen climates geconfigureerd — skip", flush=True)
         return
 
-    now = datetime.datetime.now()
+    # Gebruik UTC met tzinfo: de frontend slaat `new Date().toISOString()` op
+    # (altijd UTC met `Z`), dus `last_dt` is offset-aware. Een naive `now()`
+    # zou `can't subtract offset-naive and offset-aware datetimes` opleveren.
+    now = datetime.datetime.now(datetime.timezone.utc)
     updated: list[dict] = []
 
     for batch in active:
@@ -574,7 +577,13 @@ def _cold_crash_tick() -> None:
         # stap lager gezet). Pas daarna volgen uurlijkse stappen.
         last_iso = batch.get('cold_crash_laatste_stap') or batch.get('cold_crash_datum')
         try:
-            last_dt = datetime.datetime.fromisoformat(last_iso)
+            # `Z`-suffix expliciet vervangen — Python <3.11 slikt dat niet in
+            # fromisoformat, en ook oudere records zonder offset normaliseren
+            # we naar UTC zodat arithmetiek met `now` (aware) werkt.
+            iso_norm = (last_iso or '').replace('Z', '+00:00')
+            last_dt = datetime.datetime.fromisoformat(iso_norm)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=datetime.timezone.utc)
         except (TypeError, ValueError):
             print(f"[cold-crash] batch {batch_id}: ongeldig timestamp {last_iso!r} — skip", flush=True)
             continue
