@@ -126,6 +126,23 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     if (climate?.entity) setClimateTemp(climate.entity, firstStep);
   };
 
+  const stopColdCrash = (batch: any) => {
+    if (!confirm(t('dashboard_coldcrash_stop_confirm'))) return;
+    setBat((prev: any[]) => prev.map((b: any) => b.id === batch.id
+      ? {...b, cold_crash_datum: undefined, cold_crash_target: undefined, cold_crash_ramp: undefined, cold_crash_laatste_stap: undefined}
+      : b
+    ));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd', omschrijving: `Cold-crash gestopt`});
+  };
+
+  // Live tijdmeting voor progress-weergave van de cold-crash. Ticken elke 30s
+  // is snel genoeg voor een "nog X min"-teller maar belast niets.
+  const [nowTs, setNowTs] = useState(Date.now());
+  React.useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 30 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Lot expiry ────────────────────────────────────────────────────────────
   const activeLots   = lots.filter((l: any) => l.beschikbaar && Number(l.hoeveelheid||0) > 0);
   const lotsMetTht   = activeLots.filter((l: any) => l.houdbaarheid);
@@ -1204,23 +1221,67 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                         </div>
                       )}
 
-                      {/* Cold-crash button */}
-                      <div className="pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
-                        <button
-                          onClick={() => startColdCrash(batch, climate)}
-                          disabled={batch.status === 'Gesloten'}
-                          className="text-xs font-medium px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
-                          ❄ {t('dashboard_coldcrash_btn')}
-                        </button>
-                        {coldcrashInst?.enabled && (
-                          <span className="text-xs text-gray-500">
-                            → {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}
-                          </span>
-                        )}
-                        {batch.cold_crash_datum && (
-                          <span className="text-xs text-gray-400">{fmtD(batch.cold_crash_datum)}</span>
-                        )}
-                      </div>
+                      {/* Cold-crash toggle + live progress */}
+                      {(() => {
+                        const ccActive = !!batch.cold_crash_datum;
+                        const ccTarget = Number(batch.cold_crash_target ?? coldcrashInst?.target_temp ?? 2);
+                        const ccRamp   = Number(batch.cold_crash_ramp ?? coldcrashInst?.ramp_per_uur ?? 1);
+                        const lastIso  = batch.cold_crash_laatste_stap || batch.cold_crash_datum;
+                        const lastMs   = lastIso ? new Date(lastIso).getTime() : 0;
+                        const nextMs   = lastMs + 3600 * 1000;
+                        const dueInMin = Math.max(0, Math.round((nextMs - nowTs) / 60000));
+                        const sp       = cState?.temperature;
+                        const reached  = ccActive && typeof sp === 'number' && sp <= ccTarget + 0.01;
+                        return (
+                          <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {!ccActive ? (
+                                <>
+                                  <button
+                                    onClick={() => startColdCrash(batch, climate)}
+                                    disabled={batch.status === 'Gesloten'}
+                                    className="text-xs font-medium px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                                    ❄ {t('dashboard_coldcrash_btn')}
+                                  </button>
+                                  {coldcrashInst?.enabled && (
+                                    <span className="text-xs text-gray-500">
+                                      → {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${reached ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${reached ? 'bg-green-500' : 'bg-purple-500 animate-pulse'}`}></span>
+                                    ❄ {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
+                                  </span>
+                                  <button
+                                    onClick={() => stopColdCrash(batch)}
+                                    className="text-xs font-medium px-2 py-1 rounded bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-800">
+                                    {t('dashboard_coldcrash_stop_btn')}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {ccActive && (
+                              <div className="text-xs text-gray-500 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                <span>
+                                  {typeof sp === 'number' ? `${sp}°C` : '—'}
+                                  <span className="text-gray-400"> → </span>
+                                  <strong className="text-gray-700">{ccTarget}°C</strong>
+                                  <span className="text-gray-400"> @ {ccRamp}°C/{t('lbl_uur')}</span>
+                                </span>
+                                {!reached && (
+                                  <span className="text-gray-400">
+                                    · {t('dashboard_coldcrash_next_step').replace('{m}', String(dueInMin))}
+                                  </span>
+                                )}
+                                <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(batch.cold_crash_datum)}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()}
