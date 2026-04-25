@@ -110,6 +110,12 @@ export interface Afvulling {
   aantal: number
   datum?: string
   tht?: string
+  gn_code?: string
+  // Voorcalculatie accijns (Douane v2.4): bevroren op afvullingsmoment.
+  // Eenheid = € per verpakte eenheid (fles/blik/fust); _totaal = €/eenheid × hoeveelheid.
+  voorcalc_accijns_per_eenheid?: number
+  voorcalc_accijns_totaal?: number
+  voorcalc_tarief_snapshot?: { r1?: number; r2?: number; r3?: number; abv?: number; plato?: number }
 }
 
 export interface VoorraadLog {
@@ -555,6 +561,16 @@ export interface HaInst {
 
 export type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
 
+export type VernietigingStatus = 'aangevraagd' | 'toegestaan' | 'uitgevoerd'
+
+export interface AfboekingBijlage {
+  naam: string
+  bestand: string  // base64 of url
+  type?: string    // mime
+  rol?: 'douane_verklaring' | 'bewijs'
+  geupload_op?: string
+}
+
 export interface Afboeking {
   id: number
   afvulling_id: number
@@ -564,6 +580,15 @@ export interface Afboeking {
   reden: AfboekingReden
   opmerking: string
   created_at?: string
+  // Voorcalculatie accijns op moment van afboeking (Douane v2.4)
+  voorcalc_accijns_per_eenheid?: number
+  voorcalc_accijns_totaal?: number
+  // Vernietiging-specifieke velden (verklaring vanuit schorsingsregeling)
+  vernietiging_status?: VernietigingStatus
+  verklaring_ingediend_op?: string
+  toestemming_ontvangen_op?: string
+  uitgevoerd_op?: string
+  bijlagen?: AfboekingBijlage[]
 }
 
 // ── AGP Compliance Types ─────────────────────────────────────────────────────
@@ -607,6 +632,9 @@ export interface InventarisatieTelling {
   verschil: number
   verklaring?: string
   eenheid?: string
+  // Voorcalculatie accijns van het verschil (Douane v2.4 §7.3): negatief = tekort/vermis.
+  voorcalc_accijns_per_eenheid?: number
+  accijns_impact?: number
 }
 
 export interface AuditEntry {
@@ -622,9 +650,30 @@ export interface AuditEntry {
 
 export type AccijnsAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
 
-export interface AccijnsAangifte {
+export type ControleStatus = 'open' | 'akkoord' | 'opmerkingen'
+
+export interface AangifteControle {
+  // Vastlegging tweede-paar-ogen-controle (Douane v2.4 §12.2/§12.4).
+  reviewer?: string                 // naam van controleur (default: Elise Kok)
+  controle_datum?: string           // ISO timestamp van akkoord/opmerkingen
+  controle_status?: ControleStatus  // open / akkoord / opmerkingen
+  bevindingen?: string              // vrij tekstveld met opmerkingen of 'geen bijzonderheden'
+}
+
+export interface AccijnsAangifte extends AangifteControle {
   maand: string
   status: AccijnsAangifteStatus
+  berekend_datum?: string
+  ingediend_datum?: string
+  betaald_datum?: string
+}
+
+export type BtwAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
+
+export interface BtwAangifte extends AangifteControle {
+  // Sleutel: jaar + kwartaal (bv. '2026-Q1') of jaar + maand bij maandaangifte.
+  periode: string
+  status: BtwAangifteStatus
   berekend_datum?: string
   ingediend_datum?: string
   betaald_datum?: string

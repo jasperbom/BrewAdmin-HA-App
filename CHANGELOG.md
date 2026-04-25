@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.0] — 2026-04-25
+
+### Added — Douane-compliance v2.4 (reactie Douane op Bedrijfshandboek v2.3)
+
+Deze release verwerkt de aanvullende eisen van de Nederlandse Douane op het Craftery Brewing-bedrijfshandboek v2.3.
+
+- **Voorcalculatie accijns per afvulling (§7.1)** — bij elke afvulling wordt nu automatisch de potentiële accijnsschuld berekend en bevroren opgeslagen op basis van ABV/Plato/volume + tarief uit de stamgegevens. Zichtbaar op het batchverpakkingsformulier en in de afvullingstabel.
+- **Voorcalculatie bij afboekingen (§7.2.1)** — bij het registreren van vermis, intern gebruik of vernietiging toont BrewAdmin direct het accijnsbedrag dat met de afboeking gemoeid is. Bedrag wordt vastgelegd op de mutatie en meegenomen in het maandoverzicht.
+- **Verklaring vernietiging vanuit schorsingsregeling (§7.2.3)** — vernietiging-mutaties hebben nu een statusflow `aangevraagd → toegestaan → uitgevoerd` met:
+  - Verplichte upload van de officiële Douane-verklaring (PDF van douane.nl).
+  - Datumvelden voor indiening en toestemming.
+  - Verplichte upload van bewijsmateriaal (foto/video) bij status `uitgevoerd`.
+- **Voorcalc + kleurcodering bij inventarisatie (§7.3)** — afwijkingen tonen direct de accijnsimpact (verschil × voorcalc per eenheid). Totaalbalk bij afsluiten splitst tekorten (vermis-equivalent, accijnsplichtig) en overschotten (administratieve correctie).
+- **Voorraadverloop met potentiële accijnsschuld (§7.4)** — gereed-product-rapport bevat een nieuwe kolom "Pot. accijnsschuld (€)" en totaal per periode. Excel-export bevat zowel `Voorcalc accijns / eenheid (€)` als `Potentiële accijnsschuld (€)`.
+- **Webshop §10.2: belastbaar feit bij picken** — voor consumentenorders verlaten goederen de AGP op het moment van picken, niet bij verzenden. BrewAdmin maakt vanaf nu de Uitslag- en AccijnsRecord-records aan tijdens `savePicks` (status `nieuw → gepickt`). De afrond-flow vult alleen bestemmingsdetails aan en maakt de factuur/pakbon. Pickmodal toont een Douane-banner.
+- **4-ogen-controle op aangiftes (§12.2 + §12.4)** — nieuwe controleblokken op zowel accijns- als BTW-aangifte:
+  - Reviewer-veld (default Elise Kok), controle-datum, bevindingen.
+  - Statussen `open / akkoord / opmerkingen`.
+  - Accijnsaangifte kan pas naar `ingediend` na `akkoord`-controle.
+  - Alle controleacties belanden in het `audit_log` voor permanente traceerbaarheid.
+- **Nieuw datatype:** `btw_aangiftes` (`useStore('btw_aangiftes', [])`) — wordt meegenomen in export, import en reset.
+
+### Bestanden gewijzigd
+- `src/types/index.ts` — uitbreiding `Afvulling`, `Afboeking`, `InventarisatieTelling`, `AccijnsAangifte`. Nieuw: `AfboekingBijlage`, `VernietigingStatus`, `AangifteControle`, `BtwAangifte`, `ControleStatus`.
+- `src/utils/calculations.ts` — nieuwe helper `berekenVoorcalcVoorAfvulling()`.
+- `src/pages/BatchesPage.tsx` — voorcalc bevriezen bij afvullen + tonen in formulier en voorraadtabel.
+- `src/pages/ProductenPage.tsx` — afboekmodal met voorcalc + vernietigingsflow + uploads.
+- `src/pages/InventarisatiePage.tsx` — accijnsimpact per regel + totaalbalk.
+- `src/pages/VoorraadverloopPage.tsx` — kolom + totaal potentiële accijnsschuld.
+- `src/pages/BestellingenPage.tsx` — uitslag/accijns bij picken i.p.v. afronden.
+- `src/pages/AccijnsPage.tsx` — `ControleBlok` met reviewer, status-blokkade naar ingediend.
+- `src/pages/BoekhoudingPage.tsx` — controleblok in BTW-aangiftesectie.
+- `src/App.tsx` — `btwAangiftes` store toegevoegd, doorgegeven aan `BoekhoudingPage`.
+
 ## [1.8.20] — 2026-04-09
 
 ### Fixed — Productnaam in Voorraadverloop

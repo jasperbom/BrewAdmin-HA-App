@@ -363,6 +363,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // --- Picking opslaan ---
+  // Douane v2.4 §10.2: het belastbaar feit (uitslag uit AGP) treedt op bij picken.
+  // We maken hier dus al de Uitslag- en AccijnsRecord-records aan, niet pas bij rondeAf.
+  // Voor B2B/intracommunautair/export kan de gebruiker bestemmingsdetails later aanvullen
+  // of via het AGP-scherm corrigeren; default is 'binnenland'.
   const savePicks = () => {
     if (!selectedOrder) return
     // Valideer voorraad per afvulling voordat picks opgeslagen worden
@@ -382,31 +386,105 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         return
       }
     }
+
+    const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51)
+    const r2 = Number(accijnsInst?.tarief_per_hl||24.17)
+    const vandaag = tod()
+
     const newPicks: any[] = []
+    const nieuweUitslagen: any[] = []
+    const nieuweAccijns: any[] = []
     let pickId = newId(bestellingPicks||[])
+    let uitId = newId(uit||[])
+    let accId = newId(acc||[])
+
     for (const [regelIdStr, picks] of Object.entries(draftPicks)) {
       const regelId = Number(regelIdStr)
       for (const p of picks as any[]) {
         if (!p.aantal || p.aantal <= 0) continue
         const avItem = (av||[]).find((a: any) => a.id === p.afvulling_id)
         const batch = avItem ? bat.find((b: any) => b.id === avItem.batch_id) : null
+        const aantal = Number(p.aantal)
+        const inhoud = Number(avItem?.inhoud_per_eenheid || 0)
+        const liter = aantal * inhoud
+        const accBed = accijnsCalc(liter, batch?.ABV || 0, r1, r2, accijnsInst)
+
+        const uitslag = {
+          id: uitId++,
+          batch_id: batch?.id || 0,
+          afvulling_id: p.afvulling_id,
+          batch_naam: batch?.naam || '',
+          verpakking_naam: avItem?.verpakking_type || '',
+          verpakking_type: avItem?.verpakking_type || '',
+          inhoud_per_eenheid: inhoud,
+          inhoud_liter: liter,
+          aantal,
+          verkocht_stuks: aantal,
+          datum: vandaag,
+          tht: avItem?.tht || null,
+          accijns_betaald: false,
+          type_uitslag: 'binnenland',
+          bestemming_naam: '',
+          bestemming_adres: '',
+          bestemming_land: '',
+          vervoerder: '',
+          created_at: new Date().toISOString(),
+        }
+        const accijnsRec = {
+          id: accId++,
+          batch_id: batch?.id || 0,
+          batch_naam: batch?.naam || '',
+          batch_nummer: batch?.batch_nummer || '',
+          uitslag_id: uitslag.id,
+          verpakking_type: avItem?.verpakking_type || '',
+          datum: vandaag,
+          aantal,
+          liter,
+          abv: batch?.ABV || 0,
+          accijns: accBed,
+          totaal_accijns: accBed,
+          betaald: false,
+          betaal_datum: null,
+        }
+        nieuweUitslagen.push(uitslag)
+        nieuweAccijns.push(accijnsRec)
+
         newPicks.push({
           id: pickId++,
           bestelling_id: selectedOrder.id,
           regel_id: regelId,
           afvulling_id: p.afvulling_id,
           batch_id: batch?.id || 0,
-          aantal: Number(p.aantal),
-          uitslag_id: null,
-          accijns_id: null,
+          aantal,
+          uitslag_id: uitslag.id,
+          accijns_id: accijnsRec.id,
         })
       }
     }
-    // Bestaande picks voor deze order verwijderen, nieuwe toevoegen
+
+    // Bestaande picks (en bijbehorende uitslagen/accijns) voor deze order verwijderen,
+    // zodat herzien van picks de boekhouding niet dubbel telt.
+    const oudePickIds = (bestellingPicks||[])
+      .filter((p: any) => p.bestelling_id === selectedOrder.id)
+      .reduce((acc: {uitslagIds: number[]; accijnsIds: number[]}, p: any) => {
+        if (p.uitslag_id) acc.uitslagIds.push(p.uitslag_id)
+        if (p.accijns_id) acc.accijnsIds.push(p.accijns_id)
+        return acc
+      }, {uitslagIds: [], accijnsIds: []})
+
+    if (oudePickIds.uitslagIds.length) {
+      setUit((prev: any[]) => (prev||[]).filter((u: any) => !oudePickIds.uitslagIds.includes(u.id)))
+    }
+    if (oudePickIds.accijnsIds.length) {
+      setAcc((prev: any[]) => (prev||[]).filter((a: any) => !oudePickIds.accijnsIds.includes(a.id)))
+    }
+    setUit((prev: any[]) => [...(prev||[]), ...nieuweUitslagen])
+    setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
     setBestellingPicks((prev: any[]) => [
       ...(prev||[]).filter((p: any) => p.bestelling_id !== selectedOrder.id),
       ...newPicks
     ])
+
     // Status bijwerken: gepickt als alle regels volledig gepickt
     const allFull = (selectedOrder.regels||[]).filter((r: any) => r.type === 'bier').every((r: any) => {
       const picked = newPicks.filter((p: any) => p.regel_id === r.id).reduce((s: number, p: any) => s + p.aantal, 0)
@@ -415,77 +493,60 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, status: allFull ? 'gepickt' : 'nieuw'} : b
     ))
+
+    // Audit + voorraadlog: belastbaar feit bij pick
+    if (allFull && nieuweUitslagen.length > 0) {
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Bestelling',
+        entiteit_id: selectedOrder.id,
+        actie: 'gewijzigd',
+        omschrijving: `Gepickt — uitslag uit AGP (Douane §10.2): ${nieuweUitslagen.length} uitslag(en) geregistreerd, accijnsplichtig`,
+      })
+      setLog((prev: any[]) => {
+        let logId = newId(prev||[])
+        const entries = nieuweUitslagen.map((u: any) => ({
+          id: logId++,
+          datum: vandaag,
+          type: 'uitslaan',
+          batch_id: u.batch_id,
+          batch_naam: u.batch_naam || '',
+          afvulling_id: u.afvulling_id,
+          verpakking_type: u.verpakking_type || '',
+          hoeveelheid: u.aantal,
+          eenheid: 'stuks',
+          referentie: `Pick ${selectedOrder.klant_naam}`,
+          omschrijving: `Picken (belastbaar feit) — ${selectedOrder.klant_naam}`,
+        }))
+        return [...(prev||[]), ...entries]
+      })
+    }
     setShowPickModal(false)
     setDraftPicks({})
   }
 
   // --- Order afronden (atomaire transactie) ---
+  // Douane v2.4 §10.2: Uitslag + AccijnsRecord zijn al bij savePicks aangemaakt
+  // (belastbaar feit = picken). Hier vullen we alleen bestemmingsgegevens aan
+  // (intracommunautair/export) en maken de verkoopfactuur + pakbon.
   const rondeAf = () => {
     if (!selectedOrder) return
     const picks = picksVoorOrder(selectedOrder.id)
     if (!picks.length) { alert(t('err_order_no_picks')); return }
-    const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51)
-    const r2 = Number(accijnsInst?.tarief_per_hl||24.17)
     const vandaag = tod()
     const factuurNummer = genFactuurNummer()
     const pakbonNummer = genPakbonNummer()
 
-    // 1. Uitslag records (één per pick)
-    const nieuweUitslagen: any[] = []
-    let uitId = newId(uit||[])
-    for (const pick of picks) {
-      const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
-      if (!avItem) continue
-      const batch = bat.find((b: any) => b.id === pick.batch_id)
-      const liter = Number(pick.aantal) * Number(avItem.inhoud_per_eenheid||0)
-      nieuweUitslagen.push({
-        id: uitId++,
-        batch_id: pick.batch_id,
-        afvulling_id: pick.afvulling_id,
-        batch_naam: batch?.naam || '',
-        verpakking_naam: avItem.verpakking_type || '',
-        verpakking_type: avItem.verpakking_type || '',
-        inhoud_per_eenheid: Number(avItem.inhoud_per_eenheid||0),
-        inhoud_liter: liter,
-        aantal: Number(pick.aantal),
-        verkocht_stuks: Number(pick.aantal),
-        datum: vandaag,
-        tht: avItem.tht||null,
-        accijns_betaald: false,
-        type_uitslag: uitslagForm.type_uitslag || 'binnenland',
-        bestemming_naam: uitslagForm.bestemming_naam || '',
-        bestemming_adres: uitslagForm.bestemming_adres || '',
-        bestemming_land: uitslagForm.bestemming_land || '',
-        vervoerder: uitslagForm.vervoerder || '',
-        created_at: new Date().toISOString(),
-      })
-    }
-
-    // 2. AccijnsRecord records (één per pick)
-    const nieuweAccijns: any[] = []
-    let accId = newId(acc||[])
-    for (let i = 0; i < picks.length; i++) {
-      const pick = picks[i]
-      const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
-      if (!avItem) continue
-      const batch = bat.find((b: any) => b.id === pick.batch_id)
-      const liter = Number(pick.aantal) * Number(avItem.inhoud_per_eenheid||0)
-      const accBed = accijnsCalc(liter, batch?.ABV||0, r1, r2, accijnsInst)
-      nieuweAccijns.push({
-        id: accId++,
-        batch_id: pick.batch_id,
-        batch_naam: batch?.naam || '',
-        batch_nummer: batch?.batch_nummer||'',
-        uitslag_id: nieuweUitslagen[i]?.id || null,
-        verpakking_type: avItem.verpakking_type || '',
-        datum: vandaag,
-        aantal: Number(pick.aantal),
-        liter,
-        abv: batch?.ABV||0,
-        accijns: accBed,
-        betaald: false,
-        betaal_datum: null,
-      })
+    // Update bestaande uitslagen met bestemmingsdetails uit het uitslagForm
+    const pickUitslagIds = picks.map((p: any) => p.uitslag_id).filter(Boolean)
+    if (pickUitslagIds.length) {
+      setUit((prev: any[]) => prev.map((u: any) => pickUitslagIds.includes(u.id) ? {
+        ...u,
+        type_uitslag: uitslagForm.type_uitslag || u.type_uitslag || 'binnenland',
+        bestemming_naam: uitslagForm.bestemming_naam || u.bestemming_naam || '',
+        bestemming_adres: uitslagForm.bestemming_adres || u.bestemming_adres || '',
+        bestemming_land: uitslagForm.bestemming_land || u.bestemming_land || '',
+        vervoerder: uitslagForm.vervoerder || u.vervoerder || '',
+      } : u))
     }
 
     // 3. VerkoopFactuur
@@ -564,17 +625,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       status: 'open',
     }
 
-    // 4. Updates uitvoeren
-    const pickIdxMap: Record<number, number> = {}
-    picks.forEach((p: any, i: number) => { pickIdxMap[p.id] = i })
-    setBestellingPicks((prev: any[]) => (prev||[]).map((p: any) => {
-      if (p.bestelling_id !== selectedOrder.id) return p
-      const idx = pickIdxMap[p.id]
-      if (idx === undefined) return p
-      return {...p, uitslag_id: nieuweUitslagen[idx]?.id||null, accijns_id: nieuweAccijns[idx]?.id||null}
-    }))
-    setUit((prev: any[]) => [...(prev||[]), ...nieuweUitslagen])
-    setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
+    // 4. Updates uitvoeren — uitslagen/accijnsrecords zijn al gekoppeld bij savePicks
     setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
     setBestellingen((prev: any[]) => prev.map((b: any) => b.id === selectedOrder.id ? {
       ...b,
@@ -584,30 +635,20 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       factuur_nummer: factuurNummer,
       pakbon_nummer: pakbonNummer,
     } : b))
-    // Log entries: één per uitgeslagen pick
-    setLog((prev: any[]) => {
-      let logId = newId(prev||[])
-      const nieuweLogEntries = nieuweUitslagen.map((u: any) => ({
-        id: logId++,
-        datum: vandaag,
-        type: 'uitslaan',
-        batch_id: u.batch_id,
-        batch_naam: u.batch_naam || '',
-        afvulling_id: u.afvulling_id,
-        verpakking_type: u.verpakking_type || u.verpakking_naam || '',
-        hoeveelheid: u.aantal,
-        eenheid: 'stuks',
-        referentie: factuurNummer,
-        omschrijving: `Order ${selectedOrder.klant_naam} — ${factuurNummer}`,
-      }))
-      return [...(prev||[]), ...nieuweLogEntries]
-    })
+    // Log entry: factuur en pakbon aangemaakt op de reeds geregistreerde uitslagen
+    setLog((prev: any[]) => [...(prev||[]), {
+      id: newId(prev||[]),
+      datum: vandaag,
+      type: 'uitslaan',
+      referentie: factuurNummer,
+      omschrijving: `Order afgerond — ${selectedOrder.klant_naam} — ${factuurNummer} (${picks.length} uitslag(en) reeds geregistreerd bij picken)`,
+    }])
     // Audit log: bestelling afgerond
     logAudit(auditLog, setAuditLog, {
       entiteit: 'Bestelling',
       entiteit_id: selectedOrder.id,
       actie: 'gewijzigd',
-      omschrijving: `${selectedOrder.klant_naam} — ${factuurNummer} (${nieuweUitslagen.length} uitslagen)`,
+      omschrijving: `${selectedOrder.klant_naam} — ${factuurNummer} afgerond (${picks.length} uitslagen, accijns reeds vastgelegd bij picken)`,
     })
     setShowAfrondModal(false)
   }
@@ -863,11 +904,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
                 <p>Je staat op het punt om deze bestelling af te ronden. Dit doet het volgende automatisch:</p>
                 <ul className="mt-2 space-y-1 list-disc list-inside text-xs">
-                  <li>Accijnsrecords aanmaken voor alle gepickte items</li>
-                  <li>Uitslag registreren (formele vrijgave voor accijns)</li>
                   <li>Verkoopfactuur aanmaken in de boekhouding</li>
                   <li>Pakbon- en factuurnummer genereren</li>
+                  <li>Bestemmingsdetails (type uitslag, bestemming, vervoerder) bijwerken op de bestaande uitslagrecords</li>
                 </ul>
+                <p className="mt-2 text-xs italic">De uitslag uit AGP en accijnsrecords zijn al vastgelegd op het moment van picken (Douane §10.2).</p>
               </div>
               {/* AGP: Type uitslag en bestemmingsgegevens */}
               <div className="border border-gray-200 rounded-lg p-3 space-y-3">
@@ -906,6 +947,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         {/* Picking Modal */}
         {showPickModal && (
           <Modal title={t('picking_title')} onClose={() => setShowPickModal(false)} wide>
+            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
+              <strong>Let op — Douane §10.2:</strong> Op het moment dat je hieronder bevestigt, verlaat het bier de AGP en wordt het veraccijnsd. BrewAdmin maakt direct de uitslag- en accijnsrecords aan op basis van ABV en volume. Inpakken en verzenden gebeurt vervolgens op veraccijnsde voorraad.
+            </div>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
               {(selectedOrder.regels||[]).filter((r: any) => r.type === 'bier' || (!r.type && r.bier_naam)).map((r: any) => {
                 const draftVoorRegel = draftPicks[r.id] || []

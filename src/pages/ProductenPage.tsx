@@ -1,10 +1,12 @@
 import React from 'react'
 import { t } from '../i18n'
-import { newId, wcGet, wcPut } from '../utils/api'
+import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
+import { berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import type { AfboekingBijlage, VernietigingStatus } from '../types'
 
 type AfboekingReden = 'vermis' | 'intern_gebruik' | 'vernietiging' | 'overig'
 
@@ -35,8 +37,17 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const [receptSelectOpen, setReceptSelectOpen] = useState(false);
   const [voorraadOpen, setVoorraadOpen] = useState(true);
   const [afboekModal, setAfboekModal] = useState<any>(null);
-  const [afboekForm, setAfboekForm] = useState<{aantal: string; reden: AfboekingReden; opmerking: string}>({aantal: '1', reden: 'vermis', opmerking: ''});
+  const [afboekForm, setAfboekForm] = useState<{
+    aantal: string;
+    reden: AfboekingReden;
+    opmerking: string;
+    vernietiging_status: VernietigingStatus;
+    verklaring_ingediend_op: string;
+    toestemming_ontvangen_op: string;
+    bijlagen: AfboekingBijlage[];
+  }>({aantal: '1', reden: 'vermis', opmerking: '', vernietiging_status: 'aangevraagd', verklaring_ingediend_op: tod(), toestemming_ontvangen_op: '', bijlagen: []});
   const [afboekError, setAfboekError] = useState('');
+  const [afboekUploading, setAfboekUploading] = useState<'douane_verklaring' | 'bewijs' | null>(null);
   const [prijsInclBtw, setPrijsInclBtw] = useState(false);
   const [b2bPrijsInclBtw, setB2bPrijsInclBtw] = useState(false);
   const [logboekOpen, setLogboekOpen] = useState(false);
@@ -246,9 +257,48 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // Afboeken
   const openAfboekModal = (a: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    setAfboekForm({aantal: '1', reden: 'vermis', opmerking: ''});
+    setAfboekForm({aantal: '1', reden: 'vermis', opmerking: '', vernietiging_status: 'aangevraagd', verklaring_ingediend_op: tod(), toestemming_ontvangen_op: '', bijlagen: []});
     setAfboekError('');
     setAfboekModal(a);
+  };
+
+  const uploadAfboekBijlage = async (file: File, rol: 'douane_verklaring' | 'bewijs') => {
+    setAfboekUploading(rol);
+    try {
+      const ext = (file.name.split('.').pop()||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const filename = `afboeking_${rol}_${Date.now()}.${ext||'bin'}`;
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res((r.result as string).split(',')[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const resp = await fetch(`${ADDON_BASE}api/upload/${filename}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({data: b64}),
+      });
+      if (resp.ok) {
+        const bijlage: AfboekingBijlage = {naam: file.name, bestand: filename, type: file.type, rol, geupload_op: new Date().toISOString()};
+        setAfboekForm(f => ({
+          ...f,
+          // Voor douane_verklaring: vervang de bestaande (er kan er maar één zijn).
+          // Voor bewijs: voeg toe (meerdere foto's/video's mogen).
+          bijlagen: rol === 'douane_verklaring'
+            ? [...f.bijlagen.filter(b => b.rol !== 'douane_verklaring'), bijlage]
+            : [...f.bijlagen, bijlage]
+        }));
+      } else {
+        setAfboekError('Upload mislukt');
+      }
+    } catch(e) {
+      setAfboekError('Upload mislukt');
+    }
+    setAfboekUploading(null);
+  };
+
+  const removeAfboekBijlage = (index: number) => {
+    setAfboekForm(f => ({...f, bijlagen: f.bijlagen.filter((_, i) => i !== index)}));
   };
 
   const doAfboeken = () => {
@@ -259,7 +309,30 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const max = beschikbaarVoorAfvulling(afboekModal);
       if (aantal > max) { setAfboekError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
     }
-    const nieuw = {
+    // Vernietiging: extra controles op verklaring + status (Douane v2.4 §7.2.3)
+    const isVernietiging = afboekForm.reden === 'vernietiging';
+    const hasVerklaring = afboekForm.bijlagen.some(b => b.rol === 'douane_verklaring');
+    if (isVernietiging) {
+      if (!afboekForm.verklaring_ingediend_op) { setAfboekError('Vul de datum in waarop de verklaring vernietiging bij de Douane is ingediend.'); return; }
+      if (!hasVerklaring) { setAfboekError('Upload de ingediende Douane-verklaring vernietiging (PDF) voor je deze mutatie opslaat.'); return; }
+      if (afboekForm.vernietiging_status !== 'aangevraagd' && !afboekForm.toestemming_ontvangen_op) {
+        setAfboekError('Vul de datum in waarop de Douane toestemming heeft gegeven.'); return;
+      }
+      if (afboekForm.vernietiging_status === 'uitgevoerd' && !afboekForm.bijlagen.some(b => b.rol === 'bewijs')) {
+        setAfboekError('Upload bewijsmateriaal (foto/video) van de uitgevoerde vernietiging.'); return;
+      }
+    }
+    // Voorcalculatie accijns snapshot vanuit afvulling (of live als er nog geen voorcalc op de afvulling staat)
+    const perEenheid = Number(afboekModal.voorcalc_accijns_per_eenheid) > 0
+      ? Number(afboekModal.voorcalc_accijns_per_eenheid)
+      : berekenVoorcalcVoorAfvulling(
+          { inhoud_per_eenheid: Number(afboekModal.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
+          (bat||[]).find((b: any) => b.id === afboekModal.batch_id),
+          accijnsInst
+        ).perEenheid;
+    const totaalVoorcalc = perEenheid * aantal;
+
+    const nieuw: any = {
       id: newId(afboekingen||[]),
       afvulling_id: afboekModal.id,
       batch_id: afboekModal.batch_id,
@@ -268,7 +341,16 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       reden: afboekForm.reden,
       opmerking: afboekForm.opmerking.trim(),
       created_at: new Date().toISOString(),
+      voorcalc_accijns_per_eenheid: perEenheid,
+      voorcalc_accijns_totaal: totaalVoorcalc,
     };
+    if (isVernietiging) {
+      nieuw.vernietiging_status = afboekForm.vernietiging_status;
+      nieuw.verklaring_ingediend_op = afboekForm.verklaring_ingediend_op;
+      if (afboekForm.toestemming_ontvangen_op) nieuw.toestemming_ontvangen_op = afboekForm.toestemming_ontvangen_op;
+      if (afboekForm.vernietiging_status === 'uitgevoerd') nieuw.uitgevoerd_op = new Date().toISOString().slice(0, 10);
+      nieuw.bijlagen = afboekForm.bijlagen;
+    }
     if (setAfboekingen) setAfboekingen((prev: any[]) => [...(prev||[]), nieuw]);
     const redenLabel = t(AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.lKey || afboekForm.reden);
     const batch = (bat||[]).find((b: any) => b.id === afboekModal.batch_id);
@@ -283,8 +365,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       hoeveelheid: aantal,
       eenheid: 'stuks',
       reden: afboekForm.reden,
-      referentie: redenLabel,
-      omschrijving: `${redenLabel} — ${afboekForm.opmerking.trim()}`,
+      referentie: redenLabel + (isVernietiging ? ` (${afboekForm.vernietiging_status})` : ''),
+      omschrijving: `${redenLabel} — ${afboekForm.opmerking.trim()}${totaalVoorcalc>0?` · voorcalc accijns € ${totaalVoorcalc.toFixed(2)}`:''}`,
     }]);
     setAfboekModal(null);
   };
@@ -934,12 +1016,28 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       </div>
 
       {/* Afboeken modal */}
-      {afboekModal && (
+      {afboekModal && (() => {
+        const aantalNum = Number(afboekForm.aantal) || 0;
+        const perEenheid = Number(afboekModal.voorcalc_accijns_per_eenheid) > 0
+          ? Number(afboekModal.voorcalc_accijns_per_eenheid)
+          : berekenVoorcalcVoorAfvulling(
+              { inhoud_per_eenheid: Number(afboekModal.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
+              (bat||[]).find((b: any) => b.id === afboekModal.batch_id),
+              accijnsInst
+            ).perEenheid;
+        const totaalVc = perEenheid * aantalNum;
+        const isVernietiging = afboekForm.reden === 'vernietiging';
+        const isInternOfVermis = afboekForm.reden === 'vermis' || afboekForm.reden === 'intern_gebruik';
+        const fileBase = ADDON_BASE + 'api/file/';
+        return (
         <Modal title={t('title_afboeken_modal').replace('{verpakking}', afboekModal.verpakking_naam || afboekModal.verpakking_type || '')} onClose={() => setAfboekModal(null)}>
           <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4">
+            <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4 flex-wrap">
               <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
               {afboekModal.tht && <span>{t('lbl_tht')}: <strong>{fmtD(afboekModal.tht)}</strong></span>}
+              {perEenheid > 0 && (
+                <span>Voorcalc accijns: <strong className="text-amber-700">€ {perEenheid.toFixed(4)}</strong> per eenheid</span>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -953,6 +1051,77 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
               </div>
             </div>
+            {totaalVc > 0 && (
+              <div className={`rounded-lg px-3 py-2 text-sm border ${isInternOfVermis ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                Voorcalculatie accijns over deze afboeking: <strong>€ {totaalVc.toFixed(2)}</strong>
+                {isInternOfVermis && (
+                  <span className="block text-xs mt-0.5">Dit bedrag wordt accijnsplichtig en meegenomen in het maandoverzicht (Douane §7.2.1).</span>
+                )}
+                {isVernietiging && afboekForm.vernietiging_status === 'uitgevoerd' && (
+                  <span className="block text-xs mt-0.5">Bij correct uitgevoerde vernietiging onder de schorsingsregeling vervalt deze accijnsschuld (Douane §7.2.3).</span>
+                )}
+              </div>
+            )}
+            {isVernietiging && (
+              <div className="space-y-3 border border-orange-200 bg-orange-50/50 rounded-lg p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-orange-700">Verklaring vernietiging (Douane)</div>
+                <div className="text-xs text-orange-800">
+                  Voor vernietiging van onveraccijnsde goederen binnen de AGP moet vooraf de <em>Verklaring vernietiging accijns- of verbruiksbelastinggoederen vanuit een schorsingsregeling/vrijstelling</em> zijn ingediend bij de Douane (te downloaden op <span className="underline">douane.nl</span>).
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Status</label>
+                    <Sel value={afboekForm.vernietiging_status} onChange={(v: string) => setAfboekForm(f => ({...f, vernietiging_status: v as VernietigingStatus}))}
+                      opts={[
+                        {v: 'aangevraagd', l: '1. Aangevraagd'},
+                        {v: 'toegestaan',  l: '2. Toestemming Douane ontvangen'},
+                        {v: 'uitgevoerd',  l: '3. Uitgevoerd'},
+                      ]} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Verklaring ingediend op <span className="text-red-400">*</span></label>
+                    <input type="date" value={afboekForm.verklaring_ingediend_op}
+                      onChange={e => setAfboekForm(f => ({...f, verklaring_ingediend_op: e.target.value}))}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Toestemming op</label>
+                    <input type="date" value={afboekForm.toestemming_ontvangen_op}
+                      onChange={e => setAfboekForm(f => ({...f, toestemming_ontvangen_op: e.target.value}))}
+                      disabled={afboekForm.vernietiging_status === 'aangevraagd'}
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input disabled:bg-gray-100" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Verklaring vernietiging (PDF) <span className="text-red-400">*</span></label>
+                  <input type="file" accept="application/pdf,image/*"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadAfboekBijlage(f, 'douane_verklaring'); e.target.value=''; }}
+                    disabled={afboekUploading==='douane_verklaring'}
+                    className="block w-full text-sm" />
+                  {afboekForm.bijlagen.filter(b => b.rol === 'douane_verklaring').map((b, i) => (
+                    <div key={i} className="mt-1 flex items-center gap-2 text-xs">
+                      <a href={fileBase + b.bestand} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline truncate">{b.naam}</a>
+                      <button onClick={() => removeAfboekBijlage(afboekForm.bijlagen.indexOf(b))} className="text-red-500 hover:text-red-700">✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                    Bewijsmateriaal vernietiging (foto/video) {afboekForm.vernietiging_status === 'uitgevoerd' && <span className="text-red-400">*</span>}
+                  </label>
+                  <input type="file" accept="image/*,video/*,application/pdf"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadAfboekBijlage(f, 'bewijs'); e.target.value=''; }}
+                    disabled={afboekUploading==='bewijs'}
+                    className="block w-full text-sm" />
+                  {afboekForm.bijlagen.filter(b => b.rol === 'bewijs').map((b, i) => (
+                    <div key={i} className="mt-1 flex items-center gap-2 text-xs">
+                      <a href={fileBase + b.bestand} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline truncate">{b.naam}</a>
+                      <button onClick={() => removeAfboekBijlage(afboekForm.bijlagen.indexOf(b))} className="text-red-500 hover:text-red-700">✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking_required')} <span className="text-red-400">*</span></label>
               <textarea value={afboekForm.opmerking} onChange={e => { setAfboekForm(f => ({...f, opmerking: e.target.value})); setAfboekError(''); }} rows={3}
@@ -965,7 +1134,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             </div>
           </div>
         </Modal>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, convertEenheid } from '../utils/constants'
+import { berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -900,7 +901,24 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     const pArt = selB?.product_id ? (productArtikelen||[]).find((a: any) => a.product_id === selB.product_id && a.verpakking_id === Number(avF.verpakking_id)) : null;
     const avArtKey = `${selB?.biernaam || selB?.naam || ''}|||${vp.naam||avF.verpakking_type||''}`.toLowerCase()
     const avArt = pArt || (artikelen||[]).find((a: any) => a.key?.toLowerCase() === avArtKey)
-    setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, artikel_sku: avArt?.artikelnummer || null, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
+    // Voorcalculatie accijns (Douane v2.4 §7.1) — bevroren snapshot per afvulling
+    const voorcalc = berekenVoorcalcVoorAfvulling(
+      { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: n, aantal: n },
+      selB,
+      accijnsInst
+    )
+    setAv((prev: any[]) => [...(prev||[]), {
+      id: avId,
+      batch_id: sel,
+      artikel_sku: avArt?.artikelnummer || null,
+      ...avF,
+      verpakking_id: Number(avF.verpakking_id),
+      inhoud_per_eenheid: Number(avF.inhoud_per_eenheid),
+      hoeveelheid: n,
+      voorcalc_accijns_per_eenheid: voorcalc.perEenheid,
+      voorcalc_accijns_totaal: voorcalc.totaal,
+      voorcalc_tarief_snapshot: voorcalc.snapshot,
+    }])
     addLog({type:'afvullen', batch_id:sel, batch_naam:selB?.naam||'', afvulling_id:avId,
       verpakking_type:vp.naam||avF.verpakking_type, hoeveelheid:n, eenheid:'stuks',
       referentie:`${(n*Number(avF.inhoud_per_eenheid||0)).toFixed(1)}L`,
@@ -1641,8 +1659,22 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           </select>
                         </div>
                       </div>
-                      <div className="mt-2 flex items-center justify-between">
-                        {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}
+                      <div className="mt-2 flex items-center justify-between flex-wrap gap-2">
+                        <div className="text-sm text-gray-500 space-y-0.5">
+                          {avF.inhoud_per_eenheid&&avF.hoeveelheid && <div>{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</div>}
+                          {avF.inhoud_per_eenheid && Number(avF.hoeveelheid) > 0 && (() => {
+                            const vc = berekenVoorcalcVoorAfvulling(
+                              { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: Number(avF.hoeveelheid), aantal: Number(avF.hoeveelheid) },
+                              selB,
+                              accijnsInst
+                            )
+                            return (
+                              <div className="text-amber-700">
+                                Voorcalculatie accijns: € {vc.perEenheid.toFixed(4)} per eenheid · totaal € {vc.totaal.toFixed(2)} <span className="text-xs text-gray-400">(potentiële accijnsschuld onder schorsing)</span>
+                              </div>
+                            )
+                          })()}
+                        </div>
                         <Btn onClick={doAfvullen} cls="ml-auto">{t('batch_filling_register_btn')}</Btn>
                       </div>
                     </div>}
@@ -1674,16 +1706,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             <th className="px-3 py-2 text-right">{t('lbl_filled')}</th>
                             <th className="px-3 py-2 text-right">{t('filling_summary_released')}</th>
                             <th className="px-3 py-2 text-right font-semibold text-amber-700">{t('lbl_remaining')}</th>
+                            <th className="px-3 py-2 text-right" title="Voorcalculatie accijns – potentiële accijnsschuld bij volledige uitslag">Voorcalc accijns</th>
                             <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                             <th className="px-3 py-2 text-left">{t('lbl_tht')}</th>
                             <th className="px-3 py-2"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {bAv.length===0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400">{t('batch_no_filled')}</td></tr>}
+                          {bAv.length===0 && <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400">{t('batch_no_filled')}</td></tr>}
                           {bAv.map((a: any) => {
                             const uitg = uitgeslVanAv(a.id)
                             const rest = Number(a.hoeveelheid||0) - uitg
+                            const vcEenheid = Number(a.voorcalc_accijns_per_eenheid || 0)
+                            const vcTotaal = Number(a.voorcalc_accijns_totaal || 0) || vcEenheid * Number(a.hoeveelheid || 0)
+                            const vcOpen = vcEenheid * rest
                             return (
                               <tr key={a.id} className={rest===0?'bg-gray-50 text-gray-400':''}>
                                 <td className="px-3 py-2">{a.verpakking_type}</td>
@@ -1691,6 +1727,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 <td className="px-3 py-2 text-right">{a.hoeveelheid}× ({(a.inhoud_per_eenheid*a.hoeveelheid).toFixed(1)}L)</td>
                                 <td className="px-3 py-2 text-right text-blue-600">{uitg>0?`${uitg}×`:'—'}</td>
                                 <td className={`px-3 py-2 text-right font-semibold ${rest>0?'text-amber-700':'text-gray-400'}`}>{rest>0?`${rest}×`:t('lbl_empty')}</td>
+                                <td className="px-3 py-2 text-right text-amber-700">
+                                  {vcEenheid > 0
+                                    ? <span title={`Per eenheid € ${vcEenheid.toFixed(4)} · totaal afvulling € ${vcTotaal.toFixed(2)}`}>€ {vcOpen.toFixed(2)}</span>
+                                    : <span className="text-gray-400 text-xs">—</span>}
+                                </td>
                                 <td className="px-3 py-2 text-gray-500">{fmtD(a.datum)}</td>
                                 <td className="px-3 py-2 text-gray-500">{a.tht?fmtD(a.tht):'—'}</td>
                                 <td className="px-3 py-2">

@@ -7,6 +7,89 @@ import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import { logAudit } from '../utils/audit'
 
+// Inline 4-ogen-controleblok (Douane v2.4 §12.2). Reviewer (default Elise Kok) vinkt akkoord
+// of opmerkingen aan, eventueel met bevindingen. Pas bij 'akkoord' kan de aangifte naar
+// status 'ingediend'.
+const ControleBlok: React.FC<{
+  aangifte: any
+  monthKey: string
+  readOnly?: boolean
+  setAangifteControle: (monthKey: string, fields: { reviewer?: string; controle_status?: 'open' | 'akkoord' | 'opmerkingen'; bevindingen?: string }) => void
+}> = ({ aangifte, monthKey, readOnly, setAangifteControle }) => {
+  const reviewer = aangifte?.reviewer ?? 'Elise Kok'
+  const status = aangifte?.controle_status ?? 'open'
+  const bevindingen = aangifte?.bevindingen ?? ''
+  const datum = aangifte?.controle_datum
+  return (
+    <div className={`mt-4 rounded-lg border p-3 text-sm ${
+      status === 'akkoord' ? 'border-green-200 bg-green-50' :
+      status === 'opmerkingen' ? 'border-amber-200 bg-amber-50' :
+      'border-gray-200 bg-gray-50'
+    }`}>
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">
+        Controle door tweede paar ogen — Douane §12.2
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">Reviewer</label>
+          <input
+            type="text"
+            value={reviewer}
+            disabled={readOnly}
+            onChange={e => setAangifteControle(monthKey, { reviewer: e.target.value })}
+            className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white disabled:bg-gray-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">Controle-datum</label>
+          <div className="px-2 py-1 text-sm text-gray-700">
+            {datum ? new Date(datum).toLocaleString('nl-NL') : <span className="text-gray-400">— nog niet vastgelegd —</span>}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2">
+        <label className="block text-xs text-gray-500 mb-0.5">Bevindingen</label>
+        <textarea
+          value={bevindingen}
+          disabled={readOnly}
+          onChange={e => setAangifteControle(monthKey, { bevindingen: e.target.value })}
+          rows={2}
+          placeholder="Bijv. 'Geen bijzonderheden — accijnsbedrag, GN-codes en uitslagen gecontroleerd en akkoord.'"
+          className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white disabled:bg-gray-100"
+        />
+      </div>
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        {!readOnly && (
+          <>
+            <Btn
+              v="green"
+              s="sm"
+              onClick={() => setAangifteControle(monthKey, { reviewer, controle_status: 'akkoord' })}
+              cls={status === 'akkoord' ? '' : ''}
+            >
+              {status === 'akkoord' ? '✓ Akkoord vastgelegd' : 'Markeer akkoord'}
+            </Btn>
+            <Btn
+              v="secondary"
+              s="sm"
+              onClick={() => setAangifteControle(monthKey, { reviewer, controle_status: 'opmerkingen' })}
+            >
+              Opmerkingen geconstateerd
+            </Btn>
+          </>
+        )}
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+          status === 'akkoord' ? 'bg-green-100 text-green-700' :
+          status === 'opmerkingen' ? 'bg-amber-100 text-amber-700' :
+          'bg-gray-100 text-gray-600'
+        }`}>
+          {status === 'akkoord' ? 'Akkoord' : status === 'opmerkingen' ? 'Met opmerkingen' : 'Open'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{}, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState, useMemo} = React;
   const [activeTab, setActiveTab] = useState<'accijns'|'ead'>('accijns');
@@ -83,12 +166,16 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
   };
 
   // ── Aangifteworkflow per maand ──
-  const getAangifteStatus = (monthKey: string): string => {
-    const a = (accijnsAangiftes||[]).find((x: any) => x.maand === monthKey)
-    return a?.status || 'open'
-  }
+  const getAangifte = (monthKey: string): any => (accijnsAangiftes||[]).find((x: any) => x.maand === monthKey) || null
+  const getAangifteStatus = (monthKey: string): string => getAangifte(monthKey)?.status || 'open'
   const setAangifteStatus = (monthKey: string, status: string) => {
     const datum = tod()
+    const a = getAangifte(monthKey)
+    // Douane v2.4 §12.2: 4-ogen-controle is verplicht voordat de aangifte naar 'ingediend' gaat.
+    if (status === 'ingediend' && a?.controle_status !== 'akkoord') {
+      alert('Voor het indienen moet de tweede paar ogen (reviewer) eerst akkoord geven via het controlblok onder de samenvatting.')
+      return
+    }
     const datumKey = status === 'berekend' ? 'berekend_datum' : status === 'ingediend' ? 'ingediend_datum' : 'betaald_datum'
     setAccijnsAangiftes((prev: any[]) => {
       const existing = prev.find((x: any) => x.maand === monthKey)
@@ -96,7 +183,32 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
       return [...prev, {maand: monthKey, status, [datumKey]: datum}]
     })
     if (status === 'betaald') markMonthPaid(monthKey)
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'AccijnsAangifte',
+      entiteit_id: 0,
+      actie: 'gewijzigd',
+      omschrijving: `Maand ${monthKey} → status ${status}`,
+    })
   }
+
+  const setAangifteControle = (monthKey: string, fields: { reviewer?: string; controle_status?: 'open' | 'akkoord' | 'opmerkingen'; bevindingen?: string }) => {
+    setAccijnsAangiftes((prev: any[]) => {
+      const existing = prev.find((x: any) => x.maand === monthKey)
+      const merged = { ...(existing || { maand: monthKey, status: 'berekend' }), ...fields }
+      if (fields.controle_status) merged.controle_datum = new Date().toISOString()
+      if (existing) return prev.map((x: any) => x.maand === monthKey ? merged : x)
+      return [...prev, merged]
+    })
+    if (fields.controle_status) {
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'AccijnsAangifte',
+        entiteit_id: 0,
+        actie: 'gewijzigd',
+        omschrijving: `Controle ${fields.controle_status} door ${fields.reviewer || 'reviewer'} — maand ${monthKey}${fields.bevindingen ? ` (bevindingen: ${fields.bevindingen})` : ''}`,
+      })
+    }
+  }
+
   const aangifteStatusColor: Record<string,string> = {open:'bg-gray-100 text-gray-600', berekend:'bg-blue-100 text-blue-700', ingediend:'bg-orange-100 text-orange-700', betaald:'bg-green-100 text-green-700'}
 
   const totOpen = (acc||[]).filter((a: any)=>!a.betaald).reduce((s: any,a: any)=>s+getAccijns(a),0);
@@ -147,27 +259,39 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
             </tr>
           </tfoot>
         </table>
-        {monthKey && (
-          <div className="mt-4 flex items-center justify-between">
-            {(() => {
-              const wfStatus = getAangifteStatus(monthKey)
-              const nextStep: Record<string,string> = {open:'berekend', berekend:'ingediend', ingediend:'betaald'}
-              const nextLabel: Record<string,string> = {open:'excise_markeer_berekend', berekend:'excise_markeer_ingediend', ingediend:'excise_markeer_betaald'}
-              if (wfStatus === 'betaald') {
-                return <span className="text-sm text-green-700 font-medium">✓ {t('excise_status_betaald')}</span>
-              }
-              return (
-                <Btn v={nextStep[wfStatus]==='betaald'?'green':'blue'} onClick={()=>setAangifteStatus(monthKey, nextStep[wfStatus])}>
-                  {nextStep[wfStatus]==='betaald'?'✓ ':''}{t(nextLabel[wfStatus])}
-                </Btn>
-              )
-            })()}
-            <button onClick={()=>setIngeklapt((prev: any)=>({...prev,[monthKey]:true}))}
-              className="text-xs text-gray-400 hover:text-gray-600 underline">
-              {t('excise_collapse')}
-            </button>
-          </div>
-        )}
+        {monthKey && (() => {
+          const aangifte = getAangifte(monthKey)
+          const wfStatus = getAangifteStatus(monthKey)
+          const showControle = wfStatus === 'berekend' || wfStatus === 'ingediend' || wfStatus === 'betaald'
+          return (
+            <>
+              {showControle && (
+                <ControleBlok aangifte={aangifte} monthKey={monthKey} setAangifteControle={setAangifteControle} readOnly={wfStatus !== 'berekend'} />
+              )}
+              <div className="mt-4 flex items-center justify-between">
+                {(() => {
+                  const nextStep: Record<string,string> = {open:'berekend', berekend:'ingediend', ingediend:'betaald'}
+                  const nextLabel: Record<string,string> = {open:'excise_markeer_berekend', berekend:'excise_markeer_ingediend', ingediend:'excise_markeer_betaald'}
+                  if (wfStatus === 'betaald') {
+                    return <span className="text-sm text-green-700 font-medium">✓ {t('excise_status_betaald')}</span>
+                  }
+                  const blocked = wfStatus === 'berekend' && aangifte?.controle_status !== 'akkoord'
+                  return (
+                    <Btn v={nextStep[wfStatus]==='betaald'?'green':'blue'} onClick={()=>setAangifteStatus(monthKey, nextStep[wfStatus])}
+                      cls={blocked ? 'opacity-50 cursor-not-allowed' : ''}>
+                      {nextStep[wfStatus]==='betaald'?'✓ ':''}{t(nextLabel[wfStatus])}
+                      {blocked ? ' (reviewer akkoord vereist)' : ''}
+                    </Btn>
+                  )
+                })()}
+                <button onClick={()=>setIngeklapt((prev: any)=>({...prev,[monthKey]:true}))}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline">
+                  {t('excise_collapse')}
+                </button>
+              </div>
+            </>
+          )
+        })()}
       </div>
     );
   };
