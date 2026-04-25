@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -54,6 +54,10 @@ interface BatchesPageProps {
   planningInst?: {conditioneren_dagen: number}
   acc?: any[]
   openBatchId?: number | null
+  preNieuwBatch?: any
+  setPreNieuwBatch?: any
+  auditLog?: any[]
+  setAuditLog?: any
   ccpMetingen?: any[]
   setCcpMetingen?: any
   capa?: any[]
@@ -1119,7 +1123,25 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     const pArt = prodId ? (productArtikelen||[]).find((a: any) => a.product_id === prodId && a.verpakking_id === Number(avF.verpakking_id)) : null
     const avArtKey = `${selB?.biernaam || selB?.naam || ''}|||${vp.naam||avF.verpakking_type||''}`.toLowerCase()
     const avArt = pArt || (artikelen||[]).find((a: any) => a.key?.toLowerCase() === avArtKey)
-    setAv((prev: any[]) => [...(prev||[]), {id:avId, batch_id:sel, ...avF, product_id: prodId, artikel_sku: avArt?.artikelnummer || null, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n}])
+    // Voorcalculatie accijns (Douane v2.4 §7.1) — bevroren snapshot per afvulling
+    const voorcalc = berekenVoorcalcVoorAfvulling(
+      { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: n, aantal: n },
+      selB,
+      accijnsInst
+    )
+    setAv((prev: any[]) => [...(prev||[]), {
+      id: avId,
+      batch_id: sel,
+      ...avF,
+      product_id: prodId,
+      artikel_sku: avArt?.artikelnummer || null,
+      verpakking_id: Number(avF.verpakking_id),
+      inhoud_per_eenheid: Number(avF.inhoud_per_eenheid),
+      hoeveelheid: n,
+      voorcalc_accijns_per_eenheid: voorcalc.perEenheid,
+      voorcalc_accijns_totaal: voorcalc.totaal,
+      voorcalc_tarief_snapshot: voorcalc.snapshot,
+    }])
     const prod = (producten||[]).find((p: any) => p.id === prodId)
     addLog({type:'afvullen', batch_id:sel, batch_naam:selB?.naam||'', afvulling_id:avId,
       verpakking_type:vp.naam||avF.verpakking_type, hoeveelheid:n, eenheid:'stuks',
@@ -2733,8 +2755,22 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           }} className="text-xs font-medium underline" style={{color:'var(--t-accent)'}}>{t('btn_sku_toevoegen')}</button>
                         </div>
                       })()}
-                      <div className="flex items-center justify-between">
-                        {avF.inhoud_per_eenheid&&avF.hoeveelheid && <span className="text-sm text-gray-500">{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</span>}
+                      <div className="mt-2 flex items-center justify-between flex-wrap gap-2">
+                        <div className="text-sm text-gray-500 space-y-0.5">
+                          {avF.inhoud_per_eenheid&&avF.hoeveelheid && <div>{t('lbl_total_colon')} {(Number(avF.inhoud_per_eenheid)*Number(avF.hoeveelheid)).toFixed(1)}L · {avF.hoeveelheid}× {avF.verpakking_type}</div>}
+                          {avF.inhoud_per_eenheid && Number(avF.hoeveelheid) > 0 && (() => {
+                            const vc = berekenVoorcalcVoorAfvulling(
+                              { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: Number(avF.hoeveelheid), aantal: Number(avF.hoeveelheid) },
+                              selB,
+                              accijnsInst
+                            )
+                            return (
+                              <div className="text-amber-700">
+                                {t('voorcalc_voorraad_inline').replace('{perEenheid}', vc.perEenheid.toFixed(4)).replace('{totaal}', vc.totaal.toFixed(2))} <span className="text-xs text-gray-400">{t('voorcalc_potentiele_schuld_note')}</span>
+                              </div>
+                            )
+                          })()}
+                        </div>
                         <Btn onClick={doAfvullen} cls="ml-auto">{t('batch_filling_register_btn')}</Btn>
                       </div>
                     </div>}
@@ -2776,6 +2812,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             <th className="px-3 py-2 text-right">{t('lbl_filled')}</th>
                             <th className="px-3 py-2 text-right">{t('filling_summary_uitgeleverd')}</th>
                             <th className="px-3 py-2 text-right font-semibold text-amber-700">{t('lbl_remaining')}</th>
+                            <th className="px-3 py-2 text-right" title={t('lbl_pot_accijnsschuld_tip')}>{t('voorcalc_label')}</th>
                             <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                             <th className="px-3 py-2 text-left">{t('lbl_tht')}</th>
                             <th className="px-3 py-2"></th>
@@ -2787,6 +2824,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             const uitg = uitgelVanAv(a.id)
                             const rest = Number(a.hoeveelheid||0) - uitg
                             const avProd = a.product_id ? (producten||[]).find((p: any) => p.id === a.product_id) : null
+                            const vcEenheid = Number(a.voorcalc_accijns_per_eenheid || 0)
+                            const vcTotaal = Number(a.voorcalc_accijns_totaal || 0) || vcEenheid * Number(a.hoeveelheid || 0)
+                            const vcOpen = vcEenheid * rest
                             return (
                               <tr key={a.id} className={rest===0?'bg-gray-50 text-gray-400':''}>
                                 <td className="px-3 py-2">
@@ -2798,6 +2838,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 <td className="px-3 py-2 text-right">{a.hoeveelheid}× ({(a.inhoud_per_eenheid*a.hoeveelheid).toFixed(1)}L)</td>
                                 <td className="px-3 py-2 text-right text-blue-600">{uitg>0?`${uitg}×`:'—'}</td>
                                 <td className={`px-3 py-2 text-right font-semibold ${rest>0?'text-amber-700':'text-gray-400'}`}>{rest>0?`${rest}×`:t('lbl_empty')}</td>
+                                <td className="px-3 py-2 text-right text-amber-700">
+                                  {vcEenheid > 0
+                                    ? <span title={`Per eenheid € ${vcEenheid.toFixed(4)} · totaal afvulling € ${vcTotaal.toFixed(2)}`}>€ {vcOpen.toFixed(2)}</span>
+                                    : <span className="text-gray-400 text-xs">—</span>}
+                                </td>
                                 <td className="px-3 py-2 text-gray-500">{fmtD(a.datum)}</td>
                                 <td className="px-3 py-2 text-gray-500">{a.tht?fmtD(a.tht):'—'}</td>
                                 <td className="px-3 py-2">

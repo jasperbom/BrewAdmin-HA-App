@@ -146,6 +146,12 @@ export interface Afvulling {
   aantal: number
   datum?: string
   tht?: string
+  gn_code?: string
+  // Voorcalculatie accijns (Douane v2.4): bevroren op afvullingsmoment.
+  // Eenheid = € per verpakte eenheid (fles/blik/fust); _totaal = €/eenheid × hoeveelheid.
+  voorcalc_accijns_per_eenheid?: number
+  voorcalc_accijns_totaal?: number
+  voorcalc_tarief_snapshot?: { r1?: number; r2?: number; r3?: number; abv?: number; plato?: number }
 }
 
 export interface VoorraadLog {
@@ -798,7 +804,12 @@ export type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 export interface AfboekingBijlage {
   naam: string        // originele bestandsnaam (zoals door gebruiker geüpload)
   bestand: string     // unieke bestandsnaam op server (onder /data/inkoop_facturen/)
+  type?: string       // mime (v2.4)
+  rol?: 'douane_verklaring' | 'bewijs'  // v2.4: rol binnen vernietigingsflow
+  geupload_op?: string                   // v2.4
 }
+
+export type VernietigingStatus = 'aangevraagd' | 'toegestaan' | 'uitgevoerd'
 
 export interface Afboeking {
   id: number
@@ -809,12 +820,20 @@ export interface Afboeking {
   reden: AfboekingReden
   opmerking: string
   created_at?: string
-  // ── M-1 Bijzondere mutaties (vernietiging) ─────────────────────────────────
-  // Voor reden='vernietiging': vereist voor Douane-compliance
+  // ── Bijzondere mutaties (vernietiging) ─────────────────────────────────────
+  // Legacy (M-1, pre-v2.4) — backward compat met oude afboekingen:
   toestemming_douane?: boolean    // vinkje: Douane-toestemming aanwezig
   toestemming_datum?: string      // datum waarop toestemming is verleend (YYYY-MM-DD)
   kenmerk_douane?: string         // referentienummer/kenmerk van Douane
-  bijlagen?: AfboekingBijlage[]   // foto's/PDF's van vernietiging
+  // v2.4: voorcalculatie accijns op moment van afboeking
+  voorcalc_accijns_per_eenheid?: number
+  voorcalc_accijns_totaal?: number
+  // v2.4: gedetailleerde vernietigingsflow vanuit schorsingsregeling
+  vernietiging_status?: VernietigingStatus
+  verklaring_ingediend_op?: string
+  toestemming_ontvangen_op?: string
+  uitgevoerd_op?: string
+  bijlagen?: AfboekingBijlage[]   // foto's/PDF's (legacy + v2.4)
 }
 
 // ── AGP Compliance Types ─────────────────────────────────────────────────────
@@ -858,6 +877,9 @@ export interface InventarisatieTelling {
   verschil: number
   verklaring?: string
   eenheid?: string
+  // Voorcalculatie accijns van het verschil (Douane v2.4 §7.3): negatief = tekort/vermis.
+  voorcalc_accijns_per_eenheid?: number
+  accijns_impact?: number
 }
 
 export interface AuditEntry {
@@ -880,7 +902,17 @@ export interface HAUser {
 
 export type AccijnsAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
 
-export interface AccijnsAangifte {
+export type ControleStatus = 'open' | 'akkoord' | 'opmerkingen'
+
+export interface AangifteControle {
+  // Vastlegging tweede-paar-ogen-controle (Douane v2.4 §12.2/§12.4).
+  reviewer?: string                 // naam van controleur (default: Elise Kok)
+  controle_datum?: string           // ISO timestamp van akkoord/opmerkingen
+  controle_status?: ControleStatus  // open / akkoord / opmerkingen
+  bevindingen?: string              // vrij tekstveld met opmerkingen of 'geen bijzonderheden'
+}
+
+export interface AccijnsAangifte extends AangifteControle {
   maand: string
   status: AccijnsAangifteStatus
   berekend_datum?: string
@@ -986,4 +1018,15 @@ export interface Opleiding {
   geldig_tot?: string
   certificaat?: string
   opmerking?: string
+}
+
+export type BtwAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
+
+export interface BtwAangifte extends AangifteControle {
+  // Sleutel: jaar + kwartaal (bv. '2026-Q1') of jaar + maand bij maandaangifte.
+  periode: string
+  status: BtwAangifteStatus
+  berekend_datum?: string
+  ingediend_datum?: string
+  betaald_datum?: string
 }

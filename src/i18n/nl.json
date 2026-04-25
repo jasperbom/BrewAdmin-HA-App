@@ -1353,7 +1353,6 @@
   "btn_sku_opslaan": "Opslaan",
   "err_select_product": "Selecteer een product",
   "err_product_naam_leeg": "Vul een productnaam in",
-
   "nav_haccp": "HACCP",
   "haccp_dashboard": "Dashboard",
   "haccp_schoonmaak": "Schoonmaak",
@@ -1364,7 +1363,6 @@
   "haccp_water": "Waterkwaliteit",
   "haccp_ongedierte": "Ongedierte",
   "haccp_opleidingen": "Opleidingen",
-
   "haccp_dash_title": "NVWA/HACCP Compliance",
   "haccp_dash_schoonmaak": "Schoonmaak",
   "haccp_dash_achterstallig": "achterstallig",
@@ -1393,7 +1391,6 @@
   "haccp_widget_naar_haccp": "→ Naar HACCP",
   "haccp_widget_geen_open": "Alles bijgewerkt ✓",
   "haccp_widget_open_capas": "open CAPA's",
-
   "haccp_schoonmaak_taken": "Schoonmaaktaken",
   "haccp_schoonmaak_log": "Schoonmaaklogboek",
   "haccp_schoonmaak_taak_nieuw": "Nieuwe taak",
@@ -1414,13 +1411,11 @@
   "haccp_schoonmaak_cip": "CIP-cyclus",
   "haccp_schoonmaak_opmerking": "Opmerking",
   "haccp_schoonmaak_geen_log": "Nog geen schoonmaakregistraties.",
-
   "haccp_freq_dagelijks": "Dagelijks",
   "haccp_freq_wekelijks": "Wekelijks",
   "haccp_freq_maandelijks": "Maandelijks",
   "haccp_freq_per_batch": "Per batch",
   "haccp_freq_anders": "Anders",
-
   "haccp_ccp_definities": "CCP-definities",
   "haccp_ccp_nieuw": "Nieuw CCP",
   "haccp_ccp_naam": "Naam",
@@ -1449,7 +1444,6 @@
   "haccp_ccp_cat_verpakken": "Verpakken",
   "haccp_ccp_cat_opslag": "Opslag",
   "haccp_ccp_cat_overig": "Overig",
-
   "haccp_allergen_gluten": "Gluten",
   "haccp_allergen_gerst": "Gerst",
   "haccp_allergen_tarwe": "Tarwe",
@@ -1468,7 +1462,6 @@
   "haccp_allergen_batch_geen": "Geen allergenen voor dit batch.",
   "haccp_allergen_notities": "Cross-contaminatie notities",
   "haccp_allergen_beheer_link": "Allergenen instellen via Ingrediënten-pagina",
-
   "haccp_trace_titel": "Traceerbaarheid & Recall",
   "haccp_trace_forward": "Trace forward (lot → klant)",
   "haccp_trace_backward": "Trace backward (batch → leverancier)",
@@ -1483,7 +1476,6 @@
   "haccp_trace_geen_resultaat": "Geen resultaten gevonden.",
   "haccp_trace_mock_recall": "Mock recall rapport afdrukken",
   "haccp_trace_mock_recall_titel": "MOCK RECALL RAPPORT",
-
   "haccp_capa_titel": "Corrigerende acties (CAPA)",
   "haccp_capa_nieuw": "Nieuwe CAPA",
   "haccp_capa_omschrijving": "Omschrijving afwijking",
@@ -1496,7 +1488,6 @@
   "haccp_capa_status_afgerond": "Afgerond",
   "haccp_capa_geen": "Geen corrigerende acties.",
   "haccp_capa_afgerond_datum": "Datum afgerond",
-
   "haccp_water_titel": "Waterkwaliteitstests",
   "haccp_water_nieuw": "Nieuwe test",
   "haccp_water_bron": "Waterbron",
@@ -1511,7 +1502,6 @@
   "haccp_water_afwijkend": "Afwijkend",
   "haccp_water_geen": "Geen waterkwaliteitstests.",
   "haccp_water_warn": "Laatste test langer dan 6 maanden geleden",
-
   "haccp_ongd_titel": "Ongediertebestrijding",
   "haccp_ongd_nieuw": "Nieuw record",
   "haccp_ongd_type": "Type",
@@ -1522,7 +1512,6 @@
   "haccp_ongd_actie": "Actie ondernomen",
   "haccp_ongd_geen": "Geen ongedierteregistraties.",
   "haccp_ongd_warn": "Laatste controle langer dan 1 maand geleden",
-
   "haccp_opl_titel": "Opleidingen & training",
   "haccp_opl_nieuw": "Nieuwe opleiding",
   "haccp_opl_medewerker": "Medewerker",
@@ -1532,7 +1521,6 @@
   "haccp_opl_certificaat": "Certificaat",
   "haccp_opl_geen": "Geen opleidingsregistraties.",
   "haccp_opl_verlopen": "Verlopen",
-
   "lbl_datum": "Datum",
   "lbl_opmerking": "Opmerking",
   "lbl_uitgevoerd_door": "Uitgevoerd door",
@@ -1740,5 +1728,29 @@
   "lbl_notitie": "Notitie",
   "lbl_batch_nr": "Batch#",
   "btn_close": "Sluiten",
-  "btn_export_csv": "Exporteer CSV"
+  "btn_export_csv": "Exporteer CSV",
+  "controle_titel_accijns": "Controle door tweede paar ogen — Douane §12.2",
+  "controle_titel_btw": "Controle door tweede paar ogen — Douane §12.4 (BTW-aangifte)",
+  "controle_reviewer": "Reviewer",
+  "controle_datum": "Controle-datum",
+  "controle_datum_nog_niet": "— nog niet vastgelegd —",
+  "controle_bevindingen": "Bevindingen",
+  "controle_bevindingen_ph_accijns": "Bijv. 'Geen bijzonderheden — accijnsbedrag, GN-codes en uitslagen gecontroleerd en akkoord.'",
+  "controle_bevindingen_ph_btw": "Bijv. 'Geen bijzonderheden — netto-omzet, voorbelasting en rubrieken 1a/1b/5b gecontroleerd en akkoord.'",
+  "controle_btn_akkoord": "Markeer akkoord",
+  "controle_btn_akkoord_done": "✓ Akkoord vastgelegd",
+  "controle_btn_opmerkingen": "Opmerkingen geconstateerd",
+  "controle_status_akkoord": "Akkoord",
+  "controle_status_opmerkingen": "Met opmerkingen",
+  "controle_status_open": "Open",
+  "voorcalc_label": "Voorcalc accijns",
+  "voorcalc_per_eenheid_unit": "per eenheid",
+  "voorcalc_potentiele_schuld_note": "(potentiële accijnsschuld onder schorsing)",
+  "voorcalc_voorraad_inline": "Voorcalculatie accijns: € {perEenheid} per eenheid · totaal € {totaal}",
+  "lbl_accijnsimpact": "Accijnsimpact",
+  "lbl_accijnsimpact_tip": "Voorcalculatie accijns van het verschil – Douane §7.3",
+  "lbl_pot_accijnsschuld": "Pot. accijnsschuld (€)",
+  "lbl_pot_accijnsschuld_tip": "Voorcalculatie accijns: potentiële accijnsschuld op de eindvoorraad onder schorsing — Douane §7.4",
+  "lbl_voorcalc_excel": "Voorcalc accijns / eenheid (€)",
+  "lbl_pot_schuld_excel": "Potentiële accijnsschuld (€)"
 }

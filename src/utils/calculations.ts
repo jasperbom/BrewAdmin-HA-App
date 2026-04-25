@@ -1,4 +1,4 @@
-import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot } from '../types'
+import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch } from '../types'
 import { convertEenheid } from './constants'
 
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
@@ -118,6 +118,32 @@ export const berekenAccijnsImpact = (
   }
   rijen.sort((a, b) => a.datum.localeCompare(b.datum))
   return {jaar, rijen, totaalOud, totaalNieuw, totaalVerschil: totaalNieuw - totaalOud}
+}
+
+// Voorcalculatie accijns per afvulling (Douane v2.4).
+// Berekent het accijnsbedrag dat de afvulling zou opleveren bij volledige uitslag,
+// op basis van ABV/Plato uit de batch en het tarief uit AccijnsInst.
+// Wordt op moment van afvullen bevroren op de Afvulling zelf, zodat latere tariefwijzigingen
+// historische records niet aantasten.
+export const berekenVoorcalcVoorAfvulling = (
+  afvulling: Pick<Afvulling, 'inhoud_per_eenheid' | 'hoeveelheid' | 'aantal'>,
+  batch: Pick<Batch, 'ABV' | 'platogehalte'> | null | undefined,
+  accijnsInst: AccijnsInst | null = null
+): { perEenheid: number; totaal: number; snapshot: { r1: number; r2: number; r3?: number; abv: number; plato: number } } => {
+  const r1 = accijnsInst?.tarief_per_hl_abv ?? 7.51
+  const r2 = accijnsInst?.tarief_per_hl ?? 24.17
+  const r3 = accijnsInst?.tarief_per_hl_plato
+  const inhoud = Number(afvulling.inhoud_per_eenheid || 0)
+  const aantal = Number(afvulling.hoeveelheid || afvulling.aantal || 0)
+  const abv = Number(batch?.ABV || 0)
+  const plato = Number(batch?.platogehalte || 0)
+  const perEenheid = inhoud > 0 ? accijnsCalc(inhoud, abv, r1, r2, accijnsInst, plato) : 0
+  const totaal = perEenheid * aantal
+  return {
+    perEenheid,
+    totaal,
+    snapshot: { r1, r2, r3, abv, plato },
+  }
 }
 
 export interface WinstVerliesResult {

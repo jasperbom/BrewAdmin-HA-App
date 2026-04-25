@@ -700,7 +700,7 @@ function App() {
     setKlanten([]); setGistMetingen([]);
     setCarbSessies([]); setVerliesRegistraties([]);
     setKapitaalBoekingen([]); setEadDocumenten([]);
-    setInventarisaties([]); setAuditLog([]); setAccijnsAangiftes([]);
+    setInventarisaties([]); setAuditLog([]); setAccijnsAangiftes([]); setBtwAangiftes([]);
     setLocaties([{id:1, naam:'AGP', is_agp:true}]); setVerplaatsingen([]);
     setProducten([]); setProductArtikelen([]);
     setBtwInst({periode: 'kwartaal'}); setBtwTarieven([0, 9, 21]);

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId } from '../utils/api'
 import { fmtD, tod } from '../utils/format'
+import { berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Modal from '../components/ui/Modal'
@@ -26,6 +27,7 @@ interface AfvullenPageProps {
 const AfvullenPage: React.FC<AfvullenPageProps> = ({
   bat, setBat, av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
+  accijnsInst=null,
   log=[], setLog=()=>{}
 }) => {
   const [sel, setSel] = useState<number | null>(null)
@@ -72,7 +74,24 @@ const AfvullenPage: React.FC<AfvullenPageProps> = ({
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id===Number(avF.verpakking_id) ? {...v,voorraad:Number(v.voorraad||0)-n} : v))
     }
     const avId = newId(av)
-    setAv((prev: any[]) => [...prev, {id:avId, batch_id:sel, ...avF, verpakking_id:Number(avF.verpakking_id), inhoud_per_eenheid:Number(avF.inhoud_per_eenheid), hoeveelheid:n, gn_code:avF.gn_code||undefined}])
+    // Voorcalculatie accijns (Douane v2.4 §7.1) — bevroren snapshot per afvulling
+    const voorcalc = berekenVoorcalcVoorAfvulling(
+      { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid||0), hoeveelheid: n, aantal: n },
+      selB,
+      accijnsInst
+    )
+    setAv((prev: any[]) => [...prev, {
+      id:avId,
+      batch_id:sel,
+      ...avF,
+      verpakking_id:Number(avF.verpakking_id),
+      inhoud_per_eenheid:Number(avF.inhoud_per_eenheid),
+      hoeveelheid:n,
+      gn_code:avF.gn_code||undefined,
+      voorcalc_accijns_per_eenheid: voorcalc.perEenheid,
+      voorcalc_accijns_totaal: voorcalc.totaal,
+      voorcalc_tarief_snapshot: voorcalc.snapshot,
+    }])
     setLog((prev: any[]) => [...(prev||[]), {
       id: newId(prev||[]),
       datum: avF.datum || tod(),

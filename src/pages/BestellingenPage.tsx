@@ -38,6 +38,8 @@ interface BestellingenPageProps {
   factuurLogo?: string | null
   openOrderId?: number | null
   setOpenOrderId?: (id: number | null) => void
+  klanten?: any[]
+  setKlanten?: any
   auditLog?: any[]
   setAuditLog?: any
   producten?: any[]

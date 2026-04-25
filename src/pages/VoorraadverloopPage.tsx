@@ -4,6 +4,7 @@ import { fmt, fmtD, tod } from '../utils/format'
 import { getNegatieveVoorraadPosities } from '../utils/calculations'
 import SectionHeader from '../components/ui/SectionHeader'
 import * as XLSX from 'xlsx'
+import { berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 
 /* ── Period helpers ──────────────────────────────────────────────────────────── */
 
@@ -299,16 +300,38 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       const totaalUit = binnenland + intracommunautair + exportUit
       const eindvoorraad = beginvoorraad + productie - totaalUit - bijzMutaties
 
+      // Voorcalculatie accijns (Douane v2.4 §7.4): potentiële accijnsschuld op de eindvoorraad.
+      // We pakken de gewogen gemiddelde voorcalc per eenheid uit alle bijbehorende afvullingen.
+      const relAv = av.filter((a: any) => batch_ids.has(a.batch_id) && a.verpakking_naam === verpakking_naam)
+      let totaalEenheden = 0
+      let totaalVc = 0
+      for (const a of relAv) {
+        const aantal = Number(a.hoeveelheid || 0)
+        let perEenheid = Number(a.voorcalc_accijns_per_eenheid || 0)
+        if (perEenheid === 0) {
+          perEenheid = berekenVoorcalcVoorAfvulling(
+            { inhoud_per_eenheid: Number(a.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
+            batchMap[a.batch_id],
+            accijnsInst
+          ).perEenheid
+        }
+        totaalEenheden += aantal
+        totaalVc += perEenheid * aantal
+      }
+      const voorcalcPerEenheid = totaalEenheden > 0 ? totaalVc / totaalEenheden : 0
+      const potentieleAccijnsschuld = voorcalcPerEenheid * eindvoorraad
+
       rows.push({
         key, batch_naam, verpakking_naam, gn_code,
         beginvoorraad, productie,
         binnenland, intracommunautair, export: exportUit,
         bijzMutaties, eindvoorraad,
+        voorcalcPerEenheid, potentieleAccijnsschuld,
       })
     })
 
     return rows.sort((a, b) => a.batch_naam.localeCompare(b.batch_naam) || a.verpakking_naam.localeCompare(b.verpakking_naam))
-  }, [av, uit, afboekingen, batchMap, van, tot, producten])
+  }, [av, uit, afboekingen, batchMap, van, tot, producten, accijnsInst])
 
   const gereedTotals = useMemo(() => ({
     beginvoorraad: gereedRows.reduce((s: number, r: any) => s + r.beginvoorraad, 0),
@@ -318,6 +341,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
     export: gereedRows.reduce((s: number, r: any) => s + r.export, 0),
     bijzMutaties: gereedRows.reduce((s: number, r: any) => s + r.bijzMutaties, 0),
     eindvoorraad: gereedRows.reduce((s: number, r: any) => s + r.eindvoorraad, 0),
+    potentieleAccijnsschuld: gereedRows.reduce((s: number, r: any) => s + (r.potentieleAccijnsschuld || 0), 0),
   }), [gereedRows])
 
   /* ── Excel export ────────────────────────────────────────────────────────── */
@@ -347,8 +371,8 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
     const ws1 = XLSX.utils.json_to_sheet(gsData)
     XLSX.utils.book_append_sheet(wb, ws1, t('gpa_grondstoffen'))
 
-    // Sheet 2: Gereed product
-    const gpData = gereedRows.map(r => ({
+    // Sheet 2: Gereed product (incl. Voorcalculatie accijns — Douane v2.4 §7.4)
+    const gpData: any[] = gereedRows.map(r => ({
       Bier: r.batch_naam,
       Verpakking: r.verpakking_naam,
       'GN-code': r.gn_code,
@@ -359,6 +383,8 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       [t('gpa_export')]: r.export,
       [t('gpa_bijzondere_mutaties')]: r.bijzMutaties,
       [t('gpa_eindvoorraad')]: r.eindvoorraad,
+      [t('lbl_voorcalc_excel')]: Number((r.voorcalcPerEenheid || 0).toFixed(4)),
+      [t('lbl_pot_schuld_excel')]: Number((r.potentieleAccijnsschuld || 0).toFixed(2)),
     }))
     gpData.push({
       Bier: t('gpa_totaal'),
@@ -371,6 +397,8 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       [t('gpa_export')]: gereedTotals.export,
       [t('gpa_bijzondere_mutaties')]: gereedTotals.bijzMutaties,
       [t('gpa_eindvoorraad')]: gereedTotals.eindvoorraad,
+      [t('lbl_voorcalc_excel')]: '',
+      [t('lbl_pot_schuld_excel')]: Number(gereedTotals.potentieleAccijnsschuld.toFixed(2)),
     })
     const ws2 = XLSX.utils.json_to_sheet(gpData)
     XLSX.utils.book_append_sheet(wb, ws2, t('gpa_gereed_product'))
@@ -571,6 +599,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
                   <th className="px-3 py-2 text-right">{t('gpa_export')}</th>
                   <th className="px-3 py-2 text-right">{t('gpa_bijzondere_mutaties')}</th>
                   <th className="px-3 py-2 text-right">{t('gpa_eindvoorraad')}</th>
+                  <th className="px-3 py-2 text-right" title={t('lbl_pot_accijnsschuld_tip')}>{t('lbl_pot_accijnsschuld')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -586,6 +615,9 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
                     <td className="px-3 py-2 text-right">{r.export || '—'}</td>
                     <td className={`px-3 py-2 text-right ${r.bijzMutaties > 0 ? 'text-red-600' : ''}`}>{r.bijzMutaties || '—'}</td>
                     <td className="px-3 py-2 text-right font-semibold">{r.eindvoorraad}</td>
+                    <td className="px-3 py-2 text-right text-amber-700" title={r.voorcalcPerEenheid > 0 ? `€ ${r.voorcalcPerEenheid.toFixed(4)} per eenheid` : ''}>
+                      {r.potentieleAccijnsschuld > 0 ? fmtN(r.potentieleAccijnsschuld) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -601,6 +633,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
                   <td className="px-3 py-2.5 text-right font-bold">{gereedTotals.export || '—'}</td>
                   <td className={`px-3 py-2.5 text-right font-bold ${gereedTotals.bijzMutaties > 0 ? 'text-red-600' : ''}`}>{gereedTotals.bijzMutaties || '—'}</td>
                   <td className="px-3 py-2.5 text-right font-bold text-gray-700">{gereedTotals.eindvoorraad}</td>
+                  <td className="px-3 py-2.5 text-right font-bold text-amber-700">€ {fmtN(gereedTotals.potentieleAccijnsschuld)}</td>
                 </tr>
               </tfoot>
             </table>

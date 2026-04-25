@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
-import { voorraadPerLocatie } from '../utils/calculations'
+import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type Bijlage = { naam: string; bestand: string }
@@ -346,6 +346,16 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const max = beschikbaarVoorAfvulling(afboekModal);
       if (aantal > max) { setAfboekError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
     }
+    // Voorcalculatie accijns (Douane v2.4 §7.2.1) — bevroren bedrag per eenheid op afboekmoment
+    const isVernietiging = afboekForm.reden === 'vernietiging';
+    const perEenheid = Number(afboekModal.voorcalc_accijns_per_eenheid) > 0
+      ? Number(afboekModal.voorcalc_accijns_per_eenheid)
+      : berekenVoorcalcVoorAfvulling(
+          { inhoud_per_eenheid: Number(afboekModal.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
+          (bat||[]).find((b: any) => b.id === afboekModal.batch_id),
+          accijnsInst
+        ).perEenheid;
+    const totaalVoorcalc = perEenheid * aantal;
     // M-1: vernietiging vereist Douane-toestemming + minimaal 1 bijlage
     if (afboekForm.reden === 'vernietiging') {
       if (!afboekForm.toestemming_douane) { setAfboekError(t('err_afboeking_toestemming_required')); return; }
@@ -361,6 +371,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       reden: afboekForm.reden,
       opmerking: afboekForm.opmerking.trim(),
       created_at: new Date().toISOString(),
+      voorcalc_accijns_per_eenheid: perEenheid,
+      voorcalc_accijns_totaal: totaalVoorcalc,
     };
     if (afboekForm.reden === 'vernietiging') {
       nieuw.toestemming_douane = afboekForm.toestemming_douane;
@@ -387,7 +399,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       eenheid: 'stuks',
       reden: afboekForm.reden,
       referentie: redenLabel,
-      omschrijving: `${redenLabel} — ${afboekForm.opmerking.trim()}`,
+      omschrijving: `${redenLabel} — ${afboekForm.opmerking.trim()}${totaalVoorcalc>0?` · voorcalc accijns € ${totaalVoorcalc.toFixed(2)}`:''}`,
     }]);
     setAfboekModal(null);
   };
@@ -1083,12 +1095,23 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       </div>
 
       {/* Afboeken modal — M-1 Bijzondere mutaties */}
-      {afboekModal && (
+      {afboekModal && (() => {
+        const perEenheid = Number(afboekModal.voorcalc_accijns_per_eenheid) > 0
+          ? Number(afboekModal.voorcalc_accijns_per_eenheid)
+          : berekenVoorcalcVoorAfvulling(
+              { inhoud_per_eenheid: Number(afboekModal.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
+              (bat||[]).find((b: any) => b.id === afboekModal.batch_id),
+              accijnsInst
+            ).perEenheid;
+        return (
         <Modal title={t('title_bijzondere_mutatie_modal').replace('{verpakking}', afboekModal.verpakking_naam || afboekModal.verpakking_type || '')} onClose={() => setAfboekModal(null)}>
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4 flex-wrap">
               <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
               {afboekModal.tht && <span>{t('lbl_tht')}: <strong>{fmtD(afboekModal.tht)}</strong></span>}
+              {perEenheid > 0 && (
+                <span>{t('voorcalc_label')}: <strong className="text-amber-700">€ {perEenheid.toFixed(4)}</strong> {t('voorcalc_per_eenheid_unit')}</span>
+              )}
             </div>
 
             {/* Tabs per type mutatie */}
@@ -1185,7 +1208,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             </div>
           </div>
         </Modal>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
+import { berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 
 interface InventarisatieTelling {
   id: number
@@ -18,6 +19,8 @@ interface InventarisatieTelling {
   verschil: number
   verklaring?: string
   eenheid?: string
+  voorcalc_accijns_per_eenheid?: number
+  accijns_impact?: number
 }
 
 interface Inventarisatie {
@@ -45,11 +48,12 @@ interface InventarisatiePageProps {
   setLog: any
   auditLog?: any[]
   setAuditLog?: any
+  accijnsInst?: any
 }
 
 const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
   lots, ing, av, bat, uit, afboekingen, bestellingPicks, bestellingen,
-  inventarisaties, setInventarisaties, setLots, log, setLog,
+  inventarisaties, setInventarisaties, setLots, log, setLog, accijnsInst,
   auditLog = [], setAuditLog = (() => {})
 }) => {
   const [selected, setSelected] = useState<Inventarisatie | null>(null)
@@ -107,15 +111,26 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
       .map((a: any, i: number) => {
         const batch = (bat || []).find((b: any) => b.id === a.batch_id)
         const qty = afvullingBeschikbaar[a.id] || 0
+        // Voorcalculatie accijns per eenheid (Douane v2.4 §7.3): bij afwijkingen tonen we
+        // direct de financiële impact. Pak de bevroren waarde van de afvulling, of bereken live.
+        const perEenheid = Number(a.voorcalc_accijns_per_eenheid) > 0
+          ? Number(a.voorcalc_accijns_per_eenheid)
+          : berekenVoorcalcVoorAfvulling(
+              { inhoud_per_eenheid: Number(a.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
+              batch,
+              accijnsInst
+            ).perEenheid
         return {
           id: offset + i + 1,
           ref_type: 'afvulling' as const,
           ref_id: a.id,
-          naam: `${batch?.naam || '?'} — ${a.verpakking_naam || '?'}`,
+          naam: `${batch?.naam || '?'} — ${a.verpakking_naam || a.verpakking_type || '?'}`,
           administratief: qty,
           geteld: qty,
           verschil: 0,
           eenheid: 'stuks',
+          voorcalc_accijns_per_eenheid: perEenheid,
+          accijns_impact: 0,
         }
       })
   }
@@ -152,7 +167,11 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
         if (tel.id !== tellingId) return tel
         if (field === 'geteld') {
           const geteld = value === '' ? 0 : Number(value)
-          return { ...tel, geteld, verschil: geteld - tel.administratief }
+          const verschil = geteld - tel.administratief
+          // Accijnsimpact (Douane v2.4 §7.3): verschil × voorcalc per eenheid.
+          // Negatief = tekort = potentiële vermisaccijns; positief = overschot (administratieve correctie).
+          const accijns_impact = (tel.voorcalc_accijns_per_eenheid || 0) * verschil
+          return { ...tel, geteld, verschil, accijns_impact }
         }
         return { ...tel, [field]: value }
       })
@@ -255,6 +274,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_administratief')}</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_geteld')}</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_verschil')}</th>
+                  <th className="text-right px-4 py-2.5 font-semibold" title={t('lbl_accijnsimpact_tip')}>{t('lbl_accijnsimpact')}</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_verklaring')}</th>
                 </tr>
               </thead>
@@ -286,6 +306,18 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
                     }`}>
                       {tel.verschil > 0 ? '+' : ''}{tel.verschil}
                     </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {tel.ref_type === 'afvulling' && Number(tel.voorcalc_accijns_per_eenheid || 0) > 0 ? (
+                        <span className={`font-medium ${
+                          (tel.accijns_impact || 0) === 0 ? 'text-gray-400' :
+                          (tel.accijns_impact || 0) > 0 ? 'text-blue-700' : 'text-red-700'
+                        }`} title={`€ ${Number(tel.voorcalc_accijns_per_eenheid).toFixed(4)} per eenheid`}>
+                          {(tel.accijns_impact || 0) === 0 ? '—' : `${(tel.accijns_impact||0) > 0 ? '+' : ''}€ ${Math.abs(tel.accijns_impact || 0).toFixed(2)}`}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">n.v.t.</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       {isOpen && tel.verschil !== 0 ? (
                         <input
@@ -304,6 +336,32 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
               </tbody>
             </table>
           </div>
+          {/* Totaalbalk accijnsimpact (Douane v2.4 §7.3 stap 6) */}
+          {(() => {
+            const tekort = selected.tellingen.filter(t => (t.accijns_impact || 0) < 0).reduce((s, t) => s + Math.abs(t.accijns_impact || 0), 0)
+            const overschot = selected.tellingen.filter(t => (t.accijns_impact || 0) > 0).reduce((s, t) => s + (t.accijns_impact || 0), 0)
+            if (tekort === 0 && overschot === 0) return null
+            return (
+              <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Tekort (vermis-equivalent)</div>
+                  <div className="font-semibold text-red-700">€ {tekort.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Accijnsplichtig in volgende aangifte</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Overschot (correctie)</div>
+                  <div className="font-semibold text-blue-700">€ {overschot.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Administratieve correctie</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Saldo accijnsimpact</div>
+                  <div className={`font-semibold ${overschot - tekort >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                    € {(overschot - tekort).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Opmerkingen */}
