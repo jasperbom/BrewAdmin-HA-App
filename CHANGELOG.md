@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.5] — 2026-04-25
+
+### Added — Douane-compliance v2.4 (reactie Douane op Bedrijfshandboek v2.3)
+
+Deze release verwerkt de aanvullende eisen van de Nederlandse Douane op het Craftery Brewing-bedrijfshandboek v2.3, en bevat direct de kwaliteitspas die uit een test-pass van de v2.4-implementatie naar voren kwam.
+
+- **Voorcalculatie accijns per afvulling (§7.1)** — bij elke afvulling wordt nu automatisch de potentiële accijnsschuld berekend en bevroren opgeslagen op basis van ABV/Plato/volume + tarief uit de stamgegevens. Zichtbaar op het batchverpakkingsformulier en in de afvullingstabel. Werkt zowel via `BatchesPage` als `AfvullenPage`.
+- **Voorcalculatie bij afboekingen (§7.2.1)** — bij het registreren van vermis, intern gebruik of vernietiging toont BrewAdmin direct het accijnsbedrag dat met de afboeking gemoeid is. Bedrag wordt vastgelegd op de mutatie en meegenomen in het maandoverzicht.
+- **Verklaring vernietiging vanuit schorsingsregeling (§7.2.3)** — vernietiging-mutaties hebben nu een statusflow `aangevraagd → toegestaan → uitgevoerd` met verplichte upload van de Douane-verklaring (PDF) en bewijsmateriaal (foto/video) bij `uitgevoerd`.
+- **Voorcalc + kleurcodering bij inventarisatie (§7.3)** — afwijkingen tonen direct de accijnsimpact (verschil × voorcalc per eenheid). Totaalbalk splitst tekorten en overschotten.
+- **Voorraadverloop met potentiële accijnsschuld (§7.4)** — gereed-product-rapport bevat de kolom "Pot. accijnsschuld (€)" en totaal per periode. Excel-export bevat de extra kolommen.
+- **Webshop §10.2: belastbaar feit bij picken** — voor consumentenorders verlaten goederen de AGP op het moment van picken, niet bij verzenden. BrewAdmin maakt vanaf nu de Uitslag- en AccijnsRecord-records aan tijdens `savePicks`. De afrond-flow vult alleen bestemmingsdetails aan en maakt factuur/pakbon. Pickmodal toont een Douane-banner.
+- **4-ogen-controle op aangiftes (§12.2 + §12.4)** — controleblokken op zowel accijns- als BTW-aangifte met reviewer (default Elise Kok), controle-datum, bevindingen en statussen `open / akkoord / opmerkingen`. Accijnsaangifte kan pas naar `ingediend` na `akkoord`. Alle controleacties belanden in het `audit_log`.
+- **Nieuw datatype:** `btw_aangiftes` (`useStore('btw_aangiftes', [])`) — wordt meegenomen in export, import en reset.
+
+### Fixed — kwaliteitspas op v2.4-implementatie
+- **Runtime crash AccijnsPage** — verwijzing naar niet-bestaande `getGn(...)` in de lopende-maand-tabel vervangen door `getGnForRecord(...)`. Voorheen ReferenceError zodra je een lopende maand zonder aangifte-view opende.
+- **Backup-dekking** — `useStore('btw_aangiftes')` is nu opgenomen in `excelExport`/`excelImport` (sheet `BtwAangiftes`). Voorheen ging de 4-ogen-controlevastlegging op BTW-aangiftes verloren bij een Excel-roundtrip.
+- **Voorcalc-snapshot consistent** — `AfvullenPage` zet net als `BatchesPage` de drie `voorcalc_*`-velden bij het aanmaken van een afvulling, zodat de claim "bevroren op afvullingsmoment" voor élke afvulling klopt.
+- **Type-interfaces aangevuld** — `BatchesPageProps` (`preNieuwBatch`, `setPreNieuwBatch`) en `BestellingenPageProps` (`klanten`, `setKlanten`) declareren nu de props die `App.tsx` doorgeeft.
+- **i18n volledig hersteld** — alle door v2.4 geïntroduceerde gebruikersgerichte teksten lopen via `t()` met sleutels in alle 5 taalbestanden. Drie reeds ontbrekende oude FR/ES-sleutels (`err_confirm_delete_inkoop`, `msg_fetch_error`, `msg_wc_not_active_settings`) ook ingevuld. Pariteit hersteld op 1167+ sleutels per taal.
+
+### Bestanden gewijzigd
+- `src/types/index.ts` — uitbreiding `Afvulling`, `Afboeking`, `InventarisatieTelling`, `AccijnsAangifte`. Nieuw: `AfboekingBijlage`, `VernietigingStatus`, `AangifteControle`, `BtwAangifte`, `ControleStatus`.
+- `src/utils/calculations.ts` — nieuwe helper `berekenVoorcalcVoorAfvulling()`.
+- `src/utils/excel.ts` — nieuwe sheet `BtwAangiftes` voor backup/restore.
+- `src/pages/BatchesPage.tsx`, `AfvullenPage.tsx`, `ProductenPage.tsx`, `InventarisatiePage.tsx`, `VoorraadverloopPage.tsx`, `BestellingenPage.tsx`, `AccijnsPage.tsx`, `BoekhoudingPage.tsx` — implementatie + i18n.
+- `src/App.tsx` — `btwAangiftes` store toegevoegd, doorgegeven aan `BoekhoudingPage`.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe v2.4-sleutels.
+
+---
+
 ## [1.9.4] — 2026-04-24
 
 ### Fixed — Dashboard toonde "Invalid Date" bij cold-crash start

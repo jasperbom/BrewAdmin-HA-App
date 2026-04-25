@@ -1,15 +1,14 @@
 import React from 'react'
-import { t } from '../i18n'
-import { getLang } from '../i18n'
+import { t, getLang } from '../i18n'
 import { tod } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
+import { logAudit } from '../utils/audit'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
-import { logAudit } from '../utils/audit'
 
 // ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
 const _crcTbl = (() => {
@@ -2621,6 +2620,83 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   </tfoot>
                 </table>
               </div>
+
+              {/* Controle door tweede paar ogen — Douane v2.4 §12.4 */}
+              {selectedPeriode && (() => {
+                const periodeKey = `${aangifteYear}-${selectedPeriode.label.replace(/\s+/g, '_')}`
+                const aangifte = (btwAangiftes||[]).find((x: any) => x.periode === periodeKey) || null
+                const reviewer = aangifte?.reviewer ?? 'Elise Kok'
+                const status = aangifte?.controle_status ?? 'open'
+                const bevindingen = aangifte?.bevindingen ?? ''
+                const datum = aangifte?.controle_datum
+                const updateBtw = (fields: any) => {
+                  setBtwAangiftes((prev: any[]) => {
+                    const existing = (prev||[]).find((x: any) => x.periode === periodeKey)
+                    const merged = { ...(existing || { periode: periodeKey, status: 'berekend' }), ...fields }
+                    if (fields.controle_status) merged.controle_datum = new Date().toISOString()
+                    if (existing) return prev.map((x: any) => x.periode === periodeKey ? merged : x)
+                    return [...(prev||[]), merged]
+                  })
+                  if (fields.controle_status) {
+                    logAudit(auditLog, setAuditLog, {
+                      entiteit: 'BtwAangifte',
+                      entiteit_id: 0,
+                      actie: 'gewijzigd',
+                      omschrijving: `BTW-controle ${fields.controle_status} door ${fields.reviewer || 'reviewer'} — periode ${periodeKey}${fields.bevindingen ? ` (bevindingen: ${fields.bevindingen})` : ''}`,
+                    })
+                  }
+                }
+                return (
+                  <div className={`rounded-xl border p-3 mb-3 text-sm ${
+                    status === 'akkoord' ? 'border-green-200 bg-green-50' :
+                    status === 'opmerkingen' ? 'border-amber-200 bg-amber-50' :
+                    'border-gray-200 bg-gray-50'
+                  }`}>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">
+                      {t('controle_titel_btw')}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">{t('controle_reviewer')}</label>
+                        <input type="text" value={reviewer}
+                          onChange={e => updateBtw({ reviewer: e.target.value })}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-0.5">{t('controle_datum')}</label>
+                        <div className="px-2 py-1 text-sm text-gray-700">
+                          {datum ? new Date(datum).toLocaleString(getLang()) : <span className="text-gray-400">{t('controle_datum_nog_niet')}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      <label className="block text-xs text-gray-500 mb-0.5">{t('controle_bevindingen')}</label>
+                      <textarea value={bevindingen}
+                        onChange={e => updateBtw({ bevindingen: e.target.value })}
+                        rows={2}
+                        placeholder={t('controle_bevindingen_ph_btw')}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white" />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <button onClick={() => updateBtw({ reviewer, controle_status: 'akkoord' })}
+                        className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700">
+                        {status === 'akkoord' ? t('controle_btn_akkoord_done') : t('controle_btn_akkoord')}
+                      </button>
+                      <button onClick={() => updateBtw({ reviewer, controle_status: 'opmerkingen' })}
+                        className="px-3 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">
+                        {t('controle_btn_opmerkingen')}
+                      </button>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        status === 'akkoord' ? 'bg-green-100 text-green-700' :
+                        status === 'opmerkingen' ? 'bg-amber-100 text-amber-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {status === 'akkoord' ? t('controle_status_akkoord') : status === 'opmerkingen' ? t('controle_status_opmerkingen') : t('controle_status_open')}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()}
 
               <div className={card + ' bg-blue-50 border-blue-100'}>
                 <h3 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
