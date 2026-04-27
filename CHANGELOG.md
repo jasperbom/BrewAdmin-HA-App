@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.8] — 2026-04-27
+
+### Changed — `xlsx` gevendord + SessionStart-hook voor Claude Code op het web
+
+- `xlsx@0.20.3` wordt nu vanuit `vendor/xlsx-0.20.3.tgz` geïnstalleerd in plaats
+  van `https://cdn.sheetjs.com/...`. SheetJS publiceert niet op npm en de
+  CDN is onbereikbaar vanuit de Claude Code-sandbox; vendoren maakt installs
+  deterministisch en offline-capable.
+- `.claude/hooks/session-start.sh` + registratie in `.claude/settings.json`
+  draait `npm install` bij sessiestart in de remote-sandbox (idempotent: skipt
+  als `node_modules` al gevuld is). Lokale dev-omgevingen worden niet geraakt
+  (`CLAUDE_CODE_REMOTE`-guard).
+- `vendor/README.md` documenteert hoe de tarball ververst wordt.
+
+---
+
 ## [1.9.7] — 2026-04-27
 
 ### Added — AGP-perspectief en accijns in Voorraadverloop
