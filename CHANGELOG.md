@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.11] — 2026-04-27
+
+### Changed — AGP is geen geldige bestemming voor verplaatsingen
+
+- Bier dat de AGP heeft verlaten kan niet onder schorsing terug — dat is geen
+  reguliere voorraadbeweging maar een teruggaaf-procedure (apart traject).
+- AGP-locatie is uit de `naar_locatie`-dropdown van de verplaatsing-modal
+  gefilterd; harde guard in `saveVerplaats` met duidelijke foutmelding.
+- AGP-eind in Voorraadverloop telt geen verplaatsingen-naar-AGP meer als
+  positieve instroom — bier komt op AGP alleen via afvullen (productie).
+- i18n: `agp_info_geen_accijns_retour` (5 talen) vervangen door
+  `agp_err_geen_retour_naar_agp` met de juiste juridische framing.
+
+---
+
 ## [1.9.10] — 2026-04-27
 
 ### Fixed — Dockerfile kopieert vendor/ vóór npm install

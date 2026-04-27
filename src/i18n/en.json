@@ -1560,7 +1560,7 @@
   "agp_verplaats_opslaan": "Save movement",
   "agp_accijns_betaald": "Excise paid",
   "agp_info_accijns_boeken": "Excise is recorded when stock leaves the warehouse:",
-  "agp_info_geen_accijns_retour": "No excise is recorded when returning stock to the warehouse.",
+  "agp_err_geen_retour_naar_agp": "Beer that has left the AGP cannot return under suspension. A separate refund procedure applies for paid excise.",
   "agp_info_geen_accijns_buiten": "Movement between non-warehouse locations: no excise booking.",
   "agp_err_aantal_verplicht": "Enter a valid quantity.",
   "agp_err_locatie_verplicht": "Select a source and destination location.",

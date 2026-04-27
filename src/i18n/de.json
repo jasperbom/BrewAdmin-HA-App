@@ -1560,7 +1560,7 @@
   "agp_verplaats_opslaan": "Bewegung speichern",
   "agp_accijns_betaald": "Verbrauchsteuer bezahlt",
   "agp_info_accijns_boeken": "Beim Verlassen des Steuerlagers wird Verbrauchsteuer gebucht:",
-  "agp_info_geen_accijns_retour": "Keine Verbrauchsteuer bei Rückkehr in das Steuerlager.",
+  "agp_err_geen_retour_naar_agp": "Bier, das das Steuerlager verlassen hat, kann nicht unter Aussetzung zurück. Für die Erstattung gezahlter Verbrauchsteuer gilt ein separates Verfahren.",
   "agp_info_geen_accijns_buiten": "Bewegung zwischen Nicht-Steuerlager-Standorten: keine Verbrauchsteuerbuchung.",
   "agp_err_aantal_verplicht": "Geben Sie eine gültige Menge ein.",
   "agp_err_locatie_verplicht": "Wählen Sie einen Quell- und Zielstandort.",

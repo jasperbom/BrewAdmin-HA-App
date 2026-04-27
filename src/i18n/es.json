@@ -1557,7 +1557,7 @@
   "agp_verplaats_opslaan": "Guardar movimiento",
   "agp_accijns_betaald": "Impuestos pagados",
   "agp_info_accijns_boeken": "Se registra el impuesto al salir del depósito:",
-  "agp_info_geen_accijns_retour": "Sin impuesto al devolver al depósito.",
+  "agp_err_geen_retour_naar_agp": "La cerveza que ha salido del AGP no puede volver bajo régimen suspensivo. Para la devolución del impuesto pagado se aplica un procedimiento separado.",
   "agp_info_geen_accijns_buiten": "Movimiento entre ubicaciones fuera del depósito: sin impuesto.",
   "agp_err_aantal_verplicht": "Indique una cantidad válida.",
   "agp_err_locatie_verplicht": "Seleccione ubicación de origen y destino.",
