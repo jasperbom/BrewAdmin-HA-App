@@ -530,6 +530,12 @@ export interface BtwOvzRegel {
   btw: number
 }
 
+// Onderscheid privé vs. zakelijk. Privéklanten mogen alleen uit voorraad
+// buiten AGP geleverd worden (accijns moet al afgedragen zijn). Zakelijke
+// klanten mogen ook uit AGP geleverd worden — de accijnsboeking volgt dan
+// automatisch via de bestaande uitlevering-flow.
+export type KlantType = 'prive' | 'zakelijk'
+
 export interface Klant {
   id: number
   klantnummer?: string
@@ -541,6 +547,7 @@ export interface Klant {
   email?: string
   telefoon?: string
   betalingstermijn?: number
+  klant_type?: KlantType
 }
 
 export interface BankTransactie {
@@ -662,6 +669,10 @@ export interface Bestelling {
   klant_postcode?: string
   klant_stad?: string
   klant_bedrijf?: string
+  // Privé- vs. zakelijke order. Privéklanten mogen niet uit AGP geleverd
+  // worden. Bij oude orders zonder dit veld geldt de afleiding:
+  // klant_bedrijf gevuld → zakelijk, anders → privé (alleen bij niet-verzonden orders).
+  klant_type?: KlantType
   regels: BestellingRegel[]
   opmerkingen?: string
   wc_order_id?: number | null

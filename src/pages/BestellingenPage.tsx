@@ -107,6 +107,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     klant_naam: '', klant_email: '', klant_bedrijf: '',
     klant_straat: '', klant_huisnummer: '', klant_postcode: '', klant_stad: '',
     opmerkingen: '',
+    klant_type: 'prive' as 'prive' | 'zakelijk',
     regels: [] as any[]
   }
   const [manualForm, setManualForm] = useState<any>(emptyManual)
@@ -135,6 +136,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     (bestellingPicks||[])
       .filter((p: any) => p.bestelling_id === bestelling_id && p.regel_id === regel_id)
       .reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
+
+  // Effectief klant_type voor een bestelling. Bestaande orders zonder dit veld
+  // worden lazy gebackfilld op basis van klant_bedrijf, maar alleen wanneer de
+  // order nog niet verzonden is — historisch gepickte/verzonden orders blijven
+  // onaangeroerd zodat eerdere AGP-allocaties niet alsnog ongeldig worden.
+  const effectiveKlantType = (b: any): 'prive' | 'zakelijk' | undefined => {
+    if (!b) return undefined
+    if (b.klant_type === 'prive' || b.klant_type === 'zakelijk') return b.klant_type
+    if (b.status === 'verzonden' || b.status === 'afgerond') return undefined
+    return (b.klant_bedrijf || '').trim() ? 'zakelijk' : 'prive'
+  }
 
   // Beschikbaar voor een afvulling (exclusief open orders picks, inclusief deze bestelling)
   const beschikbaarVoorAfvulling = (a: any, excludeBestellingId?: number): number => {
@@ -172,6 +184,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       if (res[id] < 0) res[id] = 0
     }
     return res
+  }
+
+  // Beschikbaar voor een afvulling exclusief AGP-voorraad. Gebruikt voor
+  // privé-orders die wettelijk niet uit AGP geleverd mogen worden.
+  const beschikbaarBuitenAgpVoorAfvulling = (a: any, excludeBestellingId?: number): number => {
+    const perLoc = beschikbaarPerLocatieVoorAfvulling(a, excludeBestellingId)
+    const agp = getAgpLocatie(locaties as any)
+    let total = 0
+    for (const k of Object.keys(perLoc)) {
+      if (Number(k) !== agp.id) total += Number(perLoc[Number(k)] || 0)
+    }
+    return total
   }
 
   // Compact label met voorraad per locatie voor één afvulling, bv. "AGP: 20, Magazijn: 10".
@@ -331,6 +355,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             omschrijving: item.name || '',
           }
         })
+        const company = (o.billing?.company || '').trim()
+        const vatNr = (o.billing?.vat_number || o.meta_data?.find?.((m: any) => /vat|btw/i.test(m.key||''))?.value || '').toString().trim()
+        const klantType: 'prive' | 'zakelijk' = (company || vatNr) ? 'zakelijk' : 'prive'
         const nb: any = {
           id: newId([...(bestellingen||[]), ...nieuw]),
           status: 'nieuw',
@@ -341,7 +368,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           klant_huisnummer: '',
           klant_postcode: o.billing?.postcode||'',
           klant_stad: o.billing?.city||'',
-          klant_bedrijf: o.billing?.company||'',
+          klant_bedrijf: company,
+          klant_type: klantType,
           regels,
           wc_order_id: o.id,
           wc_order_nummer: String(o.number||o.id),
@@ -364,6 +392,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Handmatige order opslaan ---
   const saveManualOrder = () => {
     if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
+    if (manualForm.klant_type === 'zakelijk' && !manualForm.klant_bedrijf?.trim()) {
+      alert(t('err_order_company_required')); return
+    }
     if (!manualForm.regels.length) { alert(t('err_order_min_lines')); return }
     let regels = [...manualForm.regels];
     if (manualVerzending.enabled && Number(manualVerzending.prijs) > 0) {
@@ -419,6 +450,21 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Picking opslaan ---
   const savePicks = () => {
     if (!selectedOrder) return
+    const klantType = effectiveKlantType(selectedOrder)
+    const isPriveOrder = klantType === 'prive'
+    const agpLoc = getAgpLocatie(locaties as any)
+    // Privé-orders mogen hard niet uit AGP geleverd worden
+    if (isPriveOrder) {
+      for (const picks of Object.values(draftPicks)) {
+        for (const p of picks as any[]) {
+          if (!p.aantal || p.aantal <= 0) continue
+          if (p.bron_locatie_id != null && p.bron_locatie_id === agpLoc.id) {
+            alert(t('err_prive_geen_agp'))
+            return
+          }
+        }
+      }
+    }
     // Valideer voorraad per afvulling voordat picks opgeslagen worden
     const pickTotals: Record<number, number> = {}
     for (const picks of Object.values(draftPicks)) {
@@ -430,9 +476,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     for (const [afvIdStr, totaal] of Object.entries(pickTotals)) {
       const afvItem = (av||[]).find((a: any) => a.id === Number(afvIdStr))
       if (!afvItem) continue
-      const beschik = beschikbaarVoorAfvulling(afvItem, selectedOrder.id)
+      const beschik = isPriveOrder
+        ? beschikbaarBuitenAgpVoorAfvulling(afvItem, selectedOrder.id)
+        : beschikbaarVoorAfvulling(afvItem, selectedOrder.id)
       if (totaal > beschik) {
-        alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
+        const errKey = isPriveOrder ? 'err_prive_buiten_agp_ontoereikend' : 'agp_voorraad_ontoereikend'
+        alert(t(errKey).replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
         return
       }
     }
@@ -505,6 +554,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!selectedOrder) return
     const picks = picksVoorOrder(selectedOrder.id)
     if (!picks.length) { alert(t('err_order_no_picks')); return }
+    const klantType = effectiveKlantType(selectedOrder)
+    const isPriveOrder = klantType === 'prive'
     const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51)
     const r2 = Number(accijnsInst?.tarief_per_hl||24.17)
     const vandaag = tod()
@@ -516,6 +567,30 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     //   - Voorraad in AGP genereert nieuwe AccijnsRecord-boekingen.
     // Per pick kunnen er meerdere Uitleveringen ontstaan wanneer voorraad gemengd is.
     const agpLoc = getAgpLocatie(locaties)
+
+    // Privé-orders: hard pre-flight. AGP mag in geen enkel scenario gebruikt
+    // worden. Controleer alle picks vóór er side-effects ontstaan.
+    if (isPriveOrder) {
+      for (const pick of picks) {
+        const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
+        if (!avItem) continue
+        if (pick.bron_locatie_id != null && pick.bron_locatie_id === agpLoc.id) {
+          alert(t('err_prive_geen_agp')); return
+        }
+        // Auto-allocatie: voorraad buiten AGP moet voldoende zijn
+        if (pick.bron_locatie_id == null) {
+          const voorraad = voorraadPerLocatie(avItem, locaties as any, uit as any, verplaatsingen as any, afboekingen as any)
+          let buitenAgp = 0
+          for (const l of (locaties||[])) {
+            if (!l.is_agp) buitenAgp += Number(voorraad[l.id] || 0)
+          }
+          if (buitenAgp < Number(pick.aantal || 0)) {
+            alert(t('err_prive_buiten_agp_ontoereikend').replace('{beschikbaar}', `${buitenAgp}× ${avItem.verpakking_type||''}`))
+            return
+          }
+        }
+      }
+    }
     const nieuweUitleveringen: any[] = []
     const nieuweAccijns: any[] = []
     // Map pick.id → arrays met gegenereerde uitlevering-/accijns-ids (voor pick-update)
@@ -550,15 +625,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         for (const l of (locaties||[])) {
           if (!l.is_agp && (voorraad[l.id]||0) > 0) locOrder.push(l.id)
         }
-        if ((voorraad[agpLoc.id]||0) > 0) locOrder.push(agpLoc.id)
-        // Eventuele locaties die niet meer in `locaties` staan maar wel voorraad hebben
-        for (const k of Object.keys(voorraad)) {
-          const id = Number(k)
-          if (!locOrder.includes(id) && (voorraad[id]||0) > 0) locOrder.push(id)
+        // Privé-orders: AGP-fallback overslaan. De pre-flight bovenaan rondeAf
+        // garandeert al voldoende voorraad buiten AGP.
+        if (!isPriveOrder) {
+          if ((voorraad[agpLoc.id]||0) > 0) locOrder.push(agpLoc.id)
+          // Eventuele locaties die niet meer in `locaties` staan maar wel voorraad hebben
+          for (const k of Object.keys(voorraad)) {
+            const id = Number(k)
+            if (!locOrder.includes(id) && (voorraad[id]||0) > 0) locOrder.push(id)
+          }
+          // Als nergens voorraad is gevonden, val terug op AGP zodat er altijd één
+          // uitslag wordt gemaakt (back-compat met legacy data zonder seed).
+          if (locOrder.length === 0) locOrder.push(agpLoc.id)
         }
-        // Als nergens voorraad is gevonden, val terug op AGP zodat er altijd één
-        // uitslag wordt gemaakt (back-compat met legacy data zonder seed).
-        if (locOrder.length === 0) locOrder.push(agpLoc.id)
       }
 
       let resterend = Number(pick.aantal||0)
@@ -871,6 +950,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[selectedOrder.status]||'bg-gray-100'}`}>
             {t(`orders_status_${selectedOrder.status}`)||selectedOrder.status}
           </span>
+          {(() => {
+            const kType = effectiveKlantType(selectedOrder)
+            return kType ? (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${kType === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                {t(kType === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
+              </span>
+            ) : null
+          })()}
           <span className="text-sm text-gray-500 ml-auto">{fmtD(selectedOrder.datum)}</span>
         </div>
 
@@ -1053,14 +1140,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         )}
 
         {/* Picking Modal */}
-        {showPickModal && (
+        {showPickModal && (() => {
+          const klantTypeOrder = effectiveKlantType(selectedOrder)
+          const isPriveOrder = klantTypeOrder === 'prive'
+          return (
           <Modal title={t('picking_title')} onClose={() => setShowPickModal(false)} wide>
+            {isPriveOrder && (
+              <div className="mb-3 p-2.5 rounded-lg bg-orange-50 border border-orange-200 text-xs text-orange-800">
+                <strong>{t('lbl_prive')}:</strong> {t('info_prive_buiten_agp')}
+              </div>
+            )}
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
               {(selectedOrder.regels||[]).filter((r: any) => r.type === 'bier' || (!r.type && r.bier_naam)).map((r: any) => {
                 const draftVoorRegel = draftPicks[r.id] || []
                 const totaalGepickt = draftVoorRegel.reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
                 const resterend = r.aantal - totaalGepickt
-                const afvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, null, r.artikel_key, r.sku)
+                const allAfvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, null, r.artikel_key, r.sku)
+                // Privé-orders mogen niet uit AGP geleverd worden — filter
+                // afvullingen die alleen AGP-voorraad hebben weg.
+                const afvullingen = isPriveOrder
+                  ? allAfvullingen.filter((a: any) => beschikbaarBuitenAgpVoorAfvulling(a, selectedOrder.id) > 0)
+                  : allAfvullingen
 
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
@@ -1082,11 +1182,15 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       const avArt = avItem?.artikel_sku
                         ? (artikelen||[]).find((a: any) => a.artikelnummer === avItem.artikel_sku)
                         : avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.biernaam||avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
-                      const maxBeschik = beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id) + Number(dp.aantal||0)
+                      const maxBeschik = (isPriveOrder
+                        ? beschikbaarBuitenAgpVoorAfvulling(avItem||{}, selectedOrder.id)
+                        : beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id)) + Number(dp.aantal||0)
                       const locLabel = avItem ? voorraadPerLocLabel(avItem) : ''
                       const perLoc = avItem ? beschikbaarPerLocatieVoorAfvulling(avItem, selectedOrder.id) : {}
                       const locOpties = (locaties||[])
                         .filter((l: any) => (perLoc[l.id] || 0) + (dp.bron_locatie_id === l.id ? Number(dp.aantal||0) : 0) > 0)
+                        // Privé-orders: AGP-locatie is uitgesloten
+                        .filter((l: any) => !isPriveOrder || !l.is_agp)
                       return (
                         <div key={idx} className="mt-1 text-sm">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -1144,7 +1248,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         <select onChange={e => {
                           const avId = Number(e.target.value)
                           if (!avId) return
-                          const avail = beschikbaarVoorAfvulling((av||[]).find((a: any) => a.id === avId)||{}, selectedOrder.id)
+                          const avAvItem = (av||[]).find((a: any) => a.id === avId)||{}
+                          const avail = isPriveOrder
+                            ? beschikbaarBuitenAgpVoorAfvulling(avAvItem, selectedOrder.id)
+                            : beschikbaarVoorAfvulling(avAvItem, selectedOrder.id)
                           const aantal = Math.min(resterend, avail)
                           setDraftPicks(prev => ({
                             ...prev,
@@ -1158,7 +1265,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             const avArt = a.artikel_sku
                               ? (artikelen||[]).find((art: any) => art.artikelnummer === a.artikel_sku)
                               : avBatch ? (artikelen||[]).find((art: any) => art.key === `${avBatch.naam}|||${a.verpakking_type}`) : null
-                            const beschik = beschikbaarVoorAfvulling(a, selectedOrder.id)
+                            const beschik = isPriveOrder
+                              ? beschikbaarBuitenAgpVoorAfvulling(a, selectedOrder.id)
+                              : beschikbaarVoorAfvulling(a, selectedOrder.id)
                             const locLabel = voorraadPerLocLabel(a)
                             return (
                               <option key={a.id} value={a.id}>
@@ -1181,7 +1290,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               <Btn onClick={savePicks}>{t('picking_confirm')}</Btn>
             </div>
           </Modal>
-        )}
+          )
+        })()}
 
         {/* Annuleer bevestiging */}
         {showAnnuleerModal && (
@@ -1295,13 +1405,21 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           const totaal = orderTotaal(b)
           const picks = picksVoorOrder(b.id)
           const orderNr = b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : `M-${b.id}`
+          const kType = effectiveKlantType(b)
           return (
             <div key={b.id} onClick={() => { setSelectedId(b.id); setView('detail') }}
               className="bg-white rounded-xl shadow-card p-4 cursor-pointer hover:shadow-md transition-shadow flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="font-mono text-sm font-semibold text-gray-700">{orderNr}</span>
                 <div>
-                  <div className="font-medium text-gray-800">{b.klant_naam}</div>
+                  <div className="font-medium text-gray-800 flex items-center gap-2">
+                    <span>{b.klant_naam}</span>
+                    {kType && (
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${kType === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        {t(kType === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-gray-500">{fmtD(b.datum)} · {t('lbl_n_regels').replace('{n}', String((b.regels||[]).length))}</div>
                 </div>
               </div>
@@ -1324,12 +1442,31 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             {/* Klantgegevens */}
             <div>
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('orders_klant')}</div>
+              {/* Klant-type toggle: privé vs. zakelijk */}
+              <div className="mb-3">
+                <label className="block text-xs text-gray-500 mb-1">{t('lbl_klant_type')}</label>
+                <div className="inline-flex bg-gray-100 rounded-lg p-0.5">
+                  <button type="button"
+                    onClick={() => setManualForm((f: any) => ({...f, klant_type: 'prive'}))}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${manualForm.klant_type === 'prive' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+                    {t('lbl_prive')}
+                  </button>
+                  <button type="button"
+                    onClick={() => setManualForm((f: any) => ({...f, klant_type: 'zakelijk'}))}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${manualForm.klant_type === 'zakelijk' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+                    {t('lbl_zakelijk')}
+                  </button>
+                </div>
+                {manualForm.klant_type === 'prive' && (
+                  <div className="mt-1.5 text-xs text-gray-500 italic">{t('info_prive_buiten_agp')}</div>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <Inp label={t('manual_order_klant_naam') + ' *'} value={manualForm.klant_naam} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_naam: v}))} placeholder="Jan Janssen" />
                 <Inp label={t('manual_order_klant_email')} value={manualForm.klant_email} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_email: v}))} placeholder="jan@example.nl" />
               </div>
               <div className="grid grid-cols-2 gap-3 mt-2">
-                <Inp label={t('lbl_company')} value={manualForm.klant_bedrijf} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_bedrijf: v}))} placeholder={t('lbl_company')} />
+                <Inp label={t('lbl_company') + (manualForm.klant_type === 'zakelijk' ? ' *' : '')} value={manualForm.klant_bedrijf} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_bedrijf: v}))} placeholder={t('lbl_company')} />
                 <Inp label={t('lbl_address')} value={manualForm.klant_straat} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_straat: v}))} placeholder="Hoofdstraat 1" />
               </div>
               <div className="grid grid-cols-2 gap-3 mt-2">
