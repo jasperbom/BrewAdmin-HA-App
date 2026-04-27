@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.14] — 2026-04-27
+
+### Changed — Douane-terminologie "Latente schuld" → "Pot. accijnsschuld" (Douane v2.4 §7.4)
+
+- **Voorraadverloop — kolom "Latente schuld"** hernoemd naar **"Pot. accijnsschuld"** (UI-tabel) zodat de app dezelfde terminologie hanteert als handboek v2.4 §7.4.
+- **Excel-export** gebruikt de uitgeschreven variant **"Potentiële accijnsschuld (€)"** voor de overeenkomstige kolom in sheet *Gereed product*.
+- **Group-tooltip** boven de Accijns-kolomgroep aangepast: "Latente schuld" → "Potentiële accijnsschuld" (alle 5 talen).
+- Onderliggende dataveldnamen (`accijnsLatentEind`, sleutel `gpa_accijns_latent_eind`) blijven ongewijzigd; alleen de gebruikersgerichte labels verschuiven.
+
+---
+
 ## [1.9.13] — 2026-04-27
 
 ### Changed — Belastbaar feit verschoven naar Picken (Douane v2.4 §10.2)
