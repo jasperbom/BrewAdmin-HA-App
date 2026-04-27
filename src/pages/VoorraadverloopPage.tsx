@@ -308,20 +308,19 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       const eindvoorraad = beginvoorraad + productie - totaalUit - bijzMutaties
 
       // ── AGP-perspectief (geschorste accijns) ──
-      // Verplaatsingen-uit-AGP en uitleveringen-vanaf-AGP zijn de twee
-      // uitstroomvormen uit de schorsingsregeling.
+      // Bier komt op AGP via afvullen (productie). Eenmaal uitgeslagen verlaat
+      // het de schorsingsregeling — terugplaatsing is een teruggaaf-procedure
+      // en geen reguliere voorraadbeweging, dus wordt hier niet als instroom
+      // op AGP geteld. Uitstroomvormen: verplaatsing AGP→niet-AGP en
+      // uitlevering vanaf AGP.
       const relevanteVerpl = (verplaatsingen||[]).filter((v: any) => {
         const a = avById[v.afvulling_id]
         if (!a) return false
         return matchesCombo(v.afvulling_id, a.batch_id, a.verpakking_naam)
       })
 
-      // Verplaatsingen vóór periode
       const verplOutBefore = relevanteVerpl.filter((v: any) =>
         v.van_locatie_id === agpId && v.naar_locatie_id !== agpId && beforeDate(v.datum, van)
-      ).reduce((s: number, v: any) => s + Number(v.aantal || 0), 0)
-      const verplInBefore = relevanteVerpl.filter((v: any) =>
-        v.naar_locatie_id === agpId && v.van_locatie_id !== agpId && beforeDate(v.datum, van)
       ).reduce((s: number, v: any) => s + Number(v.aantal || 0), 0)
       const uitFromAgpBefore = uit.filter((u: any) =>
         matchesCombo(u.afvulling_id, u.batch_id, u.verpakking_naam) &&
@@ -329,23 +328,18 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
         beforeDate(u.datum, van)
       ).reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
 
-      const agpBegin = prodBefore - verplOutBefore + verplInBefore - uitFromAgpBefore - afbBefore
+      const agpBegin = prodBefore - verplOutBefore - uitFromAgpBefore - afbBefore
 
-      // In periode: uitstroom uit AGP
       const verplOutInPeriod = relevanteVerpl.filter((v: any) =>
         v.van_locatie_id === agpId && v.naar_locatie_id !== agpId && inRange(v.datum, van, tot)
-      )
-      const verplInInPeriod = relevanteVerpl.filter((v: any) =>
-        v.naar_locatie_id === agpId && v.van_locatie_id !== agpId && inRange(v.datum, van, tot)
       )
       const uitFromAgpInPeriod = uitleveringenInPeriod.filter((u: any) => uitBron(u) === agpId)
 
       const verplOutAantal = verplOutInPeriod.reduce((s: number, v: any) => s + Number(v.aantal || 0), 0)
-      const verplInAantal = verplInInPeriod.reduce((s: number, v: any) => s + Number(v.aantal || 0), 0)
       const uitAgpAantal = uitFromAgpInPeriod.reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
 
       const agpUitgeslagen = verplOutAantal + uitAgpAantal
-      const agpEind = agpBegin + productie + verplInAantal - agpUitgeslagen - bijzMutaties
+      const agpEind = agpBegin + productie - agpUitgeslagen - bijzMutaties
 
       // ── Accijns te betalen in periode ──
       // Belastbaar feit: AGP-uitstroom waar geen vrijstelling op zit.

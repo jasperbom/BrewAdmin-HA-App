@@ -1557,7 +1557,7 @@
   "agp_verplaats_opslaan": "Enregistrer le mouvement",
   "agp_accijns_betaald": "Accise payée",
   "agp_info_accijns_boeken": "L'accise est enregistrée lors de la sortie de l'entrepôt :",
-  "agp_info_geen_accijns_retour": "Aucune accise lors du retour dans l'entrepôt.",
+  "agp_err_geen_retour_naar_agp": "La bière qui a quitté l'AGP ne peut pas y revenir sous suspension. Une procédure de remboursement distincte s'applique pour les accises payées.",
   "agp_info_geen_accijns_buiten": "Mouvement entre emplacements hors entrepôt : aucune accise.",
   "agp_err_aantal_verplicht": "Indiquez une quantité valide.",
   "agp_err_locatie_verplicht": "Choisissez un emplacement source et destination.",

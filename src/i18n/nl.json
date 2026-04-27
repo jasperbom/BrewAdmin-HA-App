@@ -1561,7 +1561,7 @@
   "agp_verplaats_opslaan": "Verplaatsing opslaan",
   "agp_accijns_betaald": "Accijns betaald",
   "agp_info_accijns_boeken": "Bij verplaatsing uit de AGP wordt accijns geboekt:",
-  "agp_info_geen_accijns_retour": "Voor terugplaatsing in de AGP wordt geen accijns geboekt.",
+  "agp_err_geen_retour_naar_agp": "Bier dat de AGP heeft verlaten kan niet onder schorsing terug. Voor teruggaaf van betaalde accijns geldt een aparte procedure.",
   "agp_info_geen_accijns_buiten": "Verplaatsing tussen niet-AGP locaties: geen accijnsboeking.",
   "agp_err_aantal_verplicht": "Geef een geldig aantal op.",
   "agp_err_locatie_verplicht": "Kies een bron- en doellocatie.",

@@ -74,6 +74,9 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
     const naar = locById(vplModal.naar_locatie_id);
     if (!van || !naar) { alert(t('agp_err_locatie_verplicht')); return; }
     if (van.id === naar.id) { alert(t('agp_err_zelfde_locatie')); return; }
+    // Eenmaal uit AGP = uit de schorsingsregeling; terugplaatsing onder schorsing
+    // is geen reguliere voorraadbeweging maar een teruggaaf-procedure.
+    if (naar.is_agp) { alert(t('agp_err_geen_retour_naar_agp')); return; }
 
     const afv = (av||[]).find((a: any) => a.id === vplModal.afvulling_id);
     const voorraad = voorraadPerLocatie(afv, locaties, uit, verplaatsingen, afboekingen);
@@ -441,8 +444,8 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
                       <label className="block text-xs text-gray-500 mb-1">{t('agp_naar')}</label>
                       <select value={vplModal.naar_locatie_id} onChange={e=>setVplModal((f: any)=>({...f, naar_locatie_id: Number(e.target.value)}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
                         <option value={0}>—</option>
-                        {(locaties||[]).filter((l: any) => l.id !== vplModal.van_locatie_id).map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.naam}{l.is_agp?' (AGP)':''}</option>
+                        {(locaties||[]).filter((l: any) => l.id !== vplModal.van_locatie_id && !l.is_agp).map((l: any) => (
+                          <option key={l.id} value={l.id}>{l.naam}</option>
                         ))}
                       </select>
                     </div>
@@ -468,9 +471,6 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
                           {t('agp_info_accijns_boeken')} <span className="font-bold">{fmt(bedrag)}</span> ({liter.toFixed(1)}L × {abv||0}% ABV)
                         </div>
                       );
-                    }
-                    if (van && !van.is_agp && naar?.is_agp) {
-                      return <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-800">{t('agp_info_geen_accijns_retour')}</div>;
                     }
                     if (van && naar && !van.is_agp && !naar.is_agp) {
                       return <div className="bg-gray-50 border border-gray-200 rounded p-3 text-xs text-gray-600">{t('agp_info_geen_accijns_buiten')}</div>;
