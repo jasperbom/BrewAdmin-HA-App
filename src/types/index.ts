@@ -25,8 +25,6 @@ export interface Lot {
   prijs_per_eenheid?: number
   beschikbaar?: boolean
   gn_code?: string
-  ead_id?: number
-  ead_arc?: string
   created_at?: string
 }
 
@@ -439,7 +437,7 @@ export interface Periode {
 
 // Type van uitlevering (AGP-exit richting extern/klant of intern gebruik).
 // 'intern' = bier verlaat AGP voor eigen consumptie binnen de brouwerij.
-export type TypeUitlevering = 'binnenland' | 'intracommunautair' | 'export' | 'intern'
+export type TypeUitlevering = 'binnenland' | 'export' | 'intern'
 
 export interface Uitlevering {
   id: number
@@ -458,7 +456,6 @@ export interface Uitlevering {
   bestemming_adres?: string
   bestemming_land?: string
   vervoerder?: string
-  ead_arc?: string
   created_at?: string
   // Vanaf welke locatie de uitlevering is geleverd. Default = AGP-locatie voor
   // back-compat; bepaalt of er nog accijns wordt geboekt.
@@ -848,26 +845,6 @@ export interface Afboeking {
 }
 
 // ── AGP Compliance Types ─────────────────────────────────────────────────────
-
-export type EADType = 'e-ad' | 'noodprocedure' | 'ontvangstbevestiging'
-export type EADStatus = 'aangemaakt' | 'verzonden' | 'ontvangen' | 'geannuleerd'
-
-export interface EADDocument {
-  id: number
-  arc_nummer?: string
-  type: EADType
-  status: EADStatus
-  uitlevering_id?: number
-  dispatch_type?: TypeUitlevering
-  bestemming_naam?: string
-  bestemming_adres?: string
-  bestemming_land?: string
-  vervoerder?: string
-  datum_aanmaak?: string
-  datum_verzending?: string
-  datum_ontvangst?: string
-  notities?: string
-}
 
 export interface Inventarisatie {
   id: number

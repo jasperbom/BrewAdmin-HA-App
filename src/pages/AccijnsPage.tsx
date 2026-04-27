@@ -1,10 +1,7 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
 import { fmt, fmtD, tod } from '../utils/format'
-import { newId } from '../utils/api'
 import Btn from '../components/ui/Btn'
-import Modal from '../components/ui/Modal'
-import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
 
@@ -91,9 +88,8 @@ const ControleBlok: React.FC<{
   )
 }
 
-function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{}, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
+function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState, useMemo} = React;
-  const [activeTab, setActiveTab] = useState<'accijns'|'ead'>('accijns');
   // acc records: {id, batch_id, batch_nummer, uitlevering_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
   const getAccijns = (a: any) => Number(a.accijns ?? a.totaal_accijns ?? 0);
   const getLiter   = (a: any) => Number(a.liter   ?? a.totaal_liter   ?? 0);
@@ -299,60 +295,8 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
     );
   };
 
-  // ── e-AD Register state ──
-  const [eadModal, setEadModal] = useState<any>(null)
-  const [eadFilter, setEadFilter] = useState('')
-
-  const emptyEad = {type: 'e-ad', status: 'aangemaakt', arc_nummer: '', uitlevering_id: '', dispatch_type: 'binnenland', bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: '', datum_aanmaak: tod(), datum_verzending: '', datum_ontvangst: '', notities: ''}
-
-  const saveEad = () => {
-    if (!eadModal) return
-    const doc = {...eadModal, uitlevering_id: eadModal.uitlevering_id ? Number(eadModal.uitlevering_id) : undefined}
-    const isNew = !doc.id
-    if (doc.id) {
-      setEadDocumenten((prev: any[]) => prev.map((d: any) => d.id === doc.id ? doc : d))
-    } else {
-      setEadDocumenten((prev: any[]) => [...prev, {...doc, id: newId(prev)}])
-    }
-    logAudit(auditLog, setAuditLog, {
-      entiteit: 'e-AD',
-      entiteit_id: doc.id || 0,
-      actie: isNew ? 'aangemaakt' : 'gewijzigd',
-      omschrijving: `${doc.type || 'e-ad'} — ${doc.arc_nummer || doc.bestemming_naam || ''}`,
-    })
-    setEadModal(null)
-  }
-
-  const deleteEad = (id: number) => {
-    const doc = (eadDocumenten||[]).find((d: any) => d.id === id)
-    setEadDocumenten((prev: any[]) => prev.filter((d: any) => d.id !== id))
-    logAudit(auditLog, setAuditLog, {
-      entiteit: 'e-AD',
-      entiteit_id: id,
-      actie: 'verwijderd',
-      omschrijving: doc ? `${doc.type || 'e-ad'} — ${doc.arc_nummer || doc.bestemming_naam || ''}` : '',
-    })
-    setEadModal(null)
-  }
-
-  const eadStatusColor: Record<string,string> = {aangemaakt:'bg-gray-100 text-gray-700', verzonden:'bg-blue-100 text-blue-700', ontvangen:'bg-green-100 text-green-700', geannuleerd:'bg-red-100 text-red-700'}
-  const eadTypeLabel: Record<string,string> = {'e-ad': 'ead_type_ead', noodprocedure: 'ead_type_nood', ontvangstbevestiging: 'ead_type_ontvangst'}
-
-  const filteredEad = useMemo(() => {
-    let docs = [...(eadDocumenten||[])]
-    if (eadFilter) docs = docs.filter((d: any) => d.status === eadFilter)
-    return docs.sort((a: any, b: any) => (b.datum_aanmaak||'').localeCompare(a.datum_aanmaak||''))
-  }, [eadDocumenten, eadFilter])
-
   return (
     <div>
-      {/* Tab header */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <button onClick={()=>setActiveTab('accijns')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab==='accijns' ? 'tbtn text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{t('nav_accijns')}</button>
-        <button onClick={()=>setActiveTab('ead')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab==='ead' ? 'tbtn text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>{t('nav_ead_register')}</button>
-      </div>
-
-      {activeTab==='accijns' && (<div>
       {/* Pagina header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-xl font-bold text-gray-800">{t('nav_accijns')}</h2>
@@ -484,124 +428,6 @@ function AccijnsPage({bat, acc, setAcc, eadDocumenten=[], setEadDocumenten=()=>{
           </div>
         );
       })}
-      </div>)}
-
-      {/* ══════════════════════ e-AD REGISTER ══════════════════════ */}
-      {activeTab==='ead' && (<div>
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 className="text-xl font-bold text-gray-800">{t('ead_titel')}</h2>
-          <div className="flex items-center gap-2">
-            <select value={eadFilter} onChange={e=>setEadFilter(e.target.value)} className="text-sm border rounded px-2 py-1.5">
-              <option value="">{t('lbl_alle')}</option>
-              <option value="aangemaakt">{t('ead_status_aangemaakt')}</option>
-              <option value="verzonden">{t('ead_status_verzonden')}</option>
-              <option value="ontvangen">{t('ead_status_ontvangen')}</option>
-              <option value="geannuleerd">{t('ead_status_geannuleerd')}</option>
-            </select>
-            <Btn onClick={()=>setEadModal({...emptyEad})}>{t('ead_nieuw')}</Btn>
-          </div>
-        </div>
-
-        {filteredEad.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">{t('ead_geen')}</div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-500 bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left">{t('ead_arc_nummer')}</th>
-                  <th className="px-3 py-2 text-left">{t('ead_type')}</th>
-                  <th className="px-3 py-2 text-left">{t('ead_status')}</th>
-                  <th className="px-3 py-2 text-left">{t('lbl_type_uitlevering')}</th>
-                  <th className="px-3 py-2 text-left">{t('lbl_bestemming')}</th>
-                  <th className="px-3 py-2 text-left">{t('ead_datum_aanmaak')}</th>
-                  <th className="px-3 py-2 text-left">{t('ead_gekoppelde_uitlevering')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredEad.map((d: any) => {
-                  const linkedUit = d.uitlevering_id ? uit.find((u: any) => u.id === d.uitlevering_id) : null
-                  return (
-                    <tr key={d.id} className="hover:bg-gray-50 cursor-pointer" onClick={()=>setEadModal({...d})}>
-                      <td className="px-3 py-2 font-mono font-medium">{d.arc_nummer || '—'}</td>
-                      <td className="px-3 py-2">{t(eadTypeLabel[d.type] || 'ead_type_ead')}</td>
-                      <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs font-medium ${eadStatusColor[d.status]||''}`}>{t(`ead_status_${d.status}`)}</span></td>
-                      <td className="px-3 py-2 text-gray-600">{d.dispatch_type ? t(`opt_${d.dispatch_type}`) : '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{d.bestemming_naam || '—'}{d.bestemming_land ? ` (${d.bestemming_land})` : ''}</td>
-                      <td className="px-3 py-2 text-gray-600">{fmtD(d.datum_aanmaak)}</td>
-                      <td className="px-3 py-2 text-gray-500 text-xs">{linkedUit ? `${linkedUit.batch_naam} — ${linkedUit.verpakking_naam}` : '—'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* e-AD Modal */}
-        {eadModal && (
-          <Modal title={eadModal.id ? `e-AD #${eadModal.arc_nummer||eadModal.id}` : t('ead_nieuw')} onClose={()=>setEadModal(null)}>
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <Inp label={t('ead_arc_nummer')} value={eadModal.arc_nummer||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,arc_nummer:v}))} placeholder="ARC…" />
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t('ead_type')}</label>
-                  <select value={eadModal.type} onChange={e=>setEadModal((f: any)=>({...f,type:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                    <option value="e-ad">{t('ead_type_ead')}</option>
-                    <option value="noodprocedure">{t('ead_type_nood')}</option>
-                    <option value="ontvangstbevestiging">{t('ead_type_ontvangst')}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t('ead_status')}</label>
-                  <select value={eadModal.status} onChange={e=>setEadModal((f: any)=>({...f,status:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                    <option value="aangemaakt">{t('ead_status_aangemaakt')}</option>
-                    <option value="verzonden">{t('ead_status_verzonden')}</option>
-                    <option value="ontvangen">{t('ead_status_ontvangen')}</option>
-                    <option value="geannuleerd">{t('ead_status_geannuleerd')}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t('lbl_type_uitlevering')}</label>
-                  <select value={eadModal.dispatch_type||''} onChange={e=>setEadModal((f: any)=>({...f,dispatch_type:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                    <option value="binnenland">{t('opt_binnenland')}</option>
-                    <option value="intracommunautair">{t('opt_intracommunautair')}</option>
-                    <option value="export">{t('opt_export')}</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Inp label={t('lbl_bestemming_naam')} value={eadModal.bestemming_naam||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,bestemming_naam:v}))} />
-                <Inp label={t('lbl_bestemming_land')} value={eadModal.bestemming_land||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,bestemming_land:v}))} placeholder="NL" />
-              </div>
-              <Inp label={t('lbl_bestemming_adres')} value={eadModal.bestemming_adres||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,bestemming_adres:v}))} />
-              <Inp label={t('lbl_vervoerder')} value={eadModal.vervoerder||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,vervoerder:v}))} />
-              <div className="grid grid-cols-3 gap-3">
-                <Inp label={t('ead_datum_aanmaak')} type="date" value={eadModal.datum_aanmaak||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,datum_aanmaak:v}))} />
-                <Inp label={t('ead_datum_verzending')} type="date" value={eadModal.datum_verzending||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,datum_verzending:v}))} />
-                <Inp label={t('ead_datum_ontvangst')} type="date" value={eadModal.datum_ontvangst||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,datum_ontvangst:v}))} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">{t('ead_gekoppelde_uitlevering')}</label>
-                <select value={eadModal.uitlevering_id||''} onChange={e=>setEadModal((f: any)=>({...f,uitlevering_id:e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                  <option value="">—</option>
-                  {(uit||[]).slice(-50).reverse().map((u: any) => (
-                    <option key={u.id} value={u.id}>{fmtD(u.datum)} — {u.batch_naam} ({u.verpakking_naam}, {u.aantal}x)</option>
-                  ))}
-                </select>
-              </div>
-              <Inp label={t('ead_notities')} value={eadModal.notities||''} onChange={(v: string)=>setEadModal((f: any)=>({...f,notities:v}))} />
-              <div className="flex justify-between pt-2">
-                {eadModal.id ? <Btn v="danger" onClick={()=>deleteEad(eadModal.id)}>{t('ead_verwijderen')}</Btn> : <div/>}
-                <div className="flex gap-2">
-                  <Btn v="secondary" onClick={()=>setEadModal(null)}>{t('btn_cancel')}</Btn>
-                  <Btn onClick={saveEad}>{t('ead_opslaan')}</Btn>
-                </div>
-              </div>
-            </div>
-          </Modal>
-        )}
-      </div>)}
     </div>
   );
 }

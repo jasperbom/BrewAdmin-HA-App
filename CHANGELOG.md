@@ -4,6 +4,60 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.9] — 2026-04-27
+
+### Changed — `package-lock.json` synchroniseren met vendored xlsx
+
+- Lockfile geregenereerd zodat de `resolved`-URL voor `xlsx` naar
+  `file:vendor/xlsx-0.20.3.tgz` wijst in plaats van naar de CDN. Maakt
+  `npm ci` reproduceerbaar in de Claude Code-sandbox.
+
+---
+
+## [1.9.8] — 2026-04-27
+
+### Changed — `xlsx` gevendord + SessionStart-hook voor Claude Code op het web
+
+- `xlsx@0.20.3` wordt nu vanuit `vendor/xlsx-0.20.3.tgz` geïnstalleerd in plaats
+  van `https://cdn.sheetjs.com/...`. SheetJS publiceert niet op npm en de
+  CDN is onbereikbaar vanuit de Claude Code-sandbox; vendoren maakt installs
+  deterministisch en offline-capable.
+- `.claude/hooks/session-start.sh` + registratie in `.claude/settings.json`
+  draait `npm install` bij sessiestart in de remote-sandbox (idempotent: skipt
+  als `node_modules` al gevuld is). Lokale dev-omgevingen worden niet geraakt
+  (`CLAUDE_CODE_REMOTE`-guard).
+- `vendor/README.md` documenteert hoe de tarball ververst wordt.
+
+---
+
+## [1.9.7] — 2026-04-27
+
+### Added — AGP-perspectief en accijns in Voorraadverloop
+
+- **Voorraadverloop "Gereed product"-tabel uitgebreid** met drie kolomgroepen:
+  totaalvoorraad (begin/productie/binnenland/export/bijz./eind), AGP-voorraad onder
+  schorsing (begin/uitgeslagen/eind) en accijns (latente schuld op AGP-eindvoorraad +
+  te betalen accijns over de periode).
+- **Latente schuld** wordt berekend met de bevroren `voorcalc_accijns_per_eenheid`
+  snapshot per afvulling, zodat tariefwijzigingen historische cijfers niet aantasten.
+- **Te betalen accijns** somt alle uitstroom uit AGP in de periode (uitleveringen +
+  verplaatsingen naar niet-AGP-locaties), met export als niet-belastbaar feit.
+- Excel-export bevat de nieuwe kolommen.
+
+### Removed — Intracommunautair en e-AD geschrapt
+
+- `TypeUitlevering = 'intracommunautair'` is verwijderd. Bestaande records met
+  deze waarde renderen leeg in de UI.
+- e-AD register-tab in `AccijnsPage` is verwijderd, inclusief `EADDocument`,
+  `EADType`, `EADStatus` types en de `ead_documenten`-data sleutel.
+- IC-optie + e-AD-waarschuwing in de bestelling-uitleverings-modal verdwenen.
+- `agp_stroom_eu` badge in het AGP-stroomdiagram (Instellingen) verdwenen.
+- ARC-nummer-veld op ingrediëntlots verdwenen. e-AD-sheet uit Excel-backup verdwenen.
+- 30+ i18n-sleutels in 5 talen opgeruimd, AGP/accijns-sleutels toegevoegd.
+- BTW-rubriek 2a (intracommunautaire BTW-aangifte) blijft staan — separate van accijns.
+
+---
+
 ## [1.9.6] — 2026-04-27
 
 ### Added — Privé vs. zakelijk onderscheid op orders + AGP-restrictie privé
