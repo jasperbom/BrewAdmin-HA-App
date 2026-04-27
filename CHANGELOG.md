@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.8] — 2026-04-27
+
+### Improved — CCP-meting invoer is nu zelfsturend
+
+- **Eenheid in label** — het waarde-veld toont de eenheid van de gekozen CCP direct in het label (bv. "Gemeten waarde (°C)").
+- **Acceptabele waarde inline** — onder het invoerveld verschijnen de min/max-grenzen uit de CCP-definitie, zodat duidelijk is wat als afwijking telt.
+- **Monitoring-methode + kritische grens bovenin** — direct onder de CCP-keuze tonen we de bijhorende monitoringmethode en de tekstuele kritische grens, zodat de operator niet hoeft te zoeken wat er gemeten moet worden.
+- **Real-time afwijkingsindicator** — wanneer de ingevulde waarde buiten de grenzen valt, kleurt het help-blokje rood met een waarschuwingspictogram en de melding dat een CAPA-record automatisch wordt aangemaakt.
+- **HTML5 min/max** — browser-validatie via min/max-attributen op de number input.
+
+### Bestanden gewijzigd
+- `src/pages/HACCPPage.tsx` — `ccp_met`-modal omgebouwd tot IIFE die de geselecteerde CCP-definitie ophaalt en context toont; placeholder, label-suffix met eenheid en help-strip met range + out-of-range-indicator toegevoegd.
+- `src/i18n/{nl,en,de,fr,es}.json` — 4 nieuwe sleutels (`haccp_ccp_waarde_ph`, `haccp_ccp_waarde_ph_geen_eenheid`, `haccp_ccp_acceptabele_range`, `haccp_ccp_buiten_grenzen`).
+
+---
+
 ## [1.9.7] — 2026-04-27
 
 ### Fixed — AGP-restoratie verboden

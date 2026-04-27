@@ -420,7 +420,17 @@ function CCPTab({bat, ccpDefinities, setCcpDefinities, ccpMetingen, setCcpMeting
         </Modal>
       )}
 
-      {modal==='ccp_met' && edit && (
+      {modal==='ccp_met' && edit && (() => {
+        const selCcp = (ccpDefinities||[]).find((d:any) => d.id === Number(edit.ccp_id))
+        const unit = selCcp?.eenheid?.trim() || ''
+        const hasMin = selCcp?.grens_min != null
+        const hasMax = selCcp?.grens_max != null
+        const numW = edit.waarde !== '' && edit.waarde != null ? Number(edit.waarde) : null
+        const outOfRange = selCcp && numW != null && !isNaN(numW) && !checkLimiet(selCcp, numW)
+        const rangeLabel = hasMin || hasMax
+          ? `${hasMin ? `≥ ${selCcp.grens_min}` : ''}${hasMin && hasMax ? ' – ' : ''}${hasMax ? `≤ ${selCcp.grens_max}` : ''}${unit ? ` ${unit}` : ''}`
+          : ''
+        return (
         <Modal title={t('haccp_ccp_meting_nieuw')} onClose={()=>{setModal(null);setEdit(null)}}>
           <div className="space-y-3">
             <div>
@@ -428,6 +438,12 @@ function CCPTab({bat, ccpDefinities, setCcpDefinities, ccpMetingen, setCcpMeting
               <select value={edit.ccp_id||''} onChange={e=>setEdit({...edit,ccp_id:Number(e.target.value)})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 {(ccpDefinities||[]).filter((d:any)=>d.actief!==false).map((d:any)=><option key={d.id} value={d.id}>{d.naam}</option>)}
               </select>
+              {selCcp && (
+                <div className="mt-1.5 p-2 rounded bg-gray-50 border border-gray-200 text-xs text-gray-600 space-y-0.5">
+                  {selCcp.monitoring_methode && <div><span className="font-semibold">{t('haccp_ccp_monitoring')}:</span> {selCcp.monitoring_methode}</div>}
+                  {selCcp.kritische_grens && <div><span className="font-semibold">{t('haccp_ccp_kritische_grens')}:</span> {selCcp.kritische_grens}</div>}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_ccp_selecteer_batch')}</label>
@@ -435,7 +451,24 @@ function CCPTab({bat, ccpDefinities, setCcpDefinities, ccpMetingen, setCcpMeting
                 {activeBat.map((b:any)=><option key={b.id} value={b.id}>{b.naam}</option>)}
               </select>
             </div>
-            <Inp label={t('haccp_ccp_waarde')} type="number" value={edit.waarde??''} onChange={v=>setEdit({...edit,waarde:v})} req />
+            <div>
+              <Inp
+                label={`${t('haccp_ccp_waarde')}${unit ? ` (${unit})` : ''}`}
+                type="number"
+                value={edit.waarde??''}
+                onChange={v=>setEdit({...edit,waarde:v})}
+                placeholder={unit ? t('haccp_ccp_waarde_ph').replace('{eenheid}', unit) : t('haccp_ccp_waarde_ph_geen_eenheid')}
+                min={hasMin ? selCcp.grens_min : undefined}
+                max={hasMax ? selCcp.grens_max : undefined}
+                req
+              />
+              {selCcp && (
+                <div className={`mt-1 text-xs ${outOfRange ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                  {rangeLabel && <span>{t('haccp_ccp_acceptabele_range')}: {rangeLabel}</span>}
+                  {outOfRange && <span className="ml-2">⚠ {t('haccp_ccp_buiten_grenzen')}</span>}
+                </div>
+              )}
+            </div>
             <Inp label={t('haccp_schoonmaak_datum')} type="date" value={edit.datum||tod()} onChange={v=>setEdit({...edit,datum:v})} />
             <Inp label={t('lbl_uitgevoerd_door')} value={edit.uitgevoerd_door||''} onChange={v=>setEdit({...edit,uitgevoerd_door:v})} />
             <Inp label={t('lbl_opmerking')} value={edit.opmerking||''} onChange={v=>setEdit({...edit,opmerking:v})} />
@@ -445,7 +478,8 @@ function CCPTab({bat, ccpDefinities, setCcpDefinities, ccpMetingen, setCcpMeting
             </div>
           </div>
         </Modal>
-      )}
+        )
+      })()}
     </div>
   )
 }
