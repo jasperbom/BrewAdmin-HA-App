@@ -3,9 +3,11 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /build
 
-# Installeer dependencies eerst (betere Docker cache)
-COPY package.json ./
-RUN npm install
+# Installeer dependencies eerst (betere Docker cache).
+# vendor/ bevat de gevendoorde xlsx-tarball waar package.json naar verwijst.
+COPY package.json package-lock.json ./
+COPY vendor/ ./vendor/
+RUN npm ci
 
 # Kopieer broncode en bouw
 COPY vite.config.ts tsconfig.json tailwind.config.js postcss.config.js index.html ./

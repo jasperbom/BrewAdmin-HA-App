@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.10] — 2026-04-27
+
+### Fixed — Dockerfile kopieert vendor/ vóór npm install
+
+- `COPY package.json package-lock.json ./` + `COPY vendor/ ./vendor/`
+  vóór `RUN npm ci`. De vorige stap kopieerde alleen `package.json`,
+  waardoor de `file:./vendor/xlsx-0.20.3.tgz`-dependency niet gevonden
+  werd en de HA-addon-build faalde met `ENOENT: vendor/xlsx-0.20.3.tgz`.
+- Switch van `npm install` naar `npm ci` voor deterministische installs
+  (vereist `package-lock.json`, ~3× sneller).
+
+---
+
 ## [1.9.9] — 2026-04-27
 
 ### Changed — `package-lock.json` synchroniseren met vendored xlsx
