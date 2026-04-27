@@ -1575,6 +1575,7 @@
   "agp_err_aantal_verplicht": "Geef een geldig aantal op.",
   "agp_err_locatie_verplicht": "Kies een bron- en doellocatie.",
   "agp_err_zelfde_locatie": "Bron- en doellocatie moeten verschillen.",
+  "agp_err_naar_agp_verboden": "Voorraad die uit de AGP is gehaald kan niet terug. Eenmaal verplaatst is de accijns verschuldigd en blijft de voorraad buiten AGP.",
   "agp_err_te_weinig_voorraad": "Maximaal {n} stuks beschikbaar op deze locatie.",
   "agp_err_naam_verplicht": "Naam is verplicht.",
   "agp_err_agp_niet_verwijderen": "De AGP-locatie kan niet worden verwijderd.",

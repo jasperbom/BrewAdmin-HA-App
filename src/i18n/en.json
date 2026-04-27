@@ -1574,6 +1574,7 @@
   "agp_err_aantal_verplicht": "Enter a valid quantity.",
   "agp_err_locatie_verplicht": "Select a source and destination location.",
   "agp_err_zelfde_locatie": "Source and destination must differ.",
+  "agp_err_naar_agp_verboden": "Stock that has left the AGP cannot return. Once moved out, the excise duty is due and the stock stays outside the AGP.",
   "agp_err_te_weinig_voorraad": "Only {n} units available at this location.",
   "agp_err_naam_verplicht": "Name is required.",
   "agp_err_agp_niet_verwijderen": "The warehouse location cannot be deleted.",

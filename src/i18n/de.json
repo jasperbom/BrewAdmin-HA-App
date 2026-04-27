@@ -1574,6 +1574,7 @@
   "agp_err_aantal_verplicht": "Geben Sie eine gültige Menge ein.",
   "agp_err_locatie_verplicht": "Wählen Sie einen Quell- und Zielstandort.",
   "agp_err_zelfde_locatie": "Quelle und Ziel müssen unterschiedlich sein.",
+  "agp_err_naar_agp_verboden": "Bestände, die das Steuerlager (AGP) verlassen haben, können nicht zurück. Nach dem Auslagern ist die Verbrauchsteuer fällig und der Bestand bleibt außerhalb des AGP.",
   "agp_err_te_weinig_voorraad": "Nur {n} Stück an diesem Standort verfügbar.",
   "agp_err_naam_verplicht": "Name ist erforderlich.",
   "agp_err_agp_niet_verwijderen": "Der Steuerlager-Standort kann nicht gelöscht werden.",

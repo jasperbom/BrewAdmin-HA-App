@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.7] — 2026-04-27
+
+### Fixed — AGP-restoratie verboden
+
+- **Verplaatsing terug naar AGP geblokkeerd** — voorraad die de Accijnsgoederenplaats heeft verlaten kan niet meer terug. Eenmaal uitgeslagen is de accijns verschuldigd; voorraad terugzetten zou een rommelige accijnsadministratie opleveren. De AGP is uitgesloten als bestemming in de verplaatsing-modal en `saveVerplaats` weigert hard wanneer `naar.is_agp` waar is.
+- **Info-strip vervangen** — de blauwe banner "geen accijns retour" is vervangen door een rode blokkeer-melding die uitlegt dat dit niet meer kan.
+
+### Bestanden gewijzigd
+- `src/pages/AgpPage.tsx` — extra check in `saveVerplaats`, AGP-filter op de "naar"-dropdown, info-banner aangepast.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutel `agp_err_naar_agp_verboden`.
+
+---
+
 ## [1.9.6] — 2026-04-27
 
 ### Added — Privé vs. zakelijk onderscheid op orders + AGP-restrictie privé

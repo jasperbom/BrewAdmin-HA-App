@@ -1571,6 +1571,7 @@
   "agp_err_aantal_verplicht": "Indique una cantidad válida.",
   "agp_err_locatie_verplicht": "Seleccione ubicación de origen y destino.",
   "agp_err_zelfde_locatie": "Origen y destino deben ser diferentes.",
+  "agp_err_naar_agp_verboden": "El stock que ha salido del depósito fiscal (AGP) no puede volver. Una vez fuera, el impuesto especial es exigible y el stock permanece fuera del AGP.",
   "agp_err_te_weinig_voorraad": "Solo {n} unidades disponibles en esta ubicación.",
   "agp_err_naam_verplicht": "El nombre es obligatorio.",
   "agp_err_agp_niet_verwijderen": "La ubicación del depósito fiscal no se puede eliminar.",
