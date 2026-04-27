@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.9] — 2026-04-27
+
+### Changed — `package-lock.json` synchroniseren met vendored xlsx
+
+- Lockfile geregenereerd zodat de `resolved`-URL voor `xlsx` naar
+  `file:vendor/xlsx-0.20.3.tgz` wijst in plaats van naar de CDN. Maakt
+  `npm ci` reproduceerbaar in de Claude Code-sandbox.
+
+---
+
 ## [1.9.8] — 2026-04-27
 
 ### Changed — `xlsx` gevendord + SessionStart-hook voor Claude Code op het web
