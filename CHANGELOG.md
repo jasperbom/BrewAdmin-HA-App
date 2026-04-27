@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.6] — 2026-04-27
+
+### Added — Privé vs. zakelijk onderscheid op orders + AGP-restrictie privé
+
+- **Klanttype op `Bestelling` en `Klant`** — nieuw veld `klant_type: 'prive' | 'zakelijk'`. Handmatige orders krijgen een toggle bij het aanmaken, met privé als default. Bedrijfsnaam is verplicht voor zakelijke orders.
+- **WooCommerce-import** — `klant_type` wordt afgeleid uit `billing.company` (en BTW-nummer indien aanwezig in metadata): gevuld → zakelijk, anders → privé.
+- **Hard blokkeren AGP voor privéklanten** — privéklanten mogen wettelijk niet uit de Accijnsgoederenplaats geleverd worden. De picking modal toont voor privé-orders alleen voorraad buiten AGP, de locatie-keuze sluit AGP uit, en `rondeAf` valt niet meer terug op AGP. Bij ontoereikende non-AGP-voorraad volgt een duidelijke foutmelding met instructie om eerst voorraad uit AGP te verplaatsen.
+- **Lazy backfill** — bestaande orders zonder `klant_type` worden afgeleid uit `klant_bedrijf`, maar alleen voor niet-verzonden orders, zodat historische allocaties intact blijven.
+- **UI** — privé/zakelijk-badges op de orderlijst en order-detailpagina; info-banner op de pickmodal voor privé-orders.
+
+### Bestanden gewijzigd
+- `src/types/index.ts` — `KlantType`-type, `klant_type` op `Bestelling` en `Klant`.
+- `src/pages/BestellingenPage.tsx` — `effectiveKlantType`, `beschikbaarBuitenAgpVoorAfvulling`, klant-type-toggle in handmatige order-modal, AGP-filter in pick modal, validatie in `savePicks` en `rondeAf`, badges in lijst en detail.
+- `src/i18n/{nl,en,de,fr,es}.json` — 7 nieuwe sleutels (`lbl_klant_type`, `lbl_zakelijk`, `lbl_prive`, `info_prive_buiten_agp`, `err_order_company_required`, `err_prive_geen_agp`, `err_prive_buiten_agp_ontoereikend`).
+
+---
+
 ## [1.9.5] — 2026-04-25
 
 ### Added — Douane-compliance v2.4 (reactie Douane op Bedrijfshandboek v2.3)
