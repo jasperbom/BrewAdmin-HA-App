@@ -1937,10 +1937,6 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               </div>
               <div className="flex items-center gap-1 ml-1">
                 <span className="text-gray-400 text-xs">&rarr;</span>
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">{t('agp_stroom_eu')}</span>
-              </div>
-              <div className="flex items-center gap-1 ml-1">
-                <span className="text-gray-400 text-xs">&rarr;</span>
                 <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">{t('agp_stroom_export')}</span>
               </div>
             </div>

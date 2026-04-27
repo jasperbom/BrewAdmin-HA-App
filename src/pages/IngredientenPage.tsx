@@ -159,7 +159,6 @@ const IngredientenPage: React.FC<Props> = ({
       houdbaarheid: lot.houdbaarheid || '',
       prijs_per_eenheid: lot.prijs_per_eenheid != null ? String(lot.prijs_per_eenheid) : '',
       gn_code: lot.gn_code || '',
-      ead_arc: lot.ead_arc || '',
     })
     setLotCorr({ delta: '', richting: '+', reden: '', eenheid: lot.eenheid || '' })
   }
@@ -176,7 +175,6 @@ const IngredientenPage: React.FC<Props> = ({
       houdbaarheid: lotEdit.houdbaarheid || null,
       prijs_per_eenheid: lotEdit.prijs_per_eenheid !== '' ? Number(lotEdit.prijs_per_eenheid) : null,
       gn_code: lotEdit.gn_code || undefined,
-      ead_arc: lotEdit.ead_arc || undefined,
       beschikbaar: (Number(lotEdit.hoeveelheid) || 0) > 0,
     }))
     logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: showLot.id, actie: 'gewijzigd', omschrijving: showLot.lotnummer || `Lot #${showLot.id}` })
@@ -751,7 +749,6 @@ const IngredientenPage: React.FC<Props> = ({
                 <Inp label={t('lbl_tht')} type="date" value={le('houdbaarheid')} onChange={(v: string) => setLe('houdbaarheid', v)} />
                 <Inp label={t('modal_price_per_unit')} type="number" value={le('prijs_per_eenheid')} onChange={(v: string) => setLe('prijs_per_eenheid', v)} placeholder="—" />
                 <Inp label={t('lbl_gn_code')} value={le('gn_code')} onChange={(v: string) => setLe('gn_code', v)} placeholder="2203 00 09" />
-                <Inp label={t('ead_arc_nummer')} value={le('ead_arc')} onChange={(v: string) => setLe('ead_arc', v)} placeholder="22NL00000000E0000000" />
                 {origQty > 0 && <div><div className="text-xs text-gray-400">{t('ing_original_received')}</div><div className="font-medium text-gray-700">{origQty} {l.eenheid}</div></div>}
               </div>
               <div>

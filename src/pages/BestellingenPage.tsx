@@ -1112,7 +1112,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <div>
                     <select value={uitleveringForm.type_uitlevering} onChange={e => setUitleveringForm(f => ({...f, type_uitlevering: e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
                       <option value="binnenland">{t('opt_binnenland')}</option>
-                      <option value="intracommunautair">{t('opt_intracommunautair')}</option>
                       <option value="export">{t('opt_export')}</option>
                     </select>
                   </div>
@@ -1127,7 +1126,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_land')} value={uitleveringForm.bestemming_land} onChange={e => setUitleveringForm(f => ({...f, bestemming_land: e.target.value}))} />
                     </div>
                     <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_adres')} value={uitleveringForm.bestemming_adres} onChange={e => setUitleveringForm(f => ({...f, bestemming_adres: e.target.value}))} />
-                    <div className="text-xs text-amber-600 font-medium">{t('msg_ead_vereist')}</div>
                   </>
                 )}
               </div>

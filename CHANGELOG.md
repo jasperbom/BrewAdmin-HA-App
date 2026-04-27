@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.7] — 2026-04-27
+
+### Added — AGP-perspectief en accijns in Voorraadverloop
+
+- **Voorraadverloop "Gereed product"-tabel uitgebreid** met drie kolomgroepen:
+  totaalvoorraad (begin/productie/binnenland/export/bijz./eind), AGP-voorraad onder
+  schorsing (begin/uitgeslagen/eind) en accijns (latente schuld op AGP-eindvoorraad +
+  te betalen accijns over de periode).
+- **Latente schuld** wordt berekend met de bevroren `voorcalc_accijns_per_eenheid`
+  snapshot per afvulling, zodat tariefwijzigingen historische cijfers niet aantasten.
+- **Te betalen accijns** somt alle uitstroom uit AGP in de periode (uitleveringen +
+  verplaatsingen naar niet-AGP-locaties), met export als niet-belastbaar feit.
+- Excel-export bevat de nieuwe kolommen.
+
+### Removed — Intracommunautair en e-AD geschrapt
+
+- `TypeUitlevering = 'intracommunautair'` is verwijderd. Bestaande records met
+  deze waarde renderen leeg in de UI.
+- e-AD register-tab in `AccijnsPage` is verwijderd, inclusief `EADDocument`,
+  `EADType`, `EADStatus` types en de `ead_documenten`-data sleutel.
+- IC-optie + e-AD-waarschuwing in de bestelling-uitleverings-modal verdwenen.
+- `agp_stroom_eu` badge in het AGP-stroomdiagram (Instellingen) verdwenen.
+- ARC-nummer-veld op ingrediëntlots verdwenen. e-AD-sheet uit Excel-backup verdwenen.
+- 30+ i18n-sleutels in 5 talen opgeruimd, AGP/accijns-sleutels toegevoegd.
+- BTW-rubriek 2a (intracommunautaire BTW-aangifte) blijft staan — separate van accijns.
+
+---
+
 ## [1.9.6] — 2026-04-27
 
 ### Added — Privé vs. zakelijk onderscheid op orders + AGP-restrictie privé
