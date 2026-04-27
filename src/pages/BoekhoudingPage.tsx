@@ -149,8 +149,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     setBijlageUploading(null);
   };
 
-  const knownLeveranciers = React.useMemo(() =>
-    [...new Set(inkoopFacturen.map((f: any)=>f.leverancier).filter(Boolean))].sort(), [inkoopFacturen]);
+  const knownLeveranciers = React.useMemo<string[]>(() =>
+    [...new Set(inkoopFacturen.map((f: any)=>f.leverancier).filter(Boolean) as string[])].sort(), [inkoopFacturen]);
 
   // ── Inkoop computed values ──────────────────────────────────────────────
   const inkoopGefilterd = React.useMemo(() =>
@@ -2310,7 +2310,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               }
             </div>
             {aangifteError && <p className="mt-2 text-sm text-red-600">{aangifteError}</p>}
-            {aangifteFetched && <p className="mt-2 text-xs text-green-600">{t('msg_aangifte_loaded').replace('{n}',aangifteOrders.length).replace('{year}',aangifteYear)}</p>}
+            {aangifteFetched && <p className="mt-2 text-xs text-green-600">{t('msg_aangifte_loaded').replace('{n}',String(aangifteOrders.length)).replace('{year}',String(aangifteYear))}</p>}
           </div>
 
           {/* Jaar totaal */}

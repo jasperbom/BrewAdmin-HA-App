@@ -499,7 +499,7 @@ function InkoopFactuurModal({
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-medium text-gray-600">{t('lbl_totaalprijs')}</label>
                     <button type="button"
-                      onClick={() => { const ni=!productTotInclBtw; setProductTotInclBtw(ni); if(ni){const n=parseFloat(productForm.totaalprijs||0); const b=Number(productForm.btw_tarief||0); setProductBrutoStr(n?(n*(1+b/100)).toFixed(2):'')} }}
+                      onClick={() => { const ni=!productTotInclBtw; setProductTotInclBtw(ni); if(ni){const n=parseFloat(String(productForm.totaalprijs||'0')); const b=Number(productForm.btw_tarief||0); setProductBrutoStr(n?(n*(1+b/100)).toFixed(2):'')} }}
                       className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
                       {productTotInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
                     </button>
@@ -565,7 +565,7 @@ function InkoopFactuurModal({
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-medium text-gray-600">{t('lbl_totaalprijs')}</label>
                     <button type="button"
-                      onClick={() => { const ni=!verpakTotInclBtw; setVerpakTotInclBtw(ni); if(ni){const n=parseFloat(vOntvForm.totaalprijs||0); const b=Number(vOntvForm.btw_tarief||0); setVerpakBrutoStr(n?(n*(1+b/100)).toFixed(2):'')} }}
+                      onClick={() => { const ni=!verpakTotInclBtw; setVerpakTotInclBtw(ni); if(ni){const n=parseFloat(String(vOntvForm.totaalprijs||'0')); const b=Number(vOntvForm.btw_tarief||0); setVerpakBrutoStr(n?(n*(1+b/100)).toFixed(2):'')} }}
                       className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
                       {verpakTotInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
                     </button>

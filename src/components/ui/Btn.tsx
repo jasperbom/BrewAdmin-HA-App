@@ -8,9 +8,10 @@ interface BtnProps {
   cls?: string
   disabled?: boolean
   type?: 'button' | 'submit' | 'reset'
+  title?: string
 }
 
-const Btn: React.FC<BtnProps> = ({children, onClick, v='primary', s='md', cls='', disabled=false, type='button'}) => {
+const Btn: React.FC<BtnProps> = ({children, onClick, v='primary', s='md', cls='', disabled=false, type='button', title}) => {
   const sz: Record<string,string> = {sm:'px-2.5 py-1 text-xs', md:'px-4 py-1.5 text-sm', lg:'px-5 py-2 text-sm'}
   const vr: Record<string,string> = {
     primary:'tbtn text-white shadow-sm',
@@ -27,6 +28,7 @@ const Btn: React.FC<BtnProps> = ({children, onClick, v='primary', s='md', cls=''
       type={type}
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`rounded-lg font-medium ${sz[s]} ${vr[v]} ${disabled?'opacity-50 cursor-not-allowed':'cursor-pointer'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-current ${cls}`}
     >
       {children}

@@ -32,6 +32,8 @@ interface Props {
   ingTypeBtw?: Record<string, any>
   kostenSoorten?: string[]
   bfCreds?: any
+  auditLog?: any[]
+  setAuditLog?: (v: any) => void
 }
 
 const IngredientenPage: React.FC<Props> = ({
@@ -526,7 +528,7 @@ const IngredientenPage: React.FC<Props> = ({
                     <tr><td colSpan={4} className="px-3 py-1">
                       <button className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 py-1" onClick={() => setArchiefOpen((p: any) => ({ ...p, [sel]: !p[sel] }))}>
                         <span className="text-gray-400">{archiefOpen[sel] ? '▼' : '▶'}</span>
-                        <span>{t('ing_archived_lots').replace('{n}', archiefLots(sel).length)}</span>
+                        <span>{t('ing_archived_lots').replace('{n}', String(archiefLots(sel).length))}</span>
                       </button>
                     </td></tr>
                   )}
@@ -575,7 +577,7 @@ const IngredientenPage: React.FC<Props> = ({
                 onToggle={() => setVtIngeklapt((v: boolean) => !v)}
                 rounded={vtIngeklapt ? 'full' : 'top'}
                 title={t('verpakking_components_section')}
-                info={<Btn s="sm" v="header" onClick={(e: any) => { e.stopPropagation(); setVtForm(emptyVT); setVtOnderdeel({ onderdeel_id: '', aantal: '1' }); setShowVEdit(null); setShowVTAdd(true) }}>{t('verpakking_add_btn')}</Btn>}
+                info={<span onClick={(e: any) => e.stopPropagation()}><Btn s="sm" v="header" onClick={() => { setVtForm(emptyVT); setVtOnderdeel({ onderdeel_id: '', aantal: '1' }); setShowVEdit(null); setShowVTAdd(true) }}>{t('verpakking_add_btn')}</Btn></span>}
               />
               {!vtIngeklapt && <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
@@ -626,7 +628,7 @@ const IngredientenPage: React.FC<Props> = ({
                 onToggle={() => setOdIngeklapt((v: boolean) => !v)}
                 rounded={odIngeklapt ? 'full' : 'top'}
                 title={t('tab_onderdelen')}
-                info={<Btn s="sm" v="header" onClick={(e: any) => { e.stopPropagation(); setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(true) }}>{t('onderdeel_add_btn')}</Btn>}
+                info={<span onClick={(e: any) => e.stopPropagation()}><Btn s="sm" v="header" onClick={() => { setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(true) }}>{t('onderdeel_add_btn')}</Btn></span>}
               />
               {!odIngeklapt && <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
@@ -654,7 +656,7 @@ const IngredientenPage: React.FC<Props> = ({
                       <td className="px-3 py-2.5 text-right text-xs text-gray-500">{Number(od.kosten_per_stuk || 0) > 0 ? fmt(od.kosten_per_stuk) : <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1 justify-end">
-                          <Btn s="sm" v="ghost" onClick={() => { setOdEditForm({ naam: od.naam, type: od.type || '', kosten_per_stuk: String(od.kosten_per_stuk || ''), leverancier: od.leverancier || '', factuurnummer: od.factuurnummer || '', voorraad: String(od.voorraad || 0) }); setShowODEdit(od) }}>✏️</Btn>
+                          <Btn s="sm" v="ghost" onClick={() => { setOdEditForm({ od_id: String(od.id ?? ''), lotnr: od.lotnr || '', naam: od.naam, type: od.type || '', kosten_per_stuk: String(od.kosten_per_stuk || ''), leverancier: od.leverancier || '', factuurnummer: od.factuurnummer || '', voorraad: String(od.voorraad || 0) }); setShowODEdit(od) }}>✏️</Btn>
                           <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) { logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: od.id, actie: 'verwijderd', omschrijving: od.naam }); setOnderdelen((prev: any[]) => prev.filter((x: any) => x.id !== od.id)) } }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                       </td>

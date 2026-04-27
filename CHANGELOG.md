@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.13] — 2026-04-27
+
+### Changed — Belastbaar feit verschoven naar Picken (Douane v2.4 §10.2)
+
+- **Picken = uitslag uit AGP.** `savePicks()` maakt nu zelf de `Uitlevering`- en `Accijns`-records aan zodra alle picks compleet zijn; voorheen ontstonden die pas bij Afronden. Dit volgt §10.2 van het bedrijfshandboek: "Op dit moment verlaat het bier de AGP en is het veraccijnsd."
+- **Nieuwe knop "📦 Markeer verzonden"** tussen Gepickt en Afgerond — een logistieke statusovergang zonder fiscaal effect.
+- **Order afronden** is teruggebracht tot factuur + pakbon + status `'afgerond'`. De afrondmodal communiceert dit nu expliciet.
+- **Picking-modal sectie "Uitslag uit AGP"** — `type_uitlevering` (binnenland / intra-EU / export), bestemming en vervoerder worden nu vóór bevestiging ingevuld.
+- **Achterwaarts compatibel:** legacy-picks zonder `uitlevering_ids` triggeren een fallback in `rondeAf` zodat oude data probleemloos blijft werken.
+- Refactor: `bouwUitslagRecords()` extraheert de per-locatie-allocatie en record-creatie uit `rondeAf` voor hergebruik.
+
+### Changed — Vernietigingsflow met statussen Aangevraagd → Toegestaan → Uitgevoerd (Douane v2.4 §7.2.3)
+
+- **Stap 1 — Aangevraagd.** Bij aanmaken van een vernietiging is verplicht: datum indiening verklaring + minstens één bijlage met rol `douane_verklaring`. De UI verwijst naar het Douane-formulier "Verklaring vernietiging accijns- of verbruiksbelastinggoederen vanuit een schorsingsregeling/vrijstelling" op www.douane.nl. Voorraad wordt gereserveerd.
+- **Stap 2 — Toegestaan.** Nieuwe vervolgmodal voor het verwerken van schriftelijke toestemming Douane: datum + optioneel kenmerk.
+- **Stap 3 — Uitgevoerd.** Datum uitvoering + minstens één bijlage met rol `bewijs` (foto/video). Bij bevestigen wordt de voorraad definitief afgeboekt en logt het auditlog dat de potentiële accijnsschuld vervalt voor de vernietigde hoeveelheid.
+- **Statusbadges** (Aangevraagd geel, Toegestaan blauw, Uitgevoerd groen) in de afboekingenlijst per afvulling, met "→ Toestemming verwerken" / "→ Uitvoeren registreren" knoppen.
+- **Bijlagen tonen hun rol** als label ("verklaring" / "bewijs").
+- Legacy-afboekingen zonder status worden weergegeven als `'aangevraagd'`.
+
+### Fixed — Pre-existing TypeScript-errors
+
+Alle 17 baseline-tsc-errors opgelost zodat `tsc --noEmit` nu schoon door komt:
+- `Btn.title?: string` toegevoegd aan `BtnProps` (lost BatchesPage 1396 + nieuwe BestellingenPage-knop op).
+- `IngredientenPage.Props` uitgebreid met optionele `auditLog` en `setAuditLog` (lost App.tsx 824 op).
+- `BestellingenPage` `draftPicks` type uitgebreid met `bron_locatie_id?: number | null`.
+- `InkoopFactuurModal` `parseFloat(...||0)` → `parseFloat(String(...||'0'))` (2x).
+- `BoekhoudingPage.knownLeveranciers` als `useMemo<string[]>` getypeerd; `replace('{n}', n)` met `String(...)` cast.
+- `DashboardPage` `<SectionHeader rounded>` → `rounded="top"`.
+- `IngredientenPage` `<Btn onClick={(e) => ...}>` met argument verpakt in `<span onClick>` wrapper (2x); `setOdEditForm({...})` aangevuld met `od_id` + `lotnr`; `replace('{n}', ...)` met `String()` cast.
+
+### Bestanden gewijzigd
+
+- `src/pages/BestellingenPage.tsx` — belastbaar feit naar picken, `markVerzonden`, picking-modal uitlevering-sectie.
+- `src/pages/ProductenPage.tsx` — 3-staps vernietigingsflow + vernietigingsreview-modal.
+- `src/i18n/nl.json` — `order_mark_shipped` toegevoegd, `order_complete` herbenoemd naar "Afronden".
+- `src/components/ui/Btn.tsx` — `title?: string` prop.
+- `src/components/InkoopFactuurModal.tsx` — type-coercion fix.
+- `src/pages/BoekhoudingPage.tsx`, `DashboardPage.tsx`, `IngredientenPage.tsx` — diverse type-fixes.
+- `config.yaml` — versie bump 1.9.12 → 1.9.13.
+
+---
+
 ## [1.9.12] — 2026-04-27
 
 ### Improved — CCP-meting invoer is nu zelfsturend

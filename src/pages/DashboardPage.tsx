@@ -886,7 +886,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
           <SectionHeader
             title={t('plan_agenda')}
             info={<span className="text-xs text-gray-500">{komendeBrouwsels.length}</span>}
-            rounded
+            rounded="top"
           />
           <div className="divide-y divide-gray-100">
             {komendeBrouwsels.map((b: any) => {
