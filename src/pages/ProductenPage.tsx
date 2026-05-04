@@ -1,7 +1,7 @@
 import React from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
-import { fmt, fmtD, tod } from '../utils/format'
+import { fmt, fmtD, tod, fmtQty } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
@@ -1202,7 +1202,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     }
                     const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
                     const qty = l.hoeveelheid != null
-                      ? `${l.type === 'afboeking' ? '−' : '+'}${Math.abs(l.hoeveelheid)} ${l.eenheid || t('unit_stuks')}`
+                      ? `${l.type === 'afboeking' ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${l.eenheid || t('unit_stuks')}`
                       : '—';
                     return (
                       <tr key={`v-${l.id}`} className="hover:bg-gray-50">

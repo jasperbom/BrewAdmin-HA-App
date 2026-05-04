@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory, extractBfProps } from '../utils/api'
-import { fmt, fmtD, tod } from '../utils/format'
+import { fmt, fmtD, tod, fmtQty, r2, r3 } from '../utils/format'
 import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS } from '../utils/constants'
 import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
@@ -210,8 +210,8 @@ const IngredientenPage: React.FC<Props> = ({
     const corrEenh = lotCorr.eenheid || lot.eenheid
     const deltaInLot = convertEenheid(delta, corrEenh, lot.eenheid)
     if (deltaInLot === null) { alert(t('err_convert_units').replace('{from}', corrEenh).replace('{to}', lot.eenheid)); return }
-    if (lotCorr.richting === '-' && deltaInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${lot.hoeveelheid} ${lot.eenheid}`)); return }
-    const nieuweQty = lotCorr.richting === '+' ? Number(lot.hoeveelheid) + deltaInLot : Number(lot.hoeveelheid) - deltaInLot
+    if (lotCorr.richting === '-' && deltaInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${fmtQty(lot.hoeveelheid)} ${lot.eenheid}`)); return }
+    const nieuweQty = r3(lotCorr.richting === '+' ? Number(lot.hoeveelheid) + deltaInLot : Number(lot.hoeveelheid) - deltaInLot)
     setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: nieuweQty, beschikbaar: nieuweQty > 0 }))
     logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'gewijzigd', omschrijving: `Correctie ${lotCorr.richting}${delta} ${corrEenh}` })
     addLog({ ingredient_id: lot.ingredient_id, ingredient_naam: ing.find((i: any) => i.id === lot.ingredient_id)?.naam || '', lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'correctie', hoeveelheid: lotCorr.richting === '-' ? -delta : delta, eenheid: corrEenh, referentie: lotCorr.reden || 'Handmatige correctie' })
@@ -226,8 +226,8 @@ const IngredientenPage: React.FC<Props> = ({
     const van = afEenheid || lot.eenheid
     const qInLot = convertEenheid(q, van, lot.eenheid)
     if (qInLot === null) { alert(t('err_convert_units').replace('{from}', van).replace('{to}', lot.eenheid)); return }
-    if (qInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${lot.hoeveelheid} ${lot.eenheid}`)); return }
-    setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: Number(l.hoeveelheid) - qInLot, beschikbaar: Number(l.hoeveelheid) - qInLot > 0 }))
+    if (qInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${fmtQty(lot.hoeveelheid)} ${lot.eenheid}`)); return }
+    setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: r3(Number(l.hoeveelheid) - qInLot), beschikbaar: r3(Number(l.hoeveelheid) - qInLot) > 0 }))
     logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'gewijzigd', omschrijving: `Afgeboekt ${q} ${van}` })
     addLog({ ingredient_id: lot.ingredient_id, ingredient_naam: ing.find((i: any) => i.id === lot.ingredient_id)?.naam || '', lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'afboeking', hoeveelheid: q, eenheid: van, referentie: 'Handmatig afgeboekt' })
     setShowA(null); setAfQty(''); setAfEenheid('')
@@ -402,28 +402,28 @@ const IngredientenPage: React.FC<Props> = ({
     const factuurRegels: any[] = []
     productLijst.forEach((p: any) => {
       const pn = p.prijs ? Number(p.prijs) : 0
-      const netto = pn * Number(p.qty || 0)
+      const netto = r2(pn * Number(p.qty || 0))
       const tarief = Number(p.btw_tarief) || 0
       const naam = p.ing_id ? (ing.find((i: any) => i.id === Number(p.ing_id))?.naam || p.nieuw.trim()) : p.nieuw.trim()
-      factuurRegels.push({ type: 'ingredient', naam, aantal_stuks: p.aantal_stuks ? Number(p.aantal_stuks) : null, inhoud_per_stuk: p.inhoud_per_stuk ? Number(p.inhoud_per_stuk) : null, hoeveelheid: Number(p.qty), eenheid: p.eenh, prijs_per_eenheid: pn || null, netto, btw_tarief: tarief, btw_bedrag: netto * tarief / 100 })
+      factuurRegels.push({ type: 'ingredient', naam, aantal_stuks: p.aantal_stuks ? Number(p.aantal_stuks) : null, inhoud_per_stuk: p.inhoud_per_stuk ? Number(p.inhoud_per_stuk) : null, hoeveelheid: r3(Number(p.qty)), eenheid: p.eenh, prijs_per_eenheid: pn || null, netto, btw_tarief: tarief, btw_bedrag: r2(netto * tarief / 100) })
     })
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0
-      const netto = ps * Number(v.aantal || 0)
+      const netto = r2(ps * Number(v.aantal || 0))
       const tarief = Number(v.btw_tarief) || 0
-      factuurRegels.push({ type: 'verpakking', naam: v._naam || v.naam.trim(), aantal: Number(v.aantal), prijs_per_stuk: ps || null, netto, btw_tarief: tarief, btw_bedrag: netto * tarief / 100 })
+      factuurRegels.push({ type: 'verpakking', naam: v._naam || v.naam.trim(), aantal: Number(v.aantal), prijs_per_stuk: ps || null, netto, btw_tarief: tarief, btw_bedrag: r2(netto * tarief / 100) })
     })
     vrijeRegels.forEach((r: any) => {
-      const netto = parseFloat(r.netto) || 0
+      const netto = r2(parseFloat(r.netto) || 0)
       const tarief = Number(r.btw_tarief) || 0
-      factuurRegels.push({ type: 'overig', naam: r.naam.trim(), netto, btw_tarief: tarief, btw_bedrag: +(netto * tarief / 100).toFixed(2) })
+      factuurRegels.push({ type: 'overig', naam: r.naam.trim(), netto, btw_tarief: tarief, btw_bedrag: r2(netto * tarief / 100) })
     })
     if (factuurRegels.length > 0) {
-      const calc_netto = factuurRegels.reduce((s: number, r: any) => s + r.netto, 0)
-      const calc_btw = factuurRegels.reduce((s: number, r: any) => s + r.btw_bedrag, 0)
-      const totaal_netto = totaalManual ? totaalManual.netto : calc_netto
-      const totaal_btw = totaalManual ? totaalManual.btw : calc_btw
-      const totaal_bruto = totaalManual ? totaalManual.bruto : calc_netto + calc_btw
+      const calc_netto = r2(factuurRegels.reduce((s: number, r: any) => s + r.netto, 0))
+      const calc_btw = r2(factuurRegels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+      const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto
+      const totaal_btw = totaalManual ? r2(totaalManual.btw) : calc_btw
+      const totaal_bruto = totaalManual ? r2(totaalManual.bruto) : r2(calc_netto + calc_btw)
       const factuurDatum = factuurForm.datum || tod()
       const rollover = getRolloverInfo(factuurDatum)
       setInkoopFacturen((prev: any[]) => [...prev, { id: newId(prev), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto, totaal_btw, totaal_bruto, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }])
@@ -540,7 +540,7 @@ const IngredientenPage: React.FC<Props> = ({
                     const exp = days !== null && days < 0; const soon = days !== null && days >= 0 && days <= 30
                     return <tr key={lot.id} className={`cursor-pointer t-hover transition-colors ${exp ? 'bg-red-50' : soon ? 'bg-yellow-50' : ''}`} onClick={() => openLot(lot)}>
                       <td className="px-3 py-2">{lot.lotnummer || '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono">{lot.hoeveelheid} {lot.eenheid}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmtQty(lot.hoeveelheid)} {lot.eenheid}</td>
                       <td className={`px-3 py-2 text-xs ${exp ? 'text-red-600' : soon ? 'text-yellow-600' : 'text-gray-500'}`}>
                         {lot.houdbaarheid ? fmtD(lot.houdbaarheid) : '—'}{exp ? ' ⚠️' : soon ? ` (${days}d)` : ''}
                       </td>
@@ -558,7 +558,7 @@ const IngredientenPage: React.FC<Props> = ({
                   {archiefOpen[sel] && archiefLots(sel).map((lot: any) => (
                     <tr key={lot.id} className="bg-gray-50 cursor-pointer hover:bg-gray-100 opacity-70" onClick={() => openLot(lot)}>
                       <td className="px-3 py-2 text-gray-500">{lot.lotnummer || '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono text-gray-400">{lot.hoeveelheid} {lot.eenheid} <span className="text-xs text-gray-300">({t('lbl_empty')})</span></td>
+                      <td className="px-3 py-2 text-right font-mono text-gray-400">{fmtQty(lot.hoeveelheid)} {lot.eenheid} <span className="text-xs text-gray-300">({t('lbl_empty')})</span></td>
                       <td className="px-3 py-2 text-xs text-gray-400">{lot.houdbaarheid ? fmtD(lot.houdbaarheid) : '—'}</td>
                       <td className="px-3 py-2 text-right text-xs text-gray-400">{lot.prijs_per_eenheid ? fmt(lot.prijs_per_eenheid) : '—'}</td>
                     </tr>
@@ -718,7 +718,7 @@ const IngredientenPage: React.FC<Props> = ({
                     <td className="px-3 py-2 font-medium">{entry.ingredient_naam}</td>
                     <td className="px-3 py-2 text-xs text-gray-500">{entry.lotnummer || '—'}</td>
                     <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-xs font-medium ${clr[entry.type] || 'text-gray-600 bg-gray-100'}`}>{lbl[entry.type] || entry.type}</span></td>
-                    <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${isIn ? 'text-green-600' : 'text-red-600'}`}>{isIn ? '+' : '-'}{Math.abs(entry.hoeveelheid)} {entry.eenheid}</td>
+                    <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${isIn ? 'text-green-600' : 'text-red-600'}`}>{isIn ? '+' : '-'}{fmtQty(Math.abs(Number(entry.hoeveelheid)))} {entry.eenheid}</td>
                     <td className="px-3 py-2 text-xs text-gray-500">{entry.referentie || '—'}</td>
                   </tr>
                 })}
@@ -816,7 +816,7 @@ const IngredientenPage: React.FC<Props> = ({
               <div className="w-24"><Sel label={t('lbl_unit')} value={afEenheid} onChange={setAfEenheid} opts={compatibeleEenheden(showA.eenheid)} /></div>
             </div>
             {afEenheid && afEenheid !== showA.eenheid && afQty && convertEenheid(Number(afQty), afEenheid, showA.eenheid) !== null && (
-              <p className="text-xs text-blue-600">= {(convertEenheid(Number(afQty), afEenheid, showA.eenheid) as number).toFixed(4).replace(/\.?0+$/, '')} {showA.eenheid}</p>
+              <p className="text-xs text-blue-600">= {fmtQty(convertEenheid(Number(afQty), afEenheid, showA.eenheid) as number, 4)} {showA.eenheid}</p>
             )}
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowA(null)}>{t('btn_cancel')}</Btn>

@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.15] — 2026-05-04
+
+### Changed — Consistente afronding van bedragen en hoeveelheden
+
+- **Bedragen altijd op 2 decimalen:** netto, btw_bedrag en totalen worden nu bij opslag afgerond via een nieuwe `r2()` helper i.p.v. ruwe float-arithmetic. Voorkomt floating-point junk zoals `0.30000000000000004` in de opgeslagen data — daardoor blijven sommen ook na meerdere bewerkingen schoon.
+- **Hoeveelheden tot maximaal 3 decimalen** (`r3` voor opslag, `fmtQty` voor display) zonder geforceerde trailing zeros: `0.500` → `0,5`, `1.2300004` → `1,23`. Lot-mutaties bij correctie en afboeking ronden nu ook stelselmatig af.
+- Nieuwe helpers in `src/utils/format.ts`: `fmtAmt(v)`, `fmtQty(v, max=3)`, `r2(n)`, `r3(n)`.
+- Display van `lot.hoeveelheid` en bewegingsregels gaat nu via `fmtQty` op alle relevante plekken: ingrediëntlijst, voorraadlog, batch-grondstoffen, lot-keuze, dashboard-waarschuwingen, statiegeldoverzicht, factuurregels in pakbon en productenlog.
+- Raakt geen bestaande data aan (alleen nieuwe opslagen worden afgerond), en breekt niet met formuliervelden — input blijft ongerond zodat de gebruiker tijdens typen vrij is.
+- `config.yaml` — versie bump 1.9.14 → 1.9.15.
+
+---
+
 ## [1.9.14] — 2026-05-04
 
 ### Added — BTW-suppletie via doorrol naar huidige aangifte

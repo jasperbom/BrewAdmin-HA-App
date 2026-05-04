@@ -4,6 +4,7 @@
  * Opens a new window with embedded CSS and triggers window.print().
  */
 import { t } from '../i18n'
+import { fmtQty } from '../utils/format'
 
 const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -249,7 +250,7 @@ function buildFactuurBody(
 
   const regelRows = regels.map((r: any) => `<tr>
     <td>${r.omschrijving || '—'}</td>
-    <td class="r">${r.hoeveelheid}</td>
+    <td class="r">${fmtQty(r.hoeveelheid)}</td>
     <td class="r">${fmtEuro(r.prijs_per_stuk)}</td>
     <td class="r">${r.btw_pct}%</td>
     <td class="r">${fmtEuro(r.netto)}</td>

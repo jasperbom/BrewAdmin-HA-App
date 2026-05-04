@@ -1,6 +1,6 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
-import { tod } from '../utils/format'
+import { tod, r2, r3 } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
@@ -446,12 +446,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const qty = Number(r.hoeveelheid)||0
       const prijs = Number(r.prijs_per_stuk)||0
       const pct = Number(r.btw_pct)||0
-      const netto = qty * prijs
-      const btw_bedrag = netto * pct / 100
-      return {...r, hoeveelheid: qty, prijs_per_stuk: prijs, btw_pct: pct, netto, btw_bedrag, bruto: netto + btw_bedrag}
+      const netto = r2(qty * prijs)
+      const btw_bedrag = r2(netto * pct / 100)
+      return {...r, hoeveelheid: qty, prijs_per_stuk: prijs, btw_pct: pct, netto, btw_bedrag, bruto: r2(netto + btw_bedrag)}
     })
-    const totaalNetto = regels.reduce((s: number, r: any) => s + r.netto, 0)
-    const totaalBtw   = regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0)
+    const totaalNetto = r2(regels.reduce((s: number, r: any) => s + r.netto, 0))
+    const totaalBtw   = r2(regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
     const nieuw = {
       id: newId(verkoopFacturen||[]),
       datum: losseFactuurForm.datum,
@@ -529,30 +529,30 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const regels: any[] = [];
     productLijst.forEach((p: any) => {
       const pn = p.prijs ? Number(p.prijs) : 0;
-      const netto = parseFloat(p.totaalprijs) || (pn * Number(p.qty||0));
+      const netto = r2(parseFloat(p.totaalprijs) || (pn * Number(p.qty||0)));
       const btw_tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find((i: any)=>i.id===Number(p.ing_id))?.naam||p.nieuw||'') : (p.nieuw||'');
-      regels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
-        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Grondstoffen'});
+      regels.push({type:'ingredient', naam, hoeveelheid:r3(Number(p.qty)), eenheid:p.eenh,
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Grondstoffen'});
     });
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
-      const netto = parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0));
+      const netto = r2(parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0)));
       const btw_tarief = Number(v.btw_tarief)||0;
       regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
-        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Verpakkingsmateriaal'});
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Verpakkingsmateriaal'});
     });
     vrijeRegels.forEach((r: any) => {
-      const netto = parseFloat(r.netto)||0;
+      const netto = r2(parseFloat(r.netto)||0);
       const btw_tarief = Number(r.btw_tarief)||0;
-      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2), kostensoort: r.kostensoort||'Overig'});
+      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: r2(netto*btw_tarief/100), kostensoort: r.kostensoort||'Overig'});
     });
     if (!regels.length) return;
-    const calc_netto = regels.reduce((s: any,r: any)=>s+r.netto, 0);
-    const calc_btw = regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0);
-    const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
-    const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
-    const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
+    const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
+    const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
+    const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto;
+    const totaal_btw   = totaalManual ? r2(totaalManual.btw)   : calc_btw;
+    const totaal_bruto = totaalManual ? r2(totaalManual.bruto)  : r2(calc_netto + calc_btw);
     const nieuwFactuurId = newId(inkoopFacturen||[]);
     const factuurDatum = factuurForm.datum || now.toISOString().slice(0,10)
     const rollover = getRolloverInfo(factuurDatum)
@@ -577,29 +577,29 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const regels: any[] = [];
     productLijst.forEach((p: any) => {
       const pn = p.prijs ? Number(p.prijs) : 0;
-      const netto = parseFloat(p.totaalprijs) || (pn * Number(p.qty||0));
+      const netto = r2(parseFloat(p.totaalprijs) || (pn * Number(p.qty||0)));
       const btw_tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find((i: any)=>i.id===Number(p.ing_id))?.naam||p._naam||p.nieuw.trim()) : (p._naam||p.nieuw.trim());
-      regels.push({type:'ingredient', naam, hoeveelheid:Number(p.qty), eenheid:p.eenh,
-        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Grondstoffen'});
+      regels.push({type:'ingredient', naam, hoeveelheid:r3(Number(p.qty)), eenheid:p.eenh,
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Grondstoffen'});
     });
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
-      const netto = parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0));
+      const netto = r2(parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0)));
       const btw_tarief = Number(v.btw_tarief)||0;
       regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
-        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort:'Verpakkingsmateriaal'});
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Verpakkingsmateriaal'});
     });
     vrijeRegels.forEach((r: any) => {
-      const netto = parseFloat(r.netto)||0;
+      const netto = r2(parseFloat(r.netto)||0);
       const btw_tarief = Number(r.btw_tarief)||0;
-      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag:+(netto*btw_tarief/100).toFixed(2), kostensoort: r.kostensoort||'Overig'});
+      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort: r.kostensoort||'Overig'});
     });
-    const calc_netto = regels.reduce((s: any,r: any)=>s+r.netto, 0);
-    const calc_btw = regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0);
-    const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
-    const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
-    const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
+    const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
+    const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
+    const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto;
+    const totaal_btw   = totaalManual ? r2(totaalManual.btw)   : calc_btw;
+    const totaal_bruto = totaalManual ? r2(totaalManual.bruto)  : r2(calc_netto + calc_btw);
     const nieuweDatum = factuurForm.datum || (editingFactuur as any).datum
     const huidigeRollover = (editingFactuur as any).btw_periode as string | undefined
     const rollover = getRolloverInfo(nieuweDatum)
@@ -1070,14 +1070,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const tx = bankTransacties[txIdx]
     if (!tx) return
     const regels: any[] = (vrijeRegels||[]).map((r: any) => {
-      const netto = parseFloat(r.netto)||0
+      const netto = r2(parseFloat(r.netto)||0)
       const btw_tarief = Number(r.btw_tarief)||0
-      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: +(netto*btw_tarief/100).toFixed(2), kostensoort: r.kostensoort||'Overig'}
+      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: r2(netto*btw_tarief/100), kostensoort: r.kostensoort||'Overig'}
     })
     if (!regels.length) return
-    const totaal_netto = regels.reduce((s: any, r: any) => s+r.netto, 0)
-    const totaal_btw = regels.reduce((s: any, r: any) => s+r.btw_bedrag, 0)
-    const totaal_bruto = totaal_netto + totaal_btw
+    const totaal_netto = r2(regels.reduce((s: any, r: any) => s+r.netto, 0))
+    const totaal_btw = r2(regels.reduce((s: any, r: any) => s+r.btw_bedrag, 0))
+    const totaal_bruto = r2(totaal_netto + totaal_btw)
     const factuurDatum = factuurForm?.datum || tx.datum
     const rollover = getRolloverInfo(factuurDatum)
     const factuur: any = {

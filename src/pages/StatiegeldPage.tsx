@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
 import { newId } from '../utils/api'
-import { fmt, fmtD } from '../utils/format'
+import { fmt, fmtD, fmtQty } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -424,7 +424,7 @@ const StatiegeldPage: React.FC<Props> = ({
                         </span>
                       </td>
                       <td className="px-3 py-2 text-gray-600 text-xs">{r.omschrijving}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{r.hoeveelheid}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{fmtQty(r.hoeveelheid)}</td>
                       <td className="px-3 py-2 text-right font-semibold" style={{ color: r.netto < 0 ? 'rgb(220 38 38)' : 'var(--t-accent)' }}>€ {fmt(r.netto)}</td>
                     </tr>
                   ))}
