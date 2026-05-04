@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.16] — 2026-05-04
+
+### Removed — Opruiming van dode paginabestanden
+
+- `src/pages/HygienePage.tsx` verwijderd: 8-regelige stub die `null` returnde. De hygiëne-checklist zit ingebed in `BatchesPage`; `DEFAULT_HYGIENE_GROUPS` en `DEFAULT_HYGIENE_ITEMS` worden direct uit `src/utils/constants.ts` geïmporteerd, dus de re-export was overbodig.
+- `src/pages/AfvullenPage.tsx` verwijderd: werd geïmporteerd in `App.tsx` maar nergens als JSX gerenderd. De afvul-flow zit in `BatchesPage` en `ProductenPage`.
+- `src/pages/VoorraadPage.tsx` verwijderd: nergens geïmporteerd. Voorraad-functionaliteit zit in `IngredientenPage`, `InventarisatiePage` en `VoorraadverloopPage`.
+- Ongebruikte `AfvullenPage`-import uit `src/App.tsx` verwijderd.
+- `config.yaml` — versie bump 1.9.15 → 1.9.16.
+
+---
+
 ## [1.9.15] — 2026-05-04
 
 ### Changed — Consistente afronding van bedragen en hoeveelheden
