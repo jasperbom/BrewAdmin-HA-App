@@ -12,6 +12,7 @@ import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { useStore } from '../utils/api'
 import { logAudit } from '../utils/audit'
+import { bepaalRollover } from '../utils/btw'
 
 interface Props {
   ing: any[]
@@ -34,6 +35,9 @@ interface Props {
   bfCreds?: any
   auditLog?: any[]
   setAuditLog?: (v: any) => void
+  btwInst?: any
+  btwAangiftes?: any[]
+  bankKoppelingen?: Record<string, any>
 }
 
 const IngredientenPage: React.FC<Props> = ({
@@ -41,8 +45,25 @@ const IngredientenPage: React.FC<Props> = ({
   onderdelen = [], setOnderdelen, log, setLog,
   bi = [], bat = [], setInkoopFacturen = () => {}, claudeCreds = null,
   ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {}, kostenSoorten = BUILTIN_KOSTEN_SOORTEN,
-  bfCreds = null, auditLog = [], setAuditLog = () => {}
+  bfCreds = null, auditLog = [], setAuditLog = () => {},
+  btwInst = {}, btwAangiftes = [], bankKoppelingen = {}
 }) => {
+  const btwPeriodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
+  const btwIngediendeKeys = React.useMemo(
+    () => new Set((btwAangiftes||[]).map((a: any) => a?.periodeKey).filter(Boolean) as string[]),
+    [btwAangiftes]
+  )
+  const btwBetaaldeKeys = React.useMemo(() => {
+    const s = new Set<string>()
+    Object.values(bankKoppelingen||{}).forEach((k: any) => {
+      if (k?.soort === 'btw' && k.periodeKey) s.add(k.periodeKey)
+    })
+    return s
+  }, [bankKoppelingen])
+  const getRolloverInfo = React.useCallback((datum: string) =>
+    bepaalRollover(datum, btwPeriodeType, btwIngediendeKeys, btwBetaaldeKeys),
+    [btwPeriodeType, btwIngediendeKeys, btwBetaaldeKeys]
+  )
   const [tab, setTab] = useState('ingredienten')
   const [sel, setSel] = useState<number | null>(null)
   const [showO, setShowO] = useState(false)
@@ -403,7 +424,9 @@ const IngredientenPage: React.FC<Props> = ({
       const totaal_netto = totaalManual ? totaalManual.netto : calc_netto
       const totaal_btw = totaalManual ? totaalManual.btw : calc_btw
       const totaal_bruto = totaalManual ? totaalManual.bruto : calc_netto + calc_btw
-      setInkoopFacturen((prev: any[]) => [...prev, { id: newId(prev), datum: factuurForm.datum || tod(), factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto, totaal_btw, totaal_bruto, bijlage }])
+      const factuurDatum = factuurForm.datum || tod()
+      const rollover = getRolloverInfo(factuurDatum)
+      setInkoopFacturen((prev: any[]) => [...prev, { id: newId(prev), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto, totaal_btw, totaal_bruto, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }])
     }
     setShowO(false)
   }
@@ -719,6 +742,7 @@ const IngredientenPage: React.FC<Props> = ({
           ingTypes={ingTypes}
           ingTypeBtw={ingTypeBtw}
           kostenSoorten={kostenSoorten}
+          getRolloverInfo={getRolloverInfo}
         />
       )}
 

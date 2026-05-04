@@ -5,6 +5,7 @@ import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
+import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel } from '../utils/btw'
 import InkoopFactuurModal from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
@@ -77,7 +78,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [aangifteLoading, setAangifteLoading] = React.useState(false);
   const [aangifteError, setAangifteError] = React.useState('');
   const [aangifteFetched, setAangifteFetched] = React.useState(false);
-  const [selectedPeriode, setSelectedPeriode] = React.useState<{from:string,to:string,label:string}|null>(null);
+  const [selectedPeriode, setSelectedPeriode] = React.useState<{from:string,to:string,label:string,key:string}|null>(null);
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
   const [editingFactuur, setEditingFactuur] = React.useState(null);
   const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
@@ -182,10 +183,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   const btwPerTariefAangifte = React.useMemo(() => {
     const map: any = {};
-    const fromDate = selectedPeriode?.from ?? `${aangifteYear}-01-01`;
-    const toDate   = selectedPeriode?.to   ?? `${aangifteYear}-12-31`;
+    const periode = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
+    const targetKey = selectedPeriode?.key
+    const yearPrefix = `${aangifteYear}-`
     inkoopFacturen
-      .filter((f: any) => f.datum >= fromDate && f.datum <= toDate)
+      .filter((f: any) => {
+        const eff = effectievePeriodeKey(f, periode)
+        if (targetKey) return eff === targetKey
+        return eff.startsWith(yearPrefix)
+      })
       .forEach((f: any) => (f.regels||[]).forEach((r: any) => {
         const k = r.btw_tarief ?? 0;
         if (!map[k]) map[k] = {tarief:k, netto:0, btw:0};
@@ -193,7 +199,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         map[k].btw   += r.btw_bedrag||0;
       }));
     return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
-  }, [inkoopFacturen, aangifteYear, selectedPeriode]);
+  }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
 
   const omzetBtwPerTarief = React.useMemo(() => {
     const fromDate = selectedPeriode?.from ?? `${aangifteYear}-01-01`;
@@ -258,6 +264,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     (btwAangiftes||[]).forEach((a: any) => { if (a?.periodeKey) m[a.periodeKey] = a; });
     return m;
   }, [btwAangiftes]);
+
+  // Set van periodeKeys waarvan de aangifte ingediend is (zonder betaling).
+  const btwIngediendeKeys = React.useMemo(() => new Set(Object.keys(btwIngediendePerioden)), [btwIngediendePerioden]);
+
+  // Bepaal voor een factuurdatum of de BTW naar een andere periode doorrolt
+  // (omdat de oorspronkelijke periode al ingediend of betaald is). Geeft null
+  // wanneer de datum in een open of toekomstige periode valt.
+  const btwPeriodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
+  const getRolloverInfo = React.useCallback((datum: string) =>
+    bepaalRollover(datum, btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden),
+    [btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden]
+  )
 
   const markeerAangifteIngediend = (periodeKey: string, bedrag: number) => {
     const today = new Date().toISOString().slice(0,10);
@@ -536,9 +554,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
     const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
     const nieuwFactuurId = newId(inkoopFacturen||[]);
+    const factuurDatum = factuurForm.datum || now.toISOString().slice(0,10)
+    const rollover = getRolloverInfo(factuurDatum)
     setInkoopFacturen((prev: any) => [...prev, {
       id: nieuwFactuurId,
-      datum: factuurForm.datum || now.toISOString().slice(0,10),
+      datum: factuurDatum,
       factuurnummer: factuurForm.factuur || '',
       leverancier: factuurForm.leverancier || '',
       regels,
@@ -546,8 +566,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       totaal_btw,
       totaal_bruto,
       bijlage,
+      ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
     }]);
-    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuwFactuurId, actie:'aangemaakt', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}`});
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuwFactuurId, actie:'aangemaakt', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
     setShowVrijeFactuur(false);
   };
 
@@ -579,16 +600,38 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const totaal_netto = totaalManual ? totaalManual.netto : calc_netto;
     const totaal_btw   = totaalManual ? totaalManual.btw   : calc_btw;
     const totaal_bruto = totaalManual ? totaalManual.bruto  : calc_netto + calc_btw;
-    setInkoopFacturen((prev: any) => prev.map((f: any) => f.id !== (editingFactuur as any).id ? f : {
-      ...f,
-      datum: factuurForm.datum || f.datum,
-      factuurnummer: factuurForm.factuur ?? f.factuurnummer,
-      leverancier: factuurForm.leverancier || f.leverancier,
-      regels,
-      totaal_netto, totaal_btw, totaal_bruto,
-      bijlage: bijlage || f.bijlage,
+    const nieuweDatum = factuurForm.datum || (editingFactuur as any).datum
+    const huidigeRollover = (editingFactuur as any).btw_periode as string | undefined
+    const rollover = getRolloverInfo(nieuweDatum)
+    // Bestaande btw_periode behouden zolang die nog "geldig" is: de
+    // oorspronkelijke periode (afgeleid uit de nieuwe datum) is nog steeds
+    // gesloten én de eerder gekozen rolloverbestemming is nog niet zelf
+    // gesloten. Alleen dan blijft de factuur in de oude rolloverperiode staan.
+    let nieuweBtwPeriode: string | undefined
+    if (rollover) {
+      // Datum valt nog steeds in een gesloten periode → rollover toepassen.
+      // Hergebruik de bestaande rolloverperiode als die nog open is.
+      const huidigOpenstaand = huidigeRollover && !btwIngediendeKeys.has(huidigeRollover) && !btwBetaaldePerioden.has(huidigeRollover)
+      nieuweBtwPeriode = huidigOpenstaand ? huidigeRollover : rollover.rolloverNaar
+    } else {
+      // Datum valt in een open periode → geen rollover meer nodig; veld droppen.
+      nieuweBtwPeriode = undefined
+    }
+    setInkoopFacturen((prev: any) => prev.map((f: any) => {
+      if (f.id !== (editingFactuur as any).id) return f
+      const {btw_periode: _oud, ...rest} = f
+      return {
+        ...rest,
+        datum: nieuweDatum,
+        factuurnummer: factuurForm.factuur ?? f.factuurnummer,
+        leverancier: factuurForm.leverancier || f.leverancier,
+        regels,
+        totaal_netto, totaal_btw, totaal_bruto,
+        bijlage: bijlage || f.bijlage,
+        ...(nieuweBtwPeriode ? {btw_periode: nieuweBtwPeriode} : {}),
+      }
     }));
-    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:(editingFactuur as any).id, actie:'gewijzigd', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}`});
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:(editingFactuur as any).id, actie:'gewijzigd', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${nieuweBtwPeriode ? ` (BTW → ${nieuweBtwPeriode})` : ''}`});
     setEditingFactuur(null);
   };
 
@@ -1035,10 +1078,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const totaal_netto = regels.reduce((s: any, r: any) => s+r.netto, 0)
     const totaal_btw = regels.reduce((s: any, r: any) => s+r.btw_bedrag, 0)
     const totaal_bruto = totaal_netto + totaal_btw
+    const factuurDatum = factuurForm?.datum || tx.datum
+    const rollover = getRolloverInfo(factuurDatum)
     const factuur: any = {
       id: newId(inkoopFacturen||[]),
       status: 'betaald',
-      datum: factuurForm?.datum || tx.datum,
+      datum: factuurDatum,
       leverancier: factuurForm?.leverancier || tx.tegenpartij || '',
       factuurnummer: factuurForm?.factuur || '',
       regels,
@@ -1046,9 +1091,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       totaal_btw,
       totaal_bruto,
       bijlage: bijlage || null,
+      ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
     }
     setInkoopFacturen((prev: any[]) => [...(prev||[]), factuur])
-    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuur.id, actie:'aangemaakt', omschrijving:`Boekingfactuur — ${factuur.leverancier}`});
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuur.id, actie:'aangemaakt', omschrijving:`Boekingfactuur — ${factuur.leverancier}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
     koppelBankTransactie(txIdx, factuur.id, 'inkoop')
     setBoekingTxIndex(null)
     setBoekingInitialData(null)
@@ -1493,6 +1539,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
+            getRolloverInfo={getRolloverInfo}
           />
         )}
         {/* Factuur bewerken modal */}
@@ -1509,6 +1556,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
+            getRolloverInfo={getRolloverInfo}
           />
         )}
 
@@ -1552,7 +1600,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     <td className="py-2 pr-2 text-gray-400 text-xs text-center">✎</td>
                     <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                     <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
-                    <td className="py-2 pr-3 font-medium text-gray-800">{f.leverancier||'—'}</td>
+                    <td className="py-2 pr-3 font-medium text-gray-800">
+                      {f.leverancier||'—'}
+                      {f.btw_periode && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700"
+                          title={t('msg_btw_geclaimd_in').replace('{periode}', periodeKeyLabel(f.btw_periode))}>
+                          ↪ BTW {periodeKeyLabel(f.btw_periode)}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.totaal_netto||0)}</td>
                     <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.totaal_btw||0)}</td>
                     <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.totaal_bruto||0)}</td>
@@ -2035,6 +2091,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
+            getRolloverInfo={getRolloverInfo}
           />
         )}
       </>)}
@@ -2382,8 +2439,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               const verkoopNetto = wcVerkoopNetto + eigenVerkoopNetto;
               const eigenFacturenLabel = pVerkoop.length > 0 ? ` + ${pVerkoop.length} eigen` : '';
 
-              // Inkoop voorbelasting
-              const pFacturen = inkoopFacturen.filter((f: any) => f.datum >= p.from && f.datum <= p.to);
+              // Inkoop voorbelasting — filter op effectieve BTW-periodeKey,
+              // zodat doorgerolde facturen (btw_periode gezet) in de juiste
+              // periode worden meegeteld i.p.v. in hun datum-periode.
+              const pFacturen = inkoopFacturen.filter((f: any) => effectievePeriodeKey(f, btwPeriodeType) === p.key);
               const voorbelasting = pFacturen.reduce((s: any,f: any)=>s+(f.totaal_btw||0), 0);
               const inkoopNetto   = pFacturen.reduce((s: any,f: any)=>s+(f.totaal_netto||0), 0);
 
@@ -2428,7 +2487,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               const isSelected = selectedPeriode?.from === p.from;
               return (
                 <div key={p.key}
-                  onClick={()=>setSelectedPeriode(isSelected ? null : {from:p.from, to:p.to, label:p.label})}
+                  onClick={()=>setSelectedPeriode(isSelected ? null : {from:p.from, to:p.to, label:p.label, key:p.key})}
                   className={`rounded-2xl border shadow-sm p-5 space-y-3 cursor-pointer transition-all ${isSelected ? 'ring-2 ring-[var(--t-accent)] bg-white border-transparent' : statusCls}`}>
                   {/* Header */}
                   <div className="flex items-start justify-between">

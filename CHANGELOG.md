@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.14] — 2026-05-04
+
+### Added — BTW-suppletie via doorrol naar huidige aangifte
+
+- Inkoopfacturen die in een al **ingediende of betaalde** BTW-periode worden geboekt, krijgen automatisch het veld `btw_periode` met de huidige openstaande periodeKey (bv. `2026-Q2`). De BTW van deze factuur wordt zo in de lopende aangifte meegenomen i.p.v. de afgesloten periode achteraf te wijzigen.
+- **Waarschuwingsbanner in de inkoopfactuurmodal:** zodra de gekozen factuurdatum in een afgesloten periode valt, ziet de gebruiker direct dat de BTW doorgerold wordt en naar welke periode (`msg_btw_rollover`).
+- **Badge in de inkoopfacturenlijst:** facturen met `btw_periode` tonen `↪ BTW {periode}` zodat in één oogopslag zichtbaar is dat de BTW elders wordt geclaimd.
+- **BTW-overzicht per periode** filtert nu op effectieve periodeKey (`btw_periode || datum`) i.p.v. op datumbereik. Doorgerolde facturen verschijnen in de huidige openstaande aangifte; afgesloten perioden blijven onaangeroerd.
+- Nieuwe utility `src/utils/btw.ts` met `datumToPeriodeKey`, `huidigePeriodeKey`, `isPeriodeGesloten`, `effectievePeriodeKey` en `bepaalRollover`.
+- Werkt in alle 4 inkoopfactuur-flows: ingrediëntontvangst, vrije inkoopfactuur, factuur bewerken én bankboeking.
+- Vertalingen toegevoegd in NL, EN, DE, FR, ES.
+- `config.yaml` — versie bump 1.9.13 → 1.9.14.
+
+---
+
 ## [1.9.13] — 2026-04-27
 
 ### Changed — Belastbaar feit verschoven naar Picken (Douane v2.4 §10.2)

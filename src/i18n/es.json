@@ -623,6 +623,8 @@
   "lbl_verkoop_netto": "Neto ventas",
   "lbl_aangifte_openstaand": "Pendiente",
   "lbl_aangifte_ingediend": "Presentada",
+  "msg_btw_rollover": "El período {from} ya está cerrado — el IVA de esta factura se reclamará en {to} (corrección mediante la declaración actual).",
+  "msg_btw_geclaimd_in": "IVA reclamado en {periode}",
   "lbl_aangifte_nog_indienen": "Declaración aún no presentada",
   "lbl_aangifte_ingediend_op": "Presentada el {datum}",
   "btn_aangifte_ingediend": "Declaración presentada",

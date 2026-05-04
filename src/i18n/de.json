@@ -623,6 +623,8 @@
   "lbl_verkoop_netto": "Verkauf netto:",
   "lbl_aangifte_openstaand": "Ausstehend",
   "lbl_aangifte_ingediend": "Eingereicht",
+  "msg_btw_rollover": "Periode {from} wurde bereits abgeschlossen — die USt. dieser Rechnung wird in {to} geltend gemacht (Korrektur über aktuelle Erklärung).",
+  "msg_btw_geclaimd_in": "USt. geltend gemacht in {periode}",
   "lbl_aangifte_nog_indienen": "Erklärung noch nicht eingereicht",
   "lbl_aangifte_ingediend_op": "Eingereicht am {datum}",
   "btn_aangifte_ingediend": "Erklärung eingereicht",
