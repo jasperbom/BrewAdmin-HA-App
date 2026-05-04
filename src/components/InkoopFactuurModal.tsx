@@ -397,6 +397,12 @@ function InkoopFactuurModal({
               </div>
             )
           })()}
+          {!leverancier && !factuurNr.trim() && (
+            <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+              <span className="mt-0.5 flex-shrink-0">ℹ️</span>
+              <span>{t('hint_correctie_geen_factuur')}</span>
+            </div>
+          )}
           {/* Bijlage */}
           <div className="mt-2">
             <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_bijlage')}</label>

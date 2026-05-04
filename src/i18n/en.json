@@ -624,6 +624,7 @@
   "lbl_aangifte_openstaand": "Outstanding",
   "lbl_aangifte_ingediend": "Submitted",
   "msg_btw_rollover": "Period {from} has already been closed — VAT on this invoice will be claimed in {to} (correction via current return).",
+  "hint_correctie_geen_factuur": "No supplier and invoice number entered — this receipt will be saved as a stock correction without an invoice in the accounting.",
   "msg_btw_geclaimd_in": "VAT claimed in {periode}",
   "lbl_aangifte_nog_indienen": "Declaration not yet submitted",
   "lbl_aangifte_ingediend_op": "Submitted on {datum}",

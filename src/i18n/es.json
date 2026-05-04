@@ -624,6 +624,7 @@
   "lbl_aangifte_openstaand": "Pendiente",
   "lbl_aangifte_ingediend": "Presentada",
   "msg_btw_rollover": "El período {from} ya está cerrado — el IVA de esta factura se reclamará en {to} (corrección mediante la declaración actual).",
+  "hint_correctie_geen_factuur": "No se ha indicado proveedor ni número de factura — esta recepción se guardará como corrección de existencias sin factura en la contabilidad.",
   "msg_btw_geclaimd_in": "IVA reclamado en {periode}",
   "lbl_aangifte_nog_indienen": "Declaración aún no presentada",
   "lbl_aangifte_ingediend_op": "Presentada el {datum}",

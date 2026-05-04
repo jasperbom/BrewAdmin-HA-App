@@ -624,6 +624,7 @@
   "lbl_aangifte_openstaand": "Ausstehend",
   "lbl_aangifte_ingediend": "Eingereicht",
   "msg_btw_rollover": "Periode {from} wurde bereits abgeschlossen — die USt. dieser Rechnung wird in {to} geltend gemacht (Korrektur über aktuelle Erklärung).",
+  "hint_correctie_geen_factuur": "Kein Lieferant und keine Rechnungsnummer eingegeben — dieser Wareneingang wird als Bestandskorrektur ohne Rechnung in der Buchhaltung gespeichert.",
   "msg_btw_geclaimd_in": "USt. geltend gemacht in {periode}",
   "lbl_aangifte_nog_indienen": "Erklärung noch nicht eingereicht",
   "lbl_aangifte_ingediend_op": "Eingereicht am {datum}",

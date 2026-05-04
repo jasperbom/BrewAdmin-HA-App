@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.17] — 2026-05-04
+
+### Changed — Lot toevoegen zonder factuur in boekhouding
+
+- `InkoopFactuurModal` slaat geen `inkoop_facturen`-record meer op wanneer zowel leverancier als factuurnummer leeg zijn. De ontvangst wordt dan beschouwd als voorraadcorrectie: lots en `voorraad_log`-entries worden wél aangemaakt, zodat de fysieke voorraad klopt zonder financiële tegenboeking.
+- `src/pages/IngredientenPage.tsx` — `saveOntvangst` controleert `factuurForm.leverancier` en `factuurForm.factuur` voordat een inkoopfactuur wordt weggeschreven.
+- `src/pages/BoekhoudingPage.tsx` — `saveVrijeFactuur` past dezelfde logica toe.
+- `src/components/InkoopFactuurModal.tsx` — toont een blauwe info-hint zodra beide velden leeg zijn, zodat de gebruiker weet dat de ontvangst als correctie wordt opgeslagen.
+- i18n: nieuwe sleutel `hint_correctie_geen_factuur` toegevoegd aan `nl/en/de/fr/es`.
+- `config.yaml` — versie bump 1.9.16 → 1.9.17.
+
+---
+
 ## [1.9.16] — 2026-05-04
 
 ### Removed — Opruiming van dode paginabestanden

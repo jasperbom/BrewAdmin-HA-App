@@ -418,7 +418,11 @@ const IngredientenPage: React.FC<Props> = ({
       const tarief = Number(r.btw_tarief) || 0
       factuurRegels.push({ type: 'overig', naam: r.naam.trim(), netto, btw_tarief: tarief, btw_bedrag: r2(netto * tarief / 100) })
     })
-    if (factuurRegels.length > 0) {
+    // Sla alleen een inkoopfactuur op als er factuurgegevens zijn ingevuld.
+    // Zonder leverancier én factuurnummer wordt de ontvangst beschouwd als
+    // voorraadcorrectie (lots + voorraad_log blijven staan, geen boekhouding).
+    const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
+    if (factuurRegels.length > 0 && heeftFactuurData) {
       const calc_netto = r2(factuurRegels.reduce((s: number, r: any) => s + r.netto, 0))
       const calc_btw = r2(factuurRegels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
       const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto
