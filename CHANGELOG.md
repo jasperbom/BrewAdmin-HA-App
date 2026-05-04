@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.15] — 2026-05-04
+
+### Changed — Consistente afronding van bedragen en hoeveelheden
+
+- **Bedragen altijd op 2 decimalen:** netto, btw_bedrag en totalen worden nu bij opslag afgerond via een nieuwe `r2()` helper i.p.v. ruwe float-arithmetic. Voorkomt floating-point junk zoals `0.30000000000000004` in de opgeslagen data — daardoor blijven sommen ook na meerdere bewerkingen schoon.
+- **Hoeveelheden tot maximaal 3 decimalen** (`r3` voor opslag, `fmtQty` voor display) zonder geforceerde trailing zeros: `0.500` → `0,5`, `1.2300004` → `1,23`. Lot-mutaties bij correctie en afboeking ronden nu ook stelselmatig af.
+- Nieuwe helpers in `src/utils/format.ts`: `fmtAmt(v)`, `fmtQty(v, max=3)`, `r2(n)`, `r3(n)`.
+- Display van `lot.hoeveelheid` en bewegingsregels gaat nu via `fmtQty` op alle relevante plekken: ingrediëntlijst, voorraadlog, batch-grondstoffen, lot-keuze, dashboard-waarschuwingen, statiegeldoverzicht, factuurregels in pakbon en productenlog.
+- Raakt geen bestaande data aan (alleen nieuwe opslagen worden afgerond), en breekt niet met formuliervelden — input blijft ongerond zodat de gebruiker tijdens typen vrij is.
+- `config.yaml` — versie bump 1.9.14 → 1.9.15.
+
+---
+
+## [1.9.14] — 2026-05-04
+
+### Added — BTW-suppletie via doorrol naar huidige aangifte
+
+- Inkoopfacturen die in een al **ingediende of betaalde** BTW-periode worden geboekt, krijgen automatisch het veld `btw_periode` met de huidige openstaande periodeKey (bv. `2026-Q2`). De BTW van deze factuur wordt zo in de lopende aangifte meegenomen i.p.v. de afgesloten periode achteraf te wijzigen.
+- **Waarschuwingsbanner in de inkoopfactuurmodal:** zodra de gekozen factuurdatum in een afgesloten periode valt, ziet de gebruiker direct dat de BTW doorgerold wordt en naar welke periode (`msg_btw_rollover`).
+- **Badge in de inkoopfacturenlijst:** facturen met `btw_periode` tonen `↪ BTW {periode}` zodat in één oogopslag zichtbaar is dat de BTW elders wordt geclaimd.
+- **BTW-overzicht per periode** filtert nu op effectieve periodeKey (`btw_periode || datum`) i.p.v. op datumbereik. Doorgerolde facturen verschijnen in de huidige openstaande aangifte; afgesloten perioden blijven onaangeroerd.
+- Nieuwe utility `src/utils/btw.ts` met `datumToPeriodeKey`, `huidigePeriodeKey`, `isPeriodeGesloten`, `effectievePeriodeKey` en `bepaalRollover`.
+- Werkt in alle 4 inkoopfactuur-flows: ingrediëntontvangst, vrije inkoopfactuur, factuur bewerken én bankboeking.
+- Vertalingen toegevoegd in NL, EN, DE, FR, ES.
+- `config.yaml` — versie bump 1.9.13 → 1.9.14.
+
+---
+
 ## [1.9.13] — 2026-04-27
 
 ### Changed — Belastbaar feit verschoven naar Picken (Douane v2.4 §10.2)

@@ -226,6 +226,11 @@ export interface InkoopFactuur {
   totaal_bruto?: number
   status?: 'open' | 'betaald'
   betaald_datum?: string
+  // PeriodeKey waarin de BTW van deze factuur wordt geclaimd ('YYYY-Qn' of
+  // 'YYYY-Mnn'). Wordt alleen gezet wanneer de factuurdatum in een al
+  // ingediende of betaalde BTW-periode valt; dan rolt de BTW door naar de
+  // huidige openstaande aangifte (suppletie-stijl correctie).
+  btw_periode?: string
 }
 
 export interface FactuurRegel {

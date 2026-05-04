@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
-import { fmt, fmtD, tod } from '../utils/format'
+import { fmt, fmtD, tod, fmtQty } from '../utils/format'
 import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
@@ -654,7 +654,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       html += `<h2>Ingrediënten</h2><table><tr><th>Naam</th><th>Type</th><th class="r">Hoeveelheid</th><th>Lot</th><th class="r">Kosten</th></tr>`
       batchBi.forEach((i: any) => {
         const lot = i.lot_id ? (lots||[]).find((l: any) => l.id === Number(i.lot_id)) : null
-        html += `<tr><td>${i.ingredient_naam}</td><td>${i.ingredient_type}</td><td class="r">${i.hoeveelheid} ${i.eenheid}</td><td>${lot?.lotnummer||'—'}</td><td class="r">${i.kosten?fmt(Number(i.kosten)):'—'}</td></tr>`
+        html += `<tr><td>${i.ingredient_naam}</td><td>${i.ingredient_type}</td><td class="r">${fmtQty(i.hoeveelheid)} ${i.eenheid}</td><td>${lot?.lotnummer||'—'}</td><td class="r">${i.kosten?fmt(Number(i.kosten)):'—'}</td></tr>`
       })
       html += `</table>`
     }
@@ -2248,13 +2248,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               <tr key={x.id} className={multi ? 'bg-white' : ''}>
                                 <td className={`px-3 py-1.5 ${multi ? 'pl-5 text-gray-500 text-xs' : ''}`}>
                                   {multi ? (
-                                    <><span className="text-gray-300 mr-1">↳</span><span>{x.hoeveelheid} {x.eenheid}</span></>
+                                    <><span className="text-gray-300 mr-1">↳</span><span>{fmtQty(x.hoeveelheid)} {x.eenheid}</span></>
                                   ) : (
                                     <><span className="align-middle">{x.ingredient_naam}</span>{renderKoppelPill(x, g.key)}</>
                                   )}
                                 </td>
                                 <td className="px-3 py-1.5 text-gray-500 text-xs">{multi ? '' : (ING_TYPES[x.ingredient_type]||x.ingredient_type)}</td>
-                                <td className="px-3 py-1.5 text-right font-mono text-xs">{multi ? '' : <>{x.hoeveelheid} {x.eenheid}</>}</td>
+                                <td className="px-3 py-1.5 text-right font-mono text-xs">{multi ? '' : <>{fmtQty(x.hoeveelheid)} {x.eenheid}</>}</td>
                                 <td className="px-3 py-1.5" colSpan={multi ? 2 : 1}>{lotCell}</td>
                                 {!multi && <td className="px-3 py-1.5 text-right text-xs">{kosten!==null?fmt(kosten):'—'}</td>}
                                 <td className="px-3 py-1.5"><button onClick={()=>removeBI(x.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button></td>
@@ -2311,7 +2311,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             : lots.filter((l: any)=>l.beschikbaar)
                           )].sort(fefoSort).map((l: any) => {
                             const thtStr = l.houdbaarheid ? ` · ${t('lbl_tht')} ${l.houdbaarheid}` : ''
-                            return <option key={l.id} value={l.id}>{l.lotnummer||'—'} ({l.hoeveelheid}{l.eenheid}{thtStr})</option>
+                            return <option key={l.id} value={l.id}>{l.lotnummer||'—'} ({fmtQty(l.hoeveelheid)}{l.eenheid}{thtStr})</option>
                           })}
                         </select>
                       </div>
@@ -2975,7 +2975,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               ? l.ingredient_naam + (l.lotnummer ? ` · lot: ${l.lotnummer}` : '')
                               : l.verpakking_type || l.referentie || '—'
                             const qty = l.hoeveelheid!=null
-                              ? `${l.hoeveelheid} ${l.eenheid||''}${l.referentie&&l.type!=='gebruik'?` (${l.referentie})`:''}`.trim()
+                              ? `${fmtQty(l.hoeveelheid)} ${l.eenheid||''}${l.referentie&&l.type!=='gebruik'?` (${l.referentie})`:''}`.trim()
                               : '—'
                             return (
                               <tr key={l.id} className="hover:bg-gray-50">

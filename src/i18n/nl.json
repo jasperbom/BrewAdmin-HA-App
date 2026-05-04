@@ -623,6 +623,8 @@
   "lbl_verkoop_netto": "Verkoop netto:",
   "lbl_aangifte_openstaand": "Openstaand",
   "lbl_aangifte_ingediend": "Ingediend",
+  "msg_btw_rollover": "Periode {from} is al afgesloten — de BTW van deze factuur wordt geclaimd in {to} (suppletie via huidige aangifte).",
+  "msg_btw_geclaimd_in": "BTW geclaimd in {periode}",
   "lbl_aangifte_nog_indienen": "Aangifte nog indienen",
   "lbl_aangifte_ingediend_op": "Ingediend op {datum}",
   "btn_aangifte_ingediend": "Aangifte ingediend",

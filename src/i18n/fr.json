@@ -623,6 +623,8 @@
   "lbl_verkoop_netto": "Net ventes",
   "lbl_aangifte_openstaand": "En attente",
   "lbl_aangifte_ingediend": "Soumise",
+  "msg_btw_rollover": "La période {from} est déjà clôturée — la TVA de cette facture sera réclamée en {to} (correction via la déclaration en cours).",
+  "msg_btw_geclaimd_in": "TVA réclamée en {periode}",
   "lbl_aangifte_nog_indienen": "Déclaration pas encore soumise",
   "lbl_aangifte_ingediend_op": "Soumise le {datum}",
   "btn_aangifte_ingediend": "Déclaration soumise",

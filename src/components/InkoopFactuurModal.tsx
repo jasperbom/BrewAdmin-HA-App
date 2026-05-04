@@ -117,13 +117,17 @@ interface InkoopFactuurModalProps {
   ingTypeBtw?: Record<string, number>
   initialData?: any
   kostenSoorten?: string[]
+  // Geeft op basis van een factuurdatum aan of de BTW naar een andere periode
+  // doorrolt (omdat de oorspronkelijke aangifte al ingediend/betaald is).
+  // null = geen rollover nodig.
+  getRolloverInfo?: (datum: string) => { rolloverNaar: string; vanafPeriode: string } | null
 }
 
 function InkoopFactuurModal({
   knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose,
   initialTab='ingredienten', initialIngId='', claudeCreds=null,
   ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
-  kostenSoorten=BUILTIN_KOSTEN_SOORTEN
+  kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo
 }: InkoopFactuurModalProps) {
   const defaultType = ingTypes[0] || 'Mout'
   const emptyProduct = {ing_id:initialIngId,nieuw:'',type:defaultType,fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:ingTypeBtw[defaultType]!=null?String(ingTypeBtw[defaultType]):'9'}
@@ -379,6 +383,20 @@ function InkoopFactuurModal({
             <Inp label={t('lbl_invoice')} value={factuurNr} onChange={setFactuurNr} placeholder="F-2025-001" />
             <Inp label={t('lbl_invoice_date')} type="date" value={datum} onChange={setDatum} />
           </div>
+          {(() => {
+            const ri = getRolloverInfo ? getRolloverInfo(datum) : null
+            if (!ri) return null
+            return (
+              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-800">
+                <span className="mt-0.5 flex-shrink-0">↪</span>
+                <span>
+                  {t('msg_btw_rollover')
+                    .replace('{from}', ri.vanafPeriode)
+                    .replace('{to}', ri.rolloverNaar)}
+                </span>
+              </div>
+            )
+          })()}
           {/* Bijlage */}
           <div className="mt-2">
             <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_bijlage')}</label>

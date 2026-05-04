@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { fmt, fmtD } from '../utils/format'
+import { fmt, fmtD, fmtQty } from '../utils/format'
 import { resolveTankHistorie, getNegatieveVoorraadPosities } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
@@ -731,7 +731,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
       <div className={`flex items-center justify-between px-4 py-3 rounded-lg border ${urgent?'bg-red-50 border-red-200':'bg-yellow-50 border-yellow-200'}`}>
         <div className="flex flex-col">
           <span className="font-medium text-sm text-gray-800">{naam}</span>
-          <span className="text-xs text-gray-500">{t('lbl_lot_short')}: {lot.lotnummer||'—'} · {lot.hoeveelheid} {lot.eenheid}</span>
+          <span className="text-xs text-gray-500">{t('lbl_lot_short')}: {lot.lotnummer||'—'} · {fmtQty(lot.hoeveelheid)} {lot.eenheid}</span>
         </div>
         <div className={`text-right text-sm font-semibold ${urgent?'text-red-600':'text-yellow-700'}`}>
           {urgent ? `${Math.abs(days)}d ${t('stock_expired')}` : days===0 ? t('stock_expires_today') : `${days}d`}
@@ -871,7 +871,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
               <div key={l.id} className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-gray-50 border border-gray-200">
                 <div>
                   <span className="font-medium text-sm text-gray-800">{ing.find((i: any) => i.id === l.ingredient_id)?.naam || t('lbl_onbekend')}</span>
-                  <span className="text-xs text-gray-500 ml-2">{t('lbl_lot_short')}: {l.lotnummer||'—'} · {l.hoeveelheid} {l.eenheid}</span>
+                  <span className="text-xs text-gray-500 ml-2">{t('lbl_lot_short')}: {l.lotnummer||'—'} · {fmtQty(l.hoeveelheid)} {l.eenheid}</span>
                 </div>
                 <div className="text-sm text-gray-500 font-medium">{daysLeft(l.houdbaarheid)}d · {fmtD(l.houdbaarheid)}</div>
               </div>
