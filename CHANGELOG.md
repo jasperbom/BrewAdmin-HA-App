@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.18] — 2026-05-04
+
+### Added — Eenmalige opruiming van lege inkoopfacturen
+
+- `src/App.tsx` — eenmalige migratie die bij het opstarten controleert of er bestaande `inkoop_facturen` zijn zonder leverancier én zonder factuurnummer. Als die er zijn, wordt de gebruiker eenmalig gevraagd of de records opgeruimd mogen worden. Bij bevestiging worden de facturen verwijderd plus alle `bank_koppelingen` met `soort: 'inkoop'` die naar deze facturen verwezen. De bijbehorende `lots` en `voorraad_log`-entries blijven onaangeroerd, zodat de fysieke voorraad klopt zonder financiële tegenboeking.
+- Status wordt vastgelegd in nieuwe data-key `lege_facturen_migratie_v1` (`null` → `'done'`) zodat de prompt na keuze (ja of nee) niet opnieuw verschijnt.
+- Wijziging logt audit-entry via `logAudit`.
+- i18n: nieuwe sleutels `confirm_lege_facturen_opruimen` en `audit_lege_facturen_opgeruimd` in `nl/en/de/fr/es`.
+- `config.yaml` — versie bump 1.9.17 → 1.9.18.
+
+---
+
+## [1.9.17] — 2026-05-04
+
+### Changed — Lot toevoegen zonder factuur in boekhouding
+
+- `InkoopFactuurModal` slaat geen `inkoop_facturen`-record meer op wanneer zowel leverancier als factuurnummer leeg zijn. De ontvangst wordt dan beschouwd als voorraadcorrectie: lots en `voorraad_log`-entries worden wél aangemaakt, zodat de fysieke voorraad klopt zonder financiële tegenboeking.
+- `src/pages/IngredientenPage.tsx` — `saveOntvangst` controleert `factuurForm.leverancier` en `factuurForm.factuur` voordat een inkoopfactuur wordt weggeschreven.
+- `src/pages/BoekhoudingPage.tsx` — `saveVrijeFactuur` past dezelfde logica toe.
+- `src/components/InkoopFactuurModal.tsx` — toont een blauwe info-hint zodra beide velden leeg zijn, zodat de gebruiker weet dat de ontvangst als correctie wordt opgeslagen.
+- i18n: nieuwe sleutel `hint_correctie_geen_factuur` toegevoegd aan `nl/en/de/fr/es`.
+- `config.yaml` — versie bump 1.9.16 → 1.9.17.
+
+---
+
 ## [1.9.16] — 2026-05-04
 
 ### Removed — Opruiming van dode paginabestanden

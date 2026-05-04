@@ -547,7 +547,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_tarief = Number(r.btw_tarief)||0;
       regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: r2(netto*btw_tarief/100), kostensoort: r.kostensoort||'Overig'});
     });
-    if (!regels.length) return;
+    // Geen inkoopfactuur opslaan als leverancier én factuurnummer beide leeg zijn:
+    // dan geldt de ontvangst als voorraadcorrectie (lots blijven wel staan).
+    const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
+    if (!regels.length || !heeftFactuurData) { setShowVrijeFactuur(false); return; }
     const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
     const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
     const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto;
