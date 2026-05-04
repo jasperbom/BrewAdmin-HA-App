@@ -625,6 +625,8 @@
   "lbl_aangifte_ingediend": "Eingereicht",
   "msg_btw_rollover": "Periode {from} wurde bereits abgeschlossen — die USt. dieser Rechnung wird in {to} geltend gemacht (Korrektur über aktuelle Erklärung).",
   "hint_correctie_geen_factuur": "Kein Lieferant und keine Rechnungsnummer eingegeben — dieser Wareneingang wird als Bestandskorrektur ohne Rechnung in der Buchhaltung gespeichert.",
+  "confirm_lege_facturen_opruimen": "Es gibt {n} Eingangsrechnungen ohne Lieferant und ohne Rechnungsnummer. Diese wurden vermutlich versehentlich in die Buchhaltung aufgenommen. Möchtest du sie aufräumen? Die Bestands-Lots und das Bestandsprotokoll bleiben erhalten. Diese Frage wird nur einmal gestellt.",
+  "audit_lege_facturen_opgeruimd": "{n} Eingangsrechnungen ohne Lieferant/Rechnungsnummer einmalig bereinigt",
   "msg_btw_geclaimd_in": "USt. geltend gemacht in {periode}",
   "lbl_aangifte_nog_indienen": "Erklärung noch nicht eingereicht",
   "lbl_aangifte_ingediend_op": "Eingereicht am {datum}",

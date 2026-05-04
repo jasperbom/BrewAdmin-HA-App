@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.18] — 2026-05-04
+
+### Added — Eenmalige opruiming van lege inkoopfacturen
+
+- `src/App.tsx` — eenmalige migratie die bij het opstarten controleert of er bestaande `inkoop_facturen` zijn zonder leverancier én zonder factuurnummer. Als die er zijn, wordt de gebruiker eenmalig gevraagd of de records opgeruimd mogen worden. Bij bevestiging worden de facturen verwijderd plus alle `bank_koppelingen` met `soort: 'inkoop'` die naar deze facturen verwezen. De bijbehorende `lots` en `voorraad_log`-entries blijven onaangeroerd, zodat de fysieke voorraad klopt zonder financiële tegenboeking.
+- Status wordt vastgelegd in nieuwe data-key `lege_facturen_migratie_v1` (`null` → `'done'`) zodat de prompt na keuze (ja of nee) niet opnieuw verschijnt.
+- Wijziging logt audit-entry via `logAudit`.
+- i18n: nieuwe sleutels `confirm_lege_facturen_opruimen` en `audit_lege_facturen_opgeruimd` in `nl/en/de/fr/es`.
+- `config.yaml` — versie bump 1.9.17 → 1.9.18.
+
+---
+
 ## [1.9.17] — 2026-05-04
 
 ### Changed — Lot toevoegen zonder factuur in boekhouding

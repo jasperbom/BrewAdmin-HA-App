@@ -76,6 +76,7 @@ function App() {
   const [batchTakenItems, setBatchTakenItems] = useStore('batch_taken_items', DEFAULT_BATCH_TAKEN_ITEMS);
   const [batchTakenGroepen, setBatchTakenGroepen] = useStore('batch_taken_groepen', DEFAULT_BATCH_TAKEN_GROEPEN);
   const [takenMigratie, setTakenMigratie] = useStore('batch_taken_migratie_v1', null);
+  const [legeFacturenMigratie, setLegeFacturenMigratie] = useStore('lege_facturen_migratie_v1', null);
   const [lang, setLangStore] = useStore('app_lang', detectLang());
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
   const [verkoopFacturen, setVerkoopFacturen] = useStore('verkoop_facturen', []);
@@ -317,6 +318,54 @@ function App() {
     const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenMigratie]);
+
+  // Eenmalige opruiming: inkoopfacturen die zijn aangemaakt vóór 1.9.17 zonder
+  // leverancier én zonder factuurnummer zijn bedoeld als voorraadcorrectie en
+  // horen niet in de boekhouding. Vraag de gebruiker eenmalig of die opgeruimd
+  // mogen worden. De bijbehorende lots en voorraad_log-entries blijven staan.
+  const legeFacturenMigratieRef = React.useRef(false);
+  React.useEffect(() => {
+    if (legeFacturenMigratieRef.current) return;
+    if (legeFacturenMigratie === 'done') { legeFacturenMigratieRef.current = true; return; }
+    const needed = ['inkoop_facturen', 'bank_koppelingen', 'lege_facturen_migratie_v1'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    const run = () => {
+      if (legeFacturenMigratieRef.current) return;
+      legeFacturenMigratieRef.current = true;
+      const facturen = Array.isArray(inkoopFacturen) ? inkoopFacturen : [];
+      const lege = facturen.filter((f: any) =>
+        !(f?.leverancier || '').trim() && !(f?.factuurnummer || '').trim()
+      );
+      if (lege.length === 0) { setLegeFacturenMigratie('done'); return; }
+      const bevestiging = confirm(
+        t('confirm_lege_facturen_opruimen').replace('{n}', String(lege.length))
+      );
+      if (bevestiging) {
+        const legeIds = new Set(lege.map((f: any) => f.id));
+        setInkoopFacturen((prev: any[]) => (prev || []).filter((f: any) => !legeIds.has(f.id)));
+        setBankKoppelingen((prev: any) => {
+          const out: any = {};
+          for (const [k, v] of Object.entries(prev || {})) {
+            const koppeling: any = v;
+            if (koppeling?.soort === 'inkoop' && legeIds.has(koppeling.factuurId)) continue;
+            out[k] = v;
+          }
+          return out;
+        });
+        logAudit(auditLog, setAuditLog, {
+          entiteit: 'Inkoopfactuur',
+          entiteit_id: 0,
+          actie: 'verwijderd',
+          omschrijving: t('audit_lege_facturen_opgeruimd').replace('{n}', String(lege.length)),
+        });
+      }
+      setLegeFacturenMigratie('done');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000);
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [legeFacturenMigratie]);
 
   React.useEffect(() => {
     if (bfAutoSynced.current || !bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) return;

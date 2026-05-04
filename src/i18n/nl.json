@@ -625,6 +625,8 @@
   "lbl_aangifte_ingediend": "Ingediend",
   "msg_btw_rollover": "Periode {from} is al afgesloten — de BTW van deze factuur wordt geclaimd in {to} (suppletie via huidige aangifte).",
   "hint_correctie_geen_factuur": "Geen leverancier en factuurnummer ingevuld — deze ontvangst wordt opgeslagen als voorraadcorrectie zonder factuur in de boekhouding.",
+  "confirm_lege_facturen_opruimen": "Er zijn {n} inkoopfacturen zonder leverancier én zonder factuurnummer. Deze zijn vermoedelijk per ongeluk in de boekhouding terechtgekomen. Wil je deze opruimen? De voorraad-lots en voorraadlog blijven bewaard. Dit wordt eenmalig gevraagd.",
+  "audit_lege_facturen_opgeruimd": "{n} inkoopfacturen zonder leverancier/factuurnummer eenmalig opgeruimd",
   "msg_btw_geclaimd_in": "BTW geclaimd in {periode}",
   "lbl_aangifte_nog_indienen": "Aangifte nog indienen",
   "lbl_aangifte_ingediend_op": "Ingediend op {datum}",
