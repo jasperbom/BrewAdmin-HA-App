@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.29] — 2026-05-05
+
+### Fixed — Klikbare BF-fallback geeft nu exact dezelfde waarde als de hint toont
+
+- `src/pages/IngredientenPage.tsx` + `src/components/InkoopFactuurModal.tsx` — Bij het klikken op de Brewfather-fallback-link wordt nu de **geformatteerde** waarde in het invoerveld gezet via `formatBrewValue`, in plaats van de rauwe `Number(ingFallback)`. Voorheen kon de hint bijvoorbeeld "82.5" tonen (door `formatBrewValue`-afronding van een float-artefact als `82.4999999999999...`) terwijl bij klikken de rauwe `82.4999999999999...` in het veld belandde — wat de gebruiker zag als "afronding gaat fout". Nu zijn hint-tekst en click-resultaat altijd identiek, en wordt de geformatteerde tekst voor number-velden weer naar `Number()` geparsed zodat bf_props een echt getal blijft.
+- `config.yaml` — versie bump 1.9.28 → 1.9.29.
+
+---
+
 ## [1.9.28] — 2026-05-05
 
 ### Fixed — Brewfather-waardes werden onterecht naar 2 decimalen afgerond
