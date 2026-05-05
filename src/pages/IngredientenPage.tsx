@@ -555,16 +555,28 @@ const IngredientenPage: React.FC<Props> = ({
               />
               <table className="w-full text-sm">
                 <thead className="text-xs text-gray-500 bg-gray-50">
-                  <tr><th className="px-3 py-2 text-left">{t('lbl_lot_short')}</th><th className="px-3 py-2 text-right">{t('lbl_quantity_short')}</th><th className="px-3 py-2 text-left">{t('lbl_tht')}</th><th className="px-3 py-2 text-right">€/E</th></tr>
+                  <tr>
+                    <th className="px-3 py-2 text-left">{t('lbl_lot_short')}</th>
+                    <th className="px-3 py-2 text-right">{t('lbl_quantity_short')}</th>
+                    {selIng.type === 'Hop' && <th className="px-3 py-2 text-right">{t('bf_alpha')}</th>}
+                    {selIng.type === 'Hop' && <th className="px-3 py-2 text-right">{t('bf_year')}</th>}
+                    <th className="px-3 py-2 text-left">{t('lbl_tht')}</th>
+                    <th className="px-3 py-2 text-right">€/E</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {activeLots(sel).length === 0 && <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">{t('msg_no_active_lots')}</td></tr>}
+                  {(() => { const cols = selIng.type === 'Hop' ? 6 : 4; return <>
+                  {activeLots(sel).length === 0 && <tr><td colSpan={cols} className="px-3 py-4 text-center text-gray-400">{t('msg_no_active_lots')}</td></tr>}
                   {activeLots(sel).map((lot: any) => {
                     const days = lot.houdbaarheid ? Math.ceil((new Date(lot.houdbaarheid).getTime() - new Date().getTime()) / 86400000) : null
                     const exp = days !== null && days < 0; const soon = days !== null && days >= 0 && days <= 30
+                    const alpha = selIng.type === 'Hop' ? getEffectiveBrewProp(lot, selIng, 'alpha') : undefined
+                    const year = selIng.type === 'Hop' ? getEffectiveBrewProp(lot, selIng, 'year') : undefined
                     return <tr key={lot.id} className={`cursor-pointer t-hover transition-colors ${exp ? 'bg-red-50' : soon ? 'bg-yellow-50' : ''}`} onClick={() => openLot(lot)}>
                       <td className="px-3 py-2">{lot.lotnummer || '—'}</td>
                       <td className="px-3 py-2 text-right font-mono">{fmtQty(lot.hoeveelheid)} {lot.eenheid}</td>
+                      {selIng.type === 'Hop' && <td className="px-3 py-2 text-right text-xs font-mono">{alpha !== undefined ? `${formatBrewValue(alpha)}%` : '—'}</td>}
+                      {selIng.type === 'Hop' && <td className="px-3 py-2 text-right text-xs font-mono">{year !== undefined ? formatBrewValue(year) : '—'}</td>}
                       <td className={`px-3 py-2 text-xs ${exp ? 'text-red-600' : soon ? 'text-yellow-600' : 'text-gray-500'}`}>
                         {lot.houdbaarheid ? fmtD(lot.houdbaarheid) : '—'}{exp ? ' ⚠️' : soon ? ` (${days}d)` : ''}
                       </td>
@@ -572,21 +584,28 @@ const IngredientenPage: React.FC<Props> = ({
                     </tr>
                   })}
                   {archiefLots(sel).length > 0 && (
-                    <tr><td colSpan={4} className="px-3 py-1">
+                    <tr><td colSpan={cols} className="px-3 py-1">
                       <button className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 py-1" onClick={() => setArchiefOpen((p: any) => ({ ...p, [sel]: !p[sel] }))}>
                         <span className="text-gray-400">{archiefOpen[sel] ? '▼' : '▶'}</span>
                         <span>{t('ing_archived_lots').replace('{n}', String(archiefLots(sel).length))}</span>
                       </button>
                     </td></tr>
                   )}
-                  {archiefOpen[sel] && archiefLots(sel).map((lot: any) => (
-                    <tr key={lot.id} className="bg-gray-50 cursor-pointer hover:bg-gray-100 opacity-70" onClick={() => openLot(lot)}>
-                      <td className="px-3 py-2 text-gray-500">{lot.lotnummer || '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono text-gray-400">{fmtQty(lot.hoeveelheid)} {lot.eenheid} <span className="text-xs text-gray-300">({t('lbl_empty')})</span></td>
-                      <td className="px-3 py-2 text-xs text-gray-400">{lot.houdbaarheid ? fmtD(lot.houdbaarheid) : '—'}</td>
-                      <td className="px-3 py-2 text-right text-xs text-gray-400">{lot.prijs_per_eenheid ? fmt(lot.prijs_per_eenheid) : '—'}</td>
-                    </tr>
-                  ))}
+                  {archiefOpen[sel] && archiefLots(sel).map((lot: any) => {
+                    const alpha = selIng.type === 'Hop' ? getEffectiveBrewProp(lot, selIng, 'alpha') : undefined
+                    const year = selIng.type === 'Hop' ? getEffectiveBrewProp(lot, selIng, 'year') : undefined
+                    return (
+                      <tr key={lot.id} className="bg-gray-50 cursor-pointer hover:bg-gray-100 opacity-70" onClick={() => openLot(lot)}>
+                        <td className="px-3 py-2 text-gray-500">{lot.lotnummer || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-400">{fmtQty(lot.hoeveelheid)} {lot.eenheid} <span className="text-xs text-gray-300">({t('lbl_empty')})</span></td>
+                        {selIng.type === 'Hop' && <td className="px-3 py-2 text-right text-xs font-mono text-gray-400">{alpha !== undefined ? `${formatBrewValue(alpha)}%` : '—'}</td>}
+                        {selIng.type === 'Hop' && <td className="px-3 py-2 text-right text-xs font-mono text-gray-400">{year !== undefined ? formatBrewValue(year) : '—'}</td>}
+                        <td className="px-3 py-2 text-xs text-gray-400">{lot.houdbaarheid ? fmtD(lot.houdbaarheid) : '—'}</td>
+                        <td className="px-3 py-2 text-right text-xs text-gray-400">{lot.prijs_per_eenheid ? fmt(lot.prijs_per_eenheid) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                  </> })()}
                 </tbody>
               </table>
             </div>

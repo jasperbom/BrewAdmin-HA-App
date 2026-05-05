@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.33] — 2026-05-05
+
+### Added — Hop-lot-overzicht toont nu alfazuur en oogstjaar per lot
+
+- `src/pages/IngredientenPage.tsx` — De lot-tabel onder een hop-ingredient krijgt twee extra kolommen: **Alfazuur** (%) en **Oogstjaar**. Beide gebruiken `getEffectiveBrewProp(lot, selIng, key)` zodat de waarde valt onder dezelfde fallback-regel — eerst lot.bf_props, anders Ingredient.bf_props (Brewfather-bron). Ontbrekende waardes tonen `—`. Voor andere ingredient-typen blijft de tabel ongewijzigd (4 kolommen). Werkt zowel voor actieve als gearchiveerde lots; lege-state colSpan is dynamisch.
+- Geen aanpassingen aan i18n nodig — bestaande sleutels `bf_alpha` en `bf_year` worden hergebruikt.
+- Branch gemerged met `origin/main` (PR #132 douane-terminologie en PR #133 recept-voorraadcheck-aggregatie inbegrepen).
+- `config.yaml` — versie bump 1.9.32 → 1.9.33.
+
+---
+
 ## [1.9.32] — 2026-05-05
 
 ### Fixed — Recept-voorraadcheck somt nu regels met hetzelfde ingrediënt op
