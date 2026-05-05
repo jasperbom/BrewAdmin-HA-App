@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory, extractBfProps } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty, r2, r3 } from '../utils/format'
 import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
-import { getEffectiveBrewProps, getEffectiveBrewProp, stripEmptyBrewProps } from '../utils/brewProps'
+import { getEffectiveBrewProps, getEffectiveBrewProp, stripEmptyBrewProps, formatBrewValue } from '../utils/brewProps'
 import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -607,7 +607,7 @@ const IngredientenPage: React.FC<Props> = ({
                       if (typeof v === 'object' && v !== null) return null
                       const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
                       const unit = BREW_PROP_UNITS[k] || ''
-                      const display = typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '')) : String(v)
+                      const display = formatBrewValue(v)
                       const isLong = typeof v === 'string' && (v.length > 60 || /^note/i.test(k))
                       return (
                         <div key={k} className="flex flex-col min-w-0">
@@ -842,7 +842,7 @@ const IngredientenPage: React.FC<Props> = ({
                           const val = lotEdit.bf_props?.[fld.key] ?? ''
                           const ingFallback = !val && lotIng ? getEffectiveBrewProp(null, lotIng, fld.key) : undefined
                           const hint = ingFallback !== undefined
-                            ? t('brew_props_fallback_hint').replace('{value}', String(ingFallback))
+                            ? t('brew_props_fallback_hint').replace('{value}', formatBrewValue(ingFallback))
                             : null
                           if (fld.kind === 'select') {
                             return (
@@ -890,7 +890,7 @@ const IngredientenPage: React.FC<Props> = ({
                               if (typeof info.value === 'object' && info.value !== null) return null
                               const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
                               const unit = BREW_PROP_UNITS[k] || ''
-                              const display = typeof info.value === 'number' ? (Number.isInteger(info.value) ? String(info.value) : Number(info.value).toFixed(2).replace(/\.?0+$/, '')) : String(info.value)
+                              const display = formatBrewValue(info.value)
                               const isLong = typeof info.value === 'string' && (info.value.length > 60 || /^note/i.test(k))
                               const badge = info.source === 'lot' ? t('src_lot') : t('src_ingredient')
                               const badgeCls = info.source === 'lot' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'

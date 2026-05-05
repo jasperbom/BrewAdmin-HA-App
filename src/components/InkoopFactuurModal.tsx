@@ -5,7 +5,7 @@ import Inp from './ui/Inp'
 import Sel from './ui/Sel'
 import { t } from '../i18n'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
-import { getEffectiveBrewProp } from '../utils/brewProps'
+import { getEffectiveBrewProp, formatBrewValue } from '../utils/brewProps'
 import { ADDON_BASE, callClaudeProxy } from '../utils/api'
 import { tod } from '../utils/format'
 
@@ -599,7 +599,7 @@ function InkoopFactuurModal({
                           const set = (v: any) => setProductForm((f: any) => ({...f, bf_props: {...(f.bf_props||{}), [fld.key]: v}}))
                           const ingFallback = !val && selectedIng ? getEffectiveBrewProp(null, selectedIng, fld.key) : undefined
                           const hint = ingFallback !== undefined
-                            ? t('brew_props_fallback_hint').replace('{value}', String(ingFallback))
+                            ? t('brew_props_fallback_hint').replace('{value}', formatBrewValue(ingFallback))
                             : null
                           if (fld.kind === 'select') {
                             return (
