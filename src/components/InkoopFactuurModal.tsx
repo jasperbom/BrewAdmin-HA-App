@@ -107,6 +107,7 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string): Promise<an
 interface InkoopFactuurModalProps {
   knownLeveranciers?: string[]
   ing?: any[]
+  lots?: any[]
   onderdelen?: any[]
   onSave: (data: any) => void
   onClose: () => void
@@ -124,21 +125,44 @@ interface InkoopFactuurModalProps {
 }
 
 function InkoopFactuurModal({
-  knownLeveranciers=[], ing=[], onderdelen=[], onSave, onClose,
+  knownLeveranciers=[], ing=[], lots=[], onderdelen=[], onSave, onClose,
   initialTab='ingredienten', initialIngId='', claudeCreds=null,
   ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
   kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo
 }: InkoopFactuurModalProps) {
   const defaultType = ingTypes[0] || 'Mout'
-  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:defaultType,fabrikant:'',lotnr:'',qty:'',eenh:'kg',tht:'',prijs:'',totaalprijs:'',btw_tarief:ingTypeBtw[defaultType]!=null?String(ingTypeBtw[defaultType]):'9'}
+
+  // Pre-fill defaults voor "+ lot" op een specifiek ingredient: leid type,
+  // eenheid, prijs, BTW en leverancier af uit het laatste lot.
+  const initialIng = initialIngId ? ing.find((i: any) => String(i.id) === String(initialIngId)) : null
+  const initialIngLots = initialIng ? lots.filter((l: any) => l.ingredient_id === initialIng.id) : []
+  const lastLot = [...initialIngLots].sort((a: any, b: any) =>
+    new Date(b.aankoop_datum || b.created_at || 0).getTime() -
+    new Date(a.aankoop_datum || a.created_at || 0).getTime()
+  )[0]
+  const eenhCount: Record<string, number> = {}
+  initialIngLots.forEach((l: any) => { if (l.eenheid) eenhCount[l.eenheid] = (eenhCount[l.eenheid]||0) + 1 })
+  const mostCommonEenh = Object.keys(eenhCount).sort((a, b) => eenhCount[b] - eenhCount[a])[0]
+
+  const initialType = initialIng?.type || defaultType
+  const initialEenh = mostCommonEenh || lastLot?.eenheid || 'kg'
+  const initialPrijs = lastLot?.prijs_per_eenheid != null ? String(lastLot.prijs_per_eenheid) : ''
+  const initialBtw = lastLot?.btw_tarief != null
+    ? String(lastLot.btw_tarief)
+    : (ingTypeBtw[initialType] != null ? String(ingTypeBtw[initialType]) : '9')
+
+  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:initialType,fabrikant:'',lotnr:'',qty:'',eenh:initialEenh,tht:'',prijs:initialPrijs,totaalprijs:'',btw_tarief:initialBtw}
   const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'}
 
   const [leverancierSel, setLeverancierSel] = useState<string>(() => {
     if (initialData?.leverancier) return knownLeveranciers.includes(initialData.leverancier) ? initialData.leverancier : '__nieuw__'
+    if (lastLot?.leverancier && knownLeveranciers.includes(lastLot.leverancier)) return lastLot.leverancier
+    if (lastLot?.leverancier) return '__nieuw__'
     return knownLeveranciers.length ? '' : '__nieuw__'
   })
   const [leverancierNieuw, setLeverancierNieuw] = useState<string>(() => {
     if (initialData?.leverancier && !knownLeveranciers.includes(initialData.leverancier)) return initialData.leverancier
+    if (lastLot?.leverancier && !knownLeveranciers.includes(lastLot.leverancier)) return lastLot.leverancier
     return ''
   })
   const [factuurNr, setFactuurNr] = useState(initialData?.factuurnummer || '')

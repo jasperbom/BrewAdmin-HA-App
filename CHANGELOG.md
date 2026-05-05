@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.21] — 2026-05-05
+
+### Changed — Ingrediëntenpagina: "+ lot" vult ingredient-context vooraf in
+
+- `src/components/InkoopFactuurModal.tsx` — nieuwe optionele prop `lots`. Wanneer het Ontvangst-modal wordt geopend met een specifiek `initialIngId` (via *+ lot* op de Ingrediëntenpagina), worden product-velden afgeleid uit het ingredient en zijn laatste lot:
+  - `type` = type van het ingredient (zonder dit verscheen het ingredient niet eens in de dropdown).
+  - `eenh` = meest gebruikte eenheid van eerdere lots (fallback: laatste lot).
+  - `prijs` = `prijs_per_eenheid` van het laatste lot.
+  - `btw_tarief` = `btw_tarief` van het laatste lot, anders mapping op type.
+  - Leverancier wordt voorgeselecteerd op de laatst gebruikte leverancier voor dit ingredient (in de bekend-lijst of als nieuw).
+- `src/pages/IngredientenPage.tsx` — geeft `lots` door aan `<InkoopFactuurModal>`.
+- `config.yaml` — versie bump 1.9.20 → 1.9.21.
+
+---
+
 ## [1.9.20] — 2026-05-05
 
 ### Changed — Batch-detail UI: header opgesplitst en fase-bewuste section cards

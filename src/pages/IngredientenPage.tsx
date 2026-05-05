@@ -737,6 +737,7 @@ const IngredientenPage: React.FC<Props> = ({
         <InkoopFactuurModal
           knownLeveranciers={knownLeveranciers}
           ing={ing}
+          lots={lots}
           onderdelen={onderdelen}
           initialTab={ontvangstInitTab}
           initialIngId={ontvangstInitIngId}
