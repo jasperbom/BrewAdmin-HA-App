@@ -52,6 +52,7 @@ export const LOT_BREW_FIELDS_PER_TYPE: Record<string, BrewField[]> = {
     { key: 'beta', kind: 'number' },
     { key: 'cohumulone', kind: 'number' },
     { key: 'hsi', kind: 'number' },
+    { key: 'year', kind: 'number' },
   ],
   Gist: [
     { key: 'attenuation', kind: 'number' },

@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.30] — 2026-05-05
+
+### Added — Oogstjaar (`year`) als optioneel veld op hop-lots
+
+- `src/utils/constants.ts` — `LOT_BREW_FIELDS_PER_TYPE.Hop` heeft nu een extra veld `year` (Brewfather-key, integer 4-cijferig). Belangrijk omdat alpha-zuren gemiddeld zo'n 5–15% per jaar afnemen — combineer met HSI om de effectieve alpha te schatten op moment van brouwen.
+- `src/i18n/{nl,en,de,fr,es}.json` — Nieuwe sleutel `bf_year` (NL "Oogstjaar", EN "Crop year", DE "Erntejahr", FR "Année de récolte", ES "Año de cosecha"). Bestaande `bf_*`-fallback-resolver pakt automatisch `Ingredient.bf_props.year` uit Brewfather-sync.
+- Geen unit in `BREW_PROP_UNITS` (een jaartal heeft geen suffix), geen verdere code-aanpassingen nodig — het curated formulier en de fallback-hint werken automatisch via dezelfde generieke render-logica.
+- `config.yaml` — versie bump 1.9.29 → 1.9.30.
+
+---
+
 ## [1.9.29] — 2026-05-05
 
 ### Fixed — Klikbare BF-fallback geeft nu exact dezelfde waarde als de hint toont
