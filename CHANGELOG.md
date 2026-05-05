@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.24] — 2026-05-05
+
+### Added — Brouwkundige eigenschappen per Lot (met fallback naar Ingredient)
+
+Een lot kan nu optioneel charge-specifieke brouwkundige waardes bevatten (alpha% bij hop, kleur/yield bij mout, attenuation/min-max-temp/flocculatie bij gist, …). Lege waardes vallen automatisch terug op `Ingredient.bf_props` (Brewfather-bron), zodat één plek volstaat als alle charges hetzelfde zijn.
+
+- `src/types/index.ts` — `Lot.bf_props?: Record<string, any>` toegevoegd, gespiegeld aan `Ingredient.bf_props`.
+- `src/utils/constants.ts` — `LOT_BREW_FIELDS_PER_TYPE` curates per ingredient-type welke velden zichtbaar zijn (Mout: kleur/yield/diastatisch/vocht; Hop: alpha/beta/cohumulone/HSI; Gist: attenuation/min-/maxTemp/flocculatie/alcoholtolerantie; Suiker: yield/kleur; Overig: concentratie/kleur). Keys zijn identiek aan `extractBfProps`-output zodat fallback een directe key-lookup is.
+- `src/utils/brewProps.ts` (nieuw) — `getEffectiveBrewProp`, `getEffectiveBrewProps` (met bron `'lot'|'ingredient'`) en `stripEmptyBrewProps`.
+- `src/components/InkoopFactuurModal.tsx` — collapsible sectie *Brouwkundige eigenschappen (optioneel)* in het Ontvangst-modal, dynamisch op basis van `productForm.type`. Knop *Neem over van vorig lot* hergebruikt de bestaande `lastLot`-detectie zodat één klik de waardes van de vorige charge kopieert (geen autoprefill — anders blokkeert het de fallback).
+- `src/pages/IngredientenPage.tsx` — `saveOntvangst` strip lege waardes en schrijft `lot.bf_props`. Lot-bewerk-modal heeft nu een edit-sectie met fallback-hint per veld ("← Brewfather: 5,5") plus een read-only effectieve-waardes-paneel met badge `lot` of `Brewfather` per key.
+- `src/pages/BoekhoudingPage.tsx` — mirror van saveOntvangst-uitbreiding zodat ook via *Boekhouding → Inkoopfactuur* de brouwwaardes op het lot terechtkomen.
+- `src/i18n/{nl,en,de,fr,es}.json` — 5 nieuwe sleutels: `brew_props_section`, `btn_copy_from_last_lot`, `brew_props_fallback_hint`, `src_lot`, `src_ingredient`. Bestaande `bf_*`-keys (alpha, color, yield, attenuation, …) worden hergebruikt voor veldlabels.
+- Excel-backup ondersteunt `lot.bf_props` automatisch — `excel.ts` JSON-stringifyt geneste objecten en parsed bij import terug.
+- Toekomst: dezelfde resolver vormt het fundament voor automatische substitutie-suggesties bij voorraadtekort tijdens brouwen — niet onderdeel van deze release.
+- `config.yaml` — versie bump 1.9.23 → 1.9.24.
+
+---
+
 ## [1.9.23] — 2026-05-05
 
 ### Changed — Ingrediëntenlijst: fabrikant zichtbaar en strakker uitgelijnd

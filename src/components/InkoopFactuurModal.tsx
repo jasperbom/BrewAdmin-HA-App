@@ -4,7 +4,8 @@ import Btn from './ui/Btn'
 import Inp from './ui/Inp'
 import Sel from './ui/Sel'
 import { t } from '../i18n'
-import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES } from '../utils/constants'
+import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, LOT_BREW_FIELDS_PER_TYPE } from '../utils/constants'
+import { stripEmptyBrewProps } from '../utils/brewProps'
 import { ADDON_BASE, callClaudeProxy } from '../utils/api'
 import { tod } from '../utils/format'
 
@@ -151,7 +152,7 @@ function InkoopFactuurModal({
     ? String(lastLot.btw_tarief)
     : (ingTypeBtw[initialType] != null ? String(ingTypeBtw[initialType]) : '9')
 
-  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:initialType,fabrikant:'',lotnr:'',qty:'',eenh:initialEenh,tht:'',prijs:initialPrijs,totaalprijs:'',btw_tarief:initialBtw}
+  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:initialType,fabrikant:'',lotnr:'',qty:'',eenh:initialEenh,tht:'',prijs:initialPrijs,totaalprijs:'',btw_tarief:initialBtw,bf_props:{} as Record<string, any>}
   const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'}
 
   const [leverancierSel, setLeverancierSel] = useState<string>(() => {
@@ -177,6 +178,7 @@ function InkoopFactuurModal({
   React.useEffect(() => () => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl) }, [])
 
   const [productForm, setProductForm] = useState(emptyProduct)
+  const [brewPropsOpen, setBrewPropsOpen] = useState(false)
   const [productLijst, setProductLijst] = useState<any[]>(() => {
     if (!initialData?.regels) return []
     return initialData.regels.filter((r: any) => r.type==='ingredient').map((r: any, i: number) => {
@@ -569,6 +571,53 @@ function InkoopFactuurModal({
                   </select>
                 </div>
               </div>
+              {(LOT_BREW_FIELDS_PER_TYPE[productForm.type] || []).length > 0 && (
+                <div className="border-t border-gray-100 pt-2">
+                  <div className="flex items-center justify-between">
+                    <button type="button"
+                      onClick={() => setBrewPropsOpen(o => !o)}
+                      className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700">
+                      <span className="text-gray-400">{brewPropsOpen ? '▼' : '▶'}</span>
+                      <span>{t('brew_props_section')}</span>
+                    </button>
+                    {brewPropsOpen && lastLot?.bf_props && Object.keys(lastLot.bf_props).length > 0 && (
+                      <Btn s="sm" v="secondary"
+                        onClick={() => setProductForm((f: any) => ({...f, bf_props: {...lastLot.bf_props}}))}>
+                        {t('btn_copy_from_last_lot')}
+                      </Btn>
+                    )}
+                  </div>
+                  {brewPropsOpen && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+                      {(LOT_BREW_FIELDS_PER_TYPE[productForm.type] || []).map((fld: any) => {
+                        const label = t('bf_' + fld.key) !== 'bf_' + fld.key ? t('bf_' + fld.key) : fld.key
+                        const labelWithUnit = fld.unit ? `${label} (${fld.unit})` : label
+                        const val = productForm.bf_props?.[fld.key] ?? ''
+                        const set = (v: any) => setProductForm((f: any) => ({...f, bf_props: {...(f.bf_props||{}), [fld.key]: v}}))
+                        if (fld.kind === 'select') {
+                          return (
+                            <div key={fld.key}>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">{labelWithUnit}</label>
+                              <select value={val} onChange={e => set(e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none">
+                                <option value="">—</option>
+                                {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            </div>
+                          )
+                        }
+                        return (
+                          <Inp key={fld.key} label={labelWithUnit}
+                            type={fld.kind === 'number' ? 'number' : 'text'}
+                            value={String(val)}
+                            onChange={(v: string) => set(v)}
+                            placeholder="" />
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 {editingProductIdx !== null && (
                   <Btn v="secondary" onClick={() => {setEditingProductIdx(null);setProductForm(emptyProduct);setProductTotInclBtw(false);setProductBrutoStr('')}}>{t('btn_cancel')}</Btn>

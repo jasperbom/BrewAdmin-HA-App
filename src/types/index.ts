@@ -26,6 +26,9 @@ export interface Lot {
   beschikbaar?: boolean
   gn_code?: string
   created_at?: string
+  // Brouwkundige eigenschappen specifiek voor deze charge (alpha%, EBC, yield,
+  // attenuation, …). Leeg/ontbrekend → fallback naar Ingredient.bf_props.
+  bf_props?: Record<string, any>
 }
 
 export interface Batch {
