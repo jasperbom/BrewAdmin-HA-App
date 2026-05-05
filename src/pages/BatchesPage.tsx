@@ -2175,7 +2175,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             className="text-xs border rounded px-1 py-0.5 bg-white ml-2 align-middle">
                             <option value="">{t('recipe_link_auto')}</option>
                             {batchIngOptions(biRow.ingredient_type).map((i: any) => (
-                              <option key={i.id} value={i.id}>{i.naam}</option>
+                              <option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>
                             ))}
                           </select>
                         )
@@ -2314,7 +2314,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           <option value="">{t('ing_choose_ingredient_opt')}</option>
                           {BUILTIN_ING_TYPES.map(ingTyp => {
                             const r = [...ing.filter((i: any) => i.type===ingTyp)].sort((a: any,b: any)=>a.naam.localeCompare(b.naam,'nl'))
-                            return r.length ? <optgroup key={ingTyp} label={t('ing_type_'+ingTyp.toLowerCase())}>{r.map((i: any)=><option key={i.id} value={i.id}>{i.naam}</option>)}</optgroup> : null
+                            return r.length ? <optgroup key={ingTyp} label={t('ing_type_'+ingTyp.toLowerCase())}>{r.map((i: any)=><option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>)}</optgroup> : null
                           })}
                           <option value="custom">{t('ing_free_fill')}</option>
                         </select>

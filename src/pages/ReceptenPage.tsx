@@ -163,7 +163,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             className="text-xs border rounded px-1 py-0.5 bg-white">
             <option value="">{t('recipe_link_auto')}</option>
             {ingOptions(cat).map((i: any) => (
-              <option key={i.id} value={i.id}>{i.naam}</option>
+              <option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>
             ))}
           </select>
         ) : ingMatch ? (

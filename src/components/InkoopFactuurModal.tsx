@@ -519,7 +519,7 @@ function InkoopFactuurModal({
                 </div>
                 <Inp label={t('lbl_or_new_ingredient')} value={productForm.nieuw} onChange={v => setProductForm((f: any) => ({...f,nieuw:v,ing_id:''}))} placeholder={t('ph_new_name')} />
               </div>
-              {!productForm.ing_id && productForm.nieuw && (
+              {!productForm.ing_id && (
                 <Inp label={t('ing_manufacturer')} value={productForm.fabrikant} onChange={v => setProductForm((f: any) => ({...f,fabrikant:v}))} placeholder={t('ph_manufacturer')} />
               )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
