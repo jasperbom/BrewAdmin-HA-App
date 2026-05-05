@@ -100,22 +100,51 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   // Type van een recipe-sectie naar het ingredient.type in de catalogus.
   const CAT_TO_TYPE: Record<string, string> = {mout:'Mout', hop:'Hop', gist:'Gist', overig:'Overig'};
 
-  const checkStock = (item: any) => {
-    const benodigd = Number(item?.hoeveelheid||0);
-    // Prioriteit: expliciete koppeling via ingredient_id → anders naam-match.
-    let ingMatch: any = null;
+  // Vindt het matchende ingredient voor een receptregel: expliciete koppeling
+  // via ingredient_id heeft voorrang boven naam-match.
+  const findIngMatch = (item: any) => {
     if (item?.ingredient_id != null) {
-      ingMatch = ing.find((i: any) => i.id === item.ingredient_id);
+      const m = ing.find((i: any) => i.id === item.ingredient_id);
+      if (m) return m;
     }
-    if (!ingMatch && item?.naam) {
-      ingMatch = ing.find((i: any) => i.naam.toLowerCase() === String(item.naam).toLowerCase());
+    if (item?.naam) {
+      return ing.find((i: any) => i.naam.toLowerCase() === String(item.naam).toLowerCase()) || null;
     }
-    if (!ingMatch) return {ok:null, totaal:0, ingLots:[], ingMatch:null};
+    return null;
+  };
+
+  // Voorraadcheck per receptregel. Wanneer `recept` is meegegeven sommeren we
+  // alle regels in dat recept die naar hetzelfde ingredient verwijzen, zodat
+  // een ingredient over meerdere regels gespreid niet vals groen wordt.
+  const checkStock = (item: any, recept?: any) => {
+    const benodigd = Number(item?.hoeveelheid||0);
+    const ingMatch = findIngMatch(item);
+    if (!ingMatch) return {ok:null, totaal:0, ingLots:[], ingMatch:null, benodigd, totaalNodig:benodigd, gedeeld:false};
     const ingLots = lots
       .filter((l: any) => l.ingredient_id===ingMatch.id && l.beschikbaar && Number(l.hoeveelheid||0)>0)
       .sort((a: any,b: any)=>(a.houdbaarheid||'9999')<(b.houdbaarheid||'9999')?-1:1);
     const totaal = ingLots.reduce((s: any,l: any)=>s+Number(l.hoeveelheid||0),0);
-    return {ok:totaal>=benodigd, bijna:totaal>0&&totaal<benodigd, totaal, ingLots, ingMatch};
+    let totaalNodig = benodigd;
+    let regels = 1;
+    if (recept) {
+      let som = 0; let n = 0;
+      for (const cat of ['mout','hop','gist','overig']) {
+        for (const it of ((recept as any)[cat] || [])) {
+          const q = Number(it?.hoeveelheid || 0);
+          if (q <= 0) continue;
+          const m = findIngMatch(it);
+          if (m && m.id === ingMatch.id) { som += q; n += 1; }
+        }
+      }
+      if (n > 0) { totaalNodig = som; regels = n; }
+    }
+    return {
+      ok: totaal>=totaalNodig,
+      bijna: totaal>0 && totaal<totaalNodig,
+      totaal, ingLots, ingMatch,
+      benodigd, totaalNodig,
+      gedeeld: regels > 1,
+    };
   };
 
   // Wijzig een enkele ingredient-entry in het geselecteerde recept.
@@ -141,7 +170,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   };
 
   const IngRow = ({item, cat, idx, readOnly}: any) => {
-    const {ok, bijna, totaal, ingLots, ingMatch} = checkStock(item);
+    const {ok, bijna, totaal, ingLots, ingMatch, totaalNodig, gedeeld} = checkStock(item, selRec);
     const [open, setOpen] = useState(false);
     const [editKoppel, setEditKoppel] = useState(false);
     const dot = ok===null ? <span className="text-gray-300">●</span>
@@ -187,8 +216,14 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             onClick={()=>ingLots.length>0&&setOpen((o: any)=>!o)}>
           <td className="px-3 py-2 text-sm text-gray-800">{item.naam}</td>
           <td className="px-3 py-2 text-sm text-left">{koppelCel}</td>
-          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap">
+          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap"
+              title={gedeeld ? t('recipe_total_in_recipe').replace('{n}', Number(totaalNodig).toLocaleString('nl-NL',{maximumFractionDigits:3})).replace('{u}', String(item.eenheid||'')) : ''}>
             {Number(item.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
+            {gedeeld && (
+              <span className="ml-1 text-xs text-gray-400">
+                ({t('recipe_total_short')}: {Number(totaalNodig).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid})
+              </span>
+            )}
           </td>
           <td className="px-3 py-2 text-xs text-gray-400">
             {item.gebruik||''}
@@ -228,7 +263,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
 
   const IngSection = ({titel, items, cat}: any) => {
     if (!items?.length) return null;
-    const stocks = items.map((i: any)=>checkStock(i));
+    const stocks = items.map((i: any)=>checkStock(i, selRec));
     const anyRed = stocks.some((s: any)=>s.ok===false&&!s.bijna);
     const anyYellow = stocks.some((s: any)=>s.bijna);
     const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
@@ -266,10 +301,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
   };
 
   const cardStocks = (r: any) => [
-    ...r.mout.map((i: any)=>checkStock(i)),
-    ...r.hop.map((i: any)=>checkStock(i)),
-    ...r.gist.map((i: any)=>checkStock(i)),
-    ...r.overig.map((i: any)=>checkStock(i)),
+    ...r.mout.map((i: any)=>checkStock(i, r)),
+    ...r.hop.map((i: any)=>checkStock(i, r)),
+    ...r.gist.map((i: any)=>checkStock(i, r)),
+    ...r.overig.map((i: any)=>checkStock(i, r)),
   ];
   const allStock   = selRec ? cardStocks(selRec) : [];
   const overallOk  = allStock.length>0 && allStock.every((s: any)=>s.ok===true);

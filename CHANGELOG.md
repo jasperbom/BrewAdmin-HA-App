@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.32] — 2026-05-05
+
+### Fixed — Recept-voorraadcheck somt nu regels met hetzelfde ingrediënt op
+
+Wanneer een recept hetzelfde ingrediënt op meerdere regels gebruikt (bijv. dezelfde mout in twee giften, of dezelfde hop op verschillende kookmomenten), werd elke regel afzonderlijk tegen de totale voorraad vergeleken. Daardoor kon je per regel groen krijgen terwijl het opgetelde recept-totaal de voorraad overschreed.
+
+`checkStock` in `src/pages/ReceptenPage.tsx` aggregeert nu alle regels binnen het geselecteerde recept die naar hetzelfde ingrediënt verwijzen (op `ingredient_id`, met fallback naar naam-match) en vergelijkt die som met de actieve lots. De per-regel-status (groen/geel/rood), de sectie-badge, de overall-status én de status-stip in de receptenlijst gebruiken vanaf nu deze geaggregeerde behoefte.
+
+In de "Benodigd"-kolom verschijnt een klein grijs label `(totaal: X eenheid)` op regels die een ingrediënt delen, met een tooltip die het receptaire totaal voluit toont.
+
+### Files
+- `src/pages/ReceptenPage.tsx` — `findIngMatch` helper toegevoegd; `checkStock(item, recept?)` somt nu binnen het recept; `IngRow`/`IngSection`/`cardStocks` geven het recept mee.
+- `src/i18n/{nl,en,de,fr,es}.json` — twee nieuwe sleutels: `recipe_total_short`, `recipe_total_in_recipe`.
+- `config.yaml` — versie bump 1.9.31 → 1.9.32.
+
+---
+
 ## [1.9.31] — 2026-05-05
 
 ### Changed — Douane-terminologie "Latente schuld" → "Pot. accijnsschuld" (§7.4)

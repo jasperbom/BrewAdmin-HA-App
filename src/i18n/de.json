@@ -439,6 +439,8 @@
   "stock_all_sold": "✓ alles verkauft",
   "stock_filter_all_beers": "Alle Biere",
   "recipe_needed": "Benötigt",
+  "recipe_total_short": "gesamt",
+  "recipe_total_in_recipe": "Gesamt im Rezept: {n} {u}",
   "recipe_use": "Verwendung",
   "modal_add_to_list": "+ Zur Liste hinzufügen",
   "settings_logo_title": "Logo",
