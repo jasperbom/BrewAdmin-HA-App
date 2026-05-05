@@ -477,13 +477,13 @@ const IngredientenPage: React.FC<Props> = ({
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50/80 text-xs text-gray-500 uppercase tracking-widest border-b border-gray-100">
-                  <tr><th className="px-3 py-1.5 text-left font-normal">{t('lbl_name')}</th><th className="px-3 py-1.5 text-right font-normal">{t('lbl_stock')}</th></tr>
+                  <tr><th className="px-3 py-1.5 text-left font-normal">{t('lbl_name')}</th><th className="px-3 py-1.5 text-right font-normal whitespace-nowrap">{t('lbl_stock')}</th></tr>
                 </thead>
                 {ing.length === 0
                   ? <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_no_ingredients')}</td></tr></tbody>
                   : (() => {
                     const zoek = ingZoek.trim().toLowerCase()
-                    let filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek)) : ing
+                    let filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek) || (i.fabrikant || '').toLowerCase().includes(zoek)) : ing
                     if (alleenOpVoorraad) filtered = filtered.filter((i: any) => totalQty(i.id) > 0)
                     if (filtered.length === 0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen resultaten voor "{ingZoek}"</td></tr></tbody>
                     const allTypes = [...ingTypes, ...filtered.map((i: any) => i.type || 'Overig').filter((tp: string) => !ingTypes.includes(tp)).filter((tp: string, i: number, a: string[]) => a.indexOf(tp) === i)]
@@ -506,8 +506,14 @@ const IngredientenPage: React.FC<Props> = ({
                             const tot = totalQty(i.id)
                             const eenh = activeLots(i.id)[0]?.eenheid || ''
                             return <tr key={i.id} onClick={() => setSel(sel === i.id ? null : i.id)} className={`cursor-pointer t-hover transition-colors ${sel === i.id ? 't-sel' : ''}`}>
-                              <td className="px-3 py-2 font-medium">{i.naam}</td>
-                              <td className={`px-3 py-2 text-right font-mono ${tot === 0 ? 'text-red-400' : ''}`}>{tot} {eenh}</td>
+                              <td className="px-3 py-2 align-top">
+                                <div className="font-medium leading-snug">{i.naam}</div>
+                                {i.fabrikant && <div className="text-xs text-gray-500 leading-snug mt-0.5">{i.fabrikant}</div>}
+                              </td>
+                              <td className={`px-3 py-2 text-right align-top whitespace-nowrap ${tot === 0 ? 'text-red-400' : ''}`}>
+                                <span className="font-mono tabular-nums">{fmtQty(tot)}</span>
+                                {eenh && <span className="text-xs text-gray-400 ml-1">{eenh}</span>}
+                              </td>
                             </tr>
                           })}
                         </tbody>

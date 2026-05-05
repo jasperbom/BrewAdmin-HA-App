@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.23] — 2026-05-05
+
+### Changed — Ingrediëntenlijst: fabrikant zichtbaar en strakker uitgelijnd
+
+- `src/pages/IngredientenPage.tsx` — De linkerlijst toont nu per ingredient de fabrikant als kleine, grijze ondertitel onder de naam (alleen als die is ingevuld). De voorraadkolom is uitgelijnd met `tabular-nums` (gelijke cijferbreedte) en geformatteerd via `fmtQty` (Nederlandse notatie). De eenheid staat als kleine, grijze achtervoegsel zodat het getal zelf strak rechts uitlijnt over alle rijen heen. Cellen gebruiken `align-top` zodat namen + fabrikanten en hoeveelheden netjes naast elkaar starten. Het zoekveld doorzoekt nu ook de fabrikant.
+- `config.yaml` — versie bump 1.9.22 → 1.9.23.
+
+---
+
 ## [1.9.22] — 2026-05-05
 
 ### Changed — Fabrikant beter zichtbaar bij toevoegen en in dropdowns
