@@ -76,6 +76,8 @@ const IngredientenPage: React.FC<Props> = ({
   const [afEenheid, setAfEenheid] = useState('')
   const [showLot, setShowLot] = useState<any>(null)
   const [archiefOpen, setArchiefOpen] = useStore('ing_archief_open', {})
+  const [bfPanelOpen, setBfPanelOpen] = useStore('ing_bf_panel_open', false)
+  const [showNote, setShowNote] = useState<{ label: string; text: string } | null>(null)
   const [lotEdit, setLotEdit] = useState<any>({})
   const [lotCorr, setLotCorr] = useState({ delta: '', richting: '+', reden: '', eenheid: '' })
   const [ingZoek, setIngZoek] = useState('')
@@ -589,22 +591,39 @@ const IngredientenPage: React.FC<Props> = ({
             </div>
             {selIng.bf_props && Object.keys(selIng.bf_props).length > 0 && (
               <div className="bg-white rounded-xl shadow-card mt-3 overflow-hidden">
-                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brewfather</span>
-                </div>
-                <div className="px-4 py-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
-                  {Object.entries(selIng.bf_props).map(([k, v]: [string, any]) => {
-                    if (typeof v === 'object' && v !== null) return null
-                    const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
-                    const display = typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '')) : String(v)
-                    return (
-                      <div key={k} className="flex flex-col">
-                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
-                        <span className="text-sm text-gray-700 truncate" title={display}>{display}</span>
-                      </div>
-                    )
-                  })}
-                </div>
+                <button type="button"
+                  onClick={() => setBfPanelOpen((o: boolean) => !o)}
+                  className="w-full px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between hover:bg-gray-100 transition-colors">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                    <span className="text-gray-400">{bfPanelOpen ? '▼' : '▶'}</span>
+                    Brewfather
+                  </span>
+                  <span className="text-[10px] text-gray-400">{Object.keys(selIng.bf_props).length}</span>
+                </button>
+                {bfPanelOpen && (
+                  <div className="px-4 py-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
+                    {Object.entries(selIng.bf_props).map(([k, v]: [string, any]) => {
+                      if (typeof v === 'object' && v !== null) return null
+                      const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
+                      const display = typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '')) : String(v)
+                      const isLong = typeof v === 'string' && (v.length > 60 || /^note/i.test(k))
+                      return (
+                        <div key={k} className="flex flex-col min-w-0">
+                          <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
+                          {isLong ? (
+                            <button type="button"
+                              onClick={() => setShowNote({ label, text: display })}
+                              className="text-sm text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline truncate text-left cursor-pointer">
+                              {t('lbl_view_note')} →
+                            </button>
+                          ) : (
+                            <span className="text-sm text-gray-700 truncate" title={display}>{display}</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
             </div>
@@ -825,7 +844,14 @@ const IngredientenPage: React.FC<Props> = ({
                               <option value="">—</option>
                               {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
                             </select>
-                            {hint && <div className="text-[10px] text-gray-400 mt-0.5">{hint}</div>}
+                            {hint && (
+                              <button type="button"
+                                onClick={() => setBp(fld.key, String(ingFallback))}
+                                title={t('btn_use_bf_value')}
+                                className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                                {hint}
+                              </button>
+                            )}
                           </div>
                         )
                       }
@@ -836,7 +862,14 @@ const IngredientenPage: React.FC<Props> = ({
                             value={String(val)}
                             onChange={(v: string) => setBp(fld.key, v)}
                             placeholder="" />
-                          {hint && <div className="text-[10px] text-gray-400 mt-0.5">{hint}</div>}
+                          {hint && (
+                            <button type="button"
+                              onClick={() => setBp(fld.key, fld.kind === 'number' ? Number(ingFallback) : String(ingFallback))}
+                              title={t('btn_use_bf_value')}
+                              className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                              {hint}
+                            </button>
+                          )}
                         </div>
                       )
                     })}
@@ -893,6 +926,15 @@ const IngredientenPage: React.FC<Props> = ({
           </Modal>
         )
       })()}
+
+      {showNote && (
+        <Modal title={showNote.label} onClose={() => setShowNote(null)}>
+          <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto">{showNote.text}</div>
+          <div className="flex justify-end mt-3">
+            <Btn v="secondary" onClick={() => setShowNote(null)}>{t('btn_close')}</Btn>
+          </div>
+        </Modal>
+      )}
 
       {showA && (
         <Modal title={`Afboeken: ${ing.find((i: any) => i.id === showA.ingredient_id)?.naam || ''}`} onClose={() => setShowA(null)}>

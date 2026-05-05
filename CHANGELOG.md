@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.25] — 2026-05-05
+
+### Changed — Brewfather-paneel overzichtelijker en BF-fallback klikbaar
+
+- `src/i18n/{nl,en,de,fr,es}.json` — `bf_yield` heet nu *Extractrendement %* (NL) / *Extract yield %* / *Extraktausbeute %* / *Rendement extrait %* / *Rendimiento extracto %*. Brewfather's `yield`-veld is het extract-potentieel als percentage van het droge gewicht (correleert met PPG); de eerdere generieke "Rendement"-vertaling was verwarrend. Nieuwe sleutels `bf_notes`, `lbl_view_note`, `btn_use_bf_value` toegevoegd.
+- `src/pages/IngredientenPage.tsx` — In de lot-bewerk-modal is de Brewfather-fallback-hint per veld nu een klikbare knop: één klik vult de getoonde Brewfather-waarde in het invoerveld (number/text/select). Hover toont *Gebruik Brewfather-waarde*.
+- `src/pages/IngredientenPage.tsx` — Het Brewfather-paneel onder de lot-tabel is nu collapsible (standaard ingeklapt, persistent via `useStore('ing_bf_panel_open')`). Header toont aantal velden zodat je weet hoeveel BF-data verborgen zit.
+- `src/pages/IngredientenPage.tsx` — Lange Brewfather-waardes (string > 60 tekens of veld-key beginnend met `note`) worden nu gerenderd als *Notitie bekijken →*-link in het paneel; klik opent een modal met de volledige tekst (`whitespace-pre-wrap`, scroll bij heel lange notities). Voorheen werd de hele notitie als platte tekst getruncated of de cel werd onevenredig breed.
+- `config.yaml` — versie bump 1.9.24 → 1.9.25.
+
+---
+
 ## [1.9.24] — 2026-05-05
 
 ### Added — Brouwkundige eigenschappen per Lot (met fallback naar Ingredient)
