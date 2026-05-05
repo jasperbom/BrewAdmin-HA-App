@@ -48,3 +48,14 @@ export const stripEmptyBrewProps = (props: Record<string, any> | undefined | nul
   }
   return out
 }
+
+// Format een Brewfather-waarde voor weergave: bewaar de oorspronkelijke
+// precisie van getallen tot 6 decimalen (zodat SG-waardes als 1.037 niet
+// foutief naar 1.04 worden afgerond). Gebruikt geen thousand-separator
+// zodat brouw-getallen geen lokale scheidingstekens krijgen.
+export const formatBrewValue = (v: any): string => {
+  if (v === null || v === undefined) return ''
+  if (typeof v !== 'number') return String(v)
+  if (!Number.isFinite(v)) return String(v)
+  return v.toLocaleString('en-US', { maximumFractionDigits: 6, useGrouping: false })
+}

@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.28] — 2026-05-05
+
+### Fixed — Brewfather-waardes werden onterecht naar 2 decimalen afgerond
+
+- `src/utils/brewProps.ts` — Nieuwe helper `formatBrewValue` die getallen naar maximaal 6 decimalen formatteert via `toLocaleString('en-US', { maximumFractionDigits: 6, useGrouping: false })`. Behoudt de oorspronkelijke precisie en strijkt float-artefacten als `1.0370000000000001` glad zonder echte waardes te verminken.
+- `src/pages/IngredientenPage.tsx` — Brewfather-info-paneel én effectieve-waardes-paneel én fallback-hint gebruiken nu `formatBrewValue`. Voorheen werd `v.toFixed(2).replace(/\.?0+$/, '')` gebruikt, wat o.a. `1.037` (SG potential) als `1.04` toonde en heel kleine waardes (`0.005`) als lege string. Nu klopt de weergave: `1.037` blijft `1.037`, `78.5` blijft `78.5`, `100` blijft `100`.
+- `src/components/InkoopFactuurModal.tsx` — Idem voor de fallback-hint onder elk veld in het Inkoopfactuur-modal: de getoonde Brewfather-waarde gebruikt nu `formatBrewValue` zodat klikken niet leidt tot een onverwachte waarde in het invoerveld.
+- `config.yaml` — versie bump 1.9.27 → 1.9.28.
+
+---
+
 ## [1.9.27] — 2026-05-05
 
 ### Changed — Brouw-props: `potentialPercentage` als BF-key voor extractrendement, SG-veld weg, GN-code uit lot-edit
