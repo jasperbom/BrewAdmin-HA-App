@@ -729,6 +729,7 @@ export type VerliesBron =
   | 'leiding'
   | 'schuim'
   | 'monster'
+  | 'gist_dump'
   | 'afgekeurd'
   | 'overig'
 

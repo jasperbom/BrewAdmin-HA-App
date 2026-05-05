@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.19] — 2026-05-05
+
+### Changed — Batchpagina: volumes, verlies en duidelijkere CCP-meting
+
+- `src/utils/constants.ts` + `src/types/index.ts` — nieuwe verlies-bron `gist_dump` (Gist dump) toegevoegd aan `VERLIES_BRONNEN` en `VerliesBron`-type.
+- `src/utils/calculations.ts` — `tankRestVolume` accepteert nu een derde parameter `verliezen` en trekt die liters af van het tankvolume zodat het in-tank volume altijd klopt. Negatieve verliezen werken als correctie (bijvoorbeeld wanneer er meer is afgevuld dan in tank zat). `tankAccijnsWaarde` en `agpOverzicht` kregen dezelfde optionele parameter.
+- `src/pages/BatchesPage.tsx` — nieuwe sectie **Volumes** direct onder *Vergistingsvoortgang* met Vergist, In tank, Verpakt en Verlies (met klikbare snelkoppeling naar verliesregistratie). De oude volume-strook in de kostensamenvatting is verwijderd. Het verlies-invoerveld accepteert nu negatieve waarden voor correcties. Bij Kritische Controle Punten toont het meetformulier nu de eenheid in het label (`Gemeten waarde (°C)`), een placeholder en een expliciete `Kritische grens`-regel zodat duidelijk is wat ingevuld moet worden.
+- `src/i18n/{nl,en,de,fr,es}.json` — sleutel `batch_abv_accijns_label` hernoemd van *ABV voor accijns* naar *ABV gereed product* (en hint bijgewerkt). Nieuwe sleutels `verlies_bron_gist_dump` en `batch_volumes_header` in alle 5 talen.
+- `config.yaml` — versie bump 1.9.18 → 1.9.19.
+
+---
+
 ## [1.9.18] — 2026-05-04
 
 ### Added — Eenmalige opruiming van lege inkoopfacturen

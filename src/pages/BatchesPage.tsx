@@ -1406,6 +1406,67 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 )
               })()}
 
+              {/* Volumes — onder vergistingsvoortgang */}
+              {(() => {
+                const tankLiter = Number(selB.liter_vergist || 0)
+                if (tankLiter <= 0) return null
+                const batchAv = av ? av.filter((a: any) => a.batch_id === selB.id) : []
+                const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid || 0) * Number(a.hoeveelheid || 0), 0)
+                const totStuks = batchAv.reduce((s: number, a: any) => s + Number(a.hoeveelheid || 0), 0)
+                const regPosten = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
+                const totReg = regPosten.reduce((s: number, r: any) => s + Number(r.liter || 0), 0)
+                const inTank = Math.max(0, tankLiter - totReg - totLiterVerpakt)
+                const verliesPct = tankLiter > 0 ? (totReg / tankLiter * 100) : null
+                const verliesKleur = verliesPct != null && verliesPct > 10
+                  ? 'text-red-600'
+                  : verliesPct != null && verliesPct > 5
+                    ? 'text-yellow-600'
+                    : totReg < 0
+                      ? 'text-blue-600'
+                      : 'text-green-700'
+                return (
+                  <div className="px-4 py-3 border-b">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      {t('batch_volumes_header')}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('batch_stat_fermented')}</span>
+                        <span className="font-medium">{tankLiter.toFixed(1)}L</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('batch_stat_in_tank')}</span>
+                        <span className="font-medium">{inTank.toFixed(1)}L</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('status_packaged')}</span>
+                        {batchAv.length > 0 ? (
+                          <>
+                            <span className="font-medium">{totLiterVerpakt.toFixed(1)}L</span>
+                            <span className="text-gray-400 text-xs ml-1">({totStuks} st)</span>
+                          </>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('batch_loss')}</span>
+                        <span className={`font-medium ${verliesKleur}`}>{totReg.toFixed(1)}L</span>
+                        {verliesPct !== null && totReg !== 0 && (
+                          <span className="text-xs text-gray-400 ml-1">({verliesPct.toFixed(1)}%)</span>
+                        )}
+                        <span
+                          className="block text-xs mt-0.5 cursor-pointer hover:underline"
+                          style={{color: 'var(--t-accent)'}}
+                          onClick={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !p?.[selB.id]}))}>
+                          {regPosten.length} {t('batch_verlies_posten')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {/* Info collapse */}
               <div className="px-4 py-2 flex items-center gap-2 cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
                 <span className="text-gray-400 text-xs">{infoIngeklapt ? '▶' : '▼'}</span>
@@ -1534,12 +1595,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   const totK = ingK + overH
                   const batchAv = av ? av.filter((a: any) => a.batch_id===selB.id) : []
                   const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
-                  const totStuks = batchAv.reduce((s: number, a: any) => s+Number(a.hoeveelheid||0), 0)
                   const tankLiter = Number(selB.liter_vergist||0)
-                  const verlies = verliesAfgeleid(selB, av || [])
-                  const verliesPct = verlies!==null && tankLiter>0 ? (verlies/tankLiter*100) : null
-                  const regPosten = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
-                  const totReg = regPosten.reduce((s: number, r: any) => s + Number(r.liter || 0), 0)
                   const kostenPerLiter = totLiterVerpakt>0 ? totK/totLiterVerpakt : (tankLiter>0 ? totK/tankLiter : null)
                   return (
                     <div className="mt-3 pt-3 border-t space-y-2 text-sm">
@@ -1579,32 +1635,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           <span className={selB.overige_kosten?'':'text-gray-400'}>{selB.overige_kosten?fmt(selB.overige_kosten):'—'}</span>
                         </div>
                       </div>
-                      {batchAv.length > 0 && (
-                        <div className="pt-2 border-t">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                            <div>
-                              <span className="text-gray-500 text-xs block">{t('status_packaged')}</span>
-                              <span className="font-medium">{totLiterVerpakt.toFixed(1)}L</span>
-                              <span className="text-gray-400 text-xs ml-1">({totStuks} st)</span>
-                            </div>
-                            {verlies !== null && (
-                              <div>
-                                <span className="text-gray-500 text-xs block">{t('batch_loss')}</span>
-                                <span className={`font-medium ${verliesPct!=null&&verliesPct>10?'text-red-600':verliesPct!=null&&verliesPct>5?'text-yellow-600':'text-green-700'}`}>
-                                  {verlies.toFixed(1)}L
-                                </span>
-                                {verliesPct!==null && <span className="text-xs text-gray-400 ml-1">({verliesPct.toFixed(1)}%)</span>}
-                                <span
-                                  className="block text-xs mt-0.5 cursor-pointer hover:underline"
-                                  style={{color: 'var(--t-accent)'}}
-                                  onClick={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !p?.[selB.id]}))}>
-                                  {t('batch_verlies_geregistreerd')}: {totReg.toFixed(1)}L ({regPosten.length} {t('batch_verlies_posten')})
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )
                 })()}
@@ -1777,7 +1807,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
               const addVerlies = () => {
                 const liter = Number(verliesForm.liter)
-                if (!liter || liter <= 0) return
+                if (!liter || liter === 0 || isNaN(liter)) return
                 const nieuw = {
                   id: newId(verliesRegistraties || []),
                   batch_id: selB.id,
@@ -1819,7 +1849,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         ph={t('lbl_bron')}
                         cls="w-36"
                       />
-                      <Inp type="number" step="0.1" min="0" placeholder={t('batch_verlies_liter_label')}
+                      <Inp type="number" step="0.1" placeholder={t('batch_verlies_liter_label')}
                         value={verliesForm.liter}
                         onChange={(v: string) => setVerliesForm((f: any) => ({...f, liter: v}))}
                         cls="w-28" />
@@ -1997,18 +2027,39 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 {formActive ? t('btn_cancel') : t('haccp_ccp_meting_nieuw')}
                               </button>
                             </div>
-                            {formActive && (
-                              <div className="bg-gray-50 rounded-b p-2 space-y-2 border-t">
-                                <div className="grid grid-cols-2 gap-2">
-                                  <Inp label={t('haccp_ccp_waarde')} type="number" value={ccpMetingForm.waarde??''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, waarde:v})} />
-                                  <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum||tod()} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, datum:v})} />
+                            {formActive && (() => {
+                              const eenheid = item.eenheid || ''
+                              const grensTxt = item.kritische_grens
+                                ? String(item.kritische_grens)
+                                : (item.grens_min != null || item.grens_max != null
+                                  ? (item.grens_min != null && item.grens_max != null
+                                    ? `${item.grens_min}–${item.grens_max}${eenheid ? ' ' + eenheid : ''}`
+                                    : item.grens_min != null
+                                      ? `≥ ${item.grens_min}${eenheid ? ' ' + eenheid : ''}`
+                                      : `≤ ${item.grens_max}${eenheid ? ' ' + eenheid : ''}`)
+                                  : '')
+                              const waardeLabel = `${t('haccp_ccp_waarde')}${eenheid ? ` (${eenheid})` : ''}`
+                              const placeholder = eenheid
+                                ? t('haccp_ccp_waarde_ph').replace('{eenheid}', eenheid)
+                                : t('haccp_ccp_waarde_ph_geen_eenheid')
+                              return (
+                                <div className="bg-gray-50 rounded-b p-2 space-y-2 border-t">
+                                  {grensTxt && (
+                                    <div className="text-xs text-gray-500">
+                                      <span className="font-semibold">{t('haccp_ccp_kritische_grens')}:</span> {grensTxt}
+                                    </div>
+                                  )}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Inp label={waardeLabel} type="number" placeholder={placeholder} value={ccpMetingForm.waarde??''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, waarde:v})} />
+                                    <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum||tod()} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, datum:v})} />
+                                  </div>
+                                  <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door||''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, uitgevoerd_door:v})} />
+                                  <div className="flex gap-2 justify-end">
+                                    <Btn s="sm" onClick={saveTaakMeting}>{t('btn_save')}</Btn>
+                                  </div>
                                 </div>
-                                <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door||''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, uitgevoerd_door:v})} />
-                                <div className="flex gap-2 justify-end">
-                                  <Btn s="sm" onClick={saveTaakMeting}>{t('btn_save')}</Btn>
-                                </div>
-                              </div>
-                            )}
+                              )
+                            })()}
                           </div>
                         )
                       }
