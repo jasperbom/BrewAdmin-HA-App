@@ -855,7 +855,7 @@ const IngredientenPage: React.FC<Props> = ({
                                 </select>
                                 {hint && (
                                   <button type="button"
-                                    onClick={() => setBp(fld.key, String(ingFallback))}
+                                    onClick={() => setBp(fld.key, formatBrewValue(ingFallback))}
                                     title={t('btn_use_bf_value')}
                                     className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
                                     {hint}
@@ -873,7 +873,10 @@ const IngredientenPage: React.FC<Props> = ({
                                 placeholder="" />
                               {hint && (
                                 <button type="button"
-                                  onClick={() => setBp(fld.key, fld.kind === 'number' ? Number(ingFallback) : String(ingFallback))}
+                                  onClick={() => {
+                                    const fmtVal = formatBrewValue(ingFallback)
+                                    setBp(fld.key, fld.kind === 'number' ? Number(fmtVal) : fmtVal)
+                                  }}
                                   title={t('btn_use_bf_value')}
                                   className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
                                   {hint}

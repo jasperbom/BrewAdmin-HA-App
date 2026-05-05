@@ -612,7 +612,7 @@ function InkoopFactuurModal({
                                 </select>
                                 {hint && (
                                   <button type="button"
-                                    onClick={() => set(String(ingFallback))}
+                                    onClick={() => set(formatBrewValue(ingFallback))}
                                     title={t('btn_use_bf_value')}
                                     className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
                                     {hint}
@@ -630,7 +630,10 @@ function InkoopFactuurModal({
                                 placeholder="" />
                               {hint && (
                                 <button type="button"
-                                  onClick={() => set(fld.kind === 'number' ? Number(ingFallback) : String(ingFallback))}
+                                  onClick={() => {
+                                    const fmtVal = formatBrewValue(ingFallback)
+                                    set(fld.kind === 'number' ? Number(fmtVal) : fmtVal)
+                                  }}
                                   title={t('btn_use_bf_value')}
                                   className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
                                   {hint}
