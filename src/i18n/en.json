@@ -419,6 +419,7 @@
   "lbl_empty": "Empty",
   "lbl_description": "Description",
   "batch_info_label": "Batch info",
+  "batch_kosten_card_title": "Cost summary",
   "batch_overhead_total": "Overhead total",
   "batch_total_costs": "Total costs",
   "batch_cost_per_unit": "Cost price per unit",

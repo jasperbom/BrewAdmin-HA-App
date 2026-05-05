@@ -419,6 +419,7 @@
   "lbl_empty": "Vide",
   "lbl_description": "Désignation",
   "batch_info_label": "Info brassin",
+  "batch_kosten_card_title": "Récapitulatif des coûts",
   "batch_overhead_total": "Total charges",
   "batch_total_costs": "Coûts totaux",
   "batch_cost_per_unit": "Prix de revient/unité",

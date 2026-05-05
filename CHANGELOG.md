@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.20] — 2026-05-05
+
+### Changed — Batch-detail UI: header opgesplitst en fase-bewuste section cards
+
+- `src/pages/BatchesPage.tsx` — *Header card* bevat nu alleen nog de status-snapshot (titel + acties + tank-picker + Vergistingsvoortgang + Volumes). De **Info collapse** en **Kosten samenvatting** zijn uit de header gehaald en zijn nu eigen uitklapbare section cards (consistent met Gistgrafiek, Verliesregistratie en Taken).
+- Nieuwe per-batch open-states `batches_info_open` en `batches_kosten_open` (vervangen de oude lokale `infoIngeklapt`-state). De Kosten-card staat direct vóór het Kostprijsoverzicht zodat alle financiële info bij elkaar zit.
+- Nieuwe helper `sectieOpen(map, batchId, fase, sectie)` past **fase-bewuste defaults** toe wanneer de gebruiker zelf nog geen voorkeur heeft gekozen:
+  - `gist`: open bij *Vergisten*
+  - `verlies`: open bij *Vergisten* en *Conditioneren*
+  - `kosten`: open bij *Verpakt* en *Gesloten*
+  - `info`: standaard dicht
+  - User-toggles worden persistent bewaard en winnen altijd van de fase-default.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutel `batch_kosten_card_title` (NL: *Kosten samenvatting*).
+- `config.yaml` — versie bump 1.9.19 → 1.9.20.
+
+---
+
 ## [1.9.19] — 2026-05-05
 
 ### Changed — Batchpagina: volumes, verlies en duidelijkere CCP-meting

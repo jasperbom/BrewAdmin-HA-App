@@ -419,6 +419,7 @@
   "lbl_empty": "Leeg",
   "lbl_description": "Omschrijving",
   "batch_info_label": "Batch info",
+  "batch_kosten_card_title": "Kosten samenvatting",
   "batch_overhead_total": "Overhead totaal",
   "batch_total_costs": "Totale kosten",
   "batch_cost_per_unit": "Kostprijs per stuk",

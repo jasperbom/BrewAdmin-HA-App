@@ -419,6 +419,7 @@
   "lbl_empty": "Leer",
   "lbl_description": "Bezeichnung",
   "batch_info_label": "Charge info",
+  "batch_kosten_card_title": "Kostenübersicht",
   "batch_overhead_total": "Overhead gesamt",
   "batch_total_costs": "Gesamtkosten",
   "batch_cost_per_unit": "Kosten pro Einheit",

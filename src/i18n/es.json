@@ -419,6 +419,7 @@
   "lbl_empty": "Vacío",
   "lbl_description": "Descripción",
   "batch_info_label": "Info lote",
+  "batch_kosten_card_title": "Resumen de costes",
   "batch_overhead_total": "Gastos generales",
   "batch_total_costs": "Costes totales",
   "batch_cost_per_unit": "Coste por unidad",
