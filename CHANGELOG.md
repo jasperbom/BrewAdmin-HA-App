@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.22] — 2026-05-05
+
+### Changed — Fabrikant beter zichtbaar bij toevoegen en in dropdowns
+
+- `src/components/InkoopFactuurModal.tsx` — het Fabrikant-veld in het Ontvangst-modal verschijnt nu zodra er geen bestaand ingredient gekozen is (eerder pas nadat er een nieuwe naam was getypt). Daardoor is direct duidelijk dat je bij een nieuw ingredient ook de fabrikant kan vastleggen.
+- `src/pages/BatchesPage.tsx` — ingredient-dropdowns (zowel de receptkoppeling als de hoofdkeuze "ingredient toevoegen aan batch") tonen nu `Naam (Fabrikant)` waar een fabrikant ingevuld is, in lijn met het Ontvangst-modal.
+- `src/pages/ReceptenPage.tsx` — receptkoppelings-dropdown toont eveneens `Naam (Fabrikant)`.
+- `config.yaml` — versie bump 1.9.21 → 1.9.22.
+
+---
+
 ## [1.9.21] — 2026-05-05
 
 ### Changed — Ingrediëntenpagina: "+ lot" vult ingredient-context vooraf in
