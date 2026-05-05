@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory, extractBfProps } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty, r2, r3 } from '../utils/format'
-import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE } from '../utils/constants'
+import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
 import { getEffectiveBrewProps, getEffectiveBrewProp, stripEmptyBrewProps } from '../utils/brewProps'
 import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
@@ -77,6 +77,7 @@ const IngredientenPage: React.FC<Props> = ({
   const [showLot, setShowLot] = useState<any>(null)
   const [archiefOpen, setArchiefOpen] = useStore('ing_archief_open', {})
   const [bfPanelOpen, setBfPanelOpen] = useStore('ing_bf_panel_open', false)
+  const [lotBrewOpen, setLotBrewOpen] = useStore('lot_brew_open', true)
   const [showNote, setShowNote] = useState<{ label: string; text: string } | null>(null)
   const [lotEdit, setLotEdit] = useState<any>({})
   const [lotCorr, setLotCorr] = useState({ delta: '', richting: '+', reden: '', eenheid: '' })
@@ -605,6 +606,7 @@ const IngredientenPage: React.FC<Props> = ({
                     {Object.entries(selIng.bf_props).map(([k, v]: [string, any]) => {
                       if (typeof v === 'object' && v !== null) return null
                       const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
+                      const unit = BREW_PROP_UNITS[k] || ''
                       const display = typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '')) : String(v)
                       const isLong = typeof v === 'string' && (v.length > 60 || /^note/i.test(k))
                       return (
@@ -617,7 +619,7 @@ const IngredientenPage: React.FC<Props> = ({
                               {t('lbl_view_note')} →
                             </button>
                           ) : (
-                            <span className="text-sm text-gray-700 truncate" title={display}>{display}</span>
+                            <span className="text-sm text-gray-700 truncate" title={`${display}${unit ? ' ' + unit : ''}`}>{display}{unit ? ` ${unit}` : ''}</span>
                           )}
                         </div>
                       )
@@ -825,75 +827,96 @@ const IngredientenPage: React.FC<Props> = ({
               </div>
               {brewFields.length > 0 && (
                 <div className="border-t pt-3">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">{t('brew_props_section')}</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {brewFields.map((fld: any) => {
-                      const label = t('bf_' + fld.key) !== 'bf_' + fld.key ? t('bf_' + fld.key) : fld.key
-                      const labelWithUnit = fld.unit ? `${label} (${fld.unit})` : label
-                      const val = lotEdit.bf_props?.[fld.key] ?? ''
-                      const ingFallback = !val && lotIng ? getEffectiveBrewProp(null, lotIng, fld.key) : undefined
-                      const hint = ingFallback !== undefined
-                        ? t('brew_props_fallback_hint').replace('{value}', String(ingFallback))
-                        : null
-                      if (fld.kind === 'select') {
-                        return (
-                          <div key={fld.key}>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">{labelWithUnit}</label>
-                            <select value={String(val)} onChange={e => setBp(fld.key, e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none">
-                              <option value="">—</option>
-                              {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                            {hint && (
-                              <button type="button"
-                                onClick={() => setBp(fld.key, String(ingFallback))}
-                                title={t('btn_use_bf_value')}
-                                className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
-                                {hint}
-                              </button>
-                            )}
-                          </div>
-                        )
-                      }
-                      return (
-                        <div key={fld.key}>
-                          <Inp label={labelWithUnit}
-                            type={fld.kind === 'number' ? 'number' : 'text'}
-                            value={String(val)}
-                            onChange={(v: string) => setBp(fld.key, v)}
-                            placeholder="" />
-                          {hint && (
-                            <button type="button"
-                              onClick={() => setBp(fld.key, fld.kind === 'number' ? Number(ingFallback) : String(ingFallback))}
-                              title={t('btn_use_bf_value')}
-                              className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
-                              {hint}
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {Object.keys(effective).length > 0 && (
-                    <div className="mt-3 bg-gray-50 rounded-lg px-3 py-2">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
-                        {Object.entries(effective).map(([k, info]: [string, any]) => {
-                          const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
-                          const display = typeof info.value === 'number' ? (Number.isInteger(info.value) ? String(info.value) : Number(info.value).toFixed(2).replace(/\.?0+$/, '')) : String(info.value)
-                          const badge = info.source === 'lot' ? t('src_lot') : t('src_ingredient')
-                          const badgeCls = info.source === 'lot' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
+                  <button type="button"
+                    onClick={() => setLotBrewOpen((o: boolean) => !o)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 hover:text-gray-700">
+                    <span className="text-gray-400">{lotBrewOpen ? '▼' : '▶'}</span>
+                    <span>{t('brew_props_section')}</span>
+                  </button>
+                  {lotBrewOpen && (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {brewFields.map((fld: any) => {
+                          const label = t('bf_' + fld.key) !== 'bf_' + fld.key ? t('bf_' + fld.key) : fld.key
+                          const unit = BREW_PROP_UNITS[fld.key]
+                          const labelWithUnit = unit ? `${label} (${unit})` : label
+                          const val = lotEdit.bf_props?.[fld.key] ?? ''
+                          const ingFallback = !val && lotIng ? getEffectiveBrewProp(null, lotIng, fld.key) : undefined
+                          const hint = ingFallback !== undefined
+                            ? t('brew_props_fallback_hint').replace('{value}', String(ingFallback))
+                            : null
+                          if (fld.kind === 'select') {
+                            return (
+                              <div key={fld.key}>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">{labelWithUnit}</label>
+                                <select value={String(val)} onChange={e => setBp(fld.key, e.target.value)}
+                                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none">
+                                  <option value="">—</option>
+                                  {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                                {hint && (
+                                  <button type="button"
+                                    onClick={() => setBp(fld.key, String(ingFallback))}
+                                    title={t('btn_use_bf_value')}
+                                    className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                                    {hint}
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          }
                           return (
-                            <div key={k} className="flex flex-col">
-                              <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
-                              <span className="text-sm text-gray-700 flex items-center gap-1.5">
-                                <span>{display}</span>
-                                <span className={`text-[9px] px-1 py-0.5 rounded ${badgeCls} uppercase tracking-wide`}>{badge}</span>
-                              </span>
+                            <div key={fld.key}>
+                              <Inp label={labelWithUnit}
+                                type={fld.kind === 'number' ? 'number' : 'text'}
+                                value={String(val)}
+                                onChange={(v: string) => setBp(fld.key, v)}
+                                placeholder="" />
+                              {hint && (
+                                <button type="button"
+                                  onClick={() => setBp(fld.key, fld.kind === 'number' ? Number(ingFallback) : String(ingFallback))}
+                                  title={t('btn_use_bf_value')}
+                                  className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                                  {hint}
+                                </button>
+                              )}
                             </div>
                           )
                         })}
                       </div>
-                    </div>
+                      {Object.keys(effective).length > 0 && (
+                        <div className="mt-3 bg-gray-50 rounded-lg px-3 py-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
+                            {Object.entries(effective).map(([k, info]: [string, any]) => {
+                              if (typeof info.value === 'object' && info.value !== null) return null
+                              const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
+                              const unit = BREW_PROP_UNITS[k] || ''
+                              const display = typeof info.value === 'number' ? (Number.isInteger(info.value) ? String(info.value) : Number(info.value).toFixed(2).replace(/\.?0+$/, '')) : String(info.value)
+                              const isLong = typeof info.value === 'string' && (info.value.length > 60 || /^note/i.test(k))
+                              const badge = info.source === 'lot' ? t('src_lot') : t('src_ingredient')
+                              const badgeCls = info.source === 'lot' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
+                              return (
+                                <div key={k} className="flex flex-col min-w-0">
+                                  <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
+                                  <span className="text-sm text-gray-700 flex items-center gap-1.5">
+                                    {isLong ? (
+                                      <button type="button"
+                                        onClick={() => setShowNote({ label, text: display })}
+                                        className="text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline truncate text-left cursor-pointer">
+                                        {t('lbl_view_note')} →
+                                      </button>
+                                    ) : (
+                                      <span className="truncate">{display}{unit ? ` ${unit}` : ''}</span>
+                                    )}
+                                    <span className={`text-[9px] px-1 py-0.5 rounded ${badgeCls} uppercase tracking-wide flex-shrink-0`}>{badge}</span>
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

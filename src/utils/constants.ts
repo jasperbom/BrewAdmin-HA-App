@@ -15,44 +15,59 @@ export const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Verpa
 export const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"]
 export const BUILTIN_KOSTEN_SOORTEN = ['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']
 
+// Eenheid per Brewfather-prop-key. Wordt zowel in het curated lot-formulier
+// als in het algemene Brewfather-info-paneel gebruikt zodat de eenheid op
+// één plek staat (geen dubbele "%"/"EBC" meer in label én suffix).
+export const BREW_PROP_UNITS: Record<string, string> = {
+  alpha: '%', beta: '%', cohumulone: '%', myrcene: '%', hsi: '%',
+  color: 'EBC', colour: 'EBC',
+  yield: '%', moisture: '%', concentration: '%', alcoholTolerance: '%',
+  attenuation: '%', minAttenuation: '%', maxAttenuation: '%',
+  minTemp: '°C', maxTemp: '°C',
+  diastaticPower: '°L',
+  potential: 'SG',
+  ppg: 'PPG',
+}
+
 // Brouwkundige eigenschappen per ingredient-type. Keys zijn identiek aan wat
 // extractBfProps in api.ts naar Ingredient.bf_props schrijft, zodat fallback
 // (lot-eigen waarde → ingredient.bf_props[key]) een directe key-lookup is.
-// Labels komen uit i18n (bf_<key>); units worden bij de input getoond.
+// Labels komen uit i18n (bf_<key>); units komen uit BREW_PROP_UNITS.
 export type BrewFieldKind = 'number' | 'text' | 'select'
 export interface BrewField {
   key: string
-  unit?: string
   kind: BrewFieldKind
   options?: string[]
 }
 export const LOT_BREW_FIELDS_PER_TYPE: Record<string, BrewField[]> = {
   Mout: [
-    { key: 'color', unit: 'EBC', kind: 'number' },
-    { key: 'yield', unit: '%', kind: 'number' },
-    { key: 'diastaticPower', unit: '°L', kind: 'number' },
-    { key: 'moisture', unit: '%', kind: 'number' },
+    { key: 'color', kind: 'number' },
+    { key: 'yield', kind: 'number' },
+    { key: 'potential', kind: 'number' },
+    { key: 'diastaticPower', kind: 'number' },
+    { key: 'moisture', kind: 'number' },
   ],
   Hop: [
-    { key: 'alpha', unit: '%', kind: 'number' },
-    { key: 'beta', unit: '%', kind: 'number' },
-    { key: 'cohumulone', unit: '%', kind: 'number' },
-    { key: 'hsi', unit: '%', kind: 'number' },
+    { key: 'alpha', kind: 'number' },
+    { key: 'beta', kind: 'number' },
+    { key: 'cohumulone', kind: 'number' },
+    { key: 'hsi', kind: 'number' },
   ],
   Gist: [
-    { key: 'attenuation', unit: '%', kind: 'number' },
-    { key: 'minTemp', unit: '°C', kind: 'number' },
-    { key: 'maxTemp', unit: '°C', kind: 'number' },
+    { key: 'attenuation', kind: 'number' },
+    { key: 'minTemp', kind: 'number' },
+    { key: 'maxTemp', kind: 'number' },
     { key: 'flocculation', kind: 'select', options: ['Low', 'Medium', 'High', 'Very High'] },
-    { key: 'alcoholTolerance', unit: '%', kind: 'number' },
+    { key: 'alcoholTolerance', kind: 'number' },
   ],
   Suiker: [
-    { key: 'yield', unit: '%', kind: 'number' },
-    { key: 'color', unit: 'EBC', kind: 'number' },
+    { key: 'yield', kind: 'number' },
+    { key: 'potential', kind: 'number' },
+    { key: 'color', kind: 'number' },
   ],
   Overig: [
-    { key: 'concentration', unit: '%', kind: 'number' },
-    { key: 'color', unit: 'EBC', kind: 'number' },
+    { key: 'concentration', kind: 'number' },
+    { key: 'color', kind: 'number' },
   ],
 }
 
