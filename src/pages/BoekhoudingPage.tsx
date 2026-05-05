@@ -489,11 +489,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           updatedIng = [...updatedIng, n]; iid = n.id;
         }
       }
-      const lot = {id:newId([...lots,...newLots]), ingredient_id:iid, hoeveelheid:Number(p.qty), eenheid:p.eenh,
+      const cleanBrewProps = p.bf_props ? Object.fromEntries(Object.entries(p.bf_props).filter(([, v]) => v !== undefined && v !== null && v !== '')) : {};
+      const lot: any = {id:newId([...lots,...newLots]), ingredient_id:iid, hoeveelheid:Number(p.qty), eenheid:p.eenh,
         houdbaarheid:p.tht||null, lotnummer:p.lotnr||'', leverancier:factuurForm.leverancier||'',
         prijs_per_eenheid:p.prijs?Number(p.prijs):null, factuur_nummer:factuurForm.factuur||'',
         aankoop_datum:factuurForm.datum||tod(), btw_tarief:Number(p.btw_tarief)||0, beschikbaar:true,
         created_at:new Date().toISOString()};
+      if (Object.keys(cleanBrewProps).length > 0) lot.bf_props = cleanBrewProps;
       newLots.push(lot);
       addLog({ingredient_id:iid, ingredient_naam:updatedIng.find((i: any)=>i.id===iid)?.naam||p.nieuw.trim(),
         lot_id:lot.id, lotnummer:lot.lotnummer||'', type:'ontvangst',

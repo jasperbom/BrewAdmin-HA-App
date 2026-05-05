@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory, extractBfProps } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty, r2, r3 } from '../utils/format'
-import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS } from '../utils/constants'
+import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE } from '../utils/constants'
+import { getEffectiveBrewProps, getEffectiveBrewProp, stripEmptyBrewProps } from '../utils/brewProps'
 import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -182,23 +183,31 @@ const IngredientenPage: React.FC<Props> = ({
       houdbaarheid: lot.houdbaarheid || '',
       prijs_per_eenheid: lot.prijs_per_eenheid != null ? String(lot.prijs_per_eenheid) : '',
       gn_code: lot.gn_code || '',
+      bf_props: { ...(lot.bf_props || {}) },
     })
     setLotCorr({ delta: '', richting: '+', reden: '', eenheid: lot.eenheid || '' })
   }
 
   const saveLot = () => {
-    setLots((prev: any[]) => prev.map((l: any) => l.id !== showLot.id ? l : {
-      ...l,
-      lotnummer: lotEdit.lotnummer,
-      leverancier: lotEdit.leverancier,
-      factuur_nummer: lotEdit.factuur_nummer,
-      aankoop_datum: lotEdit.aankoop_datum,
-      eenheid: lotEdit.eenheid,
-      hoeveelheid: Number(lotEdit.hoeveelheid) || 0,
-      houdbaarheid: lotEdit.houdbaarheid || null,
-      prijs_per_eenheid: lotEdit.prijs_per_eenheid !== '' ? Number(lotEdit.prijs_per_eenheid) : null,
-      gn_code: lotEdit.gn_code || undefined,
-      beschikbaar: (Number(lotEdit.hoeveelheid) || 0) > 0,
+    const cleanBrewProps = stripEmptyBrewProps(lotEdit.bf_props)
+    setLots((prev: any[]) => prev.map((l: any) => {
+      if (l.id !== showLot.id) return l
+      const next: any = {
+        ...l,
+        lotnummer: lotEdit.lotnummer,
+        leverancier: lotEdit.leverancier,
+        factuur_nummer: lotEdit.factuur_nummer,
+        aankoop_datum: lotEdit.aankoop_datum,
+        eenheid: lotEdit.eenheid,
+        hoeveelheid: Number(lotEdit.hoeveelheid) || 0,
+        houdbaarheid: lotEdit.houdbaarheid || null,
+        prijs_per_eenheid: lotEdit.prijs_per_eenheid !== '' ? Number(lotEdit.prijs_per_eenheid) : null,
+        gn_code: lotEdit.gn_code || undefined,
+        beschikbaar: (Number(lotEdit.hoeveelheid) || 0) > 0,
+      }
+      if (Object.keys(cleanBrewProps).length > 0) next.bf_props = cleanBrewProps
+      else delete next.bf_props
+      return next
     }))
     logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: showLot.id, actie: 'gewijzigd', omschrijving: showLot.lotnummer || `Lot #${showLot.id}` })
     setShowLot(null)
@@ -377,7 +386,9 @@ const IngredientenPage: React.FC<Props> = ({
           logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: n.id, actie: 'aangemaakt', omschrijving: n.naam })
         }
       }
-      const lot = { id: newId([...lots, ...newLots]), ingredient_id: iid, hoeveelheid: Number(p.qty), eenheid: p.eenh, houdbaarheid: p.tht || null, lotnummer: p.lotnr || '', leverancier: factuurForm.leverancier || '', prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: factuurForm.factuur || '', aankoop_datum: factuurForm.datum || tod(), btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true, created_at: new Date().toISOString() }
+      const cleanBrewProps = p.bf_props ? Object.fromEntries(Object.entries(p.bf_props).filter(([, v]) => v !== undefined && v !== null && v !== '')) : {}
+      const lot: any = { id: newId([...lots, ...newLots]), ingredient_id: iid, hoeveelheid: Number(p.qty), eenheid: p.eenh, houdbaarheid: p.tht || null, lotnummer: p.lotnr || '', leverancier: factuurForm.leverancier || '', prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: factuurForm.factuur || '', aankoop_datum: factuurForm.datum || tod(), btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true, created_at: new Date().toISOString() }
+      if (Object.keys(cleanBrewProps).length > 0) lot.bf_props = cleanBrewProps
       newLots.push(lot)
       logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'aangemaakt', omschrijving: `${updatedIng.find((i: any) => i.id === iid)?.naam || p.nieuw.trim()} ${p.qty} ${p.eenh}` })
       addLog({ ingredient_id: iid, ingredient_naam: updatedIng.find((i: any) => i.id === iid)?.naam || p.nieuw.trim(), lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'ontvangst', hoeveelheid: Number(p.qty), eenheid: p.eenh, referentie: factuurForm.factuur || factuurForm.leverancier || '' })
@@ -759,13 +770,18 @@ const IngredientenPage: React.FC<Props> = ({
 
       {showLot && (() => {
         const l = showLot
-        const ingNaam = ing.find((i: any) => i.id === l.ingredient_id)?.naam || ''
+        const lotIng = ing.find((i: any) => i.id === l.ingredient_id)
+        const ingNaam = lotIng?.naam || ''
         const gebruiktIn = lotBatches(l.id)
         const isArchief = !l.beschikbaar || Number(l.hoeveelheid || 0) === 0
         const logOntvangst = log.filter((e: any) => e.lot_id === l.id && e.type === 'ontvangst')
         const origQty = logOntvangst.reduce((s: number, e: any) => s + Number(e.hoeveelheid || 0), 0)
         const le = (k: string) => lotEdit[k] ?? ''
         const setLe = (k: string, v: string) => setLotEdit((p: any) => ({ ...p, [k]: v }))
+        const setBp = (k: string, v: any) => setLotEdit((p: any) => ({ ...p, bf_props: { ...(p.bf_props || {}), [k]: v } }))
+        const brewFields = LOT_BREW_FIELDS_PER_TYPE[lotIng?.type || ''] || []
+        const previewLot = { ...l, bf_props: lotEdit.bf_props || {} }
+        const effective = getEffectiveBrewProps(previewLot, lotIng)
         return (
           <Modal title={`Lot — ${ingNaam}`} onClose={() => setShowLot(null)}>
             <div className="space-y-4 text-sm">
@@ -788,6 +804,66 @@ const IngredientenPage: React.FC<Props> = ({
                 <Inp label={t('lbl_gn_code')} value={le('gn_code')} onChange={(v: string) => setLe('gn_code', v)} placeholder="2203 00 09" />
                 {origQty > 0 && <div><div className="text-xs text-gray-400">{t('ing_original_received')}</div><div className="font-medium text-gray-700">{origQty} {l.eenheid}</div></div>}
               </div>
+              {brewFields.length > 0 && (
+                <div className="border-t pt-3">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">{t('brew_props_section')}</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {brewFields.map((fld: any) => {
+                      const label = t('bf_' + fld.key) !== 'bf_' + fld.key ? t('bf_' + fld.key) : fld.key
+                      const labelWithUnit = fld.unit ? `${label} (${fld.unit})` : label
+                      const val = lotEdit.bf_props?.[fld.key] ?? ''
+                      const ingFallback = !val && lotIng ? getEffectiveBrewProp(null, lotIng, fld.key) : undefined
+                      const hint = ingFallback !== undefined
+                        ? t('brew_props_fallback_hint').replace('{value}', String(ingFallback))
+                        : null
+                      if (fld.kind === 'select') {
+                        return (
+                          <div key={fld.key}>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">{labelWithUnit}</label>
+                            <select value={String(val)} onChange={e => setBp(fld.key, e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none">
+                              <option value="">—</option>
+                              {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                            {hint && <div className="text-[10px] text-gray-400 mt-0.5">{hint}</div>}
+                          </div>
+                        )
+                      }
+                      return (
+                        <div key={fld.key}>
+                          <Inp label={labelWithUnit}
+                            type={fld.kind === 'number' ? 'number' : 'text'}
+                            value={String(val)}
+                            onChange={(v: string) => setBp(fld.key, v)}
+                            placeholder="" />
+                          {hint && <div className="text-[10px] text-gray-400 mt-0.5">{hint}</div>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {Object.keys(effective).length > 0 && (
+                    <div className="mt-3 bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
+                        {Object.entries(effective).map(([k, info]: [string, any]) => {
+                          const label = t('bf_' + k) !== 'bf_' + k ? t('bf_' + k) : k
+                          const display = typeof info.value === 'number' ? (Number.isInteger(info.value) ? String(info.value) : Number(info.value).toFixed(2).replace(/\.?0+$/, '')) : String(info.value)
+                          const badge = info.source === 'lot' ? t('src_lot') : t('src_ingredient')
+                          const badgeCls = info.source === 'lot' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
+                          return (
+                            <div key={k} className="flex flex-col">
+                              <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
+                              <span className="text-sm text-gray-700 flex items-center gap-1.5">
+                                <span>{display}</span>
+                                <span className={`text-[9px] px-1 py-0.5 rounded ${badgeCls} uppercase tracking-wide`}>{badge}</span>
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase mb-1.5">{t('ing_used_in_batches')}</div>
                 {gebruiktIn.length === 0 ? <p className="text-gray-400 text-xs italic">{t('ing_not_used')}</p> : <div className="space-y-1">{gebruiktIn.map((u: any, i: number) => <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5"><span className="font-medium">{u.batch?.naam || t('lbl_onbekend')}{u.batch?.batch_nummer ? ` #${u.batch.batch_nummer}` : ''}</span><span className="font-mono text-gray-600 text-xs">{u.hoeveelheid} {u.eenheid}</span></div>)}</div>}
