@@ -443,7 +443,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       [t('gpa_agp_uitgeslagen')]: r.agpUitgeslagen,
       [t('gpa_agp_eind')]: r.agpEind,
       [t('lbl_voorcalc_excel')]: Number((r.voorcalcPerEenheid || 0).toFixed(4)),
-      [t('gpa_accijns_latent_eind')]: Number((r.accijnsLatentEind || 0).toFixed(2)),
+      [t('gpa_accijns_latent_eind_excel')]: Number((r.accijnsLatentEind || 0).toFixed(2)),
       [t('gpa_accijns_te_betalen')]: Number((r.accijnsTeBetalen || 0).toFixed(2)),
     }))
     gpData.push({
@@ -460,7 +460,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       [t('gpa_agp_uitgeslagen')]: gereedTotals.agpUitgeslagen,
       [t('gpa_agp_eind')]: gereedTotals.agpEind,
       [t('lbl_voorcalc_excel')]: '',
-      [t('gpa_accijns_latent_eind')]: Number(gereedTotals.accijnsLatentEind.toFixed(2)),
+      [t('gpa_accijns_latent_eind_excel')]: Number(gereedTotals.accijnsLatentEind.toFixed(2)),
       [t('gpa_accijns_te_betalen')]: Number(gereedTotals.accijnsTeBetalen.toFixed(2)),
     })
     const ws2 = XLSX.utils.json_to_sheet(gpData)

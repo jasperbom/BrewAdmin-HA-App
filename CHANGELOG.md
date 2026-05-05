@@ -4,12 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.9.31] — 2026-05-05
+## [1.9.33] — 2026-05-05
 
 ### Added — Hop-lot-overzicht toont nu alfazuur en oogstjaar per lot
 
 - `src/pages/IngredientenPage.tsx` — De lot-tabel onder een hop-ingredient krijgt twee extra kolommen: **Alfazuur** (%) en **Oogstjaar**. Beide gebruiken `getEffectiveBrewProp(lot, selIng, key)` zodat de waarde valt onder dezelfde fallback-regel — eerst lot.bf_props, anders Ingredient.bf_props (Brewfather-bron). Ontbrekende waardes tonen `—`. Voor andere ingredient-typen blijft de tabel ongewijzigd (4 kolommen). Werkt zowel voor actieve als gearchiveerde lots; lege-state colSpan is dynamisch.
 - Geen aanpassingen aan i18n nodig — bestaande sleutels `bf_alpha` en `bf_year` worden hergebruikt.
+- Branch gemerged met `origin/main` (PR #132 douane-terminologie en PR #133 recept-voorraadcheck-aggregatie inbegrepen).
+- `config.yaml` — versie bump 1.9.32 → 1.9.33.
+
+---
+
+## [1.9.32] — 2026-05-05
+
+### Fixed — Recept-voorraadcheck somt nu regels met hetzelfde ingrediënt op
+
+Wanneer een recept hetzelfde ingrediënt op meerdere regels gebruikt (bijv. dezelfde mout in twee giften, of dezelfde hop op verschillende kookmomenten), werd elke regel afzonderlijk tegen de totale voorraad vergeleken. Daardoor kon je per regel groen krijgen terwijl het opgetelde recept-totaal de voorraad overschreed.
+
+`checkStock` in `src/pages/ReceptenPage.tsx` aggregeert nu alle regels binnen het geselecteerde recept die naar hetzelfde ingrediënt verwijzen (op `ingredient_id`, met fallback naar naam-match) en vergelijkt die som met de actieve lots. De per-regel-status (groen/geel/rood), de sectie-badge, de overall-status én de status-stip in de receptenlijst gebruiken vanaf nu deze geaggregeerde behoefte.
+
+In de "Benodigd"-kolom verschijnt een klein grijs label `(totaal: X eenheid)` op regels die een ingrediënt delen, met een tooltip die het receptaire totaal voluit toont.
+
+### Files
+- `src/pages/ReceptenPage.tsx` — `findIngMatch` helper toegevoegd; `checkStock(item, recept?)` somt nu binnen het recept; `IngRow`/`IngSection`/`cardStocks` geven het recept mee.
+- `src/i18n/{nl,en,de,fr,es}.json` — twee nieuwe sleutels: `recipe_total_short`, `recipe_total_in_recipe`.
+- `config.yaml` — versie bump 1.9.31 → 1.9.32.
+
+---
+
+## [1.9.31] — 2026-05-05
+
+### Changed — Douane-terminologie "Latente schuld" → "Pot. accijnsschuld" (§7.4)
+
+Voorraadverloop — kolomlabel hernoemd zodat de app dezelfde terminologie hanteert als bedrijfshandboek v2.4 §7.4 en consistent is met de reeds gebruikte i18n-sleutel `lbl_pot_accijnsschuld`:
+
+- UI-tabel: "Latente schuld" → "Pot. accijnsschuld"
+- Excel-export (sheet "Gereed product"): "Potentiële accijnsschuld (€)" via nieuwe i18n-sleutel `gpa_accijns_latent_eind_excel`
+- Group-tooltip (Accijns-kolomgroep) bijgewerkt naar "Potentiële accijnsschuld" in alle 5 talen
+
+Onderliggende dataveldnamen (`accijnsLatentEind`) en sleutelnaam `gpa_accijns_latent_eind` blijven ongewijzigd — alleen de gebruikersgerichte labels verschuiven.
+
+### Files
+- `src/pages/VoorraadverloopPage.tsx`
+- `src/i18n/{nl,en,de,fr,es}.json` (3 sleutels per bestand)
 - `config.yaml` — versie bump 1.9.30 → 1.9.31.
 
 ---
