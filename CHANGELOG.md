@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.27] — 2026-05-05
+
+### Changed — Brouw-props: `potentialPercentage` als BF-key voor extractrendement, SG-veld weg, GN-code uit lot-edit
+
+- `src/utils/constants.ts` — Voor mout en suiker is `LOT_BREW_FIELDS_PER_TYPE` aangepast naar key **`potentialPercentage`** in plaats van `yield`. Dat is het Brewfather-veld dat het extract-potentieel als percentage van het droge gewicht weergeeft, dus nu klopt de fallback naar `Ingredient.bf_props.potentialPercentage` (en de klikbare hint vult de juiste BF-waarde). `BREW_PROP_UNITS` kreeg `potentialPercentage: '%'`.
+- Het losse **Potentieel (SG)**-invoerveld is verwijderd uit het mout- en suiker-formulier (zinloos zolang het percentage al volstaat). Het `potential`-veld blijft wel zichtbaar in het algemene Brewfather-info-paneel als BF die data levert, met label "Potentieel (SG)" zodat onderscheid met het percentage duidelijk is.
+- `src/i18n/{nl,en,de,fr,es}.json` — Nieuwe sleutel `bf_potentialPercentage` (NL "Extractrendement", EN "Extract yield", DE "Extraktausbeute", FR "Rendement extrait", ES "Rendimiento extracto"). `bf_yield` is nu generieker "Yield" zodat als BF beide raw-velden levert, ze ieder hun eigen label hebben in het info-paneel. `bf_potential` heeft nu de SG-toevoeging in het label.
+- `src/pages/IngredientenPage.tsx` — Het GN-code-invoerveld is uit het lot-bewerk-modal gehaald. GN-code is een douane-nomenclatuur voor verpakt bier (zie batch- en afvulling-niveau), niet voor een ingredient-charge. Bestaande `lot.gn_code`-data blijft behouden via openLot/saveLot (backward-compat), enkel het input-veld is weg.
+- `config.yaml` — versie bump 1.9.26 → 1.9.27.
+
+---
+
 ## [1.9.26] — 2026-05-05
 
 ### Changed — Brouwkundige eigenschappen: potentieel-veld, klikbare BF-fallback overal, dubbele eenheden weg
