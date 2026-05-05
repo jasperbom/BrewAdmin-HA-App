@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.31] — 2026-05-05
+
+### Changed — Douane-terminologie "Latente schuld" → "Pot. accijnsschuld" (§7.4)
+
+Voorraadverloop — kolomlabel hernoemd zodat de app dezelfde terminologie hanteert als bedrijfshandboek v2.4 §7.4 en consistent is met de reeds gebruikte i18n-sleutel `lbl_pot_accijnsschuld`:
+
+- UI-tabel: "Latente schuld" → "Pot. accijnsschuld"
+- Excel-export (sheet "Gereed product"): "Potentiële accijnsschuld (€)" via nieuwe i18n-sleutel `gpa_accijns_latent_eind_excel`
+- Group-tooltip (Accijns-kolomgroep) bijgewerkt naar "Potentiële accijnsschuld" in alle 5 talen
+
+Onderliggende dataveldnamen (`accijnsLatentEind`) en sleutelnaam `gpa_accijns_latent_eind` blijven ongewijzigd — alleen de gebruikersgerichte labels verschuiven.
+
+### Files
+- `src/pages/VoorraadverloopPage.tsx`
+- `src/i18n/{nl,en,de,fr,es}.json` (3 sleutels per bestand)
+- `config.yaml` — versie bump 1.9.30 → 1.9.31.
+
+---
+
 ## [1.9.30] — 2026-05-05
 
 ### Added — Oogstjaar (`year`) als optioneel veld op hop-lots
