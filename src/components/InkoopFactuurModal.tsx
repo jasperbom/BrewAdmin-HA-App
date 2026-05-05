@@ -4,8 +4,8 @@ import Btn from './ui/Btn'
 import Inp from './ui/Inp'
 import Sel from './ui/Sel'
 import { t } from '../i18n'
-import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, LOT_BREW_FIELDS_PER_TYPE } from '../utils/constants'
-import { stripEmptyBrewProps } from '../utils/brewProps'
+import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
+import { getEffectiveBrewProp } from '../utils/brewProps'
 import { ADDON_BASE, callClaudeProxy } from '../utils/api'
 import { tod } from '../utils/format'
 
@@ -587,35 +587,61 @@ function InkoopFactuurModal({
                       </Btn>
                     )}
                   </div>
-                  {brewPropsOpen && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
-                      {(LOT_BREW_FIELDS_PER_TYPE[productForm.type] || []).map((fld: any) => {
-                        const label = t('bf_' + fld.key) !== 'bf_' + fld.key ? t('bf_' + fld.key) : fld.key
-                        const labelWithUnit = fld.unit ? `${label} (${fld.unit})` : label
-                        const val = productForm.bf_props?.[fld.key] ?? ''
-                        const set = (v: any) => setProductForm((f: any) => ({...f, bf_props: {...(f.bf_props||{}), [fld.key]: v}}))
-                        if (fld.kind === 'select') {
+                  {brewPropsOpen && (() => {
+                    const selectedIng = productForm.ing_id ? ing.find((i: any) => i.id === Number(productForm.ing_id)) : null
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+                        {(LOT_BREW_FIELDS_PER_TYPE[productForm.type] || []).map((fld: any) => {
+                          const label = t('bf_' + fld.key) !== 'bf_' + fld.key ? t('bf_' + fld.key) : fld.key
+                          const unit = BREW_PROP_UNITS[fld.key]
+                          const labelWithUnit = unit ? `${label} (${unit})` : label
+                          const val = productForm.bf_props?.[fld.key] ?? ''
+                          const set = (v: any) => setProductForm((f: any) => ({...f, bf_props: {...(f.bf_props||{}), [fld.key]: v}}))
+                          const ingFallback = !val && selectedIng ? getEffectiveBrewProp(null, selectedIng, fld.key) : undefined
+                          const hint = ingFallback !== undefined
+                            ? t('brew_props_fallback_hint').replace('{value}', String(ingFallback))
+                            : null
+                          if (fld.kind === 'select') {
+                            return (
+                              <div key={fld.key}>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">{labelWithUnit}</label>
+                                <select value={val} onChange={e => set(e.target.value)}
+                                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none">
+                                  <option value="">—</option>
+                                  {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                                {hint && (
+                                  <button type="button"
+                                    onClick={() => set(String(ingFallback))}
+                                    title={t('btn_use_bf_value')}
+                                    className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                                    {hint}
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          }
                           return (
                             <div key={fld.key}>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">{labelWithUnit}</label>
-                              <select value={val} onChange={e => set(e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none">
-                                <option value="">—</option>
-                                {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
-                              </select>
+                              <Inp label={labelWithUnit}
+                                type={fld.kind === 'number' ? 'number' : 'text'}
+                                value={String(val)}
+                                onChange={(v: string) => set(v)}
+                                placeholder="" />
+                              {hint && (
+                                <button type="button"
+                                  onClick={() => set(fld.kind === 'number' ? Number(ingFallback) : String(ingFallback))}
+                                  title={t('btn_use_bf_value')}
+                                  className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                                  {hint}
+                                </button>
+                              )}
                             </div>
                           )
-                        }
-                        return (
-                          <Inp key={fld.key} label={labelWithUnit}
-                            type={fld.kind === 'number' ? 'number' : 'text'}
-                            value={String(val)}
-                            onChange={(v: string) => set(v)}
-                            placeholder="" />
-                        )
-                      })}
-                    </div>
-                  )}
+                        })}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
               <div className="flex justify-end gap-2">

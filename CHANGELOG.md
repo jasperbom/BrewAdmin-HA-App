@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.26] — 2026-05-05
+
+### Changed — Brouwkundige eigenschappen: potentieel-veld, klikbare BF-fallback overal, dubbele eenheden weg
+
+- `src/utils/constants.ts` — Nieuwe flat map `BREW_PROP_UNITS` als enige bron voor BF-prop-eenheden (`alpha:%`, `color:EBC`, `minTemp:°C`, `diastaticPower:°L`, …). `LOT_BREW_FIELDS_PER_TYPE` heeft geen `unit`-veld meer; alle eenheden komen uit `BREW_PROP_UNITS`. Nieuw veld **`potential`** toegevoegd voor Mout en Suiker (Brewfather's `potential` is de extract-SG, bv. 1.037 voor pilsmout — naast `yield` (% extractrendement)).
+- `src/i18n/{nl,en,de,fr,es}.json` — Eenheden uit `bf_*`-labels gestript (NL: "Kleur (EBC)" → "Kleur"; "Vergistingsgraad %" → "Vergistingsgraad"; "Min. temp. (°C)" → "Min. temp."; etc. in alle 5 talen). Hierdoor verschijnt elke eenheid nog maar één keer in de UI in plaats van zowel in het label als achter het veld. Nieuwe sleutel `bf_potential` voor het potentieel-veld.
+- `src/pages/IngredientenPage.tsx` — Brewfather-info-paneel onder de lot-tabel toont nu de eenheid achter de waarde via `BREW_PROP_UNITS`. Brouwkundige eigenschappen-blok in de lot-popup is nu **inklapbaar** (default open, persistent via `lot_brew_open`). Effectieve-waardes-paneel toont eenheid achter de waarde en routeert lange waardes (>60 tekens of key `note*`) naar de "Notitie bekijken"-modal — dezelfde behandeling als het Brewfather-info-paneel.
+- `src/components/InkoopFactuurModal.tsx` — Bij het toevoegen van een nieuw lot is per veld nu een klikbare *Brewfather*-fallback-link onder het invoerveld (alleen bij een gekozen bestaand ingredient). Eén klik vult de Brewfather-waarde — gelijk aan het lot-bewerk-modal. Werkt voor number, text en select. De "Neem over van vorig lot"-knop blijft bestaan voor één-klik-overname van het hele vorige lot.
+- `config.yaml` — versie bump 1.9.25 → 1.9.26.
+
+---
+
 ## [1.9.25] — 2026-05-05
 
 ### Changed — Brewfather-paneel overzichtelijker en BF-fallback klikbaar
