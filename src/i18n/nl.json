@@ -439,6 +439,8 @@
   "stock_all_sold": "✓ alles verkocht",
   "stock_filter_all_beers": "Alle bieren",
   "recipe_needed": "Benodigd",
+  "recipe_total_short": "totaal",
+  "recipe_total_in_recipe": "Totaal in recept: {n} {u}",
   "recipe_use": "Gebruik",
   "modal_add_to_list": "+ Voeg toe aan lijst",
   "settings_logo_title": "Logo",

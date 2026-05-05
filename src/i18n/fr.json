@@ -439,6 +439,8 @@
   "stock_all_sold": "✓ tout vendu",
   "stock_filter_all_beers": "Toutes les bières",
   "recipe_needed": "Requis",
+  "recipe_total_short": "total",
+  "recipe_total_in_recipe": "Total dans la recette : {n} {u}",
   "recipe_use": "Utilisation",
   "modal_add_to_list": "+ Ajouter à la liste",
   "settings_logo_title": "Logo",
