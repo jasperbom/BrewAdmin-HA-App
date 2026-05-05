@@ -485,7 +485,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [iForm, setIForm] = useState<any>(emptyI)
   const [pendingBatchIngredienten, setPendingBatchIngredienten] = useState<any[]>([])
   const [batchArchiefIngeklapt, setBatchArchiefIngeklapt] = useStore('batches_archief_ingeklapt', true)
-  const [infoIngeklapt, setInfoIngeklapt] = useState(true)
+  const [infoOpen, setInfoOpen] = useStore('batches_info_open', {} as Record<string, boolean>)
+  const [kostenOpen, setKostenOpen] = useStore('batches_kosten_open', {} as Record<string, boolean>)
   const [moveTankOpen, setMoveTankOpen] = useState(false)
   const [moveTankTarget, setMoveTankTarget] = useState('')
   const [grafiekOpen, setGrafiekOpen] = useStore('gist_grafiek_open', {} as Record<string,boolean>)
@@ -515,6 +516,26 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   // Groep-key van de batch-ingredient waarvan de koppel-picker openstaat.
   const [koppelGroep, setKoppelGroep] = useState<string | null>(null)
   const [batchZoek, setBatchZoek] = useState('')
+
+  // Geeft `true`/`false` voor een sectie-open-staat. Respecteert de
+  // user-gekozen waarde (per batch); bij geen keuze wordt een fase-default
+  // toegepast — zo zijn de meest relevante secties direct open per status.
+  const sectieOpen = (
+    map: Record<string, boolean> | any,
+    batchId: number | string,
+    fase: string,
+    sectie: 'gist' | 'verlies' | 'info' | 'kosten'
+  ): boolean => {
+    const key = String(batchId)
+    if (map && typeof map === 'object' && !Array.isArray(map) && key in map) return !!map[key]
+    switch (sectie) {
+      case 'gist':    return fase === 'Vergisten'
+      case 'verlies': return fase === 'Vergisten' || fase === 'Conditioneren'
+      case 'info':    return false
+      case 'kosten':  return fase === 'Verpakt' || fase === 'Gesloten'
+    }
+    return false
+  }
 
   // ── Tank-bezetting helpers (voor het batch-formulier) ──────────────
   // Bepaal start/eind van een batch-periode. Fallback tank_dagen = 14 als
@@ -1062,9 +1083,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     }
   }
 
-  // Compute open state at component level for auto-fetch effect
-  const grafiekIsOpen = !!(grafiekOpen && typeof grafiekOpen === 'object' && !Array.isArray(grafiekOpen)
-    ? (grafiekOpen as any)[sel as any] : false)
+  // Compute open state at component level for auto-fetch effect.
+  // Fase-default: open tijdens Vergisten als gebruiker zelf nog niets koos.
+  const grafiekIsOpen = sectieOpen(grafiekOpen, sel as any, (bat||[]).find((b: any)=>b.id===sel)?.status || '', 'gist')
 
   // HA temperature fetch — defined at component level so useEffect can reference it
   const doHaFetch = React.useCallback(async () => {
@@ -1406,210 +1427,199 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 )
               })()}
 
-              {/* Info collapse */}
-              <div className="px-4 py-2 flex items-center gap-2 cursor-pointer select-none hover:bg-gray-50 border-b" onClick={()=>setInfoIngeklapt(v=>!v)}>
-                <span className="text-gray-400 text-xs">{infoIngeklapt ? '▶' : '▼'}</span>
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t('batch_info_label')}</span>
-              </div>
-              {!infoIngeklapt && (
-                <div className="p-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-                    {([
-                      [t('lbl_status'), <Badge s={selB.status} />],
-                      [t('batch_info_batch_nr'), selB.batch_nummer||'—'],
-                      selB.brewfather_batch_nummer ? [t('batch_info_bf_batch_nr'), `#${selB.brewfather_batch_nummer}`] : null,
-                      [t('lbl_date'), fmtD(selB.datum)],
-                      [t('batch_info_style'), selB.stijl||'—'],
-                      [t('lbl_tank'), selB.tank||'—'],
-                      [t('lbl_liters_fermented'), selB.liter_vergist ? `${selB.liter_vergist}L` : '—'],
-                      [t('batch_info_og'), selB.OG||'—'],
-                      [t('batch_info_fg'), selB.FG||'—'],
-                      [t('batch_info_alcohol'), selB.ABV ? `${selB.ABV}%` : '—'],
-                      selB.brouwzaal_eff ? [t('batch_info_brew_efficiency'), `${Number(selB.brouwzaal_eff).toFixed(1)}%`] : null,
-                      selB.maisch_eff    ? [t('batch_info_mash_efficiency'), `${Number(selB.maisch_eff).toFixed(1)}%`] : null,
-                      selB.maisch_ph     ? [t('batch_info_mash_ph'),         Number(selB.maisch_ph).toFixed(2)] : null,
-                      selB.product_ph    ? [t('batch_info_product_ph'),      Number(selB.product_ph).toFixed(2)] : null,
-                      selB.kleur         ? [t('recipe_kleur'),               `${selB.kleur} EBC`] : null,
-                      selB.kooktijd      ? [t('recipe_kooktijd'),            `${selB.kooktijd} min`] : null,
-                      selB.kook_volume   ? [t('recipe_kook_volume'),         `${selB.kook_volume} L`] : null,
-                    ] as any[]).filter(Boolean).map(([l, v]: any) => (
-                      <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className="mt-0.5">{v}</div></div>
-                    ))}
-                  </div>
-                  {(() => {
-                    const historie = resolveTankHistorie(selB)
-                    if (historie.length <= 1) return null
-                    return (
-                      <div className="mt-3 pt-3 border-t">
-                        <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('batch_tank_history')}</div>
-                        <div className="flex flex-col gap-1">
-                          {historie.map((rij, i) => {
-                            const tankInfo = (tanks||[]).find((tk: any) => tk.id === rij.tank)
-                            const tankNaam = tankInfo?.naam || rij.tank || t('lbl_onbekend')
-                            return (
-                              <div
-                                key={i}
-                                className={`flex items-center justify-between text-sm px-3 py-1.5 rounded ${rij.isCurrent ? 't-panel font-medium' : 'bg-gray-50 text-gray-600'}`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="truncate">{tankNaam}</span>
-                                  <span className="text-xs text-gray-400">
-                                    {fmtD(rij.from)}{rij.to ? ` → ${fmtD(rij.to)}` : ''}
-                                  </span>
-                                </div>
-                                <span className="text-xs font-semibold ml-2 flex-shrink-0">
-                                  {t('dashboard_days_in_tank').replace('{n}', String(rij.dagen))}
-                                </span>
-                              </div>
-                            )
-                          })}
-                        </div>
+              {/* Volumes — onder vergistingsvoortgang */}
+              {(() => {
+                const tankLiter = Number(selB.liter_vergist || 0)
+                if (tankLiter <= 0) return null
+                const batchAv = av ? av.filter((a: any) => a.batch_id === selB.id) : []
+                const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid || 0) * Number(a.hoeveelheid || 0), 0)
+                const totStuks = batchAv.reduce((s: number, a: any) => s + Number(a.hoeveelheid || 0), 0)
+                const regPosten = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
+                const totReg = regPosten.reduce((s: number, r: any) => s + Number(r.liter || 0), 0)
+                const inTank = Math.max(0, tankLiter - totReg - totLiterVerpakt)
+                const verliesPct = tankLiter > 0 ? (totReg / tankLiter * 100) : null
+                const verliesKleur = verliesPct != null && verliesPct > 10
+                  ? 'text-red-600'
+                  : verliesPct != null && verliesPct > 5
+                    ? 'text-yellow-600'
+                    : totReg < 0
+                      ? 'text-blue-600'
+                      : 'text-green-700'
+                return (
+                  <div className="px-4 py-3 border-b">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      {t('batch_volumes_header')}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('batch_stat_fermented')}</span>
+                        <span className="font-medium">{tankLiter.toFixed(1)}L</span>
                       </div>
-                    )
-                  })()}
-                  {safeStr(selB.notities) && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="text-xs font-medium text-gray-500 mb-1">{t('lbl_notes')}</div>
-                      <div className="text-sm text-gray-700 whitespace-pre-wrap">{safeStr(selB.notities)}</div>
-                    </div>
-                  )}
-                  {selB.maischprofiel && selB.maischprofiel.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-gray-400 border-b">
-                            <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
-                            <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
-                            <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
-                            <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selB.maischprofiel.map((s: any, i: number) => (
-                            <tr key={i} className="border-b border-gray-100 last:border-0">
-                              <td className="py-1 text-gray-700">{s.naam || s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
-                              <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
-                              <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
-                              <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {selB.vergistingsprofiel && selB.vergistingsprofiel.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-gray-400 border-b">
-                            <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
-                            <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
-                            <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
-                            <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selB.vergistingsprofiel.map((s: any, i: number) => (
-                            <tr key={i} className="border-b border-gray-100 last:border-0">
-                              <td className="py-1 text-gray-700">{s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
-                              <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
-                              <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
-                              <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Kosten samenvatting */}
-              <div className="px-4 pb-4">
-                {(() => {
-                  const ingK = ingKosten(selB)
-                  const overH = Number(selB.electra_kosten||0)+Number(selB.water_kosten||0)+Number(selB.schoonmaak_kosten||0)+Number(selB.overige_kosten||0)
-                  const totK = ingK + overH
-                  const batchAv = av ? av.filter((a: any) => a.batch_id===selB.id) : []
-                  const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
-                  const totStuks = batchAv.reduce((s: number, a: any) => s+Number(a.hoeveelheid||0), 0)
-                  const tankLiter = Number(selB.liter_vergist||0)
-                  const verlies = verliesAfgeleid(selB, av || [])
-                  const verliesPct = verlies!==null && tankLiter>0 ? (verlies/tankLiter*100) : null
-                  const regPosten = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
-                  const totReg = regPosten.reduce((s: number, r: any) => s + Number(r.liter || 0), 0)
-                  const kostenPerLiter = totLiterVerpakt>0 ? totK/totLiterVerpakt : (tankLiter>0 ? totK/tankLiter : null)
-                  return (
-                    <div className="mt-3 pt-3 border-t space-y-2 text-sm">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                        <div className="flex justify-between text-gray-600">
-                          <span className="text-xs">{t('nav_ingredienten')}</span>
-                          <span className={ingK>0?'':'text-gray-400'}>{ingK>0?fmt(ingK):'—'}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-600">
-                          <span className="text-xs">{t('batch_costs_electricity')}</span>
-                          <span className={selB.electra_kosten?'':'text-gray-400'}>{selB.electra_kosten?fmt(selB.electra_kosten):'—'}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-600">
-                          <span className="text-xs">{t('batch_overhead_total')}</span>
-                          <span className={overH>0?'':'text-gray-400'}>{overH>0?fmt(overH):'—'}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-600">
-                          <span className="text-xs">{t('batch_costs_water')}</span>
-                          <span className={selB.water_kosten?'':'text-gray-400'}>{selB.water_kosten?fmt(selB.water_kosten):'—'}</span>
-                        </div>
-                        <div className="flex justify-between font-semibold text-gray-800 pt-1 border-t">
-                          <span className="text-xs">{t('batch_total_costs')}</span>
-                          <span>{fmt(totK)}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-600">
-                          <span className="text-xs">{t('batch_costs_cleaning')}</span>
-                          <span className={selB.schoonmaak_kosten?'':'text-gray-400'}>{selB.schoonmaak_kosten?fmt(selB.schoonmaak_kosten):'—'}</span>
-                        </div>
-                        {kostenPerLiter!==null && (
-                          <div className="flex justify-between text-amber-700">
-                            <span className="text-xs">{t('batch_costs_per_liter')}</span>
-                            <span className="font-medium">{fmt(kostenPerLiter)}</span>
-                          </div>
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('batch_stat_in_tank')}</span>
+                        <span className="font-medium">{inTank.toFixed(1)}L</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('status_packaged')}</span>
+                        {batchAv.length > 0 ? (
+                          <>
+                            <span className="font-medium">{totLiterVerpakt.toFixed(1)}L</span>
+                            <span className="text-gray-400 text-xs ml-1">({totStuks} st)</span>
+                          </>
+                        ) : (
+                          <span className="text-gray-400">—</span>
                         )}
-                        <div className="flex justify-between text-gray-600">
-                          <span className="text-xs">{t('batch_costs_other')}</span>
-                          <span className={selB.overige_kosten?'':'text-gray-400'}>{selB.overige_kosten?fmt(selB.overige_kosten):'—'}</span>
-                        </div>
                       </div>
-                      {batchAv.length > 0 && (
-                        <div className="pt-2 border-t">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                            <div>
-                              <span className="text-gray-500 text-xs block">{t('status_packaged')}</span>
-                              <span className="font-medium">{totLiterVerpakt.toFixed(1)}L</span>
-                              <span className="text-gray-400 text-xs ml-1">({totStuks} st)</span>
+                      <div>
+                        <span className="text-gray-500 text-xs block">{t('batch_loss')}</span>
+                        <span className={`font-medium ${verliesKleur}`}>{totReg.toFixed(1)}L</span>
+                        {verliesPct !== null && totReg !== 0 && (
+                          <span className="text-xs text-gray-400 ml-1">({verliesPct.toFixed(1)}%)</span>
+                        )}
+                        <span
+                          className="block text-xs mt-0.5 cursor-pointer hover:underline"
+                          style={{color: 'var(--t-accent)'}}
+                          onClick={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !sectieOpen(p, selB.id, selB.status, 'verlies')}))}>
+                          {regPosten.length} {t('batch_verlies_posten')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+            </div>
+
+            {/* Info card — uitklapbaar overzicht van alle batchgegevens */}
+            {(() => {
+              const isOpen = sectieOpen(infoOpen, selB.id, selB.status, 'info')
+              const fields: any[] = [
+                [t('lbl_status'), <Badge s={selB.status} />],
+                [t('batch_info_batch_nr'), selB.batch_nummer||'—'],
+                selB.brewfather_batch_nummer ? [t('batch_info_bf_batch_nr'), `#${selB.brewfather_batch_nummer}`] : null,
+                [t('lbl_date'), fmtD(selB.datum)],
+                [t('batch_info_style'), selB.stijl||'—'],
+                [t('lbl_tank'), selB.tank||'—'],
+                [t('lbl_liters_fermented'), selB.liter_vergist ? `${selB.liter_vergist}L` : '—'],
+                [t('batch_info_og'), selB.OG||'—'],
+                [t('batch_info_fg'), selB.FG||'—'],
+                [t('batch_info_alcohol'), selB.ABV ? `${selB.ABV}%` : '—'],
+                selB.brouwzaal_eff ? [t('batch_info_brew_efficiency'), `${Number(selB.brouwzaal_eff).toFixed(1)}%`] : null,
+                selB.maisch_eff    ? [t('batch_info_mash_efficiency'), `${Number(selB.maisch_eff).toFixed(1)}%`] : null,
+                selB.maisch_ph     ? [t('batch_info_mash_ph'),         Number(selB.maisch_ph).toFixed(2)] : null,
+                selB.product_ph    ? [t('batch_info_product_ph'),      Number(selB.product_ph).toFixed(2)] : null,
+                selB.kleur         ? [t('recipe_kleur'),               `${selB.kleur} EBC`] : null,
+                selB.kooktijd      ? [t('recipe_kooktijd'),            `${selB.kooktijd} min`] : null,
+                selB.kook_volume   ? [t('recipe_kook_volume'),         `${selB.kook_volume} L`] : null,
+              ].filter(Boolean)
+              return (
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <SectionHeader
+                    open={isOpen}
+                    onToggle={() => setInfoOpen((p: any) => ({...p, [selB.id]: !isOpen}))}
+                    rounded={isOpen ? 'top' : 'full'}
+                    title={t('batch_info_label')}
+                    info={`${fields.length} ${t('lbl_items')}`}
+                  />
+                  {isOpen && (
+                    <div className="p-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                        {fields.map(([l, v]: any) => (
+                          <div key={l}><span className="text-gray-500 text-xs">{l}</span><div className="mt-0.5">{v}</div></div>
+                        ))}
+                      </div>
+                      {(() => {
+                        const historie = resolveTankHistorie(selB)
+                        if (historie.length <= 1) return null
+                        return (
+                          <div className="mt-3 pt-3 border-t">
+                            <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('batch_tank_history')}</div>
+                            <div className="flex flex-col gap-1">
+                              {historie.map((rij, i) => {
+                                const tankInfo = (tanks||[]).find((tk: any) => tk.id === rij.tank)
+                                const tankNaam = tankInfo?.naam || rij.tank || t('lbl_onbekend')
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`flex items-center justify-between text-sm px-3 py-1.5 rounded ${rij.isCurrent ? 't-panel font-medium' : 'bg-gray-50 text-gray-600'}`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="truncate">{tankNaam}</span>
+                                      <span className="text-xs text-gray-400">
+                                        {fmtD(rij.from)}{rij.to ? ` → ${fmtD(rij.to)}` : ''}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-semibold ml-2 flex-shrink-0">
+                                      {t('dashboard_days_in_tank').replace('{n}', String(rij.dagen))}
+                                    </span>
+                                  </div>
+                                )
+                              })}
                             </div>
-                            {verlies !== null && (
-                              <div>
-                                <span className="text-gray-500 text-xs block">{t('batch_loss')}</span>
-                                <span className={`font-medium ${verliesPct!=null&&verliesPct>10?'text-red-600':verliesPct!=null&&verliesPct>5?'text-yellow-600':'text-green-700'}`}>
-                                  {verlies.toFixed(1)}L
-                                </span>
-                                {verliesPct!==null && <span className="text-xs text-gray-400 ml-1">({verliesPct.toFixed(1)}%)</span>}
-                                <span
-                                  className="block text-xs mt-0.5 cursor-pointer hover:underline"
-                                  style={{color: 'var(--t-accent)'}}
-                                  onClick={() => setVerliesOpen((p: any) => ({...p, [selB.id]: !p?.[selB.id]}))}>
-                                  {t('batch_verlies_geregistreerd')}: {totReg.toFixed(1)}L ({regPosten.length} {t('batch_verlies_posten')})
-                                </span>
-                              </div>
-                            )}
                           </div>
+                        )
+                      })()}
+                      {safeStr(selB.notities) && (
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="text-xs font-medium text-gray-500 mb-1">{t('lbl_notes')}</div>
+                          <div className="text-sm text-gray-700 whitespace-pre-wrap">{safeStr(selB.notities)}</div>
+                        </div>
+                      )}
+                      {selB.maischprofiel && selB.maischprofiel.length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-gray-400 border-b">
+                                <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                                <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                                <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                                <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selB.maischprofiel.map((s: any, i: number) => (
+                                <tr key={i} className="border-b border-gray-100 last:border-0">
+                                  <td className="py-1 text-gray-700">{s.naam || s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
+                                  <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                                  <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
+                                  <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {selB.vergistingsprofiel && selB.vergistingsprofiel.length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-gray-400 border-b">
+                                <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
+                                <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
+                                <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
+                                <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selB.vergistingsprofiel.map((s: any, i: number) => (
+                                <tr key={i} className="border-b border-gray-100 last:border-0">
+                                  <td className="py-1 text-gray-700">{s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
+                                  <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
+                                  <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
+                                  <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
-                  )
-                })()}
-              </div>
-            </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Gistgrafiek */}
             {(() => {
@@ -1765,7 +1775,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
             {/* Verliesregistratie */}
             {(() => {
-              const isOpen = !!(verliesOpen && typeof verliesOpen === 'object' && !Array.isArray(verliesOpen) ? (verliesOpen as any)[selB.id] : false)
+              const isOpen = sectieOpen(verliesOpen, selB.id, selB.status, 'verlies')
               const batchRegs = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
                 .slice().sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || '')))
               const totReg = batchRegs.reduce((s: number, r: any) => s + Number(r.liter || 0), 0)
@@ -1777,7 +1787,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
               const addVerlies = () => {
                 const liter = Number(verliesForm.liter)
-                if (!liter || liter <= 0) return
+                if (!liter || liter === 0 || isNaN(liter)) return
                 const nieuw = {
                   id: newId(verliesRegistraties || []),
                   batch_id: selB.id,
@@ -1819,7 +1829,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         ph={t('lbl_bron')}
                         cls="w-36"
                       />
-                      <Inp type="number" step="0.1" min="0" placeholder={t('batch_verlies_liter_label')}
+                      <Inp type="number" step="0.1" placeholder={t('batch_verlies_liter_label')}
                         value={verliesForm.liter}
                         onChange={(v: string) => setVerliesForm((f: any) => ({...f, liter: v}))}
                         cls="w-28" />
@@ -1997,18 +2007,39 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 {formActive ? t('btn_cancel') : t('haccp_ccp_meting_nieuw')}
                               </button>
                             </div>
-                            {formActive && (
-                              <div className="bg-gray-50 rounded-b p-2 space-y-2 border-t">
-                                <div className="grid grid-cols-2 gap-2">
-                                  <Inp label={t('haccp_ccp_waarde')} type="number" value={ccpMetingForm.waarde??''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, waarde:v})} />
-                                  <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum||tod()} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, datum:v})} />
+                            {formActive && (() => {
+                              const eenheid = item.eenheid || ''
+                              const grensTxt = item.kritische_grens
+                                ? String(item.kritische_grens)
+                                : (item.grens_min != null || item.grens_max != null
+                                  ? (item.grens_min != null && item.grens_max != null
+                                    ? `${item.grens_min}–${item.grens_max}${eenheid ? ' ' + eenheid : ''}`
+                                    : item.grens_min != null
+                                      ? `≥ ${item.grens_min}${eenheid ? ' ' + eenheid : ''}`
+                                      : `≤ ${item.grens_max}${eenheid ? ' ' + eenheid : ''}`)
+                                  : '')
+                              const waardeLabel = `${t('haccp_ccp_waarde')}${eenheid ? ` (${eenheid})` : ''}`
+                              const placeholder = eenheid
+                                ? t('haccp_ccp_waarde_ph').replace('{eenheid}', eenheid)
+                                : t('haccp_ccp_waarde_ph_geen_eenheid')
+                              return (
+                                <div className="bg-gray-50 rounded-b p-2 space-y-2 border-t">
+                                  {grensTxt && (
+                                    <div className="text-xs text-gray-500">
+                                      <span className="font-semibold">{t('haccp_ccp_kritische_grens')}:</span> {grensTxt}
+                                    </div>
+                                  )}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Inp label={waardeLabel} type="number" placeholder={placeholder} value={ccpMetingForm.waarde??''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, waarde:v})} />
+                                    <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum||tod()} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, datum:v})} />
+                                  </div>
+                                  <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door||''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, uitgevoerd_door:v})} />
+                                  <div className="flex gap-2 justify-end">
+                                    <Btn s="sm" onClick={saveTaakMeting}>{t('btn_save')}</Btn>
+                                  </div>
                                 </div>
-                                <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door||''} onChange={(v: string)=>setCcpMetingForm({...ccpMetingForm, uitgevoerd_door:v})} />
-                                <div className="flex gap-2 justify-end">
-                                  <Btn s="sm" onClick={saveTaakMeting}>{t('btn_save')}</Btn>
-                                </div>
-                              </div>
-                            )}
+                              )
+                            })()}
                           </div>
                         )
                       }
@@ -2857,6 +2888,69 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       </table>
                     </div>}
                   </div>
+                </div>
+              )
+            })()}
+
+            {/* Kosten samenvatting — uitklapbare card (auto-open vanaf Verpakt) */}
+            {(() => {
+              const isOpen = sectieOpen(kostenOpen, selB.id, selB.status, 'kosten')
+              const ingK = ingKosten(selB)
+              const overH = Number(selB.electra_kosten||0)+Number(selB.water_kosten||0)+Number(selB.schoonmaak_kosten||0)+Number(selB.overige_kosten||0)
+              const totK = ingK + overH
+              const batchAv = av ? av.filter((a: any) => a.batch_id===selB.id) : []
+              const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
+              const tankLiter = Number(selB.liter_vergist||0)
+              const kostenPerLiter = totLiterVerpakt>0 ? totK/totLiterVerpakt : (tankLiter>0 ? totK/tankLiter : null)
+              return (
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <SectionHeader
+                    open={isOpen}
+                    onToggle={() => setKostenOpen((p: any) => ({...p, [selB.id]: !isOpen}))}
+                    rounded={isOpen ? 'top' : 'full'}
+                    title={t('batch_kosten_card_title')}
+                    info={totK > 0 ? `${fmt(totK)}${kostenPerLiter != null ? ` · ${fmt(kostenPerLiter)}/L` : ''}` : null}
+                  />
+                  {isOpen && (
+                    <div className="p-4 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                        <div className="flex justify-between text-gray-600">
+                          <span className="text-xs">{t('nav_ingredienten')}</span>
+                          <span className={ingK>0?'':'text-gray-400'}>{ingK>0?fmt(ingK):'—'}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span className="text-xs">{t('batch_costs_electricity')}</span>
+                          <span className={selB.electra_kosten?'':'text-gray-400'}>{selB.electra_kosten?fmt(selB.electra_kosten):'—'}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span className="text-xs">{t('batch_overhead_total')}</span>
+                          <span className={overH>0?'':'text-gray-400'}>{overH>0?fmt(overH):'—'}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span className="text-xs">{t('batch_costs_water')}</span>
+                          <span className={selB.water_kosten?'':'text-gray-400'}>{selB.water_kosten?fmt(selB.water_kosten):'—'}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold text-gray-800 pt-1 border-t">
+                          <span className="text-xs">{t('batch_total_costs')}</span>
+                          <span>{fmt(totK)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span className="text-xs">{t('batch_costs_cleaning')}</span>
+                          <span className={selB.schoonmaak_kosten?'':'text-gray-400'}>{selB.schoonmaak_kosten?fmt(selB.schoonmaak_kosten):'—'}</span>
+                        </div>
+                        {kostenPerLiter!==null && (
+                          <div className="flex justify-between text-amber-700">
+                            <span className="text-xs">{t('batch_costs_per_liter')}</span>
+                            <span className="font-medium">{fmt(kostenPerLiter)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-gray-600">
+                          <span className="text-xs">{t('batch_costs_other')}</span>
+                          <span className={selB.overige_kosten?'':'text-gray-400'}>{selB.overige_kosten?fmt(selB.overige_kosten):'—'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })()}

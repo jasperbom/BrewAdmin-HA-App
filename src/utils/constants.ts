@@ -218,6 +218,7 @@ export const VERLIES_BRONNEN = [
   {key:'leiding',   label:'verlies_bron_leiding'},
   {key:'schuim',    label:'verlies_bron_schuim'},
   {key:'monster',   label:'verlies_bron_monster'},
+  {key:'gist_dump', label:'verlies_bron_gist_dump'},
   {key:'afgekeurd', label:'verlies_bron_afgekeurd'},
   {key:'overig',    label:'verlies_bron_overig'},
 ]

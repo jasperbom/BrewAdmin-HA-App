@@ -456,14 +456,22 @@ export const berekenLiveABV = (batch: any, metingen: any[] = []): LiveABVResult 
 }
 
 // Liters bier dat nog in tank zit voor een batch (= liter_vergist minus reeds
-// afgevulde liters). Negatief resultaat wordt 0.
-export const tankRestVolume = (batch: any, afvullingen: Afvulling[] = []): number => {
+// afgevulde liters minus geregistreerde verliezen). Negatieve verliesposten
+// werken als correctie (verhogen het tankvolume). Negatief resultaat wordt 0.
+export const tankRestVolume = (
+  batch: any,
+  afvullingen: Afvulling[] = [],
+  verliezen: VerliesRegistratie[] = []
+): number => {
   const totaal = Number(batch?.liter_vergist || batch?.kook_volume || 0)
   if (!totaal) return 0
   const afgevuld = (afvullingen || [])
     .filter(a => a.batch_id === batch?.id)
     .reduce((s, a) => s + afvAantal(a) * afvInhoud(a), 0)
-  return Math.max(0, totaal - afgevuld)
+  const verliesL = (verliezen || [])
+    .filter(r => r.batch_id === batch?.id)
+    .reduce((s, r) => s + Number(r.liter || 0), 0)
+  return Math.max(0, totaal - afgevuld - verliesL)
 }
 
 // Afgeleid bierverlies = liter_vergist minus totaal afgevuld. Alleen berekend
@@ -486,13 +494,13 @@ export const verliesTotaal = (regs: VerliesRegistratie[] = [], batch_id: number)
     .filter(r => r.batch_id === batch_id)
     .reduce((s, r) => s + Number(r.liter || 0), 0)
 
-// Aggregatie per bron; alle zes sleutels altijd aanwezig (default 0).
+// Aggregatie per bron; alle sleutels altijd aanwezig (default 0).
 export const verliesPerBron = (
   regs: VerliesRegistratie[] = [],
   batch_id: number
 ): Record<VerliesBron, number> => {
   const out: Record<VerliesBron, number> = {
-    tankrest: 0, leiding: 0, schuim: 0, monster: 0, afgekeurd: 0, overig: 0,
+    tankrest: 0, leiding: 0, schuim: 0, monster: 0, gist_dump: 0, afgekeurd: 0, overig: 0,
   }
   for (const r of regs || []) {
     if (r.batch_id !== batch_id) continue
@@ -519,9 +527,10 @@ export const verliesOngeregistreerd = (
 export const tankAccijnsWaarde = (
   batch: any,
   afvullingen: Afvulling[],
-  inst: AccijnsInst | null = null
+  inst: AccijnsInst | null = null,
+  verliezen: VerliesRegistratie[] = []
 ): { liter: number; abv: number; geschat: boolean; accijns: number } => {
-  const liter = tankRestVolume(batch, afvullingen)
+  const liter = tankRestVolume(batch, afvullingen, verliezen)
   const { abv, geschat } = schatABV(batch)
   const {r1, r2, r3} = tariefVoorDatum(inst, batch?.datum)
   const plato = Number(batch?.platogehalte || 0)
@@ -715,7 +724,8 @@ export const agpOverzicht = (
   verplaatsingen: Verplaatsing[],
   afboekingen: Afboeking[],
   locaties: Locatie[],
-  inst: AccijnsInst | null = null
+  inst: AccijnsInst | null = null,
+  verliezen: VerliesRegistratie[] = []
 ): AgpOverzicht => {
   const agp = getAgpLocatie(locaties)
   const r1 = inst?.tarief_per_hl_abv ?? 7.51
@@ -724,7 +734,7 @@ export const agpOverzicht = (
   // Tanks: batches in TANK_STATUSSEN
   const tankRijen: AgpTankRij[] = (batches || [])
     .filter(b => TANK_STATUSSEN.includes(String(b?.status)))
-    .map(b => ({ batch: b, ...tankAccijnsWaarde(b, afvullingen, inst) }))
+    .map(b => ({ batch: b, ...tankAccijnsWaarde(b, afvullingen, inst, verliezen) }))
     .filter(r => r.liter > 0)
 
   // Afvullingen met enige voorraad (in of buiten AGP)
