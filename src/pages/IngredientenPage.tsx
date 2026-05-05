@@ -822,7 +822,6 @@ const IngredientenPage: React.FC<Props> = ({
                 </div>
                 <Inp label={t('lbl_tht')} type="date" value={le('houdbaarheid')} onChange={(v: string) => setLe('houdbaarheid', v)} />
                 <Inp label={t('modal_price_per_unit')} type="number" value={le('prijs_per_eenheid')} onChange={(v: string) => setLe('prijs_per_eenheid', v)} placeholder="—" />
-                <Inp label={t('lbl_gn_code')} value={le('gn_code')} onChange={(v: string) => setLe('gn_code', v)} placeholder="2203 00 09" />
                 {origQty > 0 && <div><div className="text-xs text-gray-400">{t('ing_original_received')}</div><div className="font-medium text-gray-700">{origQty} {l.eenheid}</div></div>}
               </div>
               {brewFields.length > 0 && (

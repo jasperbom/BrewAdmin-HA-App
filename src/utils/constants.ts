@@ -21,7 +21,8 @@ export const BUILTIN_KOSTEN_SOORTEN = ['Grondstoffen','Verpakkingsmateriaal','En
 export const BREW_PROP_UNITS: Record<string, string> = {
   alpha: '%', beta: '%', cohumulone: '%', myrcene: '%', hsi: '%',
   color: 'EBC', colour: 'EBC',
-  yield: '%', moisture: '%', concentration: '%', alcoholTolerance: '%',
+  yield: '%', potentialPercentage: '%',
+  moisture: '%', concentration: '%', alcoholTolerance: '%',
   attenuation: '%', minAttenuation: '%', maxAttenuation: '%',
   minTemp: '°C', maxTemp: '°C',
   diastaticPower: '°L',
@@ -42,8 +43,7 @@ export interface BrewField {
 export const LOT_BREW_FIELDS_PER_TYPE: Record<string, BrewField[]> = {
   Mout: [
     { key: 'color', kind: 'number' },
-    { key: 'yield', kind: 'number' },
-    { key: 'potential', kind: 'number' },
+    { key: 'potentialPercentage', kind: 'number' },
     { key: 'diastaticPower', kind: 'number' },
     { key: 'moisture', kind: 'number' },
   ],
@@ -61,8 +61,7 @@ export const LOT_BREW_FIELDS_PER_TYPE: Record<string, BrewField[]> = {
     { key: 'alcoholTolerance', kind: 'number' },
   ],
   Suiker: [
-    { key: 'yield', kind: 'number' },
-    { key: 'potential', kind: 'number' },
+    { key: 'potentialPercentage', kind: 'number' },
     { key: 'color', kind: 'number' },
   ],
   Overig: [
