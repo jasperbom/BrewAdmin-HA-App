@@ -312,6 +312,8 @@
   "carb_g_dissolved_short": "g dissous",
   "carb_g_consumption_short": "g consommation",
   "carb_stone_only_hint": "(pierre uniquement)",
+  "carb_style_range": "Typique pour {stijl} : {min}–{max} vols",
+  "carb_style_range_unknown": "Aucun style défini — ale/lager générique : {min}–{max} vols",
   "lbl_open_orders": "Commandes ouvertes",
   "lbl_orders_to_pick": "à préparer/expédier",
   "settings_brewery": "Brasserie",

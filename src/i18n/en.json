@@ -312,6 +312,8 @@
   "carb_g_dissolved_short": "g dissolved",
   "carb_g_consumption_short": "g consumption",
   "carb_stone_only_hint": "(stone only)",
+  "carb_style_range": "Typical for {stijl}: {min}–{max} vols",
+  "carb_style_range_unknown": "No style set — generic ale/lager: {min}–{max} vols",
   "lbl_open_orders": "Open orders",
   "lbl_orders_to_pick": "to pick/pack",
   "settings_brewery": "Brewery",

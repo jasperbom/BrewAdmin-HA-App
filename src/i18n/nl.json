@@ -312,6 +312,8 @@
   "carb_g_dissolved_short": "g opgelost",
   "carb_g_consumption_short": "g verbruik",
   "carb_stone_only_hint": "(alleen bij stone)",
+  "carb_style_range": "Gangbaar voor {stijl}: {min}–{max} vols",
+  "carb_style_range_unknown": "Geen stijl ingesteld — algemeen ale/lager: {min}–{max} vols",
   "lbl_open_orders": "Open bestellingen",
   "lbl_orders_to_pick": "te picken/pakken",
   "settings_brewery": "Brouwerij",
