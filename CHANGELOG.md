@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.37] — 2026-05-06
+
+### Changed — Carbonisatie-richtlijn op basis van BKG Biertypen v2.4 (2021)
+
+De CO₂-richtlijntabel is volledig hergeijkt op de officiële Nederlandse stijlgids van het Bierkeurmeestersgilde (`BKG Biertypen v2.4 — juli 2021`, 69 typen). Voor elke stijl wordt nu het door BKG opgegeven koolzuurgehalte in **g/L** omgerekend naar vols via de bestaande constante `CO2_G_PER_L_PER_VOL` (1 vol ≈ 1.9632 g/L). Dat geeft o.a.:
+
+- Berliner Weisse: 5,0–6,5 g/L → 2,5–3,3 vols
+- Tripel: 5,5–7,0 g/L → 2,8–3,6 vols
+- Russian Imperial Stout: 3,2–4,5 g/L → 1,6–2,3 vols
+- Saison: 6,5–8,0 g/L → 3,3–4,1 vols
+- Brut (Méthode Champenoise): 8,0–10,0 g/L → 4,1–5,1 vols
+
+De stijl-keuze in de carbonisatie-sectie toont nu **alle 69 BKG-stijlen** verdeeld over de vier BKG-klassen (A-licht-licht, B-donker-licht, C-licht-zwaar, D-donker-zwaar) met de exacte stijlnamen uit de gids ("Pils(ener)", "Bo(c)kbier", "Sterke Vlaamse Bruine", "Bière de Garde (Ambreé)", enz.). De auto-detectie op `selB.stijl` werkt onveranderd via case-insensitive `includes`-match; sleutels zijn nu gesorteerd op aflopende lengte zodat specifieke namen ("russian imperial stout") altijd vóór generieke ("stout") matchen.
+
+Voor freeform stijlen die niet exact in BKG voorkomen (bv. "IPA", "Stout", "Pale Ale") is een korte aliassen-tabel toegevoegd die naar het meest passende BKG-bereik wijst.
+
+### Files
+- `src/utils/calculations.ts` — `BkgKlasse`-type, `BkgStyle`-interface en `BKG_BEER_STYLES`-array (69 entries, 4 klassen, met g/L-bron) toegevoegd. `CARB_RANGES` en `CARB_STYLE_OPTIONS` afgeleid uit deze bron via `_gToVols`-helper. Korte aliassen via `BKG_ALIASES`.
+- `src/pages/BatchesPage.tsx` — picker rendert nu de BKG-naam direct (`opt.label`) i.p.v. via i18n; `displayStijl` gebruikt de BKG-label-tekst in de hint zodat overrides als "Tripel" of "Russian Imperial Stout" leesbaar blijven.
+- `src/i18n/{nl,en,de,fr,es}.json` — 9 oude `carb_style_grp_*`-sleutels plus ~50 obsolete `carb_style_opt_*`-sleutels verwijderd; vervangen door 4 nieuwe `carb_style_grp_klasse_a/b/c/d`-sleutels met BKG-klassebeschrijving (kleur + OG-grens). Hint-strings vermelden `(BKG)` als bron bij gekozen preset.
+- `config.yaml` — versie bump 1.9.36 → 1.9.37.
+
+---
+
 ## [1.9.36] — 2026-05-06
 
 ### Changed — Carbonisatie-stijltabel uitgebreid van 17 naar ±70 stijlen

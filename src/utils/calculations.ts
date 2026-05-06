@@ -267,191 +267,166 @@ export const co2GramTotaalVerbruik = (
   return co2GramOpgelost(volsCO2, batchLiter) * (1 + (Number(verliesFactor) || 0))
 }
 
-// Gangbare CO2-bereiken (vols) per bierstijl. Case-insensitive `includes`-match
-// op de batch-stijl, in volgorde van specifiek naar generiek (de eerste match
-// wint, dus "Imperial Stout" matcht op `imperial stout` voordat het generieke
-// `stout` aan bod komt). Bron: BJCP 2021 Style Guidelines + Palmer "How To
-// Brew" tabel 11.1. Fallback: 2.3–2.7 vols (algemeen ale/lager).
-export const CARB_RANGES: Record<string, {min: number, max: number}> = {
-  // Belgian — specifieke matches eerst
-  'belgian strong dark': {min: 2.4, max: 3.0},
-  'belgian strong':      {min: 3.0, max: 4.0},
-  'belgian blonde':      {min: 2.3, max: 2.8},
-  'belgian pale':        {min: 2.0, max: 2.5},
-  'bière de garde':      {min: 2.4, max: 2.8},
-  'biere de garde':      {min: 2.4, max: 2.8},
-  tripel:                {min: 2.8, max: 3.4},
-  dubbel:                {min: 2.2, max: 2.7},
-  quadrupel:             {min: 2.2, max: 2.7},
-  quad:                  {min: 2.2, max: 2.7},
-  saison:                {min: 2.8, max: 3.5},
+// ── BKG Biertypen — Bierkeurmeestersgilde NL stijlgids v2.4 (juli 2021) ──
+// Bron: BKG Biertypen referentiegids voor keurmeesters en hobbybrouwers,
+// uitgave Bierkeurmeestersgilde 2019/2021. 69 typen, ingedeeld in vier klassen
+// op basis van kleur (≤30 EBC vs >30 EBC) en begin SG (<1060 vs ≥1060).
+// `co2_gpl` = koolzuurgehalte volgens BKG in gr/ltr; voor NEIPA, Gose en
+// Session IPA werd in de gids geen waarde opgegeven — de range hieronder is
+// daar afgeleid uit de descriptieve tekst ("matig", "tamelijk veel"). Mild Ale
+// en Oud Bruin (NL) zijn in de PDF aangegeven als "gew%" — als typo behandeld
+// en als gr/ltr overgenomen (de waarden zijn anders fysisch onmogelijk).
 
-  // IPA-varianten — specifieke eerst
-  neipa:                 {min: 2.2, max: 2.6},
-  'new england ipa':     {min: 2.2, max: 2.6},
-  'hazy ipa':            {min: 2.2, max: 2.6},
-  'double ipa':          {min: 2.2, max: 2.7},
-  'imperial ipa':        {min: 2.2, max: 2.7},
-  'black ipa':           {min: 2.2, max: 2.7},
-  'session ipa':         {min: 2.3, max: 2.7},
-  'rye ipa':             {min: 2.3, max: 2.7},
-  'belgian ipa':         {min: 2.5, max: 3.0},
+export type BkgKlasse = 'A' | 'B' | 'C' | 'D'
 
-  // Stout-varianten — specifieke eerst
-  'imperial stout':      {min: 1.8, max: 2.4},
-  'milk stout':          {min: 2.0, max: 2.5},
-  'oatmeal stout':       {min: 1.8, max: 2.4},
-
-  // Wheat — weizenbock voor weizen
-  weizenbock:            {min: 3.0, max: 4.0},
-  hefeweizen:            {min: 3.0, max: 4.0},
-  weizen:                {min: 3.0, max: 4.0},
-  witbier:               {min: 2.7, max: 3.3},
-  'wit bier':            {min: 2.7, max: 3.3},
-  'american wheat':      {min: 2.5, max: 2.9},
-
-  // Lager — specifieke eerst
-  doppelbock:            {min: 2.3, max: 2.6},
-  maibock:               {min: 2.4, max: 2.7},
-  eisbock:               {min: 2.3, max: 2.6},
-  'munich dunkel':       {min: 2.3, max: 2.6},
-  'munich helles':       {min: 2.4, max: 2.7},
-  'czech pilsner':       {min: 2.3, max: 2.7},
-  helles:                {min: 2.4, max: 2.7},
-  dunkel:                {min: 2.3, max: 2.6},
-  schwarzbier:           {min: 2.4, max: 2.7},
-  'märzen':              {min: 2.4, max: 2.7},
-  marzen:                {min: 2.4, max: 2.7},
-  oktoberfest:           {min: 2.4, max: 2.7},
-  'vienna lager':        {min: 2.4, max: 2.7},
-  'kölsch':              {min: 2.4, max: 2.8},
-  kolsch:                {min: 2.4, max: 2.8},
-  altbier:               {min: 2.0, max: 2.5},
-  rauchbier:             {min: 2.4, max: 2.7},
-
-  // English & Scottish
-  'wee heavy':           {min: 1.7, max: 2.5},
-  'scotch ale':          {min: 1.7, max: 2.5},
-  'old ale':             {min: 1.8, max: 2.4},
-  barleywine:            {min: 1.8, max: 2.5},
-  esb:                   {min: 1.5, max: 2.4},
-  bitter:                {min: 1.5, max: 2.4},
-  mild:                  {min: 1.3, max: 2.0},
-
-  // Sour & Wild
-  'berliner weisse':     {min: 3.0, max: 4.0},
-  gueuze:                {min: 3.0, max: 4.5},
-  geuze:                 {min: 3.0, max: 4.5},
-  lambic:                {min: 1.8, max: 2.5},
-  kriek:                 {min: 3.0, max: 4.0},
-  gose:                  {min: 3.0, max: 3.5},
-  'wild ale':            {min: 3.0, max: 4.0},
-
-  // Amber, Red & Brown
-  'amber ale':           {min: 2.3, max: 2.7},
-  'red ale':             {min: 2.3, max: 2.7},
-  'brown ale':           {min: 2.0, max: 2.5},
-  'cream ale':           {min: 2.4, max: 2.7},
-  'blonde ale':          {min: 2.3, max: 2.8},
-
-  // Generieke matches — als laatste, anders winnen ze van specifieke varianten
-  'pale ale':            {min: 2.2, max: 2.7},
-  porter:                {min: 1.8, max: 2.5},
-  stout:                 {min: 1.7, max: 2.3},
-  ipa:                   {min: 2.2, max: 2.7},
-  bock:                  {min: 2.4, max: 2.7},
-  pilsner:               {min: 2.3, max: 2.7},
-  pilsener:              {min: 2.3, max: 2.7},
-  pils:                  {min: 2.3, max: 2.7},
-  lager:                 {min: 2.3, max: 2.7},
-  cider:                 {min: 3.0, max: 4.0},
-  fruitbier:             {min: 3.0, max: 3.6},
-  'fruit beer':          {min: 3.0, max: 3.6},
-  sour:                  {min: 3.0, max: 3.6},
-  blonde:                {min: 2.3, max: 2.8},
-  wheat:                 {min: 2.7, max: 3.3},
+export interface BkgStyle {
+  value: string             // canonical match-key (lowercase, gebruikt voor fuzzy `includes`-match)
+  name: string              // exacte stijlnaam zoals in BKG-gids (NL)
+  klasse: BkgKlasse
+  co2_gpl: [number, number] // koolzuurgehalte g/L (BKG)
 }
+
+export const BKG_BEER_STYLES: BkgStyle[] = [
+  // ── Klasse A — kleur ≤30 EBC, begin SG <1060 (24 typen) ──
+  {value: 'american pale ale',     name: 'American Pale Ale',                  klasse: 'A', co2_gpl: [4.2, 4.6]},
+  {value: 'berliner weisse',       name: 'Berliner Weisse',                    klasse: 'A', co2_gpl: [5.0, 6.5]},
+  {value: 'bitter blond',          name: 'Bitter Blond',                       klasse: 'A', co2_gpl: [5.0, 6.5]},
+  {value: 'brettanomyces blond',   name: 'Brettanomyces Blond',                klasse: 'A', co2_gpl: [6.0, 7.5]},
+  {value: 'california steam',      name: 'California Steam',                   klasse: 'A', co2_gpl: [4.0, 4.4]},
+  {value: 'dortmunder export',     name: 'Dortmunder Export',                  klasse: 'A', co2_gpl: [4.3, 4.8]},
+  {value: 'faro',                  name: 'Faro',                               klasse: 'A', co2_gpl: [4.5, 6.0]},
+  {value: 'gose',                  name: 'Gose',                               klasse: 'A', co2_gpl: [5.0, 6.5]},
+  {value: 'irish red ale',         name: 'Irish Red Ale',                      klasse: 'A', co2_gpl: [4.4, 5.2]},
+  {value: 'kölsch',                name: 'Kölsch',                             klasse: 'A', co2_gpl: [4.5, 5.5]},
+  {value: 'kuit',                  name: 'Kuit',                               klasse: 'A', co2_gpl: [4.7, 6.7]},
+  {value: 'münchener helles',      name: 'Münchener Helles',                   klasse: 'A', co2_gpl: [4.3, 4.7]},
+  {value: 'neipa',                 name: 'New England IPA (NEIPA)',            klasse: 'A', co2_gpl: [4.0, 5.0]},
+  {value: 'oktoberfest',           name: 'Oktoberfest',                        klasse: 'A', co2_gpl: [4.2, 5.0]},
+  {value: 'ordinary best bitter',  name: 'Ordinary & Best Bitter',             klasse: 'A', co2_gpl: [3.5, 4.7]},
+  {value: 'oude geuze',            name: 'Oude Geuze Lambiek',                 klasse: 'A', co2_gpl: [6.5, 8.5]},
+  {value: 'pale ale gb',           name: 'Pale Ale (GB)',                      klasse: 'A', co2_gpl: [3.5, 4.7]},
+  {value: 'pilsener',              name: 'Pils(ener)',                         klasse: 'A', co2_gpl: [4.0, 4.5]},
+  {value: 'pilsener urtyp',        name: 'Pilsener (Urtyp)',                   klasse: 'A', co2_gpl: [3.7, 4.5]},
+  {value: 'saison',                name: 'Saison',                             klasse: 'A', co2_gpl: [6.5, 8.0]},
+  {value: 'session ipa',           name: 'Session India Pale Ale',             klasse: 'A', co2_gpl: [4.0, 5.0]},
+  {value: 'speciale belge',        name: 'Speciale Belge (Belgische Pale Ale)', klasse: 'A', co2_gpl: [3.7, 6.0]},
+  {value: 'weizen',                name: 'Weizen',                             klasse: 'A', co2_gpl: [5.5, 7.5]},
+  {value: 'witbier',               name: 'Witbier',                            klasse: 'A', co2_gpl: [4.0, 6.0]},
+
+  // ── Klasse B — kleur >30 EBC, begin SG <1060 (17 typen) ──
+  {value: 'alt',                   name: 'Alt',                                klasse: 'B', co2_gpl: [4.2, 5.0]},
+  {value: 'american amber red',    name: 'American Amber – Red',               klasse: 'B', co2_gpl: [4.0, 4.4]},
+  {value: 'czech dark lager',      name: 'Bohemian / Czech Dark Lager',        klasse: 'B', co2_gpl: [4.2, 5.0]},
+  {value: 'brown ale',             name: 'Brown Ale',                          klasse: 'B', co2_gpl: [4.2, 4.4]},
+  {value: 'dunkelweizen',          name: 'Dunkelweizen',                       klasse: 'B', co2_gpl: [5.5, 7.5]},
+  {value: 'fruit lambic',          name: 'Fruit / Framboise Lambic',           klasse: 'B', co2_gpl: [4.0, 6.0]},
+  {value: 'irish dry stout',       name: 'Irish Dry Stout',                    klasse: 'B', co2_gpl: [4.5, 5.5]},
+  {value: 'kriek lambiek',         name: 'Kriek Lambiek (Oude)',               klasse: 'B', co2_gpl: [4.0, 6.0]},
+  {value: 'mild ale',              name: 'Mild Ale (Dark)',                    klasse: 'B', co2_gpl: [3.8, 5.3]},
+  {value: 'milk stout',            name: 'Milk (Sweet) Stout',                 klasse: 'B', co2_gpl: [4.2, 4.6]},
+  {value: 'münchener dunkles',     name: 'Münchener Dunkles',                  klasse: 'B', co2_gpl: [4.4, 4.7]},
+  {value: 'oatmeal stout',         name: 'Oatmeal Stout',                      klasse: 'B', co2_gpl: [4.0, 6.0]},
+  {value: 'oud bruin',             name: 'Oud Bruin (NL)',                     klasse: 'B', co2_gpl: [4.4, 4.8]},
+  {value: 'porter',                name: 'Porter',                             klasse: 'B', co2_gpl: [4.0, 6.0]},
+  {value: 'schwarzbier',           name: 'Schwarzbier',                        klasse: 'B', co2_gpl: [3.0, 5.4]},
+  {value: 'vlaams oud bruin',      name: 'Vlaams (Oud) Bruin',                 klasse: 'B', co2_gpl: [3.5, 4.5]},
+  {value: 'vlaams rood',           name: 'Vlaams Rood',                        klasse: 'B', co2_gpl: [4.3, 5.6]},
+
+  // ── Klasse C — kleur ≤30 EBC, begin SG ≥1060 (14 typen) ──
+  {value: 'barley wine',           name: 'Barley Wine (Engels & Amerikaans)',  klasse: 'C', co2_gpl: [4.0, 5.4]},
+  {value: 'blonde',                name: 'Blond(e)',                           klasse: 'C', co2_gpl: [4.5, 7.0]},
+  {value: 'brut',                  name: 'Brut (Méthode Champenoise)',         klasse: 'C', co2_gpl: [8.0, 10.0]},
+  {value: 'dortmunder strong',     name: 'Dortmunder Strong',                  klasse: 'C', co2_gpl: [4.3, 4.7]},
+  {value: 'double ipa',            name: 'Double / Imperial IPA',              klasse: 'C', co2_gpl: [4.2, 6.9]},
+  {value: 'india pale ale gb',     name: 'India Pale Ale (GB)',                klasse: 'C', co2_gpl: [4.2, 6.9]},
+  {value: 'india pale ale usa',    name: 'India Pale Ale (USA)',               klasse: 'C', co2_gpl: [4.2, 6.9]},
+  {value: 'lichte dubbelbock',     name: 'Lichte Dubbelbo(c)k',                klasse: 'C', co2_gpl: [4.2, 4.5]},
+  {value: 'meibock',               name: 'Meibo(c)k',                          klasse: 'C', co2_gpl: [4.4, 4.6]},
+  {value: 'sterke blonde',         name: 'Sterke Blonde',                      klasse: 'C', co2_gpl: [6.5, 8.5]},
+  {value: 'sterk witbier',         name: 'Sterk (Dubbel) Witbier',             klasse: 'C', co2_gpl: [4.5, 6.0]},
+  {value: 'sterke saison',         name: 'Sterke Saison',                      klasse: 'C', co2_gpl: [6.0, 7.5]},
+  {value: 'tripel',                name: 'Tripel',                             klasse: 'C', co2_gpl: [5.5, 7.0]},
+  {value: 'weizenbock hell',       name: 'Weizenbock (Hell)',                  klasse: 'C', co2_gpl: [6.0, 7.5]},
+
+  // ── Klasse D — kleur >30 EBC, begin SG ≥1060 (15 typen) ──
+  {value: 'baltic porter',         name: 'Baltic Porter',                      klasse: 'D', co2_gpl: [3.7, 5.5]},
+  {value: 'sterke barley wine',    name: 'Barley Wine (klasse D)',             klasse: 'D', co2_gpl: [2.7, 6.4]},
+  {value: 'bière de garde',        name: 'Bière de Garde (Ambreé)',            klasse: 'D', co2_gpl: [3.7, 5.5]},
+  {value: 'black ipa',             name: 'Black IPA (BIPA)',                   klasse: 'D', co2_gpl: [4.5, 6.5]},
+  {value: 'bockbier',              name: 'Bo(c)kbier',                         klasse: 'D', co2_gpl: [4.5, 7.0]},
+  {value: 'dubbel',                name: 'Dubbel',                             klasse: 'D', co2_gpl: [5.0, 7.0]},
+  {value: 'dubbelbock',            name: 'Dubbelbock',                         klasse: 'D', co2_gpl: [4.0, 5.0]},
+  {value: 'export stout',          name: 'Export Stout',                       klasse: 'D', co2_gpl: [4.0, 7.0]},
+  {value: 'imperial red ale',      name: 'Imperial Red Ale',                   klasse: 'D', co2_gpl: [4.0, 5.5]},
+  {value: 'old ale',               name: 'Old Ale',                            klasse: 'D', co2_gpl: [3.7, 5.0]},
+  {value: 'quadrupel',             name: 'Quadrupel',                          klasse: 'D', co2_gpl: [5.4, 7.5]},
+  {value: 'russian imperial stout', name: 'Russian Imperial Stout',            klasse: 'D', co2_gpl: [3.2, 4.5]},
+  {value: 'scotch ale',            name: 'Scotch Ale',                         klasse: 'D', co2_gpl: [3.7, 5.6]},
+  {value: 'sterke vlaamse bruine', name: 'Sterke Vlaamse Bruine',              klasse: 'D', co2_gpl: [5.0, 6.5]},
+  {value: 'weizendoppelbock',      name: 'Weizen(doppel)bock',                 klasse: 'D', co2_gpl: [5.1, 8.0]},
+]
+
+// Korte aliassen voor batches met freeform stijl (bv. gewoon "IPA", "Stout").
+// Worden ALS LAATSTE in CARB_RANGES gesorteerd zodat specifieke BKG-namen
+// altijd voorrang krijgen bij `includes`-matching.
+const BKG_ALIASES: Array<{value: string, co2_gpl: [number, number]}> = [
+  {value: 'imperial stout', co2_gpl: [3.2, 4.5]},  // = Russian Imperial Stout
+  {value: 'belgian blonde', co2_gpl: [4.5, 7.0]},  // = Blond(e)
+  {value: 'belgian pale',   co2_gpl: [3.7, 6.0]},  // = Speciale Belge
+  {value: 'pale ale',       co2_gpl: [3.5, 4.7]},  // = Pale Ale (GB)
+  {value: 'amber ale',      co2_gpl: [4.0, 4.4]},  // = American Amber-Red
+  {value: 'red ale',        co2_gpl: [4.4, 5.2]},  // = Irish Red Ale
+  {value: 'session ipa',    co2_gpl: [4.0, 5.0]},
+  {value: 'imperial ipa',   co2_gpl: [4.2, 6.9]},  // = Double IPA
+  {value: 'hazy ipa',       co2_gpl: [4.0, 5.0]},  // ≈ NEIPA
+  {value: 'hefeweizen',     co2_gpl: [5.5, 7.5]},  // = Weizen
+  {value: 'wit bier',       co2_gpl: [4.0, 6.0]},  // = Witbier
+  {value: 'wee heavy',      co2_gpl: [3.7, 5.6]},  // = Scotch Ale
+  {value: 'gueuze',         co2_gpl: [6.5, 8.5]},  // = Oude Geuze
+  {value: 'wheat',          co2_gpl: [4.0, 6.0]},
+  {value: 'lambic',         co2_gpl: [4.0, 6.0]},
+  {value: 'stout',          co2_gpl: [4.5, 5.5]},  // = Irish Dry Stout
+  {value: 'ipa',            co2_gpl: [4.2, 6.9]},
+  {value: 'pils',           co2_gpl: [4.0, 4.5]},
+  {value: 'lager',          co2_gpl: [4.0, 4.8]},
+  {value: 'bock',           co2_gpl: [4.5, 7.0]},
+  {value: 'cider',          co2_gpl: [6.0, 8.0]},
+  {value: 'fruitbier',      co2_gpl: [4.0, 6.0]},
+  {value: 'fruit beer',     co2_gpl: [4.0, 6.0]},
+  {value: 'sour',           co2_gpl: [5.0, 6.5]},
+  {value: 'blond',          co2_gpl: [4.5, 7.0]},
+]
+
+const _gToVols = (g: number) => Math.round((g / CO2_G_PER_L_PER_VOL) * 10) / 10
+
+// Gangbare CO2-bereiken (vols) per bierstijl, omgerekend uit BKG-koolzuur (g/L)
+// via `1 vol ≈ 1.9632 g/L`. Sleutels zijn gesorteerd op aflopende lengte zodat
+// specifieke namen ("russian imperial stout") altijd vóór generieke ("stout")
+// matchen bij case-insensitive `includes`-zoekactie.
+export const CARB_RANGES: Record<string, {min: number, max: number}> = (() => {
+  const all: Array<{key: string, gpl: [number, number]}> = [
+    ...BKG_BEER_STYLES.map(s => ({key: s.value, gpl: s.co2_gpl})),
+    ...BKG_ALIASES.map(a => ({key: a.value, gpl: a.co2_gpl})),
+  ]
+  // Stabiel sorteren op aflopende keylengte voor specifiek-vóór-generiek.
+  all.sort((a, b) => b.key.length - a.key.length)
+  const out: Record<string, {min: number, max: number}> = {}
+  for (const e of all) {
+    out[e.key] = {min: _gToVols(e.gpl[0]), max: _gToVols(e.gpl[1])}
+  }
+  return out
+})()
 export const CARB_RANGE_FALLBACK = {min: 2.3, max: 2.7}
 export const CARB_DEFAULT_FALLBACK = 2.5
 
-// Door de gebruiker selecteerbare stijl-presets voor de carbonatie-richtlijn,
-// als de batch zelf geen (matchende) stijl heeft. `value` is een match-key uit
-// `CARB_RANGES`; `labelKey` is de i18n-sleutel voor het label; `groupKey` is
-// de i18n-sleutel voor de optgroup-titel.
-export const CARB_STYLE_OPTIONS: Array<{value: string, labelKey: string, groupKey: string}> = [
-  // Lager & Pils
-  {value: 'pils',          labelKey: 'carb_style_opt_pils',          groupKey: 'carb_style_grp_lager'},
-  {value: 'lager',         labelKey: 'carb_style_opt_lager',         groupKey: 'carb_style_grp_lager'},
-  {value: 'helles',        labelKey: 'carb_style_opt_helles',        groupKey: 'carb_style_grp_lager'},
-  {value: 'dunkel',        labelKey: 'carb_style_opt_dunkel',        groupKey: 'carb_style_grp_lager'},
-  {value: 'märzen',        labelKey: 'carb_style_opt_marzen',        groupKey: 'carb_style_grp_lager'},
-  {value: 'vienna lager',  labelKey: 'carb_style_opt_vienna',        groupKey: 'carb_style_grp_lager'},
-  {value: 'schwarzbier',   labelKey: 'carb_style_opt_schwarzbier',   groupKey: 'carb_style_grp_lager'},
-  {value: 'bock',          labelKey: 'carb_style_opt_bock',          groupKey: 'carb_style_grp_lager'},
-  {value: 'doppelbock',    labelKey: 'carb_style_opt_doppelbock',    groupKey: 'carb_style_grp_lager'},
-  {value: 'kölsch',        labelKey: 'carb_style_opt_kolsch',        groupKey: 'carb_style_grp_lager'},
-  {value: 'altbier',       labelKey: 'carb_style_opt_altbier',       groupKey: 'carb_style_grp_lager'},
-  {value: 'rauchbier',     labelKey: 'carb_style_opt_rauchbier',     groupKey: 'carb_style_grp_lager'},
-
-  // Pale Ale & IPA
-  {value: 'pale ale',      labelKey: 'carb_style_opt_pale_ale',      groupKey: 'carb_style_grp_ipa'},
-  {value: 'ipa',           labelKey: 'carb_style_opt_ipa',           groupKey: 'carb_style_grp_ipa'},
-  {value: 'neipa',         labelKey: 'carb_style_opt_neipa',         groupKey: 'carb_style_grp_ipa'},
-  {value: 'double ipa',    labelKey: 'carb_style_opt_dipa',          groupKey: 'carb_style_grp_ipa'},
-  {value: 'black ipa',     labelKey: 'carb_style_opt_bipa',          groupKey: 'carb_style_grp_ipa'},
-  {value: 'session ipa',   labelKey: 'carb_style_opt_session_ipa',   groupKey: 'carb_style_grp_ipa'},
-  {value: 'belgian ipa',   labelKey: 'carb_style_opt_belgian_ipa',   groupKey: 'carb_style_grp_ipa'},
-
-  // Amber, Red & Brown
-  {value: 'amber ale',     labelKey: 'carb_style_opt_amber_ale',     groupKey: 'carb_style_grp_amber'},
-  {value: 'red ale',       labelKey: 'carb_style_opt_red_ale',       groupKey: 'carb_style_grp_amber'},
-  {value: 'brown ale',     labelKey: 'carb_style_opt_brown_ale',     groupKey: 'carb_style_grp_amber'},
-  {value: 'cream ale',     labelKey: 'carb_style_opt_cream_ale',     groupKey: 'carb_style_grp_amber'},
-  {value: 'blonde ale',    labelKey: 'carb_style_opt_blonde_ale',    groupKey: 'carb_style_grp_amber'},
-
-  // Stout & Porter
-  {value: 'stout',          labelKey: 'carb_style_opt_stout',          groupKey: 'carb_style_grp_stout'},
-  {value: 'imperial stout', labelKey: 'carb_style_opt_imperial_stout', groupKey: 'carb_style_grp_stout'},
-  {value: 'milk stout',     labelKey: 'carb_style_opt_milk_stout',     groupKey: 'carb_style_grp_stout'},
-  {value: 'porter',         labelKey: 'carb_style_opt_porter',         groupKey: 'carb_style_grp_stout'},
-
-  // English & Scottish
-  {value: 'bitter',        labelKey: 'carb_style_opt_bitter',        groupKey: 'carb_style_grp_english'},
-  {value: 'mild',          labelKey: 'carb_style_opt_mild',          groupKey: 'carb_style_grp_english'},
-  {value: 'scotch ale',    labelKey: 'carb_style_opt_scotch_ale',    groupKey: 'carb_style_grp_english'},
-  {value: 'barleywine',    labelKey: 'carb_style_opt_barleywine',    groupKey: 'carb_style_grp_english'},
-  {value: 'old ale',       labelKey: 'carb_style_opt_old_ale',       groupKey: 'carb_style_grp_english'},
-
-  // Belgian
-  {value: 'belgian blonde',      labelKey: 'carb_style_opt_belgian_blonde',      groupKey: 'carb_style_grp_belgian'},
-  {value: 'belgian pale',        labelKey: 'carb_style_opt_belgian_pale',        groupKey: 'carb_style_grp_belgian'},
-  {value: 'belgian strong',      labelKey: 'carb_style_opt_belgian_strong',      groupKey: 'carb_style_grp_belgian'},
-  {value: 'belgian strong dark', labelKey: 'carb_style_opt_belgian_strong_dark', groupKey: 'carb_style_grp_belgian'},
-  {value: 'tripel',              labelKey: 'carb_style_opt_tripel',              groupKey: 'carb_style_grp_belgian'},
-  {value: 'dubbel',              labelKey: 'carb_style_opt_dubbel',              groupKey: 'carb_style_grp_belgian'},
-  {value: 'quadrupel',           labelKey: 'carb_style_opt_quadrupel',           groupKey: 'carb_style_grp_belgian'},
-  {value: 'saison',              labelKey: 'carb_style_opt_saison',              groupKey: 'carb_style_grp_belgian'},
-  {value: 'bière de garde',      labelKey: 'carb_style_opt_biere_de_garde',      groupKey: 'carb_style_grp_belgian'},
-
-  // Wheat & Witbier
-  {value: 'hefeweizen',     labelKey: 'carb_style_opt_weizen',         groupKey: 'carb_style_grp_wheat'},
-  {value: 'weizenbock',     labelKey: 'carb_style_opt_weizenbock',     groupKey: 'carb_style_grp_wheat'},
-  {value: 'witbier',        labelKey: 'carb_style_opt_witbier',        groupKey: 'carb_style_grp_wheat'},
-  {value: 'american wheat', labelKey: 'carb_style_opt_american_wheat', groupKey: 'carb_style_grp_wheat'},
-
-  // Sour & Wild
-  {value: 'berliner weisse', labelKey: 'carb_style_opt_berliner_weisse', groupKey: 'carb_style_grp_sour'},
-  {value: 'gose',            labelKey: 'carb_style_opt_gose',            groupKey: 'carb_style_grp_sour'},
-  {value: 'lambic',          labelKey: 'carb_style_opt_lambic',          groupKey: 'carb_style_grp_sour'},
-  {value: 'gueuze',          labelKey: 'carb_style_opt_gueuze',          groupKey: 'carb_style_grp_sour'},
-  {value: 'kriek',           labelKey: 'carb_style_opt_kriek',           groupKey: 'carb_style_grp_sour'},
-  {value: 'wild ale',        labelKey: 'carb_style_opt_wild_ale',        groupKey: 'carb_style_grp_sour'},
-  {value: 'sour',            labelKey: 'carb_style_opt_sour',            groupKey: 'carb_style_grp_sour'},
-  {value: 'fruitbier',       labelKey: 'carb_style_opt_fruitbier',       groupKey: 'carb_style_grp_sour'},
-
-  // Other
-  {value: 'cider',           labelKey: 'carb_style_opt_cider',           groupKey: 'carb_style_grp_other'},
-]
+// Stijl-presets voor de carbonatie-richtlijn-kiezer, afgeleid uit
+// `BKG_BEER_STYLES`. Gegroepeerd per BKG-klasse (A/B/C/D).
+export const CARB_STYLE_OPTIONS: Array<{value: string, label: string, groupKey: string}> =
+  BKG_BEER_STYLES.map(s => ({
+    value: s.value,
+    label: s.name,
+    groupKey: 'carb_style_grp_klasse_' + s.klasse.toLowerCase(),
+  }))
 
 // Geeft het gangbare CO2-bereik voor een bierstijl, of de fallback-range als
 // de stijl onbekend is. Tweede waarde `matched` is `true` zodra een trefwoord

@@ -2373,10 +2373,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               })
 
               // Pre-fill defaults voor nieuwe sessie. De batch-stijl kan
-              // worden overschreven met een handmatig gekozen preset zodat
+              // worden overschreven met een handmatig gekozen BKG-preset zodat
               // ook batches zonder (matchende) stijl een richtlijn krijgen.
               const batchRange = carbRangeForStyle(selB.stijl)
+              const overridePreset = carbStyleOverride
+                ? (CARB_STYLE_OPTIONS as any[]).find((o: any) => o.value === carbStyleOverride)
+                : null
               const effectiveStijl = (carbStyleOverride || selB.stijl || '').trim()
+              // Toon de mooie BKG-naam in de hint i.p.v. de match-key wanneer
+              // de gebruiker een preset heeft gekozen.
+              const displayStijl = overridePreset ? overridePreset.label : effectiveStijl
               const styleRange = carbRangeForStyle(effectiveStijl)
               const defaultVols = defaultCarbVols(effectiveStijl)
               const curVols = Number(carbForm.doel_co2_vol) || defaultVols
@@ -2566,9 +2572,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           <div>
                             <Inp label={t('carb_target_vols')} type="number" value={carbForm.doel_co2_vol} onChange={(v: string)=>setCarbForm((f: any)=>({...f, doel_co2_vol: v}))} placeholder={defaultVols.toFixed(1)} step="0.1" />
                             {styleRange.matched ? (
-                              <div className={`mt-1 text-xs ${outOfRange ? 'text-orange-600' : 'text-gray-500'}`} title={effectiveStijl}>
+                              <div className={`mt-1 text-xs ${outOfRange ? 'text-orange-600' : 'text-gray-500'}`} title={displayStijl}>
                                 {(carbStyleOverride && !batchRange.matched ? t('carb_style_range_picked') : t('carb_style_range'))
-                                  .replace('{stijl}', effectiveStijl)
+                                  .replace('{stijl}', displayStijl)
                                   .replace('{min}', styleRange.min.toFixed(1))
                                   .replace('{max}', styleRange.max.toFixed(1))}
                                 {outOfRange && <span className="ml-1">⚠</span>}
@@ -2603,7 +2609,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                   {groupOrder.map(grpKey => (
                                     <optgroup key={grpKey} label={t(grpKey)}>
                                       {grouped[grpKey].map((opt: any) => (
-                                        <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
                                       ))}
                                     </optgroup>
                                   ))}
