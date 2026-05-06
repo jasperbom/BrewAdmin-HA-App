@@ -294,6 +294,27 @@ export const CARB_RANGES: Record<string, {min: number, max: number}> = {
 export const CARB_RANGE_FALLBACK = {min: 2.3, max: 2.7}
 export const CARB_DEFAULT_FALLBACK = 2.5
 
+// Door de gebruiker selecteerbare stijl-presets voor de carbonatie-richtlijn,
+// als de batch zelf geen (matchende) stijl heeft. `value` is de match-key in
+// `CARB_RANGES`; `labelKey` is de i18n-sleutel voor het label.
+export const CARB_STYLE_OPTIONS: Array<{value: string, labelKey: string}> = [
+  {value: 'pils',       labelKey: 'carb_style_opt_pils'},
+  {value: 'lager',      labelKey: 'carb_style_opt_lager'},
+  {value: 'ipa',        labelKey: 'carb_style_opt_ipa'},
+  {value: 'pale ale',   labelKey: 'carb_style_opt_pale_ale'},
+  {value: 'hefeweizen', labelKey: 'carb_style_opt_weizen'},
+  {value: 'witbier',    labelKey: 'carb_style_opt_witbier'},
+  {value: 'saison',     labelKey: 'carb_style_opt_saison'},
+  {value: 'stout',      labelKey: 'carb_style_opt_stout'},
+  {value: 'porter',     labelKey: 'carb_style_opt_porter'},
+  {value: 'tripel',     labelKey: 'carb_style_opt_tripel'},
+  {value: 'dubbel',     labelKey: 'carb_style_opt_dubbel'},
+  {value: 'quadrupel',  labelKey: 'carb_style_opt_quadrupel'},
+  {value: 'cider',      labelKey: 'carb_style_opt_cider'},
+  {value: 'fruitbier',  labelKey: 'carb_style_opt_fruitbier'},
+  {value: 'sour',       labelKey: 'carb_style_opt_sour'},
+]
+
 // Geeft het gangbare CO2-bereik voor een bierstijl, of de fallback-range als
 // de stijl onbekend is. Tweede waarde `matched` is `true` zodra een trefwoord
 // daadwerkelijk matcht (handig om de UI conditioneel te tonen).
