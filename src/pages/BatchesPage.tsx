@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -508,6 +508,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const emptyCarb = {methode:'stone', doel_co2_vol:'', tank_temp_c:'', verlies_factor:'25'}
   const [carbForm, setCarbForm] = useState<any>(emptyCarb)
   const [carbComplete, setCarbComplete] = useState<any>({werkelijke_druk_bar:'', verbruikt_co2_gram:'', gemeten_co2_vol:'', opmerking:''})
+  // Lokale stijl-override voor de carbonatie-richtlijn: als de batch geen
+  // (matchende) stijl heeft kan de gebruiker er hier eentje kiezen om alsnog
+  // een CO₂-bereik te zien. Reset bij wisselen van batch.
+  const [carbStyleOverride, setCarbStyleOverride] = useState<string>('')
+  React.useEffect(() => { setCarbStyleOverride('') }, [sel])
   const [voorraadIngeklapt, setVoorraadIngeklapt] = useStore('batches_voorraad_ingeklapt', false)
   const [verliesOpen, setVerliesOpen] = useStore('batches_verlies_open', {} as Record<string, boolean>)
   const emptyVerlies = { datum: tod(), bron: 'tankrest' as const, liter: '', notitie: '' }
@@ -2367,13 +2372,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 return kb.localeCompare(ka)
               })
 
-              // Pre-fill defaults voor nieuwe sessie
-              const defaultVols = defaultCarbVols(selB.stijl)
-              const styleRange = carbRangeForStyle(selB.stijl)
+              // Pre-fill defaults voor nieuwe sessie. De batch-stijl kan
+              // worden overschreven met een handmatig gekozen preset zodat
+              // ook batches zonder (matchende) stijl een richtlijn krijgen.
+              const batchRange = carbRangeForStyle(selB.stijl)
+              const effectiveStijl = (carbStyleOverride || selB.stijl || '').trim()
+              const styleRange = carbRangeForStyle(effectiveStijl)
+              const defaultVols = defaultCarbVols(effectiveStijl)
               const curVols = Number(carbForm.doel_co2_vol) || defaultVols
               const userVolsRaw = carbForm.doel_co2_vol
               const userVolsTyped = userVolsRaw !== '' && !isNaN(Number(userVolsRaw))
               const outOfRange = userVolsTyped && styleRange.matched && (Number(userVolsRaw) < styleRange.min || Number(userVolsRaw) > styleRange.max)
+              // Toon de stijl-kiezer als de batch zelf geen matchende stijl
+              // heeft (anders is de auto-detected hint genoeg).
+              const showStylePicker = !batchRange.matched
               // Tank-temperatuur uit HA-sensor indien beschikbaar voor deze tank
               const sensorTempRaw = selB.tank != null ? (haTankTemps as any)[selB.tank] : undefined
               const sensorTemp = (typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw)) ? sensorTempRaw : null
@@ -2554,9 +2566,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           <div>
                             <Inp label={t('carb_target_vols')} type="number" value={carbForm.doel_co2_vol} onChange={(v: string)=>setCarbForm((f: any)=>({...f, doel_co2_vol: v}))} placeholder={defaultVols.toFixed(1)} step="0.1" />
                             {styleRange.matched ? (
-                              <div className={`mt-1 text-xs ${outOfRange ? 'text-orange-600' : 'text-gray-500'}`} title={selB.stijl || ''}>
-                                {t('carb_style_range')
-                                  .replace('{stijl}', selB.stijl || '')
+                              <div className={`mt-1 text-xs ${outOfRange ? 'text-orange-600' : 'text-gray-500'}`} title={effectiveStijl}>
+                                {(carbStyleOverride && !batchRange.matched ? t('carb_style_range_picked') : t('carb_style_range'))
+                                  .replace('{stijl}', effectiveStijl)
                                   .replace('{min}', styleRange.min.toFixed(1))
                                   .replace('{max}', styleRange.max.toFixed(1))}
                                 {outOfRange && <span className="ml-1">⚠</span>}
@@ -2567,6 +2579,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                   .replace('{min}', styleRange.min.toFixed(1))
                                   .replace('{max}', styleRange.max.toFixed(1))}
                               </div>
+                            )}
+                            {showStylePicker && (
+                              <select
+                                value={carbStyleOverride}
+                                onChange={e=>setCarbStyleOverride(e.target.value)}
+                                className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white t-input outline-none shadow-sm"
+                                title={t('carb_style_pick_tooltip')}
+                              >
+                                <option value="">{t('carb_style_pick_placeholder')}</option>
+                                {CARB_STYLE_OPTIONS.map((opt: any) => (
+                                  <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
+                                ))}
+                              </select>
                             )}
                           </div>
                           <div>

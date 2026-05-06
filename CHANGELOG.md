@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.35] — 2026-05-06
+
+### Added — Stijl-keuze voor CO₂-richtlijn als batch-stijl niet matcht
+
+Wanneer de batch geen stijl heeft of de stijl niet voorkomt in de tabel met gangbare CO₂-bereiken, verschijnt onder de hint nu een dropdown waarmee de gebruiker handmatig een stijl-preset kan kiezen (Pils, Tripel, Stout, Witbier, …). Direct na keuze toont de hint de richtwaarde voor die stijl en wordt de placeholder van het "Doel CO₂"-veld bijgewerkt naar het midden van het bereik. De out-of-range ⚠-detectie werkt op de gekozen range. De override is lokaal voor de huidige batch en wordt automatisch gewist bij het wisselen van batch — `selB.stijl` wordt niet aangepast.
+
+### Files
+- `src/utils/calculations.ts` — `CARB_STYLE_OPTIONS` array (15 unieke presets) toegevoegd, met `value`-keys die matchen op `CARB_RANGES` en i18n `labelKey`-verwijzingen.
+- `src/pages/BatchesPage.tsx` — `carbStyleOverride` state (lokaal, reset op batch-wissel via `useEffect([sel])`); `effectiveStijl` afgeleid en gebruikt voor `defaultCarbVols` + `carbRangeForStyle`; dropdown rendert alleen wanneer `selB.stijl` niet auto-matcht.
+- `src/i18n/{nl,en,de,fr,es}.json` — 18 nieuwe sleutels: `carb_style_range_picked`, `carb_style_pick_placeholder`, `carb_style_pick_tooltip` + 15 `carb_style_opt_*`-labels.
+- `config.yaml` — versie bump 1.9.34 → 1.9.35.
+
+---
+
 ## [1.9.34] — 2026-05-06
 
 ### Added — Carbonisatie toont gangbaar CO₂-bereik per bierstijl
