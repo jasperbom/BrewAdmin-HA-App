@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -2369,7 +2369,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
               // Pre-fill defaults voor nieuwe sessie
               const defaultVols = defaultCarbVols(selB.stijl)
+              const styleRange = carbRangeForStyle(selB.stijl)
               const curVols = Number(carbForm.doel_co2_vol) || defaultVols
+              const userVolsRaw = carbForm.doel_co2_vol
+              const userVolsTyped = userVolsRaw !== '' && !isNaN(Number(userVolsRaw))
+              const outOfRange = userVolsTyped && styleRange.matched && (Number(userVolsRaw) < styleRange.min || Number(userVolsRaw) > styleRange.max)
               // Tank-temperatuur uit HA-sensor indien beschikbaar voor deze tank
               const sensorTempRaw = selB.tank != null ? (haTankTemps as any)[selB.tank] : undefined
               const sensorTemp = (typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw)) ? sensorTempRaw : null
@@ -2547,7 +2551,24 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           </label>
                         </div>
                         <div className={`grid grid-cols-2 ${carbForm.methode==='stone'?'sm:grid-cols-3':'sm:grid-cols-2'} gap-2`}>
-                          <Inp label={t('carb_target_vols')} type="number" value={carbForm.doel_co2_vol} onChange={(v: string)=>setCarbForm((f: any)=>({...f, doel_co2_vol: v}))} placeholder={defaultVols.toFixed(1)} step="0.1" />
+                          <div>
+                            <Inp label={t('carb_target_vols')} type="number" value={carbForm.doel_co2_vol} onChange={(v: string)=>setCarbForm((f: any)=>({...f, doel_co2_vol: v}))} placeholder={defaultVols.toFixed(1)} step="0.1" />
+                            {styleRange.matched ? (
+                              <div className={`mt-1 text-xs ${outOfRange ? 'text-orange-600' : 'text-gray-500'}`} title={selB.stijl || ''}>
+                                {t('carb_style_range')
+                                  .replace('{stijl}', selB.stijl || '')
+                                  .replace('{min}', styleRange.min.toFixed(1))
+                                  .replace('{max}', styleRange.max.toFixed(1))}
+                                {outOfRange && <span className="ml-1">⚠</span>}
+                              </div>
+                            ) : (
+                              <div className="mt-1 text-xs text-gray-400">
+                                {t('carb_style_range_unknown')
+                                  .replace('{min}', styleRange.min.toFixed(1))
+                                  .replace('{max}', styleRange.max.toFixed(1))}
+                              </div>
+                            )}
+                          </div>
                           <div>
                             <Inp label={t('carb_tank_temp')} type="number" value={carbForm.tank_temp_c} onChange={(v: string)=>setCarbForm((f: any)=>({...f, tank_temp_c: v}))} placeholder={sensorTemp != null ? sensorTemp.toFixed(1) : '2'} step="0.5" />
                             {sensorTemp != null && (

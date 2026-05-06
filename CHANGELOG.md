@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.34] — 2026-05-06
+
+### Added — Carbonisatie toont gangbaar CO₂-bereik per bierstijl
+
+De carbonisatie-sectie op de batchpagina toont onder het "Doel CO₂ (vols)"-veld een hint met het gangbare CO₂-bereik voor de stijl van de batch. Zodra de gebruiker een waarde buiten dat bereik invult, kleurt de hint oranje met een ⚠-indicator. Wanneer de batch geen stijl heeft of de stijl niet matcht in de tabel, valt de hint terug op een algemeen ale/lager-bereik (2.3–2.7 vols) in lichtgrijs. Bron: BJCP-stijlgidsen + brouwersconsensus (Palmer "How To Brew").
+
+De bestaande default-vols-placeholder werkt door op de nieuwe range: het midden van de range wordt als suggestie ingevuld, zodat de hint en de placeholder altijd consistent zijn.
+
+### Files
+- `src/utils/calculations.ts` — `CARB_RANGES` map (17 stijlen) + `carbRangeForStyle(stijl)` helper toegevoegd; `defaultCarbVols` derived uit het midden van de range zodat één bron-of-truth blijft.
+- `src/pages/BatchesPage.tsx` — `carbRangeForStyle` import; hint-regel onder `carb_target_vols` met out-of-range-detectie (oranje ⚠ als de ingevulde waarde buiten min/max valt).
+- `src/i18n/{nl,en,de,fr,es}.json` — twee nieuwe sleutels: `carb_style_range` (`Gangbaar voor {stijl}: {min}–{max} vols`) en `carb_style_range_unknown` (fallback-tekst zonder stijl).
+- `config.yaml` — versie bump 1.9.33 → 1.9.34.
+
+---
+
 ## [1.9.33] — 2026-05-05
 
 ### Added — Hop-lot-overzicht toont nu alfazuur en oogstjaar per lot

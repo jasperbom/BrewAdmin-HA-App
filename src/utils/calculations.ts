@@ -267,26 +267,52 @@ export const co2GramTotaalVerbruik = (
   return co2GramOpgelost(volsCO2, batchLiter) * (1 + (Number(verliesFactor) || 0))
 }
 
-// Default-carbonatie (vols) per bierstijl. Case-insensitive `includes`-match op
-// de batch-stijl. Fallback: 2.5 vols (algemeen gemiddeld ale/lager).
-export const CARB_DEFAULT_VOLS: Record<string, number> = {
-  pils: 2.5, lager: 2.5, ipa: 2.5, 'pale ale': 2.5,
-  weizen: 3.2, witbier: 3.0, 'wit bier': 3.0, hefeweizen: 3.2, saison: 3.0,
-  stout: 2.0, porter: 2.3,
-  tripel: 3.0, dubbel: 2.4, quadrupel: 2.4, quad: 2.4,
-  cider: 3.5, fruitbier: 3.3, sour: 3.3,
+// Gangbare CO2-bereiken (vols) per bierstijl. Case-insensitive `includes`-match
+// op de batch-stijl. Bron: BJCP-stijlgidsen + brouwersconsensus (Palmer "How To
+// Brew" tabel 11.1, BJCP 2021 vital statistics). Fallback: 2.3–2.7 vols
+// (algemeen ale/lager).
+export const CARB_RANGES: Record<string, {min: number, max: number}> = {
+  pils:        {min: 2.3, max: 2.7},
+  lager:       {min: 2.3, max: 2.7},
+  ipa:         {min: 2.2, max: 2.7},
+  'pale ale':  {min: 2.2, max: 2.7},
+  weizen:      {min: 3.0, max: 4.0},
+  witbier:     {min: 2.7, max: 3.3},
+  'wit bier':  {min: 2.7, max: 3.3},
+  hefeweizen:  {min: 3.0, max: 4.0},
+  saison:      {min: 2.8, max: 3.5},
+  stout:       {min: 1.7, max: 2.3},
+  porter:      {min: 1.8, max: 2.5},
+  tripel:      {min: 2.8, max: 3.4},
+  dubbel:      {min: 2.2, max: 2.7},
+  quadrupel:   {min: 2.2, max: 2.7},
+  quad:        {min: 2.2, max: 2.7},
+  cider:       {min: 3.0, max: 4.0},
+  fruitbier:   {min: 3.0, max: 3.6},
+  sour:        {min: 3.0, max: 3.6},
 }
+export const CARB_RANGE_FALLBACK = {min: 2.3, max: 2.7}
 export const CARB_DEFAULT_FALLBACK = 2.5
 
-// Geeft de default-CO2-volumes voor een bierstijl. Zoekt case-insensitive
-// een trefwoord in `stijl` en valt terug op `CARB_DEFAULT_FALLBACK`.
-export const defaultCarbVols = (stijl?: string): number => {
+// Geeft het gangbare CO2-bereik voor een bierstijl, of de fallback-range als
+// de stijl onbekend is. Tweede waarde `matched` is `true` zodra een trefwoord
+// daadwerkelijk matcht (handig om de UI conditioneel te tonen).
+export const carbRangeForStyle = (stijl?: string): {min: number, max: number, matched: boolean} => {
   const s = String(stijl || '').toLowerCase()
-  if (!s) return CARB_DEFAULT_FALLBACK
-  for (const [key, val] of Object.entries(CARB_DEFAULT_VOLS)) {
-    if (s.includes(key)) return val
+  if (!s) return {...CARB_RANGE_FALLBACK, matched: false}
+  for (const [key, range] of Object.entries(CARB_RANGES)) {
+    if (s.includes(key)) return {...range, matched: true}
   }
-  return CARB_DEFAULT_FALLBACK
+  return {...CARB_RANGE_FALLBACK, matched: false}
+}
+
+// Geeft de default-CO2-volumes voor een bierstijl (midden van het bereik).
+// Zoekt case-insensitive een trefwoord in `stijl` en valt terug op
+// `CARB_DEFAULT_FALLBACK`.
+export const defaultCarbVols = (stijl?: string): number => {
+  const r = carbRangeForStyle(stijl)
+  if (!r.matched) return CARB_DEFAULT_FALLBACK
+  return Math.round(((r.min + r.max) / 2) * 10) / 10
 }
 
 // ── Tank-geschiedenis ───────────────────────────────────────────────────────
