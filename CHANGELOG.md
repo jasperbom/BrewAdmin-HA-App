@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.36] — 2026-05-06
+
+### Changed — Carbonisatie-stijltabel uitgebreid van 17 naar ±70 stijlen
+
+De CO₂-richtlijntabel matcht nu een veel bredere set BJCP-2021-stijlen, waaronder Belgian Blonde Ale, Belgian Strong Ale, Belgian Strong Dark Ale, Belgian Pale Ale, Bière de Garde, Helles, Dunkel, Doppelbock, Maibock, Eisbock, Schwarzbier, Märzen/Oktoberfest, Vienna Lager, Kölsch, Altbier, Rauchbier, NEIPA/Hazy IPA, Double/Imperial IPA, Black IPA, Session IPA, Belgian IPA, Amber/Red/Brown/Cream/Blonde Ale, Imperial Stout, Milk Stout, Oatmeal Stout, Bitter/ESB, Mild, Scotch Ale/Wee Heavy, Barleywine, Old Ale, Berliner Weisse, Gose, Lambic, Gueuze, Kriek, Wild Ale, Weizenbock en American Wheat. Generieke matches (`pils`, `lager`, `ipa`, `stout`, `bock`, `blonde`, `wheat`, …) staan nu **na** de specifieke varianten, zodat bv. "Imperial Russian Stout" eerst op `imperial stout` matcht voordat het naar `stout` zou vallen.
+
+De handmatige stijl-kiezer onder het CO₂-veld toont de presets nu in 9 categorie-`<optgroup>`'s (Lager & Pils, Pale Ale & IPA, Amber/Red/Brown, Stout & Porter, English & Scottish, Belgian, Wheat & Witbier, Sour & Wild, Other) zodat de ±50 opties scanbaar blijven.
+
+### Files
+- `src/utils/calculations.ts` — `CARB_RANGES` herordend en uitgebreid (specifiek→generiek); `CARB_STYLE_OPTIONS` heeft nu een `groupKey`-veld per preset.
+- `src/pages/BatchesPage.tsx` — de picker rendert `<optgroup>`'s op basis van de `groupKey`-volgorde uit `CARB_STYLE_OPTIONS`.
+- `src/i18n/{nl,en,de,fr,es}.json` — 9 groep-sleutels (`carb_style_grp_*`) en ~40 nieuwe optie-sleutels (`carb_style_opt_*`) toegevoegd; bestaande sleutels (pils, lager, ipa, …) behouden.
+- `config.yaml` — versie bump 1.9.35 → 1.9.36.
+
+---
+
 ## [1.9.35] — 2026-05-06
 
 ### Added — Stijl-keuze voor CO₂-richtlijn als batch-stijl niet matcht
