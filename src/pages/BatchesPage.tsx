@@ -2580,19 +2580,36 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                   .replace('{max}', styleRange.max.toFixed(1))}
                               </div>
                             )}
-                            {showStylePicker && (
-                              <select
-                                value={carbStyleOverride}
-                                onChange={e=>setCarbStyleOverride(e.target.value)}
-                                className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white t-input outline-none shadow-sm"
-                                title={t('carb_style_pick_tooltip')}
-                              >
-                                <option value="">{t('carb_style_pick_placeholder')}</option>
-                                {CARB_STYLE_OPTIONS.map((opt: any) => (
-                                  <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
-                                ))}
-                              </select>
-                            )}
+                            {showStylePicker && (() => {
+                              // Groepeer presets per groupKey met behoud van
+                              // declaratie-volgorde voor een stabiele UI.
+                              const groupOrder: string[] = []
+                              const grouped: Record<string, typeof CARB_STYLE_OPTIONS> = {}
+                              for (const opt of CARB_STYLE_OPTIONS) {
+                                if (!grouped[opt.groupKey]) {
+                                  grouped[opt.groupKey] = []
+                                  groupOrder.push(opt.groupKey)
+                                }
+                                grouped[opt.groupKey].push(opt)
+                              }
+                              return (
+                                <select
+                                  value={carbStyleOverride}
+                                  onChange={e=>setCarbStyleOverride(e.target.value)}
+                                  className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white t-input outline-none shadow-sm"
+                                  title={t('carb_style_pick_tooltip')}
+                                >
+                                  <option value="">{t('carb_style_pick_placeholder')}</option>
+                                  {groupOrder.map(grpKey => (
+                                    <optgroup key={grpKey} label={t(grpKey)}>
+                                      {grouped[grpKey].map((opt: any) => (
+                                        <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
+                                      ))}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                              )
+                            })()}
                           </div>
                           <div>
                             <Inp label={t('carb_tank_temp')} type="number" value={carbForm.tank_temp_c} onChange={(v: string)=>setCarbForm((f: any)=>({...f, tank_temp_c: v}))} placeholder={sensorTemp != null ? sensorTemp.toFixed(1) : '2'} step="0.5" />
