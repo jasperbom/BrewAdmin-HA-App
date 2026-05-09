@@ -711,6 +711,12 @@ export const getAgpLocatie = (locaties: Locatie[] = []): Locatie => {
 // Berekent de huidige voorraad per locatie voor één afvulling. Begint met het
 // totale aantal op de AGP-locatie, verwerkt vervolgens alle verplaatsingen
 // (in chronologische volgorde) en trekt uitleveringen + afboekingen af.
+//
+// Elke beweging wordt gecapt op wat er werkelijk op de bron-locatie staat.
+// Zonder die cap zou een verplaatsing van 2× terwijl er maar 1× was, de
+// bestemming op 2× zetten en de bron-clamp naar 0 — wat resulteert in
+// phantom voorraad (totaal > werkelijk afgevuld). Voor de eerlijke ruwe
+// waarden zonder cap, zie `voorraadPerLocatieRaw`.
 export const voorraadPerLocatie = (
   afv: Afvulling,
   locaties: Locatie[],
@@ -723,7 +729,7 @@ export const voorraadPerLocatie = (
   // Initieel staat alle voorraad op AGP
   result[agp.id] = afvAantal(afv)
 
-  // Verplaatsingen toepassen (chronologisch)
+  // Verplaatsingen toepassen (chronologisch), gecapt op bron-beschikbaarheid
   const verpl = (verplaatsingen || [])
     .filter(v => v.afvulling_id === afv?.id)
     .slice()
@@ -731,22 +737,30 @@ export const voorraadPerLocatie = (
   for (const v of verpl) {
     const aantal = Number(v.aantal || 0)
     if (!aantal) continue
-    result[v.van_locatie_id] = (result[v.van_locatie_id] || 0) - aantal
-    result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + aantal
+    const beschikbaar = Math.max(0, result[v.van_locatie_id] || 0)
+    const werkelijk = Math.min(aantal, beschikbaar)
+    if (werkelijk <= 0) continue
+    result[v.van_locatie_id] = (result[v.van_locatie_id] || 0) - werkelijk
+    result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + werkelijk
   }
 
-  // Uitleveringen aftrekken op de bron-locatie (default = AGP)
+  // Uitleveringen aftrekken op de bron-locatie (default = AGP), gecapt
   const uits = (uitleveringen || []).filter(u => u.afvulling_id === afv?.id)
   for (const u of uits) {
     const locId = u.bron_locatie_id ?? agp.id
-    result[locId] = (result[locId] || 0) - Number(u.aantal || 0)
+    const beschikbaar = Math.max(0, result[locId] || 0)
+    const werkelijk = Math.min(Number(u.aantal || 0), beschikbaar)
+    if (werkelijk <= 0) continue
+    result[locId] = (result[locId] || 0) - werkelijk
   }
 
-  // Afboekingen (verlies/breuk) — gaan af van AGP-locatie. Toekomstige uitbreiding
-  // kan locatie aan Afboeking toevoegen; voor nu de eenvoudigste aanname.
+  // Afboekingen (verlies/breuk) — gaan af van AGP-locatie, gecapt
   const afb = (afboekingen || []).filter(a => a.afvulling_id === afv?.id)
   for (const a of afb) {
-    result[agp.id] = (result[agp.id] || 0) - Number(a.aantal || 0)
+    const beschikbaar = Math.max(0, result[agp.id] || 0)
+    const werkelijk = Math.min(Number(a.aantal || 0), beschikbaar)
+    if (werkelijk <= 0) continue
+    result[agp.id] = (result[agp.id] || 0) - werkelijk
   }
 
   // Negatieve waarden naar 0 normaliseren (kan voorkomen bij data-inconsistentie)
