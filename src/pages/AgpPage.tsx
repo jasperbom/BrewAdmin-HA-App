@@ -6,6 +6,7 @@ import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
+import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
 import { agpOverzicht, getAgpLocatie, accijnsCalc, tariefVoorDatum, voorraadPerLocatie, gemAgpInPeriode } from '../utils/calculations'
 
@@ -186,11 +187,54 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
     setLocModal(null);
   };
 
+  const [mutZoek, setMutZoek] = useState('');
   const recenteMutaties = useMemo(() => {
-    return [...(verplaatsingen||[])]
-      .sort((a: any, b: any) => String(b.datum||'').localeCompare(String(a.datum||'')))
-      .slice(0, 20);
-  }, [verplaatsingen]);
+    const all = [...(verplaatsingen||[])]
+      .sort((a: any, b: any) => String(b.datum||'').localeCompare(String(a.datum||'')));
+    const q = mutZoek.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((v: any) => {
+      const afv = (av||[]).find((a: any) => a.id === v.afvulling_id);
+      const batch = batById(v.batch_id);
+      const van = locById(v.van_locatie_id);
+      const naar = locById(v.naar_locatie_id);
+      return (
+        String(batch?.naam||'').toLowerCase().includes(q) ||
+        String(batch?.batch_nummer||'').toLowerCase().includes(q) ||
+        String(afv?.verpakking_naam||'').toLowerCase().includes(q) ||
+        String(van?.naam||'').toLowerCase().includes(q) ||
+        String(naar?.naam||'').toLowerCase().includes(q) ||
+        String(v.datum||'').includes(q)
+      );
+    });
+  }, [verplaatsingen, mutZoek, av, bat, locaties]);
+
+  const deleteVerplaats = (v: any) => {
+    const heeftAcc = !!v.accijns_record_id;
+    if (heeftAcc) {
+      const accRec = (acc||[]).find((a: any) => a.id === v.accijns_record_id);
+      if (accRec?.betaald) { alert(t('agp_err_verplaats_acc_betaald')); return; }
+    }
+    const van = locById(v.van_locatie_id).naam;
+    const naar = locById(v.naar_locatie_id).naam;
+    const msg = heeftAcc
+      ? t('agp_verplaats_delete_confirm_acc')
+          .replace('{aantal}', String(v.aantal))
+          .replace('{van}', van).replace('{naar}', naar)
+          .replace('{accijns}', fmt(v.accijns||0))
+      : t('agp_verplaats_delete_confirm')
+          .replace('{aantal}', String(v.aantal))
+          .replace('{van}', van).replace('{naar}', naar);
+    if (!confirm(msg)) return;
+    setVerplaatsingen((prev: any[]) => (prev||[]).filter((x: any) => x.id !== v.id));
+    if (heeftAcc) {
+      setAcc((prev: any[]) => (prev||[]).filter((a: any) => a.id !== v.accijns_record_id));
+    }
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Verplaatsing', entiteit_id: v.id, actie: 'verwijderd',
+      omschrijving: `${van} → ${naar}: ${v.aantal}× ${heeftAcc ? `(accijns ${fmt(v.accijns||0)} teruggedraaid)` : ''}`.trim(),
+    });
+  };
 
   return (
     <div>
@@ -377,42 +421,55 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
           open={openSec.mut}
           onToggle={()=>toggle('mut')}
           title={t('agp_sec_mutaties')}
-          info={recenteMutaties.length}
+          info={(verplaatsingen||[]).length}
         />
         {openSec.mut && (
-          recenteMutaties.length === 0 ? (
+          (verplaatsingen||[]).length === 0 ? (
             <div className="p-6 text-center text-gray-400 text-sm">{t('agp_geen_mutaties')}</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left">{t('lbl_datum')}</th>
-                    <th className="px-3 py-2 text-left">{t('excise_beer')}</th>
-                    <th className="px-3 py-2 text-right">{t('agp_aantal')}</th>
-                    <th className="px-3 py-2 text-left">{t('agp_van')}</th>
-                    <th className="px-3 py-2 text-left">{t('agp_naar')}</th>
-                    <th className="px-3 py-2 text-right">{t('excise_amount')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {recenteMutaties.map((v: any) => {
-                    const afv = (av||[]).find((a: any) => a.id === v.afvulling_id);
-                    const batch = batById(v.batch_id);
-                    return (
-                      <tr key={v.id}>
-                        <td className="px-3 py-2 text-gray-600">{fmtD(v.datum)}</td>
-                        <td className="px-3 py-2">{batch?.naam || t('lbl_onbekend')} <span className="text-gray-400 text-xs">{afv?.verpakking_naam||''}</span></td>
-                        <td className="px-3 py-2 text-right">{v.aantal}</td>
-                        <td className="px-3 py-2 text-gray-600">{locById(v.van_locatie_id).naam}</td>
-                        <td className="px-3 py-2 text-gray-600">{locById(v.naar_locatie_id).naam}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-amber-700">{v.accijns ? fmt(v.accijns) : '—'}</td>
+            <>
+              <div className="px-4 pt-3">
+                <SearchInput value={mutZoek} onChange={setMutZoek} placeholder={t('agp_zoek_mutaties')} />
+              </div>
+              {recenteMutaties.length === 0 ? (
+                <div className="p-6 text-center text-gray-400 text-sm">{t('agp_zoek_geen_resultaten')}</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-gray-500 bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left">{t('lbl_datum')}</th>
+                        <th className="px-3 py-2 text-left">{t('excise_beer')}</th>
+                        <th className="px-3 py-2 text-right">{t('agp_aantal')}</th>
+                        <th className="px-3 py-2 text-left">{t('agp_van')}</th>
+                        <th className="px-3 py-2 text-left">{t('agp_naar')}</th>
+                        <th className="px-3 py-2 text-right">{t('excise_amount')}</th>
+                        <th className="px-3 py-2"></th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {recenteMutaties.map((v: any) => {
+                        const afv = (av||[]).find((a: any) => a.id === v.afvulling_id);
+                        const batch = batById(v.batch_id);
+                        return (
+                          <tr key={v.id}>
+                            <td className="px-3 py-2 text-gray-600">{fmtD(v.datum)}</td>
+                            <td className="px-3 py-2">{batch?.naam || t('lbl_onbekend')} <span className="text-gray-400 text-xs">{afv?.verpakking_naam||''}</span></td>
+                            <td className="px-3 py-2 text-right">{v.aantal}</td>
+                            <td className="px-3 py-2 text-gray-600">{locById(v.van_locatie_id).naam}</td>
+                            <td className="px-3 py-2 text-gray-600">{locById(v.naar_locatie_id).naam}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-amber-700">{v.accijns ? fmt(v.accijns) : '—'}</td>
+                            <td className="px-3 py-2 text-right">
+                              <Btn s="sm" v="danger" onClick={()=>deleteVerplaats(v)}>{t('btn_delete')}</Btn>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )
         )}
       </div>
