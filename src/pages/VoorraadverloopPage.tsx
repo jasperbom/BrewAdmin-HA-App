@@ -1,5 +1,6 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
+import { tod } from '../utils/format'
 import { getNegatieveVoorraadPosities, getAgpLocatie, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import SectionHeader from '../components/ui/SectionHeader'
 import * as XLSX from 'xlsx'
@@ -97,7 +98,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    const today = new Date().toISOString().slice(0, 10)
+    const today = tod()
     a.href = url
     a.download = `negatieve_voorraad_${today}.csv`
     document.body.appendChild(a)

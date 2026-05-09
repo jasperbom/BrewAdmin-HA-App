@@ -1799,5 +1799,16 @@
   "lbl_pot_accijnsschuld_tip": "Pre-calculated excise: potential excise debt on the closing stock under suspension — Customs §7.4",
   "lbl_voorcalc_excel": "Pre-calc excise / unit (€)",
   "lbl_pot_schuld_excel": "Potential excise debt (€)",
-  "haccp_dash_geen_afwijkingen": "No deviations"
+  "haccp_dash_geen_afwijkingen": "No deviations",
+  "excise_release_date": "Dispatch date",
+  "lbl_betaald": "Paid",
+  "err_no_invoice_for_order": "No invoice found for this order",
+  "excise_reviewer_required": "Before submitting, the second pair of eyes (reviewer) must first approve via the review block under the summary.",
+  "err_cannot_delete_active_lots": "Cannot delete: active lots still exist.",
+  "err_export_failed": "Export failed: {msg}",
+  "err_no_json_in_claude_response": "No JSON in Claude response",
+  "tooltip_logistical_status": "Logistical status change — no fiscal effect (Customs v2.4 §10.2)",
+  "tooltip_status_per_douane": "Status per Customs v2.4 §7.2.3",
+  "tooltip_expired_invoices": "Expired invoice(s)",
+  "order_mark_shipped": "Mark as shipped"
 }

@@ -509,7 +509,7 @@ function App() {
             verpakking_naam: afv.verpakking_naam || afv.verpakking_type || '',
             inhoud_liter: inhoud,
             aantal,
-            datum: afb.datum || (afb.created_at ? afb.created_at.slice(0,10) : new Date().toISOString().slice(0,10)),
+            datum: afb.datum || (afb.created_at ? afb.created_at.slice(0,10) : tod()),
             type_uitlevering: 'intern',
             accijns_betaald: false,
             created_at: afb.created_at || new Date().toISOString(),

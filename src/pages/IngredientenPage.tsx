@@ -366,7 +366,7 @@ const IngredientenPage: React.FC<Props> = ({
   }
   const deleteIng = () => {
     if (!selIng) return
-    if (activeLots(sel!).length > 0) { alert('Kan niet verwijderen: er zijn nog actieve lots.'); return }
+    if (activeLots(sel!).length > 0) { alert(t('err_cannot_delete_active_lots')); return }
     if (!confirm(t('confirm_delete_ingredient').replace('{naam}', selIng.naam))) return
     logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: sel!, actie: 'verwijderd', omschrijving: selIng.naam })
     setIng((prev: any[]) => prev.filter((i: any) => i.id !== sel))
@@ -1019,7 +1019,7 @@ const IngredientenPage: React.FC<Props> = ({
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Inp label={t('lbl_name') + ' *'} value={ingEditForm.naam} onChange={(v: string) => setIngEditForm(f => ({ ...f, naam: v }))} />
-              <Sel label={t('lbl_type')} value={ingEditForm.type} onChange={(v: string) => setIngEditForm(f => ({ ...f, type: v }))} opts={ingTypes.map((tp: string) => ({ v: tp, l: BUILTIN_ING_TYPES.includes(tp) ? t('ing_type_' + tp.toLowerCase()) : tp }))} ph="— kies type —" />
+              <Sel label={t('lbl_type')} value={ingEditForm.type} onChange={(v: string) => setIngEditForm(f => ({ ...f, type: v }))} opts={ingTypes.map((tp: string) => ({ v: tp, l: BUILTIN_ING_TYPES.includes(tp) ? t('ing_type_' + tp.toLowerCase()) : tp }))} ph={t('packaging_choose_type')} />
               <Inp label="Fabrikant" value={ingEditForm.fabrikant} onChange={(v: string) => setIngEditForm(f => ({ ...f, fabrikant: v }))} placeholder="bijv. Weyermann" />
             </div>
             <div className="flex justify-end gap-2">

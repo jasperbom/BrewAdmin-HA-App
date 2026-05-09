@@ -430,7 +430,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       id: newId(afboekingen||[]),
       afvulling_id: afboekModal.id,
       batch_id: afboekModal.batch_id,
-      datum: new Date().toISOString().slice(0, 10),
+      datum: tod(),
       aantal,
       reden: afboekForm.reden,
       opmerking: afboekForm.opmerking.trim(),
@@ -452,7 +452,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const batch = (bat||[]).find((b: any) => b.id === afboekModal.batch_id);
     if (setLog) setLog((prev: any[]) => [...(prev||[]), {
       id: newId(prev||[]),
-      datum: new Date().toISOString().slice(0, 10),
+      datum: tod(),
       type: 'afboeking',
       batch_id: afboekModal.batch_id,
       batch_naam: batch?.naam || '',
@@ -949,7 +949,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                       {t(AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.lKey || ab.reden)}
                                     </span>
                                     {status && (
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide ${VERNIETIGING_STATUS_COLOR[status]}`} title="Status volgens Douane v2.4 §7.2.3">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide ${VERNIETIGING_STATUS_COLOR[status]}`} title={t('tooltip_status_per_douane')}>
                                         {VERNIETIGING_STATUS_LABEL[status]}
                                       </span>
                                     )}
@@ -1267,7 +1267,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
-                <input type="date" value={new Date().toISOString().slice(0,10)} readOnly
+                <input type="date" value={tod()} readOnly
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-500" />
               </div>
             </div>

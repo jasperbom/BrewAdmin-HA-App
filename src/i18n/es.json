@@ -1799,5 +1799,16 @@
   "haccp_dash_geen_afwijkingen": "Sin desviaciones",
   "err_confirm_delete_inkoop": "¿Eliminar factura de compra?",
   "msg_fetch_error": "Error al obtener: ",
-  "msg_wc_not_active_settings": "WooCommerce no activo — ver Ajustes"
+  "msg_wc_not_active_settings": "WooCommerce no activo — ver Ajustes",
+  "excise_release_date": "Fecha de despacho",
+  "lbl_betaald": "Pagado",
+  "err_no_invoice_for_order": "No se encontró factura para este pedido",
+  "excise_reviewer_required": "Antes de enviar, el revisor (cuatro ojos) debe aprobar primero a través del bloque de control bajo el resumen.",
+  "err_cannot_delete_active_lots": "No se puede eliminar: aún existen lotes activos.",
+  "err_export_failed": "Exportación fallida: {msg}",
+  "err_no_json_in_claude_response": "No hay JSON en la respuesta de Claude",
+  "tooltip_logistical_status": "Cambio de estado logístico — sin efecto fiscal (Aduanas v2.4 §10.2)",
+  "tooltip_status_per_douane": "Estado según Aduanas v2.4 §7.2.3",
+  "tooltip_expired_invoices": "Factura(s) vencida(s)",
+  "order_mark_shipped": "Marcar como enviada"
 }

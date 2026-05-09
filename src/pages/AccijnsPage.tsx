@@ -171,7 +171,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
     const a = getAangifte(monthKey)
     // Douane v2.4 §12.2: 4-ogen-controle is verplicht voordat de aangifte naar 'ingediend' gaat.
     if (status === 'ingediend' && a?.controle_status !== 'akkoord') {
-      alert('Voor het indienen moet de tweede paar ogen (reviewer) eerst akkoord geven via het controlblok onder de samenvatting.')
+      alert(t('excise_reviewer_required'))
       return
     }
     const datumKey = status === 'berekend' ? 'berekend_datum' : status === 'ingediend' ? 'ingediend_datum' : 'betaald_datum'

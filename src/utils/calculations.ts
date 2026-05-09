@@ -1,5 +1,6 @@
 import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch } from '../types'
 import { convertEenheid } from './constants'
+import { ymd } from './format'
 
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
   const liter = L; const hl = L / 100
@@ -1033,7 +1034,9 @@ export const gemAgpInPeriode = (
   const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate())
   const stop = new Date(end.getFullYear(), end.getMonth(), end.getDate())
   while (cur <= stop) {
-    const ds = cur.toISOString().slice(0, 10)
+    // Lokale YYYY-MM-DD: cur is opgebouwd uit lokale dag-componenten, dus
+    // toISOString() zou hier de UTC-dag teruggeven (mogelijk één dag eerder).
+    const ds = ymd(cur)
     const v = agpValueAt(ds, batches, afvullingen, uitleveringen, verplaatsingen, afboekingen, locaties, inst)
     sTank += v.tank; sVerp += v.verpakt; sTot += v.totaal; nDays++
     cur.setDate(cur.getDate() + 1)

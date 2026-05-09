@@ -1800,5 +1800,15 @@
   "lbl_pot_accijnsschuld": "Pot. accijnsschuld (€)",
   "lbl_pot_accijnsschuld_tip": "Voorcalculatie accijns: potentiële accijnsschuld op de eindvoorraad onder schorsing — Douane §7.4",
   "lbl_voorcalc_excel": "Voorcalc accijns / eenheid (€)",
-  "lbl_pot_schuld_excel": "Potentiële accijnsschuld (€)"
+  "lbl_pot_schuld_excel": "Potentiële accijnsschuld (€)",
+  "excise_release_date": "Uitslagdatum",
+  "lbl_betaald": "Betaald",
+  "err_no_invoice_for_order": "Geen factuur gevonden voor deze bestelling",
+  "excise_reviewer_required": "Voor het indienen moet de tweede paar ogen (reviewer) eerst akkoord geven via het controleblok onder de samenvatting.",
+  "err_cannot_delete_active_lots": "Kan niet verwijderen: er zijn nog actieve lots.",
+  "err_export_failed": "Export mislukt: {msg}",
+  "err_no_json_in_claude_response": "Geen JSON in Claude-respons",
+  "tooltip_logistical_status": "Logistieke statusovergang — geen fiscaal effect (Douane v2.4 §10.2)",
+  "tooltip_status_per_douane": "Status volgens Douane v2.4 §7.2.3",
+  "tooltip_expired_invoices": "Verlopen factuur(en)"
 }

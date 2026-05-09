@@ -4,6 +4,88 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.45] — 2026-05-09
+
+### Fixed — Datum-stempels rond middernacht en AGP-gemiddelden in CET/CEST
+
+In de hele app werd "vandaag" en het einde van een datum-iteratie afgeleid uit
+`new Date().toISOString().slice(0,10)`. Die geeft de **UTC-dag** terug, niet de
+lokale kalenderdag. Voor een brouwerij in Nederland/België (CET = UTC+1, CEST =
+UTC+2) leverde dat twee concrete fouten op:
+
+1. **Records gestempeld met de verkeerde datum.** Tussen lokaal middernacht en
+   01:00 (winter) of 02:00 (zomer) staat de UTC-klok nog op de vorige dag. Een
+   afboeking, gistingsmeting, herinnering, factuur-betaaldatum, etc. die op
+   16 januari 00:30 lokaal werd ingevoerd, kreeg `datum: "2024-01-15"` in plaats
+   van `2024-01-16`. Dit verstoorde latere periode-filters (BTW-aangifte, accijns,
+   statiegeld, omzet per kwartaal).
+2. **`gemAgpInPeriode` itereerde over de verkeerde dagen.** De helper bouwde
+   `cur` op met lokale dag-componenten en haalde er vervolgens `toISOString()`
+   uit — een dubbele conversie die in CET één dag terug schuift. Een gemiddelde
+   over "1–31 januari" werd dus berekend over "31 december – 30 januari". Dat
+   raakte de Vorige maand / Dit jaar / Vorig jaar AGP-gemiddelden op de AGP-pagina.
+
+Daarnaast was `firstOfYear` op de Boekhoudingspagina via dezelfde dubbele
+conversie verkeerd: `new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10)`
+gaf in CET "31 december van vorig jaar" terug, waardoor het standaard
+datumbereik van de boekhoudingsfilter een dag te vroeg begon.
+
+### Aanpak
+
+Centraal in `src/utils/format.ts` is een nieuwe helper `ymd(d)` toegevoegd die
+een Date naar `YYYY-MM-DD` formatteert volgens de **lokale** tijdzone via
+`getFullYear()`/`getMonth()`/`getDate()`, zonder UTC-tussenstap. `tod()`
+gebruikt deze helper en is nu lokaal-correct. De UTC-patronen in `App.tsx`,
+de boekhouding-, dashboard-, statiegeld-, voorraadverloop-, producten- en
+instellingenpagina's zijn vervangen door `tod()` / `ymd(d)`. De backupfile-naam
+in `excel.ts` is bewust UTC gelaten (filename-consistentie tussen tijdzones).
+
+### Files
+- `src/utils/format.ts` — `ymd(d)` helper toegevoegd; `tod()` gebruikt nu lokale dag-componenten.
+- `src/utils/calculations.ts` — `gemAgpInPeriode` gebruikt `ymd(cur)` i.p.v. `cur.toISOString().slice(0,10)`; import van `ymd` toegevoegd.
+- `src/pages/BoekhoudingPage.tsx` — `firstOfYear`, `dateTo`, `rapportVan`, `rapportTot`, `factuurDatum` en alle `vandaag`/`today`/`betaald_datum` stempels via `tod()`/`ymd()`; import uitgebreid.
+- `src/pages/DashboardPage.tsx` — `gist_meting.datum` en `haccp_log.datum` via `tod()`; import uitgebreid.
+- `src/pages/StatiegeldPage.tsx` — periodestatus-vergelijking en factuurdatum via `tod()`; import uitgebreid.
+- `src/pages/VoorraadverloopPage.tsx` — `today`-filter via `tod()`; import toegevoegd.
+- `src/pages/ProductenPage.tsx` — alle afboeking- en log-datumstempels (3×) via `tod()`.
+- `src/pages/InstellingenPage.tsx` — voorbeeld-factuurdatum via `tod()`; import uitgebreid.
+- `src/App.tsx` — uitlevering-migratie datum-fallback via `tod()`.
+- `config.yaml` — versie bump 1.9.44 → 1.9.45.
+
+---
+
+## [1.9.44] — 2026-05-09
+
+### Fixed — Ontbrekende vertalingen en hardcoded UI-strings opgeschoond
+
+Een controle van de hele app legde vier ontbrekende i18n-sleutels en een reeks
+hardcoded Nederlandse strings bloot die de meertalige UI doorbraken. Drie
+sleutels (`excise_release_date`, `lbl_betaald`, `err_cannot_delete_has_releases`)
+waren in **geen enkele** taal gedefinieerd, waardoor accijns-tabelheaders, de
+Boekhouding-klantentabel en een verwijdermelding op afvullingen de ruwe sleutel
+toonden in plaats van een label. Daarnaast bestond `order_mark_shipped` alleen
+in NL en viel terug op Nederlands voor EN/DE/FR/ES.
+
+Tegelijk zaten er nog negen hardcoded gebruikersgerichte strings in de code (4
+`alert(...)`-meldingen, 1 `throw new Error`, 3 `title`-tooltips en 1
+`placeholder`), die in strijd zijn met de i18n-regel uit `CLAUDE.md` ("NOOIT
+hardcoded gebruikersgerichte tekst"). Alle nieuwe sleutels zijn toegevoegd in
+nl/en/de/fr/es; alle 5 taalbestanden hebben nu exact 1.812 sleutels.
+
+### Files
+- `src/i18n/{nl,en,de,fr,es}.json` — 10 nieuwe sleutels toegevoegd in alle 5 talen, plus `order_mark_shipped` aangevuld in EN/DE/FR/ES.
+- `src/pages/BatchesPage.tsx` — `err_cannot_delete_has_releases` → `err_cannot_delete_filling` (bestaande sleutel hergebruikt).
+- `src/pages/AccijnsPage.tsx` — alert vervangen door `t('excise_reviewer_required')`.
+- `src/pages/BestellingenPage.tsx` — alert + tooltip via `t('err_no_invoice_for_order')` resp. `t('tooltip_logistical_status')`.
+- `src/pages/IngredientenPage.tsx` — alert via `t('err_cannot_delete_active_lots')`; placeholder `"— kies type —"` → `t('packaging_choose_type')`.
+- `src/pages/ProductenPage.tsx` — tooltip via `t('tooltip_status_per_douane')`.
+- `src/pages/BoekhoudingPage.tsx` — tooltip via `t('tooltip_expired_invoices')`.
+- `src/components/InkoopFactuurModal.tsx` — `throw new Error(...)` via `t('err_no_json_in_claude_response')`.
+- `src/utils/excel.ts` — `t`-import toegevoegd; export-fout via `t('err_export_failed')` met `{msg}`-substitutie.
+- `config.yaml` — versie bump 1.9.43 → 1.9.44.
+
+---
+
 ## [1.9.43] — 2026-05-09
 
 ### Fixed — Phantom voorraad per locatie bij inconsistente verplaatsingen

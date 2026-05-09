@@ -1799,5 +1799,16 @@
   "lbl_pot_accijnsschuld_tip": "Vorkalkulierte Verbrauchsteuer: potenzielle Steuerschuld auf den Endbestand unter Aussetzung — Zoll §7.4",
   "lbl_voorcalc_excel": "Vorkalk. Steuer / Einheit (€)",
   "lbl_pot_schuld_excel": "Potenzielle Steuerschuld (€)",
-  "haccp_dash_geen_afwijkingen": "Keine Abweichungen"
+  "haccp_dash_geen_afwijkingen": "Keine Abweichungen",
+  "excise_release_date": "Auslagerungsdatum",
+  "lbl_betaald": "Bezahlt",
+  "err_no_invoice_for_order": "Keine Rechnung für diese Bestellung gefunden",
+  "excise_reviewer_required": "Vor dem Einreichen muss das Vier-Augen-Prinzip (Prüfer) zuerst über den Prüfblock unter der Zusammenfassung zustimmen.",
+  "err_cannot_delete_active_lots": "Löschen nicht möglich: Es gibt noch aktive Lots.",
+  "err_export_failed": "Export fehlgeschlagen: {msg}",
+  "err_no_json_in_claude_response": "Keine JSON-Daten in der Claude-Antwort",
+  "tooltip_logistical_status": "Logistische Statusänderung — keine steuerliche Auswirkung (Zoll v2.4 §10.2)",
+  "tooltip_status_per_douane": "Status gemäß Zoll v2.4 §7.2.3",
+  "tooltip_expired_invoices": "Überfällige Rechnung(en)",
+  "order_mark_shipped": "Als versendet markieren"
 }
