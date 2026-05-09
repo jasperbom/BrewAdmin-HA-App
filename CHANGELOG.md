@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.39] — 2026-05-09
+
+### Fixed — Verpakkingskosten in batch-kostprijsoverzicht (onderdelen-verpakkingen)
+
+In het kostprijsoverzicht van een batch (status Verpakt/Gesloten) werd "Verpakkingskosten" altijd op 0 / "Niet opgegeven" gezet wanneer de verpakking is opgebouwd uit onderdelen (bv. krat = 1× kratbodem + 24× kroonkurk + 24× etiket). De berekening keek alleen naar de oude directe velden `kosten_verpakking`/`kosten_afsluiting`/`kosten_label` en negeerde de samengestelde onderdelen. Het overzicht in `IngredientenPage` deed dit al wel correct via `vpKosten`, dus de bedragen klopten daar — alleen de batch-kostprijs niet.
+
+Vanaf nu sommeert de batch-kostprijs voor onderdelen-verpakkingen `onderdeel.kosten_per_stuk × onderdeel.aantal`, en valt pas terug op de legacy velden als de verpakking geen onderdelen heeft. Het totaal verschijnt zowel per verpakkings­type als in de eindregel "Totaal verpakkingskosten".
+
+### Files
+- `src/pages/BatchesPage.tsx` — `kPerStuk` in het kostprijsoverzicht berekent nu eerst via `vp.onderdelen` (met lookup in `onderdelen` voor `kosten_per_stuk`); fallback op `kosten_verpakking + kosten_afsluiting + kosten_label`. Spiegelt de logica van `vpKosten` in `IngredientenPage.tsx`.
+- `config.yaml` — versie bump 1.9.38 → 1.9.39.
+
+---
+
 ## [1.9.38] — 2026-05-09
 
 ### Added — Intracommunautaire BTW-compliance op inkoopfacturen (rubriek 4a/4b)

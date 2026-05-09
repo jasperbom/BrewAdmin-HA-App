@@ -3041,7 +3041,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 const liters = rows.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
                 const vpId = rows.find((r: any) => r.verpakking_id)?.verpakking_id
                 const vp = verpakkingen ? (vpId ? verpakkingen.find((v: any) => v.id===vpId) : verpakkingen.find((v: any) => v.naam===type)) : null
-                const kPerStuk = vp ? Number(vp.kosten_verpakking||0)+Number(vp.kosten_afsluiting||0)+Number(vp.kosten_label||0) : 0
+                // Onderdelen-gebaseerde verpakkingen (krat = bodem + N× kroonkurk + N× etiket) tellen de
+                // kosten_per_stuk van elk onderdeel × het aantal in de verpakking. Pas zonder onderdelen
+                // vallen we terug op de legacy directe velden.
+                const kPerStuk = vp
+                  ? (Array.isArray(vp.onderdelen) && vp.onderdelen.length
+                      ? vp.onderdelen.reduce((s: number, o: any) => {
+                          const od = (onderdelen||[]).find((d: any) => d.id === o.onderdeel_id)
+                          return s + Number(od?.kosten_per_stuk||0) * Number(o.aantal||1)
+                        }, 0)
+                      : Number(vp.kosten_verpakking||0)+Number(vp.kosten_afsluiting||0)+Number(vp.kosten_label||0))
+                  : 0
                 const totVerpK = kPerStuk * stuks
                 const totAcc = batchAcc.filter((a: any) => a.verpakking_type===type).reduce((s: number, a: any) => s+Number(a.accijns??a.totaal_accijns??0), 0)
                 const brouwA = brouwPerLiter * liters
