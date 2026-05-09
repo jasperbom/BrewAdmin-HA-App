@@ -424,6 +424,8 @@
   "lbl_quantity_short": "Cant.",
   "lbl_total_filled": "Total envasado",
   "lbl_excl_vat": "sin IVA",
+  "lbl_voorcalc": "pre-cálc.",
+  "batch_costs_excl_vat_hint": "Todos los importes son sin IVA. El IVA de los ingredientes, el envasado y los gastos generales es deducible como IVA soportado.",
   "lbl_not_specified": "no especificado",
   "lbl_empty": "Vacío",
   "lbl_description": "Descripción",

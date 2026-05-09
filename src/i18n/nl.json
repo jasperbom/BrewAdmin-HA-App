@@ -424,6 +424,8 @@
   "lbl_quantity_short": "Qty",
   "lbl_total_filled": "Totaal gevuld",
   "lbl_excl_vat": "excl. BTW",
+  "lbl_voorcalc": "voorcalc.",
+  "batch_costs_excl_vat_hint": "Alle bedragen zijn exclusief BTW. BTW op grondstoffen, verpakking en overhead is aftrekbaar als voorbelasting.",
   "lbl_not_specified": "niet opgegeven",
   "lbl_empty": "Leeg",
   "lbl_description": "Omschrijving",
