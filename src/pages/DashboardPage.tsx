@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { fmt, fmtD, fmtQty } from '../utils/format'
+import { fmt, fmtD, fmtQty, tod } from '../utils/format'
 import { resolveTankHistorie, getNegatieveVoorraadPosities } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
@@ -302,7 +302,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     const nieuw: any = {
       id: newId,
       batch_id: metingBatchId,
-      datum: new Date().toISOString().split('T')[0],
+      datum: tod(),
       tijd: new Date().toTimeString().slice(0, 5),
     };
     if (mForm.sg)   nieuw.sg   = Number(mForm.sg);
@@ -346,7 +346,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     const entry: any = {
       id: Date.now(),
       taak_id: haccpFormTaakId,
-      datum: new Date().toISOString().slice(0, 10),
+      datum: tod(),
       uitgevoerd_door: haccpForm.uitgevoerd_door.trim(),
     };
     if (haccpForm.opmerking) entry.opmerking = haccpForm.opmerking;
