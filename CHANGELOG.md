@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.47] — 2026-05-09
+
+### Fixed — Dashboard: beschikbare voorraad en THT-alerts kloppen weer
+
+De stat-kaart "Voorraad beschikbaar" en de THT-waarschuwingen op het dashboard rekenden op `uitleveringen.aantal − uitleveringen.verkocht_stuks`. Sinds `verkocht_stuks` bij het aanmaken van een uitlevering automatisch gelijk wordt gezet aan `aantal` (`BestellingenPage.tsx:515`) was het verschil voor nieuwe data altijd 0 — de teller kwam structureel te laag uit en de THT-alerts pakten alleen oude (niet-WC-gemigreerde) records.
+
+De berekening gebruikt nu dezelfde bron als de AGP-, Bestellingen- en Producten-pagina's: `voorraadPerLocatie(afv, locaties, uit, verplaatsingen, afboekingen)` per afvulling, gesommeerd over alle locaties. De THT-waarschuwingen zijn eveneens omgezet naar afvullingen (de bron van waarheid voor THT en resterende voorraad), zodat alleen bier dat fysiek nog op voorraad staat een waarschuwing genereert.
+
+### Files
+- `src/pages/DashboardPage.tsx` — `voorraadPerLocatie` import toegevoegd; `beschVoorraad`, `uitMetTht`, `uitVerlopen` en `uitBinnen30` afgeleid van afvullingen i.p.v. uitleveringen; `VoorraadRow` accepteert nu `{afv, beschik}` met de werkelijk resterende voorraad.
+- `config.yaml` — versie bump 1.9.46 → 1.9.47.
+
+---
+
 ## [1.9.46] — 2026-05-09
 
 ### Fixed/Added — AGP-Mutaties: alle verplaatsingen zichtbaar + verwijderbaar
