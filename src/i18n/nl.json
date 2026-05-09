@@ -504,6 +504,8 @@
   "err_select_packaging_qty": "Selecteer een verpakking en voer het aantal in",
   "err_invalid_packaging": "Ongeldige verpakking",
   "err_insufficient_packaging_n": "Onvoldoende verpakkingen: {n} stuks",
+  "warn_afvullen_no_abv": "Geen ABV ingevuld op deze batch. De voorcalculatie van de accijns valt terug op het basistarief (€/hL zonder ABV-component) en wordt zo vastgelegd op de afvulling. Wil je toch afvullen?",
+  "warn_afvullen_abv_estimate": "Er is geen FG-meting of eind-SG ingevuld op deze batch. De ABV ({abv}%) op de batch komt vermoedelijk nog uit het recept (schatting), niet uit een werkelijke meting. Dit beïnvloedt de voorcalculatie-accijns die op de afvulling wordt bevroren. Wil je toch afvullen?",
   "err_cannot_delete_has_uitleveringen": "Kan niet verwijderen: er zijn al uitleveringen.",
   "err_cannot_delete_filling": "Kan niet verwijderen: er zijn al uitleveringen vanuit deze afvulling.",
   "err_confirm_delete_archive": "Verwijderen uit archief?",

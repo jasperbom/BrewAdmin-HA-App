@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.41] — 2026-05-09
+
+### Added — Waarschuwing bij afvullen als batch-ABV nog de receptschatting kan zijn
+
+De voorcalculatie-accijns wordt op het moment van afvullen bevroren op de afvulling. Die berekening leest `batch.ABV` direct — er wordt niet zelf uit OG/FG herrekend en de schatting uit het recept (`b.measuredAbv || b.estimatedAbv` bij Brewfather-import) wordt niet onderscheiden van een echte meting. Als de brouwer vergeet de gemeten ABV in te vullen, wordt het voorcalc-bedrag dus berekend met de receptschatting en blijft dat bedrag onherroepelijk op de afvulling staan.
+
+`doAfvullen` controleert nu vóór afvullen:
+
+1. **`batch.ABV` ontbreekt of is 0** — confirm-dialoog: "Geen ABV ingevuld op deze batch. De voorcalculatie van de accijns valt terug op het basistarief (€/hL zonder ABV-component) en wordt zo vastgelegd op de afvulling. Wil je toch afvullen?"
+2. **`batch.ABV` is wél gezet, maar er is géén FG ingevuld én géén `gist_metingen`-record met `sg`-waarde** — confirm-dialoog: "Er is geen FG-meting of eind-SG ingevuld op deze batch. De ABV ({abv}%) op de batch komt vermoedelijk nog uit het recept (schatting), niet uit een werkelijke meting. Dit beïnvloedt de voorcalculatie-accijns die op de afvulling wordt bevroren. Wil je toch afvullen?"
+
+Beide dialogen zijn niet-blokkerend: de brouwer kan bewust doorgaan (bv. als er andere bewijsstukken zijn).
+
+### Files
+- `src/pages/BatchesPage.tsx` — `doAfvullen` toetst `selB.ABV` en de aanwezigheid van een FG / SG-meting (via `gistMetingen`) vóór de voorcalc-snapshot wordt vastgelegd; toont confirms met de bestaande i18n-helpers.
+- `src/i18n/{nl,en,de,fr,es}.json` — 2 nieuwe sleutels: `warn_afvullen_no_abv`, `warn_afvullen_abv_estimate`.
+- `config.yaml` — versie bump 1.9.40 → 1.9.41.
+
+---
+
 ## [1.9.40] — 2026-05-09
 
 ### Fixed/Changed — Accijns op €0 in batch-kostprijs + duidelijke "excl. BTW"-vermelding

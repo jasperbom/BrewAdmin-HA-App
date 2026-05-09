@@ -1135,6 +1135,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (!vp) { alert(t('err_invalid_packaging')); return }
     const avail = vpVoorraadB(vp)
     if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}',String(avail))); return }
+    // Voorcalc-accijns wordt direct bevroren op de afvulling. Waarschuw als de
+    // batch-ABV vermoedelijk nog de receptschatting is in plaats van het gerede
+    // product, want dat beïnvloedt het bevroren accijnsbedrag onherroepelijk.
+    const abvVal = Number(selB?.ABV || 0)
+    if (abvVal <= 0) {
+      if (!confirm(t('warn_afvullen_no_abv'))) return
+    } else {
+      const heeftFg = Number(selB?.FG || 0) > 0
+      const heeftSgMeting = (gistMetingen||[]).some((m: any) => m.batch_id === selB?.id && Number(m.sg) > 0)
+      if (!heeftFg && !heeftSgMeting) {
+        if (!confirm(t('warn_afvullen_abv_estimate').replace('{abv}', abvVal.toFixed(1)))) return
+      }
+    }
     if (Array.isArray(vp.onderdelen) && vp.onderdelen.length) {
       setOnderdelen((prev: any[]) => prev.map((od: any) => {
         const usage = vp.onderdelen.find((o: any) => o.onderdeel_id === od.id)

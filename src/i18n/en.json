@@ -504,6 +504,8 @@
   "err_select_packaging_qty": "Select a packaging type and enter the quantity",
   "err_invalid_packaging": "Invalid packaging",
   "err_insufficient_packaging_n": "Insufficient packaging: {n} units",
+  "warn_afvullen_no_abv": "No ABV recorded on this batch. The pre-calculated excise will fall back to the base rate (€/hL without ABV component) and will be frozen on the packaging record. Continue anyway?",
+  "warn_afvullen_abv_estimate": "No FG measurement or final SG has been recorded on this batch. The ABV ({abv}%) on the batch is likely still the recipe estimate, not a real measurement. This affects the pre-calculated excise that will be frozen on the packaging record. Continue anyway?",
   "err_cannot_delete_has_uitleveringen": "Cannot delete: deliveries already exist.",
   "err_cannot_delete_filling": "Cannot delete: deliveries already exist for this filling.",
   "err_confirm_delete_archive": "Remove from archive?",
