@@ -504,6 +504,8 @@
   "err_select_packaging_qty": "Sélectionnez un emballage et entrez la quantité",
   "err_invalid_packaging": "Emballage invalide",
   "err_insufficient_packaging_n": "Emballages insuffisants : {n} unités",
+  "warn_afvullen_no_abv": "Aucun ABV renseigné sur ce lot. Le pré-calcul des accises retombe sur le tarif de base (€/hL sans composante ABV) et sera figé sur l'enregistrement d'embouteillage. Continuer quand même ?",
+  "warn_afvullen_abv_estimate": "Aucune mesure de FG ou de SG final n'a été enregistrée pour ce lot. L'ABV ({abv}%) du lot provient probablement encore de l'estimation de la recette, pas d'une mesure réelle. Cela affecte le pré-calcul des accises figé sur l'enregistrement d'embouteillage. Continuer quand même ?",
   "err_cannot_delete_has_uitleveringen": "Impossible de supprimer : des livraisons existent déjà.",
   "err_cannot_delete_filling": "Impossible de supprimer : des livraisons existent déjà pour ce remplissage.",
   "err_confirm_delete_archive": "Supprimer de l'archive ?",

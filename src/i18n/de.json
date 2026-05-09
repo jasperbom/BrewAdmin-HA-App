@@ -504,6 +504,8 @@
   "err_select_packaging_qty": "Verpackung auswählen und Menge eingeben",
   "err_invalid_packaging": "Ungültige Verpackung",
   "err_insufficient_packaging_n": "Nicht genug Verpackungen: {n} Stück",
+  "warn_afvullen_no_abv": "Kein Alkoholgehalt (ABV) für diese Charge eingetragen. Die Vorkalkulation der Verbrauchsteuer fällt auf den Grundsatz zurück (€/hL ohne ABV-Komponente) und wird so auf der Abfüllung eingefroren. Trotzdem abfüllen?",
+  "warn_afvullen_abv_estimate": "Für diese Charge wurde keine FG-Messung oder finaler SG-Wert erfasst. Der ABV ({abv}%) der Charge stammt vermutlich noch aus der Rezeptschätzung und nicht aus einer tatsächlichen Messung. Das beeinflusst die auf der Abfüllung eingefrorene Vorkalk.-Verbrauchsteuer. Trotzdem abfüllen?",
   "err_cannot_delete_has_uitleveringen": "Löschen nicht möglich: Es gibt bereits Auslieferungen.",
   "err_cannot_delete_filling": "Löschen nicht möglich: Es gibt bereits Auslieferungen für diese Abfüllung.",
   "err_confirm_delete_archive": "Aus Archiv entfernen?",

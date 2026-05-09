@@ -504,6 +504,8 @@
   "err_select_packaging_qty": "Selecciona un envase e introduce la cantidad",
   "err_invalid_packaging": "Envase inválido",
   "err_insufficient_packaging_n": "Envases insuficientes: {n} unidades",
+  "warn_afvullen_no_abv": "No se ha registrado ABV en este lote. El pre-cálculo del impuesto especial recaerá en la tarifa base (€/hL sin componente ABV) y quedará congelado en el registro de envasado. ¿Continuar de todos modos?",
+  "warn_afvullen_abv_estimate": "No se ha registrado medición de FG ni SG final en este lote. El ABV ({abv}%) del lote probablemente sigue siendo la estimación de la receta, no una medición real. Esto afecta al pre-cálculo del impuesto especial que se congelará en el registro de envasado. ¿Continuar de todos modos?",
   "err_cannot_delete_has_uitleveringen": "No se puede eliminar: ya existen entregas.",
   "err_cannot_delete_filling": "No se puede eliminar: ya existen entregas para este llenado.",
   "err_confirm_delete_archive": "¿Eliminar del archivo?",
