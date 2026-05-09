@@ -424,6 +424,8 @@
   "lbl_quantity_short": "Qté",
   "lbl_total_filled": "Total embouteillé",
   "lbl_excl_vat": "HT",
+  "lbl_voorcalc": "pré-calc.",
+  "batch_costs_excl_vat_hint": "Tous les montants sont hors TVA. La TVA sur les ingrédients, l'emballage et les frais généraux est déductible en tant que TVA en amont.",
   "lbl_not_specified": "non renseigné",
   "lbl_empty": "Vide",
   "lbl_description": "Désignation",

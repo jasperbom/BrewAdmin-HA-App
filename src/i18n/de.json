@@ -424,6 +424,8 @@
   "lbl_quantity_short": "Menge",
   "lbl_total_filled": "Gesamt abgefüllt",
   "lbl_excl_vat": "zzgl. MwSt.",
+  "lbl_voorcalc": "Vorkalk.",
+  "batch_costs_excl_vat_hint": "Alle Beträge verstehen sich zuzüglich MwSt. Die MwSt. auf Zutaten, Verpackung und Gemeinkosten ist als Vorsteuer abziehbar.",
   "lbl_not_specified": "nicht angegeben",
   "lbl_empty": "Leer",
   "lbl_description": "Bezeichnung",

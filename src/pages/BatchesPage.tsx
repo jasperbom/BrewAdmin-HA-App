@@ -3053,12 +3053,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       : Number(vp.kosten_verpakking||0)+Number(vp.kosten_afsluiting||0)+Number(vp.kosten_label||0))
                   : 0
                 const totVerpK = kPerStuk * stuks
-                const totAcc = batchAcc.filter((a: any) => a.verpakking_type===type).reduce((s: number, a: any) => s+Number(a.accijns??a.totaal_accijns??0), 0)
+                // Accijns: gebruik daadwerkelijk geboekte accijns (uit uitslagen/orders) als die er is.
+                // Zo niet, val terug op de voorcalc-snapshot per afvulling — dan ziet de gebruiker
+                // ook bij Verpakt (vóór uitlevering) al een realistische kostprijs.
+                const totAccActueel = batchAcc.filter((a: any) => a.verpakking_type===type).reduce((s: number, a: any) => s+Number(a.accijns??a.totaal_accijns??0), 0)
+                const totAccVoorcalc = rows.reduce((s: number, a: any) => s+Number(a.voorcalc_accijns_totaal||0), 0)
+                const totAcc = totAccActueel > 0 ? totAccActueel : totAccVoorcalc
+                const accIsVoorcalc = totAccActueel === 0 && totAccVoorcalc > 0
                 const brouwA = brouwPerLiter * liters
-                return {type, stuks, liters, kPerStuk, totVerpK, totAcc, brouwA, totaal: brouwA+totVerpK+totAcc, perStuk: stuks>0?(brouwA+totVerpK+totAcc)/stuks:0}
+                return {type, stuks, liters, kPerStuk, totVerpK, totAcc, accIsVoorcalc, brouwA, totaal: brouwA+totVerpK+totAcc, perStuk: stuks>0?(brouwA+totVerpK+totAcc)/stuks:0}
               })
               const somVerpK = typeData.reduce((s: number, td: any) => s+td.totVerpK, 0)
-              const somAcc = batchAcc.reduce((s: number, a: any) => s+Number(a.accijns??a.totaal_accijns??0), 0)
+              const somAcc = typeData.reduce((s: number, td: any) => s+td.totAcc, 0)
+              const somAccIsVoorcalc = typeData.some((td: any) => td.accIsVoorcalc) && !typeData.some((td: any) => !td.accIsVoorcalc && td.totAcc > 0)
               const totaalKostprijs = totBrouwkosten + somVerpK + somAcc
               return (
                 <div className="bg-white rounded-xl shadow-card overflow-x-auto">
@@ -3066,6 +3073,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     title={t('batch_costs_summary')}
                     info={t('lbl_excl_vat')}
                   />
+                  <div className="px-4 pt-3">
+                    <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded px-3 py-2">
+                      <span className="font-semibold uppercase tracking-wide mr-1">{t('lbl_excl_vat')}</span>
+                      <span className="text-amber-700">— {t('batch_costs_excl_vat_hint')}</span>
+                    </div>
+                  </div>
                   <div className="p-4 space-y-4 text-sm">
                     <div>
                       <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{t('batch_costs_ingredients')}</p>
@@ -3084,7 +3097,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <div className="bg-gray-50 rounded p-3 space-y-1">
                           <div className="flex justify-between text-gray-600"><span>{t('batch_brewing_cost_share')} ({td.liters.toFixed(1)}L @ {fmt(brouwPerLiter)}/L)</span><span>{fmt(td.brouwA)}</span></div>
                           <div className="flex justify-between text-gray-600"><span>{t('lbl_packaging')} ({td.stuks}× @ {fmt(td.kPerStuk)})</span><span>{td.kPerStuk>0?fmt(td.totVerpK):<span className="text-gray-400">{t('lbl_not_specified')}</span>}</span></div>
-                          <div className="flex justify-between text-gray-600"><span>{t('nav_accijns')}</span><span>{fmt(td.totAcc)}</span></div>
+                          <div className="flex justify-between text-gray-600"><span>{t('nav_accijns')}{td.accIsVoorcalc && <span className="ml-1 text-xs text-amber-600">({t('lbl_voorcalc')})</span>}</span><span>{fmt(td.totAcc)}</span></div>
                           <div className="flex justify-between font-semibold border-t pt-1"><span>{t('batch_costs_subtotal_short')}</span><span className="text-amber-700">{fmt(td.totaal)}</span></div>
                           <div className="flex justify-between text-xs text-gray-500 pt-0.5"><span>{t('batch_cost_per_unit')}</span><span className="font-semibold text-green-700">{fmt(td.perStuk)}</span></div>
                         </div>
@@ -3093,7 +3106,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     <div className="border-t-2 border-gray-200 pt-3 space-y-1">
                       <div className="flex justify-between text-gray-600"><span>{t('batch_costs_subtotal')}</span><span>{fmt(totBrouwkosten)}</span></div>
                       <div className="flex justify-between text-gray-600"><span>{t('batch_costs_total_packaging')}</span><span>{somVerpK>0?fmt(somVerpK):<span className="text-gray-400">{t('lbl_not_specified')}</span>}</span></div>
-                      <div className="flex justify-between text-gray-600"><span>{t('batch_costs_total_excise')}</span><span>{fmt(somAcc)}</span></div>
+                      <div className="flex justify-between text-gray-600"><span>{t('batch_costs_total_excise')}{somAccIsVoorcalc && <span className="ml-1 text-xs text-amber-600">({t('lbl_voorcalc')})</span>}</span><span>{fmt(somAcc)}</span></div>
                       <div className="flex justify-between font-bold text-base border-t pt-2 mt-1"><span>{t('batch_costs_total')}</span><span className="text-amber-700">{fmt(totaalKostprijs)}</span></div>
                       <div className="flex gap-6 text-xs text-gray-500 pt-1">
                         {totLiter>0 && <span>{t('batch_costs_per_liter')}: <strong className="text-gray-700">{fmt(totaalKostprijs/totLiter)}</strong></span>}

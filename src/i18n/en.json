@@ -424,6 +424,8 @@
   "lbl_quantity_short": "Qty",
   "lbl_total_filled": "Total filled",
   "lbl_excl_vat": "excl. VAT",
+  "lbl_voorcalc": "pre-calc.",
+  "batch_costs_excl_vat_hint": "All amounts are exclusive of VAT. VAT on ingredients, packaging and overhead is deductible as input tax.",
   "lbl_not_specified": "not specified",
   "lbl_empty": "Empty",
   "lbl_description": "Description",

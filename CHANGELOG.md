@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.40] — 2026-05-09
+
+### Fixed/Changed — Accijns op €0 in batch-kostprijs + duidelijke "excl. BTW"-vermelding
+
+Twee problemen in het kostprijsoverzicht van een batch:
+
+1. **Accijns stond op €0 zolang er nog niets was uitgeleverd.** De berekening telde alleen daadwerkelijk geboekte accijnsregels op (uit uitslagen/orders). Een net afgevulde batch heeft die nog niet, dus de regel bleef leeg — terwijl op elke afvulling al een voorcalculatie-snapshot (`voorcalc_accijns_totaal`) staat. De kostprijs valt nu terug op die voorcalc als er nog geen werkelijke accijns is geboekt; de regel krijgt het label `(voorcalc.)` zodat zichtbaar is dat het om de potentiële accijnsschuld onder schorsing gaat. Zodra de batch wordt uitgeleverd en de werkelijke accijns geboekt is, schakelt het overzicht automatisch over op de werkelijke bedragen.
+
+2. **Niet duidelijk dat alle bedragen excl. BTW zijn.** Het info-label rechtsboven was klein en makkelijk te missen. Direct onder de header staat nu een opvallende amber hint-strook: "**EXCL. BTW** — Alle bedragen zijn exclusief BTW. BTW op grondstoffen, verpakking en overhead is aftrekbaar als voorbelasting."
+
+### Files
+- `src/pages/BatchesPage.tsx` — `typeData`-loop berekent nu `totAccActueel` (uit `batchAcc`) en `totAccVoorcalc` (uit `rows.voorcalc_accijns_totaal`); `totAcc` neemt de actuele waarde, anders de voorcalc, met flag `accIsVoorcalc`. `somAcc` somt nu `typeData.totAcc` op (zodat fallback ook in het eindtotaal meeloopt). UI: amber hint-strook "excl. BTW" onder de SectionHeader, en `(voorcalc.)`-label achter de accijnsregels wanneer fallback actief is.
+- `src/i18n/{nl,en,de,fr,es}.json` — 2 nieuwe sleutels: `lbl_voorcalc`, `batch_costs_excl_vat_hint`.
+- `config.yaml` — versie bump 1.9.39 → 1.9.40.
+
+---
+
 ## [1.9.39] — 2026-05-09
 
 ### Fixed — Verpakkingskosten in batch-kostprijsoverzicht (onderdelen-verpakkingen)
