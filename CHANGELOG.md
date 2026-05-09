@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.44] — 2026-05-09
+
+### Fixed/Added — AGP-Mutaties: alle verplaatsingen zichtbaar + verwijderbaar
+
+De Mutaties-tabel op de AGP-pagina toonde alleen de 20 meest recente verplaatsingen (`recenteMutaties.slice(0, 20)`). Bij meer dan 20 verplaatsingen verdween een ouder record uit het zicht — terwijl `voorraadPerLocatie` het record nog wél meetelt. Effect: een afvulling kon "buiten AGP" staan zonder dat er een zichtbare mutatie voor te vinden was.
+
+De slice is verwijderd: alle verplaatsingen zijn nu zichtbaar, gesorteerd op datum (nieuwste eerst), met een zoekveld erboven dat filtert op batchnaam, batchnummer, verpakking, locatie en datum. De badge-info naast de header toont voortaan het werkelijke aantal records (niet de gefilterde count).
+
+Tegelijkertijd is een verwijder-knop per regel toegevoegd, zodat een foutieve verplaatsing direct kan worden teruggedraaid:
+
+- Voert een bevestigingsdialoog uit met een duidelijke beschrijving (aantal, van, naar) en — indien van toepassing — het accijnsbedrag dat wordt teruggedraaid.
+- Verwijdert het verplaatsings-record uit `verplaatsingen`.
+- Verwijdert het gekoppelde accijnsrecord (`accijns_record_id`) als de verplaatsing AGP→buiten was. Hierdoor keert de voorraad terug onder schorsing op AGP.
+- Blokkeert verwijdering als het gekoppelde accijnsrecord al `betaald: true` is — in dat geval moet eerst de betaling worden ontkoppeld.
+- Logt de actie in de audit-log.
+
+### Files
+- `src/pages/AgpPage.tsx` — `.slice(0, 20)` verwijderd; `mutZoek`-state + `SearchInput`; nieuwe `deleteVerplaats`-handler met betaald-blokkade en automatische accijns-teruggave; extra kolom met verwijder-knop in de Mutaties-tabel.
+- `src/i18n/{nl,en,de,fr,es}.json` — 5 nieuwe sleutels: `agp_zoek_mutaties`, `agp_zoek_geen_resultaten`, `agp_verplaats_delete_confirm`, `agp_verplaats_delete_confirm_acc`, `agp_err_verplaats_acc_betaald`.
+- `config.yaml` — versie bump 1.9.43 → 1.9.44.
+
+---
+
 ## [1.9.43] — 2026-05-09
 
 ### Fixed — Phantom voorraad per locatie bij inconsistente verplaatsingen
