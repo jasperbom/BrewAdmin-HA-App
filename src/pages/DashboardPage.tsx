@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD, fmtQty, tod } from '../utils/format'
-import { resolveTankHistorie, getNegatieveVoorraadPosities } from '../utils/calculations'
+import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie } from '../utils/calculations'
 import { STATUS_CLR } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { haCallService, haGetState } from '../utils/api'
@@ -151,15 +151,26 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
   const binnen90     = lotsMetTht.filter((l: any) => { const d = new Date(l.houdbaarheid); return d >= today && (d.getTime()-today.getTime())/dayMs > 30 && (d.getTime()-today.getTime())/dayMs <= 90; }).sort((a: any,b: any) => new Date(a.houdbaarheid).getTime() - new Date(b.houdbaarheid).getTime());
   const daysLeft = (d: any) => Math.ceil((new Date(d).getTime() - today.getTime()) / dayMs);
 
-  // ── Beer stock expiry ─────────────────────────────────────────────────────
-  const uitMetTht   = uit.filter((u: any) => u.tht && (Number(u.aantal||0) - Number(u.verkocht_stuks||0)) > 0);
-  const uitVerlopen = uitMetTht.filter((u: any) => new Date(u.tht) < today).sort((a: any,b: any) => new Date(a.tht).getTime() - new Date(b.tht).getTime());
-  const uitBinnen30 = uitMetTht.filter((u: any) => { const d = new Date(u.tht); return d >= today && (d.getTime()-today.getTime())/dayMs <= 30; }).sort((a: any,b: any) => new Date(a.tht).getTime() - new Date(b.tht).getTime());
+  // ── Beer stock expiry & beschikbare voorraad ─────────────────────────────
+  // Beschikbaarheid wordt afgeleid uit de afvullingen via `voorraadPerLocatie`
+  // (afvulling minus uitleveringen, verplaatsingen en afboekingen). Vroeger werd
+  // hier `uit.aantal − uit.verkocht_stuks` gebruikt, maar omdat `verkocht_stuks`
+  // bij het aanmaken van een uitlevering gelijk wordt gezet aan `aantal`, gaf
+  // dat altijd 0 voor nieuwe data — de stat-kaart en THT-alerts klopten niet.
+  const avMetVoorraad = (av || []).map((a: any) => {
+    const v = voorraadPerLocatie(a, locaties, uit, verplaatsingen, afboekingen);
+    const beschik = Object.values(v).reduce((s: number, n: any) => s + Number(n || 0), 0);
+    return { afv: a, beschik };
+  });
+  const beschVoorraad = avMetVoorraad.reduce((s: number, x: any) => s + x.beschik, 0);
+
+  const avMetTht   = avMetVoorraad.filter((x: any) => x.afv.tht && x.beschik > 0);
+  const uitVerlopen = avMetTht.filter((x: any) => new Date(x.afv.tht) < today).sort((a: any,b: any) => new Date(a.afv.tht).getTime() - new Date(b.afv.tht).getTime());
+  const uitBinnen30 = avMetTht.filter((x: any) => { const d = new Date(x.afv.tht); return d >= today && (d.getTime()-today.getTime())/dayMs <= 30; }).sort((a: any,b: any) => new Date(a.afv.tht).getTime() - new Date(b.afv.tht).getTime());
 
   // ── Stat counts ───────────────────────────────────────────────────────────
   const openAccijns    = acc.filter((a: any) => !a.betaald);
   const openAccBed     = openAccijns.reduce((s: any, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0);
-  const beschVoorraad  = uit.reduce((s: any, u: any) => s + Number(u.aantal||0) - Number(u.verkocht_stuks||0), 0);
   const openBestellingen = bi.filter((b: any) => ['nieuw','gepickt'].includes(b.status));
   const actiefBatches  = bat.filter((b: any) => b.status !== 'Gesloten');
 
@@ -741,11 +752,11 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     );
   };
 
-  const VoorraadRow = ({u, urgent}: any) => {
-    const days  = daysLeft(u.tht);
-    const batch = bat.find((b: any) => b.id === u.batch_id);
+  const VoorraadRow = ({afv, beschik, urgent}: any) => {
+    const days  = daysLeft(afv.tht);
+    const batch = bat.find((b: any) => b.id === afv.batch_id);
     const bier  = batch?.naam || t('lbl_onbekend');
-    const beschik = Number(u.aantal||0) - Number(u.verkocht_stuks||0);
+    const verp  = afv.verpakking_type || afv.verpakking_naam || '';
     return (
       <div className={`flex items-center justify-between px-4 py-3 rounded-lg border ${urgent?'bg-red-50 border-red-200':'bg-yellow-50 border-yellow-200'}`}>
         <div className="flex flex-col">
@@ -753,11 +764,11 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
             <span className="font-medium text-sm text-gray-800">{bier}</span>
             {batch?.batch_nummer && <span className="text-xs text-gray-400 font-mono">#{batch.batch_nummer}</span>}
           </div>
-          <span className="text-xs text-gray-500">{u.verpakking_type} · {beschik}× {t('lbl_available')}</span>
+          <span className="text-xs text-gray-500">{verp} · {beschik}× {t('lbl_available')}</span>
         </div>
         <div className={`text-right text-sm font-semibold ${urgent?'text-red-600':'text-yellow-700'}`}>
           {urgent ? `${Math.abs(days)}d ${t('stock_expired')}` : days===0 ? t('stock_expires_today') : `${days}d`}
-          <div className="text-xs font-normal text-gray-500">{fmtD(u.tht)}</div>
+          <div className="text-xs font-normal text-gray-500">{fmtD(afv.tht)}</div>
         </div>
       </div>
     );
@@ -832,7 +843,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
               </h2>
               <div className="space-y-2">
                 {verlopen.map((l: any)   => <LotRow key={l.id} lot={l} urgent={true} />)}
-                {uitVerlopen.map((u: any) => <VoorraadRow key={u.id} u={u} urgent={true} />)}
+                {uitVerlopen.map((x: any) => <VoorraadRow key={`afv-${x.afv.id}`} afv={x.afv} beschik={x.beschik} urgent={true} />)}
               </div>
             </div>
           )}
@@ -844,7 +855,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
               </h2>
               <div className="space-y-2">
                 {binnen30.map((l: any)   => <LotRow key={l.id} lot={l} urgent={false} />)}
-                {uitBinnen30.map((u: any) => <VoorraadRow key={u.id} u={u} urgent={false} />)}
+                {uitBinnen30.map((x: any) => <VoorraadRow key={`afv-${x.afv.id}`} afv={x.afv} beschik={x.beschik} urgent={false} />)}
               </div>
             </div>
           )}
