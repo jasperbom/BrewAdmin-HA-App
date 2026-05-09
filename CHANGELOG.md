@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.43] — 2026-05-09
+
+### Fixed — Phantom voorraad per locatie bij inconsistente verplaatsingen
+
+Op de Productenpagina kon de voorraad-per-locatie groter zijn dan het aantal afgevulde stuks. Voorbeeld uit het veld: 1× Poly Fust 20 afgevuld, "Beschikbaar: 1×", maar de locatie-badge toonde "Bijkeuken: 2×". Oorzaak zat in `voorraadPerLocatie` (`src/utils/calculations.ts`): elke verplaatsing/uitlevering/afboeking werd ongecapt op de bestemming opgeteld, waarna de bron-locatie met een eventuele negatieve waarde naar 0 werd geclampt. Een verplaatsing van 2× terwijl er maar 1× op de bron stond (bv. door een data-inconsistentie of een afvulling die later naar beneden is bijgesteld), resulteerde dan in 0 op AGP + 2 op Bijkeuken — phantom voorraad.
+
+Elke beweging wordt nu gecapt op werkelijk beschikbare bron-voorraad: een verplaatsing kan nooit meer verzetten dan er op dat moment op de bron staat. De som over alle locaties is daarmee altijd ≤ `afgevuld − uitgeleverd − afgeboekt`, en de badge ‘Bijkeuken: 2×’ verandert in het werkelijke aantal (1× in dit geval). De `voorraadPerLocatieRaw`-variant blijft ongewijzigd, zodat de S-5-signalering voor negatieve voorraad ruwe waarden blijft tonen voor diagnostiek.
+
+### Files
+- `src/utils/calculations.ts` — `voorraadPerLocatie`: verplaatsingen, uitleveringen en afboekingen worden gecapt op `Math.min(aantal, max(0, result[bron]))`. `voorraadPerLocatieRaw` blijft gelijk.
+- `config.yaml` — versie bump 1.9.42 → 1.9.43.
+
+---
+
 ## [1.9.42] — 2026-05-09
 
 ### Added — Toon ABV waarmee de accijns is berekend in batch-kostprijs
