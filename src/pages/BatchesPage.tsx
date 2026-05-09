@@ -1193,7 +1193,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
 
   const delAv = (id: number) => {
-    if ((uit||[]).some((u: any) => u.afvulling_id === id)) { alert(t('err_cannot_delete_has_releases')); return }
+    if ((uit||[]).some((u: any) => u.afvulling_id === id)) { alert(t('err_cannot_delete_filling')); return }
     const a = (av||[]).find((a: any) => a.id === id)
     logAudit(auditLog, setAuditLog, {entiteit:'Afvulling', entiteit_id:id, actie:'verwijderd', omschrijving:`Batch ${selB?.naam||''}`})
     setAv((prev: any[]) => (prev||[]).filter((a: any) => a.id !== id))

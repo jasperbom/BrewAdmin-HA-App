@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
 import { newId } from '../utils/api'
-import { fmt, fmtD, fmtQty } from '../utils/format'
+import { fmt, fmtD, fmtQty, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -97,7 +97,7 @@ const StatiegeldPage: React.FC<Props> = ({
       const regels = stRegels.filter(r => r.statiegeld_soort === 'snd' && r.datum && r.datum >= p.from && r.datum <= p.to)
       const stuks = regels.reduce((s, r) => s + Number(r.hoeveelheid || 0), 0)
       const bedrag = rnd2(regels.reduce((s, r) => s + Number(r.netto || 0), 0))
-      const today = new Date().toISOString().slice(0, 10)
+      const today = tod()
       let status: 'toekomstig' | 'lopend' | 'openstaand' | 'afgedragen' = 'openstaand'
       if (p.from > today) status = 'toekomstig'
       else if (p.from <= today && today <= p.to) status = 'lopend'
@@ -186,7 +186,7 @@ const StatiegeldPage: React.FC<Props> = ({
 
     const nieuw: any = {
       id: newId(verkoopFacturen || []),
-      datum: new Date().toISOString().slice(0, 10),
+      datum: tod(),
       factuurnummer: nummer,
       klant_id: retourFor.klant_id ?? refFact?.klant_id ?? null,
       klant_naam: retourFor.label,

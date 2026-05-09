@@ -1804,5 +1804,16 @@
   "haccp_dash_geen_afwijkingen": "Aucun écart",
   "err_confirm_delete_inkoop": "Supprimer la facture d'achat ?",
   "msg_fetch_error": "Erreur lors de la récupération : ",
-  "msg_wc_not_active_settings": "WooCommerce non actif — voir Paramètres"
+  "msg_wc_not_active_settings": "WooCommerce non actif — voir Paramètres",
+  "excise_release_date": "Date de sortie",
+  "lbl_betaald": "Payé",
+  "err_no_invoice_for_order": "Aucune facture trouvée pour cette commande",
+  "excise_reviewer_required": "Avant la soumission, le second relecteur doit d'abord approuver via le bloc de contrôle sous le résumé.",
+  "err_cannot_delete_active_lots": "Impossible de supprimer : il existe encore des lots actifs.",
+  "err_export_failed": "Échec de l'export : {msg}",
+  "err_no_json_in_claude_response": "Aucune donnée JSON dans la réponse de Claude",
+  "tooltip_logistical_status": "Changement de statut logistique — aucun effet fiscal (Douane v2.4 §10.2)",
+  "tooltip_status_per_douane": "Statut selon Douane v2.4 §7.2.3",
+  "tooltip_expired_invoices": "Facture(s) expirée(s)",
+  "order_mark_shipped": "Marquer comme expédiée"
 }

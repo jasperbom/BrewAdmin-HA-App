@@ -7,7 +7,7 @@ import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry } from '../utils/api'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult } from '../utils/calculations'
-import { fmt, fmtD } from '../utils/format'
+import { fmt, fmtD, tod } from '../utils/format'
 
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
 // bij zodat de gebruiker waardes kan wijzigen, de impact kan bekijken, en pas
@@ -1110,7 +1110,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           const voorbeeldFactuur = {
             id: 1,
             factuurnummer: 'F-2026-001',
-            datum: new Date().toISOString().slice(0,10),
+            datum: tod(),
             status: 'open',
             netto: 120.00,
             btw: 25.20,

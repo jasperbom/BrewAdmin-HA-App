@@ -24,5 +24,12 @@ export const fmtD = (d: any): string => {
   return isNaN(date.getTime()) ? '' : date.toLocaleDateString('nl-NL')
 }
 
-export const tod = (): string =>
-  new Date().toISOString().split('T')[0]
+// YYYY-MM-DD volgens de LOKALE tijdzone (niet UTC). Vermijdt off-by-one
+// rond middernacht voor gebruikers ten oosten van UTC (bv. NL/BE in CET):
+// `new Date().toISOString().slice(0,10)` geeft daar de UTC-dag terug, die
+// 1–2 uur achterloopt op de lokale kalenderdag.
+const _pad2 = (n: number): string => String(n).padStart(2, '0')
+export const ymd = (d: Date): string =>
+  `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())}`
+
+export const tod = (): string => ymd(new Date())

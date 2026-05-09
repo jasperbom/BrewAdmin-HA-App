@@ -1,6 +1,6 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
-import { tod, r2, r3 } from '../utils/format'
+import { tod, ymd, r2, r3 } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
@@ -66,9 +66,9 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN}: any) {
   const now = new Date();
-  const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
+  const firstOfYear = ymd(new Date(now.getFullYear(), 0, 1));
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
-  const [dateTo, setDateTo] = React.useState(now.toISOString().slice(0,10));
+  const [dateTo, setDateTo] = React.useState(ymd(now));
   const [mainTab, setMainTab] = React.useState('verkoop');
   const [inkoopSortDesc, setInkoopSortDesc] = React.useState(true);
   const [expandedFactuur, setExpandedFactuur] = React.useState(null);
@@ -119,8 +119,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   // ── Rapporten tab state ────────────────────────────────────────────────────
   const [rapportTab, setRapportTab] = React.useState('wv')
-  const [rapportVan, setRapportVan] = React.useState(() => new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0,10))
-  const [rapportTot, setRapportTot] = React.useState(() => new Date().toISOString().slice(0,10))
+  const [rapportVan, setRapportVan] = React.useState(() => ymd(new Date(new Date().getFullYear(), 0, 1)))
+  const [rapportTot, setRapportTot] = React.useState(() => tod())
 
   const addLog = (entry: any) => setLog((prev: any)=>[...prev,{id:newId(prev||[]),datum:tod(),...entry}]);
 
@@ -312,7 +312,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   )
 
   const markeerAangifteIngediend = (periodeKey: string, bedrag: number) => {
-    const today = new Date().toISOString().slice(0,10);
+    const today = tod();
     setBtwAangiftes((prev: any[]) => {
       const zonder = (prev||[]).filter((a: any) => a.periodeKey !== periodeKey);
       return [...zonder, {id: newId(zonder), periodeKey, ingediend_datum: today, bedrag: Math.round(bedrag)}];
@@ -598,7 +598,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const totaal_btw   = totaalManual ? r2(totaalManual.btw)   : calc_btw;
     const totaal_bruto = totaalManual ? r2(totaalManual.bruto)  : r2(calc_netto + calc_btw);
     const nieuwFactuurId = newId(inkoopFacturen||[]);
-    const factuurDatum = factuurForm.datum || now.toISOString().slice(0,10)
+    const factuurDatum = factuurForm.datum || ymd(now)
     const rollover = getRolloverInfo(factuurDatum)
     setInkoopFacturen((prev: any) => [...prev, {
       id: nieuwFactuurId,
@@ -759,7 +759,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   };
 
   const markeerHerinnering = (factuurId: any) => {
-    const vandaag = new Date().toISOString().slice(0,10)
+    const vandaag = tod()
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === factuurId ? {...f, status: 'herinnering', herinnering_datum: vandaag} : f
     ));
@@ -767,7 +767,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   };
 
   const markeerTweedeHerinnering = (factuurId: any) => {
-    const vandaag = new Date().toISOString().slice(0,10)
+    const vandaag = tod()
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === factuurId ? {...f, status: 'tweede_herinnering', tweede_herinnering_datum: vandaag} : f
     ));
@@ -775,7 +775,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   };
 
   const markeerAanmaning = (factuurId: any) => {
-    const vandaag = new Date().toISOString().slice(0,10)
+    const vandaag = tod()
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
       f.id === factuurId ? {...f, status: 'aanmaning', aanmaning_datum: vandaag} : f
     ));
@@ -1047,7 +1047,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   const markeerInkoopBetaald = (id: number, betaaldDatum?: string) => {
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
-      f.id === id ? {...f, status: 'betaald', betaald_datum: betaaldDatum || new Date().toISOString().slice(0,10)} : f
+      f.id === id ? {...f, status: 'betaald', betaald_datum: betaaldDatum || tod()} : f
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'gewijzigd', omschrijving:'Status → betaald'});
   }
@@ -1745,7 +1745,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <tr key={k.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
                         onClick={()=>setViewingKlantId(viewingKlantId===k.id ? null : k.id)}>
                         <td className="py-2 pr-3 font-medium text-gray-800">
-                          {heeftVerlopen && <span className="inline-block w-2 h-2 bg-red-500 rounded-full mr-2 align-middle" title="Verlopen factuur(en)"/>}
+                          {heeftVerlopen && <span className="inline-block w-2 h-2 bg-red-500 rounded-full mr-2 align-middle" title={t('tooltip_expired_invoices')}/>}
                           {k.naam}
                         </td>
                         <td className="py-2 pr-3 text-gray-500 text-xs">{k.email||'—'}</td>
