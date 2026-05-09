@@ -1041,7 +1041,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const printOrderFactuur = () => {
     if (!selectedOrder) return
     const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
-    if (!factuur) { alert('Geen factuur gevonden voor deze bestelling'); return }
+    if (!factuur) { alert(t('err_no_invoice_for_order')); return }
     printFactuur(selectedOrder, factuur, breweryDetails||{}, appName, factuurLogo||logo)
   }
 
@@ -1195,7 +1195,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             <Btn v="secondary" onClick={addVerzendkosten}>🚚 {t('btn_verzendkosten')}</Btn>
           </>)}
           {selectedOrder.status === 'gepickt' && allPicked && (<>
-            <Btn v="secondary" onClick={markVerzonden} title="Logistieke statusovergang — geen fiscaal effect (Douane v2.4 §10.2)">📦 {t('order_mark_shipped')}</Btn>
+            <Btn v="secondary" onClick={markVerzonden} title={t('tooltip_logistical_status')}>📦 {t('order_mark_shipped')}</Btn>
             <Btn v="green" onClick={() => setShowAfrondModal(true)}>{t('order_complete')}</Btn>
           </>)}
           {selectedOrder.status === 'verzonden' && (

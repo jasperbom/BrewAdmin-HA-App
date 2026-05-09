@@ -949,7 +949,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                       {t(AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.lKey || ab.reden)}
                                     </span>
                                     {status && (
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide ${VERNIETIGING_STATUS_COLOR[status]}`} title="Status volgens Douane v2.4 §7.2.3">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide ${VERNIETIGING_STATUS_COLOR[status]}`} title={t('tooltip_status_per_douane')}>
                                         {VERNIETIGING_STATUS_LABEL[status]}
                                       </span>
                                     )}

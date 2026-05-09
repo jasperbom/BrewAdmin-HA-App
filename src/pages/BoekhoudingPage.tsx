@@ -1745,7 +1745,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <tr key={k.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
                         onClick={()=>setViewingKlantId(viewingKlantId===k.id ? null : k.id)}>
                         <td className="py-2 pr-3 font-medium text-gray-800">
-                          {heeftVerlopen && <span className="inline-block w-2 h-2 bg-red-500 rounded-full mr-2 align-middle" title="Verlopen factuur(en)"/>}
+                          {heeftVerlopen && <span className="inline-block w-2 h-2 bg-red-500 rounded-full mr-2 align-middle" title={t('tooltip_expired_invoices')}/>}
                           {k.naam}
                         </td>
                         <td className="py-2 pr-3 text-gray-500 text-xs">{k.email||'—'}</td>

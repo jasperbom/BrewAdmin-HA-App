@@ -100,7 +100,7 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string): Promise<an
   const result = await callClaudeProxy({model: 'claude-haiku-4-5-20251001', max_tokens: 500, messages})
   const raw = result.content?.[0]?.text || ''
   const m = raw.match(/\{[\s\S]*\}/)
-  if (!m) throw new Error('Geen JSON in Claude respons')
+  if (!m) throw new Error(t('err_no_json_in_claude_response'))
   const parsed = JSON.parse(m[0])
   return { leverancier: parsed.leverancier || null, datum: parsed.datum || null, factuurnummer: parsed.factuurnummer || null, _source: 'claude' }
 }

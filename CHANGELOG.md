@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.44] — 2026-05-09
+
+### Fixed — Ontbrekende vertalingen en hardcoded UI-strings opgeschoond
+
+Een controle van de hele app legde vier ontbrekende i18n-sleutels en een reeks
+hardcoded Nederlandse strings bloot die de meertalige UI doorbraken. Drie
+sleutels (`excise_release_date`, `lbl_betaald`, `err_cannot_delete_has_releases`)
+waren in **geen enkele** taal gedefinieerd, waardoor accijns-tabelheaders, de
+Boekhouding-klantentabel en een verwijdermelding op afvullingen de ruwe sleutel
+toonden in plaats van een label. Daarnaast bestond `order_mark_shipped` alleen
+in NL en viel terug op Nederlands voor EN/DE/FR/ES.
+
+Tegelijk zaten er nog negen hardcoded gebruikersgerichte strings in de code (4
+`alert(...)`-meldingen, 1 `throw new Error`, 3 `title`-tooltips en 1
+`placeholder`), die in strijd zijn met de i18n-regel uit `CLAUDE.md` ("NOOIT
+hardcoded gebruikersgerichte tekst"). Alle nieuwe sleutels zijn toegevoegd in
+nl/en/de/fr/es; alle 5 taalbestanden hebben nu exact 1.812 sleutels.
+
+### Files
+- `src/i18n/{nl,en,de,fr,es}.json` — 10 nieuwe sleutels toegevoegd in alle 5 talen, plus `order_mark_shipped` aangevuld in EN/DE/FR/ES.
+- `src/pages/BatchesPage.tsx` — `err_cannot_delete_has_releases` → `err_cannot_delete_filling` (bestaande sleutel hergebruikt).
+- `src/pages/AccijnsPage.tsx` — alert vervangen door `t('excise_reviewer_required')`.
+- `src/pages/BestellingenPage.tsx` — alert + tooltip via `t('err_no_invoice_for_order')` resp. `t('tooltip_logistical_status')`.
+- `src/pages/IngredientenPage.tsx` — alert via `t('err_cannot_delete_active_lots')`; placeholder `"— kies type —"` → `t('packaging_choose_type')`.
+- `src/pages/ProductenPage.tsx` — tooltip via `t('tooltip_status_per_douane')`.
+- `src/pages/BoekhoudingPage.tsx` — tooltip via `t('tooltip_expired_invoices')`.
+- `src/components/InkoopFactuurModal.tsx` — `throw new Error(...)` via `t('err_no_json_in_claude_response')`.
+- `src/utils/excel.ts` — `t`-import toegevoegd; export-fout via `t('err_export_failed')` met `{msg}`-substitutie.
+- `config.yaml` — versie bump 1.9.43 → 1.9.44.
+
+---
+
 ## [1.9.43] — 2026-05-09
 
 ### Fixed — Phantom voorraad per locatie bij inconsistente verplaatsingen

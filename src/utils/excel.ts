@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { t } from '../i18n'
 
 // Zet objectvelden om naar JSON strings zodat Excel ze kan opslaan
 const toRow = (o: any) => {
@@ -150,7 +151,7 @@ export const excelExport = (data: any) => {
     URL.revokeObjectURL(url)
   } catch (err) {
     console.error('Excel export fout:', err)
-    alert('Export mislukt: ' + (err instanceof Error ? err.message : String(err)))
+    alert(t('err_export_failed').replace('{msg}', err instanceof Error ? err.message : String(err)))
   }
 }
 
