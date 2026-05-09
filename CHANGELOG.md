@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.42] — 2026-05-09
+
+### Added — Toon ABV waarmee de accijns is berekend in batch-kostprijs
+
+In het kostprijsoverzicht van een batch staat nu achter elke accijnsregel het ABV-percentage waarmee de accijns is gerekend (bv. *"Accijns · 5,5% ABV (voorcalc.)"*). Bron:
+
+- Voor werkelijke accijns: `abv` op het accijnsrecord (door de uitleverflow gezet).
+- Voor voorcalc-fallback: `voorcalc_tarief_snapshot.abv` op de afvulling, bevroren bij afvullen.
+
+Zo kan de brouwer in één oogopslag controleren of de berekening klopt — bijvoorbeeld of de gebruikte ABV daadwerkelijk de gemeten ABV is en niet de receptschatting (zie ook de waarschuwing toegevoegd in 1.9.41).
+
+Het ABV wordt zowel per verpakkingstype als in de eindregel "Totaal accijns" getoond. Als er meerdere verschillende ABV-waarden in de bron zitten (zou eigenlijk niet voorkomen binnen één batch) wordt het ABV-suffix bewust weggelaten om misleiding te voorkomen.
+
+### Files
+- `src/pages/BatchesPage.tsx` — `typeData`-loop bepaalt `abvUsed` uit `accRows[].abv` (werkelijk) of `rows[].voorcalc_tarief_snapshot.abv` (voorcalc); `somAbvUsed` voor het eindtotaal werkt alleen als alle types dezelfde ABV gebruiken. Toegevoegd aan zowel de per-type accijnsregel als de totaal-regel.
+- `config.yaml` — versie bump 1.9.41 → 1.9.42.
+
+---
+
 ## [1.9.41] — 2026-05-09
 
 ### Added — Waarschuwing bij afvullen als batch-ABV nog de receptschatting kan zijn
