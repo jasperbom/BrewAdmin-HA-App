@@ -413,24 +413,26 @@ const IngredientenPage: React.FC<Props> = ({
         })
       }
     })
+    const btwSoort = factuurForm.btw_soort || 'binnenlands'
+    const verlegd = btwSoort !== 'binnenlands'
     const factuurRegels: any[] = []
     productLijst.forEach((p: any) => {
       const pn = p.prijs ? Number(p.prijs) : 0
       const netto = r2(pn * Number(p.qty || 0))
       const tarief = Number(p.btw_tarief) || 0
       const naam = p.ing_id ? (ing.find((i: any) => i.id === Number(p.ing_id))?.naam || p.nieuw.trim()) : p.nieuw.trim()
-      factuurRegels.push({ type: 'ingredient', naam, aantal_stuks: p.aantal_stuks ? Number(p.aantal_stuks) : null, inhoud_per_stuk: p.inhoud_per_stuk ? Number(p.inhoud_per_stuk) : null, hoeveelheid: r3(Number(p.qty)), eenheid: p.eenh, prijs_per_eenheid: pn || null, netto, btw_tarief: tarief, btw_bedrag: r2(netto * tarief / 100) })
+      factuurRegels.push({ type: 'ingredient', naam, aantal_stuks: p.aantal_stuks ? Number(p.aantal_stuks) : null, inhoud_per_stuk: p.inhoud_per_stuk ? Number(p.inhoud_per_stuk) : null, hoeveelheid: r3(Number(p.qty)), eenheid: p.eenh, prijs_per_eenheid: pn || null, netto, btw_tarief: tarief, btw_bedrag: verlegd ? 0 : r2(netto * tarief / 100), btw_soort: btwSoort })
     })
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0
       const netto = r2(ps * Number(v.aantal || 0))
       const tarief = Number(v.btw_tarief) || 0
-      factuurRegels.push({ type: 'verpakking', naam: v._naam || v.naam.trim(), aantal: Number(v.aantal), prijs_per_stuk: ps || null, netto, btw_tarief: tarief, btw_bedrag: r2(netto * tarief / 100) })
+      factuurRegels.push({ type: 'verpakking', naam: v._naam || v.naam.trim(), aantal: Number(v.aantal), prijs_per_stuk: ps || null, netto, btw_tarief: tarief, btw_bedrag: verlegd ? 0 : r2(netto * tarief / 100), btw_soort: btwSoort })
     })
     vrijeRegels.forEach((r: any) => {
       const netto = r2(parseFloat(r.netto) || 0)
       const tarief = Number(r.btw_tarief) || 0
-      factuurRegels.push({ type: 'overig', naam: r.naam.trim(), netto, btw_tarief: tarief, btw_bedrag: r2(netto * tarief / 100) })
+      factuurRegels.push({ type: 'overig', naam: r.naam.trim(), netto, btw_tarief: tarief, btw_bedrag: verlegd ? 0 : r2(netto * tarief / 100), btw_soort: btwSoort })
     })
     // Sla alleen een inkoopfactuur op als er factuurgegevens zijn ingevuld.
     // Zonder leverancier én factuurnummer wordt de ontvangst beschouwd als

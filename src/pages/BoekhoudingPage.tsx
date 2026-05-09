@@ -193,12 +193,46 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         return eff.startsWith(yearPrefix)
       })
       .forEach((f: any) => (f.regels||[]).forEach((r: any) => {
+        // Verlegde regels (intracom-EU / import-niet-EU) tellen niet mee in
+        // de "voorbelasting per tarief" — die gaan naar rubriek 4a/4b.
+        const soort = r.btw_soort || 'binnenlands';
+        if (soort !== 'binnenlands') return;
         const k = r.btw_tarief ?? 0;
         if (!map[k]) map[k] = {tarief:k, netto:0, btw:0};
         map[k].netto += r.netto||0;
         map[k].btw   += r.btw_bedrag||0;
       }));
     return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
+  }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
+
+  // Rubriek 4a (import niet-EU) en 4b (intracommunautaire verwerving):
+  // de afnemer berekent zelf de verschuldigde BTW over de netto-grondslag en
+  // geeft die op. Tegelijk is dit bedrag aftrekbaar als voorbelasting (5b),
+  // dus per saldo €0 — maar de rapportage is wettelijk verplicht.
+  const verlegdAangifte = React.useMemo(() => {
+    const periode = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
+    const targetKey = selectedPeriode?.key
+    const yearPrefix = `${aangifteYear}-`
+    const init = () => ({ netto: 0, btw: 0 })
+    const totals = { intracom_eu: init(), import_niet_eu: init() }
+    inkoopFacturen
+      .filter((f: any) => {
+        const eff = effectievePeriodeKey(f, periode)
+        if (targetKey) return eff === targetKey
+        return eff.startsWith(yearPrefix)
+      })
+      .forEach((f: any) => (f.regels||[]).forEach((r: any) => {
+        const soort = r.btw_soort
+        if (soort !== 'intracom_eu' && soort !== 'import_niet_eu') return
+        const netto = Number(r.netto) || 0
+        const tarief = Number(r.btw_tarief) || 0
+        totals[soort].netto += netto
+        totals[soort].btw   += netto * tarief / 100
+      }))
+    return {
+      rubriek4a: { netto: r2(totals.import_niet_eu.netto), btw: r2(totals.import_niet_eu.btw) },
+      rubriek4b: { netto: r2(totals.intracom_eu.netto),    btw: r2(totals.intracom_eu.btw) },
+    }
   }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
 
   const omzetBtwPerTarief = React.useMemo(() => {
@@ -527,7 +561,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         }]);
       }
     });
-    // Build factuur regels and save
+    // Build factuur regels and save. Bij intracom-EU of import-niet-EU is de BTW
+    // verlegd: leverancier factureert €0; de zelfberekende verschuldigde BTW
+    // wordt in de aangifte (rubriek 4a/4b) verwerkt en gelijktijdig als
+    // voorbelasting (5b) afgetrokken.
+    const btwSoort = factuurForm.btw_soort || 'binnenlands';
+    const verlegd = btwSoort !== 'binnenlands';
     const regels: any[] = [];
     productLijst.forEach((p: any) => {
       const pn = p.prijs ? Number(p.prijs) : 0;
@@ -535,19 +574,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find((i: any)=>i.id===Number(p.ing_id))?.naam||p.nieuw||'') : (p.nieuw||'');
       regels.push({type:'ingredient', naam, hoeveelheid:r3(Number(p.qty)), eenheid:p.eenh,
-        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Grondstoffen'});
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort:'Grondstoffen'});
     });
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
       const netto = r2(parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0)));
       const btw_tarief = Number(v.btw_tarief)||0;
       regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
-        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Verpakkingsmateriaal'});
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort:'Verpakkingsmateriaal'});
     });
     vrijeRegels.forEach((r: any) => {
       const netto = r2(parseFloat(r.netto)||0);
       const btw_tarief = Number(r.btw_tarief)||0;
-      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: r2(netto*btw_tarief/100), kostensoort: r.kostensoort||'Overig'});
+      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'});
     });
     // Geen inkoopfactuur opslaan als leverancier én factuurnummer beide leeg zijn:
     // dan geldt de ontvangst als voorraadcorrectie (lots blijven wel staan).
@@ -579,6 +618,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   const updateFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}: any) => {
     if (!editingFactuur) return;
+    const btwSoort = factuurForm.btw_soort || 'binnenlands';
+    const verlegd = btwSoort !== 'binnenlands';
     const regels: any[] = [];
     productLijst.forEach((p: any) => {
       const pn = p.prijs ? Number(p.prijs) : 0;
@@ -586,19 +627,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_tarief = Number(p.btw_tarief)||0;
       const naam = p.ing_id ? (ing.find((i: any)=>i.id===Number(p.ing_id))?.naam||p._naam||p.nieuw.trim()) : (p._naam||p.nieuw.trim());
       regels.push({type:'ingredient', naam, hoeveelheid:r3(Number(p.qty)), eenheid:p.eenh,
-        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Grondstoffen'});
+        prijs_per_eenheid:pn||null, netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort:'Grondstoffen'});
     });
     verpakkingLijst.forEach((v: any) => {
       const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0;
       const netto = r2(parseFloat(v.totaalprijs) || (ps * Number(v.aantal||0)));
       const btw_tarief = Number(v.btw_tarief)||0;
       regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
-        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort:'Verpakkingsmateriaal'});
+        prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort:'Verpakkingsmateriaal'});
     });
     vrijeRegels.forEach((r: any) => {
       const netto = r2(parseFloat(r.netto)||0);
       const btw_tarief = Number(r.btw_tarief)||0;
-      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag:r2(netto*btw_tarief/100), kostensoort: r.kostensoort||'Overig'});
+      regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'});
     });
     const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
     const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
@@ -1074,10 +1115,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     if (txIdx === null) return
     const tx = bankTransacties[txIdx]
     if (!tx) return
+    const btwSoort = factuurForm?.btw_soort || 'binnenlands'
+    const verlegd = btwSoort !== 'binnenlands'
     const regels: any[] = (vrijeRegels||[]).map((r: any) => {
       const netto = r2(parseFloat(r.netto)||0)
       const btw_tarief = Number(r.btw_tarief)||0
-      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: r2(netto*btw_tarief/100), kostensoort: r.kostensoort||'Overig'}
+      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'}
     })
     if (!regels.length) return
     const totaal_netto = r2(regels.reduce((s: any, r: any) => s+r.netto, 0))
@@ -2644,7 +2687,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           </div>
 
           {/* BTW per tarief (inkoop voorbelasting per geselecteerde periode of jaar) */}
-          {btwPerTariefAangifte.length > 0 && (
+          {(btwPerTariefAangifte.length > 0 || verlegdAangifte.rubriek4a.netto > 0 || verlegdAangifte.rubriek4b.netto > 0) && (
             <div className="space-y-4">
               <div className={card}>
                 <h3 className="text-sm font-semibold text-gray-700 mb-1">
@@ -2780,7 +2823,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   </div>
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_5b')}</div>
-                    <div className="font-bold text-blue-700 text-base mb-1">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0))}</div>
+                    <div className="font-bold text-blue-700 text-base mb-1">{fmt(
+                      (btwPerTariefAangifte as any[]).reduce((s: any, r: any) => s + (r.btw || 0), 0 as number)
+                      + verlegdAangifte.rubriek4a.btw
+                      + verlegdAangifte.rubriek4b.btw
+                    )}</div>
                     <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_5b_hint')}</div>
                   </div>
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
@@ -2790,6 +2837,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_2a')}</div>
                     <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_2a_hint')}</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_4a')}</div>
+                    <div className="font-bold text-gray-800 text-base">{fmt(verlegdAangifte.rubriek4a.netto)}</div>
+                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(verlegdAangifte.rubriek4a.btw)}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_4a_hint')}</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-blue-100">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_4b')}</div>
+                    <div className="font-bold text-gray-800 text-base">{fmt(verlegdAangifte.rubriek4b.netto)}</div>
+                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(verlegdAangifte.rubriek4b.btw)}</div>
+                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_4b_hint')}</div>
                   </div>
                 </div>
               </div>

@@ -246,6 +246,12 @@ export interface FactuurRegel {
   prijs_per_stuk?: number
   netto?: number
   btw_tarief?: number
+  btw_bedrag?: number
+  // BTW-soort voor intracommunautaire/import-compliance:
+  // - undefined of 'binnenlands' = leverancier rekent BTW (binnenlandse inkoop)
+  // - 'intracom_eu'              = intra-EU verwerving (verlegd → rubriek 4b/5b)
+  // - 'import_niet_eu'           = invoer van buiten de EU (verlegd → rubriek 4a/5b)
+  btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'
   kostensoort?: string
 }
 

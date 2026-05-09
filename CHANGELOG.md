@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.38] — 2026-05-09
+
+### Added — Intracommunautaire BTW-compliance op inkoopfacturen (rubriek 4a/4b)
+
+Wanneer je inkoopt bij een Belgische (of andere EU-)leverancier rekent die geen BTW (BTW-verlegd binnen de EU). De afnemer moet die BTW echter zelf berekenen en aangeven in **rubriek 4b** (verschuldigd) én tegelijk aftrekken in **rubriek 5b** (voorbelasting). Per saldo €0, maar wettelijk verplicht te rapporteren. Voor invoer van buiten de EU geldt hetzelfde via **rubriek 4a**.
+
+De inkoopfactuur-modal heeft nu een **"BTW-soort van factuur"**-keuze:
+
+- **Binnenlands (NL)** — leverancier rekent BTW (huidige gedrag, default)
+- **Intracommunautaire verwerving (EU)** — BTW verlegd, automatisch in rubriek 4b/5b
+- **Invoer van buiten EU** — BTW verlegd, automatisch in rubriek 4a/5b
+
+Bij verlegde facturen factureert de leverancier €0 BTW. De app slaat het regel-tarief (21%/9%) wel op — dat is de rate die de afnemer over de netto-grondslag zelf berekent voor de aangifte. In het BTW-aangiftepaneel zijn twee nieuwe kaarten toegevoegd (rubriek 4a en 4b) en de rubriek 5b-totaal telt de zelfberekende verlegde BTW automatisch op bij de binnenlandse voorbelasting.
+
+### Files
+- `src/types/index.ts` — `FactuurRegel.btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'` + `btw_bedrag?` toegevoegd. Backwards compatible: regels zonder `btw_soort` worden behandeld als `binnenlands`.
+- `src/components/InkoopFactuurModal.tsx` — `btwSoort`-state + dropdown bovenin het factuurpaneel; pre-select op basis van bestaande regels bij bewerken; verlegd-hintbox; `totaalBtw`/`btwTarieven`-totals worden 0 bij verlegde facturen; `btw_soort` propageert via `factuurForm` naar de save-handlers.
+- `src/pages/BoekhoudingPage.tsx` — `saveVrijeFactuur`, `updateFactuur` en `saveBoekingFactuur` zetten `btw_soort` op elke regel en `btw_bedrag = 0` bij verlegd. Nieuwe memo `verlegdAangifte` aggregeert netto+verschuldigde BTW per soort over de geselecteerde periode/jaar. `btwPerTariefAangifte` filtert nu alleen binnenlandse regels (verlegde regels gaan naar 4a/4b). Twee nieuwe rubriekkaarten (4a + 4b) in het BTW-hulppaneel; rubriek 5b-totaal includeert nu zowel binnenlandse voorbelasting als verlegde BTW uit 4a+4b.
+- `src/pages/IngredientenPage.tsx` — `saveOntvangst` propageert `btw_soort` naar elke regel en zet `btw_bedrag = 0` bij verlegde facturen.
+- `src/i18n/{nl,en,de,fr,es}.json` — 11 nieuwe sleutels: `lbl_rubriek_4a`/`_hint`, `lbl_rubriek_4b`/`_hint`, `lbl_btw_soort`, `lbl_btw_soort_binnenlands`/`_intracom_eu`/`_import_niet_eu`, `hint_btw_verlegd_intracom`/`_import`.
+- `config.yaml` — versie bump 1.9.37 → 1.9.38.
+
+---
+
 ## [1.9.37] — 2026-05-06
 
 ### Changed — Carbonisatie-richtlijn op basis van BKG Biertypen v2.4 (2021)

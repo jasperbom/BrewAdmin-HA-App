@@ -168,6 +168,12 @@ function InkoopFactuurModal({
   })
   const [factuurNr, setFactuurNr] = useState(initialData?.factuurnummer || '')
   const [datum, setDatum] = useState(initialData?.datum || tod())
+  // BTW-soort voor de factuur. Leid de initiële waarde af uit bestaande regels:
+  // wanneer een factuur al een verlegde regel bevat, voorselecteren we die soort.
+  const [btwSoort, setBtwSoort] = useState<'binnenlands' | 'intracom_eu' | 'import_niet_eu'>(() => {
+    const eersteRegel = initialData?.regels?.find((r: any) => r.btw_soort && r.btw_soort !== 'binnenlands')
+    return (eersteRegel?.btw_soort as any) || 'binnenlands'
+  })
   const [existingBijlage, setExistingBijlage] = useState(initialData?.bijlage || null)
   const [bijlageFile, setBijlageFile] = useState<File|null>(null)
   const [uploading, setUploading] = useState(false)
@@ -238,7 +244,7 @@ function InkoopFactuurModal({
     [productLijst.length, verpakkingLijst.length, vrijeList.length])
 
   const leverancier = leverancierSel === '__nieuw__' ? leverancierNieuw.trim() : leverancierSel
-  const factuurForm = {leverancier, factuur: factuurNr, datum}
+  const factuurForm = {leverancier, factuur: factuurNr, datum, btw_soort: btwSoort}
 
   const voegProductToe = () => {
     if (!productForm.ing_id && !productForm.nieuw.trim()) { alert(t('err_select_ingredient')); return }
@@ -337,14 +343,21 @@ function InkoopFactuurModal({
     })
   }
 
+  // Bij intracom-EU of import-niet-EU is de BTW verlegd: leverancier factureert
+  // €0 BTW. De zelfberekende verschuldigde BTW wordt apart in de aangifte
+  // (rubriek 4a/4b) verwerkt, niet in de factuurtotalen.
+  const isVerlegd = btwSoort !== 'binnenlands'
   const totaalNetto = productLijst.reduce((s: number, p: any) => s+(parseFloat(p.totaalprijs)||0), 0)
     + verpakkingLijst.reduce((s: number, v: any) => s+(parseFloat(v.totaalprijs)||0), 0)
     + vrijeList.reduce((s: number, r: any) => s+(parseFloat(r.netto)||0), 0)
-  const totaalBtw = productLijst.reduce((s: number, p: any) => s+(parseFloat(p.totaalprijs)||0)*(Number(p.btw_tarief)||0)/100, 0)
+  const totaalBtw = isVerlegd ? 0 : (
+    productLijst.reduce((s: number, p: any) => s+(parseFloat(p.totaalprijs)||0)*(Number(p.btw_tarief)||0)/100, 0)
     + verpakkingLijst.reduce((s: number, v: any) => s+(parseFloat(v.totaalprijs)||0)*(Number(v.btw_tarief)||0)/100, 0)
     + vrijeList.reduce((s: number, r: any) => s+(parseFloat(r.netto)||0)*(Number(r.btw_tarief)||0)/100, 0)
+  )
 
   const btwTarieven = (() => {
+    if (isVerlegd) return [] as [string, number][]
     const map: Record<string,number> = {}
     ;[...productLijst,...verpakkingLijst].forEach((p: any) => {
       const k = Number(p.btw_tarief||0); if (!map[k]) map[k] = 0
@@ -408,6 +421,21 @@ function InkoopFactuurModal({
             </div>
             <Inp label={t('lbl_invoice')} value={factuurNr} onChange={setFactuurNr} placeholder="F-2025-001" />
             <Inp label={t('lbl_invoice_date')} type="date" value={datum} onChange={setDatum} />
+          </div>
+          <div className="mt-3">
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_btw_soort')}</label>
+            <select value={btwSoort} onChange={e => setBtwSoort(e.target.value as any)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm">
+              <option value="binnenlands">{t('lbl_btw_soort_binnenlands')}</option>
+              <option value="intracom_eu">{t('lbl_btw_soort_intracom_eu')}</option>
+              <option value="import_niet_eu">{t('lbl_btw_soort_import_niet_eu')}</option>
+            </select>
+            {isVerlegd && (
+              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-800">
+                <span className="mt-0.5 flex-shrink-0">⇄</span>
+                <span>{btwSoort === 'intracom_eu' ? t('hint_btw_verlegd_intracom') : t('hint_btw_verlegd_import')}</span>
+              </div>
+            )}
           </div>
           {(() => {
             const ri = getRolloverInfo ? getRolloverInfo(datum) : null
