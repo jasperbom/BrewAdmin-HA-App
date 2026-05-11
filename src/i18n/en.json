@@ -1687,6 +1687,8 @@
   "tank_status_vuil": "Dirty",
   "tank_status_schoon": "Cleaned",
   "tank_status_ontsmet": "Sanitized",
+  "tanks_hygiene": "Hygiene",
+  "tanks_in_gebruik": "In use",
   "tanks_titel": "Tank status & cleaning",
   "tanks_intro": "Manage cleaning status per tank. Tanks emptied by a batch automatically become Dirty. A tank can only be reused once it is Sanitized.",
   "tanks_geen_tanks": "No tanks added yet. Add tanks via Settings.",

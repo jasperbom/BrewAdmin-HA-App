@@ -1689,6 +1689,8 @@
   "tank_status_vuil": "Vuil",
   "tank_status_schoon": "Schoon",
   "tank_status_ontsmet": "Ontsmet",
+  "tanks_hygiene": "Hygiëne",
+  "tanks_in_gebruik": "In gebruik",
   "tanks_titel": "Tankstatus & reiniging",
   "tanks_intro": "Beheer de reinigingsstatus per tank. Tanks die een batch verlaten gaan automatisch op Vuil. Een tank kan pas opnieuw ingezet worden als hij Ontsmet is.",
   "tanks_geen_tanks": "Nog geen tanks toegevoegd. Voeg tanks toe via Instellingen.",

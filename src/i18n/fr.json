@@ -1684,6 +1684,8 @@
   "tank_status_vuil": "Sale",
   "tank_status_schoon": "Nettoyée",
   "tank_status_ontsmet": "Désinfectée",
+  "tanks_hygiene": "Hygiène",
+  "tanks_in_gebruik": "En cours d'utilisation",
   "tanks_titel": "Statut & nettoyage des cuves",
   "tanks_intro": "Gérez le statut de nettoyage par cuve. Les cuves vidées par un lot passent automatiquement en Sale. Une cuve ne peut être réutilisée que lorsqu'elle est Désinfectée.",
   "tanks_geen_tanks": "Aucune cuve ajoutée. Ajoutez des cuves dans les Paramètres.",
