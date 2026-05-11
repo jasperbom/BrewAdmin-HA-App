@@ -1069,13 +1069,13 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                         ? {label: t('tanks_naar_ontsmet'), variant: 'green' as const, doel: 'Ontsmet' as CleanTarget}
                         : null;
                       return (
-                        <div className="flex items-center justify-between mb-1 gap-2">
+                        <div className="flex items-start justify-between mb-1 gap-2">
                           <span className="text-sm font-bold text-gray-700 truncate">{tk.naam || tk.id}</span>
                           <div
-                            className="flex items-center gap-1 flex-shrink-0"
+                            className="flex flex-col items-end gap-1 flex-shrink-0"
                             onClick={(e: any) => e.stopPropagation()}
                           >
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${badgeClsMap[displayStatus]}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${badgeClsMap[displayStatus]}`}>
                               {t(labelKey[displayStatus])}
                             </span>
                             {nextBtn && (

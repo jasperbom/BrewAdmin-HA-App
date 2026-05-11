@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.52] — 2026-05-11
+
+### Fixed — Status-pill en actieknop overlapten tanknaam
+
+Op smalle tank-cards (288 px) viel de combinatie `[pill] [Naar Schoon/Ontsmet]` rechts naast de tanknaam over de naam heen. Pill en knop staan nu verticaal gestapeld in een kolom rechtsboven, pill bovenaan met `whitespace-nowrap` zodat hij niet breekt, actieknop daaronder.
+
+### Files
+- `src/pages/DashboardPage.tsx` — top-row gewijzigd naar `flex-col items-end` voor de status-kolom.
+- `config.yaml` — versie bump 1.9.51 → 1.9.52.
+
+---
+
 ## [1.9.51] — 2026-05-11
 
 ### Fixed — Lege tank toonde nog "In gebruik" na Verpakt-overgang
