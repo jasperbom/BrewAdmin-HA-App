@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.53] — 2026-05-11
+
+### Changed — Coldcrash streept warmere vergistingsstappen af
+
+Als de brouwer op **Cold-crash** klikt, springen alle vergistingsprofiel-stappen met een temperatuur hoger dan de cold-crash target nu automatisch naar de status "afgerond" (line-through). De `vergisting_stap_idx` wordt verplaatst naar de eerste stap die op of onder het target ligt — typisch de cold-crash-stap zelf, of de laatste stap als er geen lagere temp in het profiel staat.
+
+De doel-stap wordt nooit teruggedraaid: als de batch al verder was dan de berekende sprong, blijft de huidige positie staan.
+
+### Files
+- `src/pages/DashboardPage.tsx` — `startColdCrash` zoekt de eerste stap met `temp ≤ target` en update `vergisting_stap_idx` + `vergisting_stap_start` in dezelfde batch-patch; audit-omschrijving vermeldt de stapsprong.
+- `config.yaml` — versie bump 1.9.52 → 1.9.53.
+
+---
+
 ## [1.9.52] — 2026-05-11
 
 ### Fixed — Status-pill en actieknop overlapten tanknaam

@@ -174,11 +174,34 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
       : (typeof tankTemp === 'number' && !isNaN(tankTemp) ? tankTemp : target);
     // Eerste stap: één ramp naar beneden, niet onder het target.
     const firstStep = Math.max(target, Math.round((startTemp - ramp) * 100) / 100);
+
+    // Vergistingsstap doorspoelen: alle stappen met temp > coldcrash-target zijn
+    // door de coldcrash heen gehaald en mogen afgestreept worden. Spring naar
+    // de eerste stap die op/onder target zit (vaak de coldcrash-stap zelf).
+    // Nooit regresseren: als de batch al verder was, blijft die positie staan.
+    const profiel: any[] = Array.isArray(batch?.vergistingsprofiel) ? batch.vergistingsprofiel : [];
+    const huidigeIdx = Math.max(0, Math.min(Math.max(0, profiel.length - 1), Number(batch?.vergisting_stap_idx ?? 0)));
+    let stapPatch: Record<string, any> = {};
+    if (profiel.length > 0) {
+      const eersteOpTarget = profiel.findIndex((s: any) => {
+        const tn = Number(s?.temp);
+        return !isNaN(tn) && tn <= target;
+      });
+      const doelIdx = eersteOpTarget >= 0 ? eersteOpTarget : profiel.length - 1;
+      const nieuweIdx = Math.max(huidigeIdx, doelIdx);
+      if (nieuweIdx !== huidigeIdx) {
+        stapPatch = {vergisting_stap_idx: nieuweIdx, vergisting_stap_start: nowIso};
+      }
+    }
+
     setBat((prev: any[]) => prev.map((b: any) => b.id === batch.id
-      ? {...b, status: 'Conditioneren', cold_crash_datum: nowIso, cold_crash_target: target, cold_crash_ramp: ramp, cold_crash_laatste_stap: nowIso}
+      ? {...b, status: 'Conditioneren', cold_crash_datum: nowIso, cold_crash_target: target, cold_crash_ramp: ramp, cold_crash_laatste_stap: nowIso, ...stapPatch}
       : b
     ));
-    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd', omschrijving: `Cold-crash gestart → ${target}°C (${ramp}°C/u), eerste stap ${firstStep}°C, status → Conditioneren`});
+    const stapTxt = stapPatch.vergisting_stap_idx != null
+      ? `, stap → ${Number(stapPatch.vergisting_stap_idx) + 1}/${profiel.length}`
+      : '';
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd', omschrijving: `Cold-crash gestart → ${target}°C (${ramp}°C/u), eerste stap ${firstStep}°C, status → Conditioneren${stapTxt}`});
     if (climate?.entity) setClimateTemp(climate.entity, firstStep);
   };
 
