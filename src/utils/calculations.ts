@@ -1,4 +1,4 @@
-import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch } from '../types'
+import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog } from '../types'
 import { convertEenheid } from './constants'
 import { ymd } from './format'
 
@@ -501,6 +501,38 @@ export const appendTankHistorie = (
   // Open een nieuwe entry voor de nieuwe tank
   hist.push({ tank: nieuweTank, from: datum, status: nieuweStatus })
   return hist
+}
+
+// ── Tank-reinigingsstatus helpers ───────────────────────────────────────────
+// Zet een tank op status `Vuil` zodra een batch hem verlaat. Idempotent: als
+// de tank al `Vuil` is wordt er geen extra log-entry geschreven (voorkomt
+// dubbele auto-entries bij snelle achter-elkaar statuswijzigingen).
+// Forceert `Vuil` ongeacht huidige status — een tank kan niet ontsmet zijn
+// als er net bier uit kwam.
+export const markTankVuilBijVertrek = (
+  oudeTankId: string | undefined | null,
+  statussen: TankStatusMap | undefined | null,
+  log: TankReinigingLog[] | undefined | null,
+  datum: string
+): { statussen: TankStatusMap, log: TankReinigingLog[], changed: boolean } => {
+  const st: TankStatusMap = { ...(statussen || {}) }
+  const lg: TankReinigingLog[] = Array.isArray(log) ? [...log] : []
+  if (!oudeTankId) return { statussen: st, log: lg, changed: false }
+  if (st[oudeTankId]?.status === 'Vuil') {
+    return { statussen: st, log: lg, changed: false }
+  }
+  const newId = lg.reduce((m, e) => Math.max(m, Number(e?.id || 0)), 0) + 1
+  const entry: TankReinigingLog = {
+    id: newId,
+    tank_id: oudeTankId,
+    datum,
+    uitgevoerd_door: 'systeem',
+    nieuwe_status: 'Vuil',
+    oorzaak: 'automatisch_leeg',
+  }
+  lg.push(entry)
+  st[oudeTankId] = { status: 'Vuil', sinds: datum, laatste_log_id: newId }
+  return { statussen: st, log: lg, changed: true }
 }
 
 // ── Batchnummer-volgorde ────────────────────────────────────────────────────

@@ -279,6 +279,24 @@ export const VERLIES_BRONNEN = [
   {key:'overig',    label:'verlies_bron_overig'},
 ]
 
+// Tank-reinigingsstatus (HACCP)
+export const TANK_REINIGING_STATUSSEN = ['Vuil', 'Schoon', 'Ontsmet'] as const
+export type TankReinigingStatusType = typeof TANK_REINIGING_STATUSSEN[number]
+
+// Kleur per status — volgt CLAUDE.md semantische conventie
+export const TANK_REINIGING_KLEUR: Record<string, string> = {
+  Vuil: 'red',
+  Schoon: 'blue',
+  Ontsmet: 'green',
+}
+
+// i18n-sleutel per status (voor labels in UI)
+export const TANK_REINIGING_LABEL_KEY: Record<string, string> = {
+  Vuil: 'tank_status_vuil',
+  Schoon: 'tank_status_schoon',
+  Ontsmet: 'tank_status_ontsmet',
+}
+
 export const SCHOONMAAK_FREQUENTIES = [
   {key:'dagelijks',   label:'haccp_freq_dagelijks'},
   {key:'wekelijks',   label:'haccp_freq_wekelijks'},

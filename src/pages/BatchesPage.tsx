@@ -2,8 +2,8 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
-import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN } from '../utils/constants'
+import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -34,6 +34,10 @@ interface BatchesPageProps {
   bfCreds?: any
   bfSync?: () => void
   tanks?: any[]
+  tankStatussen?: any
+  setTankStatussen?: any
+  tankLog?: any[]
+  setTankLog?: any
   accijnsInst?: any
   batchTakenItems?: any[]
   batchTakenGroepen?: any[]
@@ -437,7 +441,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   ing, setIng, lots, setLots, bat, setBat, bi, setBi,
   av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen=[], setOnderdelen=()=>{},
-  log, setLog, bfCreds, bfSync, tanks, accijnsInst,
+  log, setLog, bfCreds, bfSync, tanks,
+  tankStatussen={}, setTankStatussen=()=>{}, tankLog=[], setTankLog=()=>{},
+  accijnsInst,
   batchTakenItems=[], batchTakenGroepen=[], wcCreds, artikelen, producten=[], setProducten=()=>{}, productArtikelen=[], setProductArtikelen=()=>{},
   gistMetingen=[], setGistMetingen=()=>{},
   carbSessies=[], setCarbSessies=()=>{},
@@ -836,6 +842,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const handleStatusChange = (nieuweStatus: string) => {
     const oudeStatus = selB?.status
     if (oudeStatus === nieuweStatus) return
+    // Bij overgang naar 'Verpakt' of 'Gesloten' verlaat de batch impliciet zijn
+    // tank — zet die tank automatisch op Vuil voor HACCP-traceerbaarheid.
+    const leegtTank = ['Verpakt','Gesloten'].includes(nieuweStatus) && !['Verpakt','Gesloten'].includes(oudeStatus) && selB?.tank
+    if (leegtTank) {
+      const res = markTankVuilBijVertrek(selB.tank, tankStatussen, tankLog, tod())
+      if (res.changed) { setTankStatussen(res.statussen); setTankLog(res.log) }
+    }
     setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, status:nieuweStatus} : b))
     addLog({type:'status', batch_id:selB.id, referentie:`${oudeStatus} → ${nieuweStatus}`})
     logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', velden:{status:{oud:oudeStatus,nieuw:nieuweStatus}}, omschrijving:`Status: ${oudeStatus} → ${nieuweStatus}`})
@@ -845,6 +858,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (!selB || !moveTankTarget) return
     const doelTank = (tanks||[]).find((tk: any) => tk.id===moveTankTarget)
     if (!doelTank) return
+    // Hardblokkering: doeltank moet status `Ontsmet` hebben (uitzondering: eigen huidige tank).
+    if (moveTankTarget !== selB.tank) {
+      const doelStatus = tankStatussen?.[moveTankTarget]?.status || 'Ontsmet'
+      if (doelStatus !== 'Ontsmet') {
+        alert(t('err_tank_not_sanitized').replace('{tank}', doelTank.naam || moveTankTarget).replace('{status}', t(TANK_REINIGING_LABEL_KEY[doelStatus] || '')))
+        return
+      }
+    }
     const bezet = bat.find((b: any) => b.tank===moveTankTarget && b.id!==selB.id && ['Vergisten','Conditioneren'].includes(b.status))
     if (bezet) { alert(t('err_tank_occupied').replace('{tank}',moveTankTarget).replace('{name}',bezet.naam)); return }
     const oudeTank = selB.tank || '—'
@@ -854,6 +875,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       ? 'Conditioneren'
       : oudeStatus
     const nieuweHistorie = appendTankHistorie(selB, moveTankTarget, tod(), nieuweStatus)
+    // Oude tank gaat automatisch op Vuil (HACCP)
+    if (selB.tank && selB.tank !== moveTankTarget) {
+      const res = markTankVuilBijVertrek(selB.tank, tankStatussen, tankLog, tod())
+      if (res.changed) { setTankStatussen(res.statussen); setTankLog(res.log) }
+    }
     setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, tank: moveTankTarget, status: nieuweStatus, tank_historie: nieuweHistorie} : b))
     const ref = nieuweStatus !== oudeStatus
       ? `${t('lbl_tank')}: ${oudeTank} → ${moveTankTarget} | ${oudeStatus} → ${nieuweStatus}`
@@ -870,6 +896,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     const dupNr = bat.find((b: any) => b.batch_nummer?.trim() === bForm.batch_nummer.trim() && b.id !== editId)
     if (dupNr) { alert(t('err_batch_number_duplicate').replace('{nr}', bForm.batch_nummer).replace('{naam}', dupNr.naam)); return }
     if (bForm.tank) {
+      const oudBat = editId ? bat.find((b: any) => b.id === editId) : null
+      const oudeTankBij = oudBat?.tank || ''
+      // Hardblokkering: tank moet status `Ontsmet` zijn voor toewijzing (uitzondering: huidige tank van bewerkte batch).
+      if (bForm.tank !== oudeTankBij) {
+        const tankStatus = tankStatussen?.[bForm.tank]?.status || 'Ontsmet'
+        if (tankStatus !== 'Ontsmet') {
+          const tankNaam = (tanks||[]).find((tk: any) => tk.id === bForm.tank)?.naam || bForm.tank
+          alert(t('err_tank_not_sanitized').replace('{tank}', tankNaam).replace('{status}', t(TANK_REINIGING_LABEL_KEY[tankStatus] || '')))
+          return
+        }
+      }
       // Blokkerend: lopend gebruik (Vergisten/Conditioneren) door een andere batch.
       const bezet = bat.find((b: any) => b.tank===bForm.tank && b.id!==editId && ['Vergisten','Conditioneren'].includes(b.status))
       if (bezet && ['Vergisten','Conditioneren'].includes(bForm.status)) {
@@ -896,6 +933,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       const extraPatch: Record<string, any> = {}
       if (tankGewijzigd && bForm.tank) {
         extraPatch.tank_historie = appendTankHistorie(oud, bForm.tank, tod(), bForm.status)
+      }
+      // Oude tank gaat automatisch op Vuil (HACCP) wanneer batch hem verlaat
+      if (tankGewijzigd && oud?.tank) {
+        const res = markTankVuilBijVertrek(oud.tank, tankStatussen, tankLog, tod())
+        if (res.changed) { setTankStatussen(res.statussen); setTankLog(res.log) }
       }
       setBat((p: any[]) => p.map((b: any) => b.id===editId ? {...b,...bForm,...extraPatch} : b))
       if (wijz.length > 0) addLog({type:'gewijzigd', batch_id:editId, referentie:wijz.join(' | ')})
@@ -1328,9 +1370,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       const soortLbl = soort==='bright' ? t('tank_soort_bright')
                                       : soort==='barrel' ? t('tank_soort_barrel')
                                       : t('tank_soort_fermentatie')
+                      const tStatus = tankStatussen?.[tk.id]?.status || 'Ontsmet'
+                      const niet = tStatus !== 'Ontsmet'
+                      const extra = bezet ? ` (${t('lbl_occupied')})` : niet ? ` · ${t(TANK_REINIGING_LABEL_KEY[tStatus] || '')}` : ''
                       return (
-                        <option key={tk.id} value={tk.id} disabled={!!bezet}>
-                          {tk.id} — {soortLbl}{bezet ? ` (${t('lbl_occupied')})` : ''}
+                        <option key={tk.id} value={tk.id} disabled={!!bezet || niet}>
+                          {tk.id} — {soortLbl}{extra}
                         </option>
                       )
                     })}
@@ -3266,10 +3311,18 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         const eerste = conflicten[0]
                         const eersteP = eerste ? _batchPeriode(eerste) : null
                         const label = tk.naam ? `${tk.naam} (${tk.id})` : String(tk.id)
-                        const tag = vrij
-                          ? ` · ${t('tank_vrij')}`
-                          : ` · ${t('tank_bezet')} ${eerste?.naam || ''}${eersteP ? ` (${fmtD(eersteP.van)}→${fmtD(eersteP.tot)})` : ''}`
-                        return <option key={tk.id} value={tk.id}>
+                        const tStatus = tankStatussen?.[tk.id]?.status || 'Ontsmet'
+                        const isHuidige = tk.id === bForm.tank
+                        const statusBlokkeert = tStatus !== 'Ontsmet' && !isHuidige
+                        let tag: string
+                        if (statusBlokkeert) {
+                          tag = ` · ${t(TANK_REINIGING_LABEL_KEY[tStatus] || '')}`
+                        } else if (vrij) {
+                          tag = ` · ${t('tank_vrij')}`
+                        } else {
+                          tag = ` · ${t('tank_bezet')} ${eerste?.naam || ''}${eersteP ? ` (${fmtD(eersteP.van)}→${fmtD(eersteP.tot)})` : ''}`
+                        }
+                        return <option key={tk.id} value={tk.id} disabled={statusBlokkeert}>
                           {label}{tag}
                         </option>
                       })}

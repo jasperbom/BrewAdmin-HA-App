@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.48] — 2026-05-11
+
+### Added — Tankreinigingsstatus + HACCP-logging
+
+Iedere tank krijgt nu een reinigingsstatus (`Vuil` → `Schoon` → `Ontsmet`) die de HACCP-flow tussen twee batches afdwingt:
+
+- Zodra een batch een tank verlaat (overpompen naar bright tank, status naar `Verpakt`/`Gesloten`, of tankwijziging via formulier/verplaatsmodal) gaat de oude tank automatisch op `Vuil`. De auto-trigger is idempotent — herhaaldelijke statuswijzigingen produceren slechts één log-entry.
+- De brouwer schakelt handmatig naar `Schoon` en daarna naar `Ontsmet` via een nieuwe **Tanks**-pagina onder Brouwerij. Elke stap vraagt om uitvoerder, schoonmaakmiddel, CIP/handmatig en opmerking — opgeslagen in een onuitwisbare HACCP-log.
+- Een batch kan alleen aan een tank toegewezen worden die status `Ontsmet` heeft. Zowel het nieuwe-batch-formulier als de verplaatsmodal disablen niet-ontsmette tanks; `saveBatch` en `handleMoveTank` blokkeren extra met `err_tank_not_sanitized`.
+- HACCP-pagina krijgt een tab **Tankreiniging** met de volledige (read-only) log: tank-filter, statusfilter, datumbereik en vrije tekstzoek.
+- Bestaande tanks krijgen via een eenmalige migratie (`tank_status_migratie_v1`) default status `Ontsmet` zodat huidige workflows niet breken.
+
+### Files
+- `src/types/index.ts` — `TankReinigingStatus`, `TankStatusEntry`, `TankStatusMap`, `TankReinigingLog` toegevoegd.
+- `src/utils/constants.ts` — `TANK_REINIGING_STATUSSEN`, `TANK_REINIGING_KLEUR`, `TANK_REINIGING_LABEL_KEY`.
+- `src/utils/calculations.ts` — `markTankVuilBijVertrek` helper (idempotent, forceert `Vuil` ongeacht oude status).
+- `src/utils/excel.ts` — backup-sheets `TankStatussen` (object plat geslagen) + `TankReinigingLog`.
+- `src/App.tsx` — nieuwe `useStore`-keys, migratie-effect, nav-entry `tanks`, render-blok, doImport-handlers.
+- `src/pages/TanksPage.tsx` *(nieuw)* — statusoverzicht per soort + modal + per-tank log.
+- `src/pages/HACCPPage.tsx` — tab `tankreiniging` + `TankReinigingTab` (raadpleegbare audittrail).
+- `src/pages/BatchesPage.tsx` — guards, disabled-filters in beide tank-dropdowns, auto-Vuil triggers bij tankwijziging en batch-statusovergang naar `Verpakt`/`Gesloten`.
+- `src/i18n/{nl,en,de,fr,es}.json` — alle nieuwe sleutels in 5 talen.
+- `config.yaml` — versie bump 1.9.47 → 1.9.48.
+
+---
+
 ## [1.9.47] — 2026-05-09
 
 ### Fixed — Dashboard: beschikbare voorraad en THT-alerts kloppen weer

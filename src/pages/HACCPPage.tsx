@@ -3,14 +3,14 @@ import { t } from '../i18n'
 import { newId } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { logAudit } from '../utils/audit'
-import { ALLERGENEN_LIJST, SCHOONMAAK_FREQUENTIES } from '../utils/constants'
+import { ALLERGENEN_LIJST, SCHOONMAAK_FREQUENTIES, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 
-type Tab = 'dashboard'|'schoonmaak'|'ccp'|'allergenen'|'traceerbaarheid'|'capa'|'water'|'ongedierte'|'opleidingen'
+type Tab = 'dashboard'|'schoonmaak'|'tankreiniging'|'ccp'|'allergenen'|'traceerbaarheid'|'capa'|'water'|'ongedierte'|'opleidingen'
 
 function HACCPPage(props: any) {
   const {useState, useMemo} = React
@@ -49,6 +49,7 @@ function HACCPPage(props: any) {
   const tabs: {id:Tab,l:string}[] = [
     {id:'dashboard',l:t('haccp_dashboard')},
     {id:'schoonmaak',l:t('haccp_schoonmaak')},
+    {id:'tankreiniging',l:t('haccp_tab_tankreiniging')},
     {id:'ccp',l:t('haccp_ccp')},
     {id:'allergenen',l:t('haccp_allergenen')},
     {id:'traceerbaarheid',l:t('haccp_traceerbaarheid')},
@@ -71,6 +72,7 @@ function HACCPPage(props: any) {
       </div>
       {tab==='dashboard' && <DashTab {...props} setTab={setTab} />}
       {tab==='schoonmaak' && <SchoonmaakTab {...props} modal={modal} setModal={setModal} edit={edit} setEdit={setEdit} />}
+      {tab==='tankreiniging' && <TankReinigingTab {...props} />}
       {tab==='ccp' && <CCPTab {...props} ccpDefinities={ccpDefinities} setCcpDefinities={setCcpDefinities} modal={modal} setModal={setModal} edit={edit} setEdit={setEdit} />}
       {tab==='allergenen' && <AllergenenTab {...props} />}
       {tab==='traceerbaarheid' && <TraceTab {...props} />}
@@ -287,6 +289,100 @@ function SchoonmaakTab({schoonmaakTaken, setSchoonmaakTaken, schoonmaakLog, setS
     </div>
   )
 }
+// HACCP-audittrail van tankreinigings­acties. Pure read-only weergave —
+// statuswijzigingen en log-entries worden geschreven via TanksPage en de
+// auto-trigger in BatchesPage. Hier alleen filteren en raadplegen.
+function TankReinigingTab({tanks, tankLog}: any) {
+  const {useState} = React
+  const [fTank, setFTank] = useState('')
+  const [fStatus, setFStatus] = useState('')
+  const [fVan, setFVan] = useState('')
+  const [fTot, setFTot] = useState('')
+  const [zoek, setZoek] = useState('')
+
+  const badgeCls: Record<string,string> = {
+    Vuil:'bg-red-100 text-red-700',
+    Schoon:'bg-blue-100 text-blue-700',
+    Ontsmet:'bg-green-100 text-green-700',
+  }
+  const tankNaam = (id:string) => (tanks||[]).find((tk:any)=>tk.id===id)?.naam || id
+
+  const rijen = (tankLog||[])
+    .filter((l:any) => !fTank || l.tank_id===fTank)
+    .filter((l:any) => !fStatus || l.nieuwe_status===fStatus)
+    .filter((l:any) => !fVan || (l.datum||'') >= fVan)
+    .filter((l:any) => !fTot || (l.datum||'') <= fTot)
+    .filter((l:any) => {
+      if (!zoek) return true
+      const q = zoek.toLowerCase()
+      return [l.uitgevoerd_door, l.middel, l.opmerking].some((v:any) => (v||'').toLowerCase().includes(q))
+    })
+    .sort((a:any,b:any) => (b.datum||'').localeCompare(a.datum||''))
+
+  return (
+    <div>
+      <div className="mb-3"><SectionHeader title={t('haccp_tank_log_titel')} rounded="full" /></div>
+
+      <div className="flex flex-wrap gap-2 mb-3">
+        <select value={fTank} onChange={e=>setFTank(e.target.value)} className="t-input text-xs px-2 py-1 rounded border">
+          <option value="">{t('haccp_filter_tank')}</option>
+          {(tanks||[]).map((tk:any)=><option key={tk.id} value={tk.id}>{tk.naam||tk.id}</option>)}
+        </select>
+        <select value={fStatus} onChange={e=>setFStatus(e.target.value)} className="t-input text-xs px-2 py-1 rounded border">
+          <option value="">{t('haccp_filter_status')}</option>
+          <option value="Vuil">{t('tank_status_vuil')}</option>
+          <option value="Schoon">{t('tank_status_schoon')}</option>
+          <option value="Ontsmet">{t('tank_status_ontsmet')}</option>
+        </select>
+        <input type="date" value={fVan} onChange={e=>setFVan(e.target.value)} className="t-input text-xs px-2 py-1 rounded border" title={t('haccp_filter_van')} />
+        <input type="date" value={fTot} onChange={e=>setFTot(e.target.value)} className="t-input text-xs px-2 py-1 rounded border" title={t('haccp_filter_tot')} />
+        <SearchInput value={zoek} onChange={setZoek} placeholder={t('haccp_filter_zoek_placeholder')} cls="flex-1 min-w-[160px]" />
+      </div>
+
+      {!rijen.length && <p className="text-sm text-gray-500 italic">{t('tanks_log_geen_entries')}</p>}
+
+      {!!rijen.length && (
+        <div className="overflow-x-auto bg-white rounded-lg border border-gray-200">
+          <table className="min-w-full text-xs">
+            <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide">
+              <tr>
+                <th className="text-left px-3 py-2">{t('lbl_datum')}</th>
+                <th className="text-left px-3 py-2">{t('nav_tanks')}</th>
+                <th className="text-left px-3 py-2">{t('haccp_filter_status')}</th>
+                <th className="text-left px-3 py-2">{t('lbl_uitvoerder')}</th>
+                <th className="text-left px-3 py-2">{t('lbl_middel')}</th>
+                <th className="text-left px-3 py-2">{t('lbl_methode_cip')}</th>
+                <th className="text-left px-3 py-2">{t('lbl_oorzaak')}</th>
+                <th className="text-left px-3 py-2">{t('lbl_opmerking')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rijen.map((l:any) => (
+                <tr key={l.id} className="border-t border-gray-100">
+                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtD(l.datum)}</td>
+                  <td className="px-3 py-2 text-gray-700">{tankNaam(l.tank_id)}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-1.5 py-0.5 rounded ${badgeCls[l.nieuwe_status]||''}`}>
+                      {t(TANK_REINIGING_LABEL_KEY[l.nieuwe_status] || '')}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-700">{l.uitgevoerd_door}</td>
+                  <td className="px-3 py-2 text-gray-500">{l.middel || '-'}</td>
+                  <td className="px-3 py-2 text-gray-500">{l.cip ? t('lbl_ja') : t('lbl_nee')}</td>
+                  <td className="px-3 py-2 text-gray-500">
+                    {l.oorzaak === 'automatisch_leeg' ? t('lbl_oorzaak_automatisch') : t('lbl_oorzaak_handmatig')}
+                  </td>
+                  <td className="px-3 py-2 text-gray-500">{l.opmerking || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CCPTab({bat, ccpDefinities, setCcpDefinities, ccpMetingen, setCcpMetingen, capa, setCapa, gistMetingen, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
   const {useState} = React
   const [sub, setSub] = useState<'def'|'met'>('def')
