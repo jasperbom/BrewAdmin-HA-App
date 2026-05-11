@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.50] — 2026-05-11
+
+### Changed — Tank-cyclus en dashboard-layout
+
+`In gebruik` valt nu samen met de hygiënecyclus, zodat elke tank op het dashboard precies één status-pill heeft i.p.v. twee badges naast elkaar:
+
+- Volgorde: **In gebruik → Vuil → Schoon → Ontsmet → In gebruik**. "In gebruik" is een afgeleide status (computed) zodra er een actieve batch in de tank zit; zodra die de tank verlaat valt de tank terug op `Vuil` (auto-trigger).
+- Top-right van elke tank-card toont één pill (amber/rood/blauw/groen) met direct ernaast de actieknop voor de volgende stap (`Naar Schoon` bij Vuil, `Naar Ontsmet` bij Schoon). Bij `Ontsmet` en `In gebruik` is er geen knop — er valt niets te doen.
+- De batch-status (Vergisten/Conditioneren) is verplaatst naar het batch-info-blokje onder de tank-naam, weg uit de drukke header-rij.
+- De "Markeer Vuil"-actie voor herreiniging is een onopvallende ghost-link onderaan de card, alleen zichtbaar bij Schoon/Ontsmet.
+- Voor lege tanks toont het lege-staat-label nu ook de datum sinds wanneer de tank leeg/op die status staat.
+
+### Files
+- `src/pages/DashboardPage.tsx` — top-row vereenvoudigd, hygiëne en batch-status samengevoegd in één cyclus, dead code (`statusBadgeCls`) verwijderd.
+- `config.yaml` — versie bump 1.9.49 → 1.9.50.
+
+---
+
 ## [1.9.49] — 2026-05-11
 
 ### Changed — Tankhygiëne verhuist naar het dashboard

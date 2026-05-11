@@ -72,12 +72,6 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     closeCleanModal();
   };
 
-  const statusBadgeCls: Record<string, string> = {
-    Vuil:    'bg-red-100 text-red-700 border-red-200',
-    Schoon:  'bg-blue-100 text-blue-700 border-blue-200',
-    Ontsmet: 'bg-green-100 text-green-700 border-green-200',
-  };
-
   // ── Climate / cold-crash control per tank ─────────────────────────────────
   // Live climate-state per entity_id (setpoint, huidig, hvac mode). Wordt
   // ververst elke 60s tegelijk met haTankTemps; lokaal gecachet zodat de
@@ -1051,26 +1045,53 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                     return <TankVisual fillPct={fillPct} status={batch?.status} ebc={ebcNum} />;
                   })()}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1 gap-2">
-                      <span className="text-sm font-bold text-gray-700 truncate">{tk.naam || tk.id}</span>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {anyBatch && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 border border-amber-200">
-                            {t('tanks_in_gebruik')}
-                          </span>
-                        )}
-                        {batch && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${(STATUS_CLR as any)[batch.status] || 'bg-gray-100 text-gray-600'}`}>
-                            {statusLabel(batch.status)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    {(() => {
+                      const storedStatus: CleanTarget = (tankStatussen?.[tk.id]?.status as CleanTarget) || 'Ontsmet';
+                      const displayStatus: 'In gebruik' | CleanTarget = anyBatch ? 'In gebruik' : storedStatus;
+                      const labelKey: Record<string, string> = {
+                        'In gebruik': 'tanks_in_gebruik',
+                        'Vuil':       'tank_status_vuil',
+                        'Schoon':     'tank_status_schoon',
+                        'Ontsmet':    'tank_status_ontsmet',
+                      };
+                      const badgeClsMap: Record<string, string> = {
+                        'In gebruik': 'bg-amber-100 text-amber-800 border-amber-200',
+                        'Vuil':       'bg-red-100 text-red-700 border-red-200',
+                        'Schoon':     'bg-blue-100 text-blue-700 border-blue-200',
+                        'Ontsmet':    'bg-green-100 text-green-700 border-green-200',
+                      };
+                      const nextBtn = !anyBatch && storedStatus === 'Vuil'
+                        ? {label: t('tanks_naar_schoon'), variant: 'blue' as const, doel: 'Schoon' as CleanTarget}
+                        : !anyBatch && storedStatus === 'Schoon'
+                        ? {label: t('tanks_naar_ontsmet'), variant: 'green' as const, doel: 'Ontsmet' as CleanTarget}
+                        : null;
+                      return (
+                        <div className="flex items-center justify-between mb-1 gap-2">
+                          <span className="text-sm font-bold text-gray-700 truncate">{tk.naam || tk.id}</span>
+                          <div
+                            className="flex items-center gap-1 flex-shrink-0"
+                            onClick={(e: any) => e.stopPropagation()}
+                          >
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${badgeClsMap[displayStatus]}`}>
+                              {t(labelKey[displayStatus])}
+                            </span>
+                            {nextBtn && (
+                              <Btn s="sm" v={nextBtn.variant} onClick={() => openCleanModal(tk, nextBtn.doel)}>
+                                {nextBtn.label}
+                              </Btn>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {batch ? (
                       <div>
                         <div className="text-sm font-medium text-gray-800 truncate">{batch.naam}</div>
-                        {batch.batch_nummer && <div className="text-xs text-gray-400">#{batch.batch_nummer}</div>}
                         <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${(STATUS_CLR as any)[batch.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {statusLabel(batch.status)}
+                          </span>
+                          {batch.batch_nummer && <span className="text-xs text-gray-400">#{batch.batch_nummer}</span>}
                           {daysInTank !== null && (
                             <span className="text-xs text-gray-500">
                               {t('dashboard_days_in_tank').replace('{n}', String(daysInTank))}
@@ -1089,7 +1110,10 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                         )}
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-400 italic mt-1">{t('lbl_empty')}</div>
+                      <div className="text-xs text-gray-400 italic mt-1">
+                        {t('lbl_empty')}
+                        {tankStatussen?.[tk.id]?.sinds && <span className="ml-1 not-italic">· {fmtD(tankStatussen[tk.id].sinds)}</span>}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1193,37 +1217,18 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                   </div>
                 )}
 
-                {/* ── Hygiënestatus + reinigingsacties (HACCP) ── */}
-                {(() => {
-                  const hStatus: CleanTarget = (tankStatussen?.[tk.id]?.status as CleanTarget) || 'Ontsmet';
-                  const hSinds = tankStatussen?.[tk.id]?.sinds;
-                  return (
-                    <div className="mt-3 border-t border-gray-100 pt-2" onClick={(e: any) => e.stopPropagation()}>
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('tanks_hygiene')}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded border ${statusBadgeCls[hStatus] || statusBadgeCls.Ontsmet}`}>
-                            {t(TANK_REINIGING_LABEL_KEY[hStatus] || 'tank_status_ontsmet')}
-                          </span>
-                          {hSinds && <span className="text-xs text-gray-400 truncate">{fmtD(hSinds)}</span>}
-                        </div>
-                        {!anyBatch && (
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {hStatus === 'Vuil' && (
-                              <Btn s="sm" v="blue" onClick={() => openCleanModal(tk, 'Schoon')}>{t('tanks_naar_schoon')}</Btn>
-                            )}
-                            {hStatus === 'Schoon' && (
-                              <Btn s="sm" v="green" onClick={() => openCleanModal(tk, 'Ontsmet')}>{t('tanks_naar_ontsmet')}</Btn>
-                            )}
-                            {hStatus !== 'Vuil' && (
-                              <Btn s="sm" v="ghost" onClick={() => openCleanModal(tk, 'Vuil')} title={t('tanks_opnieuw_vuil_uitleg')}>{t('tanks_opnieuw_vuil')}</Btn>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* ── Herreinigings-link voor lege Schoon/Ontsmet-tanks ── */}
+                {!anyBatch && (tankStatussen?.[tk.id]?.status === 'Schoon' || tankStatussen?.[tk.id]?.status === 'Ontsmet') && (
+                  <div className="mt-2 text-right" onClick={(e: any) => e.stopPropagation()}>
+                    <button
+                      onClick={() => openCleanModal(tk, 'Vuil')}
+                      title={t('tanks_opnieuw_vuil_uitleg')}
+                      className="text-xs text-gray-400 hover:text-red-600 hover:underline"
+                    >
+                      {t('tanks_opnieuw_vuil')}
+                    </button>
+                  </div>
+                )}
 
                 {/* ── Climate control + vergistingsschema + cold-crash ── */}
                 {batch && climateForTank(tk.id) && (() => {
