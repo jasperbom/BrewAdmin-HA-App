@@ -322,6 +322,31 @@ export interface Tank {
   soort?: 'fermentatie' | 'bright' | 'barrel'
 }
 
+// ── Tank-reinigingsstatus (HACCP) ────────────────────────────────────────────
+export type TankReinigingStatus = 'Vuil' | 'Schoon' | 'Ontsmet'
+
+export interface TankStatusEntry {
+  status: TankReinigingStatus
+  sinds: string
+  laatste_log_id?: number
+}
+
+export interface TankStatusMap {
+  [tankId: string]: TankStatusEntry
+}
+
+export interface TankReinigingLog {
+  id: number
+  tank_id: string
+  datum: string
+  uitgevoerd_door: string
+  nieuwe_status: TankReinigingStatus
+  middel?: string
+  opmerking?: string
+  cip?: boolean
+  oorzaak?: 'handmatig' | 'automatisch_leeg'
+}
+
 export interface HygieneItem {
   id: number
   label: string

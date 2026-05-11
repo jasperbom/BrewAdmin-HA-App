@@ -63,6 +63,12 @@ export const excelExport = (data: any) => {
     addSheet('ReceptenTagVolgorde',   data.recepten_tag_volgorde)
     addSheet('ReceptenGroepen',       data.recepten_gesloten_groepen)
     addSheet('Tanks',                 data.tanks)
+    // Tank-reinigingsstatus: object → vlakke array
+    addSheet('TankStatussen',
+      Object.entries(data.tank_statussen || {})
+        .map(([tank_id, v]: [string, any]) => ({tank_id, ...(v || {})}))
+    )
+    addSheet('TankReinigingLog',      data.tank_reinigingslog)
     addSheet('Artikelen',             data.artikelen)
     addSheet('HygieneItems',          data.hygiene_items)
     addSheet('HygieneGroups',         data.hygiene_groups)
@@ -219,6 +225,18 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         recepten_tag_volgorde:        parse('ReceptenTagVolgorde'),
         recepten_gesloten_groepen:    parse('ReceptenGroepen'),
         tanks:                        parse('Tanks'),
+        // Tank-reinigingsstatus: vlakke array → object terug
+        tank_statussen: (() => {
+          const rows = parse('TankStatussen')
+          const out: Record<string, any> = {}
+          for (const r of rows) {
+            if (!r?.tank_id) continue
+            const {tank_id, ...rest} = r
+            out[tank_id] = rest
+          }
+          return out
+        })(),
+        tank_reinigingslog:           parse('TankReinigingLog'),
         artikelen:                    parse('Artikelen'),
         hygiene_items:                parse('HygieneItems'),
         hygiene_groups:               parse('HygieneGroups'),
