@@ -1684,6 +1684,8 @@
   "tank_status_vuil": "Sucio",
   "tank_status_schoon": "Limpio",
   "tank_status_ontsmet": "Desinfectado",
+  "tanks_hygiene": "Higiene",
+  "tanks_in_gebruik": "En uso",
   "tanks_titel": "Estado & limpieza de tanques",
   "tanks_intro": "Gestiona el estado de limpieza por tanque. Los tanques vaciados por un lote pasan automáticamente a Sucio. Un tanque solo puede reutilizarse cuando esté Desinfectado.",
   "tanks_geen_tanks": "Aún no se han añadido tanques. Añade tanques en Ajustes.",

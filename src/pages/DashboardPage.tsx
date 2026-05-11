@@ -2,12 +2,15 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD, fmtQty, tod } from '../utils/format'
 import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie } from '../utils/calculations'
-import { STATUS_CLR } from '../utils/constants'
+import { STATUS_CLR, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { haCallService, haGetState } from '../utils/api'
 import SectionHeader from '../components/ui/SectionHeader'
+import Btn from '../components/ui/Btn'
+import Modal from '../components/ui/Modal'
+import Inp from '../components/ui/Inp'
 
-function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setPage, tanks, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
+function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setPage, tanks, tankStatussen={}, setTankStatussen=()=>{}, tankLog=[], setTankLog=()=>{}, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -15,6 +18,65 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
   const [mForm, setMForm] = useState({sg: '', ph: '', temp: ''});
   const [haccpFormTaakId, setHaccpFormTaakId] = useState<number|null>(null);
   const [haccpForm, setHaccpForm] = useState({uitgevoerd_door: '', opmerking: '', cip: false});
+
+  // Tankreinigingsstatus modal — opent vanuit een tank-card
+  type CleanTarget = 'Vuil' | 'Schoon' | 'Ontsmet';
+  const [cleanModal, setCleanModal] = useState<{tank:any, doel:CleanTarget}|null>(null);
+  const [cleanForm, setCleanForm] = useState({datum: tod(), uitvoerder: '', middel: '', opmerking: '', cip: false});
+  const [cleanErr, setCleanErr] = useState('');
+
+  const openCleanModal = (tk: any, doel: CleanTarget) => {
+    setCleanModal({tank: tk, doel});
+    setCleanForm({datum: tod(), uitvoerder: '', middel: '', opmerking: '', cip: false});
+    setCleanErr('');
+  };
+  const closeCleanModal = () => { setCleanModal(null); setCleanErr(''); };
+
+  const tankCleanMiddelSuggesties = React.useMemo(() => {
+    const s = new Set<string>();
+    for (const l of (tankLog || [])) {
+      if (l?.middel && typeof l.middel === 'string') s.add(l.middel);
+    }
+    return Array.from(s).sort();
+  }, [tankLog]);
+
+  const saveTankClean = () => {
+    if (!cleanModal) return;
+    if (!cleanForm.uitvoerder?.trim()) { setCleanErr(t('err_uitvoerder_verplicht')); return; }
+    const tk = cleanModal.tank;
+    const huidigeStatus = (tankStatussen?.[tk.id]?.status as CleanTarget) || 'Ontsmet';
+    if (cleanModal.doel === 'Schoon' && huidigeStatus !== 'Vuil') { setCleanErr(t('err_tank_status_volgorde')); return; }
+    if (cleanModal.doel === 'Ontsmet' && huidigeStatus !== 'Schoon') { setCleanErr(t('err_tank_status_volgorde')); return; }
+
+    const newLogId = (tankLog || []).reduce((m: number, e: any) => Math.max(m, Number(e?.id || 0)), 0) + 1;
+    const entry = {
+      id: newLogId,
+      tank_id: tk.id,
+      datum: cleanForm.datum || tod(),
+      uitgevoerd_door: cleanForm.uitvoerder.trim(),
+      nieuwe_status: cleanModal.doel,
+      middel: cleanForm.middel?.trim() || undefined,
+      opmerking: cleanForm.opmerking?.trim() || undefined,
+      cip: !!cleanForm.cip,
+      oorzaak: 'handmatig' as const,
+    };
+    setTankLog((prev: any[]) => [...(prev || []), entry]);
+    setTankStatussen((prev: any) => ({
+      ...(prev || {}),
+      [tk.id]: {status: cleanModal.doel, sinds: entry.datum, laatste_log_id: newLogId},
+    }));
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Tank', entiteit_id: 0, actie: 'gewijzigd',
+      omschrijving: `${tk.naam || tk.id} → ${cleanModal.doel}`,
+    });
+    closeCleanModal();
+  };
+
+  const statusBadgeCls: Record<string, string> = {
+    Vuil:    'bg-red-100 text-red-700 border-red-200',
+    Schoon:  'bg-blue-100 text-blue-700 border-blue-200',
+    Ontsmet: 'bg-green-100 text-green-700 border-green-200',
+  };
 
   // ── Climate / cold-crash control per tank ─────────────────────────────────
   // Live climate-state per entity_id (setpoint, huidig, hvac mode). Wordt
@@ -989,13 +1051,20 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                     return <TankVisual fillPct={fillPct} status={batch?.status} ebc={ebcNum} />;
                   })()}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-bold text-gray-700">{tk.naam || tk.id}</span>
-                      {batch && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${(STATUS_CLR as any)[batch.status] || 'bg-gray-100 text-gray-600'}`}>
-                          {statusLabel(batch.status)}
-                        </span>
-                      )}
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="text-sm font-bold text-gray-700 truncate">{tk.naam || tk.id}</span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {anyBatch && (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                            {t('tanks_in_gebruik')}
+                          </span>
+                        )}
+                        {batch && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${(STATUS_CLR as any)[batch.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {statusLabel(batch.status)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {batch ? (
                       <div>
@@ -1123,6 +1192,38 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                     )}
                   </div>
                 )}
+
+                {/* ── Hygiënestatus + reinigingsacties (HACCP) ── */}
+                {(() => {
+                  const hStatus: CleanTarget = (tankStatussen?.[tk.id]?.status as CleanTarget) || 'Ontsmet';
+                  const hSinds = tankStatussen?.[tk.id]?.sinds;
+                  return (
+                    <div className="mt-3 border-t border-gray-100 pt-2" onClick={(e: any) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('tanks_hygiene')}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded border ${statusBadgeCls[hStatus] || statusBadgeCls.Ontsmet}`}>
+                            {t(TANK_REINIGING_LABEL_KEY[hStatus] || 'tank_status_ontsmet')}
+                          </span>
+                          {hSinds && <span className="text-xs text-gray-400 truncate">{fmtD(hSinds)}</span>}
+                        </div>
+                        {!anyBatch && (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {hStatus === 'Vuil' && (
+                              <Btn s="sm" v="blue" onClick={() => openCleanModal(tk, 'Schoon')}>{t('tanks_naar_schoon')}</Btn>
+                            )}
+                            {hStatus === 'Schoon' && (
+                              <Btn s="sm" v="green" onClick={() => openCleanModal(tk, 'Ontsmet')}>{t('tanks_naar_ontsmet')}</Btn>
+                            )}
+                            {hStatus !== 'Vuil' && (
+                              <Btn s="sm" v="ghost" onClick={() => openCleanModal(tk, 'Vuil')} title={t('tanks_opnieuw_vuil_uitleg')}>{t('tanks_opnieuw_vuil')}</Btn>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* ── Climate control + vergistingsschema + cold-crash ── */}
                 {batch && climateForTank(tk.id) && (() => {
@@ -1300,6 +1401,45 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
             );
           })}
         </div>
+      )}
+
+      {/* ── Tankreinigingsstatus modal (HACCP) ─────────────────────────────── */}
+      {cleanModal && (
+        <Modal
+          title={`${cleanModal.tank.naam || cleanModal.tank.id} → ${t(TANK_REINIGING_LABEL_KEY[cleanModal.doel] || '')}`}
+          onClose={closeCleanModal}
+        >
+          <div className="space-y-3">
+            <Inp label={t('lbl_datum')} type="date" value={cleanForm.datum} onChange={v=>setCleanForm({...cleanForm, datum:v})} />
+            <Inp label={t('lbl_uitvoerder')} value={cleanForm.uitvoerder} onChange={v=>setCleanForm({...cleanForm, uitvoerder:v})} req />
+            {cleanModal.doel !== 'Vuil' && (
+              <>
+                <Inp label={t('lbl_middel')} value={cleanForm.middel} onChange={v=>setCleanForm({...cleanForm, middel:v})} list="dash-tank-middel-suggesties" />
+                <datalist id="dash-tank-middel-suggesties">
+                  {tankCleanMiddelSuggesties.map(m => <option key={m} value={m} />)}
+                </datalist>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={!!cleanForm.cip} onChange={e=>setCleanForm({...cleanForm, cip:e.target.checked})} className="t-checkbox" />
+                  {t('lbl_methode_cip')}
+                </label>
+              </>
+            )}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking')}</label>
+              <textarea
+                value={cleanForm.opmerking}
+                onChange={e=>setCleanForm({...cleanForm, opmerking:e.target.value})}
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm"
+              />
+            </div>
+            {cleanErr && <p className="text-xs text-red-600">{cleanErr}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Btn v="secondary" onClick={closeCleanModal}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveTankClean}>{t('btn_save')}</Btn>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* ── Open bestellingen ─────────────────────────────────────────────── */}

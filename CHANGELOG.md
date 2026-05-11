@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.49] — 2026-05-11
+
+### Changed — Tankhygiëne verhuist naar het dashboard
+
+De aparte Tanks-pagina verviel; alle reinigingsstatus + acties zijn nu geïntegreerd in de bestaande tank-cards op het dashboard.
+
+- Elke tank-card toont een `Hygiëne`-rij met statusbadge (Vuil/Schoon/Ontsmet) en de datum sinds wanneer.
+- Wanneer een tank in gebruik is door een batch verschijnt een amberkleurige `In gebruik`-badge naast de status-pill; de reinigingsknoppen zijn dan verborgen.
+- Voor lege tanks zijn de stapsgewijze actieknoppen direct beschikbaar op de card (`Naar Schoon` → `Naar Ontsmet`, plus `Markeer Vuil` voor herreiniging). De modal voor uitvoerder/middel/CIP/opmerking opent vanaf de card.
+- De Tanks-navigatie-entry onder Brouwerij is verwijderd. De HACCP-audittrail blijft raadpleegbaar onder HACCP → Tankreiniging.
+
+### Files
+- `src/pages/DashboardPage.tsx` — tank-card uitgebreid met hygiëne-rij, `In gebruik`-badge en reinigingsmodal; nieuwe props `tankStatussen` / `setTankStatussen` / `tankLog` / `setTankLog`.
+- `src/pages/TanksPage.tsx` — verwijderd.
+- `src/App.tsx` — `TanksPage`-import, nav-entry en render-blok verwijderd; dashboard krijgt tank-status props.
+- `src/i18n/{nl,en,de,fr,es}.json` — sleutels `tanks_hygiene` en `tanks_in_gebruik` toegevoegd.
+- `config.yaml` — versie bump 1.9.48 → 1.9.49.
+
+---
+
 ## [1.9.48] — 2026-05-11
 
 ### Added — Tankreinigingsstatus + HACCP-logging

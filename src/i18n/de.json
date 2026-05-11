@@ -1687,6 +1687,8 @@
   "tank_status_vuil": "Schmutzig",
   "tank_status_schoon": "Gereinigt",
   "tank_status_ontsmet": "Desinfiziert",
+  "tanks_hygiene": "Hygiene",
+  "tanks_in_gebruik": "In Gebrauch",
   "tanks_titel": "Tankstatus & Reinigung",
   "tanks_intro": "Reinigungsstatus pro Tank verwalten. Tanks, die eine Charge verlassen, werden automatisch als Schmutzig markiert. Ein Tank kann erst wieder verwendet werden, wenn er Desinfiziert ist.",
   "tanks_geen_tanks": "Noch keine Tanks hinzugefügt. Tanks über Einstellungen anlegen.",
