@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD, fmtQty, tod } from '../utils/format'
-import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie } from '../utils/calculations'
+import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie, TANK_STATUSSEN } from '../utils/calculations'
 import { STATUS_CLR, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { haCallService, haGetState } from '../utils/api'
@@ -1003,7 +1003,10 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
         <div className="flex flex-wrap justify-center gap-4 mb-6">
           {tanks.map((tk: any) => {
             const batch    = bat.find((b: any) => b.tank === tk.id && ['Vergisten','Conditioneren'].includes(b.status));
-            const anyBatch = bat.find((b: any) => b.tank === tk.id && b.status !== 'Gesloten');
+            // "In gebruik" = batch zit fysiek in de tank (Brouwen/Vergisten/Conditioneren).
+            // Een Verpakt/Gesloten batch laat batch.tank vaak nog staan als historische
+            // referentie — die telt niet als "in gebruik".
+            const anyBatch = bat.find((b: any) => b.tank === tk.id && TANK_STATUSSEN.includes(b.status));
             const inTank   = batch?.liter_vergist ? inTankL(batch.id, batch.liter_vergist) : 0;
             const fillPct  = batch?.liter_vergist
               ? (inTank / Number(batch.liter_vergist)) * 100

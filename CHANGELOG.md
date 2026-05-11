@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.51] — 2026-05-11
+
+### Fixed — Lege tank toonde nog "In gebruik" na Verpakt-overgang
+
+`anyBatch` op het dashboard filterde tot nu toe op `status !== 'Gesloten'`, waardoor een batch met status `Verpakt` (of `Gepland`) de tank visueel nog steeds als "In gebruik" markeerde — terwijl de tank fysiek leeg is en de auto-Vuil trigger al gevuurd had. De filter gebruikt nu `TANK_STATUSSEN` uit `calculations.ts` (`Brouwen` / `Vergisten` / `Conditioneren`), wat overeenkomt met de logica van de auto-Vuil trigger. Een Verpakt/Gesloten batch laat `batch.tank` nog als historische referentie staan, maar telt niet meer mee voor de "In gebruik"-pill.
+
+### Files
+- `src/pages/DashboardPage.tsx` — `anyBatch` filtert op `TANK_STATUSSEN`; import uitgebreid.
+- `config.yaml` — versie bump 1.9.50 → 1.9.51.
+
+---
+
 ## [1.9.50] — 2026-05-11
 
 ### Changed — Tank-cyclus en dashboard-layout
