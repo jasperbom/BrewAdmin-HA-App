@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.55] — 2026-05-13
+
+### Changed — Planning en tank-bezetting samengevoegd tot één agenda
+
+De Planning-pagina had drie aparte secties: maand-grid, lijstweergave en tank-bezetting. Die zijn vervangen door één tank-tijdlijn die als agenda werkt. Geplande batches zijn nu sleepbaar: horizontaal versleept de brouwdatum, verticaal naar een andere rij wijst een andere tank toe. Batches zonder tank verschijnen in een aparte rij "Zonder tank" bovenaan; sleep ze naar een tankrij om toe te wijzen. Tijdens het slepen toont een verticale lijn met datum-label de nieuwe positie. Klikken op een geplande balk selecteert hem voor de "Behoefte vs voorraad"-berekening (zoals voorheen in de maand-grid).
+
+Lopende batches (Vergisten/Conditioneren) staan informatief in de tijdlijn maar zijn niet sleep- of klikbaar.
+
+### Files
+- `src/pages/PlanningPage.tsx` — maand-grid en lijstweergave verwijderd; één agenda-sectie met HTML5 drag-and-drop op de tank-tijdlijn (incl. "Zonder tank"-rij en drop-preview).
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels `plan_agenda_help`, `plan_agenda_sleep_tip`.
+- `config.yaml` — versie bump 1.9.54 → 1.9.55.
+
+---
+
 ## [1.9.54] — 2026-05-13
 
 ### Fixed — Geplande brouwsels op dashboard toonden liters als bedrag

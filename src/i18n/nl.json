@@ -1678,6 +1678,8 @@
   "plan_status_vergisten": "Vergisten",
   "plan_status_conditioneren": "Conditioneren",
   "plan_tank_legend_schatting": "Gestippelde rand = geschatte duur (geen tanktijd ingevuld)",
+  "plan_agenda_help": "Sleep horizontaal = datum · sleep verticaal = tank · klik = selecteren",
+  "plan_agenda_sleep_tip": "Slepen verschuift datum (horizontaal) of tank (verticaal)",
   "plan_tank_schatting": "geschat",
   "plan_geen_tanks": "Nog geen tanks ingesteld",
   "tank_vrij": "vrij",

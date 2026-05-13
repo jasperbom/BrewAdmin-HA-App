@@ -1673,6 +1673,8 @@
   "plan_status_vergisten": "Fermentación",
   "plan_status_conditioneren": "Maduración",
   "plan_tank_legend_schatting": "Borde discontinuo = duración estimada (sin tiempo de tanque)",
+  "plan_agenda_help": "Arrastrar horizontal = fecha · arrastrar vertical = tanque · clic = seleccionar",
+  "plan_agenda_sleep_tip": "Arrastrar cambia fecha (horizontal) o tanque (vertical)",
   "plan_tank_schatting": "estimado",
   "plan_geen_tanks": "Aún no hay tanques configurados",
   "tank_vrij": "libre",
