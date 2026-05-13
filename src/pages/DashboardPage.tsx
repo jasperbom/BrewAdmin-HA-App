@@ -998,7 +998,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">
                       {fmtD(b.datum)} · {rel}
-                      {b.liter_vergist ? <> · {fmt(b.liter_vergist)} L</> : null}
+                      {b.liter_vergist ? <> · {fmtQty(b.liter_vergist)} L</> : null}
                     </div>
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ml-3 ${(STATUS_CLR as any)[b.status] || 'bg-gray-100 text-gray-600'}`}>
