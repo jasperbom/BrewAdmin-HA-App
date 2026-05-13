@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.55] — 2026-05-13
+
+### Changed — Planning en tank-bezetting samengevoegd tot één agenda
+
+De Planning-pagina had drie aparte secties: maand-grid, lijstweergave en tank-bezetting. Die zijn vervangen door één tank-tijdlijn die als agenda werkt. Geplande batches zijn nu sleepbaar: horizontaal versleept de brouwdatum, verticaal naar een andere rij wijst een andere tank toe. Batches zonder tank verschijnen in een aparte rij "Zonder tank" bovenaan; sleep ze naar een tankrij om toe te wijzen. Tijdens het slepen toont een verticale lijn met datum-label de nieuwe positie. Klikken op een geplande balk selecteert hem voor de "Behoefte vs voorraad"-berekening (zoals voorheen in de maand-grid).
+
+Lopende batches (Vergisten/Conditioneren) staan informatief in de tijdlijn maar zijn niet sleep- of klikbaar.
+
+### Files
+- `src/pages/PlanningPage.tsx` — maand-grid en lijstweergave verwijderd; één agenda-sectie met HTML5 drag-and-drop op de tank-tijdlijn (incl. "Zonder tank"-rij en drop-preview).
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels `plan_agenda_help`, `plan_agenda_sleep_tip`.
+- `config.yaml` — versie bump 1.9.54 → 1.9.55.
+
+---
+
+## [1.9.54] — 2026-05-13
+
+### Fixed — Geplande brouwsels op dashboard toonden liters als bedrag
+
+De agenda-widget op het dashboard formatteerde `liter_vergist` met `fmt()`, die het euroteken én twee decimalen forceert. Een batch van 20 L verscheen daardoor als `€20,00 L` (en bij 1 L als `€1,00 L`), wat overkwam als een kostprijs van een euro per liter. De waarde wordt nu via `fmtQty()` getoond — gewoon `20 L` zonder euroteken.
+
+### Files
+- `src/pages/DashboardPage.tsx` — agenda-widget gebruikt `fmtQty(b.liter_vergist)` in plaats van `fmt(b.liter_vergist)`.
+- `config.yaml` — versie bump 1.9.53 → 1.9.54.
+
+---
+
 ## [1.9.53] — 2026-05-11
 
 ### Changed — Coldcrash streept warmere vergistingsstappen af

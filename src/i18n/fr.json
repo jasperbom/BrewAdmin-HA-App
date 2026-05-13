@@ -1673,6 +1673,8 @@
   "plan_status_vergisten": "Fermentation",
   "plan_status_conditioneren": "Garde",
   "plan_tank_legend_schatting": "Bordure pointillée = durée estimée (aucune durée de cuve saisie)",
+  "plan_agenda_help": "Glisser horizontalement = date · glisser verticalement = cuve · cliquer = sélectionner",
+  "plan_agenda_sleep_tip": "Glisser modifie la date (horizontal) ou la cuve (vertical)",
   "plan_tank_schatting": "estimé",
   "plan_geen_tanks": "Aucune cuve configurée",
   "tank_vrij": "libre",
