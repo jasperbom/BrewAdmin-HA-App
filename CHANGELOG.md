@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.58] — 2026-05-13
+
+### Fixed — Productkostprijs/liter komt nu overeen met het kostprijsoverzicht op de Batch-pagina
+
+De kostprijs/liter op de Producten-pagina liet alleen ingrediënten en utility-kosten zien, gedeeld door `liter_vergist`. Op de Batch-pagina wordt voor verpakte/gesloten batches een uitgebreider kostprijsoverzicht getoond dat naast brouwkosten ook verpakkingskosten en accijns meeneemt, gedeeld door de werkelijk afgevulde liters uit `afvullingen`. Daardoor week de productkostprijs structureel af.
+
+`berekenProductKostprijs` is uitgebreid met `afvullingen`, `verpakkingen`, `onderdelen` en `accijns`, en past nu exact dezelfde logica toe als het batch-overzicht: per batch worden brouwoverhead, ingrediënten, verpakkingskosten per type (incl. onderdelen-fallback) en accijns (werkelijk geboekt of voorcalc-snapshot) opgeteld en gedeeld door de som van afgevulde liters. Batches zonder afvullingen tellen niet mee, anders zou hun volume nul zijn en zou alleen hun kostpost de uitkomst vertekenen. `ProductenPage.productStats` gebruikt nu deze gedeelde util.
+
+### Files
+- `src/utils/calculations.ts` — `berekenProductKostprijs` rekent inclusief verpakking + accijns op basis van afgevulde liters.
+- `src/pages/ProductenPage.tsx` — `productStats` gebruikt `berekenProductKostprijs`; ontvangt `onderdelen` als prop.
+- `src/App.tsx` — `onderdelen`-prop doorgegeven aan `ProductenPage`.
+- `config.yaml` — versie bump 1.9.57 → 1.9.58.
+
+---
+
 ## [1.9.57] — 2026-05-13
 
 ### Added — Per verpakkingssoort instellen of voorraad naar WooCommerce wordt gepusht
