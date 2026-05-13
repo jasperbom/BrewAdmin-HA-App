@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.59] — 2026-05-13
+
+### Fixed — Dashboard-tegel "Voorraad beschikbaar" leidt nu naar AGP
+
+De `StatCard` "Voorraad beschikbaar" op het dashboard riep `setPage('voorraad')` aan, maar die routesleutel bestaat niet in `App.tsx`. Daardoor gebeurde er niets bij klikken. De waarde wordt berekend uit `voorraadPerLocatie`, dezelfde bron die de AGP-pagina gebruikt om bier­voorraad per locatie te tonen, dus de tegel verwijst nu naar `'agp'`.
+
+### Files
+- `src/pages/DashboardPage.tsx` — `onClick` van `lbl_stock_available` zet pagina op `'agp'` in plaats van een niet-bestaande `'voorraad'`.
+- `config.yaml` — versie bump 1.9.58 → 1.9.59.
+
+---
+
 ## [1.9.58] — 2026-05-13
 
 ### Fixed — Productkostprijs/liter komt nu overeen met het kostprijsoverzicht op de Batch-pagina

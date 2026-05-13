@@ -868,7 +868,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     <div>
       {/* ── Stat cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label={t('lbl_stock_available')}    value={beschVoorraad}              sub={t('lbl_units_uitgeleverd')}                              color="green"                                               onClick={() => setPage('voorraad')} />
+        <StatCard label={t('lbl_stock_available')}    value={beschVoorraad}              sub={t('lbl_units_uitgeleverd')}                              color="green"                                               onClick={() => setPage('agp')} />
         <StatCard label={t('lbl_open_excise')}        value={fmt(openAccBed)}            sub={`${openAccijns.length} ${t('lbl_declarations')}`}     color={openAccBed > 0 ? 'red' : 'gray'}                     onClick={() => setPage('boekhouding')} />
         <StatCard label={t('lbl_vervallen_facturen')} value={vervallenFacturen.length}   sub={t('lbl_factuur_vervallen_dagen').replace('{n}','')}    color={vervallenFacturen.length > 0 ? 'red' : 'gray'}       onClick={() => setPage('boekhouding')} />
         <StatCard label={t('lbl_open_orders')}        value={openBestellingen.length}    sub={t('lbl_orders_to_pick')}                              color={openBestellingen.length > 0 ? 'orange' : 'gray'}     onClick={() => setPage('bestellingen')} />
