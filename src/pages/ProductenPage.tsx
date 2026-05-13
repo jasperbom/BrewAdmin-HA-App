@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
-import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs } from '../utils/calculations'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -60,7 +60,7 @@ const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null
   } catch { return null }
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -168,7 +168,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     return res;
   };
 
-  // Statistieken per product
+  // Statistieken per product. Kostprijs/liter komt uit `berekenProductKostprijs`
+  // en gebruikt dezelfde scope als het kostprijsoverzicht op de Batch-pagina:
+  // ingrediënten + utility + verpakking + accijns, gedeeld door werkelijk
+  // afgevulde liters. Het `liter`-veld blijft de som van `liter_vergist` voor
+  // andere statistieken op deze pagina.
   const productStats = useMemo(() => {
     const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number}> = {};
     for (const p of (producten||[])) {
@@ -178,27 +182,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
       const voorraad = pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
       const uitgeleverd = pAv.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
-      let totaalKosten = 0;
-      for (const b of pBatches) {
-        const batchBi = (bi||[]).filter((i: any) => i.batch_id === b.id);
-        for (const ingredient of batchBi) {
-          // Fallback naar lotprijs als kosten niet expliciet zijn opgeslagen
-          // (gelijk aan ingKosten() in BatchesPage). Zonder fallback waren
-          // batch-ingredienten met kosten=null gratis, waardoor de kostprijs
-          // te laag uitviel en de marge te hoog.
-          if (ingredient.kosten) {
-            totaalKosten += Number(ingredient.kosten);
-          } else {
-            const lot = (lots||[]).find((l: any) => l.id === ingredient.lot_id);
-            if (lot?.prijs_per_eenheid) totaalKosten += Number(lot.prijs_per_eenheid) * Number(ingredient.hoeveelheid||0);
-          }
-        }
-        totaalKosten += Number(b.electra_kosten||0) + Number(b.water_kosten||0) + Number(b.schoonmaak_kosten||0) + Number(b.overige_kosten||0);
-      }
-      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
+      const {kostprijs_per_liter} = berekenProductKostprijs(p.id, bat, bi, lots, av, verpakkingen, onderdelen, acc);
+      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: kostprijs_per_liter};
     }
     return stats;
-  }, [producten, bat, av, uit, bi, lots, bestellingen, bestellingPicks, afboekingen]);
+  }, [producten, bat, av, uit, bi, lots, verpakkingen, onderdelen, acc, bestellingen, bestellingPicks, afboekingen]);
 
   const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel), [productArtikelen, sel]);
   const selRecepten = useMemo(() => {

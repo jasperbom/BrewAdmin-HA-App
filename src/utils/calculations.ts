@@ -202,32 +202,73 @@ export interface ProductKostprijsResult {
   totaal_liter: number
 }
 
+// Productkostprijs/liter dezelfde scope als het kostprijsoverzicht op de
+// Batch-pagina: ingrediënten + utility + verpakking + accijns, gedeeld door de
+// werkelijk afgevulde liters uit `afvullingen`. Batches zonder afvullingen
+// tellen niet mee — anders zou hun volume 0 zijn en zou alleen hun kostpost de
+// uitkomst vertekenen. Voor accijns gebruiken we de geboekte waarde uit
+// `accijns`; zo niet, vallen we terug op de voorcalc-snapshot op de afvulling.
 export const berekenProductKostprijs = (
   product_id: number,
   batches: any[],
   batchIngredienten: any[],
-  lots?: any[]
+  lots?: any[],
+  afvullingen?: any[],
+  verpakkingen?: any[],
+  onderdelen?: any[],
+  accijns?: any[]
 ): ProductKostprijsResult => {
   const pBatches = (batches||[]).filter((b: any) => b.product_id === product_id)
   let totaal_kosten = 0
   let totaal_liter = 0
 
   for (const b of pBatches) {
-    totaal_liter += Number(b.liter_vergist || 0)
-    // Ingrediëntkosten — val terug op lotprijs als kosten niet expliciet
-    // zijn opgeslagen (zelfde patroon als ingKosten() in BatchesPage).
+    const bAv = (afvullingen||[]).filter((a: any) => a.batch_id === b.id)
+    const batchLiter = bAv.reduce((s: number, a: any) =>
+      s + Number(a.inhoud_per_eenheid||0) * Number(a.hoeveelheid||0), 0)
+    if (batchLiter <= 0) continue
+
+    let batchKosten =
+      Number(b.electra_kosten || 0) + Number(b.water_kosten || 0) +
+      Number(b.schoonmaak_kosten || 0) + Number(b.overige_kosten || 0)
+
     const bBi = (batchIngredienten||[]).filter((i: any) => i.batch_id === b.id)
     for (const ing of bBi) {
       if (ing.kosten) {
-        totaal_kosten += Number(ing.kosten)
+        batchKosten += Number(ing.kosten)
       } else {
         const lot = (lots||[]).find((l: any) => l.id === ing.lot_id)
-        if (lot?.prijs_per_eenheid) totaal_kosten += Number(lot.prijs_per_eenheid) * Number(ing.hoeveelheid || 0)
+        if (lot?.prijs_per_eenheid) batchKosten += Number(lot.prijs_per_eenheid) * Number(ing.hoeveelheid || 0)
       }
     }
-    // Utilitykosten
-    totaal_kosten += Number(b.electra_kosten || 0) + Number(b.water_kosten || 0) +
-      Number(b.schoonmaak_kosten || 0) + Number(b.overige_kosten || 0)
+
+    const bAcc = (accijns||[]).filter((a: any) => a.batch_id === b.id)
+    const avTypes = [...new Set(bAv.map((a: any) => a.verpakking_type))] as string[]
+    for (const type of avTypes) {
+      const rows = bAv.filter((a: any) => a.verpakking_type === type)
+      const stuks = rows.reduce((s: number, a: any) => s + Number(a.hoeveelheid||0), 0)
+      const vpId = rows.find((r: any) => r.verpakking_id)?.verpakking_id
+      const vp = verpakkingen
+        ? (vpId ? verpakkingen.find((v: any) => v.id === vpId) : verpakkingen.find((v: any) => v.naam === type))
+        : null
+      const kPerStuk = vp
+        ? (Array.isArray(vp.onderdelen) && vp.onderdelen.length
+            ? vp.onderdelen.reduce((s: number, o: any) => {
+                const od = (onderdelen||[]).find((d: any) => d.id === o.onderdeel_id)
+                return s + Number(od?.kosten_per_stuk||0) * Number(o.aantal||1)
+              }, 0)
+            : Number(vp.kosten_verpakking||0) + Number(vp.kosten_afsluiting||0) + Number(vp.kosten_label||0))
+        : 0
+      batchKosten += kPerStuk * stuks
+
+      const accRows = bAcc.filter((a: any) => a.verpakking_type === type)
+      const totAccActueel = accRows.reduce((s: number, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0)
+      const totAccVoorcalc = rows.reduce((s: number, a: any) => s + Number(a.voorcalc_accijns_totaal || 0), 0)
+      batchKosten += totAccActueel > 0 ? totAccActueel : totAccVoorcalc
+    }
+
+    totaal_kosten += batchKosten
+    totaal_liter += batchLiter
   }
 
   return {
