@@ -215,6 +215,10 @@ export interface ProductArtikel {
   omschrijving?: string
   gn_code?: string
   b2b_prijs?: number | string
+  // Of dit artikel wordt meegenomen in de WooCommerce-voorraadpush.
+  // Ontbrekend/undefined geldt als `true` zodat bestaande artikelen
+  // hun huidige gedrag behouden.
+  wc_push?: boolean
 }
 
 export interface InkoopFactuur {

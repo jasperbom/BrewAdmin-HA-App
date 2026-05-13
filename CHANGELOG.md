@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.57] — 2026-05-13
+
+### Added — Per verpakkingssoort instellen of voorraad naar WooCommerce wordt gepusht
+
+Op de Producten-pagina staat bij elk artikel een nieuwe checkbox "Meenemen in WooCommerce-voorraadpush". Standaard staat die aan, bestaande artikelen behouden hun huidige gedrag (ontbrekend `wc_push` wordt als ingeschakeld behandeld). Zet hem uit voor verpakkingen die je niet in je webshop verkoopt (bijv. losse 30L-fusten voor horeca), dan slaat de WooCommerce-push die SKU over. Naast de verpakkingsnaam staat een klein WooCommerce-paars bolletje als visuele indicator; grijs-transparant betekent uitgeschakeld.
+
+### Files
+- `src/types/index.ts` — `ProductArtikel.wc_push?: boolean`.
+- `src/pages/ProductenPage.tsx` — toggle in artikel-form, indicator in tabel, `wcPushAll` filtert `wc_push === false`.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels `lbl_artikel_wc_push`, `tip_artikel_wc_push`, `tip_artikel_wc_push_aan`, `tip_artikel_wc_push_uit`.
+- `config.yaml` — versie bump 1.9.56 → 1.9.57.
+
+---
+
 ## [1.9.56] — 2026-05-13
 
 ### Fixed — Productkostprijs en marge te laag/hoog door ontbrekende lot-fallback
