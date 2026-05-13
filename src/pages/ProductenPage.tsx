@@ -181,13 +181,24 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       let totaalKosten = 0;
       for (const b of pBatches) {
         const batchBi = (bi||[]).filter((i: any) => i.batch_id === b.id);
-        for (const ingredient of batchBi) totaalKosten += Number(ingredient.kosten||0);
+        for (const ingredient of batchBi) {
+          // Fallback naar lotprijs als kosten niet expliciet zijn opgeslagen
+          // (gelijk aan ingKosten() in BatchesPage). Zonder fallback waren
+          // batch-ingredienten met kosten=null gratis, waardoor de kostprijs
+          // te laag uitviel en de marge te hoog.
+          if (ingredient.kosten) {
+            totaalKosten += Number(ingredient.kosten);
+          } else {
+            const lot = (lots||[]).find((l: any) => l.id === ingredient.lot_id);
+            if (lot?.prijs_per_eenheid) totaalKosten += Number(lot.prijs_per_eenheid) * Number(ingredient.hoeveelheid||0);
+          }
+        }
         totaalKosten += Number(b.electra_kosten||0) + Number(b.water_kosten||0) + Number(b.schoonmaak_kosten||0) + Number(b.overige_kosten||0);
       }
       stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
     }
     return stats;
-  }, [producten, bat, av, uit, bi, bestellingen, bestellingPicks, afboekingen]);
+  }, [producten, bat, av, uit, bi, lots, bestellingen, bestellingPicks, afboekingen]);
 
   const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel), [productArtikelen, sel]);
   const selRecepten = useMemo(() => {
@@ -296,7 +307,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     if (art) {
       setArtForm({...art});
     } else {
-      setArtForm({id: newId(productArtikelen), product_id: sel, verpakking_id: '', verpakking_naam: '', verpakking_type: '', inhoud_liter: '', artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: ''});
+      setArtForm({id: newId(productArtikelen), product_id: sel, verpakking_id: '', verpakking_naam: '', verpakking_type: '', inhoud_liter: '', artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: '', wc_push: true});
     }
   };
 
@@ -534,11 +545,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     setWcSyncing(true); setWcSyncMsg('');
     try {
       let bijgewerkt = 0;
-      const paWithNames = (productArtikelen||[]).filter((a: any) => a.artikelnummer).map((pa: any) => {
+      // wc_push === false sluit het artikel uit van de push; ontbrekend geldt
+      // als ingeschakeld zodat bestaande artikelen hun gedrag behouden.
+      const paWithNames = (productArtikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false).map((pa: any) => {
         const prod = (producten||[]).find((p: any) => p.id === pa.product_id);
         return {...pa, biernaam: prod?.naam || '', _product_id: pa.product_id};
       });
-      const combis = paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer);
+      const combis = paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false);
       for (const art of combis) {
         const beschikbaar = wcBeschikbaarVoorArt(art);
         addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, '');
@@ -1067,6 +1080,17 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                       <label className="text-[11px] text-gray-500">{t('lbl_product_omschrijving')}</label>
                       <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
                     </div>
+                    <div className="sm:col-span-3">
+                      <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none" title={t('tip_artikel_wc_push')}>
+                        <input
+                          type="checkbox"
+                          className="t-checkbox"
+                          checked={artForm.wc_push !== false}
+                          onChange={e => setArtForm((f: any) => ({...f, wc_push: e.target.checked}))}
+                        />
+                        <span>{t('lbl_artikel_wc_push')}</span>
+                      </label>
+                    </div>
                   </div>
                   <div className="flex gap-2 mt-2">
                     <Btn onClick={saveArtikel} s="sm">{t('btn_product_opslaan')}</Btn>
@@ -1094,9 +1118,21 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     <tbody>
                       {selArtikelen.map((a: any) => {
                         const margeInfo = berekenMarge(a);
+                        const wcPushAan = a.wc_push !== false;
                         return (
                           <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="py-1.5">{a.verpakking_naam || '-'}</td>
+                            <td className="py-1.5">
+                              <span className="inline-flex items-center gap-1.5">
+                                <span>{a.verpakking_naam || '-'}</span>
+                                {a.artikelnummer && (
+                                  <span
+                                    title={wcPushAan ? t('tip_artikel_wc_push_aan') : t('tip_artikel_wc_push_uit')}
+                                    className={`inline-block w-1.5 h-1.5 rounded-full ${wcPushAan ? '' : 'opacity-30'}`}
+                                    style={{backgroundColor: wcPushAan ? '#7f54b3' : '#9ca3af'}}
+                                  />
+                                )}
+                              </span>
+                            </td>
                             <td className="py-1.5 font-mono">{a.artikelnummer || '-'}</td>
                             <td className="py-1.5 text-gray-500">{a.gn_code || '-'}</td>
                             <td className="py-1.5 text-right">{a.verkoopprijs ? fmt(a.verkoopprijs) : '-'}</td>

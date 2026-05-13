@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.57] — 2026-05-13
+
+### Added — Per verpakkingssoort instellen of voorraad naar WooCommerce wordt gepusht
+
+Op de Producten-pagina staat bij elk artikel een nieuwe checkbox "Meenemen in WooCommerce-voorraadpush". Standaard staat die aan, bestaande artikelen behouden hun huidige gedrag (ontbrekend `wc_push` wordt als ingeschakeld behandeld). Zet hem uit voor verpakkingen die je niet in je webshop verkoopt (bijv. losse 30L-fusten voor horeca), dan slaat de WooCommerce-push die SKU over. Naast de verpakkingsnaam staat een klein WooCommerce-paars bolletje als visuele indicator; grijs-transparant betekent uitgeschakeld.
+
+### Files
+- `src/types/index.ts` — `ProductArtikel.wc_push?: boolean`.
+- `src/pages/ProductenPage.tsx` — toggle in artikel-form, indicator in tabel, `wcPushAll` filtert `wc_push === false`.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels `lbl_artikel_wc_push`, `tip_artikel_wc_push`, `tip_artikel_wc_push_aan`, `tip_artikel_wc_push_uit`.
+- `config.yaml` — versie bump 1.9.56 → 1.9.57.
+
+---
+
+## [1.9.56] — 2026-05-13
+
+### Fixed — Productkostprijs en marge te laag/hoog door ontbrekende lot-fallback
+
+Op de Producten-pagina werd de kostprijs per liter berekend door alleen het expliciete `kosten`-veld van elke batch-ingredient op te tellen. Wanneer de gebruiker bij het toewijzen van een lot geen handmatig bedrag invoerde, blijft `kosten` echter `null` en hoort de prijs uit `lot.prijs_per_eenheid × hoeveelheid` te komen — precies wat `ingKosten()` op de Batches-pagina al doet. Door die ontbrekende fallback kwamen ingrediënten zonder expliciete kosten als gratis uit de berekening, viel de productkostprijs te laag uit en zag de getoonde marge er onrealistisch hoog uit.
+
+De fallback uit `BatchesPage.ingKosten()` is overgenomen in `productStats` en in de gedeelde util `berekenProductKostprijs` (waarvan de `lots`-parameter al bestond maar niet gebruikt werd).
+
+### Files
+- `src/pages/ProductenPage.tsx` — `productStats`-memo gebruikt nu de lot-prijs als fallback en heeft `lots` in zijn dependency-array.
+- `src/utils/calculations.ts` — `berekenProductKostprijs` past dezelfde fallback toe; `_lots` → `lots`.
+- `config.yaml` — versie bump 1.9.55 → 1.9.56.
+
+---
+
 ## [1.9.55] — 2026-05-13
 
 ### Changed — Planning en tank-bezetting samengevoegd tot één agenda
