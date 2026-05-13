@@ -206,7 +206,7 @@ export const berekenProductKostprijs = (
   product_id: number,
   batches: any[],
   batchIngredienten: any[],
-  _lots?: any[]
+  lots?: any[]
 ): ProductKostprijsResult => {
   const pBatches = (batches||[]).filter((b: any) => b.product_id === product_id)
   let totaal_kosten = 0
@@ -214,10 +214,16 @@ export const berekenProductKostprijs = (
 
   for (const b of pBatches) {
     totaal_liter += Number(b.liter_vergist || 0)
-    // Ingrediëntkosten
+    // Ingrediëntkosten — val terug op lotprijs als kosten niet expliciet
+    // zijn opgeslagen (zelfde patroon als ingKosten() in BatchesPage).
     const bBi = (batchIngredienten||[]).filter((i: any) => i.batch_id === b.id)
     for (const ing of bBi) {
-      totaal_kosten += Number(ing.kosten || 0)
+      if (ing.kosten) {
+        totaal_kosten += Number(ing.kosten)
+      } else {
+        const lot = (lots||[]).find((l: any) => l.id === ing.lot_id)
+        if (lot?.prijs_per_eenheid) totaal_kosten += Number(lot.prijs_per_eenheid) * Number(ing.hoeveelheid || 0)
+      }
     }
     // Utilitykosten
     totaal_kosten += Number(b.electra_kosten || 0) + Number(b.water_kosten || 0) +

@@ -181,13 +181,24 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       let totaalKosten = 0;
       for (const b of pBatches) {
         const batchBi = (bi||[]).filter((i: any) => i.batch_id === b.id);
-        for (const ingredient of batchBi) totaalKosten += Number(ingredient.kosten||0);
+        for (const ingredient of batchBi) {
+          // Fallback naar lotprijs als kosten niet expliciet zijn opgeslagen
+          // (gelijk aan ingKosten() in BatchesPage). Zonder fallback waren
+          // batch-ingredienten met kosten=null gratis, waardoor de kostprijs
+          // te laag uitviel en de marge te hoog.
+          if (ingredient.kosten) {
+            totaalKosten += Number(ingredient.kosten);
+          } else {
+            const lot = (lots||[]).find((l: any) => l.id === ingredient.lot_id);
+            if (lot?.prijs_per_eenheid) totaalKosten += Number(lot.prijs_per_eenheid) * Number(ingredient.hoeveelheid||0);
+          }
+        }
         totaalKosten += Number(b.electra_kosten||0) + Number(b.water_kosten||0) + Number(b.schoonmaak_kosten||0) + Number(b.overige_kosten||0);
       }
       stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: totaalLiter > 0 ? totaalKosten / totaalLiter : 0};
     }
     return stats;
-  }, [producten, bat, av, uit, bi, bestellingen, bestellingPicks, afboekingen]);
+  }, [producten, bat, av, uit, bi, lots, bestellingen, bestellingPicks, afboekingen]);
 
   const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel), [productArtikelen, sel]);
   const selRecepten = useMemo(() => {

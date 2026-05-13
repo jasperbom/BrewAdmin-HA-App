@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.56] — 2026-05-13
+
+### Fixed — Productkostprijs en marge te laag/hoog door ontbrekende lot-fallback
+
+Op de Producten-pagina werd de kostprijs per liter berekend door alleen het expliciete `kosten`-veld van elke batch-ingredient op te tellen. Wanneer de gebruiker bij het toewijzen van een lot geen handmatig bedrag invoerde, blijft `kosten` echter `null` en hoort de prijs uit `lot.prijs_per_eenheid × hoeveelheid` te komen — precies wat `ingKosten()` op de Batches-pagina al doet. Door die ontbrekende fallback kwamen ingrediënten zonder expliciete kosten als gratis uit de berekening, viel de productkostprijs te laag uit en zag de getoonde marge er onrealistisch hoog uit.
+
+De fallback uit `BatchesPage.ingKosten()` is overgenomen in `productStats` en in de gedeelde util `berekenProductKostprijs` (waarvan de `lots`-parameter al bestond maar niet gebruikt werd).
+
+### Files
+- `src/pages/ProductenPage.tsx` — `productStats`-memo gebruikt nu de lot-prijs als fallback en heeft `lots` in zijn dependency-array.
+- `src/utils/calculations.ts` — `berekenProductKostprijs` past dezelfde fallback toe; `_lots` → `lots`.
+- `config.yaml` — versie bump 1.9.55 → 1.9.56.
+
+---
+
 ## [1.9.55] — 2026-05-13
 
 ### Changed — Planning en tank-bezetting samengevoegd tot één agenda
