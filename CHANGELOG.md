@@ -4,6 +4,65 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.75] — 2026-05-15
+
+### Changed — Status 'Verpakt' hernoemd naar 'Afgevuld'
+
+De canonieke batch-status voor de fase na conditioneren is nu **'Afgevuld'** (sluit aan op de activiteit "Afvullen" en het tabblad "Afvulling"). 'Verpakt' blijft als alias herkend zodat oude backups/data nooit breken.
+
+**Eenmalige migratie** via nieuwe data-key `batch_status_afgevuld_migratie_v1` zet bestaande batches met `status='Verpakt'` éénmalig om naar `'Afgevuld'` bij de eerste app-load. Daarna staat de migratie op `'v1'` zodat deze niet opnieuw draait.
+
+**Bijkomende fix:** in v1.9.69–1.9.74 had `StatusSuggestion.tsx` al `'Afgevuld'` als doel-status terwijl `STATUSSEN` nog `'Verpakt'` als waarde had. Daardoor kon de "Bevestig status"-knop een waarde zetten die niet in de status-dropdown stond. Met deze release zijn beide gelijk getrokken.
+
+### Files
+- `src/utils/constants.ts` — `STATUSSEN` array, `STATUS_CLR` map en `BF_TO_APP` mapping gebruiken nu `'Afgevuld'`; `'Verpakt'` blijft als alias in `STATUS_CLR`.
+- `src/components/ui/Badge.tsx` — `STATUS_LABELS` accepteert beide.
+- `src/pages/DashboardPage.tsx`, `src/pages/InstellingenPage.tsx`, `src/pages/ProductenPage.tsx` — beide status-waarden behandelen.
+- `src/pages/BatchesPage.tsx` — alle `'Verpakt'`-checks accepteren ook `'Afgevuld'`; nieuwe status-write gebruikt `'Afgevuld'`.
+- `src/components/batch/BatchTabs.tsx`, `src/components/batch/StatusSuggestion.tsx` — `'Verpakt'` als afgeronde-status alias toegevoegd.
+- `src/App.tsx` — nieuwe `batchAfgevuldMigratieRef`-useEffect met migratie-flag `batch_status_afgevuld_migratie_v1`.
+- `src/i18n/nl.json` — `status_packaged` value: "Verpakt" → "Afgevuld".
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.74 → 1.9.75.
+
+---
+
+## [1.9.74] — 2026-05-15
+
+### Fixed — Lot-α wint nu van recept-α voor IBU-berekening
+
+Wanneer een hop-additie zowel een gekoppeld lot (met α uit `bf_props.alpha`) als een batch_ingredient.alpha_pct had (uit recept-import), werd ten onrechte de recept-α gebruikt. De resolutie volgorde was `manual > lot > ingredient` — maar bij batches die uit een recept zijn aangemaakt is `alpha_pct` altijd gevuld, waardoor het lot nooit doorkwam.
+
+**Nieuwe volgorde:** `lot > batch_ingredient > ingredient`. Een gekoppeld lot represente­ert de chargespecifieke gemeten waarde (uit de lab-analyse op die specifieke partij) en wint daarom van zowel recept-default als handmatige invoer. De gebruiker kiest impliciet welke α wordt gebruikt door wel/niet een lot te selecteren in de ingrediënten-sectie.
+
+Voor brouwers die echt handmatig willen overschrijven: laat de lot-keuze leeg, of pas `bf_props.alpha` op het lot zelf aan in de lot-edit modal.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()` resolutie-volgorde gewijzigd; lot-check staat nu eerst.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.73 → 1.9.74.
+
+---
+
+## [1.9.73] — 2026-05-15
+
+### Fixed — IBU te hoog bij batch zonder gemeten OG
+
+Zonder gemeten OG kreeg de Tinseth-formule `sg = 0 || 1 = 1` als invoer, waardoor de bigness-factor altijd maximaal werd (1.65) — dit verhoogde de IBU met ~70% t.o.v. een werkelijk wort van 1.060.
+
+**Fixes:**
+
+- **OG-fallback uit recept-doel.** `ibuOG = batch.OG > 0 ? batch.OG : recept.OG > 0 ? recept.OG : 0`. Voor een geplande batch wordt nu de recept-doel-OG gebruikt zodat de IBU consistent is met Brewfather. Zodra de werkelijke OG wordt ingevuld, schakelt de berekening over.
+- **Per-hop IBU-kolom in het Hop-schema** toont de bijdrage van elke individuele hop (afgerond op 0.1). Whirlpool/dry-hop/mash tonen een `—` omdat Tinseth daar verwaarloosbare bijdrage aan toekent.
+- **Hover-tooltip op de IBU-totaalbox** toont welke OG (gemeten of doel) en welk kook-volume zijn gebruikt — handig om verschillen met Brewfather snel te herleiden.
+
+Met deze fix zou de berekende IBU binnen ~1–2 IBU van Brewfather's output moeten zitten voor dezelfde inputs. Overgebleven kleine verschillen kunnen komen door Brewfather's "Hop Utilization Factor" (default 100%, configureerbaar per equipment-profile) of doordat BF whirlpool-IBU bijtelt op basis van temperatuur — die laatste correctie voegen we later toe als gewenst.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `ibuOG`-fallback uit `batchRecept.OG`; `ibuBijdrageVoor()`-helper per hop; nieuwe "IBU"-kolom in het Hop-schema; hover-tooltip op IBU-box met OG-bron en volume.
+- `src/i18n/{nl,en,de,fr,es}.json` — 1 nieuwe sleutel (`brouwdag_calc_ibu_volume`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.72 → 1.9.73.
+
+---
+
 ## [1.9.72] — 2026-05-15
 
 ### Fixed — IBU-berekening werkte niet (gram vs hoeveelheid mismatch)

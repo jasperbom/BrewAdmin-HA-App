@@ -1233,7 +1233,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{t('settings_bf_status_mapping')}</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs text-gray-500">
             {Object.entries(BF_TO_APP).map(([bf,app]) => (
-              <span key={bf}><span className="font-medium text-gray-600">{bf}</span> → {({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')} as any)[app]||app}</span>
+              <span key={bf}><span className="font-medium text-gray-600">{bf}</span> → {({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Afgevuld:t('status_packaged'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')} as any)[app]||app}</span>
             ))}
           </div>
         </div>

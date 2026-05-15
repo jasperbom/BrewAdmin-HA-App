@@ -11,6 +11,8 @@ const STATUS_LABELS: Record<string,string> = {
   Brouwen: 'status_brewing',
   Vergisten: 'status_fermenting',
   Conditioneren: 'status_conditioning',
+  Afgevuld: 'status_packaged',
+  // Backwards-compat: oude data met status='Verpakt' krijgt hetzelfde label
   Verpakt: 'status_packaged',
   Gesloten: 'status_closed',
 }

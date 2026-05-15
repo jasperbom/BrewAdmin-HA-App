@@ -80,6 +80,7 @@ function App() {
   const [batchTakenGroepen, setBatchTakenGroepen] = useStore('batch_taken_groepen', DEFAULT_BATCH_TAKEN_GROEPEN);
   const [takenMigratie, setTakenMigratie] = useStore('batch_taken_migratie_v1', null);
   const [legeFacturenMigratie, setLegeFacturenMigratie] = useStore('lege_facturen_migratie_v1', null);
+  const [batchAfgevuldMigratie, setBatchAfgevuldMigratie] = useStore('batch_status_afgevuld_migratie_v1', null);
   const [lang, setLangStore] = useStore('app_lang', detectLang());
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
   const [verkoopFacturen, setVerkoopFacturen] = useStore('verkoop_facturen', []);
@@ -327,6 +328,30 @@ function App() {
     const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenMigratie]);
+
+  // Eenmalige migratie: bestaande batches met status 'Verpakt' worden hernoemd
+  // naar 'Afgevuld' (canonieke status sinds v1.9.75). 'Verpakt' blijft in de
+  // codebase als backwards-compat alias zodat oude data nooit "breekt", maar
+  // we lopen één keer door alle batches om de waarde gelijk te trekken.
+  const batchAfgevuldMigratieRef = React.useRef(false);
+  React.useEffect(() => {
+    if (batchAfgevuldMigratieRef.current) return;
+    if (batchAfgevuldMigratie === 'v1' || batchAfgevuldMigratie === 'done') { batchAfgevuldMigratieRef.current = true; return; }
+    const ready = () => _fetchedKeys.has('batches') && _fetchedKeys.has('batch_status_afgevuld_migratie_v1');
+    const run = () => {
+      if (batchAfgevuldMigratieRef.current) return;
+      batchAfgevuldMigratieRef.current = true;
+      const heeftOud = (bat || []).some((b: any) => b?.status === 'Verpakt');
+      if (heeftOud) {
+        setBat((prev: any[]) => (prev || []).map((b: any) => b?.status === 'Verpakt' ? {...b, status: 'Afgevuld'} : b));
+      }
+      setBatchAfgevuldMigratie('v1');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000);
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [batchAfgevuldMigratie]);
 
   // Eenmalige migratie: bestaande tanks krijgen default status `Ontsmet` zodat
   // huidige workflows niet breken (alle bestaande tanks zijn impliciet klaar).

@@ -7,11 +7,13 @@ export const STATUS_CLR: Record<string, string> = {
   "Vergisting":"bg-amber-100 text-amber-700 ring-1 ring-amber-200",
   "Conditioneren":"bg-purple-100 text-purple-700 ring-1 ring-purple-200",
   "Lagering":"bg-purple-100 text-purple-700 ring-1 ring-purple-200",
+  "Afgevuld":"bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200",
+  // Backwards-compat: oude data met status='Verpakt' krijgt dezelfde kleur
   "Verpakt":"bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200",
   "Gesloten":"bg-gray-100 text-gray-500 ring-1 ring-gray-200"
 }
 
-export const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Verpakt","Gesloten"]
+export const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Afgevuld","Gesloten"]
 export const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"]
 export const BUILTIN_KOSTEN_SOORTEN = ['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']
 
@@ -309,7 +311,7 @@ export const SCHOONMAAK_FREQUENTIES = [
 export const BF_TO_APP: Record<string,string> = {
   Planning:'Gepland',Brewing:'Brouwen',Fermenting:'Vergisten',
   Conditioning:'Conditioneren',Carbonating:'Conditioneren',
-  Packaging:'Verpakt',Completed:'Gesloten',Archived:'Gesloten'
+  Packaging:'Afgevuld',Completed:'Gesloten',Archived:'Gesloten'
 }
 
 const SUPPORTED_LANGS = ['nl', 'en', 'de', 'fr', 'es']

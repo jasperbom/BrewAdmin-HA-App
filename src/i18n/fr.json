@@ -73,6 +73,7 @@
   "brouwdag_calc_mash_eff": "Efficacité empâtage",
   "brouwdag_calc_brouwzaal_eff": "Efficacité brasserie",
   "brouwdag_calc_ibu_tinseth": "IBU (Tinseth)",
+  "brouwdag_calc_ibu_volume": "Volume d'ébullition",
   "brouwdag_geen_recept_voor_stappen": "Aucune recette liée ou aucune donnée empâtage/houblon.",
   "brouwdag_label_maisch_stap": "Palier empâtage {n}",
   "brouwdag_label_hop_add": "Ajout houblon : {n} @ {t}min",
