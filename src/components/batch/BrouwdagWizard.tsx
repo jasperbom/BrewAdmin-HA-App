@@ -530,7 +530,12 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
           <CalcCard label={t('brouwdag_calc_mash_eff')} value={mashEff > 0 ? `${mashEff.toFixed(1)}%` : null} />
           <CalcCard label={t('brouwdag_calc_brouwzaal_eff')} value={brEff > 0 ? `${brEff.toFixed(1)}%` : null} />
           <CalcCard label={t('brouwdag_kook_verdamping')} value={verdamping > 0 ? `${verdamping.toFixed(1)}%/u` : null} />
-          <CalcCard label={t('brouwdag_calc_ibu_tinseth')} value={ibu > 0 ? `${ibu}` : null} hint={ibu > 0 ? t('calc_disclaimer_tinseth') : ''} />
+          <CalcCard
+            label={t('brouwdag_calc_ibu_tinseth')}
+            value={ibu > 0 ? `${ibu}` : (ibuOG <= 0 ? t('brouwdag_ibu_geen_og') : null)}
+            target={Number(batchRecept?.IBU) > 0 ? Number(batchRecept!.IBU).toFixed(1) : null}
+            hint={ibu > 0 ? t('calc_disclaimer_tinseth') : ''}
+          />
         </div>
         {maxExtract === 0 && (fermentables.length > 0) && (
           <div className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
@@ -550,15 +555,36 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
           const g = Number(h.hoeveelheid) || 0
           const a = Number(effectieveAlpha(h, lots, ingredienten, batch.datum, hopStorageDefault).alpha) || 0
           const t = Number(h.tijdstip_min) || 0
-          if (g <= 0 || a <= 0 || t <= 0 || ibuVolume <= 0) return 0
-          const sg = ibuOG > 0 ? ibuOG : 1
-          const factGrav = 1.65 * Math.pow(0.000125, sg - 1)
+          if (g <= 0 || a <= 0 || t <= 0 || ibuVolume <= 0 || ibuOG <= 0) return 0
+          const factGrav = 1.65 * Math.pow(0.000125, ibuOG - 1)
           const factTime = (1 - Math.exp(-0.04 * t)) / 4.15
           return (factGrav * factTime * a * g * 10) / ibuVolume
         }
         const updHop = (hopId: number, veld: 'tijdstip_min' | 'alpha_pct' | 'gebruik' | 'lot_id' | 'temp_c', val: any) => {
           if (!setBi) return
           setBi((prev: any[]) => prev.map(x => x.id === hopId ? {...x, [veld]: val} : x))
+        }
+        // Lot-keuze neemt direct de raw α uit `lot.bf_props.alpha` over naar
+        // het α-veld van de batch-hop, zodat de gebruiker de waarde ziet
+        // staan zonder dat ze door de placeholder/tooltip moeten lezen.
+        // Verouderings-correctie blijft via `effectieveAlpha` lopen (die
+        // kijkt naar lot.bf_props.year), dus de IBU-berekening verandert
+        // niet. Bij wisselen van lot wordt α automatisch geüpdatet; bij
+        // 'geen lot' kiezen blijft de laatst overgenomen waarde staan
+        // zodat-ie als handmatige override blijft werken.
+        const updHopLot = (hopId: number, lotIdVal: string) => {
+          if (!setBi) return
+          const lotId = lotIdVal ? Number(lotIdVal) : ''
+          const lot = lotId ? (lots || []).find(l => l.id === lotId) : null
+          const lotAlpha = lot?.bf_props?.alpha
+          setBi((prev: any[]) => prev.map(x => {
+            if (x.id !== hopId) return x
+            const patch: any = {...x, lot_id: lotId}
+            if (lot && lotAlpha != null && Number(lotAlpha) > 0) {
+              patch.alpha_pct = Number(lotAlpha)
+            }
+            return patch
+          }))
         }
         // Vind beschikbare lots per hop-additie (alleen lots van hetzelfde
         // ingredient_id, met voorraad of zonder voorraad-eis voor archief).
@@ -572,7 +598,13 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
               open={hopOpen}
               onToggle={() => setHopOpen(o => !o)}
               info={hops.length > 0
-                ? (ibu > 0 ? `${hops.length} · IBU ${ibu.toFixed(1)}` : `${hops.length}`)
+                ? (() => {
+                    const doel = Number(batchRecept?.IBU) > 0 ? Number(batchRecept!.IBU).toFixed(1) : null
+                    if (ibu > 0 && doel) return `${hops.length} · IBU ${ibu.toFixed(1)} / ${t('brouwdag_doel').toLowerCase()} ${doel}`
+                    if (ibu > 0) return `${hops.length} · IBU ${ibu.toFixed(1)}`
+                    if (doel) return `${hops.length} · ${t('brouwdag_doel').toLowerCase()} IBU ${doel}`
+                    return `${hops.length}`
+                  })()
                 : null}
             />
             {hopOpen && (
@@ -670,7 +702,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                             <td className="px-3 py-1.5">
                               {lotsBeschikbaar.length > 0 ? (
                                 <select value={h.lot_id || ''}
-                                  onChange={e => updHop(h.id, 'lot_id', e.target.value ? Number(e.target.value) : '')}
+                                  onChange={e => updHopLot(h.id, e.target.value)}
                                   className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[16rem]">
                                   <option value="">{t('hop_schema_geen_lot')}</option>
                                   {lotsBeschikbaar.map((l: any) => (
@@ -840,10 +872,11 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   )
 }
 
-const CalcCard: React.FC<{label: string, value: string | null, hint?: string}> = ({label, value, hint}) => (
+const CalcCard: React.FC<{label: string, value: string | null, hint?: string, target?: string | null}> = ({label, value, hint, target}) => (
   <div className="bg-gray-50 rounded p-2">
     <div className="text-gray-500 text-xs">{label}</div>
     <div className="font-semibold text-gray-800 text-base">{value || '—'}</div>
+    {target && <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_doel')}: {target}</div>}
     {hint && <div className="text-gray-400 text-xs italic">{hint}</div>}
   </div>
 )

@@ -1462,8 +1462,11 @@ export interface HopVoorIBU {
 
 export const iBUTinseth = (hops: HopVoorIBU[] = [], og: number, kookVolumeL: number): number => {
   const vol = Number(kookVolumeL) || 0
-  const sg = Number(og) || 1
-  if (vol <= 0) return 0
+  const sg = Number(og) || 0
+  // Zonder OG zou de bigness-factor terugvallen op 1.65 (maximum, alsof het
+  // wort water is) — dat geeft ~30-70% te hoge IBU t.o.v. een normale 1.050
+  // wort. Beter geen waarde tonen dan een misleidende.
+  if (vol <= 0 || sg <= 0) return 0
   const total = (hops || []).reduce((sum, h) => {
     if (h.gebruik && !['boil', 'kook', ''].includes(String(h.gebruik).toLowerCase())) return sum
     const g = Number(h.gram ?? h.hoeveelheid) || 0
