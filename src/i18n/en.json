@@ -73,6 +73,7 @@
   "brouwdag_calc_mash_eff": "Mash efficiency",
   "brouwdag_calc_brouwzaal_eff": "Brewhouse efficiency",
   "brouwdag_calc_ibu_tinseth": "IBU (Tinseth)",
+  "brouwdag_calc_ibu_volume": "Boil volume",
   "brouwdag_geen_recept_voor_stappen": "No recipe linked or no mash/hop data available.",
   "brouwdag_label_maisch_stap": "Mash step {n}",
   "brouwdag_label_hop_add": "Hop addition: {n} @ {t}min",

@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.73] — 2026-05-15
+
+### Fixed — IBU te hoog bij batch zonder gemeten OG
+
+Zonder gemeten OG kreeg de Tinseth-formule `sg = 0 || 1 = 1` als invoer, waardoor de bigness-factor altijd maximaal werd (1.65) — dit verhoogde de IBU met ~70% t.o.v. een werkelijk wort van 1.060.
+
+**Fixes:**
+
+- **OG-fallback uit recept-doel.** `ibuOG = batch.OG > 0 ? batch.OG : recept.OG > 0 ? recept.OG : 0`. Voor een geplande batch wordt nu de recept-doel-OG gebruikt zodat de IBU consistent is met Brewfather. Zodra de werkelijke OG wordt ingevuld, schakelt de berekening over.
+- **Per-hop IBU-kolom in het Hop-schema** toont de bijdrage van elke individuele hop (afgerond op 0.1). Whirlpool/dry-hop/mash tonen een `—` omdat Tinseth daar verwaarloosbare bijdrage aan toekent.
+- **Hover-tooltip op de IBU-totaalbox** toont welke OG (gemeten of doel) en welk kook-volume zijn gebruikt — handig om verschillen met Brewfather snel te herleiden.
+
+Met deze fix zou de berekende IBU binnen ~1–2 IBU van Brewfather's output moeten zitten voor dezelfde inputs. Overgebleven kleine verschillen kunnen komen door Brewfather's "Hop Utilization Factor" (default 100%, configureerbaar per equipment-profile) of doordat BF whirlpool-IBU bijtelt op basis van temperatuur — die laatste correctie voegen we later toe als gewenst.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `ibuOG`-fallback uit `batchRecept.OG`; `ibuBijdrageVoor()`-helper per hop; nieuwe "IBU"-kolom in het Hop-schema; hover-tooltip op IBU-box met OG-bron en volume.
+- `src/i18n/{nl,en,de,fr,es}.json` — 1 nieuwe sleutel (`brouwdag_calc_ibu_volume`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.72 → 1.9.73.
+
+---
+
 ## [1.9.72] — 2026-05-15
 
 ### Fixed — IBU-berekening werkte niet (gram vs hoeveelheid mismatch)

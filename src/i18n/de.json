@@ -73,6 +73,7 @@
   "brouwdag_calc_mash_eff": "Maische-Effizienz",
   "brouwdag_calc_brouwzaal_eff": "Sudhaus-Effizienz",
   "brouwdag_calc_ibu_tinseth": "IBU (Tinseth)",
+  "brouwdag_calc_ibu_volume": "Kochvolumen",
   "brouwdag_geen_recept_voor_stappen": "Kein Rezept verknüpft oder keine Maische-/Hopfendaten verfügbar.",
   "brouwdag_label_maisch_stap": "Maische-Schritt {n}",
   "brouwdag_label_hop_add": "Hopfengabe: {n} @ {t}min",

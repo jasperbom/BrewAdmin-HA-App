@@ -245,11 +245,15 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     gram: Number(h.hoeveelheid) || 0,
     alpha_pct: effectieveAlpha(h, lots, ingredienten, batch.datum, hopStorageDefault).alpha,
   }))
+  // OG voor Tinseth: gemeten > recept-doel. Zonder fallback zou een
+  // geplande batch (OG=0) sg=1 krijgen, en dan is de bigness-factor 1.65
+  // (maximaal) — wat ~70% te hoge IBU geeft t.o.v. een 1.060-wort.
+  const ibuOG = Number(batch.OG) || Number(batchRecept?.OG) || 0
   // Volume-fallback: gemeten post-boil > recept boilSize > liter_vergist.
   // `pre_boil_volume_l` zou te groot zijn (telt verdamping mee), dus dat
   // gebruiken we niet als fallback.
   const ibuVolume = Number(batch.kook_volume_eind_l) || Number(batch.kook_volume) || Number(batch.gist_volume_l) || Number(batch.liter_vergist) || 0
-  const ibu = iBUTinseth(hopsVoorIBU as any, Number(batch.OG) || 0, ibuVolume)
+  const ibu = iBUTinseth(hopsVoorIBU as any, ibuOG, ibuVolume)
 
   // Persisteer berekende waarden zodra de inputs aanwezig zijn — zo blijven ze
   // beschikbaar voor overzicht/print zonder steeds herberekenen.
@@ -527,6 +531,20 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       {/* Hop-schema (kook-additie tijden — bewerkbaar) */}
       {(() => {
         const hops = batchBi.filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
+        // Bereken IBU-bijdrage van één hop met dezelfde Tinseth-formule. Geeft
+        // 0 voor non-boil hops of wanneer cruciale data ontbreekt.
+        const ibuBijdrageVoor = (h: any): number => {
+          const gebr = String(h.gebruik || '').toLowerCase()
+          if (gebr && !['boil', 'kook', ''].includes(gebr)) return 0
+          const g = Number(h.hoeveelheid) || 0
+          const a = Number(effectieveAlpha(h, lots, ingredienten, batch.datum, hopStorageDefault).alpha) || 0
+          const t = Number(h.tijdstip_min) || 0
+          if (g <= 0 || a <= 0 || t <= 0 || ibuVolume <= 0) return 0
+          const sg = ibuOG > 0 ? ibuOG : 1
+          const factGrav = 1.65 * Math.pow(0.000125, sg - 1)
+          const factTime = (1 - Math.exp(-0.04 * t)) / 4.15
+          return (factGrav * factTime * a * g * 10) / ibuVolume
+        }
         const updHop = (hopId: number, veld: 'tijdstip_min' | 'alpha_pct' | 'gebruik' | 'lot_id' | 'temp_c', val: any) => {
           if (!setBi) return
           setBi((prev: any[]) => prev.map(x => x.id === hopId ? {...x, [veld]: val} : x))
@@ -549,13 +567,21 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
             {hopOpen && (
               <div className="p-4">
                 {/* IBU-totaalbox bovenaan — toont berekende IBU + (indien
-                    aanwezig) het doel uit het recept. Update live wanneer
-                    tijden/alpha/lots worden aangepast. */}
+                    aanwezig) het doel uit het recept. Hover/title onthult
+                    welk volume + OG zijn gebruikt zodat afwijkingen t.o.v.
+                    Brewfather snel te herleiden zijn. */}
                 {hops.length > 0 && (() => {
                   const doelIBU = Number(batchRecept?.IBU) || null
                   const verschil = doelIBU != null && ibu > 0 ? ibu - doelIBU : null
+                  const ogBron = Number(batch.OG) > 0 ? t('brouwdag_gemeten')
+                    : Number(batchRecept?.OG) > 0 ? t('brouwdag_doel')
+                    : '—'
+                  const tooltip = `${t('brouwdag_calc_ibu_tinseth')}\n`
+                    + `OG: ${ibuOG > 0 ? ibuOG.toFixed(3) : '1.000 (fallback)'} (${ogBron})\n`
+                    + `${t('brouwdag_calc_ibu_volume')}: ${ibuVolume > 0 ? ibuVolume.toFixed(1) + 'L' : '—'}`
                   return (
-                    <div className="mb-3 flex items-baseline justify-between bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                    <div className="mb-3 flex items-baseline justify-between bg-gray-50 border border-gray-200 rounded px-3 py-2"
+                      title={tooltip}>
                       <div className="text-xs text-gray-500 uppercase font-semibold tracking-wide">
                         {t('brouwdag_calc_ibu_tinseth')}
                       </div>
@@ -591,6 +617,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                           <th className="px-3 py-1.5 text-right">{t('hop_schema_tijdstip')}</th>
                           <th className="px-3 py-1.5 text-left">{t('hop_schema_gebruik')}</th>
                           <th className="px-3 py-1.5 text-right">{t('hop_schema_temp')}</th>
+                          <th className="px-3 py-1.5 text-right">IBU</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -707,6 +734,12 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                               ) : (
                                 <span className="text-xs text-gray-300">—</span>
                               )}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-medium text-gray-700">
+                              {(() => {
+                                const bij = ibuBijdrageVoor(h)
+                                return bij > 0 ? bij.toFixed(1) : <span className="text-gray-300 font-normal">—</span>
+                              })()}
                             </td>
                           </tr>
                           )

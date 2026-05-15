@@ -73,6 +73,7 @@
   "brouwdag_calc_mash_eff": "Eficiencia maceración",
   "brouwdag_calc_brouwzaal_eff": "Eficiencia cervecería",
   "brouwdag_calc_ibu_tinseth": "IBU (Tinseth)",
+  "brouwdag_calc_ibu_volume": "Volumen de cocción",
   "brouwdag_geen_recept_voor_stappen": "Sin receta vinculada o sin datos de maceración/lúpulo.",
   "brouwdag_label_maisch_stap": "Paso maceración {n}",
   "brouwdag_label_hop_add": "Adición lúpulo: {n} @ {t}min",
