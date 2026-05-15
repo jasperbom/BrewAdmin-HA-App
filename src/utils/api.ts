@@ -262,6 +262,22 @@ export const callClaudeProxy = async (body: any) => {
   return r.json()
 }
 
+// Normaliseert Brewfather's hop-use waarden naar onze interne 4 categorieën.
+// Brewfather levert "Boil", "Aroma", "Whirlpool", "Hopstand", "Dry Hop",
+// "First Wort", "Mash". "Aroma" en "Hopstand" zijn beide flame-out / na de
+// kook → mappen naar whirlpool. "First Wort" wordt al vóór de kook
+// toegevoegd → telt als boil voor IBU.
+export const mapHopGebruik = (bfUse: string | undefined | null): string => {
+  const u = String(bfUse || '').trim().toLowerCase()
+  if (!u) return 'boil'
+  if (u === 'aroma' || u === 'whirlpool' || u === 'hopstand' || u === 'hop stand') return 'whirlpool'
+  if (u === 'dry hop' || u === 'dry-hop' || u === 'dryhop') return 'dry hop'
+  if (u === 'mash') return 'mash'
+  if (u === 'first wort' || u === 'first-wort' || u === 'fwh') return 'boil'
+  if (u === 'boil' || u === 'kook') return 'boil'
+  return 'boil'
+}
+
 // Brewfather helpers
 export const bfNumSafe = (v: any): number | string => {
   if (v === null || v === undefined || v === '') return ''
@@ -305,7 +321,7 @@ export const bfMapRecipe = (r: any, opts: {
     // (1.037 = 80% yield). Beide accepteren als bron voor extract_pct.
     extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)*1000/3.84*10)/10 : ''),
   })),
-  hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||'', tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min', alpha_pct: h.alpha != null ? Number(h.alpha) : ''})),
+  hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik: mapHopGebruik(h.use), tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min', alpha_pct: h.alpha != null ? Number(h.alpha) : '', temp_c: h.temp != null ? Number(h.temp) : ''})),
   gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
   overig: (r.miscs||[]).map((m: any) =>       ({naam:m.name||'', hoeveelheid:Number(m.amount||0), eenheid:m.unit||'g', gebruik:m.use||''})),
   kleur:       bfNumSafe(r.color),
@@ -544,6 +560,7 @@ export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
   }))
   // Hop: bewaar alpha%, kooktijd (min vóór einde) en gebruik (boil/whirlpool/dry-hop)
   // voor IBU-berekening via Tinseth. `time` in BF is min vóór einde koken.
+  // `temp` is alleen relevant voor whirlpool/aroma additions (typisch 75-90°C).
   ;(r.hops||[]).forEach((h: any) => rows.push({
     batch_id: batchId,
     ingredient_naam: h.name||'',
@@ -552,7 +569,8 @@ export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
     eenheid: 'g',
     alpha_pct: h.alpha != null ? Number(h.alpha) : '',
     tijdstip_min: h.time != null ? Number(h.time) : '',
-    gebruik: String(h.use||'boil').toLowerCase(),
+    gebruik: mapHopGebruik(h.use),
+    temp_c: h.temp != null ? Number(h.temp) : '',
   }))
   ;(r.yeasts||[]).forEach((y: any) =>      rows.push({batch_id:batchId, ingredient_naam:y.name||'', ingredient_type:'Gist', hoeveelheid:Number(y.amount||1),            eenheid:'stuks'}))
   ;(r.miscs||[]).forEach((m: any) =>       rows.push({batch_id:batchId, ingredient_naam:m.name||'', ingredient_type:'Overig', hoeveelheid:Number(m.amount||1),          eenheid:m.amountType||'g'}))

@@ -1026,6 +1026,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== ''
                   ? Number(item.tijdstip_min) : '',
                 gebruik: String(item.gebruik || 'boil').toLowerCase(),
+                temp_c: item.temp_c != null && item.temp_c !== '' ? Number(item.temp_c) : '',
               }),
             }
           })
@@ -1246,7 +1247,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
     const nieuweIng = [
       ...(r.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
-      ...(r.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct })),
+      ...(r.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
       ...(r.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
       ...(r.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
     ]
@@ -1280,6 +1281,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== ''
               ? Number(item.tijdstip_min) : '',
             gebruik: String(item.gebruik || 'boil').toLowerCase(),
+            temp_c: item.temp_c != null && item.temp_c !== '' ? Number(item.temp_c) : '',
           }),
           eenheid: item.eenheid,
           lot_id: null,

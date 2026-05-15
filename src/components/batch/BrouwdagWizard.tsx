@@ -1,6 +1,6 @@
 import React from 'react'
 import { t } from '../../i18n'
-import { newId } from '../../utils/api'
+import { newId, mapHopGebruik } from '../../utils/api'
 import { tod } from '../../utils/format'
 import {
   mashEfficiency, brouwzaalEfficiency, kookVerdampingPct,
@@ -174,8 +174,17 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       if ((x.alpha_pct == null || x.alpha_pct === '') && match.alpha_pct != null && match.alpha_pct !== '') {
         upd.alpha_pct = Number(match.alpha_pct) || 0
       }
-      if (!x.gebruik && match.gebruik) {
-        upd.gebruik = String(match.gebruik).toLowerCase()
+      // Gebruik altijd normaliseren (ook als bestaande waarde 'Aroma' is —
+      // dat moet 'whirlpool' worden). Overschrijf alleen wanneer het recept
+      // een waarde levert.
+      if (match.gebruik) {
+        const genormaliseerd = mapHopGebruik(match.gebruik)
+        if (genormaliseerd !== String(x.gebruik || '').toLowerCase()) {
+          upd.gebruik = genormaliseerd
+        }
+      }
+      if ((x.temp_c == null || x.temp_c === '') && match.temp_c != null && match.temp_c !== '') {
+        upd.temp_c = Number(match.temp_c) || 0
       }
       return Object.keys(upd).length > 0 ? {...x, ...upd} : x
     }))
@@ -512,7 +521,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       {/* Hop-schema (kook-additie tijden — bewerkbaar) */}
       {(() => {
         const hops = batchBi.filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
-        const updHop = (hopId: number, veld: 'tijdstip_min' | 'alpha_pct' | 'gebruik' | 'lot_id', val: any) => {
+        const updHop = (hopId: number, veld: 'tijdstip_min' | 'alpha_pct' | 'gebruik' | 'lot_id' | 'temp_c', val: any) => {
           if (!setBi) return
           setBi((prev: any[]) => prev.map(x => x.id === hopId ? {...x, [veld]: val} : x))
         }
@@ -575,6 +584,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                           <th className="px-3 py-1.5 text-right">α %</th>
                           <th className="px-3 py-1.5 text-right">{t('hop_schema_tijdstip')}</th>
                           <th className="px-3 py-1.5 text-left">{t('hop_schema_gebruik')}</th>
+                          <th className="px-3 py-1.5 text-right">{t('hop_schema_temp')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -675,6 +685,22 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                                 <option value="dry hop">{t('hop_gebruik_dryhop')}</option>
                                 <option value="mash">{t('hop_gebruik_mash')}</option>
                               </select>
+                            </td>
+                            <td className="px-3 py-1.5 text-right">
+                              {/* Temperatuur is alleen relevant voor whirlpool/
+                                  aroma; voor boil verbergen we het veld om
+                                  ruimte te besparen. */}
+                              {String(h.gebruik || '').toLowerCase() === 'whirlpool' ? (
+                                <>
+                                  <input type="number" step="1" value={h.temp_c ?? ''}
+                                    onChange={e => updHop(h.id, 'temp_c', e.target.value)}
+                                    className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-right t-input"
+                                    placeholder="80" />
+                                  <span className="text-xs text-gray-400 ml-1">°C</span>
+                                </>
+                              ) : (
+                                <span className="text-xs text-gray-300">—</span>
+                              )}
                             </td>
                           </tr>
                           )

@@ -222,11 +222,14 @@ export interface BatchIngredient {
   afboeken?: boolean
   // Brouwkundige eigenschappen voor calculaties (uit Brewfather of handmatig):
   // mout: extract_pct (yield in %, default 80); hop: alpha_pct + tijdstip_min
-  // (minuten vóór einde koken) + gebruik ('boil'|'whirlpool'|'dry-hop'|'mash').
+  // (minuten vóór einde koken voor boil, dagen voor dry-hop) + gebruik
+  // ('boil'|'whirlpool'|'dry hop'|'mash'). Voor whirlpool: optionele
+  // temperatuur (°C) — typisch 75–90°C.
   extract_pct?: number | string
   alpha_pct?: number | string
   tijdstip_min?: number | string
   gebruik?: string
+  temp_c?: number | string
 }
 
 export interface Verpakking {
@@ -423,6 +426,7 @@ export interface ReceptIngredient {
   // batch_ingredienten zodat IBU/efficiency direct werken.
   alpha_pct?: number | string       // α-zuur% voor hop
   extract_pct?: number | string     // yield% voor mout/suiker
+  temp_c?: number | string          // whirlpool-temperatuur (°C)
 }
 
 export interface VergistingsStap {
