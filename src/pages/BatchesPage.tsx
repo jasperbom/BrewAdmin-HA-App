@@ -1722,7 +1722,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
                   stappen={brouwdagStappen} setStappen={setBrouwdagStappen}
                   tanks={tanks} lots={lots} ingredienten={ing}
-                  hopStorageDefault={brouwprocesInst?.hop_storage} />
+                  hopStorageDefault={brouwprocesInst?.hop_storage}
+                  recepten={recepten} />
                 <WaterAdditieSection batch={selB}
                   waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
               </>

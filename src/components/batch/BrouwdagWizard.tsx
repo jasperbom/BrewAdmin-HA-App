@@ -23,6 +23,9 @@ interface Props {
   // Globale fallback voor opslag-conditie (uit instellingen). Lots met
   // een eigen `bf_props.storage` overrulen deze waarde.
   hopStorageDefault?: string
+  // Alle recepten — gebruikt om hop-tijden/alpha uit het gekoppelde recept
+  // op te halen via de "Tijden uit recept"-knop.
+  recepten?: any[]
 }
 
 const FASE_VOLGORDE: BrouwdagFase[] = ['water', 'maisch', 'lauter', 'koken', 'koelen', 'og']
@@ -107,7 +110,7 @@ const effectieveAlpha = (
   return {alpha: 0, bron: 'none'}
 }
 
-const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel'}) => {
+const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel', recepten = []}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
@@ -134,6 +137,48 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       }
     }
     return s.label
+  }
+
+  // Recept van deze batch (indien gekoppeld). `is_huidige` zorgt dat we de
+  // actuele recept-versie pakken, niet een gearchiveerde.
+  const batchRecept = batch.recept_id
+    ? recepten.find((r: any) => r.id === batch.recept_id && r.is_huidige !== false)
+    : null
+
+  // Kopieert hop-tijden, alpha-zuur en gebruik (boil/dry-hop/whirlpool) uit
+  // het gekoppelde recept naar de batch-ingrediënten. Matcht op naam (case-
+  // insensitive). Werkt voor bestaande batches die vóór v1.9.64 zijn
+  // aangemaakt of waar de tijden anderszins ontbreken. Vult alleen lege
+  // velden; bestaande handmatige waarden blijven behouden.
+  const syncHopUitRecept = () => {
+    if (!setBi || !batchRecept) return
+    const receptHops = (batchRecept.hop || []) as any[]
+    if (receptHops.length === 0) {
+      alert(t('hop_schema_recept_geen_hops'))
+      return
+    }
+    setBi((prev: any[]) => prev.map(x => {
+      if (x.batch_id !== batch.id) return x
+      if (String(x.ingredient_type).toLowerCase() !== 'hop') return x
+      // Match op naam (case-insensitive). Bij meerdere additions met dezelfde
+      // naam in het recept, pakken we voorlopig de eerste — voor een echt
+      // sluitende sync zou je per-additie indexeren (bv. via tijd-match).
+      const naam = String(x.ingredient_naam || '').trim().toLowerCase()
+      const match = receptHops.find(rh => String(rh.naam || '').trim().toLowerCase() === naam)
+      if (!match) return x
+      const upd: any = {}
+      // Alleen vullen wanneer leeg — overschrijf geen handmatige waarden.
+      if ((x.tijdstip_min == null || x.tijdstip_min === '') && match.tijd != null && match.tijd !== '') {
+        upd.tijdstip_min = Number(match.tijd) || 0
+      }
+      if ((x.alpha_pct == null || x.alpha_pct === '') && match.alpha_pct != null && match.alpha_pct !== '') {
+        upd.alpha_pct = Number(match.alpha_pct) || 0
+      }
+      if (!x.gebruik && match.gebruik) {
+        upd.gebruik = String(match.gebruik).toLowerCase()
+      }
+      return Object.keys(upd).length > 0 ? {...x, ...upd} : x
+    }))
   }
 
   // Verwijdert alle bestaande hop-additie-stappen voor deze batch en regenereert
@@ -576,12 +621,20 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                 )}
                 <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
                   <div className="text-xs text-gray-400 italic flex-1 min-w-0">{t('hop_schema_hint')}</div>
-                  {hops.length > 0 && (
-                    <Btn s="sm" v="secondary" onClick={syncHopStappen}
-                      title={t('hop_schema_sync_hint')}>
-                      {t('hop_schema_sync')}
-                    </Btn>
-                  )}
+                  <div className="flex gap-2">
+                    {hops.length > 0 && batchRecept && (
+                      <Btn s="sm" v="secondary" onClick={syncHopUitRecept}
+                        title={t('hop_schema_uit_recept_hint').replace('{recept}', batchRecept.naam || '')}>
+                        {t('hop_schema_uit_recept')}
+                      </Btn>
+                    )}
+                    {hops.length > 0 && (
+                      <Btn s="sm" v="secondary" onClick={syncHopStappen}
+                        title={t('hop_schema_sync_hint')}>
+                        {t('hop_schema_sync')}
+                      </Btn>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
