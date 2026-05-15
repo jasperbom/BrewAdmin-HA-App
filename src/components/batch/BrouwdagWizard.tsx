@@ -14,8 +14,10 @@ interface Props {
   batch: Batch
   setBat: any
   bi: BatchIngredient[]
+  setBi?: any
   stappen: BrouwdagStap[]
   setStappen: any
+  tanks?: any[]
 }
 
 const FASE_VOLGORDE: BrouwdagFase[] = ['water', 'maisch', 'lauter', 'koken', 'koelen', 'og']
@@ -29,9 +31,11 @@ const FASE_LABEL: Record<BrouwdagFase, string> = {
 }
 
 // Brouwdag-wizard met stappen per fase + kernmeetwaarden + live calculaties.
-const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, stappen, setStappen}) => {
+const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = []}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
+  const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
+  const [hopOpen, setHopOpen] = React.useState<boolean>(true)
 
   // ── Kerngegevens-velden direct op batch ───────────────────────────────────
   const updField = (veld: keyof Batch, val: any) => {
@@ -240,6 +244,35 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, stappen, setStappen
               onChange={e => updField('liter_vergist', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="22" />
           </div>
+          <div>
+            <label className="text-xs text-gray-500">{t('batch_info_mash_ph')}</label>
+            <input type="number" step="0.01" value={batch.maisch_ph ?? ''}
+              onChange={e => updField('maisch_ph', e.target.value)}
+              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="5.40" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">{t('batch_info_product_ph')}</label>
+            <input type="number" step="0.01" value={batch.product_ph ?? ''}
+              onChange={e => updField('product_ph', e.target.value)}
+              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="4.40" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">{t('lbl_tank')}</label>
+            {tanks && tanks.length > 0 ? (
+              <select value={batch.tank || ''}
+                onChange={e => updField('tank', e.target.value)}
+                className="w-full border border-gray-200 rounded px-2 py-1 t-input">
+                <option value="">{t('batch_no_tank')}</option>
+                {tanks.map((tk: any) => (
+                  <option key={tk.id} value={tk.id}>{tk.naam || tk.id}</option>
+                ))}
+              </select>
+            ) : (
+              <input value={batch.tank || ''}
+                onChange={e => updField('tank', e.target.value)}
+                className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="T1" />
+            )}
+          </div>
         </div>
 
         {/* Live calculaties */}
@@ -256,48 +289,130 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, stappen, setStappen
         )}
       </div>
 
-      {/* Stappenlijst */}
-      <div className="bg-white rounded-xl shadow-card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('brouwdag_titel')}</div>
-          {mijnStappen.length === 0 && (
-            <Btn s="sm" onClick={genereerStappen}>{t('brouwdag_genereer_uit_recept')}</Btn>
-          )}
-        </div>
-
-        {mijnStappen.length === 0 ? (
-          <div className="text-sm text-gray-500 italic py-3">{t('brouwdag_geen_stappen')}</div>
-        ) : (
-          <div className="space-y-3">
-            {FASE_VOLGORDE.map(fase => {
-              const items = mijnStappen.filter(s => s.fase === fase).sort((a, b) => (a.volgorde || 0) - (b.volgorde || 0))
-              if (!items.length) return null
-              return (
-                <div key={fase} className="border-l-4 pl-3" style={{borderColor: 'var(--t-accent)'}}>
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center justify-between">
-                    <span>{t(FASE_LABEL[fase])}</span>
-                    <button onClick={() => voegStapToe(fase)} className="text-xs text-gray-400 hover:text-gray-600">+ {t('brouwdag_voeg_stap_toe')}</button>
+      {/* Hop-schema (kook-additie tijden — bewerkbaar) */}
+      {(() => {
+        const hops = batchBi.filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
+        const updHop = (hopId: number, veld: 'tijdstip_min' | 'alpha_pct' | 'gebruik', val: any) => {
+          if (!setBi) return
+          setBi((prev: any[]) => prev.map(x => x.id === hopId ? {...x, [veld]: val} : x))
+        }
+        return (
+          <div className="bg-white rounded-xl shadow-card overflow-hidden">
+            <SectionHeader
+              title={t('hop_schema_titel')}
+              open={hopOpen}
+              onToggle={() => setHopOpen(o => !o)}
+              info={hops.length > 0 ? `${hops.length}` : null}
+            />
+            {hopOpen && (
+              <div className="p-4">
+                {hops.length === 0 ? (
+                  <div className="text-sm text-gray-500 italic">{t('hop_schema_geen')}</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-xs text-gray-500 bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-1.5 text-left">{t('lbl_name')}</th>
+                          <th className="px-3 py-1.5 text-right">{t('lbl_quantity')}</th>
+                          <th className="px-3 py-1.5 text-right">α %</th>
+                          <th className="px-3 py-1.5 text-right">{t('hop_schema_tijdstip')}</th>
+                          <th className="px-3 py-1.5 text-left">{t('hop_schema_gebruik')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {hops
+                          .slice()
+                          .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
+                          .map((h: any) => (
+                          <tr key={h.id}>
+                            <td className="px-3 py-1.5">{h.ingredient_naam}</td>
+                            <td className="px-3 py-1.5 text-right text-gray-600">{h.hoeveelheid} {h.eenheid || 'g'}</td>
+                            <td className="px-3 py-1.5 text-right">
+                              <input type="number" step="0.1" value={h.alpha_pct ?? ''}
+                                onChange={e => updHop(h.id, 'alpha_pct', e.target.value)}
+                                className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-right t-input" />
+                            </td>
+                            <td className="px-3 py-1.5 text-right">
+                              <input type="number" step="1" value={h.tijdstip_min ?? ''}
+                                onChange={e => updHop(h.id, 'tijdstip_min', e.target.value)}
+                                className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-right t-input"
+                                placeholder="60" />
+                              <span className="text-xs text-gray-400 ml-1">{t('lbl_minuten')}</span>
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <select value={String(h.gebruik || 'boil').toLowerCase()}
+                                onChange={e => updHop(h.id, 'gebruik', e.target.value)}
+                                className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input">
+                                <option value="boil">{t('hop_gebruik_boil')}</option>
+                                <option value="whirlpool">{t('hop_gebruik_whirlpool')}</option>
+                                <option value="dry hop">{t('hop_gebruik_dryhop')}</option>
+                                <option value="mash">{t('hop_gebruik_mash')}</option>
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="space-y-1.5">
-                    {items.map(s => (
-                      <StapRij key={s.id} stap={s}
-                        onToggle={() => togglevoltooid(s.id)}
-                        onMeting={v => updGemeten(s.id, v)}
-                        onOpmerking={v => updOpmerking(s.id, v)}
-                        onDelete={() => deleteStap(s.id)} />
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
+                )}
+                <div className="mt-2 text-xs text-gray-400 italic">{t('hop_schema_hint')}</div>
+              </div>
+            )}
           </div>
-        )}
+        )
+      })()}
 
-        {mijnStappen.length > 0 && !batch.brouwdag_voltooid && (
-          <div className="mt-4 pt-3 border-t flex justify-end">
-            <Btn v="green" onClick={rondAf} disabled={!mijnStappen.every(s => s.voltooid)}>
-              {t('brouwdag_voltooi_alles')}
-            </Btn>
+      {/* Stappenlijst */}
+      <div className="bg-white rounded-xl shadow-card overflow-hidden">
+        <SectionHeader
+          title={t('brouwdag_stappen_titel')}
+          open={stappenOpen}
+          onToggle={() => setStappenOpen(o => !o)}
+          info={mijnStappen.length > 0
+            ? `${mijnStappen.filter(s => s.voltooid).length}/${mijnStappen.length}`
+            : null}
+        />
+        {stappenOpen && (
+          <div className="p-4">
+            {mijnStappen.length === 0 ? (
+              <div>
+                <div className="text-sm text-gray-500 italic py-3">{t('brouwdag_geen_stappen')}</div>
+                <Btn s="sm" onClick={genereerStappen}>{t('brouwdag_genereer_uit_recept')}</Btn>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {FASE_VOLGORDE.map(fase => {
+                  const items = mijnStappen.filter(s => s.fase === fase).sort((a, b) => (a.volgorde || 0) - (b.volgorde || 0))
+                  if (!items.length) return null
+                  return (
+                    <div key={fase} className="border-l-4 pl-3" style={{borderColor: 'var(--t-accent)'}}>
+                      <div className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center justify-between">
+                        <span>{t(FASE_LABEL[fase])}</span>
+                        <button onClick={() => voegStapToe(fase)} className="text-xs text-gray-400 hover:text-gray-600">+ {t('brouwdag_voeg_stap_toe')}</button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {items.map(s => (
+                          <StapRij key={s.id} stap={s}
+                            onToggle={() => togglevoltooid(s.id)}
+                            onMeting={v => updGemeten(s.id, v)}
+                            onOpmerking={v => updOpmerking(s.id, v)}
+                            onDelete={() => deleteStap(s.id)} />
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {mijnStappen.length > 0 && !batch.brouwdag_voltooid && (
+              <div className="mt-4 pt-3 border-t flex justify-end">
+                <Btn v="green" onClick={rondAf} disabled={!mijnStappen.every(s => s.voltooid)}>
+                  {t('brouwdag_voltooi_alles')}
+                </Btn>
+              </div>
+            )}
           </div>
         )}
       </div>
