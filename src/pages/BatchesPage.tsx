@@ -5,6 +5,7 @@ import { fmt, fmtD, tod, fmtQty } from '../utils/format'
 import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
+import { getEffectiveBrewProp } from '../utils/brewProps'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -2518,7 +2519,24 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             ) : (
                               <div className="flex flex-col gap-1">
                                 {!x.afgeboekt && (
-                                  <select value={x.lot_id||''} onChange={e=>setBi((prev: any[])=>prev.map((b: any)=>b.id===x.id?{...b,lot_id:e.target.value?Number(e.target.value):null}:b))}
+                                  <select value={x.lot_id||''} onChange={e=>{
+                                    const newLotId = e.target.value ? Number(e.target.value) : null
+                                    setBi((prev: any[]) => prev.map((b: any) => {
+                                      if (b.id !== x.id) return b
+                                      const patch: any = {...b, lot_id: newLotId}
+                                      // Voor hop-ingrediënten: neem α uit het gekozen lot (of
+                                      // ingredient als lot geen α heeft) over naar alpha_pct
+                                      // zodat de waarde in het hop-schema zichtbaar wordt.
+                                      if (String(b.ingredient_type).toLowerCase() === 'hop') {
+                                        const newLot = newLotId ? (lots || []).find((l: any) => l.id === newLotId) : null
+                                        const alpha = getEffectiveBrewProp(newLot, ingMatch, 'alpha')
+                                        if (alpha != null && Number(alpha) > 0) {
+                                          patch.alpha_pct = Number(alpha)
+                                        }
+                                      }
+                                      return patch
+                                    }))
+                                  }}
                                     className={`border rounded px-1 py-0.5 text-xs bg-white ${lotTekort?'border-amber-300':'border-gray-200'}`}>
                                     <option value="">{t('ing_choose_lot')}</option>
                                     {ingLots.map((l: any) => {

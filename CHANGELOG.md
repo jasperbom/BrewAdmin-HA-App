@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.79] — 2026-05-15
+
+### Fixed — α-percentage ook overgenomen bij lot-select op batch-ingrediënten
+
+De lot-`<select>` in de Ingrediënten-sectie van de batch (`BatchesPage.tsx`, rij 2521) was de tweede plek waar lots aan een batch worden gekoppeld — daar gebeurde de α-overname nog niet. Nu wordt voor hop-ingrediënten `alpha_pct` direct gevuld met `getEffectiveBrewProp(lot, ingredient, 'alpha')` zodra je een lot kiest. Dezelfde resolver-volgorde als in `IngredientenPage`: lot wint, anders fallback naar het ingrediënt.
+
+### Changed — Hop-schema sortering: whirlpool/dry-hop ná boil
+
+De hop-schema-tabel in de brouwdag-wizard sorteerde puur op `tijdstip_min` aflopend. Daardoor kwam een whirlpool met tijdstip 10' tussen boil-hops met tijdstip 15' en 5' te staan. De nieuwe groep-volgorde is **mash → boil → whirlpool → dry hop** (binnen elke groep nog steeds aflopend op tijdstip). Whirlpool-toevoegingen staan nu altijd onder de kook-additions, dry-hops onderaan.
+
+### Files
+- `src/pages/BatchesPage.tsx` — `getEffectiveBrewProp`-import; lot-`<select>` in ingrediënten-sectie zet ook `alpha_pct` voor hop-rijen.
+- `src/components/batch/BrouwdagWizard.tsx` — hop-schema-sortering eerst op groep, dan op tijdstip.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.78 → 1.9.79.
+
+---
+
+## [1.9.78] — 2026-05-15
+
+### Fixed — α-percentage hop-schema toonde nog steeds leeg veld
+
+De v1.9.77-fix vulde α alleen aan bij een nieuwe lot-keuze, en keek alleen naar `lot.bf_props.alpha`. Twee aanvullingen:
+
+- **Ingredient-fallback**: bij lot-keuze wordt nu `getEffectiveBrewProp(lot, ing, 'alpha')` gebruikt — als het lot geen α heeft, valt het terug op de α van het ingrediënt zelf. Identiek aan hoe `IngredientenPage` lot-waarden resolved.
+- **Eenmalige sync bij open van wizard**: voor elke hop met een gekoppeld lot/ingredient maar leeg `alpha_pct`, wordt de effectieve α nu alsnog ingevuld. Dit lost batches op die vóór v1.9.77 een lot kregen zonder dat α werd overgenomen. De sync runt één keer per batch-open (via `hopAlphaSyncRef`) zodat een handmatige leegmaak binnen dezelfde sessie niet wordt overschreven.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `getEffectiveBrewProp`-import; `updHopLot` met ingredient-fallback; nieuwe `useEffect` met `hopAlphaSyncRef` voor eenmalige sync.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.77 → 1.9.78.
+
+---
+
 ## [1.9.77] — 2026-05-15
 
 ### Fixed — α-percentage van lot wordt nu overgenomen in hop-schema
