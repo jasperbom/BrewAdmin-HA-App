@@ -56,6 +56,7 @@
   "brouwdag_fase_koelen": "Cooling",
   "brouwdag_fase_og": "OG measurement",
   "brouwdag_doel": "Target",
+  "brouwdag_ibu_geen_og": "OG required",
   "brouwdag_typisch": "Typical",
   "brouwdag_gemeten": "Measured",
   "brouwdag_afwijking": "Deviation",

@@ -967,9 +967,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         liter_vergist:'Liters',OG:'OG',FG:'FG',ABV:'ABV',
         brouwzaal_eff:'Brouwzaal eff.',maisch_eff:'Maisch eff.',maisch_ph:'Maisch pH',product_ph:'Product pH',
         electra_kosten:'Elektra',water_kosten:'Water',schoonmaak_kosten:'Schoonmaak',overige_kosten:'Overig',notities:'Notities',platogehalte:'Plato',gn_code:'GN-code'}
+      // Recept-doel achter meetwaarden: maakt afwijking direct zichtbaar in
+      // de log. Alleen velden waar het recept een doelwaarde voor heeft.
+      const recept = oud?.recept_id ? (recepten||[]).find((r: any) => r.id === oud.recept_id && r.is_huidige !== false) : null
+      const doelVoor: Record<string, any> = recept ? {
+        OG: recept.OG, FG: recept.FG, ABV: recept.ABV ?? recept.abv,
+      } : {}
+      const formatDoel = (k: string) => {
+        const d = doelVoor[k]
+        return (d != null && d !== '' && Number(d) > 0) ? ` (${t('brouwdag_doel').toLowerCase()}: ${d})` : ''
+      }
       const wijz = Object.entries(velden)
         .filter(([k]) => String(oud?.[k]??'') !== String(bForm[k]??''))
-        .map(([k,l]) => `${l}: ${oud?.[k]||'—'} → ${bForm[k]||'—'}`)
+        .map(([k,l]) => `${l}: ${oud?.[k]||'—'} → ${bForm[k]||'—'}${formatDoel(k)}`)
       // Bij tankwijziging via het formulier ook de tank-historie bijwerken
       const tankGewijzigd = oud && String(oud.tank||'') !== String(bForm.tank||'')
       const extraPatch: Record<string, any> = {}

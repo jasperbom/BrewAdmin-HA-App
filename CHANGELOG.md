@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.76] — 2026-05-15
+
+### Fixed — IBU Tinseth-berekening gaf te hoge waarde bij ontbrekende OG
+
+Wanneer een batch nog geen gemeten OG had **én** het gekoppelde recept geen OG-doel had, viel de bigness-factor in de Tinseth-formule terug op `1.65` (maximum, alsof het wort water was). Dit gaf ~30-70% te hoge IBU t.o.v. een normale 1.050 wort. De berekening returnt nu `0` (en de UI toont "OG nodig") in plaats van een misleidende waarde — pas zodra OG bekend is komt er een IBU op het scherm.
+
+### Added — Recept-doel naast berekende waarden in brouwdag
+
+Drie plekken tonen nu ook wat het recept als doel heeft, zodat afwijkingen direct zichtbaar zijn:
+
+- **Live calculaties (CalcCard's)**: IBU-card toont `Doel: 40.0` onder de berekende waarde wanneer het recept een IBU-doel heeft.
+- **Hop-schema header**: tekstje `12 hopen · IBU 35.2` wordt `12 · IBU 35.2 / doel 40.0`.
+- **Batch-log entries**: bij wijziging van OG/FG/ABV via het batch-formulier wordt het recept-doel meegelogd, bijv. `OG: 1.048 → 1.052 (doel: 1.055)`.
+
+### Files
+- `src/utils/calculations.ts` — `iBUTinseth` returnt 0 bij ontbrekende OG; comment toegevoegd.
+- `src/components/batch/BrouwdagWizard.tsx` — `ibuBijdrageVoor` zelfde fix; `CalcCard` accepteert `target`-prop; IBU-card en hop-schema header tonen doel.
+- `src/pages/BatchesPage.tsx` — `wijz`-mapper voegt recept-doel toe achter OG/FG/ABV in log-regel.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutel `brouwdag_ibu_geen_og`.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.75 → 1.9.76.
+
+---
+
 ## [1.9.75] — 2026-05-15
 
 ### Changed — Status 'Verpakt' hernoemd naar 'Afgevuld'
