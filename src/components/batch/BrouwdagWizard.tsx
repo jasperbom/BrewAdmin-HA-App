@@ -6,6 +6,7 @@ import {
   mashEfficiency, brouwzaalEfficiency, kookVerdampingPct,
   iBUTinseth, totaalMaxExtract, hopVerouderdeAlpha
 } from '../../utils/calculations'
+import { getEffectiveBrewProp } from '../../utils/brewProps'
 import Btn from '../ui/Btn'
 import SectionHeader from '../ui/SectionHeader'
 import type { BrouwdagStap, BrouwdagFase, Batch, BatchIngredient } from '../../types'
@@ -288,6 +289,37 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mashEff, brEff, verdamping, ibu])
 
+  // Eenmalige sync per batch-open: hops met een gekoppeld lot maar leeg
+  // alpha_pct krijgen alsnog de α uit lot (of ingredient-fallback). Dit
+  // repareert batches die vóór v1.9.77 een lot kregen toegewezen zonder
+  // dat α werd overgenomen. Runt alleen op batch.id-change zodat een
+  // bewuste leegmaak-actie door de gebruiker niet wordt overschreven
+  // binnen dezelfde sessie.
+  const hopAlphaSyncRef = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    if (!setBi) return
+    if (hopAlphaSyncRef.current === batch.id) return
+    hopAlphaSyncRef.current = batch.id
+    const updates = new Map<number, number>()
+    for (const h of batchBi) {
+      if (String(h.ingredient_type).toLowerCase() !== 'hop') continue
+      if (h.alpha_pct != null && h.alpha_pct !== '' && Number(h.alpha_pct) > 0) continue
+      const lot = h.lot_id ? (lots || []).find(l => l.id === h.lot_id) : null
+      const ing = h.ingredient_id ? (ingredienten || []).find(i => i.id === h.ingredient_id) : null
+      const alpha = getEffectiveBrewProp(lot, ing, 'alpha')
+      if (alpha != null && Number(alpha) > 0) {
+        updates.set(h.id, Number(alpha))
+      }
+    }
+    if (updates.size > 0) {
+      setBi((prev: any[]) => prev.map(x => {
+        const v = updates.get(x.id)
+        return v != null ? {...x, alpha_pct: v} : x
+      }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.id, lots, ingredienten])
+
   // ── Stappen genereren uit recept ──────────────────────────────────────────
   const genereerStappen = () => {
     const nieuwe: BrouwdagStap[] = []
@@ -564,24 +596,25 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
           if (!setBi) return
           setBi((prev: any[]) => prev.map(x => x.id === hopId ? {...x, [veld]: val} : x))
         }
-        // Lot-keuze neemt direct de raw α uit `lot.bf_props.alpha` over naar
-        // het α-veld van de batch-hop, zodat de gebruiker de waarde ziet
-        // staan zonder dat ze door de placeholder/tooltip moeten lezen.
-        // Verouderings-correctie blijft via `effectieveAlpha` lopen (die
-        // kijkt naar lot.bf_props.year), dus de IBU-berekening verandert
-        // niet. Bij wisselen van lot wordt α automatisch geüpdatet; bij
-        // 'geen lot' kiezen blijft de laatst overgenomen waarde staan
-        // zodat-ie als handmatige override blijft werken.
+        // Lot-keuze neemt de α uit `getEffectiveBrewProp(lot, ing, 'alpha')`
+        // over naar het α-veld van de batch-hop (lot wint, anders fallback
+        // naar het ingredient). Verouderings-correctie blijft via
+        // `effectieveAlpha` lopen, dus IBU verandert niet — alleen het
+        // veld toont nu meteen de waarde. Bij wisselen van lot wordt α
+        // overschreven; bij 'geen lot' kiezen valt het terug op de
+        // ingredient-α, en blijft anders de laatst overgenomen waarde
+        // staan als handmatige override.
         const updHopLot = (hopId: number, lotIdVal: string) => {
           if (!setBi) return
           const lotId = lotIdVal ? Number(lotIdVal) : ''
           const lot = lotId ? (lots || []).find(l => l.id === lotId) : null
-          const lotAlpha = lot?.bf_props?.alpha
           setBi((prev: any[]) => prev.map(x => {
             if (x.id !== hopId) return x
+            const ing = x.ingredient_id ? (ingredienten || []).find(i => i.id === x.ingredient_id) : null
+            const alpha = getEffectiveBrewProp(lot, ing, 'alpha')
             const patch: any = {...x, lot_id: lotId}
-            if (lot && lotAlpha != null && Number(lotAlpha) > 0) {
-              patch.alpha_pct = Number(lotAlpha)
+            if (alpha != null && Number(alpha) > 0) {
+              patch.alpha_pct = Number(alpha)
             }
             return patch
           }))
