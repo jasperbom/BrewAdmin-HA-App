@@ -238,12 +238,18 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   // Vervang alpha_pct door effectieve waarde uit lot/ingredient — inclusief
   // verouderings-correctie wanneer het lot een oogstjaar heeft. De
   // brouwdatum geldt als referentie zodat IBU consistent blijft als het
-  // batch later opnieuw wordt geopend.
+  // batch later opnieuw wordt geopend. `gram` expliciet zetten zodat de
+  // Tinseth-formule de juiste hoeveelheid pakt (batch_ingredient.hoeveelheid).
   const hopsVoorIBU = hops.map(h => ({
     ...h,
+    gram: Number(h.hoeveelheid) || 0,
     alpha_pct: effectieveAlpha(h, lots, ingredienten, batch.datum, hopStorageDefault).alpha,
   }))
-  const ibu = iBUTinseth(hopsVoorIBU as any, Number(batch.OG) || 0, Number(batch.kook_volume_eind_l || batch.kook_volume) || 0)
+  // Volume-fallback: gemeten post-boil > recept boilSize > liter_vergist.
+  // `pre_boil_volume_l` zou te groot zijn (telt verdamping mee), dus dat
+  // gebruiken we niet als fallback.
+  const ibuVolume = Number(batch.kook_volume_eind_l) || Number(batch.kook_volume) || Number(batch.gist_volume_l) || Number(batch.liter_vergist) || 0
+  const ibu = iBUTinseth(hopsVoorIBU as any, Number(batch.OG) || 0, ibuVolume)
 
   // Persisteer berekende waarden zodra de inputs aanwezig zijn — zo blijven ze
   // beschikbaar voor overzicht/print zonder steeds herberekenen.

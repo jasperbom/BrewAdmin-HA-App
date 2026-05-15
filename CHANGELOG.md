@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.72] — 2026-05-15
+
+### Fixed — IBU-berekening werkte niet (gram vs hoeveelheid mismatch)
+
+De Tinseth-formule las `h.gram` maar `batch_ingredienten` slaan de hoeveelheid op als `h.hoeveelheid` — door de `as any`-cast bij de aanroep zag TypeScript dit niet, en omdat `Number(undefined) || 0 = 0` werd elke hop als 0 gram behandeld en kwam de IBU altijd uit op 0.
+
+**Twee fixes:**
+
+1. `iBUTinseth()` leest nu `h.gram ?? h.hoeveelheid` zodat beide naamgevingen werken. `HopVoorIBU` interface bijgewerkt: beide velden zijn optioneel.
+2. `BrouwdagWizard` zet `gram: Number(h.hoeveelheid)` expliciet in de IBU-map om de Tinseth-aanname te ondersteunen.
+
+**Volume-fallback verbeterd.** Voor het kookvolume valt het systeem nu in deze volgorde terug:
+`kook_volume_eind_l` (gemeten post-boil) → `kook_volume` (recept boil size) → `gist_volume_l` → `liter_vergist`
+
+Hierdoor werkt IBU ook in geplande batches die nog geen kook-volume gemeten hebben.
+
+### Files
+- `src/utils/calculations.ts` — `HopVoorIBU.gram` en `.hoeveelheid` beide optioneel; Tinseth-reader gebruikt `gram ?? hoeveelheid`.
+- `src/components/batch/BrouwdagWizard.tsx` — `hopsVoorIBU` zet `gram: Number(h.hoeveelheid)` expliciet; volume-fallback uitgebreid met `gist_volume_l` en `liter_vergist`.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.71 → 1.9.72.
+
+---
+
 ## [1.9.71] — 2026-05-15
 
 ### Fixed — Brewfather "Aroma" hops mappen naar whirlpool + whirlpool-temperatuur overgenomen
