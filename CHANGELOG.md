@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.66] — 2026-05-15
+
+### Added — Hop-veroudering in IBU-berekening (Garetz / Hieronymus)
+
+α-zuur in hop degradeert exponentieel afhankelijk van opslag-conditie en leeftijd. De IBU-berekening past nu automatisch verouderings-correctie toe wanneer een hop-lot een oogstjaar (`bf_props.year`) of een aankoopdatum heeft.
+
+**Formule** (vereenvoudigde Garetz/Hieronymus):
+
+`α(t) = α₀ × e^(−k · t · hsi/0.30)`
+
+waarbij `k` de opslag-constante is (verlies per jaar bij standaard HSI=0.30), `t` de leeftijd in jaren sinds oogst en `hsi` de Hop Stability Index (default 0.30 wanneer onbekend). Een vacuum-verpakt lot in de koelkast verliest ~10%/jaar bij gemiddelde HSI; in een luchtdoorlatende zak bij kamertemp ~50%/jaar.
+
+**Opslag-constanten:**
+| Opslag | Verlies/jaar |
+|---|---|
+| Vacuum + diepvries (-18°C) | 5% |
+| Vacuum + koel (4°C) / Lucht + diepvries | 10% |
+| Lucht + koel | 20% |
+| Lucht + kamertemp | 50% |
+
+**UI in het Hop-schema:**
+- Lot-dropdown toont per optie de verouderingsindicatie: `Galaxy 2024 · α 14.0% → 13.2% (8m)`.
+- α-cel kleurt **amber** wanneer verouderings-correctie wordt toegepast (vs groen voor lot-α zonder leeftijd). Tooltip toont oorspronkelijke α, leeftijd, behoud% en opslag-conditie.
+- Onder de α-cel een mini-label `uit lot · 94% behoud`.
+- IBU-tegel boven het schema werkt direct met de gecorrigeerde α.
+
+**Lot-edit modal** (IngredientenPage): Hop-lots krijgen een extra `storage`-veld (select met 5 opties) in de brouw-eigenschappen sectie naast de bestaande `alpha`/`hsi`/`year`. Defaults op `vacuum_koel`.
+
+De brouwdatum geldt als referentie voor de leeftijd-berekening, zodat IBU consistent blijft als de batch later opnieuw wordt geopend.
+
+### Files
+- `src/utils/calculations.ts` — `HOP_OPSLAG_FACTOR`-lookup, `hopOpslagFactor()`, `hopVerouderdeAlpha()`-helper met Garetz/Hieronymus-formule.
+- `src/utils/constants.ts` — `LOT_BREW_FIELDS_PER_TYPE.Hop` krijgt `storage`-select met 5 opslag-opties.
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()` past nu verouderings-correctie toe wanneer lot een oogstjaar/aankoopdatum heeft; nieuwe bron `lot_verouderd`. Hop-schema toont verouderde α + leeftijd in dropdown, behoud% onder α-cel, amber kleur en uitgebreide tooltip.
+- `src/i18n/{nl,en,de,fr,es}.json` — 13 nieuwe sleutels (`hop_schema_bron_lot_verouderd`, `hop_schema_alpha_verouderd`, `hop_opslag_*`, `brew_storage_*`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.65 → 1.9.66.
+
+---
+
 ## [1.9.65] — 2026-05-15
 
 ### Added — IBU-berekening met chargespecifieke α-zuur uit hop-lots

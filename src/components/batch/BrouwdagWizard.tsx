@@ -4,7 +4,7 @@ import { newId } from '../../utils/api'
 import { tod } from '../../utils/format'
 import {
   mashEfficiency, brouwzaalEfficiency, kookVerdampingPct,
-  iBUTinseth, totaalMaxExtract
+  iBUTinseth, totaalMaxExtract, hopVerouderdeAlpha
 } from '../../utils/calculations'
 import Btn from '../ui/Btn'
 import SectionHeader from '../ui/SectionHeader'
@@ -46,21 +46,52 @@ const hopAddLabel = (h: any): string => {
 // Bepaalt de effectieve α-zuur% voor een hop-additie. Volgorde:
 //   1. handmatige waarde op het batch_ingredient (override)
 //   2. lot-specifieke α uit `Lot.bf_props.alpha` (chargespecifiek)
+//      Past optioneel verouderings-correctie toe wanneer het lot een
+//      oogstjaar (`bf_props.year`) of aankoopdatum heeft.
 //   3. ingredient-default α uit `Ingredient.bf_props.alpha`
 // Geeft tevens de bron terug zodat de UI dit kan tonen.
-type AlphaBron = 'manual' | 'lot' | 'ingredient' | 'none'
+type AlphaBron = 'manual' | 'lot' | 'lot_verouderd' | 'ingredient' | 'none'
+
+interface EffAlphaResult {
+  alpha: number
+  bron: AlphaBron
+  lot?: any
+  // Voor verouderde lots: oorspronkelijke α + leeftijd + behoud%
+  alphaOrigineel?: number
+  leeftijdJaren?: number
+  behoudPct?: number
+  opslag?: string
+}
 
 const effectieveAlpha = (
   h: any,
   lots: any[] = [],
-  ingredienten: any[] = []
-): {alpha: number, bron: AlphaBron, lot?: any} => {
+  ingredienten: any[] = [],
+  refDatum?: string
+): EffAlphaResult => {
   if (h?.alpha_pct != null && h.alpha_pct !== '' && Number(h.alpha_pct) > 0) {
     return {alpha: Number(h.alpha_pct), bron: 'manual'}
   }
   const lot = h?.lot_id ? (lots || []).find(l => String(l.id) === String(h.lot_id)) : null
   const lotAlpha = lot?.bf_props?.alpha
   if (lotAlpha != null && Number(lotAlpha) > 0) {
+    // Verouderings-correctie: kijk naar bf_props.year (Brewfather-veld) of
+    // val terug op de aankoopdatum als ruwe schatting.
+    const oogst = lot?.bf_props?.year || lot?.aankoop_datum || lot?.aankoopdatum
+    const opslag = lot?.bf_props?.storage || 'vacuum_koel'
+    const hsi = lot?.bf_props?.hsi
+    if (oogst) {
+      const v = hopVerouderdeAlpha(Number(lotAlpha), oogst, opslag, hsi ?? 0.30, refDatum)
+      if (v.leeftijdJaren > 0 && v.behoudPct < 99.5) {
+        return {
+          alpha: v.alpha, bron: 'lot_verouderd', lot,
+          alphaOrigineel: v.alphaOrigineel,
+          leeftijdJaren: v.leeftijdJaren,
+          behoudPct: v.behoudPct,
+          opslag: v.opslag,
+        }
+      }
+    }
     return {alpha: Number(lotAlpha), bron: 'lot', lot}
   }
   const ingr = h?.ingredient_id ? (ingredienten || []).find(i => i.id === h.ingredient_id) : null
@@ -145,12 +176,13 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const brEff = brouwzaalEfficiency(Number(batch.OG), Number(batch.gist_volume_l || batch.liter_vergist), fermentables as any)
   const verdamping = kookVerdampingPct(Number(batch.kook_volume_start_l), Number(batch.kook_volume_eind_l), Number(batch.kooktijd))
   const hops = batchBi.filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
-  // Vervang alpha_pct door effectieve waarde uit lot/ingredient zodat IBU
-  // chargespecifiek wordt berekend (een Galaxy-lot van 2024 kan 13.8% zijn,
-  // terwijl het recept generiek 14.0% noteert).
+  // Vervang alpha_pct door effectieve waarde uit lot/ingredient — inclusief
+  // verouderings-correctie wanneer het lot een oogstjaar heeft. De
+  // brouwdatum geldt als referentie zodat IBU consistent blijft als het
+  // batch later opnieuw wordt geopend.
   const hopsVoorIBU = hops.map(h => ({
     ...h,
-    alpha_pct: effectieveAlpha(h, lots, ingredienten).alpha,
+    alpha_pct: effectieveAlpha(h, lots, ingredienten, batch.datum).alpha,
   }))
   const ibu = iBUTinseth(hopsVoorIBU as any, Number(batch.OG) || 0, Number(batch.kook_volume_eind_l || batch.kook_volume) || 0)
 
@@ -437,7 +469,32 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                           .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
                           .map((h: any) => {
                           const lotsBeschikbaar = beschikbareLots(h)
-                          const eff = effectieveAlpha(h, lots, ingredienten)
+                          const eff = effectieveAlpha(h, lots, ingredienten, batch.datum)
+                          const fmtLeeftijd = (jaren: number): string => {
+                            const mnd = Math.round(jaren * 12)
+                            if (mnd < 12) return `${mnd}m`
+                            const j = Math.floor(jaren)
+                            const r = Math.round((jaren - j) * 12)
+                            return r === 0 ? `${j}j` : `${j}j ${r}m`
+                          }
+                          const lotLabel = (l: any): string => {
+                            let parts = [l.lotnr || `#${l.id}`]
+                            const aOrig = l.bf_props?.alpha
+                            const oogst = l.bf_props?.year || l.aankoop_datum || l.aankoopdatum
+                            if (aOrig != null) {
+                              if (oogst) {
+                                const v = hopVerouderdeAlpha(Number(aOrig), oogst, l.bf_props?.storage || 'vacuum_koel', l.bf_props?.hsi ?? 0.30, batch.datum)
+                                if (v.leeftijdJaren > 0 && v.behoudPct < 99.5) {
+                                  parts.push(`α ${aOrig}% → ${v.alpha.toFixed(1)}% (${fmtLeeftijd(v.leeftijdJaren)})`)
+                                } else {
+                                  parts.push(`α ${aOrig}%`)
+                                }
+                              } else {
+                                parts.push(`α ${aOrig}%`)
+                              }
+                            }
+                            return parts.join(' · ')
+                          }
                           return (
                           <tr key={h.id}>
                             <td className="px-3 py-1.5">{h.ingredient_naam}</td>
@@ -446,12 +503,10 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                               {lotsBeschikbaar.length > 0 ? (
                                 <select value={h.lot_id || ''}
                                   onChange={e => updHop(h.id, 'lot_id', e.target.value ? Number(e.target.value) : '')}
-                                  className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[10rem]">
+                                  className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[16rem]">
                                   <option value="">{t('hop_schema_geen_lot')}</option>
                                   {lotsBeschikbaar.map((l: any) => (
-                                    <option key={l.id} value={l.id}>
-                                      {l.lotnr || `#${l.id}`}{l.bf_props?.alpha != null ? ` · α ${l.bf_props.alpha}%` : ''}
-                                    </option>
+                                    <option key={l.id} value={l.id}>{lotLabel(l)}</option>
                                   ))}
                                 </select>
                               ) : (
@@ -461,16 +516,30 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                             <td className="px-3 py-1.5 text-right">
                               <input type="number" step="0.1" value={h.alpha_pct ?? ''}
                                 onChange={e => updHop(h.id, 'alpha_pct', e.target.value)}
-                                placeholder={eff.bron !== 'manual' && eff.alpha > 0 ? String(eff.alpha) : ''}
+                                placeholder={eff.bron !== 'manual' && eff.alpha > 0 ? eff.alpha.toFixed(1) : ''}
                                 title={eff.bron === 'lot' ? t('hop_schema_alpha_uit_lot').replace('{lot}', eff.lot?.lotnr || `#${eff.lot?.id}`)
+                                  : eff.bron === 'lot_verouderd' ? t('hop_schema_alpha_verouderd')
+                                      .replace('{lot}', eff.lot?.lotnr || `#${eff.lot?.id}`)
+                                      .replace('{orig}', String(eff.alphaOrigineel?.toFixed(1)))
+                                      .replace('{eff}', eff.alpha.toFixed(1))
+                                      .replace('{age}', fmtLeeftijd(eff.leeftijdJaren || 0))
+                                      .replace('{behoud}', String(Math.round(eff.behoudPct || 0)))
+                                      .replace('{opslag}', t('hop_opslag_' + (eff.opslag || 'vacuum_koel')))
                                   : eff.bron === 'ingredient' ? t('hop_schema_alpha_uit_ing')
                                   : eff.bron === 'manual' ? t('hop_schema_alpha_handmatig')
                                   : ''}
                                 className={`w-16 border border-gray-200 rounded px-1.5 py-0.5 text-right t-input ${
-                                  eff.bron === 'lot' ? 'bg-emerald-50' : eff.bron === 'ingredient' ? 'bg-blue-50' : ''
+                                  eff.bron === 'lot' ? 'bg-emerald-50'
+                                    : eff.bron === 'lot_verouderd' ? 'bg-amber-50'
+                                    : eff.bron === 'ingredient' ? 'bg-blue-50' : ''
                                 }`} />
                               {eff.bron === 'lot' && (
                                 <div className="text-[10px] text-emerald-600 mt-0.5">{t('hop_schema_bron_lot')}</div>
+                              )}
+                              {eff.bron === 'lot_verouderd' && (
+                                <div className="text-[10px] text-amber-700 mt-0.5">
+                                  {t('hop_schema_bron_lot_verouderd').replace('{behoud}', String(Math.round(eff.behoudPct || 0)))}
+                                </div>
                               )}
                               {eff.bron === 'ingredient' && !h.alpha_pct && (
                                 <div className="text-[10px] text-blue-600 mt-0.5">{t('hop_schema_bron_ing')}</div>
