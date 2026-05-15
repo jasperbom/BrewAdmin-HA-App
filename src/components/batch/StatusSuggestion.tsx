@@ -47,7 +47,7 @@ const StatusSuggestion: React.FC<Props> = ({batch, setBat, gistMetingen, afvulli
     suggestie = {key: 'vergisten', naarStatus: 'Vergisten', label: t('status_suggest_naar_vergisten')}
   } else if (!negeerd.includes('conditioneren') && status === 'Vergisten' && fgStabiel(mineMetingen as any)) {
     suggestie = {key: 'conditioneren', naarStatus: 'Conditioneren', label: t('status_suggest_naar_conditioneren')}
-  } else if (!negeerd.includes('afgevuld') && !['Afgevuld', 'Gesloten'].includes(status)) {
+  } else if (!negeerd.includes('afgevuld') && !['Afgevuld', 'Verpakt', 'Gesloten'].includes(status)) {
     const rest = tankRestVolume(batch, afvullingen, verliesRegistraties)
     const totaalAfgevuld = (afvullingen || []).filter(a => a.batch_id === batch.id).length > 0
     if (totaalAfgevuld && rest <= 0.5) {

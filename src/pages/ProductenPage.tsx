@@ -1165,7 +1165,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     </div>
                     <div className="flex items-center gap-2">
                       {b.ABV && <span className="text-xs text-gray-500">{Number(b.ABV).toFixed(1)}%</span>}
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
                     </div>
                   </div>
                 ))}

@@ -858,6 +858,7 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
     Brouwen:      t('status_brewing'),
     Vergisten:    t('status_fermenting'),
     Conditioneren:t('status_conditioning'),
+    Afgevuld:     t('status_packaged'),
     Verpakt:      t('status_packaged'),
     Gesloten:     t('status_closed'),
   } as any)[s] || s);

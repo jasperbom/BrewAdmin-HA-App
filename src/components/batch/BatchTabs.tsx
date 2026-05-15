@@ -17,7 +17,7 @@ const BatchTabs: React.FC<BatchTabsProps> = ({active, onChange, status}) => {
     {id: 'brouwdag',        label: t('batch_tab_brouwdag'),        fase: ['Gepland', 'Brouwen']},
     {id: 'vergisting',      label: t('batch_tab_vergisting'),      fase: ['Vergisten']},
     {id: 'conditionering',  label: t('batch_tab_conditionering'),  fase: ['Conditioneren']},
-    {id: 'afvulling',       label: t('batch_tab_afvulling'),       fase: ['Verpakt', 'Afgevuld', 'Gesloten']},
+    {id: 'afvulling',       label: t('batch_tab_afvulling'),       fase: ['Afgevuld', 'Verpakt', 'Gesloten']},
     {id: 'financieel',      label: t('batch_tab_financieel')},
   ]
 

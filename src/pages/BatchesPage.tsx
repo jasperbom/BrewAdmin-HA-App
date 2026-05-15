@@ -500,7 +500,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (['Gepland', 'Brouwen'].includes(s)) setActiveTab('brouwdag')
     else if (s === 'Vergisten') setActiveTab('vergisting')
     else if (s === 'Conditioneren') setActiveTab('conditionering')
-    else if (['Verpakt', 'Afgevuld'].includes(s)) setActiveTab('afvulling')
+    else if (['Afgevuld', 'Verpakt'].includes(s)) setActiveTab('afvulling')
     else setActiveTab('info')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel])
@@ -585,7 +585,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       case 'gist':    return fase === 'Vergisten'
       case 'verlies': return fase === 'Vergisten' || fase === 'Conditioneren'
       case 'info':    return false
-      case 'kosten':  return fase === 'Verpakt' || fase === 'Gesloten'
+      case 'kosten':  return fase === 'Afgevuld' || fase === 'Verpakt' || fase === 'Gesloten'
     }
     return false
   }
@@ -884,9 +884,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const handleStatusChange = (nieuweStatus: string) => {
     const oudeStatus = selB?.status
     if (oudeStatus === nieuweStatus) return
-    // Bij overgang naar 'Verpakt' of 'Gesloten' verlaat de batch impliciet zijn
+    // Bij overgang naar 'Afgevuld' of 'Gesloten' verlaat de batch impliciet zijn
     // tank — zet die tank automatisch op Vuil voor HACCP-traceerbaarheid.
-    const leegtTank = ['Verpakt','Gesloten'].includes(nieuweStatus) && !['Verpakt','Gesloten'].includes(oudeStatus) && selB?.tank
+    const leegtTank = ['Afgevuld','Verpakt','Gesloten'].includes(nieuweStatus) && !['Afgevuld','Verpakt','Gesloten'].includes(oudeStatus) && selB?.tank
     if (leegtTank) {
       const res = markTankVuilBijVertrek(selB.tank, tankStatussen, tankLog, tod())
       if (res.changed) { setTankStatussen(res.statussen); setTankLog(res.log) }
@@ -1384,7 +1384,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const STATUS_LABELS: Record<string,string> = {
     Gepland:t('status_planning'), Brouwen:t('status_brewing'), Vergisten:t('status_fermenting'),
-    Conditioneren:t('status_conditioning'), Verpakt:t('status_packaged'), Gesloten:t('status_closed')
+    Conditioneren:t('status_conditioning'), Afgevuld:t('status_packaged'), Verpakt:t('status_packaged'), Gesloten:t('status_closed')
   }
 
   return (
@@ -1541,7 +1541,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 const liveABV = berekenLiveABV(selB, gistMetingen || [])
                 const hasAccijnsABV = Number(selB.ABV) > 0
                 if (sgPct === null && !latestM && liveABV.abv === 0 && !hasAccijnsABV) return null
-                const inTankFases = ['Vergisten', 'Conditioneren', 'Verpakt', 'Afgevuld', 'Gesloten']
+                const inTankFases = ['Vergisten', 'Conditioneren', 'Afgevuld', 'Verpakt', 'Gesloten']
                 if (!inTankFases.includes(selB.status) && !selB.brouwdag_voltooid) return null
                 const setAccijnsABV = (waarde: string) => {
                   const v = waarde === '' ? undefined : Number(waarde)
@@ -1649,7 +1649,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               {(() => {
                 const tankLiter = Number(selB.liter_vergist || 0)
                 if (tankLiter <= 0) return null
-                const inTankFases = ['Vergisten', 'Conditioneren', 'Verpakt', 'Afgevuld', 'Gesloten']
+                const inTankFases = ['Vergisten', 'Conditioneren', 'Afgevuld', 'Verpakt', 'Gesloten']
                 if (!inTankFases.includes(selB.status) && !selB.brouwdag_voltooid) return null
                 const batchAv = av ? av.filter((a: any) => a.batch_id === selB.id) : []
                 const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid || 0) * Number(a.hoeveelheid || 0), 0)
@@ -3142,9 +3142,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         const heeftVoltooideCarb = (carbSessies||[]).some((s: any) => s.batch_id === selB.id && s.status === 'voltooid')
                         if (!heeftVoltooideCarb && !confirm(t('carb_no_session_confirm'))) return
                         if (!confirm(t('err_confirm_mark_packed').replace('{name}',selB.naam))) return
-                        setBat((prev: any[])=>prev.map((b: any)=>b.id===sel?{...b,status:'Verpakt'}:b))
-                        addLog({type:'status',batch_id:sel,referentie:`${selB.status} → Verpakt`})
-                        logAudit(auditLog,setAuditLog,{entiteit:'Batch',entiteit_id:sel!,actie:'gewijzigd',velden:{status:{oud:selB.status,nieuw:'Verpakt'}},omschrijving:`Status: ${selB.status} → Verpakt`})
+                        setBat((prev: any[])=>prev.map((b: any)=>b.id===sel?{...b,status:'Afgevuld'}:b))
+                        addLog({type:'status',batch_id:sel,referentie:`${selB.status} → Afgevuld`})
+                        logAudit(auditLog,setAuditLog,{entiteit:'Batch',entiteit_id:sel!,actie:'gewijzigd',velden:{status:{oud:selB.status,nieuw:'Afgevuld'}},omschrijving:`Status: ${selB.status} → Afgevuld`})
                       }}>
                         {t('batch_ready_button')}
                       </Btn>
@@ -3217,7 +3217,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
 
-            {/* Kosten samenvatting — uitklapbare card (auto-open vanaf Verpakt) */}
+            {/* Kosten samenvatting — uitklapbare card (auto-open vanaf Afgevuld) */}
             {activeTab === 'financieel' && (() => {
               const isOpen = sectieOpen(kostenOpen, selB.id, selB.status, 'kosten')
               const ingK = ingKosten(selB)
@@ -3280,8 +3280,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
 
-            {/* Kostprijsoverzicht - bij Verpakt of Gesloten */}
-            {activeTab === 'financieel' && (selB.status==='Verpakt'||selB.status==='Gesloten') && av && acc && (() => {
+            {/* Kostprijsoverzicht - bij Afgevuld of Gesloten */}
+            {activeTab === 'financieel' && (selB.status==='Afgevuld'||selB.status==='Verpakt'||selB.status==='Gesloten') && av && acc && (() => {
               const batchAv  = av.filter((a: any) => a.batch_id===selB.id)
               const batchAcc = acc.filter((a: any) => a.batch_id===selB.id)
               const brouwOverhead = Number(selB.electra_kosten||0)+Number(selB.water_kosten||0)+Number(selB.schoonmaak_kosten||0)+Number(selB.overige_kosten||0)
@@ -3311,7 +3311,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 const totVerpK = kPerStuk * stuks
                 // Accijns: gebruik daadwerkelijk geboekte accijns (uit uitslagen/orders) als die er is.
                 // Zo niet, val terug op de voorcalc-snapshot per afvulling — dan ziet de gebruiker
-                // ook bij Verpakt (vóór uitlevering) al een realistische kostprijs.
+                // ook bij Afgevuld (vóór uitlevering) al een realistische kostprijs.
                 const accRows = batchAcc.filter((a: any) => a.verpakking_type===type)
                 const totAccActueel = accRows.reduce((s: number, a: any) => s+Number(a.accijns??a.totaal_accijns??0), 0)
                 const totAccVoorcalc = rows.reduce((s: number, a: any) => s+Number(a.voorcalc_accijns_totaal||0), 0)

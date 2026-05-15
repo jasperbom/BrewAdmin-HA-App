@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.75] — 2026-05-15
+
+### Changed — Status 'Verpakt' hernoemd naar 'Afgevuld'
+
+De canonieke batch-status voor de fase na conditioneren is nu **'Afgevuld'** (sluit aan op de activiteit "Afvullen" en het tabblad "Afvulling"). 'Verpakt' blijft als alias herkend zodat oude backups/data nooit breken.
+
+**Eenmalige migratie** via nieuwe data-key `batch_status_afgevuld_migratie_v1` zet bestaande batches met `status='Verpakt'` éénmalig om naar `'Afgevuld'` bij de eerste app-load. Daarna staat de migratie op `'v1'` zodat deze niet opnieuw draait.
+
+**Bijkomende fix:** in v1.9.69–1.9.74 had `StatusSuggestion.tsx` al `'Afgevuld'` als doel-status terwijl `STATUSSEN` nog `'Verpakt'` als waarde had. Daardoor kon de "Bevestig status"-knop een waarde zetten die niet in de status-dropdown stond. Met deze release zijn beide gelijk getrokken.
+
+### Files
+- `src/utils/constants.ts` — `STATUSSEN` array, `STATUS_CLR` map en `BF_TO_APP` mapping gebruiken nu `'Afgevuld'`; `'Verpakt'` blijft als alias in `STATUS_CLR`.
+- `src/components/ui/Badge.tsx` — `STATUS_LABELS` accepteert beide.
+- `src/pages/DashboardPage.tsx`, `src/pages/InstellingenPage.tsx`, `src/pages/ProductenPage.tsx` — beide status-waarden behandelen.
+- `src/pages/BatchesPage.tsx` — alle `'Verpakt'`-checks accepteren ook `'Afgevuld'`; nieuwe status-write gebruikt `'Afgevuld'`.
+- `src/components/batch/BatchTabs.tsx`, `src/components/batch/StatusSuggestion.tsx` — `'Verpakt'` als afgeronde-status alias toegevoegd.
+- `src/App.tsx` — nieuwe `batchAfgevuldMigratieRef`-useEffect met migratie-flag `batch_status_afgevuld_migratie_v1`.
+- `src/i18n/nl.json` — `status_packaged` value: "Verpakt" → "Afgevuld".
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.74 → 1.9.75.
+
+---
+
 ## [1.9.74] — 2026-05-15
 
 ### Fixed — Lot-α wint nu van recept-α voor IBU-berekening

@@ -572,7 +572,7 @@
   "status_brewing": "Brouwen",
   "status_fermenting": "Vergisten",
   "status_conditioning": "Conditioneren",
-  "status_packaged": "Verpakt",
+  "status_packaged": "Afgevuld",
   "status_closed": "Gesloten",
   "log_ingredient": "Ingredient",
   "lbl_content": "Inhoud",
