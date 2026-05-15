@@ -12,6 +12,8 @@
   "hop_schema_tijdstip": "Tijd vóór einde",
   "hop_schema_gebruik": "Gebruik",
   "hop_schema_hint": "Tijdstip in minuten vóór einde koken (60 = bij start van een kook van 60 min). Wordt gebruikt voor IBU-berekening.",
+  "hop_schema_sync": "Sync hop-stappen",
+  "hop_schema_sync_hint": "Vernieuwt de hop-stappen in de stappenlijst op basis van het actuele schema.",
   "hop_gebruik_boil": "Koken",
   "hop_gebruik_whirlpool": "Whirlpool",
   "hop_gebruik_dryhop": "Dry-hop",

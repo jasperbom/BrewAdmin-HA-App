@@ -116,6 +116,10 @@ export interface BrouwdagStap {
   fase: BrouwdagFase
   volgorde: number
   label: string                      // vrije omschrijving van de stap
+  // Optionele koppeling aan een batch_ingredient (hop-additie). Wanneer
+  // gezet wordt het label tijdens render dynamisch opgebouwd uit
+  // batch_ingredienten zodat tijdstip/naam-wijzigingen meteen doorwerken.
+  batch_ingredient_id?: number
   doel?: string                      // verwachte waarde (uit recept)
   doel_eenheid?: string              // °C, min, SG, L
   gemeten?: string                   // werkelijke waarde

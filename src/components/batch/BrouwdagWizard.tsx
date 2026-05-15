@@ -31,11 +31,77 @@ const FASE_LABEL: Record<BrouwdagFase, string> = {
 }
 
 // Brouwdag-wizard met stappen per fase + kernmeetwaarden + live calculaties.
+// Bouwt het label voor een hop-additie stap dynamisch op uit de huidige
+// gegevens van het gekoppelde batch_ingredient. Zo werken wijzigingen in
+// het Hop-schema (tijdstip, naam) direct door in de stappenlijst.
+const hopAddLabel = (h: any): string => {
+  const tijdMin = h && h.tijdstip_min != null && h.tijdstip_min !== '' ? Number(h.tijdstip_min) : null
+  return t('brouwdag_label_hop_add')
+    .replace('{n}', h?.ingredient_naam || '')
+    .replace('{t}', tijdMin != null ? String(tijdMin) : '?')
+}
+
 const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = []}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
   const [hopOpen, setHopOpen] = React.useState<boolean>(true)
+
+  // Resolved label voor een stap: bij gekoppelde hop-additie wordt het
+  // label live uit batch_ingredienten gehaald. Fallback voor oude stappen
+  // zonder batch_ingredient_id: probeer te matchen op naam uit het opgeslagen
+  // label ("Hop-additie: NAAM @").
+  const resolveStapLabel = (s: BrouwdagStap): string => {
+    if (s.fase === 'koken' && s.batch_ingredient_id != null) {
+      const h = batchBi.find(b => b.id === s.batch_ingredient_id)
+      if (h) return hopAddLabel(h)
+    }
+    if (s.fase === 'koken' && s.label) {
+      const m = s.label.match(/^[^:]+:\s*(.+?)\s*@/)
+      if (m) {
+        const naam = m[1].trim()
+        const h = batchBi.find(b =>
+          String(b.ingredient_type).toLowerCase() === 'hop' &&
+          (b.ingredient_naam || '').trim() === naam
+        )
+        if (h) return hopAddLabel(h)
+      }
+    }
+    return s.label
+  }
+
+  // Verwijdert alle bestaande hop-additie-stappen voor deze batch en regenereert
+  // ze op basis van het actuele Hop-schema. Behoudt de overige brouwdag-stappen
+  // (water/maisch/lauter/koelen/og + hand-toegevoegde stappen).
+  const syncHopStappen = () => {
+    const hopAddities = batchBi
+      .filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
+      .filter(i => !i.gebruik || String(i.gebruik).toLowerCase() === 'boil' || String(i.gebruik).toLowerCase() === 'kook')
+      .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
+
+    setStappen((prev: any[]) => {
+      const isHopStap = (s: any) =>
+        s.batch_id === batch.id && s.fase === 'koken' && (
+          s.batch_ingredient_id != null ||
+          (typeof s.label === 'string' && /^[^:]+:\s*.+?\s*@/.test(s.label))
+        )
+      const overig = (prev || []).filter((s: any) => !isHopStap(s))
+      const maxVolgorde = overig
+        .filter((s: any) => s.batch_id === batch.id && s.fase === 'koken')
+        .reduce((m: number, s: any) => Math.max(m, s.volgorde || 0), 0)
+      let id = newId(overig)
+      let volgorde = maxVolgorde + 1
+      const nieuwe: BrouwdagStap[] = hopAddities.map(h => ({
+        id: id++, batch_id: batch.id, fase: 'koken' as BrouwdagFase, volgorde: volgorde++,
+        label: hopAddLabel(h),
+        batch_ingredient_id: h.id,
+        doel: `${h.hoeveelheid}${h.eenheid || 'g'}`,
+        doel_eenheid: 'g',
+        created_at: new Date().toISOString(),
+      }))
+      return [...overig, ...nieuwe]
+    })
+  }
 
   // ── Kerngegevens-velden direct op batch ───────────────────────────────────
   const updField = (veld: keyof Batch, val: any) => {
@@ -117,14 +183,16 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
 
     const hopAddities = batchBi
       .filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
+      .filter(i => !i.gebruik || String(i.gebruik).toLowerCase() === 'boil' || String(i.gebruik).toLowerCase() === 'kook')
       .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
     hopAddities.forEach((h: any) => {
-      const tijdMin = h.tijdstip_min != null && h.tijdstip_min !== '' ? Number(h.tijdstip_min) : null
       nieuwe.push({
         id: id++, batch_id: batch.id, fase: 'koken', volgorde: volgorde++,
-        label: t('brouwdag_label_hop_add')
-          .replace('{n}', h.ingredient_naam || '')
-          .replace('{t}', tijdMin != null ? String(tijdMin) : '?'),
+        // Label is een fallback-momentopname. De render gebruikt
+        // batch_ingredient_id om het label live op te bouwen uit het
+        // huidige Hop-schema.
+        label: hopAddLabel(h),
+        batch_ingredient_id: h.id,
         doel: `${h.hoeveelheid}${h.eenheid || 'g'}`,
         doel_eenheid: 'g',
         created_at: new Date().toISOString(),
@@ -356,7 +424,15 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                     </table>
                   </div>
                 )}
-                <div className="mt-2 text-xs text-gray-400 italic">{t('hop_schema_hint')}</div>
+                <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-xs text-gray-400 italic flex-1 min-w-0">{t('hop_schema_hint')}</div>
+                  {hops.length > 0 && (
+                    <Btn s="sm" v="secondary" onClick={syncHopStappen}
+                      title={t('hop_schema_sync_hint')}>
+                      {t('hop_schema_sync')}
+                    </Btn>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -394,6 +470,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                       <div className="space-y-1.5">
                         {items.map(s => (
                           <StapRij key={s.id} stap={s}
+                            label={resolveStapLabel(s)}
                             onToggle={() => togglevoltooid(s.id)}
                             onMeting={v => updGemeten(s.id, v)}
                             onOpmerking={v => updOpmerking(s.id, v)}
@@ -430,17 +507,19 @@ const CalcCard: React.FC<{label: string, value: string | null, hint?: string}> =
 
 const StapRij: React.FC<{
   stap: BrouwdagStap
+  label?: string
   onToggle: () => void
   onMeting: (v: string) => void
   onOpmerking: (v: string) => void
   onDelete: () => void
-}> = ({stap, onToggle, onMeting, onOpmerking, onDelete}) => {
+}> = ({stap, label, onToggle, onMeting, onOpmerking, onDelete}) => {
   const [open, setOpen] = React.useState(false)
+  const weergave = label ?? stap.label
   return (
     <div className={`rounded border ${stap.voltooid ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-gray-200'}`}>
       <div className="flex items-center gap-2 px-3 py-2 text-sm">
         <input type="checkbox" checked={!!stap.voltooid} onChange={onToggle} className="t-checkbox" />
-        <span className={`flex-1 ${stap.voltooid ? 'line-through text-gray-500' : ''}`}>{stap.label}</span>
+        <span className={`flex-1 ${stap.voltooid ? 'line-through text-gray-500' : ''}`}>{weergave}</span>
         {stap.doel && <span className="text-xs text-gray-500">{t('brouwdag_doel')}: {stap.doel}</span>}
         <button onClick={() => setOpen(o => !o)} className="text-xs text-gray-400 hover:text-gray-600">{open ? '−' : '+'}</button>
         <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600" title="×">×</button>

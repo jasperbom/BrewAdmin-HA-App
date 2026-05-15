@@ -12,6 +12,8 @@
   "hop_schema_tijdstip": "Zeit vor Ende",
   "hop_schema_gebruik": "Verwendung",
   "hop_schema_hint": "Zeit in Minuten vor Kochende (60 = zu Beginn eines 60-min-Kochens). Wird für IBU-Berechnung verwendet.",
+  "hop_schema_sync": "Hopfen-Schritte synchronisieren",
+  "hop_schema_sync_hint": "Aktualisiert die Hopfen-Schritte in der Schrittliste anhand des aktuellen Plans.",
   "hop_gebruik_boil": "Kochen",
   "hop_gebruik_whirlpool": "Whirlpool",
   "hop_gebruik_dryhop": "Hopfenstopfen",

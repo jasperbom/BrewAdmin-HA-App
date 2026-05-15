@@ -12,6 +12,8 @@
   "hop_schema_tijdstip": "Temps avant fin",
   "hop_schema_gebruik": "Usage",
   "hop_schema_hint": "Temps en minutes avant fin d'ébullition (60 = au début d'une ébullition de 60 min). Utilisé pour le calcul IBU.",
+  "hop_schema_sync": "Sync étapes houblon",
+  "hop_schema_sync_hint": "Rafraîchit les étapes houblon dans la liste à partir du schéma actuel.",
   "hop_gebruik_boil": "Ébullition",
   "hop_gebruik_whirlpool": "Whirlpool",
   "hop_gebruik_dryhop": "Dry-hop",

@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.63] — 2026-05-15
+
+### Fixed — Hop-additie stappen tonen werkelijke tijd
+
+Hop-additie stappen in de Brouwdag-stappenlijst toonden "@ ?min" als het tijdstip op het moment van genereren leeg was (oude batches of Brewfather-recepten zonder hop-timing). Het label was statisch en updatete niet wanneer de gebruiker het tijdstip in het Hop-schema invulde.
+
+- `BrouwdagStap` heeft nu een optioneel `batch_ingredient_id` veld dat de stap koppelt aan de bron-hop. Bij render wordt het label live opgebouwd uit `batch_ingredienten`, zodat wijzigingen in het Hop-schema (tijdstip, naam, α-zuur) direct doorwerken in de stappenlijst.
+- Voor bestaande stappen zonder `batch_ingredient_id` valt de render-laag terug op naam-matching uit het opgeslagen label ("Hop-additie: NAAM @").
+- Nieuwe **"Sync hop-stappen"** knop in de Hop-schema-sectie wist en regenereert alle hop-stappen op basis van het actuele schema. Handig wanneer hops zijn toegevoegd/verwijderd of wanneer de oude labels niet meer kloppen.
+- Bij genereren worden alleen hops met `gebruik=boil` (of leeg) als koken-stap toegevoegd; dry-hop/whirlpool/mash-hops verschijnen niet meer in de kook-fase.
+
+### Files
+- `src/types/index.ts` — `BrouwdagStap.batch_ingredient_id?: number` toegevoegd.
+- `src/components/batch/BrouwdagWizard.tsx` — `hopAddLabel()`-helper, `resolveStapLabel()` met fallback-name-match, `syncHopStappen()`-knop, `genereerStappen` zet nu `batch_ingredient_id` en filtert op `gebruik`, `StapRij` accepteert `label`-override prop.
+- `src/i18n/{nl,en,de,fr,es}.json` — 2 nieuwe sleutels (`hop_schema_sync`, `hop_schema_sync_hint`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.62 → 1.9.63.
+
+---
+
 ## [1.9.62] — 2026-05-15
 
 ### Changed — Brouwdag-wizard verfijnd op basis van feedback
