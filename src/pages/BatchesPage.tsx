@@ -12,6 +12,13 @@ import Modal from '../components/ui/Modal'
 import Badge from '../components/ui/Badge'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
+import BatchTabs, { BatchTabId } from '../components/batch/BatchTabs'
+import BrouwdagWizard from '../components/batch/BrouwdagWizard'
+import DryHopSection from '../components/batch/DryHopSection'
+import KoelLogSection from '../components/batch/KoelLogSection'
+import WaterAdditieSection from '../components/batch/WaterAdditieSection'
+import PrimingSugarCalc from '../components/batch/PrimingSugarCalc'
+import StatusSuggestion from '../components/batch/StatusSuggestion'
 
 interface BatchesPageProps {
   ing: any[]
@@ -67,6 +74,16 @@ interface BatchesPageProps {
   capa?: any[]
   setCapa?: any
   recepten?: any[]
+  brouwdagStappen?: any[]
+  setBrouwdagStappen?: any
+  waterAddities?: any[]
+  setWaterAddities?: any
+  hopAddities?: any[]
+  setHopAddities?: any
+  dryHops?: any[]
+  setDryHops?: any
+  koelLogs?: any[]
+  setKoelLogs?: any
 }
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
@@ -458,12 +475,33 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   auditLog=[], setAuditLog=()=>{},
   ccpMetingen=[], setCcpMetingen=()=>{},
   capa=[], setCapa=()=>{},
-  recepten=[]
+  recepten=[],
+  brouwdagStappen=[], setBrouwdagStappen=()=>{},
+  waterAddities=[], setWaterAddities=()=>{},
+  hopAddities=[], setHopAddities=()=>{},
+  dryHops=[], setDryHops=()=>{},
+  koelLogs=[], setKoelLogs=()=>{}
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
+  // Actieve tab per batch — gekoppeld aan batch-status zodat we automatisch
+  // op de juiste tab landen wanneer de gebruiker een batch opent.
+  const [activeTab, setActiveTab] = useState<BatchTabId>('info')
   React.useEffect(() => {
     if (openBatchId) setSel(openBatchId)
   }, [openBatchId])
+  // Bij batch-wissel: kies een tab die past bij de fase.
+  React.useEffect(() => {
+    if (sel == null) return
+    const b = (bat || []).find((x: any) => x.id === sel)
+    if (!b) return
+    const s = String(b.status || '')
+    if (['Gepland', 'Brouwen'].includes(s)) setActiveTab('brouwdag')
+    else if (s === 'Vergisten') setActiveTab('vergisting')
+    else if (s === 'Conditioneren') setActiveTab('conditionering')
+    else if (['Verpakt', 'Afgevuld'].includes(s)) setActiveTab('afvulling')
+    else setActiveTab('info')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel])
   React.useEffect(() => {
     if (!preNieuwBatch) return
     const { _receptIngredienten, ...batchData } = preNieuwBatch
@@ -1621,8 +1659,44 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
             </div>
 
+            {/* Status-suggestie banner */}
+            <StatusSuggestion batch={selB} setBat={setBat}
+              gistMetingen={gistMetingen} afvullingen={av}
+              verliesRegistraties={verliesRegistraties} />
+
+            {/* Tab navigatie */}
+            <BatchTabs active={activeTab} onChange={setActiveTab} status={selB.status} />
+
+            {/* Brouwdag-tab content */}
+            {activeTab === 'brouwdag' && (
+              <>
+                <BrouwdagWizard batch={selB} setBat={setBat} bi={bi}
+                  stappen={brouwdagStappen} setStappen={setBrouwdagStappen} />
+                <WaterAdditieSection batch={selB}
+                  waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
+              </>
+            )}
+
+            {/* Vergisting-tab: dry-hop sectie boven gistgrafiek */}
+            {activeTab === 'vergisting' && (
+              <DryHopSection batch={selB}
+                dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
+            )}
+
+            {/* Conditionering-tab: koel-log onder carbonatie */}
+            {activeTab === 'conditionering' && (
+              <KoelLogSection batch={selB}
+                koelLogs={koelLogs} setKoelLogs={setKoelLogs} />
+            )}
+
+            {/* Afvulling-tab: priming sugar calc bovenaan */}
+            {activeTab === 'afvulling' && (
+              <PrimingSugarCalc batch={selB} afvullingen={av}
+                verliesRegistraties={verliesRegistraties} />
+            )}
+
             {/* Info card — uitklapbaar overzicht van alle batchgegevens */}
-            {(() => {
+            {activeTab === 'info' && (() => {
               const isOpen = sectieOpen(infoOpen, selB.id, selB.status, 'info')
               const fields: any[] = [
                 [t('lbl_status'), <Badge s={selB.status} />],
@@ -1753,7 +1827,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             })()}
 
             {/* Gistgrafiek */}
-            {(() => {
+            {activeTab === 'vergisting' && (() => {
               const batchMetingen = (gistMetingen||[]).filter((m: any) => m.batch_id === selB.id)
                 .sort((a: any, b: any) => {
                   const ka = (a.datum||'') + 'T' + (a.tijd||'00:00')
@@ -1905,7 +1979,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             })()}
 
             {/* Verliesregistratie */}
-            {(() => {
+            {activeTab === 'vergisting' && (() => {
               const isOpen = sectieOpen(verliesOpen, selB.id, selB.status, 'verlies')
               const batchRegs = (verliesRegistraties || []).filter((r: any) => r.batch_id === selB.id)
                 .slice().sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || '')))
@@ -2047,7 +2121,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             })()}
 
             {/* Unified batch-takensysteem (hygiëne + brouwdag + botteldag + CCP) */}
-            {(() => {
+            {activeTab === 'info' && (() => {
               const items = (batchTakenItems?.length ? batchTakenItems : DEFAULT_BATCH_TAKEN_ITEMS).filter((it: any) => it.actief !== false)
               const groups = batchTakenGroepen?.length ? batchTakenGroepen : DEFAULT_BATCH_TAKEN_GROEPEN
               const checks = selB.taken_checks || {}
@@ -2243,6 +2317,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             })()}
 
             {/* Ingredienten */}
+            {activeTab === 'brouwdag' && (
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <SectionHeader
                 open={!ingIngeklapt}
@@ -2485,9 +2560,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 </div>
               </>)}
             </div>
+            )}
 
             {/* Carbonisatie sectie - alleen bij Conditioneren */}
-            {selB.status==='Conditioneren' && (() => {
+            {activeTab === 'conditionering' && (() => {
               const batchCarb = (carbSessies||[]).filter((s: any) => s.batch_id === selB.id)
               const actief = batchCarb.find((s: any) => s.status === 'actief')
               const voltooid = batchCarb.filter((s: any) => s.status === 'voltooid')
@@ -2841,8 +2917,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               )
             })()}
 
-            {/* Afvullen sectie - alleen bij Conditioneren */}
-            {selB.status==='Conditioneren' && (() => {
+            {/* Afvullen sectie */}
+            {activeTab === 'afvulling' && (() => {
               const vergist = Number(selB.liter_vergist||0)
               const inTank = Math.max(0, vergist - totAfgevuld)
               const opVoorraad = totAfgevuld - totUitgeleverd
@@ -3088,7 +3164,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             })()}
 
             {/* Kosten samenvatting — uitklapbare card (auto-open vanaf Verpakt) */}
-            {(() => {
+            {activeTab === 'financieel' && (() => {
               const isOpen = sectieOpen(kostenOpen, selB.id, selB.status, 'kosten')
               const ingK = ingKosten(selB)
               const overH = Number(selB.electra_kosten||0)+Number(selB.water_kosten||0)+Number(selB.schoonmaak_kosten||0)+Number(selB.overige_kosten||0)
@@ -3151,7 +3227,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             })()}
 
             {/* Kostprijsoverzicht - bij Verpakt of Gesloten */}
-            {(selB.status==='Verpakt'||selB.status==='Gesloten') && av && acc && (() => {
+            {activeTab === 'financieel' && (selB.status==='Verpakt'||selB.status==='Gesloten') && av && acc && (() => {
               const batchAv  = av.filter((a: any) => a.batch_id===selB.id)
               const batchAcc = acc.filter((a: any) => a.batch_id===selB.id)
               const brouwOverhead = Number(selB.electra_kosten||0)+Number(selB.water_kosten||0)+Number(selB.schoonmaak_kosten||0)+Number(selB.overige_kosten||0)
@@ -3259,7 +3335,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             })()}
 
             {/* Logboek */}
-            {(() => {
+            {(activeTab === 'info' || activeTab === 'financieel') && (() => {
               const TYPE: Record<string,any> = {
                 gebruik:     {icon:'📦', label:t('batch_log_ingredient'),    cls:'text-blue-700 bg-blue-50'},
                 terugboeking:{icon:'↩',  label:t('batch_log_type_return'),   cls:'text-orange-700 bg-orange-50'},

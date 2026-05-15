@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.61] — 2026-05-15
+
+### Added — Brouwdag-wizard, batch-tabs en extra calculaties
+
+De batch-detailweergave is opgesplitst in zes tabbladen (**Info**, **Brouwdag**, **Vergisting**, **Conditionering**, **Afvulling**, **Financieel**) die automatisch de actieve fase volgen. Boven de tabs verschijnt een statussuggestie-banner zodra een overgang voor de hand ligt (OG gemeten → Vergisten, FG stabiel → Conditioneren, tank leeg → Afgevuld) — de gebruiker bevestigt of negeert.
+
+In de **Brouwdag**-tab staat een wizard die stappen uit het recept genereert (water → maisch → lauter → koken met hop-additie-momenten → koelen → OG). Per stap toon je verwachte vs gemeten waarde, plus een opmerking. Onder de wizard berekent het systeem live: maisch-efficiency (uit pre-boil SG + volume + extract% van de mout), brouwzaal-efficiency (uit OG + volume-naar-gisttank), kook-verdamping per uur en IBU volgens Tinseth (uit hop-additie-tijden + α-zuur).
+
+Nieuwe registraties: **Water-addities & mineralen** (per fase: volume, pH, EC, vrije mineralen-string), **Dry-hop / fermentatie-addities** (datum, gram, contactdagen + automatische verwijderdatum), **Koel-log** (start/eindtemp, duur, methode). Op de **Afvulling**-tab staat een **priming-sugar-calculator** met suikertype-keuze (dextrose/sucrose/DME/honing/bruine suiker), residueel-CO₂ uit biertemperatuur en doel-CO₂-vols.
+
+Nieuwe calculaties in `calculations.ts`: `sgToPlato`/`platoToSg`, `apparentAttenuation`, `realAttenuation`, `voorspelFG`, `mashEfficiency`, `brouwzaalEfficiency`, `kookVerdampingPct`, `iBUTinseth`, `primingSugarG`, `residualCO2`, `fgStabiel`. Brewfather-import in `bfMapBis` neemt nu yield% (extract), α-zuur en hop-kooktijden over.
+
+Bestaande data blijft volledig intact en bewerkbaar — er is geen migratie nodig. De nieuwe data-sleutels `brouwdag_stappen`, `water_addities`, `hop_addities`, `dry_hops` en `koel_logs` zijn toegevoegd aan de Excel-backup.
+
+### Files
+- `src/types/index.ts` — 5 nieuwe interfaces (`BrouwdagStap`, `WaterAdditie`, `HopAdditie`, `DryHop`, `KoelLog`) + uitbreiding `Batch` (pre_boil_sg/volume, kook_volume_start/eind_l, gist_volume_l, mash/brouwzaal_efficiency_pct, kook_verdamping_pct, ibu_berekend, gist_attenuation_pct, brouwdag_voltooid) + uitbreiding `BatchIngredient` (extract_pct, alpha_pct, tijdstip_min, gebruik).
+- `src/utils/calculations.ts` — 11 nieuwe brouw-calculaties (Plato↔SG, attenuatie, FG-voorspelling, mash/brouwzaal-efficiency, kookverdamping, IBU Tinseth, priming sugar, residueel CO₂, FG-stabiliteit).
+- `src/utils/api.ts` — `bfMapBis` neemt nu yield/extract% (mout), alpha%, kooktijd en gebruik (hop) over uit Brewfather.
+- `src/utils/excel.ts` — 5 nieuwe sheets (BrouwdagStappen, WaterAddities, HopAddities, DryHops, KoelLogs) in backup-export/import.
+- `src/components/batch/BatchTabs.tsx` — tabnavigatie met fase-indicator.
+- `src/components/batch/BrouwdagWizard.tsx` — wizard met stappen, kerngegevens-invoer en live calculaties.
+- `src/components/batch/DryHopSection.tsx` — dry-hop registratie met contactdagen-teller en verwijder-suggestie.
+- `src/components/batch/KoelLogSection.tsx` — koeling-log.
+- `src/components/batch/WaterAdditieSection.tsx` — water/mineralen-registratie.
+- `src/components/batch/PrimingSugarCalc.tsx` — priming-sugar calculator.
+- `src/components/batch/StatusSuggestion.tsx` — banner met status-suggesties.
+- `src/pages/BatchesPage.tsx` — tab-state, conditionele rendering, nieuwe componenten geïntegreerd, nieuwe props.
+- `src/App.tsx` — 5 nieuwe `useStore`-sleutels (`brouwdag_stappen`, `water_addities`, `hop_addities`, `dry_hops`, `koel_logs`), excel-export/import wiring, reset-app uitgebreid.
+- `src/i18n/{nl,en,de,fr,es}.json` — ~110 nieuwe i18n-sleutels (tabs, brouwdag-wizard, dry-hop, water, koeling, priming, attenuatie, status-suggesties, calc-labels).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.60 → 1.9.61.
+
+---
+
 ## [1.9.60] — 2026-05-15
 
 ### Added — "Sync recept"-knop op geplande batches

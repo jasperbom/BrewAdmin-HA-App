@@ -527,8 +527,28 @@ export const bfMapBatch = (b: any) => ({
 export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
   const rows: any[] = []
   const r = b.recipe || {}
-  ;(r.fermentables||[]).forEach((f: any) => rows.push({batch_id:batchId, ingredient_naam:f.name||'', ingredient_type:'Mout', hoeveelheid:Number(f.amount||0).toFixed(3), eenheid:'kg'}))
-  ;(r.hops||[]).forEach((h: any) =>        rows.push({batch_id:batchId, ingredient_naam:h.name||'', ingredient_type:'Hop',  hoeveelheid:Number(h.amount||0).toFixed(1), eenheid:'g'}))
+  // Mout: bewaar `yield` (extract%) zodat brouwzaal-/maisch-efficiency
+  // automatisch berekend kan worden. Brewfather levert yield als % (0-100).
+  ;(r.fermentables||[]).forEach((f: any) => rows.push({
+    batch_id: batchId,
+    ingredient_naam: f.name||'',
+    ingredient_type: 'Mout',
+    hoeveelheid: Number(f.amount||0).toFixed(3),
+    eenheid: 'kg',
+    extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)*1000/3.84*10)/10 : ''),
+  }))
+  // Hop: bewaar alpha%, kooktijd (min vóór einde) en gebruik (boil/whirlpool/dry-hop)
+  // voor IBU-berekening via Tinseth. `time` in BF is min vóór einde koken.
+  ;(r.hops||[]).forEach((h: any) => rows.push({
+    batch_id: batchId,
+    ingredient_naam: h.name||'',
+    ingredient_type: 'Hop',
+    hoeveelheid: Number(h.amount||0).toFixed(1),
+    eenheid: 'g',
+    alpha_pct: h.alpha != null ? Number(h.alpha) : '',
+    tijdstip_min: h.time != null ? Number(h.time) : '',
+    gebruik: String(h.use||'boil').toLowerCase(),
+  }))
   ;(r.yeasts||[]).forEach((y: any) =>      rows.push({batch_id:batchId, ingredient_naam:y.name||'', ingredient_type:'Gist', hoeveelheid:Number(y.amount||1),            eenheid:'stuks'}))
   ;(r.miscs||[]).forEach((m: any) =>       rows.push({batch_id:batchId, ingredient_naam:m.name||'', ingredient_type:'Overig', hoeveelheid:Number(m.amount||1),          eenheid:m.amountType||'g'}))
   return rows.map((row,i) => ({...row, id: startId+i, ingredient_id:null, lot_id:'', kosten:'', afboeken:false}))
