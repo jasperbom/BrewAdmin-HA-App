@@ -18,6 +18,8 @@ interface Props {
   stappen: BrouwdagStap[]
   setStappen: any
   tanks?: any[]
+  lots?: any[]
+  ingredienten?: any[]
 }
 
 const FASE_VOLGORDE: BrouwdagFase[] = ['water', 'maisch', 'lauter', 'koken', 'koelen', 'og']
@@ -41,7 +43,35 @@ const hopAddLabel = (h: any): string => {
     .replace('{t}', tijdMin != null ? String(tijdMin) : '?')
 }
 
-const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = []}) => {
+// Bepaalt de effectieve α-zuur% voor een hop-additie. Volgorde:
+//   1. handmatige waarde op het batch_ingredient (override)
+//   2. lot-specifieke α uit `Lot.bf_props.alpha` (chargespecifiek)
+//   3. ingredient-default α uit `Ingredient.bf_props.alpha`
+// Geeft tevens de bron terug zodat de UI dit kan tonen.
+type AlphaBron = 'manual' | 'lot' | 'ingredient' | 'none'
+
+const effectieveAlpha = (
+  h: any,
+  lots: any[] = [],
+  ingredienten: any[] = []
+): {alpha: number, bron: AlphaBron, lot?: any} => {
+  if (h?.alpha_pct != null && h.alpha_pct !== '' && Number(h.alpha_pct) > 0) {
+    return {alpha: Number(h.alpha_pct), bron: 'manual'}
+  }
+  const lot = h?.lot_id ? (lots || []).find(l => String(l.id) === String(h.lot_id)) : null
+  const lotAlpha = lot?.bf_props?.alpha
+  if (lotAlpha != null && Number(lotAlpha) > 0) {
+    return {alpha: Number(lotAlpha), bron: 'lot', lot}
+  }
+  const ingr = h?.ingredient_id ? (ingredienten || []).find(i => i.id === h.ingredient_id) : null
+  const ingAlpha = ingr?.bf_props?.alpha
+  if (ingAlpha != null && Number(ingAlpha) > 0) {
+    return {alpha: Number(ingAlpha), bron: 'ingredient'}
+  }
+  return {alpha: 0, bron: 'none'}
+}
+
+const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = []}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
@@ -115,7 +145,14 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const brEff = brouwzaalEfficiency(Number(batch.OG), Number(batch.gist_volume_l || batch.liter_vergist), fermentables as any)
   const verdamping = kookVerdampingPct(Number(batch.kook_volume_start_l), Number(batch.kook_volume_eind_l), Number(batch.kooktijd))
   const hops = batchBi.filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
-  const ibu = iBUTinseth(hops as any, Number(batch.OG) || 0, Number(batch.kook_volume_eind_l || batch.kook_volume) || 0)
+  // Vervang alpha_pct door effectieve waarde uit lot/ingredient zodat IBU
+  // chargespecifiek wordt berekend (een Galaxy-lot van 2024 kan 13.8% zijn,
+  // terwijl het recept generiek 14.0% noteert).
+  const hopsVoorIBU = hops.map(h => ({
+    ...h,
+    alpha_pct: effectieveAlpha(h, lots, ingredienten).alpha,
+  }))
+  const ibu = iBUTinseth(hopsVoorIBU as any, Number(batch.OG) || 0, Number(batch.kook_volume_eind_l || batch.kook_volume) || 0)
 
   // Persisteer berekende waarden zodra de inputs aanwezig zijn — zo blijven ze
   // beschikbaar voor overzicht/print zonder steeds herberekenen.
@@ -360,10 +397,15 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       {/* Hop-schema (kook-additie tijden — bewerkbaar) */}
       {(() => {
         const hops = batchBi.filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
-        const updHop = (hopId: number, veld: 'tijdstip_min' | 'alpha_pct' | 'gebruik', val: any) => {
+        const updHop = (hopId: number, veld: 'tijdstip_min' | 'alpha_pct' | 'gebruik' | 'lot_id', val: any) => {
           if (!setBi) return
           setBi((prev: any[]) => prev.map(x => x.id === hopId ? {...x, [veld]: val} : x))
         }
+        // Vind beschikbare lots per hop-additie (alleen lots van hetzelfde
+        // ingredient_id, met voorraad of zonder voorraad-eis voor archief).
+        const beschikbareLots = (h: any) => h.ingredient_id
+          ? (lots || []).filter(l => l.ingredient_id === h.ingredient_id)
+          : []
         return (
           <div className="bg-white rounded-xl shadow-card overflow-hidden">
             <SectionHeader
@@ -383,6 +425,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                         <tr>
                           <th className="px-3 py-1.5 text-left">{t('lbl_name')}</th>
                           <th className="px-3 py-1.5 text-right">{t('lbl_quantity')}</th>
+                          <th className="px-3 py-1.5 text-left">{t('hop_schema_lot')}</th>
                           <th className="px-3 py-1.5 text-right">α %</th>
                           <th className="px-3 py-1.5 text-right">{t('hop_schema_tijdstip')}</th>
                           <th className="px-3 py-1.5 text-left">{t('hop_schema_gebruik')}</th>
@@ -392,14 +435,46 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                         {hops
                           .slice()
                           .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
-                          .map((h: any) => (
+                          .map((h: any) => {
+                          const lotsBeschikbaar = beschikbareLots(h)
+                          const eff = effectieveAlpha(h, lots, ingredienten)
+                          return (
                           <tr key={h.id}>
                             <td className="px-3 py-1.5">{h.ingredient_naam}</td>
                             <td className="px-3 py-1.5 text-right text-gray-600">{h.hoeveelheid} {h.eenheid || 'g'}</td>
+                            <td className="px-3 py-1.5">
+                              {lotsBeschikbaar.length > 0 ? (
+                                <select value={h.lot_id || ''}
+                                  onChange={e => updHop(h.id, 'lot_id', e.target.value ? Number(e.target.value) : '')}
+                                  className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[10rem]">
+                                  <option value="">{t('hop_schema_geen_lot')}</option>
+                                  {lotsBeschikbaar.map((l: any) => (
+                                    <option key={l.id} value={l.id}>
+                                      {l.lotnr || `#${l.id}`}{l.bf_props?.alpha != null ? ` · α ${l.bf_props.alpha}%` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-xs text-gray-400">—</span>
+                              )}
+                            </td>
                             <td className="px-3 py-1.5 text-right">
                               <input type="number" step="0.1" value={h.alpha_pct ?? ''}
                                 onChange={e => updHop(h.id, 'alpha_pct', e.target.value)}
-                                className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-right t-input" />
+                                placeholder={eff.bron !== 'manual' && eff.alpha > 0 ? String(eff.alpha) : ''}
+                                title={eff.bron === 'lot' ? t('hop_schema_alpha_uit_lot').replace('{lot}', eff.lot?.lotnr || `#${eff.lot?.id}`)
+                                  : eff.bron === 'ingredient' ? t('hop_schema_alpha_uit_ing')
+                                  : eff.bron === 'manual' ? t('hop_schema_alpha_handmatig')
+                                  : ''}
+                                className={`w-16 border border-gray-200 rounded px-1.5 py-0.5 text-right t-input ${
+                                  eff.bron === 'lot' ? 'bg-emerald-50' : eff.bron === 'ingredient' ? 'bg-blue-50' : ''
+                                }`} />
+                              {eff.bron === 'lot' && (
+                                <div className="text-[10px] text-emerald-600 mt-0.5">{t('hop_schema_bron_lot')}</div>
+                              )}
+                              {eff.bron === 'ingredient' && !h.alpha_pct && (
+                                <div className="text-[10px] text-blue-600 mt-0.5">{t('hop_schema_bron_ing')}</div>
+                              )}
                             </td>
                             <td className="px-3 py-1.5 text-right">
                               <input type="number" step="1" value={h.tijdstip_min ?? ''}
@@ -419,7 +494,8 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                               </select>
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

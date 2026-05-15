@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.65] — 2026-05-15
+
+### Added — IBU-berekening met chargespecifieke α-zuur uit hop-lots
+
+De IBU-berekening (Tinseth) gebruikt nu de **lot-specifieke α-zuur waarde** uit `Lot.bf_props.alpha` wanneer een hop-additie aan een lot is gekoppeld. Een Galaxy-lot uit 2024 kan bv. 13.8% α leveren terwijl het recept generiek 14.0% noteert — het verschil werkt nu direct door in de IBU-berekening.
+
+In het Hop-schema is een **lot-dropdown** toegevoegd per hop-additie. De α%-cel toont:
+- Achtergrondkleur **groen** wanneer α uit lot komt (chargespecifiek).
+- Achtergrondkleur **blauw** wanneer α uit de ingredient-default komt (`Ingredient.bf_props.alpha`).
+- Geen kleur wanneer de gebruiker een handmatige waarde heeft ingevuld — die overruled de lot/ingredient-default.
+
+De resolutie-volgorde voor α: **handmatige override → lot.bf_props.alpha → ingredient.bf_props.alpha**. Wijzigen van het lot of het invullen van α werkt direct door in de IBU-tegel boven het schema.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()`-helper, IBU-berekening map nu hop's met effectieve α, hop-schema-tabel kreeg lot-kolom met dropdown en bron-indicator op de α-cel. Props `lots` en `ingredienten` toegevoegd.
+- `src/pages/BatchesPage.tsx` — `lots` en `ing` doorgegeven aan `BrouwdagWizard`.
+- `src/i18n/{nl,en,de,fr,es}.json` — 7 nieuwe sleutels (`hop_schema_lot`, `hop_schema_geen_lot`, `hop_schema_alpha_uit_*`, `hop_schema_bron_*`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.64 → 1.9.65.
+
+---
+
 ## [1.9.64] — 2026-05-15
 
 ### Fixed — Hop-tijden en mout-extract% uit recept overnemen bij batch-creatie
