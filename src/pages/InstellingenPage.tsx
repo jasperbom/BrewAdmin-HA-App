@@ -237,7 +237,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -880,6 +880,32 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
         </div>
         <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_planning_hint')}</p>
+      </div>
+
+      {/* Brouwproces-defaults: globale fallback voor hop-opslag (geldt voor
+          lots zonder eigen storage-veld). Lots kunnen hun eigen waarde
+          overschrijven in de lot-edit modal. */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_brouwproces_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_brouwproces_desc')}</p>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_hop_storage')}</label>
+          <select
+            value={brouwprocesInst?.hop_storage || 'vacuum_koel'}
+            onChange={(e: any) => {
+              const v = e.target.value
+              setBrouwprocesInst((p: any) => ({...(p || {}), hop_storage: v}))
+              logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `Hop-opslag default → ${v}`})
+            }}
+            className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-md t-input">
+            <option value="vacuum_vries">{t('brew_storage_vacuum_vries')}</option>
+            <option value="vacuum_koel">{t('brew_storage_vacuum_koel')}</option>
+            <option value="lucht_vries">{t('brew_storage_lucht_vries')}</option>
+            <option value="lucht_koel">{t('brew_storage_lucht_koel')}</option>
+            <option value="lucht_kamer">{t('brew_storage_lucht_kamer')}</option>
+          </select>
+        </div>
+        <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_brouwproces_hop_storage_hint')}</p>
       </div>
 
       {/* Cold-crash preset — brouwproces­instelling, actie via HA-climate op Dashboard */}

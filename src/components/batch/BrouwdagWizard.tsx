@@ -20,6 +20,9 @@ interface Props {
   tanks?: any[]
   lots?: any[]
   ingredienten?: any[]
+  // Globale fallback voor opslag-conditie (uit instellingen). Lots met
+  // een eigen `bf_props.storage` overrulen deze waarde.
+  hopStorageDefault?: string
 }
 
 const FASE_VOLGORDE: BrouwdagFase[] = ['water', 'maisch', 'lauter', 'koken', 'koelen', 'og']
@@ -67,7 +70,8 @@ const effectieveAlpha = (
   h: any,
   lots: any[] = [],
   ingredienten: any[] = [],
-  refDatum?: string
+  refDatum?: string,
+  storageDefault: string = 'vacuum_koel'
 ): EffAlphaResult => {
   if (h?.alpha_pct != null && h.alpha_pct !== '' && Number(h.alpha_pct) > 0) {
     return {alpha: Number(h.alpha_pct), bron: 'manual'}
@@ -76,9 +80,10 @@ const effectieveAlpha = (
   const lotAlpha = lot?.bf_props?.alpha
   if (lotAlpha != null && Number(lotAlpha) > 0) {
     // Verouderings-correctie: kijk naar bf_props.year (Brewfather-veld) of
-    // val terug op de aankoopdatum als ruwe schatting.
+    // val terug op de aankoopdatum als ruwe schatting. Opslag-conditie:
+    // lot-eigen waarde > globale default uit instellingen.
     const oogst = lot?.bf_props?.year || lot?.aankoop_datum || lot?.aankoopdatum
-    const opslag = lot?.bf_props?.storage || 'vacuum_koel'
+    const opslag = lot?.bf_props?.storage || storageDefault
     const hsi = lot?.bf_props?.hsi
     if (oogst) {
       const v = hopVerouderdeAlpha(Number(lotAlpha), oogst, opslag, hsi ?? 0.30, refDatum)
@@ -102,7 +107,7 @@ const effectieveAlpha = (
   return {alpha: 0, bron: 'none'}
 }
 
-const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = []}) => {
+const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel'}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
@@ -182,7 +187,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   // batch later opnieuw wordt geopend.
   const hopsVoorIBU = hops.map(h => ({
     ...h,
-    alpha_pct: effectieveAlpha(h, lots, ingredienten, batch.datum).alpha,
+    alpha_pct: effectieveAlpha(h, lots, ingredienten, batch.datum, hopStorageDefault).alpha,
   }))
   const ibu = iBUTinseth(hopsVoorIBU as any, Number(batch.OG) || 0, Number(batch.kook_volume_eind_l || batch.kook_volume) || 0)
 
@@ -469,7 +474,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                           .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
                           .map((h: any) => {
                           const lotsBeschikbaar = beschikbareLots(h)
-                          const eff = effectieveAlpha(h, lots, ingredienten, batch.datum)
+                          const eff = effectieveAlpha(h, lots, ingredienten, batch.datum, hopStorageDefault)
                           const fmtLeeftijd = (jaren: number): string => {
                             const mnd = Math.round(jaren * 12)
                             if (mnd < 12) return `${mnd}m`
@@ -483,7 +488,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                             const oogst = l.bf_props?.year || l.aankoop_datum || l.aankoopdatum
                             if (aOrig != null) {
                               if (oogst) {
-                                const v = hopVerouderdeAlpha(Number(aOrig), oogst, l.bf_props?.storage || 'vacuum_koel', l.bf_props?.hsi ?? 0.30, batch.datum)
+                                const v = hopVerouderdeAlpha(Number(aOrig), oogst, l.bf_props?.storage || hopStorageDefault, l.bf_props?.hsi ?? 0.30, batch.datum)
                                 if (v.leeftijdJaren > 0 && v.behoudPct < 99.5) {
                                   parts.push(`α ${aOrig}% → ${v.alpha.toFixed(1)}% (${fmtLeeftijd(v.leeftijdJaren)})`)
                                 } else {

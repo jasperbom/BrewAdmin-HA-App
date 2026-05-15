@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.67] — 2026-05-15
+
+### Added — Globale hop-opslag default in instellingen
+
+Nieuwe instellingen-card **"Brouwproces-defaults"** met daarin de standaard hop-opslag conditie. Deze geldt als globale fallback voor alle hop-lots die geen eigen `bf_props.storage` hebben — handig wanneer je hele inventaris in dezelfde koelkast/diepvries staat en je niet per lot apart wilt instellen.
+
+Resolutie-volgorde voor opslag-conditie in de IBU-verouderingsberekening:
+1. **Lot-eigen** `bf_props.storage` (per-lot override in de lot-edit modal)
+2. **Globale default** uit instellingen (`brouwproces_instellingen.hop_storage`)
+3. Hardcoded fallback `vacuum_koel`
+
+Nieuwe data-key `brouwproces_instellingen` wordt in de Excel-backup meegenomen.
+
+### Files
+- `src/App.tsx` — `useStore('brouwproces_instellingen', {hop_storage:'vacuum_koel'})`, doorgegeven aan `BatchesPage` en `InstellingenPage`, opgenomen in Excel-export/import.
+- `src/pages/InstellingenPage.tsx` — nieuwe card "Brouwproces-defaults" naast Planning-card met dropdown voor 5 opslag-opties.
+- `src/pages/BatchesPage.tsx` — prop `brouwprocesInst` toegevoegd; doorgegeven aan `BrouwdagWizard` als `hopStorageDefault`.
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()` neemt nu een `storageDefault`-parameter (default `vacuum_koel`); lot-dropdown-preview gebruikt ook globale default.
+- `src/i18n/{nl,en,de,fr,es}.json` — 4 nieuwe sleutels (`settings_brouwproces_title`, `settings_brouwproces_desc`, `settings_hop_storage`, `settings_brouwproces_hop_storage_hint`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.66 → 1.9.67.
+
+---
+
 ## [1.9.66] — 2026-05-15
 
 ### Added — Hop-veroudering in IBU-berekening (Garetz / Hieronymus)

@@ -84,6 +84,7 @@ interface BatchesPageProps {
   setDryHops?: any
   koelLogs?: any[]
   setKoelLogs?: any
+  brouwprocesInst?: {hop_storage?: string}
 }
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
@@ -480,7 +481,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   waterAddities=[], setWaterAddities=()=>{},
   hopAddities=[], setHopAddities=()=>{},
   dryHops=[], setDryHops=()=>{},
-  koelLogs=[], setKoelLogs=()=>{}
+  koelLogs=[], setKoelLogs=()=>{},
+  brouwprocesInst={hop_storage:'vacuum_koel'}
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   // Actieve tab per batch — gekoppeld aan batch-status zodat we automatisch
@@ -1719,7 +1721,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <>
                 <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
                   stappen={brouwdagStappen} setStappen={setBrouwdagStappen}
-                  tanks={tanks} lots={lots} ingredienten={ing} />
+                  tanks={tanks} lots={lots} ingredienten={ing}
+                  hopStorageDefault={brouwprocesInst?.hop_storage} />
                 <WaterAdditieSection batch={selB}
                   waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
               </>
