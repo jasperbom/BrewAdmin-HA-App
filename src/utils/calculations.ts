@@ -1451,7 +1451,10 @@ export const kookVerdampingPct = (preBoilL: number, postBoilL: number, kookMinut
 // Som van alle bijdragen = totale IBU. Alleen kook-additions (gebruik='boil')
 // tellen mee; whirlpool/dry-hop hebben verwaarloosbare bijdrage in Tinseth.
 export interface HopVoorIBU {
-  gram: number | string
+  // Accepteer beide naamgevingen: `gram` (expliciet) of `hoeveelheid` (zoals
+  // batch_ingredienten dat opslaat). De reader pakt de eerste die gezet is.
+  gram?: number | string
+  hoeveelheid?: number | string
   alpha_pct: number | string
   tijdstip_min: number | string      // min vóór einde koken
   gebruik?: string                    // 'boil' / 'whirlpool' / 'dry-hop'
@@ -1463,7 +1466,7 @@ export const iBUTinseth = (hops: HopVoorIBU[] = [], og: number, kookVolumeL: num
   if (vol <= 0) return 0
   const total = (hops || []).reduce((sum, h) => {
     if (h.gebruik && !['boil', 'kook', ''].includes(String(h.gebruik).toLowerCase())) return sum
-    const g = Number(h.gram) || 0
+    const g = Number(h.gram ?? h.hoeveelheid) || 0
     const a = Number(h.alpha_pct) || 0
     const t = Number(h.tijdstip_min) || 0
     if (g <= 0 || a <= 0 || t <= 0) return sum
