@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.69] — 2026-05-15
+
+### Added — "Tijden uit recept"-knop in Hop-schema
+
+Bestaande batches die zijn aangemaakt vóór v1.9.64 hadden geen hop-tijden in `batch_ingredienten`, omdat de "Brouwen"-flow toen alleen naam/hoeveelheid overdroeg. Ook batches uit lokale recepten zonder ingevulde tijden bleven leeg. Een nieuwe knop **"Tijden uit recept"** verschijnt in het Hop-schema (alleen als de batch een `recept_id` heeft) en kopieert tijden, α-zuur en gebruik uit het gekoppelde recept naar de batch.
+
+Matching gebeurt op hop-naam (case-insensitive). De knop is een vangnet: het overschrijft géén bestaande handmatige waarden, alleen lege velden worden gevuld. Voor batches zonder gekoppeld recept verschijnt de knop niet — daar moeten tijden handmatig of via Brewfather-sync komen.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — nieuwe `syncHopUitRecept()`-functie + "Tijden uit recept"-knop naast "Sync hop-stappen" in het Hop-schema; prop `recepten` toegevoegd.
+- `src/pages/BatchesPage.tsx` — `recepten` doorgegeven aan `BrouwdagWizard`.
+- `src/i18n/{nl,en,de,fr,es}.json` — 3 nieuwe sleutels (`hop_schema_uit_recept`, `hop_schema_uit_recept_hint`, `hop_schema_recept_geen_hops`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.68 → 1.9.69.
+
+---
+
+## [1.9.68] — 2026-05-15
+
+### Changed — Instellingen-card hernoemd naar "Hop-opslag defaults"
+
+De in v1.9.67 toegevoegde card "Brouwproces-defaults" heeft alleen een hop-opslag instelling — de titel is daarom aangescherpt naar **"Hop-opslag defaults"**. Beschrijving en field-label aangepast voor consistentie (`settings_hop_storage` → "Opslag-conditie" want context is via de card-titel al duidelijk).
+
+De onderliggende data-key (`brouwproces_instellingen`) blijft ongewijzigd — geen migratie nodig.
+
+### Files
+- `src/i18n/{nl,en,de,fr,es}.json` — `settings_brouwproces_title`, `settings_brouwproces_desc`, `settings_hop_storage` aangepast in alle 5 talen.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.67 → 1.9.68.
+
+---
+
 ## [1.9.67] — 2026-05-15
 
 ### Added — Globale hop-opslag default in instellingen
