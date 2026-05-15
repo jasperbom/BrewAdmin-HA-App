@@ -1514,6 +1514,90 @@ export const primingSugarG = (
 
 export const PRIMING_SUGAR_TYPES = Object.keys(_PRIMING_FACTOR)
 
+// ── Hop-veroudering ──────────────────────────────────────────────────────────
+// α-zuur in hop degradeert exponentieel met de tijd, afhankelijk van opslag-
+// conditie en de Hop Stability Index (HSI). Vereenvoudigde Garetz/Hieronymus
+// formule:
+//
+//   α(t) = α₀ × e^(−k · t · hsi/0.30)
+//
+// waarbij k de opslag-constante is (verlies per jaar bij standaard HSI=0.30),
+// t de leeftijd in jaren sinds oogst en hsi de stability-index van de hop
+// (typisch 0.20–0.35). HSI=0.30 geldt als gemiddelde wanneer onbekend.
+
+export type HopOpslag = 'vacuum_vries' | 'vacuum_koel' | 'lucht_vries' | 'lucht_koel' | 'lucht_kamer'
+
+export const HOP_OPSLAG_FACTOR: Record<HopOpslag, number> = {
+  vacuum_vries:  0.05,   // vacuum/N₂ verpakt + diepvries (-18°C)
+  vacuum_koel:   0.10,   // vacuum/N₂ verpakt + koelkast (4°C)
+  lucht_vries:   0.10,   // luchtdoorlatend + diepvries
+  lucht_koel:    0.20,   // luchtdoorlatend + koelkast
+  lucht_kamer:   0.50,   // luchtdoorlatend + kamertemperatuur
+}
+
+export const hopOpslagFactor = (opslag: string | undefined): number => {
+  const k = opslag && (HOP_OPSLAG_FACTOR as any)[opslag]
+  return typeof k === 'number' ? k : 0.10
+}
+
+// Bereken α-zuur na opslagverouderingscorrectie. Wanneer geen oogstdatum/-jaar
+// bekend is, wordt de originele α teruggegeven (geen correctie). De
+// referentiedatum is meestal de brouwdatum; valt terug op vandaag.
+export interface HopVerouderingResult {
+  alpha: number             // gecorrigeerde α-zuur%
+  alphaOrigineel: number    // input
+  leeftijdJaren: number     // sinds oogst
+  behoudPct: number         // fractie behouden × 100
+  opslag: string
+  hsi: number
+}
+
+export const hopVerouderdeAlpha = (
+  alphaOrigineel: number | string,
+  oogstJaarOfDatum: number | string | undefined,
+  opslag: string = 'vacuum_koel',
+  hsi: number | string = 0.30,
+  refDatum?: string
+): HopVerouderingResult => {
+  const a = Number(alphaOrigineel) || 0
+  const hsiNum = Number(hsi) > 0 ? Number(hsi) : 0.30
+  const result: HopVerouderingResult = {
+    alpha: a, alphaOrigineel: a, leeftijdJaren: 0, behoudPct: 100,
+    opslag, hsi: hsiNum,
+  }
+  if (a <= 0) return result
+
+  // Bepaal oogst-timestamp. Accepteer: number (jaar), 4-cijfer-string (jaar),
+  // of ISO-datumstring. Default oogstmaand = september (NH/UK/USA seizoen).
+  let oogstTs: number | null = null
+  if (typeof oogstJaarOfDatum === 'number' && oogstJaarOfDatum > 1900) {
+    oogstTs = new Date(`${oogstJaarOfDatum}-09-01`).getTime()
+  } else if (typeof oogstJaarOfDatum === 'string' && oogstJaarOfDatum) {
+    const yr = Number(oogstJaarOfDatum)
+    if (Number.isInteger(yr) && yr > 1900 && yr < 3000 && oogstJaarOfDatum.length === 4) {
+      oogstTs = new Date(`${yr}-09-01`).getTime()
+    } else {
+      const d = new Date(oogstJaarOfDatum)
+      if (!isNaN(d.getTime())) oogstTs = d.getTime()
+    }
+  }
+  if (oogstTs == null) return result
+
+  const ref = refDatum ? new Date(refDatum) : new Date()
+  if (isNaN(ref.getTime())) return result
+  const leeftijdJaren = Math.max(0, (ref.getTime() - oogstTs) / (365.25 * 86400000))
+  const k = hopOpslagFactor(opslag)
+  const fractie = Math.exp(-k * leeftijdJaren * (hsiNum / 0.30))
+  return {
+    alpha: a * fractie,
+    alphaOrigineel: a,
+    leeftijdJaren,
+    behoudPct: fractie * 100,
+    opslag,
+    hsi: hsiNum,
+  }
+}
+
 // ── Vergisting-helpers ───────────────────────────────────────────────────────
 // Detecteert of FG bereikt is op basis van SG-stabiliteit. Conditie: ≥3
 // metingen, en de laatste 3 vallen binnen `tol` (default 0.001) over een

@@ -4,6 +4,129 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.67] — 2026-05-15
+
+### Added — Globale hop-opslag default in instellingen
+
+Nieuwe instellingen-card **"Brouwproces-defaults"** met daarin de standaard hop-opslag conditie. Deze geldt als globale fallback voor alle hop-lots die geen eigen `bf_props.storage` hebben — handig wanneer je hele inventaris in dezelfde koelkast/diepvries staat en je niet per lot apart wilt instellen.
+
+Resolutie-volgorde voor opslag-conditie in de IBU-verouderingsberekening:
+1. **Lot-eigen** `bf_props.storage` (per-lot override in de lot-edit modal)
+2. **Globale default** uit instellingen (`brouwproces_instellingen.hop_storage`)
+3. Hardcoded fallback `vacuum_koel`
+
+Nieuwe data-key `brouwproces_instellingen` wordt in de Excel-backup meegenomen.
+
+### Files
+- `src/App.tsx` — `useStore('brouwproces_instellingen', {hop_storage:'vacuum_koel'})`, doorgegeven aan `BatchesPage` en `InstellingenPage`, opgenomen in Excel-export/import.
+- `src/pages/InstellingenPage.tsx` — nieuwe card "Brouwproces-defaults" naast Planning-card met dropdown voor 5 opslag-opties.
+- `src/pages/BatchesPage.tsx` — prop `brouwprocesInst` toegevoegd; doorgegeven aan `BrouwdagWizard` als `hopStorageDefault`.
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()` neemt nu een `storageDefault`-parameter (default `vacuum_koel`); lot-dropdown-preview gebruikt ook globale default.
+- `src/i18n/{nl,en,de,fr,es}.json` — 4 nieuwe sleutels (`settings_brouwproces_title`, `settings_brouwproces_desc`, `settings_hop_storage`, `settings_brouwproces_hop_storage_hint`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.66 → 1.9.67.
+
+---
+
+## [1.9.66] — 2026-05-15
+
+### Added — Hop-veroudering in IBU-berekening (Garetz / Hieronymus)
+
+α-zuur in hop degradeert exponentieel afhankelijk van opslag-conditie en leeftijd. De IBU-berekening past nu automatisch verouderings-correctie toe wanneer een hop-lot een oogstjaar (`bf_props.year`) of een aankoopdatum heeft.
+
+**Formule** (vereenvoudigde Garetz/Hieronymus):
+
+`α(t) = α₀ × e^(−k · t · hsi/0.30)`
+
+waarbij `k` de opslag-constante is (verlies per jaar bij standaard HSI=0.30), `t` de leeftijd in jaren sinds oogst en `hsi` de Hop Stability Index (default 0.30 wanneer onbekend). Een vacuum-verpakt lot in de koelkast verliest ~10%/jaar bij gemiddelde HSI; in een luchtdoorlatende zak bij kamertemp ~50%/jaar.
+
+**Opslag-constanten:**
+| Opslag | Verlies/jaar |
+|---|---|
+| Vacuum + diepvries (-18°C) | 5% |
+| Vacuum + koel (4°C) / Lucht + diepvries | 10% |
+| Lucht + koel | 20% |
+| Lucht + kamertemp | 50% |
+
+**UI in het Hop-schema:**
+- Lot-dropdown toont per optie de verouderingsindicatie: `Galaxy 2024 · α 14.0% → 13.2% (8m)`.
+- α-cel kleurt **amber** wanneer verouderings-correctie wordt toegepast (vs groen voor lot-α zonder leeftijd). Tooltip toont oorspronkelijke α, leeftijd, behoud% en opslag-conditie.
+- Onder de α-cel een mini-label `uit lot · 94% behoud`.
+- IBU-tegel boven het schema werkt direct met de gecorrigeerde α.
+
+**Lot-edit modal** (IngredientenPage): Hop-lots krijgen een extra `storage`-veld (select met 5 opties) in de brouw-eigenschappen sectie naast de bestaande `alpha`/`hsi`/`year`. Defaults op `vacuum_koel`.
+
+De brouwdatum geldt als referentie voor de leeftijd-berekening, zodat IBU consistent blijft als de batch later opnieuw wordt geopend.
+
+### Files
+- `src/utils/calculations.ts` — `HOP_OPSLAG_FACTOR`-lookup, `hopOpslagFactor()`, `hopVerouderdeAlpha()`-helper met Garetz/Hieronymus-formule.
+- `src/utils/constants.ts` — `LOT_BREW_FIELDS_PER_TYPE.Hop` krijgt `storage`-select met 5 opslag-opties.
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()` past nu verouderings-correctie toe wanneer lot een oogstjaar/aankoopdatum heeft; nieuwe bron `lot_verouderd`. Hop-schema toont verouderde α + leeftijd in dropdown, behoud% onder α-cel, amber kleur en uitgebreide tooltip.
+- `src/i18n/{nl,en,de,fr,es}.json` — 13 nieuwe sleutels (`hop_schema_bron_lot_verouderd`, `hop_schema_alpha_verouderd`, `hop_opslag_*`, `brew_storage_*`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.65 → 1.9.66.
+
+---
+
+## [1.9.65] — 2026-05-15
+
+### Added — IBU-berekening met chargespecifieke α-zuur uit hop-lots
+
+De IBU-berekening (Tinseth) gebruikt nu de **lot-specifieke α-zuur waarde** uit `Lot.bf_props.alpha` wanneer een hop-additie aan een lot is gekoppeld. Een Galaxy-lot uit 2024 kan bv. 13.8% α leveren terwijl het recept generiek 14.0% noteert — het verschil werkt nu direct door in de IBU-berekening.
+
+In het Hop-schema is een **lot-dropdown** toegevoegd per hop-additie. De α%-cel toont:
+- Achtergrondkleur **groen** wanneer α uit lot komt (chargespecifiek).
+- Achtergrondkleur **blauw** wanneer α uit de ingredient-default komt (`Ingredient.bf_props.alpha`).
+- Geen kleur wanneer de gebruiker een handmatige waarde heeft ingevuld — die overruled de lot/ingredient-default.
+
+De resolutie-volgorde voor α: **handmatige override → lot.bf_props.alpha → ingredient.bf_props.alpha**. Wijzigen van het lot of het invullen van α werkt direct door in de IBU-tegel boven het schema.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()`-helper, IBU-berekening map nu hop's met effectieve α, hop-schema-tabel kreeg lot-kolom met dropdown en bron-indicator op de α-cel. Props `lots` en `ingredienten` toegevoegd.
+- `src/pages/BatchesPage.tsx` — `lots` en `ing` doorgegeven aan `BrouwdagWizard`.
+- `src/i18n/{nl,en,de,fr,es}.json` — 7 nieuwe sleutels (`hop_schema_lot`, `hop_schema_geen_lot`, `hop_schema_alpha_uit_*`, `hop_schema_bron_*`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.64 → 1.9.65.
+
+---
+
+## [1.9.64] — 2026-05-15
+
+### Fixed — Hop-tijden en mout-extract% uit recept overnemen bij batch-creatie
+
+Wanneer een batch werd aangemaakt vanuit een (lokaal of Brewfather-)recept via de "Brouwen"-knop, gingen alleen naam/hoeveelheid/eenheid mee naar `batch_ingredienten`. De hop-tijden (`tijd`/`gebruik`) en alpha%, plus mout-yield, bleven leeg — waardoor de IBU- en efficiency-berekeningen in de Brouwdag-wizard niet werkten en hop-stappen "@ ?min" toonden.
+
+Nu wordt bij batch-creatie én bij "Sync recept" overgenomen:
+- **Mout / Suiker**: `extract_pct` uit `recept.mout.extract_pct` of fallback uit `Ingredient.bf_props.yield`.
+- **Hop**: `tijdstip_min` (uit `recept.hop.tijd`), `alpha_pct` (uit recept of `bf_props.alpha`), `gebruik` (boil/whirlpool/dry-hop/mash) — default `boil`.
+
+Voor recepten die uit Brewfather zijn gesynchroniseerd worden yield% en alpha% nu ook in het recept zelf bewaard (`bfMapRecept`), zodat de waarden ook bij latere wijzigingen behouden blijven.
+
+### Files
+- `src/types/index.ts` — `ReceptIngredient.alpha_pct?` en `extract_pct?` toegevoegd.
+- `src/utils/api.ts` — `bfMapRecept` neemt nu `yield`/`potential` (mout → extract_pct) en `alpha` (hop → alpha_pct) over uit Brewfather.
+- `src/pages/ReceptenPage.tsx` — "Brouwen"-knop neemt `extract_pct` (mout), `tijdstip_min`/`gebruik`/`alpha_pct` (hop), en `gebruik` (overig) mee in `_receptIngredienten`.
+- `src/pages/BatchesPage.tsx` — `pendingBatchIngredienten`-verwerking én `syncReceptToBatch` zetten brouwkundige velden op nieuwe `batch_ingredienten` met fallback uit `Ingredient.bf_props`.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.63 → 1.9.64.
+
+---
+
+## [1.9.63] — 2026-05-15
+
+### Fixed — Hop-additie stappen tonen werkelijke tijd
+
+Hop-additie stappen in de Brouwdag-stappenlijst toonden "@ ?min" als het tijdstip op het moment van genereren leeg was (oude batches of Brewfather-recepten zonder hop-timing). Het label was statisch en updatete niet wanneer de gebruiker het tijdstip in het Hop-schema invulde.
+
+- `BrouwdagStap` heeft nu een optioneel `batch_ingredient_id` veld dat de stap koppelt aan de bron-hop. Bij render wordt het label live opgebouwd uit `batch_ingredienten`, zodat wijzigingen in het Hop-schema (tijdstip, naam, α-zuur) direct doorwerken in de stappenlijst.
+- Voor bestaande stappen zonder `batch_ingredient_id` valt de render-laag terug op naam-matching uit het opgeslagen label ("Hop-additie: NAAM @").
+- Nieuwe **"Sync hop-stappen"** knop in de Hop-schema-sectie wist en regenereert alle hop-stappen op basis van het actuele schema. Handig wanneer hops zijn toegevoegd/verwijderd of wanneer de oude labels niet meer kloppen.
+- Bij genereren worden alleen hops met `gebruik=boil` (of leeg) als koken-stap toegevoegd; dry-hop/whirlpool/mash-hops verschijnen niet meer in de kook-fase.
+
+### Files
+- `src/types/index.ts` — `BrouwdagStap.batch_ingredient_id?: number` toegevoegd.
+- `src/components/batch/BrouwdagWizard.tsx` — `hopAddLabel()`-helper, `resolveStapLabel()` met fallback-name-match, `syncHopStappen()`-knop, `genereerStappen` zet nu `batch_ingredient_id` en filtert op `gebruik`, `StapRij` accepteert `label`-override prop.
+- `src/i18n/{nl,en,de,fr,es}.json` — 2 nieuwe sleutels (`hop_schema_sync`, `hop_schema_sync_hint`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.62 → 1.9.63.
+
+---
+
 ## [1.9.62] — 2026-05-15
 
 ### Changed — Brouwdag-wizard verfijnd op basis van feedback

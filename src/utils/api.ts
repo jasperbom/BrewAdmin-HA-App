@@ -299,8 +299,13 @@ export const bfMapRecipe = (r: any, opts: {
   IBU: r.ibu || '',
   notities: r.notes || '',
   tags:   Array.isArray(r.searchTags) ? r.searchTags : (r.searchTags ? [r.searchTags] : []),
-  mout:   (r.fermentables||[]).map((f: any) => ({naam:f.name||'', hoeveelheid:Number(f.amount||0), eenheid:'kg'})),
-  hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||'', tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min'})),
+  mout:   (r.fermentables||[]).map((f: any) => ({
+    naam: f.name||'', hoeveelheid: Number(f.amount||0), eenheid: 'kg',
+    // Yield is het diastatisch extract% (0-100). `potential` is een SG-waarde
+    // (1.037 = 80% yield). Beide accepteren als bron voor extract_pct.
+    extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)*1000/3.84*10)/10 : ''),
+  })),
+  hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik:h.use||'', tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min', alpha_pct: h.alpha != null ? Number(h.alpha) : ''})),
   gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
   overig: (r.miscs||[]).map((m: any) =>       ({naam:m.name||'', hoeveelheid:Number(m.amount||0), eenheid:m.unit||'g', gebruik:m.use||''})),
   kleur:       bfNumSafe(r.color),

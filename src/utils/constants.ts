@@ -53,6 +53,7 @@ export const LOT_BREW_FIELDS_PER_TYPE: Record<string, BrewField[]> = {
     { key: 'cohumulone', kind: 'number' },
     { key: 'hsi', kind: 'number' },
     { key: 'year', kind: 'number' },
+    { key: 'storage', kind: 'select', options: ['vacuum_vries', 'vacuum_koel', 'lucht_vries', 'lucht_koel', 'lucht_kamer'] },
   ],
   Gist: [
     { key: 'attenuation', kind: 'number' },
