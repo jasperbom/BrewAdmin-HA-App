@@ -84,6 +84,10 @@ export interface Batch {
   botteldag_checks?: Record<number, boolean>   // @deprecated: gemigreerd naar taken_checks
   taken_checks?: Record<number, boolean>       // Unified batch-takensysteem (check-type items)
   allergeen_notities?: string
+  // Id van het recept waarvan deze batch is aangemaakt. Wordt gezet bij het
+  // klikken op "Brouwen" in de Recepten-pagina en blijft staan zodat een
+  // geplande batch later via "Sync recept" opnieuw kan worden bijgewerkt.
+  recept_id?: string
 }
 
 export interface TankHistorieEntry {

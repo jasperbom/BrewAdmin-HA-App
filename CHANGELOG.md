@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.60] — 2026-05-15
+
+### Added — "Sync recept"-knop op geplande batches
+
+Wanneer een batch via de Recepten-pagina is aangemaakt (knop "Brouwen") wordt het recept-id voortaan op de batch bewaard (`recept_id`). Zolang de batch op status **Gepland** staat verschijnt in de batch-header een nieuwe knop **⟳ Sync recept** waarmee het oorspronkelijke recept opnieuw naar de batch kan worden gesynchroniseerd. Dit is handig wanneer het recept ná het aanmaken van de batch nog is aangepast (bijvoorbeeld via Brewfather-sync of een lokale wijziging).
+
+De synchronisatie vervangt de batch-velden (naam, stijl, OG/FG/ABV, batch-volume, kook-/vergistings-/maischprofiel) én de volledige ingrediëntenlijst van de batch. Lot-koppelingen worden gereset omdat de hoeveelheden en typen kunnen wijzigen. Een bevestigingsdialoog waarschuwt vooraf, en de actie wordt gelogd in zowel het batch-log als de audit trail. Zodra de batch verder is dan "Gepland" verdwijnt de knop, zodat eenmaal geboekte ingrediënten of metingen niet per ongeluk worden overschreven.
+
+### Files
+- `src/types/index.ts` — `Batch.recept_id?: string` toegevoegd.
+- `src/pages/ReceptenPage.tsx` — `recept_id` doorgegeven aan `setPreNieuwBatch`.
+- `src/pages/BatchesPage.tsx` — `recepten`-prop, `syncReceptToBatch`-handler en "Sync recept"-knop in zowel desktop- als mobiele headerbalk.
+- `src/App.tsx` — `recepten` doorgegeven aan `BatchesPage`.
+- `src/i18n/{nl,en,de,fr,es}.json` — 5 nieuwe vertalingen (`batch_sync_recept*`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.59 → 1.9.60.
+
+---
+
 ## [1.9.59] — 2026-05-13
 
 ### Fixed — Dashboard-tegel "Voorraad beschikbaar" leidt nu naar AGP

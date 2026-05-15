@@ -66,6 +66,7 @@ interface BatchesPageProps {
   setCcpMetingen?: any
   capa?: any[]
   setCapa?: any
+  recepten?: any[]
 }
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
@@ -456,7 +457,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   preNieuwBatch=null, setPreNieuwBatch=()=>{},
   auditLog=[], setAuditLog=()=>{},
   ccpMetingen=[], setCcpMetingen=()=>{},
-  capa=[], setCapa=()=>{}
+  capa=[], setCapa=()=>{},
+  recepten=[]
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   React.useEffect(() => {
@@ -1154,6 +1156,66 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   // Auto-fetch (global interval) is handled in App.tsx; doHaFetch is used for the manual 🌡 HA button only
 
   const selB = bat.find((b: any) => b.id === sel)
+  // Bron-recept van de geselecteerde batch (alleen de huidige versie telt).
+  const selBRecept = selB?.recept_id
+    ? (recepten||[]).find((r: any) => r.id === selB.recept_id && r.is_huidige !== false)
+    : null
+
+  // Sync het bron-recept opnieuw naar de batch. Alleen toegestaan zolang de
+  // batch op "Gepland" staat — daarna zijn er afboekingen/metingen die we niet
+  // willen overschrijven. Vervangt batch-velden (naam, stijl, OG/FG/ABV,
+  // liter_vergist) én alle batch-ingrediënten (lots worden gereset).
+  const syncReceptToBatch = () => {
+    if (!selB || !selBRecept) return
+    if (selB.status !== 'Gepland') { alert(t('batch_sync_recept_not_planned')); return }
+    if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', selBRecept.naam || ''))) return
+    const r = selBRecept
+    const patch: any = {
+      naam: r.naam || selB.naam,
+      stijl: r.stijl || '',
+      OG: r.OG || '',
+      FG: r.FG || '',
+      ABV: r.ABV || '',
+      liter_vergist: r.batch_size || '',
+      kleur: r.kleur || '',
+      kooktijd: r.kooktijd || '',
+      kook_volume: r.kook_volume || '',
+      vergistingsprofiel: r.vergistingsprofiel || [],
+      maischprofiel: r.maischprofiel || [],
+    }
+    setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
+    const nieuweIng = [
+      ...(r.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null })),
+      ...(r.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
+      ...(r.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
+      ...(r.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
+    ]
+    setBi((prev: any[]) => {
+      const overig = (prev||[]).filter((x: any) => x.batch_id !== selB.id)
+      const startId = overig.length ? Math.max(...overig.map((x: any) => x.id), 0) + 1 : 1
+      const nieuwe = nieuweIng.map((item: any, idx: number) => {
+        const ingMatch = item.ingredient_id
+          ? ing.find((i: any) => i.id === item.ingredient_id)
+          : ing.find((i: any) => i.naam.toLowerCase() === String(item.ingredient_naam||'').toLowerCase())
+        return {
+          id: startId + idx,
+          batch_id: selB.id,
+          ingredient_id: ingMatch ? ingMatch.id : null,
+          ingredient_naam: item.ingredient_naam,
+          ingredient_type: item.ingredient_type,
+          hoeveelheid: Number(item.hoeveelheid) || 0,
+          eenheid: item.eenheid,
+          lot_id: null,
+          kosten: null,
+          afgeboekt: false,
+        }
+      })
+      return [...overig, ...nieuwe]
+    })
+    addLog({type:'gewijzigd', batch_id:selB.id, referentie:t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
+    logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
+  }
+
   const bAv = sel ? (av||[]).filter((a: any) => a.batch_id === sel) : []
   const uitgelVanAv = (avId: number) => (uit||[]).filter((u: any) => u.afvulling_id===avId).reduce((s: number, u: any) => s+Number(u.aantal||0), 0)
   const resterendAv = (a: any) => Number(a.hoeveelheid||0) - uitgelVanAv(a.id)
@@ -1338,6 +1400,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
                       <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>{t('batch_move_tank')}</Btn>
                     )}
+                    {selB.status === 'Gepland' && selBRecept && (
+                      <Btn s="sm" v="header" onClick={syncReceptToBatch} title={t('batch_sync_recept_title').replace('{recept}', selBRecept.naam || '')}>{t('batch_sync_recept')}</Btn>
+                    )}
                     <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>{t('btn_print')}</Btn>
                     <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
                     <Btn s="sm" v="header-danger" onClick={()=>removeBatch(selB.id)}>{t('btn_delete')}</Btn>
@@ -1350,6 +1415,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   </select>
                   {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
                     <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>{t('batch_move_tank')}</Btn>
+                  )}
+                  {selB.status === 'Gepland' && selBRecept && (
+                    <Btn s="sm" v="header" onClick={syncReceptToBatch} title={t('batch_sync_recept_title').replace('{recept}', selBRecept.naam || '')}>{t('batch_sync_recept')}</Btn>
                   )}
                   <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>{t('btn_print')}</Btn>
                   <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
