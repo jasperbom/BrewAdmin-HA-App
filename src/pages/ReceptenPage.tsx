@@ -513,6 +513,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                       FG: selRec.FG || '',
                       ABV: selRec.ABV || '',
                       liter_vergist: selRec.batch_size || '',
+                      recept_id: selRec.id,
                       _receptIngredienten: [
                         ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null })),
                         ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
