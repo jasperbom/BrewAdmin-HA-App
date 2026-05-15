@@ -1491,13 +1491,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 </div>
               )}
 
-              {/* Gistingsvoortgang — altijd zichtbaar */}
+              {/* Gistingsvoortgang — pas zichtbaar zodra de brouwdag voorbij
+                  is. Voorkomt dat OG/FG-schattingen uit Brewfather al een
+                  voortgang suggereren terwijl de batch nog 'Gepland' staat. */}
               {(() => {
                 const sgPct = sgProgress(selB)
                 const latestM = latestMeting(selB.id)
                 const liveABV = berekenLiveABV(selB, gistMetingen || [])
                 const hasAccijnsABV = Number(selB.ABV) > 0
                 if (sgPct === null && !latestM && liveABV.abv === 0 && !hasAccijnsABV) return null
+                const inTankFases = ['Vergisten', 'Conditioneren', 'Verpakt', 'Afgevuld', 'Gesloten']
+                if (!inTankFases.includes(selB.status) && !selB.brouwdag_voltooid) return null
                 const setAccijnsABV = (waarde: string) => {
                   const v = waarde === '' ? undefined : Number(waarde)
                   setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ABV: v} : b))
@@ -1596,10 +1600,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 )
               })()}
 
-              {/* Volumes — onder vergistingsvoortgang */}
+              {/* Volumes — onder vergistingsvoortgang.
+                  Pas tonen wanneer de brouwdag voorbij is (status Vergisten of
+                  verder, of brouwdag_voltooid). Anders zou Brewfather's
+                  estimatedBatchSize al "in tank" lijken te staan terwijl er
+                  nog niets gebrouwen is. */}
               {(() => {
                 const tankLiter = Number(selB.liter_vergist || 0)
                 if (tankLiter <= 0) return null
+                const inTankFases = ['Vergisten', 'Conditioneren', 'Verpakt', 'Afgevuld', 'Gesloten']
+                if (!inTankFases.includes(selB.status) && !selB.brouwdag_voltooid) return null
                 const batchAv = av ? av.filter((a: any) => a.batch_id === selB.id) : []
                 const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid || 0) * Number(a.hoeveelheid || 0), 0)
                 const totStuks = batchAv.reduce((s: number, a: any) => s + Number(a.hoeveelheid || 0), 0)
@@ -1670,8 +1680,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             {/* Brouwdag-tab content */}
             {activeTab === 'brouwdag' && (
               <>
-                <BrouwdagWizard batch={selB} setBat={setBat} bi={bi}
-                  stappen={brouwdagStappen} setStappen={setBrouwdagStappen} />
+                <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
+                  stappen={brouwdagStappen} setStappen={setBrouwdagStappen} tanks={tanks} />
                 <WaterAdditieSection batch={selB}
                   waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
               </>

@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.62] — 2026-05-15
+
+### Changed — Brouwdag-wizard verfijnd op basis van feedback
+
+- **pH-velden toegevoegd** aan de kerngegevens van de Brouwdag-tab: maisch-pH en product-pH zijn nu direct invulbaar naast OG/SG/volumes. De velden bestonden al op `Batch` (en werden in de Info-card getoond) maar konden niet zonder via-de-edit-modal worden bijgewerkt.
+- **Tank-selector** toegevoegd aan de kerngegevens. Bij batches met geconfigureerde tanks wordt een dropdown getoond; anders een vrije tekstinvoer. Zo wordt de tank al gekoppeld tijdens het brouwen i.p.v. pas bij overgang naar Vergisten.
+- **Hop-schema** als nieuwe sub-sectie onder de kerngegevens. Tabel met alle hop-ingrediënten van de batch (sortering op tijdstip aflopend) met directe invoer voor α-zuur%, tijdstip in minuten vóór einde koken, en gebruik (Koken / Whirlpool / Dry-hop / Maisch). Wijzigingen werken direct door in de IBU-berekening (Tinseth).
+- **Stappenlijst inklapbaar** gemaakt met een SectionHeader; toont voortgang (`voltooid/totaal`) in de header. Hop-schema is ook inklapbaar.
+- **Volumes & gistingsvoortgang** worden niet meer getoond zolang de batch op status `Gepland` of `Brouwen` staat (tenzij `brouwdag_voltooid=true`). Hierdoor lijkt een uit Brewfather geïmporteerde `estimatedBatchSize` niet ten onrechte "in tank" te staan voordat er werkelijk is gebrouwen.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — kerngegevens uitgebreid met `maisch_ph`, `product_ph` en tank-selector; nieuwe sub-sectie `hop-schema` met inline-edit op `batch_ingredienten` (alpha_pct, tijdstip_min, gebruik); stappenlijst nu in inklapbare SectionHeader; extra props `setBi`, `tanks`.
+- `src/pages/BatchesPage.tsx` — `setBi` en `tanks` doorgegeven aan `BrouwdagWizard`; volumes-blok en gistingsvoortgang-blok krijgen extra guard (`status in {Vergisten,Conditioneren,Verpakt,Afgevuld,Gesloten} || brouwdag_voltooid`).
+- `src/i18n/{nl,en,de,fr,es}.json` — 10 nieuwe sleutels (`brouwdag_stappen_titel`, `hop_schema_*`, `hop_gebruik_*`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.61 → 1.9.62.
+
+---
+
 ## [1.9.61] — 2026-05-15
 
 ### Added — Brouwdag-wizard, batch-tabs en extra calculaties
