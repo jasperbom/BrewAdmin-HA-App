@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.64] — 2026-05-15
+
+### Fixed — Hop-tijden en mout-extract% uit recept overnemen bij batch-creatie
+
+Wanneer een batch werd aangemaakt vanuit een (lokaal of Brewfather-)recept via de "Brouwen"-knop, gingen alleen naam/hoeveelheid/eenheid mee naar `batch_ingredienten`. De hop-tijden (`tijd`/`gebruik`) en alpha%, plus mout-yield, bleven leeg — waardoor de IBU- en efficiency-berekeningen in de Brouwdag-wizard niet werkten en hop-stappen "@ ?min" toonden.
+
+Nu wordt bij batch-creatie én bij "Sync recept" overgenomen:
+- **Mout / Suiker**: `extract_pct` uit `recept.mout.extract_pct` of fallback uit `Ingredient.bf_props.yield`.
+- **Hop**: `tijdstip_min` (uit `recept.hop.tijd`), `alpha_pct` (uit recept of `bf_props.alpha`), `gebruik` (boil/whirlpool/dry-hop/mash) — default `boil`.
+
+Voor recepten die uit Brewfather zijn gesynchroniseerd worden yield% en alpha% nu ook in het recept zelf bewaard (`bfMapRecept`), zodat de waarden ook bij latere wijzigingen behouden blijven.
+
+### Files
+- `src/types/index.ts` — `ReceptIngredient.alpha_pct?` en `extract_pct?` toegevoegd.
+- `src/utils/api.ts` — `bfMapRecept` neemt nu `yield`/`potential` (mout → extract_pct) en `alpha` (hop → alpha_pct) over uit Brewfather.
+- `src/pages/ReceptenPage.tsx` — "Brouwen"-knop neemt `extract_pct` (mout), `tijdstip_min`/`gebruik`/`alpha_pct` (hop), en `gebruik` (overig) mee in `_receptIngredienten`.
+- `src/pages/BatchesPage.tsx` — `pendingBatchIngredienten`-verwerking én `syncReceptToBatch` zetten brouwkundige velden op nieuwe `batch_ingredienten` met fallback uit `Ingredient.bf_props`.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.63 → 1.9.64.
+
+---
+
 ## [1.9.63] — 2026-05-15
 
 ### Fixed — Hop-additie stappen tonen werkelijke tijd

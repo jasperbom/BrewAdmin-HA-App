@@ -994,6 +994,13 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           const startId = prev.length ? Math.max(...prev.map((x: any) => x.id)) + 1 : 1
           const newBis = pendingBatchIngredienten.map((item: any, idx: number) => {
             const ingMatch = ing.find((i: any) => i.naam.toLowerCase() === item.ingredient_naam.toLowerCase())
+            // Fallback voor brouwkundige eigenschappen: als het recept ze
+            // niet leverde, kijk dan in het gekoppelde Ingredient.bf_props
+            // (uit Brewfather-inventaris of handmatig ingevuld).
+            const bfp = ingMatch?.bf_props || {}
+            const tType = String(item.ingredient_type || '').toLowerCase()
+            const isHop = tType === 'hop'
+            const isMout = tType === 'mout' || tType === 'suiker'
             return {
               id: startId + idx,
               batch_id: nb.id,
@@ -1005,6 +1012,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               lot_id: null,
               kosten: null,
               afgeboekt: false,
+              ...(isMout && {
+                extract_pct: item.extract_pct != null && item.extract_pct !== ''
+                  ? Number(item.extract_pct)
+                  : (bfp.yield != null ? Number(bfp.yield) : ''),
+              }),
+              ...(isHop && {
+                alpha_pct: item.alpha_pct != null && item.alpha_pct !== ''
+                  ? Number(item.alpha_pct)
+                  : (bfp.alpha != null ? Number(bfp.alpha) : ''),
+                tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== ''
+                  ? Number(item.tijdstip_min) : '',
+                gebruik: String(item.gebruik || 'boil').toLowerCase(),
+              }),
             }
           })
           return [...prev, ...newBis]
@@ -1223,10 +1243,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     }
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
     const nieuweIng = [
-      ...(r.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null })),
-      ...(r.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
+      ...(r.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
+      ...(r.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct })),
       ...(r.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
-      ...(r.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null })),
+      ...(r.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
     ]
     setBi((prev: any[]) => {
       const overig = (prev||[]).filter((x: any) => x.batch_id !== selB.id)
@@ -1235,6 +1255,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         const ingMatch = item.ingredient_id
           ? ing.find((i: any) => i.id === item.ingredient_id)
           : ing.find((i: any) => i.naam.toLowerCase() === String(item.ingredient_naam||'').toLowerCase())
+        const bfp = ingMatch?.bf_props || {}
+        const tType = String(item.ingredient_type || '').toLowerCase()
+        const isHop = tType === 'hop'
+        const isMout = tType === 'mout' || tType === 'suiker'
         return {
           id: startId + idx,
           batch_id: selB.id,
@@ -1242,6 +1266,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           ingredient_naam: item.ingredient_naam,
           ingredient_type: item.ingredient_type,
           hoeveelheid: Number(item.hoeveelheid) || 0,
+          ...(isMout && {
+            extract_pct: item.extract_pct != null && item.extract_pct !== ''
+              ? Number(item.extract_pct)
+              : (bfp.yield != null ? Number(bfp.yield) : ''),
+          }),
+          ...(isHop && {
+            alpha_pct: item.alpha_pct != null && item.alpha_pct !== ''
+              ? Number(item.alpha_pct)
+              : (bfp.alpha != null ? Number(bfp.alpha) : ''),
+            tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== ''
+              ? Number(item.tijdstip_min) : '',
+            gebruik: String(item.gebruik || 'boil').toLowerCase(),
+          }),
           eenheid: item.eenheid,
           lot_id: null,
           kosten: null,

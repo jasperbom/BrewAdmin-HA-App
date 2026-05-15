@@ -414,10 +414,15 @@ export interface ReceptIngredient {
   naam: string
   hoeveelheid: number
   eenheid: string
-  gebruik?: string
-  tijd?: number | string
-  tijdEenheid?: string
+  gebruik?: string                  // boil / whirlpool / dry-hop / mash
+  tijd?: number | string            // minuten (kook) of dagen (dry-hop)
+  tijdEenheid?: string              // 'min' | 'days'
   ingredient_id?: number | null
+  // Brouwkundige eigenschappen voor calculaties (overgenomen uit Brewfather
+  // of handmatig ingevuld). Worden bij batch-creatie doorgezet naar
+  // batch_ingredienten zodat IBU/efficiency direct werken.
+  alpha_pct?: number | string       // α-zuur% voor hop
+  extract_pct?: number | string     // yield% voor mout/suiker
 }
 
 export interface VergistingsStap {
