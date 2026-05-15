@@ -518,9 +518,10 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                         // Mout: extract_pct (yield) wordt overgenomen voor
                         // de efficiency-berekeningen in de Brouwdag-wizard.
                         ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
-                        // Hop: tijd → tijdstip_min (alleen voor boil/kook),
-                        // gebruik en alpha_pct voor IBU + dry-hop-detectie.
-                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct })),
+                        // Hop: tijd → tijdstip_min, gebruik (boil/whirlpool/
+                        // dry-hop/mash), alpha_pct voor IBU, temp_c voor
+                        // whirlpool-additions.
+                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
                         ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
                         ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
                       ],

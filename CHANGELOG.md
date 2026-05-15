@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.71] — 2026-05-15
+
+### Fixed — Brewfather "Aroma" hops mappen naar whirlpool + whirlpool-temperatuur overgenomen
+
+Brewfather levert voor flame-out / hopstand-additions de use-waarde **"Aroma"** (en soms "Hopstand" of "Hop Stand"). Onze app kende alleen `boil`/`whirlpool`/`dry hop`/`mash`, dus die Aroma-hops vielen onder de generieke `boil`-fallback en telden ten onrechte mee voor IBU.
+
+**Nieuwe normaliser** `mapHopGebruik()` mapt Brewfather's use-waarden naar onze 4 categorieën:
+- `Boil`, `First Wort` → `boil`
+- `Aroma`, `Whirlpool`, `Hopstand`, `Hop Stand` → `whirlpool`
+- `Dry Hop` → `dry hop`
+- `Mash` → `mash`
+
+Wordt nu toegepast in `bfMapRecept` (recept-import), `bfMapBis` (batch-import) en `syncHopUitRecept` ("Tijden uit recept"-knop in Hop-schema). Tinseth-IBU excludeert al niet-boil hops, dus whirlpool-additions tellen nu correct met ~0 IBU.
+
+**Whirlpool-temperatuur overgenomen.** Brewfather's `h.temp` (typisch 75–90°C voor whirlpool/aroma) wordt nu doorgezet via `Recept.hop.temp_c` en `BatchIngredient.temp_c`. In het Hop-schema is een **extra kolom "Temp (whirlpool)"** toegevoegd die alleen voor whirlpool-rijen bewerkbaar is — voor boil/dry-hop/mash toont een `—`.
+
+### Files
+- `src/utils/api.ts` — nieuwe `mapHopGebruik()`-helper; `bfMapRecept` en `bfMapBis` normaliseren `gebruik` en nemen `temp_c` over uit `h.temp`.
+- `src/types/index.ts` — `BatchIngredient.temp_c?` en `ReceptIngredient.temp_c?` toegevoegd.
+- `src/pages/ReceptenPage.tsx` — `_receptIngredienten` mapping neemt `temp_c` mee.
+- `src/pages/BatchesPage.tsx` — `pendingBatchIngredienten` save en `syncReceptToBatch` schrijven `temp_c`.
+- `src/components/batch/BrouwdagWizard.tsx` — `syncHopUitRecept` normaliseert gebruik via `mapHopGebruik` en kopieert `temp_c`; Hop-schema krijgt nieuwe `Temp`-kolom met whirlpool-input.
+- `src/i18n/{nl,en,de,fr,es}.json` — 1 nieuwe sleutel (`hop_schema_temp`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.70 → 1.9.71.
+
+---
+
 ## [1.9.70] — 2026-05-15
 
 ### Added — Doel-waardes uit recept en IBU prominent in Hop-schema
