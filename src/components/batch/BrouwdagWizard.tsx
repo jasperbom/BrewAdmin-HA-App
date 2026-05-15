@@ -564,6 +564,28 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
           if (!setBi) return
           setBi((prev: any[]) => prev.map(x => x.id === hopId ? {...x, [veld]: val} : x))
         }
+        // Lot-keuze neemt direct de raw α uit `lot.bf_props.alpha` over naar
+        // het α-veld van de batch-hop, zodat de gebruiker de waarde ziet
+        // staan zonder dat ze door de placeholder/tooltip moeten lezen.
+        // Verouderings-correctie blijft via `effectieveAlpha` lopen (die
+        // kijkt naar lot.bf_props.year), dus de IBU-berekening verandert
+        // niet. Bij wisselen van lot wordt α automatisch geüpdatet; bij
+        // 'geen lot' kiezen blijft de laatst overgenomen waarde staan
+        // zodat-ie als handmatige override blijft werken.
+        const updHopLot = (hopId: number, lotIdVal: string) => {
+          if (!setBi) return
+          const lotId = lotIdVal ? Number(lotIdVal) : ''
+          const lot = lotId ? (lots || []).find(l => l.id === lotId) : null
+          const lotAlpha = lot?.bf_props?.alpha
+          setBi((prev: any[]) => prev.map(x => {
+            if (x.id !== hopId) return x
+            const patch: any = {...x, lot_id: lotId}
+            if (lot && lotAlpha != null && Number(lotAlpha) > 0) {
+              patch.alpha_pct = Number(lotAlpha)
+            }
+            return patch
+          }))
+        }
         // Vind beschikbare lots per hop-additie (alleen lots van hetzelfde
         // ingredient_id, met voorraad of zonder voorraad-eis voor archief).
         const beschikbareLots = (h: any) => h.ingredient_id
@@ -680,7 +702,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                             <td className="px-3 py-1.5">
                               {lotsBeschikbaar.length > 0 ? (
                                 <select value={h.lot_id || ''}
-                                  onChange={e => updHop(h.id, 'lot_id', e.target.value ? Number(e.target.value) : '')}
+                                  onChange={e => updHopLot(h.id, e.target.value)}
                                   className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[16rem]">
                                   <option value="">{t('hop_schema_geen_lot')}</option>
                                   {lotsBeschikbaar.map((l: any) => (

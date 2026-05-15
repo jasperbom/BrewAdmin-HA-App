@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.77] — 2026-05-15
+
+### Fixed — α-percentage van lot wordt nu overgenomen in hop-schema
+
+Wanneer je in het hop-schema een lot selecteert, neemt het α-veld direct de waarde uit `lot.bf_props.alpha` over. Daarvoor moest je de waarde uit de placeholder/tooltip aflezen — het invoerveld bleef leeg of toonde een oudere waarde.
+
+**Gedrag:**
+- Lot-keuze ⇒ `alpha_pct` van de batch-hop wordt gevuld met de raw α uit het lot.
+- Verouderings-correctie blijft via `effectieveAlpha` werken (kijkt naar `lot.bf_props.year`), dus de IBU-berekening verandert niet — alleen het zichtbare veld klopt nu.
+- "Geen lot" kiezen laat de overgenomen waarde staan als handmatige override.
+- Bestaande batches met al-gekoppeld lot maar leeg α-veld: kies het lot opnieuw om α over te nemen.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — nieuwe `updHopLot`-handler die lot_id + alpha_pct gelijktijdig zet; lot-`<select>` gebruikt deze nu.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.76 → 1.9.77.
+
+---
+
 ## [1.9.76] — 2026-05-15
 
 ### Fixed — IBU Tinseth-berekening gaf te hoge waarde bij ontbrekende OG
