@@ -49,13 +49,17 @@ const hopAddLabel = (h: any): string => {
     .replace('{t}', tijdMin != null ? String(tijdMin) : '?')
 }
 
-// Bepaalt de effectieve α-zuur% voor een hop-additie. Volgorde:
-//   1. handmatige waarde op het batch_ingredient (override)
-//   2. lot-specifieke α uit `Lot.bf_props.alpha` (chargespecifiek)
+// Bepaalt de effectieve α-zuur% voor een hop-additie. Een gekoppeld lot
+// representeert de chargespecifieke gemeten waarde uit de lab-analyse en
+// wint daarom van zowel recept-default als handmatige invoer. De gebruiker
+// kiest impliciet welke α gebruikt wordt door wel/niet een lot te selecteren.
+//
+// Volgorde:
+//   1. lot-specifieke α uit `Lot.bf_props.alpha` (chargespecifiek)
 //      Past optioneel verouderings-correctie toe wanneer het lot een
 //      oogstjaar (`bf_props.year`) of aankoopdatum heeft.
+//   2. handmatige / recept-default waarde op het batch_ingredient
 //   3. ingredient-default α uit `Ingredient.bf_props.alpha`
-// Geeft tevens de bron terug zodat de UI dit kan tonen.
 type AlphaBron = 'manual' | 'lot' | 'lot_verouderd' | 'ingredient' | 'none'
 
 interface EffAlphaResult {
@@ -76,9 +80,9 @@ const effectieveAlpha = (
   refDatum?: string,
   storageDefault: string = 'vacuum_koel'
 ): EffAlphaResult => {
-  if (h?.alpha_pct != null && h.alpha_pct !== '' && Number(h.alpha_pct) > 0) {
-    return {alpha: Number(h.alpha_pct), bron: 'manual'}
-  }
+  // 1. Lot wint altijd wanneer-ie een α-waarde heeft. Een lot is de meest
+  // specifieke bron (gemeten op deze charge) — een batch_ingredient.alpha_pct
+  // die uit recept-import komt is een generieke schatting.
   const lot = h?.lot_id ? (lots || []).find(l => String(l.id) === String(h.lot_id)) : null
   const lotAlpha = lot?.bf_props?.alpha
   if (lotAlpha != null && Number(lotAlpha) > 0) {
@@ -102,6 +106,13 @@ const effectieveAlpha = (
     }
     return {alpha: Number(lotAlpha), bron: 'lot', lot}
   }
+  // 2. batch_ingredient.alpha_pct (uit recept-import of handmatig in
+  // het Hop-schema ingevuld door de gebruiker).
+  if (h?.alpha_pct != null && h.alpha_pct !== '' && Number(h.alpha_pct) > 0) {
+    return {alpha: Number(h.alpha_pct), bron: 'manual'}
+  }
+  // 3. Ingredient default (Ingredient.bf_props.alpha uit Brewfather of
+  // handmatig ingevuld op de ingredient zelf).
   const ingr = h?.ingredient_id ? (ingredienten || []).find(i => i.id === h.ingredient_id) : null
   const ingAlpha = ingr?.bf_props?.alpha
   if (ingAlpha != null && Number(ingAlpha) > 0) {

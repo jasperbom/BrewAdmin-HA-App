@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.74] — 2026-05-15
+
+### Fixed — Lot-α wint nu van recept-α voor IBU-berekening
+
+Wanneer een hop-additie zowel een gekoppeld lot (met α uit `bf_props.alpha`) als een batch_ingredient.alpha_pct had (uit recept-import), werd ten onrechte de recept-α gebruikt. De resolutie volgorde was `manual > lot > ingredient` — maar bij batches die uit een recept zijn aangemaakt is `alpha_pct` altijd gevuld, waardoor het lot nooit doorkwam.
+
+**Nieuwe volgorde:** `lot > batch_ingredient > ingredient`. Een gekoppeld lot represente­ert de chargespecifieke gemeten waarde (uit de lab-analyse op die specifieke partij) en wint daarom van zowel recept-default als handmatige invoer. De gebruiker kiest impliciet welke α wordt gebruikt door wel/niet een lot te selecteren in de ingrediënten-sectie.
+
+Voor brouwers die echt handmatig willen overschrijven: laat de lot-keuze leeg, of pas `bf_props.alpha` op het lot zelf aan in de lot-edit modal.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `effectieveAlpha()` resolutie-volgorde gewijzigd; lot-check staat nu eerst.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.73 → 1.9.74.
+
+---
+
 ## [1.9.73] — 2026-05-15
 
 ### Fixed — IBU te hoog bij batch zonder gemeten OG
