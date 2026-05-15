@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.70] — 2026-05-15
+
+### Added — Doel-waardes uit recept en IBU prominent in Hop-schema
+
+**Doel-waardes onder kerngegevens.** Bij elke invoer in de Brouwdag-tab toont nu een mini-label de doelwaarde uit het gekoppelde recept — zo zie je tijdens het brouwen direct waar je naartoe werkt:
+
+- **Pre-boil SG**: berekend uit recept-OG × (batch_size / kook_volume)
+- **Pre-boil volume**, **kook-volume start**: `recept.kook_volume`
+- **Kook-volume eind**, **gist-volume**, **liter vergist**: `recept.batch_size`
+- **OG**: `recept.OG`
+- **Maisch-pH / product-pH**: typische bereiken (5.2–5.4 / 4.2–4.6) — staan zelden in een recept
+
+Velden zonder doelwaarde tonen niets — geen lege "Doel: —" labels.
+
+**IBU prominent in het Hop-schema.** De berekende IBU staat nu op twee plekken in de Brouwdag-tab:
+
+1. In de **section-header** van het Hop-schema, naast het aantal hops: `5 · IBU 42.3`.
+2. In een **highlightbox bovenaan de tabel** met de berekende IBU groot (themakleur) plus — indien aanwezig — het doel-IBU uit het recept en het verschil (+/−) in amber/blauw.
+
+De IBU-tegel boven de kerngegevens blijft behouden voor het overzicht. Wijzigen van lot, α, tijdstip of gebruik werkt direct door op alle drie de displays.
+
+### Files
+- `src/components/batch/BrouwdagWizard.tsx` — `<Doel>`-helper-component voor mini-labels onder inputs; doel-waardes uit `batchRecept` + afgeleide pre-boil SG; IBU-totaalbox boven de hop-tabel; IBU in SectionHeader-info naast aantal hops.
+- `src/i18n/{nl,en,de,fr,es}.json` — 1 nieuwe sleutel (`brouwdag_typisch`).
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.69 → 1.9.70.
+
+---
+
 ## [1.9.69] — 2026-05-15
 
 ### Added — "Tijden uit recept"-knop in Hop-schema

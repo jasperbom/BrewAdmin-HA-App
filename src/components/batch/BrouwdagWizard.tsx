@@ -383,65 +383,95 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
         />
       </div>
 
-      {/* Kerngegevens — invoer voor calculaties */}
+      {/* Kerngegevens — invoer voor calculaties. Onder elke input toont een
+          mini-label de doelwaarde uit het gekoppelde recept (indien beschikbaar)
+          zodat je tijdens het brouwen meteen ziet waar je naartoe moet werken. */}
       <div className="bg-white rounded-xl shadow-card p-4">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
           {t('brouwdag_kerngegevens')}
         </div>
+        {(() => {
+          // Doel-waardes uit recept (of batch-velden als fallback voor pre-fill).
+          const rec = batchRecept || {}
+          // Geschatte pre-boil SG: ruwe schatting op basis van OG, batch-grootte
+          // en kook-volume. Aanname: alle suiker zit al in het wort voor het
+          // koken, dus pre-boil SG verhoudt zich tot OG als batch_size/kook_vol.
+          const doelOG = Number(rec.OG) || Number(batch.OG) || null
+          const doelBatchSize = Number(rec.batch_size) || null
+          const doelKookVol = Number(rec.kook_volume) || null
+          const doelPreBoilSg = (doelOG && doelBatchSize && doelKookVol && doelKookVol > 0)
+            ? 1 + (doelOG - 1) * (doelBatchSize / doelKookVol)
+            : null
+          const Doel: React.FC<{value: any, unit?: string, decimals?: number}> = ({value, unit = '', decimals}) => {
+            if (value == null || value === '' || (typeof value === 'number' && isNaN(value))) return null
+            const fmt = typeof value === 'number' && decimals != null ? value.toFixed(decimals) : String(value)
+            return <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_doel')}: {fmt}{unit}</div>
+          }
+          return (
+            <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <div>
             <label className="text-xs text-gray-500">{t('brouwdag_pre_boil_sg')}</label>
             <input type="number" step="0.001" value={batch.pre_boil_sg ?? ''}
               onChange={e => updField('pre_boil_sg', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="1.045" />
+            <Doel value={doelPreBoilSg} decimals={3} />
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('brouwdag_pre_boil_vol')}</label>
             <input type="number" step="0.1" value={batch.pre_boil_volume_l ?? ''}
               onChange={e => updField('pre_boil_volume_l', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="28" />
+            <Doel value={doelKookVol} unit=" L" decimals={1} />
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('brouwdag_kook_vol_start')}</label>
             <input type="number" step="0.1" value={batch.kook_volume_start_l ?? ''}
               onChange={e => updField('kook_volume_start_l', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="28" />
+            <Doel value={doelKookVol} unit=" L" decimals={1} />
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('brouwdag_kook_vol_eind')}</label>
             <input type="number" step="0.1" value={batch.kook_volume_eind_l ?? ''}
               onChange={e => updField('kook_volume_eind_l', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="24" />
+            <Doel value={doelBatchSize} unit=" L" decimals={1} />
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('brouwdag_og_meting')}</label>
             <input type="number" step="0.001" value={batch.OG ?? ''}
               onChange={e => updField('OG' as any, e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="1.052" />
+            <Doel value={Number(rec.OG) || null} decimals={3} />
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('brouwdag_gist_vol')}</label>
             <input type="number" step="0.1" value={batch.gist_volume_l ?? ''}
               onChange={e => updField('gist_volume_l', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="22" />
+            <Doel value={doelBatchSize} unit=" L" decimals={1} />
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('lbl_liters_fermented')}</label>
             <input type="number" step="0.1" value={batch.liter_vergist ?? ''}
               onChange={e => updField('liter_vergist', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="22" />
+            <Doel value={doelBatchSize} unit=" L" decimals={1} />
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('batch_info_mash_ph')}</label>
             <input type="number" step="0.01" value={batch.maisch_ph ?? ''}
               onChange={e => updField('maisch_ph', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="5.40" />
+            <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_typisch')}: 5.2–5.4</div>
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('batch_info_product_ph')}</label>
             <input type="number" step="0.01" value={batch.product_ph ?? ''}
               onChange={e => updField('product_ph', e.target.value)}
               className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="4.40" />
+            <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_typisch')}: 4.2–4.6</div>
           </div>
           <div>
             <label className="text-xs text-gray-500">{t('lbl_tank')}</label>
@@ -461,6 +491,9 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
             )}
           </div>
         </div>
+            </>
+          )
+        })()}
 
         {/* Live calculaties */}
         <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -494,10 +527,41 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
               title={t('hop_schema_titel')}
               open={hopOpen}
               onToggle={() => setHopOpen(o => !o)}
-              info={hops.length > 0 ? `${hops.length}` : null}
+              info={hops.length > 0
+                ? (ibu > 0 ? `${hops.length} · IBU ${ibu.toFixed(1)}` : `${hops.length}`)
+                : null}
             />
             {hopOpen && (
               <div className="p-4">
+                {/* IBU-totaalbox bovenaan — toont berekende IBU + (indien
+                    aanwezig) het doel uit het recept. Update live wanneer
+                    tijden/alpha/lots worden aangepast. */}
+                {hops.length > 0 && (() => {
+                  const doelIBU = Number(batchRecept?.IBU) || null
+                  const verschil = doelIBU != null && ibu > 0 ? ibu - doelIBU : null
+                  return (
+                    <div className="mb-3 flex items-baseline justify-between bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                      <div className="text-xs text-gray-500 uppercase font-semibold tracking-wide">
+                        {t('brouwdag_calc_ibu_tinseth')}
+                      </div>
+                      <div className="flex items-baseline gap-3">
+                        {doelIBU != null && (
+                          <div className="text-xs text-gray-500">
+                            {t('brouwdag_doel')}: <span className="font-medium text-gray-700">{doelIBU.toFixed(1)}</span>
+                          </div>
+                        )}
+                        <div className="text-2xl font-bold" style={{color: 'var(--t-accent)'}}>
+                          {ibu > 0 ? ibu.toFixed(1) : '—'}
+                        </div>
+                        {verschil != null && Math.abs(verschil) >= 0.5 && (
+                          <div className={`text-xs ${verschil > 0 ? 'text-amber-600' : 'text-blue-600'}`}>
+                            ({verschil > 0 ? '+' : ''}{verschil.toFixed(1)})
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
                 {hops.length === 0 ? (
                   <div className="text-sm text-gray-500 italic">{t('hop_schema_geen')}</div>
                 ) : (
