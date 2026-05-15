@@ -1323,3 +1323,222 @@ export const berekenTanktijd = (profiel: any[] | undefined, conditionerenDagen: 
   return Math.ceil(vergisting + cond)
 }
 
+// ── Plato ↔ SG conversies ────────────────────────────────────────────────────
+// Polynomial-benaderingen volgens standaard brouw-tabellen. Geldig binnen
+// 0–30 °P / 1.000–1.130. Onder 0 °P of SG ≤ 1 geven we 0/1 terug.
+export const sgToPlato = (sg: number): number => {
+  const s = Number(sg) || 0
+  if (s <= 1) return 0
+  return (-1 * 616.868) + (1111.14 * s) - (630.272 * s * s) + (135.997 * s * s * s)
+}
+
+export const platoToSg = (plato: number): number => {
+  const p = Number(plato) || 0
+  if (p <= 0) return 1
+  return 1 + (p / (258.6 - ((p / 258.2) * 227.1)))
+}
+
+// ── Vergistingsgraad / Attenuatie ────────────────────────────────────────────
+// Schijnbare attenuatie: percentage van het oorspronkelijke extract dat (op
+// SG-basis) is omgezet. Standaardformule voor bier.
+export const apparentAttenuation = (og: number, fg: number): number => {
+  const o = Number(og) || 0
+  const f = Number(fg) || 0
+  if (o <= 1 || f <= 0 || o <= f) return 0
+  return ((o - f) / (o - 1)) * 100
+}
+
+// Echte attenuatie: corrigeert voor de aanwezigheid van alcohol (Balling).
+// Werkt op Plato-basis. Geeft 0 terug als invoer onbruikbaar is.
+export const realAttenuation = (og: number, fg: number): number => {
+  const o = Number(og) || 0
+  const f = Number(fg) || 0
+  if (o <= 1 || f <= 0 || o <= f) return 0
+  const ogP = sgToPlato(o)
+  const fgP = sgToPlato(f)
+  if (ogP <= 0) return 0
+  // Balling: re = (0.1808 × OE) + (0.8192 × AE), waarbij AE = sgToPlato(fg)
+  // Echte extract = bovenstaande formule; echte attenuatie = (1 − re/OE)×100
+  const re = 0.1808 * ogP + 0.8192 * fgP
+  return Math.max(0, (1 - re / ogP) * 100)
+}
+
+// Voorspelde FG op basis van OG en gist-attenuation% (typisch 70–85%).
+// Geeft SG terug. Wordt gebruikt als doellijn in de vergistingsgrafiek.
+export const voorspelFG = (og: number, attPct: number): number => {
+  const o = Number(og) || 0
+  const a = Number(attPct) || 0
+  if (o <= 1 || a <= 0) return o
+  return o - (o - 1) * (a / 100)
+}
+
+// ── Mash & Brouwzaal efficiency ──────────────────────────────────────────────
+// Theoretisch maximaal extract uit een graan: 1 kg mout @ 100% yield levert
+// ongeveer 384 gravity-points per liter (vaste industriestandaard).
+// `gravityPoints(sg) = (sg − 1) × 1000`.
+//
+// mash_efficiency = werkelijke pre-boil extract / theoretisch max
+//                = ((preBoilSG − 1) × 1000 × preBoilL) / (kg × 384 × yield)
+//
+// `yield` mag als fractie (0.80) of als percentage (80) worden opgegeven —
+// we normaliseren intern. Als invoer ontbreekt of onlogisch is, geven we 0.
+const _normYield = (y: number): number => {
+  const v = Number(y) || 0
+  if (v <= 0) return 0.80         // default mout-yield
+  if (v > 1) return v / 100        // 80 → 0.80
+  return v
+}
+
+const _gravityPoints = (sg: number): number => Math.max(0, (Number(sg) || 1) - 1) * 1000
+
+// Theoretisch maximale extract-bijdrage van een graanlijst (in gravity-points).
+// `fermentables` = lijst van objecten met `hoeveelheid` (kg) + `extract_pct`
+// (% of fractie, optioneel — default 80%). Alleen items met type=Mout/grain
+// tellen mee; suikers/Honing zijn meestal 100% yield en kun je apart toevoegen.
+export const totaalMaxExtract = (fermentables: Array<{hoeveelheid?: number|string, extract_pct?: number|string, ingredient_type?: string, eenheid?: string}> = []): number => {
+  return (fermentables || []).reduce((sum, f) => {
+    const kg = Number(f.hoeveelheid) || 0
+    if (kg <= 0) return sum
+    // Convert g → kg als eenheid 'g' is
+    const kgNorm = (String(f.eenheid || '').toLowerCase() === 'g') ? kg / 1000 : kg
+    const y = _normYield(Number(f.extract_pct ?? 0))
+    return sum + kgNorm * 384 * y
+  }, 0)
+}
+
+// Mash-efficiency (%) — gemeten na lauter/spoelen, vóór koken.
+export const mashEfficiency = (
+  preBoilSG: number,
+  preBoilL: number,
+  fermentables: Array<{hoeveelheid?: number|string, extract_pct?: number|string, ingredient_type?: string, eenheid?: string}> = []
+): number => {
+  const maxExtract = totaalMaxExtract(fermentables)
+  if (maxExtract <= 0) return 0
+  const werkelijk = _gravityPoints(preBoilSG) * (Number(preBoilL) || 0)
+  if (werkelijk <= 0) return 0
+  return Math.min(100, (werkelijk / maxExtract) * 100)
+}
+
+// Brouwzaal-efficiency (%) — gemeten ná koken, op OG en volume-naar-gisttank.
+// Dit is wat Brewfather "Brewhouse Efficiency" noemt.
+export const brouwzaalEfficiency = (
+  og: number,
+  gistVolumeL: number,
+  fermentables: Array<{hoeveelheid?: number|string, extract_pct?: number|string, ingredient_type?: string, eenheid?: string}> = []
+): number => {
+  const maxExtract = totaalMaxExtract(fermentables)
+  if (maxExtract <= 0) return 0
+  const werkelijk = _gravityPoints(og) * (Number(gistVolumeL) || 0)
+  if (werkelijk <= 0) return 0
+  return Math.min(100, (werkelijk / maxExtract) * 100)
+}
+
+// Kook-verdampingspercentage per uur, op basis van pre- en post-boil volumes.
+export const kookVerdampingPct = (preBoilL: number, postBoilL: number, kookMinuten: number): number => {
+  const pre = Number(preBoilL) || 0
+  const post = Number(postBoilL) || 0
+  const min = Number(kookMinuten) || 0
+  if (pre <= 0 || post <= 0 || min <= 0 || post >= pre) return 0
+  const verdampt = pre - post
+  const uren = min / 60
+  return (verdampt / pre) / uren * 100
+}
+
+// ── IBU (Tinseth) ────────────────────────────────────────────────────────────
+// Industriestandaard formule volgens Glenn Tinseth. Per hop-additie:
+//   utilization = (1.65 × 0.000125^(SG−1)) × ((1 − e^(−0.04 × t)) / 4.15)
+//   ibu_bijdrage = (utilization × α% × g × 1000) / (V_kook × 10)
+// Som van alle bijdragen = totale IBU. Alleen kook-additions (gebruik='boil')
+// tellen mee; whirlpool/dry-hop hebben verwaarloosbare bijdrage in Tinseth.
+export interface HopVoorIBU {
+  gram: number | string
+  alpha_pct: number | string
+  tijdstip_min: number | string      // min vóór einde koken
+  gebruik?: string                    // 'boil' / 'whirlpool' / 'dry-hop'
+}
+
+export const iBUTinseth = (hops: HopVoorIBU[] = [], og: number, kookVolumeL: number): number => {
+  const vol = Number(kookVolumeL) || 0
+  const sg = Number(og) || 1
+  if (vol <= 0) return 0
+  const total = (hops || []).reduce((sum, h) => {
+    if (h.gebruik && !['boil', 'kook', ''].includes(String(h.gebruik).toLowerCase())) return sum
+    const g = Number(h.gram) || 0
+    const a = Number(h.alpha_pct) || 0
+    const t = Number(h.tijdstip_min) || 0
+    if (g <= 0 || a <= 0 || t <= 0) return sum
+    const factGrav = 1.65 * Math.pow(0.000125, sg - 1)
+    const factTime = (1 - Math.exp(-0.04 * t)) / 4.15
+    const util = factGrav * factTime
+    const bijdrage = (util * a * g * 10) / vol
+    return sum + bijdrage
+  }, 0)
+  return Math.round(total * 10) / 10
+}
+
+// ── Priming sugar ────────────────────────────────────────────────────────────
+// Hoeveelheid suiker voor bottle conditioning om een doel CO2-vol te halen.
+// Standaardformule: gram suiker = batchL × (doel − huidige) × factor[suikertype]
+// Huidige CO2-vol komt uit een uitgangstemperatuur (residual CO2 in wort):
+//   residualCO2(T) ≈ 3.0378 − 0.050062 × T + 0.00026555 × T²
+// `T` = temperatuur waarop bier nu is (°C). Voor de meeste ales 18–22°C.
+
+const _PRIMING_FACTOR: Record<string, number> = {
+  dextrose: 4.0,         // glucose/dextrose monohydraat
+  sucrose: 3.86,         // tafelsuiker (sucrose)
+  dme: 4.7,              // gedroogd mout-extract
+  honing: 4.6,           // honing (gem.)
+  bruine_suiker: 3.86,   // ≈ sucrose
+}
+
+// Residueel CO2-gehalte in vols, gegeven huidige biertemp (°C).
+export const residualCO2 = (tempC: number): number => {
+  const T = Number(tempC) || 0
+  return 3.0378 - 0.050062 * T + 0.00026555 * T * T
+}
+
+// Gram suiker totaal voor de gehele batch.
+export const primingSugarG = (
+  batchL: number,
+  huidigeCO2vol: number,
+  doelCO2vol: number,
+  suikerType: string = 'dextrose'
+): number => {
+  const L = Number(batchL) || 0
+  const huidig = Number(huidigeCO2vol) || 0
+  const doel = Number(doelCO2vol) || 0
+  if (L <= 0 || doel <= huidig) return 0
+  const factor = _PRIMING_FACTOR[suikerType] || _PRIMING_FACTOR.dextrose
+  return L * (doel - huidig) * factor
+}
+
+export const PRIMING_SUGAR_TYPES = Object.keys(_PRIMING_FACTOR)
+
+// ── Vergisting-helpers ───────────────────────────────────────────────────────
+// Detecteert of FG bereikt is op basis van SG-stabiliteit. Conditie: ≥3
+// metingen, en de laatste 3 vallen binnen `tol` (default 0.001) over een
+// periode van minimaal `minUur` uur (default 48).
+export const fgStabiel = (
+  metingen: Array<{sg?: number, datum: string, tijd?: string}> = [],
+  tol = 0.001,
+  minUur = 48
+): boolean => {
+  const ms = (metingen || [])
+    .filter(m => m && m.sg != null && Number(m.sg) > 0)
+    .slice()
+    .sort((a, b) => {
+      const ka = String(a.datum || '') + 'T' + String(a.tijd || '00:00')
+      const kb = String(b.datum || '') + 'T' + String(b.tijd || '00:00')
+      return ka.localeCompare(kb)
+    })
+  if (ms.length < 3) return false
+  const laatste3 = ms.slice(-3)
+  const sgs = laatste3.map(m => Number(m.sg))
+  const min = Math.min(...sgs), max = Math.max(...sgs)
+  if (max - min > tol) return false
+  const eerstTs = new Date(`${laatste3[0].datum}T${laatste3[0].tijd || '00:00'}`).getTime()
+  const laatstTs = new Date(`${laatste3[laatste3.length - 1].datum}T${laatste3[laatste3.length - 1].tijd || '00:00'}`).getTime()
+  const urenSpan = (laatstTs - eerstTs) / 3600000
+  return urenSpan >= minUur
+}
+

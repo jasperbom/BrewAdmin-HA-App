@@ -85,6 +85,11 @@ export const excelExport = (data: any) => {
     addSheet('GistMetingen',          data.gist_metingen)
     addSheet('CarbonatieSessies',     data.carbonatie_sessies)
     addSheet('VerliesRegistraties',   data.verlies_registraties)
+    addSheet('BrouwdagStappen',       data.brouwdag_stappen)
+    addSheet('WaterAddities',         data.water_addities)
+    addSheet('HopAddities',           data.hop_addities)
+    addSheet('DryHops',               data.dry_hops)
+    addSheet('KoelLogs',              data.koel_logs)
     addSheet('KapitaalBoekingen',     data.kapitaal_boekingen)
     addSheet('Inventarisaties',       data.inventarisaties)
     addSheet('AuditLog',             data.audit_log)
@@ -253,6 +258,11 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         gist_metingen:                parse('GistMetingen'),
         carbonatie_sessies:           parse('CarbonatieSessies'),
         verlies_registraties:         parse('VerliesRegistraties'),
+        brouwdag_stappen:             parse('BrouwdagStappen'),
+        water_addities:               parse('WaterAddities'),
+        hop_addities:                 parse('HopAddities'),
+        dry_hops:                     parse('DryHops'),
+        koel_logs:                    parse('KoelLogs'),
         kapitaal_boekingen:           parse('KapitaalBoekingen'),
         inventarisaties:              parse('Inventarisaties'),
         audit_log:                    parse('AuditLog'),

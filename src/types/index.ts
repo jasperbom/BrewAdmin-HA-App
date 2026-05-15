@@ -88,6 +88,107 @@ export interface Batch {
   // klikken op "Brouwen" in de Recepten-pagina en blijft staan zodat een
   // geplande batch later via "Sync recept" opnieuw kan worden bijgewerkt.
   recept_id?: string
+  // ── Brouwdag-velden (uitgebreide log-registratie) ───────────────────────────
+  brouwdag_voltooid?: boolean
+  pre_boil_sg?: number | string
+  pre_boil_volume_l?: number | string
+  kook_volume_start_l?: number | string
+  kook_volume_eind_l?: number | string
+  gist_volume_l?: number | string                       // wort dat richting gisttank ging
+  mash_efficiency_pct?: number | string                 // berekend uit pre-boil SG + volume
+  brouwzaal_efficiency_pct?: number | string            // berekend uit OG + gist-volume
+  kook_verdamping_pct?: number | string                 // (pre−post)/pre / uur
+  ibu_berekend?: number | string                        // uit hop-addities (Tinseth)
+  gist_attenuation_pct?: number | string                // gemiddelde uit gistprofiel of recept
+}
+
+// ── Brouwdag-stappen ─────────────────────────────────────────────────────────
+// Eén stap in de brouwdag-wizard. `fase` groepeert stappen logisch
+// ('water'|'maisch'|'lauter'|'koken'|'koelen'|'og'); `volgorde` bepaalt de
+// volgorde binnen de fase. `doel`/`gemeten` zijn vrije strings zodat per stap
+// verschillende eenheden mogelijk zijn (°C, min, SG, L). `voltooid` = true
+// markeert de stap als afgerond.
+export type BrouwdagFase = 'water' | 'maisch' | 'lauter' | 'koken' | 'koelen' | 'og'
+
+export interface BrouwdagStap {
+  id: number
+  batch_id: number
+  fase: BrouwdagFase
+  volgorde: number
+  label: string                      // vrije omschrijving van de stap
+  doel?: string                      // verwachte waarde (uit recept)
+  doel_eenheid?: string              // °C, min, SG, L
+  gemeten?: string                   // werkelijke waarde
+  gemeten_eenheid?: string
+  voltooid?: boolean
+  voltooid_op?: string               // ISO timestamp
+  opmerking?: string
+  created_at?: string
+}
+
+// ── Water-additie / mineralen ────────────────────────────────────────────────
+// Hoeveelheid + samenstelling van het brouwwater per fase. `mineralen` is een
+// vrij object {CaCl2: 5, gips: 3, ...} in gram per liter of totaal — UI legt
+// het uit. pH/EC zijn optioneel.
+export interface WaterAdditie {
+  id: number
+  batch_id: number
+  fase: 'maisch' | 'spoel' | 'overig'
+  volume_l?: number | string
+  ph?: number | string
+  ec?: number | string               // mS/cm
+  mineralen?: Record<string, number | string>
+  opmerking?: string
+  created_at?: string
+}
+
+// ── Hop-additie (tijdens koken) ──────────────────────────────────────────────
+// Hopgift gekoppeld aan een batch_ingredient (zelfde hop kan meerdere keren
+// toegevoegd worden). `tijdstip_min` = minuten vóór einde koken (60 = bij
+// start koken, 0 = flame-out). `alpha_pct` overruled de ingredient-default.
+export interface HopAdditie {
+  id: number
+  batch_id: number
+  batch_ingredient_id?: number       // optionele koppeling
+  ingredient_naam: string
+  tijdstip_min: number | string      // min vóór einde koken
+  gram: number | string
+  alpha_pct?: number | string
+  opmerking?: string
+  created_at?: string
+}
+
+// ── Dry-hop / fermentatie-additie ────────────────────────────────────────────
+// Gift tijdens vergisting/conditioneren. `contact_dagen` is gepland aantal
+// dagen; `verwijder_datum` wordt automatisch gevuld bij toevoegen of handmatig
+// aangepast wanneer de gebruiker de hop daadwerkelijk verwijdert.
+export interface DryHop {
+  id: number
+  batch_id: number
+  ingredient_naam: string
+  ingredient_id?: number
+  datum: string                      // YYYY-MM-DD
+  gram: number | string
+  contact_dagen?: number | string
+  verwijder_datum?: string
+  verwijderd?: boolean
+  opmerking?: string
+  created_at?: string
+}
+
+// ── Koel-log ─────────────────────────────────────────────────────────────────
+// Registratie van wort-koeling na koken. `methode` is platenwisselaar /
+// dompelkoeler / counterflow / overige. Geeft inzicht in koel-snelheid.
+export interface KoelLog {
+  id: number
+  batch_id: number
+  datum: string                      // YYYY-MM-DD
+  start_temp?: number | string       // °C
+  eind_temp?: number | string        // °C
+  duur_min?: number | string         // minuten
+  methode?: 'plate' | 'dompel' | 'counterflow' | 'overig'
+  opmerking?: string
+  created_at?: string
 }
 
 export interface TankHistorieEntry {
@@ -115,6 +216,13 @@ export interface BatchIngredient {
   lot_id?: string | number
   kosten?: number | string
   afboeken?: boolean
+  // Brouwkundige eigenschappen voor calculaties (uit Brewfather of handmatig):
+  // mout: extract_pct (yield in %, default 80); hop: alpha_pct + tijdstip_min
+  // (minuten vóór einde koken) + gebruik ('boil'|'whirlpool'|'dry-hop'|'mash').
+  extract_pct?: number | string
+  alpha_pct?: number | string
+  tijdstip_min?: number | string
+  gebruik?: string
 }
 
 export interface Verpakking {
