@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.68] — 2026-05-15
+
+### Changed — Instellingen-card hernoemd naar "Hop-opslag defaults"
+
+De in v1.9.67 toegevoegde card "Brouwproces-defaults" heeft alleen een hop-opslag instelling — de titel is daarom aangescherpt naar **"Hop-opslag defaults"**. Beschrijving en field-label aangepast voor consistentie (`settings_hop_storage` → "Opslag-conditie" want context is via de card-titel al duidelijk).
+
+De onderliggende data-key (`brouwproces_instellingen`) blijft ongewijzigd — geen migratie nodig.
+
+### Files
+- `src/i18n/{nl,en,de,fr,es}.json` — `settings_brouwproces_title`, `settings_brouwproces_desc`, `settings_hop_storage` aangepast in alle 5 talen.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.67 → 1.9.68.
+
+---
+
 ## [1.9.67] — 2026-05-15
 
 ### Added — Globale hop-opslag default in instellingen
