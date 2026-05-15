@@ -699,7 +699,23 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                       <tbody className="divide-y divide-gray-100">
                         {hops
                           .slice()
-                          .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
+                          .sort((a: any, b: any) => {
+                            // Groep-volgorde: mash → boil → whirlpool → dry hop.
+                            // Binnen elke groep: tijdstip aflopend (60' staat
+                            // boven 10' bij boil-hops). Zo komen whirlpool-
+                            // hops altijd onder de kook-additions en
+                            // dry-hops onderaan.
+                            const groep = (g: string): number => {
+                              const u = String(g || 'boil').toLowerCase()
+                              if (u === 'mash') return 0
+                              if (u === 'whirlpool') return 2
+                              if (u === 'dry hop' || u === 'dry-hop' || u === 'dryhop') return 3
+                              return 1 // boil / kook / leeg
+                            }
+                            const ga = groep(a.gebruik), gb = groep(b.gebruik)
+                            if (ga !== gb) return ga - gb
+                            return Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0)
+                          })
                           .map((h: any) => {
                           const lotsBeschikbaar = beschikbareLots(h)
                           const eff = effectieveAlpha(h, lots, ingredienten, batch.datum, hopStorageDefault)
