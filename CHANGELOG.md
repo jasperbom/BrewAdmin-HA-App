@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.81] — 2026-05-17
+
+### Fixed — Bestaande batches vullen brouwkundige info alsnog aan vanuit recept
+
+Aanvulling op v1.9.80. De fix daar zorgde dat **nieuwe** batches vanuit een lokaal recept de juiste velden meekrijgen, maar **bestaande** batches in de database bleven met lege `kleur` / `vergistingsprofiel` zitten. `App.tsx` voert nu een eenmalige backfill uit zodra batches én recepten geladen zijn: voor elke batch met een geldige `recept_id` worden ontbrekende velden (`kleur`, `kooktijd`, `kook_volume`, `vergistingsprofiel`, `maischprofiel`) alsnog uit het gekoppelde recept gehaald.
+
+De backfill is **niet-destructief**: bestaande waarden op de batch worden nooit overschreven. Een door de gebruiker bewust geleegde `vergistingsprofiel: []` (length 0) wordt met rust gelaten — alleen `undefined` wordt aangevuld. Batches zonder `recept_id` (bijv. Brewfather-imports, die de velden al direct hebben, of puur handmatig aangemaakte batches zonder recept-koppeling) worden niet aangeraakt.
+
+### Files
+- `src/App.tsx` — eenmalige `receptBackfillRef`-migratie naast de bestaande sanitizer; vult ontbrekende brouwkundige velden vanuit het gekoppelde recept.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.80 → 1.9.81.
+
+---
+
 ## [1.9.80] — 2026-05-17
 
 ### Fixed — Kleur en vergistingsschema ontbraken op Dashboard bij batch vanuit lokaal recept
