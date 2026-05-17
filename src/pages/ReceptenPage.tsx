@@ -514,6 +514,14 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                       ABV: selRec.ABV || '',
                       liter_vergist: selRec.batch_size || '',
                       recept_id: selRec.id,
+                      // Brouwkundige eigenschappen overnemen zodat het Dashboard
+                      // de bierkleur en het vergistingsschema kan tonen — net
+                      // zoals bij een Brewfather-import (bfMapBatch).
+                      kleur: selRec.kleur || '',
+                      kooktijd: selRec.kooktijd || '',
+                      kook_volume: selRec.kook_volume || '',
+                      vergistingsprofiel: selRec.vergistingsprofiel || [],
+                      maischprofiel: selRec.maischprofiel || [],
                       _receptIngredienten: [
                         // Mout: extract_pct (yield) wordt overgenomen voor
                         // de efficiency-berekeningen in de Brouwdag-wizard.

@@ -227,6 +227,41 @@ function App() {
     if (dirty) setBat(patched);
   }, [bat]);
 
+  // Eénmalige backfill: bestaande batches die via een lokaal recept zijn
+  // aangemaakt misten kleur/vergistingsprofiel/maischprofiel/kooktijd/
+  // kook_volume (zie v1.9.80). Vul deze velden alsnog vanuit het gekoppelde
+  // recept als ze op de batch ontbreken. Niet-destructief: bestaande waarden
+  // worden nooit overschreven, ook een door de gebruiker bewust geleegde
+  // array (length 0) wordt met rust gelaten — alleen `undefined` wordt
+  // aangevuld.
+  const receptBackfillRef = React.useRef(false);
+  React.useEffect(() => {
+    if (receptBackfillRef.current) return;
+    if (!Array.isArray(bat) || !Array.isArray(recepten)) return;
+    receptBackfillRef.current = true;
+    const isLeegScalar = (v: any) => v == null || v === '';
+    let dirty = false;
+    const patched = bat.map((b: any) => {
+      if (!b?.recept_id) return b;
+      const r = recepten.find((x: any) => x.id === b.recept_id && x.is_huidige !== false);
+      if (!r) return b;
+      const patch: any = {};
+      if (isLeegScalar(b.kleur)       && !isLeegScalar(r.kleur))       patch.kleur       = r.kleur;
+      if (isLeegScalar(b.kooktijd)    && !isLeegScalar(r.kooktijd))    patch.kooktijd    = r.kooktijd;
+      if (isLeegScalar(b.kook_volume) && !isLeegScalar(r.kook_volume)) patch.kook_volume = r.kook_volume;
+      if (b.vergistingsprofiel === undefined && Array.isArray(r.vergistingsprofiel) && r.vergistingsprofiel.length > 0) {
+        patch.vergistingsprofiel = r.vergistingsprofiel;
+      }
+      if (b.maischprofiel === undefined && Array.isArray(r.maischprofiel) && r.maischprofiel.length > 0) {
+        patch.maischprofiel = r.maischprofiel;
+      }
+      if (Object.keys(patch).length === 0) return b;
+      dirty = true;
+      return {...b, ...patch};
+    });
+    if (dirty) setBat(patched);
+  }, [bat, recepten]);
+
   // Eénmalige migratie: oude hygiëne/brouwdag/botteldag-checklists en CCP-
   // definities samenvoegen tot het unified `batch_taken_items` + `batch_taken_groepen`
   // systeem. Loopt pas zodra alle relevante server-stores geladen zijn, zodat

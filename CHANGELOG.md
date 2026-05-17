@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.81] — 2026-05-17
+
+### Fixed — Bestaande batches vullen brouwkundige info alsnog aan vanuit recept
+
+Aanvulling op v1.9.80. De fix daar zorgde dat **nieuwe** batches vanuit een lokaal recept de juiste velden meekrijgen, maar **bestaande** batches in de database bleven met lege `kleur` / `vergistingsprofiel` zitten. `App.tsx` voert nu een eenmalige backfill uit zodra batches én recepten geladen zijn: voor elke batch met een geldige `recept_id` worden ontbrekende velden (`kleur`, `kooktijd`, `kook_volume`, `vergistingsprofiel`, `maischprofiel`) alsnog uit het gekoppelde recept gehaald.
+
+De backfill is **niet-destructief**: bestaande waarden op de batch worden nooit overschreven. Een door de gebruiker bewust geleegde `vergistingsprofiel: []` (length 0) wordt met rust gelaten — alleen `undefined` wordt aangevuld. Batches zonder `recept_id` (bijv. Brewfather-imports, die de velden al direct hebben, of puur handmatig aangemaakte batches zonder recept-koppeling) worden niet aangeraakt.
+
+### Files
+- `src/App.tsx` — eenmalige `receptBackfillRef`-migratie naast de bestaande sanitizer; vult ontbrekende brouwkundige velden vanuit het gekoppelde recept.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.80 → 1.9.81.
+
+---
+
+## [1.9.80] — 2026-05-17
+
+### Fixed — Kleur en vergistingsschema ontbraken op Dashboard bij batch vanuit lokaal recept
+
+Wanneer je via de "Brouwen"-knop op een recept een nieuwe batch startte, werden alleen de basisvelden (`naam`, `stijl`, `OG`, `FG`, `ABV`, `liter_vergist`) overgenomen. De brouwkundige eigenschappen `kleur`, `vergistingsprofiel`, `maischprofiel`, `kooktijd` en `kook_volume` bleven leeg, waardoor het Dashboard de bierkleur in de tankvisualisatie en het vergistingsschema niet kon tonen. Bij een Brewfather-import (`bfMapBatch` in `src/utils/api.ts`) werden deze velden al wel correct gemapt — vandaar dat geïmporteerde batches het probleem niet hadden.
+
+De `setPreNieuwBatch`-aanroep in `ReceptenPage.tsx` neemt nu dezelfde velden mee als `bfMapBatch`, zodat een handmatig gestarte batch precies dezelfde dashboard-weergave krijgt als een geïmporteerde batch.
+
+### Files
+- `src/pages/ReceptenPage.tsx` — `setPreNieuwBatch` neemt nu ook `kleur`, `kooktijd`, `kook_volume`, `vergistingsprofiel` en `maischprofiel` over van het bronrecept.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.79 → 1.9.80.
+
+---
+
 ## [1.9.79] — 2026-05-15
 
 ### Fixed — α-percentage ook overgenomen bij lot-select op batch-ingrediënten
