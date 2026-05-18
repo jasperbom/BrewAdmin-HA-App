@@ -4,7 +4,8 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry } from '../utils/api'
+import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry, newId } from '../utils/api'
+import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult } from '../utils/calculations'
 import { fmt, fmtD, tod } from '../utils/format'
@@ -237,7 +238,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -706,6 +707,65 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   ];
 
   const fmtTs = (ts: any) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
+
+  // ── Alternatieve betaalrekeningen CRUD ─────────────────────────────────────
+  const [showAltRekModal, setShowAltRekModal] = React.useState(false)
+  const [editingAltRek, setEditingAltRek] = React.useState<any>(null)
+  const emptyAltRekForm = () => ({naam:'', iban:'', eigenaar:'', notitie:''})
+  const [altRekForm, setAltRekForm] = React.useState<any>(emptyAltRekForm())
+
+  const altRekSchuld = (id: number): number => {
+    const opgenomen: number = (inkoopFacturen||[])
+      .filter((f: any) => f.betaald_via_alt_id === id)
+      .reduce((s: number, f: any) => s + (f.totaal_bruto || 0), 0)
+    const afgelost: number = (Object.values(bankKoppelingen || {}) as any[])
+      .filter((k: any) => k?.soort === 'aflossing' && k.altRekeningId === id)
+      .reduce((s: number, k: any) => s + (k.bedrag || 0), 0)
+    return opgenomen - afgelost
+  }
+
+  const openAltRekModal = (rek?: any) => {
+    if (rek) {
+      setEditingAltRek(rek)
+      setAltRekForm({naam: rek.naam||'', iban: rek.iban||'', eigenaar: rek.eigenaar||'', notitie: rek.notitie||''})
+    } else {
+      setEditingAltRek(null)
+      setAltRekForm(emptyAltRekForm())
+    }
+    setShowAltRekModal(true)
+  }
+
+  const saveAltRek = () => {
+    const naam = (altRekForm.naam||'').trim()
+    if (!naam) return
+    const payload = {
+      naam,
+      iban: (altRekForm.iban||'').trim() || undefined,
+      eigenaar: (altRekForm.eigenaar||'').trim() || undefined,
+      notitie: (altRekForm.notitie||'').trim() || undefined,
+    }
+    if (editingAltRek) {
+      setAltRekeningen((prev: any[]) => prev.map((r: any) => r.id === editingAltRek.id ? {...r, ...payload} : r))
+      logAudit(auditLog, setAuditLog, {entiteit:'AltRekening', entiteit_id:editingAltRek.id, actie:'gewijzigd', omschrijving:naam})
+    } else {
+      const nid = newId(altRekeningen||[])
+      setAltRekeningen((prev: any[]) => [...(prev||[]), {id:nid, ...payload}])
+      logAudit(auditLog, setAuditLog, {entiteit:'AltRekening', entiteit_id:nid, actie:'aangemaakt', omschrijving:naam})
+    }
+    setShowAltRekModal(false)
+    setEditingAltRek(null)
+    setAltRekForm(emptyAltRekForm())
+  }
+
+  const deleteAltRek = (id: number) => {
+    const inGebruik = (inkoopFacturen||[]).some((f: any) => f.betaald_via_alt_id === id) ||
+      Object.values(bankKoppelingen||{}).some((k: any) => k?.soort === 'aflossing' && k.altRekeningId === id)
+    if (inGebruik) { alert(t('msg_alt_rekening_in_gebruik')); return }
+    if (!confirm(t('msg_alt_rekening_verwijderen'))) return
+    const r = (altRekeningen||[]).find((x: any) => x.id === id)
+    setAltRekeningen((prev: any[]) => prev.filter((x: any) => x.id !== id))
+    logAudit(auditLog, setAuditLog, {entiteit:'AltRekening', entiteit_id:id, actie:'verwijderd', omschrijving:r?.naam||''})
+  }
 
   return (
     <div className="flex flex-col md:flex-row gap-4 md:items-start">
@@ -1188,6 +1248,92 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         <p className="text-xs text-gray-400 mt-2">{t('settings_verzendkosten_hint')}</p>
       </div>
+
+      {/* Alternatieve betaalrekeningen */}
+      <div className={card}>
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <h2 className="text-lg font-semibold text-gray-700">{t('settings_alt_rekeningen')}</h2>
+          <Btn s="sm" onClick={()=>openAltRekModal()}>{t('btn_nieuwe_alt_rekening')}</Btn>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_alt_rekeningen_desc')}</p>
+        {(altRekeningen||[]).length === 0 ? (
+          <div className="text-center py-6 text-gray-400 text-sm">{t('msg_geen_alt_rekeningen')}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[400px]">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                  <th className="py-2 pr-3 text-left font-medium">{t('lbl_alt_rekening_naam')}</th>
+                  <th className="py-2 pr-3 text-left font-medium">IBAN</th>
+                  <th className="py-2 pr-3 text-left font-medium">{t('lbl_eigenaar')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('lbl_schuld_openstaand')}</th>
+                  <th className="py-2 text-right font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(altRekeningen||[]).map((r: any) => {
+                  const schuld = altRekSchuld(r.id)
+                  return (
+                    <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-2 pr-3 font-medium text-gray-800">{r.naam}</td>
+                      <td className="py-2 pr-3 font-mono text-xs text-gray-600">{r.iban||'—'}</td>
+                      <td className="py-2 pr-3 text-gray-600">{r.eigenaar||'—'}</td>
+                      <td className={`py-2 pr-3 text-right font-medium ${schuld>0.005?'text-orange-600':'text-gray-400'}`}>
+                        {schuld>0.005 ? fmt(schuld) : '—'}
+                      </td>
+                      <td className="py-2 text-right whitespace-nowrap">
+                        <button onClick={()=>openAltRekModal(r)}
+                          className="text-xs text-gray-400 hover:text-blue-600 px-2 py-0.5 transition-colors">{t('btn_edit')}</button>
+                        <button onClick={()=>deleteAltRek(r.id)}
+                          className="text-xs text-gray-300 hover:text-red-500 px-1 transition-colors">✕</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showAltRekModal && (
+        <Modal title={editingAltRek ? t('title_alt_rekening_bewerken') : t('title_alt_rekening_nieuw')}
+          onClose={()=>{ setShowAltRekModal(false); setEditingAltRek(null); setAltRekForm(emptyAltRekForm()) }}>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_alt_rekening_naam')}</label>
+              <input type="text" value={altRekForm.naam}
+                onChange={(e: any)=>setAltRekForm((f: any)=>({...f, naam:e.target.value}))}
+                placeholder={t('ph_alt_rekening_naam')}
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">IBAN <span className="text-gray-400 font-normal">({t('lbl_optioneel')})</span></label>
+              <input type="text" value={altRekForm.iban}
+                onChange={(e: any)=>setAltRekForm((f: any)=>({...f, iban:e.target.value.toUpperCase()}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none font-mono" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_eigenaar')} <span className="text-gray-400 font-normal">({t('lbl_optioneel')})</span></label>
+              <input type="text" value={altRekForm.eigenaar}
+                onChange={(e: any)=>setAltRekForm((f: any)=>({...f, eigenaar:e.target.value}))}
+                placeholder={t('ph_eigenaar_naam')}
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_alt_rekening_notitie')}</label>
+              <textarea value={altRekForm.notitie}
+                onChange={(e: any)=>setAltRekForm((f: any)=>({...f, notitie:e.target.value}))}
+                placeholder={t('ph_alt_rekening_notitie')} rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Btn v="secondary" onClick={()=>{ setShowAltRekModal(false); setEditingAltRek(null); setAltRekForm(emptyAltRekForm()) }}>{t('btn_cancel')}</Btn>
+              <Btn onClick={saveAltRek} disabled={!altRekForm.naam.trim()}>{t('btn_save')}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
       </>}
 
       {/* BREWFATHER */}

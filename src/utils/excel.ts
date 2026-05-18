@@ -91,6 +91,7 @@ export const excelExport = (data: any) => {
     addSheet('DryHops',               data.dry_hops)
     addSheet('KoelLogs',              data.koel_logs)
     addSheet('KapitaalBoekingen',     data.kapitaal_boekingen)
+    addSheet('AltRekeningen',         data.alt_rekeningen)
     addSheet('Inventarisaties',       data.inventarisaties)
     addSheet('AuditLog',             data.audit_log)
     addSheet('AccijnsAangiftes',     data.accijns_aangiftes)
@@ -264,6 +265,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         dry_hops:                     parse('DryHops'),
         koel_logs:                    parse('KoelLogs'),
         kapitaal_boekingen:           parse('KapitaalBoekingen'),
+        alt_rekeningen:               parse('AltRekeningen'),
         inventarisaties:              parse('Inventarisaties'),
         audit_log:                    parse('AuditLog'),
         accijns_aangiftes:            parse('AccijnsAangiftes'),
