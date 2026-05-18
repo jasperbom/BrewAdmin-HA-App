@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.3] — 2026-05-22
+
+### Fixed — Kosten weer zichtbaar bij batch-ingrediënten met meerdere regels
+
+(Eerder geland op `claude/fix-batch-data-loss-qILOs` als 1.9.84, maar die
+versie was inmiddels op main toegekend aan een andere feature; daarom nu
+opnieuw geland onder 1.10.3.)
+
+Wanneer een ingrediënt in een batch uit meerdere regels bestond (bv. omdat
+er meerdere lots aan gekoppeld zijn), werd de Kosten-kolom volledig
+verborgen.
+
+- In de groepskop overspande `colSpan={2}` zowel de Lot- als de
+  Kosten-kolom voor de boekingsstatus, waardoor de Kosten-cel ontbrak.
+- In de detail-rijen werd de Kosten-cel via `{!multi && <td>…</td>}`
+  weggelaten zodra het multi-row was, en de Lot-cel gebruikte
+  `colSpan={multi ? 2 : 1}` zodat hij de Kosten-kolom inslikte.
+
+Nu toont de groepskop in de Kosten-kolom een **totaal** (som van alle
+regels) en toont elke detail-rij zijn eigen kosten — net als bij een
+enkele-regel ingrediënt. De boekingsstatus blijft op zijn oude plek in de
+Lot-kolom.
+
 ## [1.10.2] — 2026-05-22
 
 ### Changed — Pakbon toont biernaam i.p.v. batchnaam (batch # blijft staan)

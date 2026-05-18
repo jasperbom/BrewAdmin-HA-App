@@ -2600,6 +2600,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       const remainQty = r3(totalQty - bookedQty)
                       const multi     = g.rows.length > 1
                       const volledig  = remainQty <= 0.001
+                      const totalKost = g.rows.reduce((s: number, r: any) => {
+                        if (r.kosten) return s + Number(r.kosten)
+                        const l = lots.find((ll: any) => ll.id === r.lot_id)
+                        if (l?.prijs_per_eenheid) return s + l.prijs_per_eenheid * Number(r.hoeveelheid||0)
+                        return s
+                      }, 0)
                       return (
                         <tbody key={g.key} className="divide-y divide-gray-100">
                           {multi && (
@@ -2610,11 +2616,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               </td>
                               <td className="px-3 py-1.5 text-gray-500 text-xs">{g.type}</td>
                               <td className="px-3 py-1.5 text-right font-mono text-xs font-semibold text-gray-700">{totalQty} {g.eenheid}</td>
-                              <td className="px-3 py-1.5 text-xs" colSpan={2}>
+                              <td className="px-3 py-1.5 text-xs">
                                 {bookedQty > 0 && <span className="text-green-700">✓ {bookedQty} {g.eenheid} {t('ing_booked_suffix')}</span>}
                                 {!volledig && <span className="text-amber-700 font-medium ml-2">· {t('batch_ingredient_still_needed')} {remainQty} {g.eenheid} {t('batch_ingredient_still_needed_text')}</span>}
                                 {volledig  && <span className="text-green-600 font-semibold ml-2">· {t('batch_ingredient_all_booked')}</span>}
                               </td>
+                              <td className="px-3 py-1.5 text-right text-xs font-semibold text-gray-700">{totalKost > 0 ? fmt(totalKost) : '—'}</td>
                               <td></td>
                             </tr>
                           )}
@@ -2694,8 +2701,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 </td>
                                 <td className="px-3 py-1.5 text-gray-500 text-xs">{multi ? '' : (ING_TYPES[x.ingredient_type]||x.ingredient_type)}</td>
                                 <td className="px-3 py-1.5 text-right font-mono text-xs">{multi ? '' : <>{fmtQty(x.hoeveelheid)} {x.eenheid}</>}</td>
-                                <td className="px-3 py-1.5" colSpan={multi ? 2 : 1}>{lotCell}</td>
-                                {!multi && <td className="px-3 py-1.5 text-right text-xs">{kosten!==null?fmt(kosten):'—'}</td>}
+                                <td className="px-3 py-1.5">{lotCell}</td>
+                                <td className="px-3 py-1.5 text-right text-xs">{kosten!==null?fmt(kosten):'—'}</td>
                                 <td className="px-3 py-1.5"><button onClick={()=>removeBI(x.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button></td>
                               </tr>
                             )
