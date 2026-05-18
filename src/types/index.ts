@@ -357,6 +357,24 @@ export interface InkoopFactuur {
   // ingediende of betaalde BTW-periode valt; dan rolt de BTW door naar de
   // huidige openstaande aangifte (suppletie-stijl correctie).
   btw_periode?: string
+  // Wanneer de factuur niet vanaf de eigen bankrekening maar vanaf een
+  // alternatieve rekening (bijv. privérekening eigenaar) is betaald, staat
+  // hier het id uit `alt_rekeningen`. De factuur telt dan als schuld aan
+  // die rekening tot een aflossing wordt gekoppeld.
+  betaald_via_alt_id?: number
+}
+
+// Alternatieve betaalrekening — een rekening waarvan soms uitgaven worden
+// gedaan namens de brouwerij (bijv. een privérekening). Het saldo van
+// (inkoopfacturen betaald via deze rekening) minus (aflossingen vanaf de
+// eigen bankrekening) is de openstaande schuld.
+export interface AltRekening {
+  id: number
+  naam: string
+  iban?: string
+  eigenaar?: string
+  notitie?: string
+  archief?: boolean
 }
 
 export interface FactuurRegel {

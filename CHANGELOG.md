@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.82] — 2026-05-18
+
+### Added — Alternatieve betaalrekeningen met schuldregistratie
+
+Soms betaal je een inkoopfactuur niet vanaf de eigen bankrekening, maar vanaf
+een privérekening of een andere rekening. Voorheen kon je dit niet zuiver in de
+boekhouding verwerken: de factuur bleef "open" tot er een MT940-transactie was
+om te koppelen, terwijl de uitgave wél al was gedaan. Daardoor werd ook de
+schuld die de brouwerij zo opbouwt aan de eigenaar/derde niet zichtbaar.
+
+Deze release voegt een volwaardig systeem toe voor alternatieve betaal­rekeningen:
+
+- **Instellingen → Bedrijf → "Alternatieve betaalrekeningen"** — beheer een lijst
+  van rekeningen (naam, IBAN, eigenaar, notitie). Per rekening wordt het
+  openstaand saldo in real-time getoond.
+- **Boekhouding → Inkoop** — op elke open inkoopfactuur staat nu een paarse
+  knop **"Via alt. rekening"**. Daarmee markeer je de factuur als betaald vanaf
+  de gekozen rekening; de factuur krijgt status `betaald` met een paarse
+  badge `↪ <naam>` (te ontkoppelen via het `×`-icoon).
+- **Boekhouding → Bank** — een nieuwe sectie **"Schulden aan alternatieve
+  rekeningen"** toont per rekening de totale opname, aflossing en
+  openstaande schuld. Bij elke debettransactie kun je nu naast "Nieuwe boeking"
+  ook een **"Aflossing"**-koppeling maken: kies de rekening en de transactie
+  telt automatisch mee als aflossing van die schuld.
+- **Boekhouding → Rapporten → Balans** — onder Passiva is een rij
+  **"Schuld alt. rekeningen"** toegevoegd, zodat de schuld correct meetelt in
+  het eigen vermogen.
+
+De aflossing-koppelingen worden in `bank_koppelingen` opgeslagen met
+`{soort:'aflossing', altRekeningId, bedrag}` en worden bij MT940-herimport
+automatisch hersteld. De alt-rekeningen zelf zitten in een nieuwe data-key
+`alt_rekeningen` en worden meegenomen in de Excel backup/restore.
+
+### Files
+- `src/types/index.ts` — `AltRekening`-interface; `InkoopFactuur.betaald_via_alt_id`.
+- `src/App.tsx` — `useStore('alt_rekeningen')`, props naar Instellingen-/Boekhoudingpage, backup/restore.
+- `src/pages/InstellingenPage.tsx` — CRUD-card "Alternatieve betaalrekeningen" onder bedrijf.
+- `src/pages/BoekhoudingPage.tsx` — Schulden-overzicht op Bank-tab, "Via alt. rekening"-knop op Inkoop-tab, Aflossing-koppeling op debet-transacties, balans-uitbreiding, MT940-herstel.
+- `src/utils/excel.ts` — nieuw `AltRekeningen`-sheet in export/import.
+- `src/i18n/{nl,en,de,fr,es}.json` — ~30 nieuwe sleutels.
+- `config.yaml`, `CHANGELOG.md` — versie 1.9.81 → 1.9.82.
+
+---
+
 ## [1.9.81] — 2026-05-17
 
 ### Fixed — Bestaande batches vullen brouwkundige info alsnog aan vanuit recept
