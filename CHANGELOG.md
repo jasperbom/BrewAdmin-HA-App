@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.83] — 2026-05-18
+
+### Fixed — Batch-data-verlies door race tussen migraties en server-fetch
+
+Twee migraties in `App.tsx` startten meteen op de localStorage-cache zonder te
+wachten op de server-fetch voor `batches` (en `recepten`):
+
+- de sanitizer voor `vergistings-/maischprofiel`-tijden;
+- de backfill van `kleur`/`vergistingsprofiel`/`maischprofiel`/`kooktijd`/
+  `kook_volume` vanuit het gekoppelde recept (geïntroduceerd in v1.9.81).
+
+Als de cache verouderd was (bv. omdat de batches op een ander apparaat zijn
+aangemaakt of bewerkt), patchten deze migraties de oude versie en riepen
+direct `setBat()` aan. Dat zette `modified.current = true` in `useStore`,
+waardoor de daaropvolgende server-response werd verworpen en de
+gecachte/gepatchte versie naar de server werd weggeschreven. Nieuwere batches
+of veld-edits die alleen op de server stonden gingen daardoor verloren.
+
+Beide migraties wachten nu expliciet tot `_fetchedKeys` aangeeft dat de
+server-fetch voor `batches` (en voor de backfill ook `recepten`) is voltooid
+voordat ze draaien — dezelfde guard die de andere migraties in dit bestand
+(taken, tank-status, lege facturen, Verpakt→Afgevuld) al hadden.
+
+### Files
+
+- `src/App.tsx` — `_fetchedKeys.has('batches')`-guard toegevoegd aan de
+  vergistings-/maischprofiel-sanitizer en aan de recept-backfill (die ook op
+  `recepten` wacht).
+
+---
+
 ## [1.9.82] — 2026-05-18
 
 ### Added — Alternatieve betaalrekeningen met schuldregistratie
