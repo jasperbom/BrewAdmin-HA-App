@@ -203,10 +203,17 @@ function App() {
   const bfAutoSynced = React.useRef(false);
 
   // Eénmalige sanitizer: corrigeer vergistings-/maischprofiel-stappen waar
-  // tijd per ongeluk een unix-ms-timestamp bevat i.p.v. dagen.
+  // tijd per ongeluk een unix-ms-timestamp bevat i.p.v. dagen. Wacht expliciet
+  // tot de server-fetch voor `batches` is voltooid (`_fetchedKeys`). Anders
+  // draait deze migratie op de localStorage-cache; een eventuele setBat()
+  // markeert dan `modified.current = true` in useStore en de daadwerkelijke
+  // server-data wordt verworpen → batches die op een ander apparaat zijn
+  // gemaakt of bewerkt gaan verloren.
   const sanitizedRef = React.useRef(false);
   React.useEffect(() => {
-    if (sanitizedRef.current || !bat) return;
+    if (sanitizedRef.current) return;
+    if (!_fetchedKeys.has('batches')) return;
+    if (!Array.isArray(bat)) return;
     sanitizedRef.current = true;
     const fix = (steps: any[]) => {
       let changed = false;
@@ -235,9 +242,16 @@ function App() {
   // worden nooit overschreven, ook een door de gebruiker bewust geleegde
   // array (length 0) wordt met rust gelaten — alleen `undefined` wordt
   // aangevuld.
+  //
+  // Wacht expliciet tot zowel `batches` als `recepten` server-side geladen
+  // zijn (`_fetchedKeys`). Anders draait deze backfill op de localStorage-
+  // cache en zou setBat() de useStore-flag `modified.current` op true zetten,
+  // waarmee de daadwerkelijke server-data verworpen wordt — zie sanitizer
+  // hierboven voor toelichting van het data-loss risico.
   const receptBackfillRef = React.useRef(false);
   React.useEffect(() => {
     if (receptBackfillRef.current) return;
+    if (!_fetchedKeys.has('batches') || !_fetchedKeys.has('recepten')) return;
     if (!Array.isArray(bat) || !Array.isArray(recepten)) return;
     receptBackfillRef.current = true;
     const isLeegScalar = (v: any) => v == null || v === '';
