@@ -319,13 +319,50 @@ const KlantenPage: React.FC<Props> = ({
       if (synthSourceKey && (beLc || beNameKey) === synthSourceKey) return true
       return false
     })
+
+    // Snapshot van klantgegevens om naar gekoppelde bestellingen te schrijven.
+    // We gebruiken `form.*.trim()` direct (i.p.v. payload) zodat ook lege
+    // velden netjes als '' worden overgenomen — zo blijven order en klantkaart
+    // synchroon ook wanneer de gebruiker een veld leegmaakt.
+    const snap = {
+      klant_naam:       form.naam.trim(),
+      klant_email:      form.email.trim(),
+      klant_bedrijf:    form.bedrijf.trim(),
+      klant_straat:     form.straat.trim(),
+      klant_huisnummer: form.huisnummer.trim(),
+      klant_postcode:   form.postcode.trim(),
+      klant_stad:       form.stad.trim(),
+      klant_btw_nummer: form.btw_nummer.trim(),
+      klant_type:       form.klant_type,
+    }
+    // Welke gekoppelde orders mogen we updaten? Niet de afgeronde / verzonden /
+    // geannuleerde — die hebben hun snapshot al "vastgelegd" in de factuur of
+    // pakbon en moeten historisch correct blijven. Wel: nieuw / bevestigd /
+    // gepickt — daar zit de wijziging nog in het systeem en kan de klant nog
+    // bijgewerkt worden zonder reeds-uitgegeven documenten te verbreken.
+    const SYNCABLE: string[] = ['nieuw','bevestigd','gepickt']
+    const toLinkIds = new Set(toLink.map((b: any) => b.id))
+    let propagated = 0
+    setBestellingen((prev: any[]) => prev.map((b: any) => {
+      if (toLinkIds.has(b.id)) {
+        // Nieuwe koppeling: zet klant_id én sync de snapshot.
+        return {...b, ...snap, klant_id: savedKlantId}
+      }
+      // Bestaande koppeling én bewerkbaar? Sync de snapshot.
+      if (b.klant_id === savedKlantId && SYNCABLE.includes(b.status)) {
+        propagated++
+        return {...b, ...snap}
+      }
+      return b
+    }))
+
     if (toLink.length > 0) {
-      const ids = new Set(toLink.map((b: any) => b.id))
-      setBestellingen((prev: any[]) => prev.map((b: any) =>
-        ids.has(b.id) ? {...b, klant_id: savedKlantId} : b
-      ))
       logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:savedKlantId, actie:'gewijzigd',
         omschrijving:`${toLink.length} bestelling(en) automatisch gekoppeld`})
+    }
+    if (propagated > 0) {
+      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:savedKlantId, actie:'gewijzigd',
+        omschrijving:`Klantgegevens bijgewerkt in ${propagated} open bestelling(en)`})
     }
     setSynthSourceKey(null)
     setDirty(false)

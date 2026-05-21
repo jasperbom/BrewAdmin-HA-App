@@ -838,7 +838,7 @@ export interface BestellingPick {
   accijns_ids?: number[]
 }
 
-export type BestellingStatus = 'nieuw' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
+export type BestellingStatus = 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
 
 export interface Bestelling {
   id: number

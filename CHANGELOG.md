@@ -4,6 +4,75 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.95] — 2026-05-21
+
+### Added — Order-status 'Bevestigd' + logboek per order + klantsync
+
+**Nieuwe order-status 'Bevestigd'** tussen 'Nieuw' en 'Gepickt'. Wordt
+automatisch gezet zodra de bestelbevestigingsmail succesvol is
+verzonden. De status-overgang gebeurt alleen vanuit `nieuw` —
+opnieuw versturen op een `bevestigd` order verandert de status niet
+verder. De mail-knop heet bij heropvragen "Bevestiging opnieuw mailen".
+
+- `BestellingStatus`-type uitgebreid met `'bevestigd'`; cyaan-kleur in
+  `STATUS_COLORS` (BestellingenPage + DashboardPage).
+- Status-filter-tabbalk en alle action-button-condities accepteren
+  `bevestigd` overal waar `nieuw` werkte (picken, vrije regel,
+  verzendkosten, annuleren). Een bevestigd order gedraagt zich dus als
+  een onbewerkte order tot het gepickt wordt.
+- Dashboard-widget "Open bestellingen" toont bevestigde orders óók —
+  ze zijn immers nog niet ingepakt.
+
+**Logboekje per order**: onderaan de order-detail-view een chronologisch
+overzicht (nieuw → oud) van alle audit-log-entries voor die specifieke
+bestelling. Toont voor elke actie de omschrijving, tijdstempel en
+(indien aanwezig) gebruiker. Gekleurde stip naast elke regel
+visualiseert het actietype:
+- 🔵 aangemaakt
+- 🟡 gewijzigd (status, picks, regels, mail-verzending …)
+- 🔴 verwijderd
+
+De entries komen direct uit de globale `auditLog` — geen aparte data-
+store nodig. Bestaande logAudit-calls in BestellingenPage worden dus
+automatisch zichtbaar in dit logboekje.
+
+### Fixed — Klant-mutaties propageren naar open bestellingen
+
+Wijzigingen aan een bestaande klant (e-mail, naam, bedrijf, adres,
+BTW-nr.) werden alleen in de klantkaart opgeslagen, maar niet
+overgenomen op reeds gekoppelde bestellingen. Daardoor toonde de
+order na een typo-fix nog steeds het oude adres.
+
+Nu schrijft `KlantenPage.save()` de hele klantsnapshot (naam, e-mail,
+bedrijf, straat, huisnummer, postcode, stad, BTW-nr., type) naar alle
+bestellingen met `klant_id === klantId` ÉN status in `['nieuw',
+'bevestigd', 'gepickt']`. Afgeronde / verzonden / geannuleerde orders
+worden expliciet NIET aangepast — hun snapshot is al bevroren in de
+uitgegeven factuur/pakbon en moet historisch correct blijven. Audit-log
+krijgt een regel "Klantgegevens bijgewerkt in N open bestelling(en)"
+zodra er iets gesynchroniseerd is.
+
+### Files
+
+- `src/types/index.ts` — `BestellingStatus` uitgebreid met `'bevestigd'`.
+- `src/pages/BestellingenPage.tsx` — `STATUS_COLORS` + `StatusFilter`
+  uitgebreid; action-button-condities accepteren `bevestigd`; mail-
+  modal-state heeft een `kind`-veld dat de bevestiging onderscheidt van
+  pakbon/factuur; `onSent` schrijft per-type log-regel en doet status-
+  overgang `nieuw → bevestigd` bij succesvolle bevestigingsmail. Nieuw
+  logboek-blok onderaan de detail-view.
+- `src/pages/DashboardPage.tsx` — open-bestellingen-filter incl.
+  `bevestigd`; status-badge kleurt cyaan.
+- `src/pages/KlantenPage.tsx` — `save()` propageert klantsnapshot naar
+  open gekoppelde bestellingen (status in nieuw/bevestigd/gepickt) en
+  logt het aantal gesynchroniseerde orders.
+- `src/i18n/{nl,en,de,fr,es}.json` — 9 nieuwe sleutels:
+  `orders_filter_bevestigd`, `orders_status_bevestigd`,
+  `orders_logboek`, `order_mail_bevestiging_resend`, vier
+  `audit_actie_*` labels.
+
+---
+
 ## [1.9.94] — 2026-05-21
 
 ### Fixed — "Open bestellingen"-widget op het dashboard werkt nu
