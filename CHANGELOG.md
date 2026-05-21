@@ -4,6 +4,71 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.90] — 2026-05-21
+
+### Added — Klanten-pagina met orderhistorie
+
+Een nieuw top-level menu-item **Klanten** (tussen Bestellingen en AGP)
+biedt een dedicated klantenbeheer-omgeving. Aanleiding: typefouten in
+klantgegevens (zoals `sterrennberg.nl` i.p.v. `sterrenberg.nl` in een
+bestelling) zijn nu in één klik te corrigeren — voorheen moest dat per
+bestelling apart.
+
+**Lijstweergave**
+- Tabel met naam/bedrijf, e-mail, telefoon, # bestellingen, omzet,
+  openstaand bedrag en datum laatste bestelling.
+- Oranje stip naast klanten met openstaande facturen.
+- Vrij-tekst zoekveld over naam, bedrijf, e-mail, telefoon en
+  klantnummer.
+- Stats-kaarten bovenaan: totaal klanten, totale omzet, totaal
+  openstaand.
+
+**Detailweergave**
+- Bewerkbaar formulier met klantgegevens (naam, klantnummer, type
+  privé/zakelijk, bedrijf, e-mail, telefoon, betalingstermijn) en
+  adresvelden (straat, huisnr., postcode, stad, BTW-nr., KvK-nr.,
+  notities).
+- **Inline e-mail-validatie**: rood kader + waarschuwing bij ongeldig
+  formaat, met expliciete hint om typefouten in de domeinnaam te
+  checken.
+- Vier stats-kaarten boven het formulier: # bestellingen, omzet,
+  openstaand, datum laatste bestelling.
+- **Bestellingen-tabel**: klik op een rij → opent direct die order in de
+  Bestellingen-pagina (via `setOpenOrderId`).
+- **Verkoopfacturen-tabel**: status-badge, datum, factuurnummer, bedrag.
+- **Mail-knop** opent de MailModal met de klant als ontvanger en een
+  voorgevulde aanhef — verstuurt een HTML-mail met logo en signature
+  (geen PDF-bijlage; bedoeld voor vrije communicatie).
+- **Auto-koppel WC-orders op e-mail**: als er WooCommerce-bestellingen
+  zijn met hetzelfde e-mailadres maar zonder `klant_id`, verschijnt een
+  blauwe banner met één-klik koppeling.
+
+**Matching-logica**
+
+Bestellingen worden gematcht via `klant_id` OF (fallback)
+case-insensitive `klant_email`. Hierdoor tellen losse WooCommerce-orders
+die nooit aan een klantkaart zijn gekoppeld, automatisch mee in de
+stats. Verkoopfacturen matchen alleen op `klant_id` — facturen worden
+altijd aan een klant gekoppeld bij aanmaken, dus die fallback is daar
+niet nodig.
+
+Het bestaande Klanten-tabblad in **Boekhouding** blijft beschikbaar
+(wordt intern gebruikt bij het maken van losse facturen via
+`handleKlantSelectInFactuur`), maar de nieuwe pagina is vanaf nu de
+primaire plek voor klantbeheer.
+
+### Files
+
+- `src/pages/KlantenPage.tsx` *(nieuw)* — volledige page met list- en
+  detail-view, klant-CRUD, order/factuur-tabellen, e-mail-validatie,
+  auto-koppel-flow en MailModal-integratie.
+- `src/App.tsx` — nav-item `klanten` toegevoegd; import + routing.
+- `src/i18n/{nl,en,de,fr,es}.json` — 39 nieuwe sleutels (klanten_*,
+  lbl_straat/huisnummer/postcode/stad/btw_nr/kvk, lbl_dear/kind_regards,
+  settings_betalingstermijn, nav_klanten).
+
+---
+
 ## [1.9.89] — 2026-05-21
 
 ### Added — HTML-mails met inline brouwerijlogo
