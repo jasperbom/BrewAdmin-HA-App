@@ -2138,6 +2138,7 @@
   "klanten_section_details": "Datos del cliente",
   "klanten_section_address": "Dirección y empresa",
   "klanten_klantnummer": "N° cliente",
+  "klanten_klantnummer_auto_hint": "{nr} (automático)",
   "klanten_type": "Tipo de cliente",
   "klanten_bedrijf": "Empresa",
   "klanten_notities": "Notas",

@@ -4,6 +4,59 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.96] — 2026-05-21
+
+### Added — Auto-toegekende klantnummers (001, 002, 003, …)
+
+Het `klantnummer`-veld op de klantkaart was voorheen vrije tekst. Nu wordt
+het automatisch toegekend bij het opslaan van een nieuwe klant — puur
+numeriek, 3-cijferig zero-padded (`001`, `002`, `003`, …), doorlopend
+zonder jaar-reset. Tot 999 wordt zero-gepad, daarna loopt het natuurlijk
+door (`1000`, `1001`, …).
+
+- Nieuwe util `src/utils/klant.ts` met `nextKlantnummer(klanten)` —
+  zoekt de hoogste numerieke waarde in bestaande nummers en geeft de
+  volgende terug. Niet-numerieke klantnummers (handmatige imports met
+  prefix of letters) worden genegeerd zodat ze de auto-numbering niet
+  doorbreken.
+- `KlantenPage.save()` kent het nummer toe bij een nieuwe klant met leeg
+  veld; bij bestaande klant wordt het oude nummer behouden tenzij dat
+  leeg was.
+- `BoekhoudingPage.saveKlant()` (gebruikt bij losse facturen) krijgt
+  dezelfde auto-toekenning — anders zouden klanten gemaakt vanaf die
+  pagina alleen via de backfill een nummer krijgen.
+- **Backfill bij eerste pagina-open**: een useEffect detecteert klanten
+  zonder klantnummer en kent ze er één toe in aanmaakvolgorde (sorted op
+  id). De `needsBackfill`-check is zelf de guard — werkt ook als
+  server-data ná de initiële render arriveert of als een Excel-restore
+  nieuwe nummer-loze klanten toevoegt. Audit-log noteert "{n}
+  klantnummer(s) automatisch toegekend".
+- **Zichtbaarheid**: het klantnummer staat nu als kleine monospace
+  prefix vóór de naam in zowel de lijst-view als de detail-header.
+- Bij het aanmaken van een nieuwe klant toont het klantnummer-veld als
+  placeholder het eerstvolgende vrije nummer met label `(automatisch)`.
+
+### WooCommerce-orders: geen impact
+
+WC sync importeert bestellingen met klant_email/klant_naam maar maakt
+nooit zelf klanten aan. Pas wanneer de gebruiker via de Klanten-page
+een synth-klant omzet naar een echte klantkaart, kent `save()` netjes
+een klantnummer toe — los van of de oorspronkelijke order via WC of
+handmatig binnenkwam.
+
+### Files
+
+- `src/utils/klant.ts` *(nieuw)* — `nextKlantnummer()` helper.
+- `src/pages/KlantenPage.tsx` — backfill useEffect, save() auto-assign,
+  klantnummer-prefix in lijst en detail-header, placeholder met
+  preview van het volgende vrije nummer.
+- `src/pages/BoekhoudingPage.tsx` — `saveKlant()` kent ook auto-nummer
+  toe (zowel bij aanmaken als bij bewerken van een klant zonder
+  nummer).
+- `src/i18n/{nl,en,de,fr,es}.json` — `klanten_klantnummer_auto_hint`.
+
+---
+
 ## [1.9.95] — 2026-05-21
 
 ### Added — Order-status 'Bevestigd' + logboek per order + klantsync

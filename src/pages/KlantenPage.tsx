@@ -8,6 +8,7 @@
 import React from 'react'
 import { t } from '../i18n'
 import { newId } from '../utils/api'
+import { nextKlantnummer } from '../utils/klant'
 import { fmt, fmtD } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -63,6 +64,35 @@ const KlantenPage: React.FC<Props> = ({
 }) => {
   const [view, setView] = React.useState<'list'|'detail'>('list')
   const [selectedId, setSelectedId] = React.useState<number|null>(null)
+  // Backfill: bij elke render waarin er klanten zonder klantnummer staan,
+  // kennen we die alsnog toe in aanmaakvolgorde. De `needsBackfill`-check
+  // is zelf de guard — zodra elke klant een nummer heeft is de effect-loop
+  // klaar. Geen ref nodig; werkt ook als server-data ná initiële render
+  // arriveert of als losse imports nieuwe nummer-loze klanten toevoegen.
+  React.useEffect(() => {
+    if (klanten.length === 0) return
+    const needsBackfill = klanten.some((k: any) => !String(k.klantnummer || '').trim())
+    if (!needsBackfill) return
+    const sorted = [...klanten].sort((a: any, b: any) => (a.id || 0) - (b.id || 0))
+    let max = 0
+    sorted.forEach((k: any) => {
+      const n = parseInt(String(k.klantnummer || '').trim(), 10)
+      if (!isNaN(n) && n > max) max = n
+    })
+    const updates = new Map<number, string>()
+    sorted.forEach((k: any) => {
+      if (!String(k.klantnummer || '').trim()) {
+        max++
+        updates.set(k.id, String(max).padStart(3, '0'))
+      }
+    })
+    if (updates.size > 0) {
+      setKlanten((prev: any[]) => prev.map((k: any) =>
+        updates.has(k.id) ? {...k, klantnummer: updates.get(k.id)} : k))
+      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:0, actie:'gewijzigd',
+        omschrijving:`${updates.size} klantnummer(s) automatisch toegekend`})
+    }
+  }, [klanten])
   // Synthetische-source-key: als de gebruiker via een "Uit bestelling"-rij in
   // de lijst is binnengekomen, onthouden we welke synth-groep dat was. Bij
   // opslaan koppelen we de bestellingen uit die groep — óók als de gebruiker
@@ -258,9 +288,16 @@ const KlantenPage: React.FC<Props> = ({
 
   const save = () => {
     if (!form.naam.trim()) { alert(t('klanten_err_no_name')); return }
+    // Klantnummer auto-toekennen bij een nieuwe klant zonder ingevuld nummer.
+    // Bij bestaande klant: alleen overschrijven als de gebruiker niets heeft
+    // ingevuld (eerder leeg veld → toch een nummer geven), anders gebruiken
+    // wat ingevuld staat.
+    const trimmedNr = form.klantnummer.trim()
+    const klantnummer = trimmedNr
+      || (selectedId === null ? nextKlantnummer(klanten) : (selected?.klantnummer || nextKlantnummer(klanten)))
     const payload: any = {
       naam: form.naam.trim(),
-      klantnummer: form.klantnummer.trim() || undefined,
+      klantnummer,
       klant_type: form.klant_type,
       bedrijf: form.bedrijf.trim() || undefined,
       straat: form.straat.trim() || undefined,
@@ -424,8 +461,11 @@ const KlantenPage: React.FC<Props> = ({
             className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
             {t('btn_back')}
           </button>
-          <h2 className="text-xl font-bold text-gray-800">
-            {selectedId !== null ? (selected?.naam || t('lbl_naamloos')) : t('klanten_new')}
+          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            {selectedId !== null && selected?.klantnummer && (
+              <span className="font-mono text-base text-gray-400">{selected.klantnummer}</span>
+            )}
+            <span>{selectedId !== null ? (selected?.naam || t('lbl_naamloos')) : t('klanten_new')}</span>
           </h2>
           {form.klant_type && (
             <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${form.klant_type === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
@@ -487,7 +527,11 @@ const KlantenPage: React.FC<Props> = ({
             <SectionHeader title={t('klanten_section_details')} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
               <Inp label={t('lbl_name') + ' *'} value={form.naam} onChange={v => update({naam: v})} />
-              <Inp label={t('klanten_klantnummer')} value={form.klantnummer} onChange={v => update({klantnummer: v})} placeholder="K-001" />
+              <Inp label={t('klanten_klantnummer')} value={form.klantnummer}
+                onChange={v => update({klantnummer: v})}
+                placeholder={selectedId === null
+                  ? t('klanten_klantnummer_auto_hint').replace('{nr}', nextKlantnummer(klanten))
+                  : ''} />
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('klanten_type')}</label>
                 <select value={form.klant_type}
@@ -757,6 +801,9 @@ const KlantenPage: React.FC<Props> = ({
                           {s.openstaand > 0 && (
                             <span className="inline-block w-2 h-2 bg-orange-500 rounded-full"
                               title={t('tooltip_expired_invoices')}/>
+                          )}
+                          {k.klantnummer && (
+                            <span className="font-mono text-xs text-gray-400">{k.klantnummer}</span>
                           )}
                           <span className={isSynth ? 'italic text-gray-600' : ''}>
                             {k.naam || t('lbl_naamloos')}
