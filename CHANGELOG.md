@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.94] — 2026-05-21
+
+### Fixed — "Open bestellingen"-widget op het dashboard werkt nu
+
+De stat-card "Open orders" en de "Open bestellingen"-lijst op het
+dashboard toonden altijd 0, ongeacht het aantal openstaande
+bestellingen. Oorzaak: `openBestellingen` werd berekend als
+`bi.filter((b) => ['nieuw','gepickt'].includes(b.status))` — maar `bi`
+is `batch_ingredienten` (de koppelingen tussen batches en
+ingrediënten), niet bestellingen. Bovendien werd `bestellingen` als
+data nooit aan `DashboardPage` doorgegeven.
+
+Fix:
+- `App.tsx` geeft nu `bestellingen` en `setOpenOrderId` mee aan
+  `DashboardPage`.
+- De filter op regel 253 gebruikt nu `bestellingen` i.p.v. `bi`.
+- Klikken op een specifieke regel in de "Open bestellingen"-widget
+  opent vanaf nu meteen díé order (via `setOpenOrderId(b.id)`), in
+  plaats van enkel naar de bestellingen-lijst te navigeren.
+- De status-badge gebruikt nu de vertaalde label
+  (`t('orders_status_<status>')`) i.p.v. de ruwe waarde.
+
+### Files
+
+- `src/pages/DashboardPage.tsx` — props uitgebreid met `bestellingen`
+  en `setOpenOrderId`; filter op de juiste data; click-through naar
+  specifieke order; vertaalde status-badge.
+- `src/App.tsx` — props doorgeven aan `<DashboardPage>`.
+
+---
+
 ## [1.9.93] — 2026-05-21
 
 ### Changed — Omzet = strikt gefactureerd; pipeline als aparte stat
