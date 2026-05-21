@@ -4,6 +4,58 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.92] — 2026-05-21
+
+### Fixed — Geannuleerde bestellingen tellen niet mee in omzet
+
+De omzet-berekening op de Klanten-pagina telde alle bestellingen voor
+een klant op (gefactureerd + pending). Geannuleerde bestellingen werden
+echter óók meegerekend, wat misleidend is — een geannuleerde order is
+nooit gefactureerd en levert geen omzet op. Beide stat-berekeningen
+(echte klanten in `statsPerKlant` en synthetische klanten via
+`_stats.omzet`) filteren nu `status === 'geannuleerd'` weg vóór ze de
+pending-orders bij de gefactureerde omzet optellen. De order zelf
+blijft zichtbaar in de bestellingen-tabel van de klant (met grijze
+"Geannuleerd"-badge), alleen het bedrag telt niet meer mee.
+
+### Fixed — E-mail aanpassen bij synth-klant maakte dubbele klant aan
+
+Sinds 1.9.91 verschenen bestellingen zonder klantkaart als synthetische
+"Uit bestelling"-rijen in de Klanten-lijst. Klik je daarop en pas je
+het e-mailadres aan (bijv. een typo herstellen), dan zocht de
+auto-koppel-logica naar bestellingen met het **nieuwe** adres en vond
+niets — de bestelling had immers nog het oude adres. Resultaat: er
+verscheen een nieuwe klantkaart **naast** de oorspronkelijke synth-rij,
+in plaats van dat die synth-rij in een echte klantkaart werd omgezet.
+
+**Oplossing**: bij het openen van een synth-rij houdt de page de
+**synth-source-key** vast (e-mail of naam waarop de synth-groep
+gebouwd was). Bij opslaan worden de bestellingen uit die groep alsnog
+gekoppeld, onafhankelijk van of de gebruiker het e-mailadres in het
+formulier intussen heeft gewijzigd. De typo-fix-flow werkt nu zoals
+verwacht: bestelling met `sterrennberg.nl` → klik op synth-rij →
+corrigeer naar `sterrenberg.nl` → opslaan → 1 echte klantkaart,
+bestelling gekoppeld, synth-rij weg.
+
+Tegelijk dekt de save-logica nu ook drie andere edge-cases:
+
+1. **Nieuwe klant + nieuw e-mailadres**: bestellingen die dat adres
+   gebruiken worden meegekoppeld (was er al, blijft).
+2. **Bestaande klant, e-mail wijzigen**: bestellingen die via email-
+   fallback aan deze klant gematcht waren, krijgen nu hun `klant_id`
+   gezet vóórdat het adres verandert — zodat ze niet "ongekoppeld"
+   achterblijven.
+3. **Synth-source**: zoals beschreven, koppelt op groep-key.
+
+### Files
+
+- `src/pages/KlantenPage.tsx` — nieuwe `synthSourceKey` state, gezet in
+  `openNewFromSynth`, gewist in `openDetail` / `openNew` / `goBack`.
+  `save()` herschreven met drie-strategie auto-koppel: synth-source-key,
+  nieuwe e-mail, oude e-mail bij bestaande klant.
+
+---
+
 ## [1.9.91] — 2026-05-21
 
 ### Fixed — Nieuwe bestellingen tonen nu automatisch een (synthetische) klant
