@@ -2138,7 +2138,7 @@
   "klanten_section_details": "Klantgegevens",
   "klanten_section_address": "Adres & zakelijk",
   "klanten_klantnummer": "Klantnummer",
-  "klanten_klantnummer_auto_hint": "{nr} (automatisch)",
+  "klanten_klantnummer_auto_label": "Automatisch",
   "klanten_type": "Type klant",
   "klanten_bedrijf": "Bedrijf",
   "klanten_notities": "Notities",

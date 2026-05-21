@@ -2138,7 +2138,7 @@
   "klanten_section_details": "Coordonnées du client",
   "klanten_section_address": "Adresse & professionnel",
   "klanten_klantnummer": "N° client",
-  "klanten_klantnummer_auto_hint": "{nr} (auto)",
+  "klanten_klantnummer_auto_label": "Auto",
   "klanten_type": "Type de client",
   "klanten_bedrijf": "Entreprise",
   "klanten_notities": "Notes",

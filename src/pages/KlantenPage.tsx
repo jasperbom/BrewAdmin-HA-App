@@ -288,13 +288,13 @@ const KlantenPage: React.FC<Props> = ({
 
   const save = () => {
     if (!form.naam.trim()) { alert(t('klanten_err_no_name')); return }
-    // Klantnummer auto-toekennen bij een nieuwe klant zonder ingevuld nummer.
-    // Bij bestaande klant: alleen overschrijven als de gebruiker niets heeft
-    // ingevuld (eerder leeg veld → toch een nummer geven), anders gebruiken
-    // wat ingevuld staat.
-    const trimmedNr = form.klantnummer.trim()
-    const klantnummer = trimmedNr
-      || (selectedId === null ? nextKlantnummer(klanten) : (selected?.klantnummer || nextKlantnummer(klanten)))
+    // Klantnummer wordt ALTIJD automatisch bepaald — nooit door de gebruiker
+    // ingevoerd. Voorkomt dubbele nummers per definitie. Bij een nieuwe klant
+    // pakken we het volgende vrije nummer; bij een bestaande klant behouden
+    // we wat er stond (of backfillen als dat leeg was).
+    const klantnummer = selectedId === null
+      ? nextKlantnummer(klanten)
+      : (selected?.klantnummer || nextKlantnummer(klanten))
     const payload: any = {
       naam: form.naam.trim(),
       klantnummer,
@@ -527,11 +527,21 @@ const KlantenPage: React.FC<Props> = ({
             <SectionHeader title={t('klanten_section_details')} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
               <Inp label={t('lbl_name') + ' *'} value={form.naam} onChange={v => update({naam: v})} />
-              <Inp label={t('klanten_klantnummer')} value={form.klantnummer}
-                onChange={v => update({klantnummer: v})}
-                placeholder={selectedId === null
-                  ? t('klanten_klantnummer_auto_hint').replace('{nr}', nextKlantnummer(klanten))
-                  : ''} />
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  {t('klanten_klantnummer')}
+                </label>
+                <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700 font-mono flex items-center justify-between">
+                  <span>
+                    {selectedId !== null
+                      ? (selected?.klantnummer || nextKlantnummer(klanten))
+                      : nextKlantnummer(klanten)}
+                  </span>
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wide font-sans">
+                    {t('klanten_klantnummer_auto_label')}
+                  </span>
+                </div>
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('klanten_type')}</label>
                 <select value={form.klant_type}

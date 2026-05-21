@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.97] — 2026-05-21
+
+### Changed — Klantnummer is altijd auto-toegekend (geen handmatige invoer)
+
+Het klantnummer-veld in de detail-view van een klant is niet langer
+bewerkbaar. Voorheen kon de gebruiker zelf een nummer typen, met als
+risico dat per ongeluk duplicaten ontstonden. Vanaf nu:
+
+- Bij **nieuwe klant**: wordt bij opslaan altijd `nextKlantnummer(klanten)`
+  toegekend — gegarandeerd uniek omdat het altijd max+1 is.
+- Bij **bestaande klant**: blijft het bestaande nummer behouden (of
+  wordt het alsnog toegekend als het ergens leeg was, bv. na een
+  Excel-restore).
+- Het veld op de klantkaart is een grijs, read-only display met de
+  monospace nummerweergave en het label "Automatisch" rechts in beeld
+  — visueel duidelijk dat het niet bewerkbaar is.
+
+Hiermee is geen "dubbele klantnummers"-scenario meer mogelijk via de
+UI. (Eventuele dubbelingen uit vóór deze versie blijven staan; die
+zijn met de hand of via een export/import op te lossen.)
+
+### Files
+
+- `src/pages/KlantenPage.tsx` — `save()` negeert nu `form.klantnummer`
+  en gebruikt altijd `nextKlantnummer()`. Het Inp-veld voor klantnummer
+  is vervangen door een read-only div met label "Automatisch".
+- `src/i18n/{nl,en,de,fr,es}.json` — `klanten_klantnummer_auto_hint`
+  vervangen door `klanten_klantnummer_auto_label`.
+
+---
+
 ## [1.9.96] — 2026-05-21
 
 ### Added — Auto-toegekende klantnummers (001, 002, 003, …)
