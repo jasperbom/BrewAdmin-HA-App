@@ -52,10 +52,11 @@ interface BestellingenPageProps {
   smtpCreds?: any
 }
 
-type StatusFilter = 'alle' | 'nieuw' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
+type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
 
 const STATUS_COLORS: Record<string, string> = {
   nieuw: 'bg-blue-100 text-blue-700',
+  bevestigd: 'bg-cyan-100 text-cyan-700',
   gepickt: 'bg-orange-100 text-orange-700',
   verzonden: 'bg-purple-100 text-purple-700',
   afgerond: 'bg-green-100 text-green-700',
@@ -1056,6 +1057,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     subject: string
     text: string
     attachments?: {filename: string, contentBase64: string, mimeType: string}[]
+    /** Type mail — bepaalt het log-bericht en (bij 'bevestiging') een status-
+     * overgang van 'nieuw' naar 'bevestigd' na succesvolle verzending. */
+    kind?: 'pakbon' | 'factuur' | 'bevestiging'
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
 
@@ -1080,6 +1084,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         subject: interpolate(t('mail_pakbon_subject_default'), vars),
         text: interpolate(t('mail_pakbon_body_default'), vars),
         attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+        kind: 'pakbon',
       })
     } catch (e: any) {
       alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
@@ -1118,6 +1123,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         subject: interpolate(t('mail_factuur_subject_default'), vars),
         text: interpolate(t('mail_factuur_body_default'), vars),
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+        kind: 'factuur',
       })
     } catch (e: any) {
       alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
@@ -1142,6 +1148,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       to: selectedOrder.klant_email || '',
       subject: interpolate(t('mail_bestelling_subject_default'), vars),
       text: interpolate(t('mail_bestelling_body_default'), vars),
+      kind: 'bevestiging',
     })
   }
 
@@ -1285,10 +1292,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Actieknoppen */}
         <div className="flex flex-wrap gap-2">
-          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'gepickt') && (
+          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (
             <Btn v="blue" onClick={openPickModal}>{t('order_pick')}</Btn>
           )}
-          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'gepickt') && (<>
+          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (<>
             <Btn v="secondary" onClick={() => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setShowVrijeRegelModal(true) }}>
               + {t('btn_vrije_regel')}
             </Btn>
@@ -1311,13 +1318,52 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
             </Btn>
           </>)}
-          {selectedOrder.status === 'nieuw' && (
-            <Btn v="secondary" onClick={mailOrderBevestiging} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>✉ {t('order_mail_bevestiging')}</Btn>
+          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd') && (
+            <Btn v="secondary" onClick={mailOrderBevestiging} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              ✉ {selectedOrder.status === 'bevestigd' ? t('order_mail_bevestiging_resend') : t('order_mail_bevestiging')}
+            </Btn>
           )}
           {selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && (
             <Btn v="danger" onClick={() => setShowAnnuleerModal(true)}>{t('order_cancel')}</Btn>
           )}
         </div>
+
+        {/* Logboekje — chronologisch overzicht van wat er met deze order gebeurd is.
+            Leest direct uit de globale auditLog, gefilterd op entiteit/id. */}
+        {(() => {
+          const entries = (auditLog || [])
+            .filter((e: any) => e.entiteit === 'Bestelling' && e.entiteit_id === selectedOrder.id)
+            .sort((a: any, b: any) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+          if (entries.length === 0) return null
+          return (
+            <div className="bg-white rounded-xl shadow-card mt-4 overflow-hidden">
+              <SectionHeader title={t('orders_logboek')} info={entries.length} />
+              <ol className="divide-y divide-gray-100">
+                {entries.map((e: any) => {
+                  const ts = e.timestamp ? new Date(e.timestamp) : null
+                  const tsLabel = ts ? ts.toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''
+                  const dot =
+                    e.actie === 'aangemaakt' ? 'bg-blue-500'   :
+                    e.actie === 'verwijderd' ? 'bg-red-500'    :
+                    e.actie === 'ingelogd'   ? 'bg-gray-400'   :
+                                                'bg-amber-500'
+                  return (
+                    <li key={e.id} className="px-5 py-2.5 flex items-start gap-3">
+                      <span className={`inline-block w-2 h-2 mt-1.5 rounded-full ${dot} flex-shrink-0`} aria-hidden="true" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-800">{e.omschrijving || t(`audit_actie_${e.actie}`) || e.actie}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {tsLabel}
+                          {e.gebruiker && <span className="ml-2">· {e.gebruiker}</span>}
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+          )
+        })()}
 
         {mailModal && (
           <MailModal
@@ -1331,7 +1377,25 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             replyTo={(breweryDetails as any)?.email}
             smtpReady={!!smtpCreds?.enabled}
             onClose={() => setMailModal(null)}
-            onSent={() => logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id: selectedOrder.id, actie:'gewijzigd', omschrijving: `Mail verstuurd: ${mailModal.subject}`})}
+            onSent={() => {
+              // Per maild-type een leesbare log-omschrijving — wordt onderaan de
+              // order in het logboekje getoond.
+              const omschrijving =
+                mailModal.kind === 'pakbon'      ? `Pakbon gemaild naar ${mailModal.to}` :
+                mailModal.kind === 'factuur'     ? `Factuur gemaild naar ${mailModal.to}` :
+                mailModal.kind === 'bevestiging' ? `Bevestigingsmail verstuurd naar ${mailModal.to}` :
+                `Mail verstuurd: ${mailModal.subject}`
+              logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id: selectedOrder.id, actie:'gewijzigd', omschrijving})
+              // Status-overgang: een 'nieuw' order wordt 'bevestigd' zodra de
+              // bevestigingsmail succesvol is verzonden. Latere statussen
+              // (gepickt/verzonden/...) worden niet overschreven — een resend
+              // verandert de status dus niet.
+              if (mailModal.kind === 'bevestiging' && selectedOrder.status === 'nieuw') {
+                setBestellingen((prev: any[]) => prev.map((b: any) =>
+                  b.id === selectedOrder.id ? {...b, status: 'bevestigd'} : b
+                ))
+              }
+            }}
           />
         )}
 
@@ -1646,7 +1710,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-1 flex-wrap">
           <h2 className="text-xl font-bold text-gray-800 mr-4">{t('orders_title')}</h2>
-          {(['alle','nieuw','gepickt','verzonden','afgerond','geannuleerd'] as StatusFilter[]).map(s => {
+          {(['alle','nieuw','bevestigd','gepickt','verzonden','afgerond','geannuleerd'] as StatusFilter[]).map(s => {
             const count = s === 'alle' ? 0 : (bestellingen||[]).filter(b => b.status === s).length
             return (
               <button key={s} onClick={() => setStatusFilter(s)}

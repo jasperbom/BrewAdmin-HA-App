@@ -4,6 +4,159 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.97] — 2026-05-21
+
+### Changed — Klantnummer is altijd auto-toegekend (geen handmatige invoer)
+
+Het klantnummer-veld in de detail-view van een klant is niet langer
+bewerkbaar. Voorheen kon de gebruiker zelf een nummer typen, met als
+risico dat per ongeluk duplicaten ontstonden. Vanaf nu:
+
+- Bij **nieuwe klant**: wordt bij opslaan altijd `nextKlantnummer(klanten)`
+  toegekend — gegarandeerd uniek omdat het altijd max+1 is.
+- Bij **bestaande klant**: blijft het bestaande nummer behouden (of
+  wordt het alsnog toegekend als het ergens leeg was, bv. na een
+  Excel-restore).
+- Het veld op de klantkaart is een grijs, read-only display met de
+  monospace nummerweergave en het label "Automatisch" rechts in beeld
+  — visueel duidelijk dat het niet bewerkbaar is.
+
+Hiermee is geen "dubbele klantnummers"-scenario meer mogelijk via de
+UI. (Eventuele dubbelingen uit vóór deze versie blijven staan; die
+zijn met de hand of via een export/import op te lossen.)
+
+### Files
+
+- `src/pages/KlantenPage.tsx` — `save()` negeert nu `form.klantnummer`
+  en gebruikt altijd `nextKlantnummer()`. Het Inp-veld voor klantnummer
+  is vervangen door een read-only div met label "Automatisch".
+- `src/i18n/{nl,en,de,fr,es}.json` — `klanten_klantnummer_auto_hint`
+  vervangen door `klanten_klantnummer_auto_label`.
+
+---
+
+## [1.9.96] — 2026-05-21
+
+### Added — Auto-toegekende klantnummers (001, 002, 003, …)
+
+Het `klantnummer`-veld op de klantkaart was voorheen vrije tekst. Nu wordt
+het automatisch toegekend bij het opslaan van een nieuwe klant — puur
+numeriek, 3-cijferig zero-padded (`001`, `002`, `003`, …), doorlopend
+zonder jaar-reset. Tot 999 wordt zero-gepad, daarna loopt het natuurlijk
+door (`1000`, `1001`, …).
+
+- Nieuwe util `src/utils/klant.ts` met `nextKlantnummer(klanten)` —
+  zoekt de hoogste numerieke waarde in bestaande nummers en geeft de
+  volgende terug. Niet-numerieke klantnummers (handmatige imports met
+  prefix of letters) worden genegeerd zodat ze de auto-numbering niet
+  doorbreken.
+- `KlantenPage.save()` kent het nummer toe bij een nieuwe klant met leeg
+  veld; bij bestaande klant wordt het oude nummer behouden tenzij dat
+  leeg was.
+- `BoekhoudingPage.saveKlant()` (gebruikt bij losse facturen) krijgt
+  dezelfde auto-toekenning — anders zouden klanten gemaakt vanaf die
+  pagina alleen via de backfill een nummer krijgen.
+- **Backfill bij eerste pagina-open**: een useEffect detecteert klanten
+  zonder klantnummer en kent ze er één toe in aanmaakvolgorde (sorted op
+  id). De `needsBackfill`-check is zelf de guard — werkt ook als
+  server-data ná de initiële render arriveert of als een Excel-restore
+  nieuwe nummer-loze klanten toevoegt. Audit-log noteert "{n}
+  klantnummer(s) automatisch toegekend".
+- **Zichtbaarheid**: het klantnummer staat nu als kleine monospace
+  prefix vóór de naam in zowel de lijst-view als de detail-header.
+- Bij het aanmaken van een nieuwe klant toont het klantnummer-veld als
+  placeholder het eerstvolgende vrije nummer met label `(automatisch)`.
+
+### WooCommerce-orders: geen impact
+
+WC sync importeert bestellingen met klant_email/klant_naam maar maakt
+nooit zelf klanten aan. Pas wanneer de gebruiker via de Klanten-page
+een synth-klant omzet naar een echte klantkaart, kent `save()` netjes
+een klantnummer toe — los van of de oorspronkelijke order via WC of
+handmatig binnenkwam.
+
+### Files
+
+- `src/utils/klant.ts` *(nieuw)* — `nextKlantnummer()` helper.
+- `src/pages/KlantenPage.tsx` — backfill useEffect, save() auto-assign,
+  klantnummer-prefix in lijst en detail-header, placeholder met
+  preview van het volgende vrije nummer.
+- `src/pages/BoekhoudingPage.tsx` — `saveKlant()` kent ook auto-nummer
+  toe (zowel bij aanmaken als bij bewerken van een klant zonder
+  nummer).
+- `src/i18n/{nl,en,de,fr,es}.json` — `klanten_klantnummer_auto_hint`.
+
+---
+
+## [1.9.95] — 2026-05-21
+
+### Added — Order-status 'Bevestigd' + logboek per order + klantsync
+
+**Nieuwe order-status 'Bevestigd'** tussen 'Nieuw' en 'Gepickt'. Wordt
+automatisch gezet zodra de bestelbevestigingsmail succesvol is
+verzonden. De status-overgang gebeurt alleen vanuit `nieuw` —
+opnieuw versturen op een `bevestigd` order verandert de status niet
+verder. De mail-knop heet bij heropvragen "Bevestiging opnieuw mailen".
+
+- `BestellingStatus`-type uitgebreid met `'bevestigd'`; cyaan-kleur in
+  `STATUS_COLORS` (BestellingenPage + DashboardPage).
+- Status-filter-tabbalk en alle action-button-condities accepteren
+  `bevestigd` overal waar `nieuw` werkte (picken, vrije regel,
+  verzendkosten, annuleren). Een bevestigd order gedraagt zich dus als
+  een onbewerkte order tot het gepickt wordt.
+- Dashboard-widget "Open bestellingen" toont bevestigde orders óók —
+  ze zijn immers nog niet ingepakt.
+
+**Logboekje per order**: onderaan de order-detail-view een chronologisch
+overzicht (nieuw → oud) van alle audit-log-entries voor die specifieke
+bestelling. Toont voor elke actie de omschrijving, tijdstempel en
+(indien aanwezig) gebruiker. Gekleurde stip naast elke regel
+visualiseert het actietype:
+- 🔵 aangemaakt
+- 🟡 gewijzigd (status, picks, regels, mail-verzending …)
+- 🔴 verwijderd
+
+De entries komen direct uit de globale `auditLog` — geen aparte data-
+store nodig. Bestaande logAudit-calls in BestellingenPage worden dus
+automatisch zichtbaar in dit logboekje.
+
+### Fixed — Klant-mutaties propageren naar open bestellingen
+
+Wijzigingen aan een bestaande klant (e-mail, naam, bedrijf, adres,
+BTW-nr.) werden alleen in de klantkaart opgeslagen, maar niet
+overgenomen op reeds gekoppelde bestellingen. Daardoor toonde de
+order na een typo-fix nog steeds het oude adres.
+
+Nu schrijft `KlantenPage.save()` de hele klantsnapshot (naam, e-mail,
+bedrijf, straat, huisnummer, postcode, stad, BTW-nr., type) naar alle
+bestellingen met `klant_id === klantId` ÉN status in `['nieuw',
+'bevestigd', 'gepickt']`. Afgeronde / verzonden / geannuleerde orders
+worden expliciet NIET aangepast — hun snapshot is al bevroren in de
+uitgegeven factuur/pakbon en moet historisch correct blijven. Audit-log
+krijgt een regel "Klantgegevens bijgewerkt in N open bestelling(en)"
+zodra er iets gesynchroniseerd is.
+
+### Files
+
+- `src/types/index.ts` — `BestellingStatus` uitgebreid met `'bevestigd'`.
+- `src/pages/BestellingenPage.tsx` — `STATUS_COLORS` + `StatusFilter`
+  uitgebreid; action-button-condities accepteren `bevestigd`; mail-
+  modal-state heeft een `kind`-veld dat de bevestiging onderscheidt van
+  pakbon/factuur; `onSent` schrijft per-type log-regel en doet status-
+  overgang `nieuw → bevestigd` bij succesvolle bevestigingsmail. Nieuw
+  logboek-blok onderaan de detail-view.
+- `src/pages/DashboardPage.tsx` — open-bestellingen-filter incl.
+  `bevestigd`; status-badge kleurt cyaan.
+- `src/pages/KlantenPage.tsx` — `save()` propageert klantsnapshot naar
+  open gekoppelde bestellingen (status in nieuw/bevestigd/gepickt) en
+  logt het aantal gesynchroniseerde orders.
+- `src/i18n/{nl,en,de,fr,es}.json` — 9 nieuwe sleutels:
+  `orders_filter_bevestigd`, `orders_status_bevestigd`,
+  `orders_logboek`, `order_mail_bevestiging_resend`, vier
+  `audit_actie_*` labels.
+
+---
+
 ## [1.9.94] — 2026-05-21
 
 ### Fixed — "Open bestellingen"-widget op het dashboard werkt nu

@@ -2,6 +2,7 @@ import React from 'react'
 import { t, getLang } from '../i18n'
 import { tod, ymd, r2, r3 } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
+import { nextKlantnummer } from '../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
@@ -1315,12 +1316,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const saveKlant = () => {
     const form = {...klantForm, betalingstermijn: klantForm.betalingstermijn ? Number(klantForm.betalingstermijn) : undefined}
     if (editingKlant) {
-      setKlanten((prev: any[]) => prev.map((k: any) => k.id===editingKlant.id ? {...k,...form} : k))
+      // Geef bestaande klanten zonder nummer alsnog er een tijdens edit.
+      const klantnummer = editingKlant.klantnummer || nextKlantnummer(klanten || [])
+      setKlanten((prev: any[]) => prev.map((k: any) => k.id===editingKlant.id ? {...k, klantnummer, ...form} : k))
       logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:editingKlant.id, actie:'gewijzigd', omschrijving:form.naam||''});
     } else {
       const nid = newId(klanten||[]);
-      setKlanten((prev: any[]) => [...(prev||[]), {id:nid, ...form}])
-      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:nid, actie:'aangemaakt', omschrijving:form.naam||''});
+      const klantnummer = nextKlantnummer(klanten || [])
+      setKlanten((prev: any[]) => [...(prev||[]), {id:nid, klantnummer, ...form}])
+      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:nid, actie:'aangemaakt', omschrijving:`${klantnummer} — ${form.naam||''}`});
     }
     setShowKlantModal(false); setEditingKlant(null); setKlantForm(emptyKlantForm())
   }

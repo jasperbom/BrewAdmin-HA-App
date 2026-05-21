@@ -250,11 +250,12 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
   // ── Stat counts ───────────────────────────────────────────────────────────
   const openAccijns    = acc.filter((a: any) => !a.betaald);
   const openAccBed     = openAccijns.reduce((s: any, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0);
-  // Bestellingen-data: 'nieuw' = nog niet gepickt, 'gepickt' = ingepakt
+  // Bestellingen-data: 'nieuw' = nog niet gepickt, 'bevestigd' = bevestigings-
+  // mail verstuurd (klant weet ervan, nog niet gepickt), 'gepickt' = ingepakt
   // klaar voor verzending. (Eerder werd hier per ongeluk `bi` =
   // batch_ingredienten gefilterd, waardoor het altijd 0 was.)
   const openBestellingen = (bestellingen || []).filter((b: any) =>
-    ['nieuw','gepickt'].includes(b.status));
+    ['nieuw','bevestigd','gepickt'].includes(b.status));
   const actiefBatches  = bat.filter((b: any) => b.status !== 'Gesloten');
 
   // ── Aankomende geplande brouwsels (voor agenda-widget) ────────────────────
@@ -1497,7 +1498,11 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                   <span className="font-medium text-sm text-gray-800">{b.klant_naam || '—'}</span>
                   <span className="text-xs text-gray-400 ml-2">{fmtD(b.datum)}</span>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${b.status === 'nieuw' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  b.status === 'nieuw'     ? 'bg-blue-100 text-blue-700' :
+                  b.status === 'bevestigd' ? 'bg-cyan-100 text-cyan-700' :
+                                              'bg-amber-100 text-amber-700'
+                }`}>
                   {t(`orders_status_${b.status}`) || b.status}
                 </span>
               </div>
