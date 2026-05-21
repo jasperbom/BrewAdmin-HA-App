@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.85] — 2026-05-21
+
+### Changed — Eindfase batch springt naar Financieel-tabblad
+
+Na "Klaar met afvullen" (of een handmatige statuswissel naar
+`Afgevuld`/`Verpakt`/`Gesloten`) opent voortaan automatisch het
+Financieel-tabblad en verschuift de groene fase-indicator van het
+Afvulling-tabblad naar Financieel. De brouwer ziet zo direct het
+kostprijsoverzicht in plaats van het inmiddels afgeronde afvulscherm.
+
+De UI-teksten zijn gelijk getrokken op "Afgevuld" (canoniek datamodel
+sinds v1.9.75): de bevestigingsdialogen en de helptekst onder de
+"Klaar met afvullen"-knop spreken niet langer over "Verpakt".
+
+### Files
+
+- `src/components/batch/BatchTabs.tsx` — groene fase-indicator verplaatst
+  van Afvulling-tab naar Financieel-tab voor `Afgevuld/Verpakt/Gesloten`.
+- `src/pages/BatchesPage.tsx` — `handleStatusChange()` en de "Klaar met
+  afvullen"-knop wisselen `activeTab` naar `financieel`; tab-default voor
+  Afgevuld/Verpakt/Gesloten gaat naar Financieel.
+- `src/i18n/nl.json` — `batch_ready_text`, `err_confirm_mark_packed` en
+  `carb_no_session_confirm` gebruiken consequent "Afgevuld".
+
+---
+
 ## [1.9.84] — 2026-05-21
 
 ### Added — Brewfather batch-import via bevestigings-popup

@@ -501,7 +501,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (['Gepland', 'Brouwen'].includes(s)) setActiveTab('brouwdag')
     else if (s === 'Vergisten') setActiveTab('vergisting')
     else if (s === 'Conditioneren') setActiveTab('conditionering')
-    else if (['Afgevuld', 'Verpakt'].includes(s)) setActiveTab('afvulling')
+    // Bij Afgevuld/Verpakt/Gesloten gaat de batch direct naar het
+    // financieel-tabblad (groene dot volgt mee via BatchTabs).
+    else if (['Afgevuld', 'Verpakt', 'Gesloten'].includes(s)) setActiveTab('financieel')
     else setActiveTab('info')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel])
@@ -929,6 +931,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     setBat((prev: any[]) => prev.map((b: any) => b.id===selB.id ? {...b, status:nieuweStatus} : b))
     addLog({type:'status', batch_id:selB.id, referentie:`${oudeStatus} → ${nieuweStatus}`})
     logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', velden:{status:{oud:oudeStatus,nieuw:nieuweStatus}}, omschrijving:`Status: ${oudeStatus} → ${nieuweStatus}`})
+    // Volg de fase met het actieve tabblad — bij Afgevuld/Verpakt/Gesloten
+    // is dat 'financieel' (groene dot volgt automatisch via BatchTabs).
+    if (['Gepland', 'Brouwen'].includes(nieuweStatus)) setActiveTab('brouwdag')
+    else if (nieuweStatus === 'Vergisten') setActiveTab('vergisting')
+    else if (nieuweStatus === 'Conditioneren') setActiveTab('conditionering')
+    else if (['Afgevuld', 'Verpakt', 'Gesloten'].includes(nieuweStatus)) setActiveTab('financieel')
   }
 
   const handleMoveTank = () => {
@@ -3207,6 +3215,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         setBat((prev: any[])=>prev.map((b: any)=>b.id===sel?{...b,status:'Afgevuld'}:b))
                         addLog({type:'status',batch_id:sel,referentie:`${selB.status} → Afgevuld`})
                         logAudit(auditLog,setAuditLog,{entiteit:'Batch',entiteit_id:sel!,actie:'gewijzigd',velden:{status:{oud:selB.status,nieuw:'Afgevuld'}},omschrijving:`Status: ${selB.status} → Afgevuld`})
+                        setActiveTab('financieel')
                       }}>
                         {t('batch_ready_button')}
                       </Btn>
