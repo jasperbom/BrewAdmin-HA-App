@@ -4,6 +4,62 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.93] — 2026-05-21
+
+### Changed — Omzet = strikt gefactureerd; pipeline als aparte stat
+
+Omzet werd in 1.9.91 berekend als facturen + pending orders. Conceptueel
+is dat onzuiver: een bestelling is pas omzet zodra hij gefactureerd is
+(juridisch / NL GAAP / IFRS 15). Vanaf nu telt de Klanten-pagina:
+
+- **Omzet** — strikt: som van alle verkoopfacturen voor deze klant
+  (creditnota's tellen negatief). Consistent met `verkoopTotals.bruto`
+  in de Boekhouding-pagina.
+- **Open orders** (nieuw) — pipeline: bruto-totaal van bestellingen die
+  nog niet gefactureerd zijn, exclusief geannuleerde. Worden omzet
+  zodra ze afgerond worden en een factuur krijgen.
+
+Lijstweergave krijgt een extra kolom "Open orders" (blauw) tussen
+"Omzet" en "Openstaand". De top-stats-rij gaat van 3 naar 4 kaarten
+met "Totaal open orders" erbij. Detail-view stat-cards vervangen de
+"Laatste bestelling"-kaart door "Open orders"; de laatste-besteldatum
+verschijnt nu als subtitel onder de # bestellingen-kaart.
+
+Sub-labels onder de stat-kaarten verduidelijken de scheiding:
+- Omzet → "Gefactureerd"
+- Open orders → "Nog te factureren"
+
+Synthetische klanten (uit bestellingen zonder klantkaart) hebben per
+definitie nog geen factuur, dus hun Omzet is 0 en hun Open orders =
+bruto van alle niet-geannuleerde bestellingen.
+
+### Fixed — "Niet-opgeslagen wijzigingen" verscheen onterecht
+
+Klikken op "+ Nieuwe klant" of een synth-rij "Uit bestelling" markeerde
+het formulier meteen als `dirty=true` zodat de Save-knop direct
+beschikbaar was. Maar daardoor verscheen óók de
+"Niet-opgeslagen wijzigingen, toch terug?"-confirm bij het direct
+terugklikken — terwijl je nog niets had aangepast. Nu wordt `dirty`
+alleen op `true` gezet wanneer de gebruiker echt iets in een veld
+typt (via `update()`). De Save-knop blijft beschikbaar dankzij een
+aangepaste enable-conditie: ingeschakeld zodra er een naam ingevuld is
+EN (nieuwe klant OF synth-source OF echt gewijzigd).
+
+### Files
+
+- `src/pages/KlantenPage.tsx` — `statsPerKlant.omzet` is nu strikt
+  facturen; nieuwe `openOrders`-veld bevat de pipeline. Idem in
+  `syntheticKlanten._stats`. Stat-cards (lijst + detail) en
+  lijst-tabel uitgebreid met Open orders. `openNew` en
+  `openNewFromSynth` zetten `dirty` op false; Save-knop's
+  disabled-conditie aangepast.
+- `src/i18n/{nl,en,de,fr,es}.json` — 7 nieuwe sleutels:
+  `klanten_stat_open_orders`, `_totaal`, `klanten_omzet_sub`,
+  `klanten_open_orders_sub`, `klanten_omzet_tooltip`,
+  `klanten_open_orders_tooltip`.
+
+---
+
 ## [1.9.92] — 2026-05-21
 
 ### Fixed — Geannuleerde bestellingen tellen niet mee in omzet
