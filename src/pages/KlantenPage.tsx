@@ -63,6 +63,14 @@ const KlantenPage: React.FC<Props> = ({
 }) => {
   const [view, setView] = React.useState<'list'|'detail'>('list')
   const [selectedId, setSelectedId] = React.useState<number|null>(null)
+  // Synthetische-source-key: als de gebruiker via een "Uit bestelling"-rij in
+  // de lijst is binnengekomen, onthouden we welke synth-groep dat was. Bij
+  // opslaan koppelen we de bestellingen uit die groep — óók als de gebruiker
+  // het e-mailadres in het formulier intussen heeft aangepast (bv. typo
+  // gecorrigeerd). Zonder deze key zou de auto-koppel-logica naar het nieuwe
+  // adres zoeken, niets vinden, en de synth-rij naast de nieuwe klantkaart
+  // laten staan.
+  const [synthSourceKey, setSynthSourceKey] = React.useState<string | null>(null)
   const [search, setSearch] = React.useState('')
   const [form, setForm] = React.useState(emptyForm())
   const [dirty, setDirty] = React.useState(false)
@@ -72,6 +80,7 @@ const KlantenPage: React.FC<Props> = ({
   // Per-klant statistieken (omzet, openstaand, # bestellingen, laatste datum).
   // Match via klant_id, en als fallback via case-insensitive email-match — zo
   // worden ook losse WC-orders met klant_email maar zonder klant_id geteld.
+  // Geannuleerde bestellingen tellen niet mee voor de omzet.
   const statsPerKlant = React.useMemo(() => {
     const map: Record<number, {bestellingen: any[], facturen: any[], omzet: number, openstaand: number, laatsteDatum: string}> = {}
     klanten.forEach(k => {
@@ -82,7 +91,9 @@ const KlantenPage: React.FC<Props> = ({
       const bestellingenK = bestellingen.filter(matchOrder)
       const facturenK = verkoopFacturen.filter(matchFactuur)
       const omzet = facturenK.reduce((s: number, f: any) => s + (f.bruto || 0), 0)
-        + bestellingenK.filter((b: any) => !facturenK.some((f: any) => f.bestelling_id === b.id))
+        + bestellingenK
+            .filter((b: any) => b.status !== 'geannuleerd'
+              && !facturenK.some((f: any) => f.bestelling_id === b.id))
             .reduce((s: number, b: any) => s + orderBruto(b), 0)
       const openstaand = facturenK
         .filter((f: any) => f.status !== 'betaald' && f.status !== 'credit')
@@ -132,7 +143,9 @@ const KlantenPage: React.FC<Props> = ({
       groups.get(key)._matchedOrders.push(b)
     })
     return Array.from(groups.values()).map((s: any) => {
-      const omzet = s._matchedOrders.reduce((sum: number, b: any) => sum + orderBruto(b), 0)
+      const omzet = s._matchedOrders
+        .filter((b: any) => b.status !== 'geannuleerd')
+        .reduce((sum: number, b: any) => sum + orderBruto(b), 0)
       const laatsteDatum = s._matchedOrders.reduce((d: string, b: any) =>
         (b.datum || '') > d ? b.datum : d, '')
       return {...s, _stats: {bestellingen: s._matchedOrders, facturen: [], omzet, openstaand: 0, laatsteDatum}}
@@ -166,6 +179,7 @@ const KlantenPage: React.FC<Props> = ({
 
   const openDetail = (k: any) => {
     setSelectedId(k.id)
+    setSynthSourceKey(null)
     setForm({
       naam: k.naam || '', klantnummer: k.klantnummer || '',
       klant_type: k.klant_type || (k.bedrijf ? 'zakelijk' : 'prive'),
@@ -182,6 +196,7 @@ const KlantenPage: React.FC<Props> = ({
 
   const openNew = () => {
     setSelectedId(null)
+    setSynthSourceKey(null)
     setForm(emptyForm())
     setDirty(true)
     setView('detail')
@@ -191,6 +206,7 @@ const KlantenPage: React.FC<Props> = ({
   // klantkaart) — formuliervelden komen uit de bestelling.
   const openNewFromSynth = (synth: any) => {
     setSelectedId(null)
+    setSynthSourceKey(synth._synthKey)
     setForm({
       naam: synth.naam || '',
       klantnummer: '',
@@ -215,6 +231,7 @@ const KlantenPage: React.FC<Props> = ({
     if (dirty && !confirm(t('klanten_unsaved_confirm'))) return
     setView('list')
     setSelectedId(null)
+    setSynthSourceKey(null)
     setDirty(false)
   }
 
@@ -241,33 +258,57 @@ const KlantenPage: React.FC<Props> = ({
     // Strip undefined-keys
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
 
+    let savedKlantId: number
+    let oldEmail = ''
     if (selectedId !== null) {
+      oldEmail = (selected?.email || '')
       setKlanten((prev: any[]) => prev.map((k: any) => k.id === selectedId ? {...k, ...payload} : k))
       logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:selectedId, actie:'gewijzigd', omschrijving:payload.naam})
+      savedKlantId = selectedId
     } else {
-      const nid = newId(klanten || [])
-      setKlanten((prev: any[]) => [...(prev||[]), {id: nid, ...payload}])
-      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:nid, actie:'aangemaakt', omschrijving:payload.naam})
-      setSelectedId(nid)
-      // Auto-koppel: als de nieuwe klant een e-mailadres heeft, link alle
-      // bestaande ongekoppelde bestellingen met datzelfde adres aan deze
-      // klant. Dat is precies wat de gebruiker bedoelt als hij een
-      // synthetische klant omzet naar een echte klantkaart.
-      if (payload.email) {
-        const emailLc = payload.email.toLowerCase()
-        const toLink = bestellingen.filter((b: any) =>
-          !b.klant_id && b.klant_email && b.klant_email.toLowerCase() === emailLc
-        )
-        if (toLink.length > 0) {
-          const ids = new Set(toLink.map((b: any) => b.id))
-          setBestellingen((prev: any[]) => prev.map((b: any) =>
-            ids.has(b.id) ? {...b, klant_id: nid} : b
-          ))
-          logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:nid, actie:'gewijzigd',
-            omschrijving:`${toLink.length} bestelling(en) automatisch gekoppeld via e-mail`})
-        }
-      }
+      savedKlantId = newId(klanten || [])
+      setKlanten((prev: any[]) => [...(prev||[]), {id: savedKlantId, ...payload}])
+      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:savedKlantId, actie:'aangemaakt', omschrijving:payload.naam})
+      setSelectedId(savedKlantId)
     }
+
+    // Auto-koppel ongekoppelde bestellingen aan deze klant. Drie matching-
+    // strategieën — alle drie zijn nodig om edge-cases af te dekken:
+    //
+    //   1. Synth-source-key: als de gebruiker via "Uit bestelling" is
+    //      binnengekomen, koppel exact die bestellingen — onafhankelijk
+    //      van wat de gebruiker met het e-mailveld doet. Dit fixt: e-mail
+    //      typo corrigeren maakte tot nu een nieuwe klant naast de
+    //      bestaande synth-rij.
+    //
+    //   2. Nieuwe e-mail: koppel ook bestellingen die exact het zojuist
+    //      opgeslagen adres hebben (handig bij handmatig aanmaken zonder
+    //      synth-flow).
+    //
+    //   3. Oude e-mail (bij bewerken bestaande klant): bestellingen die
+    //      via email-fallback aan deze klant gematcht waren, krijgen nu
+    //      hun klant_id zodat ze niet als "ongekoppeld" achterblijven
+    //      wanneer de gebruiker het e-mailadres aanpast.
+    const newEmailLc = (payload.email || '').toLowerCase()
+    const oldEmailLc = oldEmail.toLowerCase()
+    const toLink = bestellingen.filter((b: any) => {
+      if (b.klant_id != null) return false
+      const beLc = (b.klant_email || '').toLowerCase()
+      const beNameKey = (b.klant_naam || '').trim().toLowerCase()
+      if (newEmailLc && beLc === newEmailLc) return true
+      if (oldEmailLc && oldEmailLc !== newEmailLc && beLc === oldEmailLc) return true
+      if (synthSourceKey && (beLc || beNameKey) === synthSourceKey) return true
+      return false
+    })
+    if (toLink.length > 0) {
+      const ids = new Set(toLink.map((b: any) => b.id))
+      setBestellingen((prev: any[]) => prev.map((b: any) =>
+        ids.has(b.id) ? {...b, klant_id: savedKlantId} : b
+      ))
+      logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:savedKlantId, actie:'gewijzigd',
+        omschrijving:`${toLink.length} bestelling(en) automatisch gekoppeld`})
+    }
+    setSynthSourceKey(null)
     setDirty(false)
   }
 
