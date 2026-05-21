@@ -4,6 +4,61 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.91] — 2026-05-21
+
+### Fixed — Nieuwe bestellingen tonen nu automatisch een (synthetische) klant
+
+In 1.9.90 verscheen een klant pas in de Klanten-lijst zodra er een
+klantkaart was aangemaakt. Bestellingen die binnenkwamen met alleen
+`klant_naam`/`klant_email` (zoals WooCommerce-imports en handmatige
+orders) bleven dus onzichtbaar in Klanten tot de gebruiker zelf op
+"+ Nieuwe klant" klikte. Dat is precies wat de feedback "ik heb een
+nieuwe bestelling die staat al bij orders maar niet bij klanten"
+beschreef.
+
+**Oplossing**: de Klanten-lijst toont nu ook **synthetische klantkaarten**
+voor elke unieke `klant_email` (of, als die ontbreekt, `klant_naam`) uit
+bestellingen die nog niet aan een echte klantkaart zijn gekoppeld.
+
+- Synthetische rijen krijgen een lichtblauwe achtergrond + badge
+  **"Uit bestelling"** zodat de gebruiker direct ziet dat dit nog geen
+  echte klantkaart is.
+- Per synthetische klant worden alle matchende bestellingen geteld en
+  hun bruto-totaal getoond als omzet — dezelfde stats als bij echte
+  klanten.
+- Klikken op een synthetische rij opent het detail-formulier met de
+  klantgegevens uit de bestelling al ingevuld. De gebruiker kan ze
+  controleren/aanpassen (bijv. een typo in het e-mailadres herstellen)
+  en op opslaan worden:
+  1. een echte klantkaart aangemaakt
+  2. ALLE bestellingen met dat e-mailadres automatisch aan de nieuwe
+     klant gekoppeld (`klant_id` ingevuld)
+- Bovenaan de lijst staat een korte uitleg-banner wanneer er
+  synthetische klanten zijn, en het stat-cijfer "Totaal klanten" toont
+  `{echte}+{synth}` zodat duidelijk is dat er nog werk te doen is.
+- De detail-view toont nu óók bij het aanmaken van een nieuwe klant een
+  preview "{n} bestaande bestelling(en) worden automatisch gekoppeld bij
+  opslaan" — vroeger zag je dat alleen voor bestaande klanten.
+
+**Omzet-berekening uitgebreid**: voor bestaande klanten telt nu ook het
+bruto-totaal van bestellingen die nog niet aan een factuur gekoppeld
+zijn (pending orders). Hiermee zie je direct het effect van een nieuwe
+order op je klant-pipeline, zonder te wachten tot de factuur is gemaakt.
+
+### Files
+
+- `src/pages/KlantenPage.tsx` — `syntheticKlanten` useMemo (groepeert
+  ongekoppelde bestellingen op e-mail/naam), `openNewFromSynth()` om het
+  formulier voor te vullen, auto-koppel-logica in `save()` voor elke
+  nieuwe klant met e-mail, lijst-renderer met conditional `_synthetic`
+  styling, en banner met `klanten_synth_explainer`. Nieuwe helper
+  `orderBruto()` voor de pipeline-omzet.
+- `src/i18n/{nl,en,de,fr,es}.json` — 3 nieuwe sleutels:
+  `klanten_synth_badge`, `klanten_synth_explainer`,
+  `klanten_unlinked_hint_new`.
+
+---
+
 ## [1.9.90] — 2026-05-21
 
 ### Added — Klanten-pagina met orderhistorie

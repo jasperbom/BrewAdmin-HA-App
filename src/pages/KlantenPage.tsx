@@ -52,6 +52,10 @@ const emptyForm = () => ({
   notities: '',
 })
 
+// Bruto-totaal van een bestelling op basis van de regels (aantal × prijs × (1 + btw%)).
+const orderBruto = (b: any): number => (b.regels || []).reduce(
+  (s: number, r: any) => s + (r.aantal || 0) * (r.prijs_per_stuk || 0) * (1 + (r.btw_pct || 0) / 100), 0)
+
 const KlantenPage: React.FC<Props> = ({
   klanten, setKlanten, bestellingen, setBestellingen, verkoopFacturen,
   breweryDetails, smtpCreds, factuurLogo=null, logo=null, appName='',
@@ -78,6 +82,8 @@ const KlantenPage: React.FC<Props> = ({
       const bestellingenK = bestellingen.filter(matchOrder)
       const facturenK = verkoopFacturen.filter(matchFactuur)
       const omzet = facturenK.reduce((s: number, f: any) => s + (f.bruto || 0), 0)
+        + bestellingenK.filter((b: any) => !facturenK.some((f: any) => f.bestelling_id === b.id))
+            .reduce((s: number, b: any) => s + orderBruto(b), 0)
       const openstaand = facturenK
         .filter((f: any) => f.status !== 'betaald' && f.status !== 'credit')
         .reduce((s: number, f: any) => s + (f.bruto || 0), 0)
@@ -88,23 +94,72 @@ const KlantenPage: React.FC<Props> = ({
     return map
   }, [klanten, bestellingen, verkoopFacturen])
 
-  // Filtered/sorted klanten voor de lijstweergave.
+  // Synthetische klantkaarten uit bestellingen die nog niet aan een
+  // klantkaart gekoppeld zijn. Worden gegroepeerd op e-mail (of, als die er
+  // niet is, op naam) — zo verschijnt een gloednieuwe WC-bestelling met
+  // klant_email maar zonder klant_id automatisch als "Nog niet opgeslagen"
+  // entry in de Klanten-lijst, en kan de gebruiker met één klik een echte
+  // klantkaart aanmaken.
+  const syntheticKlanten = React.useMemo(() => {
+    const realIds = new Set(klanten.map((k: any) => k.id))
+    const realEmails = new Set(
+      klanten.map((k: any) => (k.email || '').toLowerCase()).filter(Boolean)
+    )
+    const groups = new Map<string, any>()
+    bestellingen.forEach((b: any) => {
+      // Reeds gekoppeld aan een bestaande klantkaart? Overslaan.
+      if (b.klant_id != null && realIds.has(b.klant_id)) return
+      const emailLc = (b.klant_email || '').toLowerCase()
+      if (emailLc && realEmails.has(emailLc)) return
+      const key = emailLc || (b.klant_naam || '').trim().toLowerCase()
+      if (!key) return
+      if (!groups.has(key)) {
+        groups.set(key, {
+          _synthetic: true,
+          id: `synth:${key}`,
+          _synthKey: key,
+          naam: b.klant_naam || '',
+          bedrijf: b.klant_bedrijf || '',
+          email: b.klant_email || '',
+          straat: b.klant_straat || '',
+          huisnummer: b.klant_huisnummer || '',
+          postcode: b.klant_postcode || '',
+          stad: b.klant_stad || '',
+          klant_type: b.klant_type || (b.klant_bedrijf ? 'zakelijk' : 'prive'),
+          _matchedOrders: [] as any[],
+        })
+      }
+      groups.get(key)._matchedOrders.push(b)
+    })
+    return Array.from(groups.values()).map((s: any) => {
+      const omzet = s._matchedOrders.reduce((sum: number, b: any) => sum + orderBruto(b), 0)
+      const laatsteDatum = s._matchedOrders.reduce((d: string, b: any) =>
+        (b.datum || '') > d ? b.datum : d, '')
+      return {...s, _stats: {bestellingen: s._matchedOrders, facturen: [], omzet, openstaand: 0, laatsteDatum}}
+    })
+  }, [klanten, bestellingen])
+
+  // Filtered/sorted klanten voor de lijstweergave (echt + synthetisch).
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase()
-    const list = q ? klanten.filter((k: any) =>
+    const all = [...klanten, ...syntheticKlanten]
+    const list = q ? all.filter((k: any) =>
       (k.naam || '').toLowerCase().includes(q)
       || (k.bedrijf || '').toLowerCase().includes(q)
       || (k.email || '').toLowerCase().includes(q)
       || (k.telefoon || '').toLowerCase().includes(q)
       || (k.klantnummer || '').toLowerCase().includes(q)
-    ) : klanten
+    ) : all
+    const omzetVan = (k: any) =>
+      k._synthetic ? (k._stats?.omzet || 0) : (statsPerKlant[k.id]?.omzet ?? 0)
     return [...list].sort((a: any, b: any) => {
-      const so = statsPerKlant[b.id]?.omzet ?? 0
-      const sa = statsPerKlant[a.id]?.omzet ?? 0
+      // Synthetisch onderaan, echt eerst
+      if (!!a._synthetic !== !!b._synthetic) return a._synthetic ? 1 : -1
+      const so = omzetVan(b), sa = omzetVan(a)
       if (so !== sa) return so - sa
       return (a.naam || '').localeCompare(b.naam || '')
     })
-  }, [klanten, search, statsPerKlant])
+  }, [klanten, syntheticKlanten, search, statsPerKlant])
 
   const selected = selectedId !== null ? klanten.find((k: any) => k.id === selectedId) : null
   const selectedStats = selectedId !== null ? statsPerKlant[selectedId] : null
@@ -128,6 +183,30 @@ const KlantenPage: React.FC<Props> = ({
   const openNew = () => {
     setSelectedId(null)
     setForm(emptyForm())
+    setDirty(true)
+    setView('detail')
+  }
+
+  // Maak klantkaart aan uit een synthetische entry (bestelling zonder
+  // klantkaart) — formuliervelden komen uit de bestelling.
+  const openNewFromSynth = (synth: any) => {
+    setSelectedId(null)
+    setForm({
+      naam: synth.naam || '',
+      klantnummer: '',
+      klant_type: synth.klant_type || 'prive',
+      bedrijf: synth.bedrijf || '',
+      straat: synth.straat || '',
+      huisnummer: synth.huisnummer || '',
+      postcode: synth.postcode || '',
+      stad: synth.stad || '',
+      btw_nummer: '',
+      kvk_nummer: '',
+      email: synth.email || '',
+      telefoon: '',
+      betalingstermijn: '',
+      notities: '',
+    })
     setDirty(true)
     setView('detail')
   }
@@ -170,6 +249,24 @@ const KlantenPage: React.FC<Props> = ({
       setKlanten((prev: any[]) => [...(prev||[]), {id: nid, ...payload}])
       logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:nid, actie:'aangemaakt', omschrijving:payload.naam})
       setSelectedId(nid)
+      // Auto-koppel: als de nieuwe klant een e-mailadres heeft, link alle
+      // bestaande ongekoppelde bestellingen met datzelfde adres aan deze
+      // klant. Dat is precies wat de gebruiker bedoelt als hij een
+      // synthetische klant omzet naar een echte klantkaart.
+      if (payload.email) {
+        const emailLc = payload.email.toLowerCase()
+        const toLink = bestellingen.filter((b: any) =>
+          !b.klant_id && b.klant_email && b.klant_email.toLowerCase() === emailLc
+        )
+        if (toLink.length > 0) {
+          const ids = new Set(toLink.map((b: any) => b.id))
+          setBestellingen((prev: any[]) => prev.map((b: any) =>
+            ids.has(b.id) ? {...b, klant_id: nid} : b
+          ))
+          logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:nid, actie:'gewijzigd',
+            omschrijving:`${toLink.length} bestelling(en) automatisch gekoppeld via e-mail`})
+        }
+      }
     }
     setDirty(false)
   }
@@ -213,9 +310,14 @@ const KlantenPage: React.FC<Props> = ({
 
   if (view === 'detail') {
     const emailValid = !form.email || EMAIL_RE.test(form.email.trim())
-    const ongekoppeldeOrders = selected?.email
+    // Bij bestaande klant: gebruik de opgeslagen e-mail (klanten zonder e-mail
+    // hebben geen orders om te koppelen). Bij een nieuwe klant: kijk in het
+    // formulier — zo ziet de gebruiker direct hoeveel orders straks gekoppeld
+    // worden op opslaan.
+    const checkEmail = (selectedId !== null ? selected?.email : form.email.trim()) || ''
+    const ongekoppeldeOrders = checkEmail
       ? bestellingen.filter((b: any) => !b.klant_id && b.klant_email
-          && b.klant_email.toLowerCase() === selected.email.toLowerCase()).length
+          && b.klant_email.toLowerCase() === checkEmail.toLowerCase()).length
       : 0
 
     return (
@@ -330,10 +432,16 @@ const KlantenPage: React.FC<Props> = ({
         </div>
 
         {/* Koppel-melding voor ongekoppelde orders */}
-        {selectedId !== null && ongekoppeldeOrders > 0 && (
+        {ongekoppeldeOrders > 0 && (
           <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-center justify-between gap-3 flex-wrap">
-            <div>{t('klanten_unlinked_hint').replace('{n}', String(ongekoppeldeOrders))}</div>
-            <Btn v="blue" onClick={koppelOrdersOpEmail}>{t('klanten_link_orders_btn')}</Btn>
+            <div>
+              {selectedId !== null
+                ? t('klanten_unlinked_hint').replace('{n}', String(ongekoppeldeOrders))
+                : t('klanten_unlinked_hint_new').replace('{n}', String(ongekoppeldeOrders))}
+            </div>
+            {selectedId !== null && (
+              <Btn v="blue" onClick={koppelOrdersOpEmail}>{t('klanten_link_orders_btn')}</Btn>
+            )}
           </div>
         )}
 
@@ -464,7 +572,9 @@ const KlantenPage: React.FC<Props> = ({
   // ── LIJSTWEERGAVE ─────────────────────────────────────────────────────────
 
   const totaalOmzet = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.omzet || 0), 0)
+    + syntheticKlanten.reduce((s: number, k: any) => s + (k._stats?.omzet || 0), 0)
   const totaalOpenstaand = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.openstaand || 0), 0)
+  const synthCount = syntheticKlanten.length
 
   return (
     <div>
@@ -473,10 +583,17 @@ const KlantenPage: React.FC<Props> = ({
         <Btn onClick={openNew}>+ {t('klanten_new')}</Btn>
       </div>
 
+      {synthCount > 0 && (
+        <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-center gap-2 flex-wrap">
+          <span>ℹ</span>
+          <span>{t('klanten_synth_explainer').replace('{n}', String(synthCount))}</span>
+        </div>
+      )}
+
       {/* Stats-overzicht */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
-          <div className="text-2xl font-bold text-gray-800">{klanten.length}</div>
+          <div className="text-2xl font-bold text-gray-800">{klanten.length}{synthCount > 0 && <span className="text-base text-blue-600 ml-1">+{synthCount}</span>}</div>
           <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_totaal')}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
@@ -516,17 +633,27 @@ const KlantenPage: React.FC<Props> = ({
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((k: any) => {
-                  const s = statsPerKlant[k.id] || {bestellingen: [], omzet: 0, openstaand: 0, laatsteDatum: ''}
+                  const isSynth = !!k._synthetic
+                  const s = isSynth
+                    ? k._stats
+                    : (statsPerKlant[k.id] || {bestellingen: [], omzet: 0, openstaand: 0, laatsteDatum: ''})
                   return (
-                    <tr key={k.id} className="hover:bg-gray-50 cursor-pointer transition-colors"
-                      onClick={() => openDetail(k)}>
+                    <tr key={k.id} className={`hover:bg-gray-50 cursor-pointer transition-colors ${isSynth ? 'bg-blue-50/30' : ''}`}
+                      onClick={() => isSynth ? openNewFromSynth(k) : openDetail(k)}>
                       <td className="px-4 py-2.5">
-                        <div className="font-medium text-gray-800 flex items-center gap-2">
+                        <div className="font-medium text-gray-800 flex items-center gap-2 flex-wrap">
                           {s.openstaand > 0 && (
                             <span className="inline-block w-2 h-2 bg-orange-500 rounded-full"
                               title={t('tooltip_expired_invoices')}/>
                           )}
-                          {k.naam || t('lbl_naamloos')}
+                          <span className={isSynth ? 'italic text-gray-600' : ''}>
+                            {k.naam || t('lbl_naamloos')}
+                          </span>
+                          {isSynth && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 uppercase tracking-wide">
+                              {t('klanten_synth_badge')}
+                            </span>
+                          )}
                         </div>
                         {k.bedrijf && <div className="text-xs text-gray-500 mt-0.5">{k.bedrijf}</div>}
                       </td>
