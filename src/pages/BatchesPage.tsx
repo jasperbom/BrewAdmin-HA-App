@@ -552,6 +552,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   // nieuwe batches vraagt de app expliciet welke geïmporteerd mogen worden.
   const [bfImportKandidaten, setBfImportKandidaten] = useState<any[] | null>(null)
   const [bfImportSelectie, setBfImportSelectie] = useState<Record<string, boolean>>({})
+  // Wanneer een definitief ABV is bevestigd, is het invoerveld vergrendeld.
+  // De gebruiker kan via 'Bewerken' opnieuw bewerken; deze flag onthoudt of
+  // de edit-mode actief is voor de geselecteerde batch.
+  const [abvBewerkOpen, setAbvBewerkOpen] = useState(false)
+  // Reset edit-mode bij wisselen van batch.
+  React.useEffect(() => { setAbvBewerkOpen(false) }, [sel])
   const [takenIngeklapt, setTakenIngeklapt] = useStore('batches_taken_ingeklapt', true)
   const [takenGroepIngeklapt, setTakenGroepIngeklapt] = useStore('batches_taken_groep_ingeklapt', {} as Record<string, boolean>)
   const [ccpMetingForm, setCcpMetingForm] = useState<any>(null)
@@ -1377,7 +1383,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     const abvVal = Number(selB?.ABV || 0)
     if (abvVal <= 0) {
       if (!confirm(t('warn_afvullen_no_abv'))) return
-    } else {
+    } else if (!selB?.abv_definitief) {
+      // Alleen waarschuwen als ABV nog niet bevestigd is als definitief.
       const heeftFg = Number(selB?.FG || 0) > 0
       const heeftSgMeting = (gistMetingen||[]).some((m: any) => m.batch_id === selB?.id && Number(m.sg) > 0)
       if (!heeftFg && !heeftSgMeting) {
@@ -1587,19 +1594,55 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
               {/* Gistingsvoortgang — pas zichtbaar zodra de brouwdag voorbij
                   is. Voorkomt dat OG/FG-schattingen uit Brewfather al een
-                  voortgang suggereren terwijl de batch nog 'Gepland' staat. */}
+                  voortgang suggereren terwijl de batch nog 'Gepland' staat.
+                  Het ABV-invoerveld zit hier ingebed, maar verschijnt pas
+                  vanaf de Conditioneren-fase (zie verder hieronder). */}
               {(() => {
                 const sgPct = sgProgress(selB)
                 const latestM = latestMeting(selB.id)
                 const liveABV = berekenLiveABV(selB, gistMetingen || [])
                 const hasAccijnsABV = Number(selB.ABV) > 0
-                if (sgPct === null && !latestM && liveABV.abv === 0 && !hasAccijnsABV) return null
+                // ABV-invoer is alleen zichtbaar vanaf Conditioneren. Na
+                // bevestiging (of bij bestaande batches in Afgevuld/Gesloten
+                // met een ABV) wordt het veld vergrendeld weergegeven; via
+                // 'Bewerken' kan de gebruiker corrigeren.
+                const abvFases = ['Conditioneren', 'Afgevuld', 'Verpakt', 'Gesloten']
+                const toonAbvInput = abvFases.includes(selB.status)
+                // Legacy: batches met ABV maar zonder definitief-flag die al
+                // verder zijn dan Conditioneren behandelen we als definitief.
+                const isDefinitief = !!selB.abv_definitief ||
+                  (hasAccijnsABV && ['Afgevuld', 'Verpakt', 'Gesloten'].includes(selB.status))
+                if (sgPct === null && !latestM && liveABV.abv === 0 && !toonAbvInput) return null
                 const inTankFases = ['Vergisten', 'Conditioneren', 'Afgevuld', 'Verpakt', 'Gesloten']
                 if (!inTankFases.includes(selB.status) && !selB.brouwdag_voltooid) return null
                 const setAccijnsABV = (waarde: string) => {
                   const v = waarde === '' ? undefined : Number(waarde)
                   setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ABV: v} : b))
                 }
+                const bevestigDefinitief = () => {
+                  const val = Number(selB.ABV)
+                  if (!val || val <= 0) { alert(t('batch_abv_definitief_geen_waarde')); return }
+                  setBat((prev: any[]) => prev.map((b: any) =>
+                    b.id === selB.id ? {...b, ABV: val, abv_definitief: true} : b
+                  ))
+                  setAbvBewerkOpen(false)
+                  addLog({type: 'abv_definitief', batch_id: selB.id, referentie: `${val.toFixed(2)}%`})
+                  logAudit(auditLog, setAuditLog, {
+                    entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd',
+                    velden: {abv_definitief: {oud: !!selB.abv_definitief, nieuw: true}, ABV: {oud: selB.ABV, nieuw: val}},
+                    omschrijving: t('audit_abv_definitief').replace('{abv}', val.toFixed(2)),
+                  })
+                }
+                const startBewerken = () => {
+                  if (!confirm(t('batch_abv_bewerk_confirm'))) return
+                  setAbvBewerkOpen(true)
+                }
+                // Edit-mode is actief wanneer:
+                //  • status = Conditioneren én nog niet definitief; of
+                //  • gebruiker heeft expliciet op 'Bewerken' geklikt.
+                const inEdit = toonAbvInput && (
+                  (selB.status === 'Conditioneren' && !isDefinitief) || abvBewerkOpen
+                )
                 return (
                   <div className="px-4 py-3 border-b">
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -1631,65 +1674,100 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       </div>
                     )}
 
-                    {/* ABV — berekend + invoer voor accijns */}
-                    <div className="mt-3 pt-3 border-t flex flex-wrap items-end gap-4">
-                      {/* Berekend ABV uit SG-metingen */}
-                      <div className="flex-1 min-w-[12rem]">
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                          {t('batch_abv_berekend')}
-                        </div>
-                        {liveABV.abv > 0 ? (
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-xl font-semibold" style={{color: 'var(--t-accent)'}}>
-                              {liveABV.abv.toFixed(2)}%
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {t('batch_abv_op_basis_van')
-                                .replace('{og}', liveABV.og != null ? Number(liveABV.og).toFixed(3) : '—')
-                                .replace('{fg}', liveABV.fg != null ? Number(liveABV.fg).toFixed(3) : '—')}
-                            </span>
-                            {!liveABV.isFinal && (
-                              <span className="text-xs text-gray-400 italic">{t('batch_abv_voorlopig')}</span>
-                            )}
+                    {/* ABV — berekend + (vanaf Conditioneren) invoer voor accijns */}
+                    {(liveABV.abv > 0 || toonAbvInput) && (
+                      <div className="mt-3 pt-3 border-t flex flex-wrap items-end gap-4">
+                        {/* Berekend ABV uit SG-metingen */}
+                        <div className="flex-1 min-w-[12rem]">
+                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                            {t('batch_abv_berekend')}
                           </div>
-                        ) : (
-                          <div className="text-xs text-gray-400 italic">{t('batch_abv_geen_data')}</div>
-                        )}
-                      </div>
-
-                      {/* Invoerveld voor accijns-ABV */}
-                      <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                          {t('batch_abv_accijns_label')}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <div className="relative">
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="50"
-                              value={selB.ABV ?? ''}
-                              onChange={e => setAccijnsABV(e.target.value)}
-                              placeholder="5.0"
-                              className="border border-gray-300 rounded px-2 py-1.5 pr-7 text-sm t-input w-24 text-right font-mono"
-                            />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
-                          </div>
-                          {liveABV.abv > 0 && Math.abs(Number(selB.ABV || 0) - liveABV.abv) > 0.01 && (
-                            <Btn
-                              s="sm"
-                              v="secondary"
-                              onClick={() => setAccijnsABV(liveABV.abv.toFixed(2))}
-                              title={t('batch_abv_overnemen_tooltip')}
-                            >
-                              {t('batch_abv_overnemen')}
-                            </Btn>
+                          {liveABV.abv > 0 ? (
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-xl font-semibold" style={{color: 'var(--t-accent)'}}>
+                                {liveABV.abv.toFixed(2)}%
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {t('batch_abv_op_basis_van')
+                                  .replace('{og}', liveABV.og != null ? Number(liveABV.og).toFixed(3) : '—')
+                                  .replace('{fg}', liveABV.fg != null ? Number(liveABV.fg).toFixed(3) : '—')}
+                              </span>
+                              {!liveABV.isFinal && (
+                                <span className="text-xs text-gray-400 italic">{t('batch_abv_voorlopig')}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-400 italic">{t('batch_abv_geen_data')}</div>
                           )}
                         </div>
-                        <div className="text-[11px] text-gray-400 mt-1">{t('batch_abv_accijns_hint')}</div>
+
+                        {/* ABV gereed product — verschijnt vanaf Conditioneren */}
+                        {toonAbvInput && (
+                          <div className="flex flex-col">
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-2">
+                              <span>{t('batch_abv_accijns_label')}</span>
+                              {isDefinitief && !inEdit && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium normal-case tracking-normal">
+                                  <span>✓</span>{t('batch_abv_definitief_badge')}
+                                </span>
+                              )}
+                            </label>
+                            {isDefinitief && !inEdit ? (
+                              <div className="flex items-center gap-2">
+                                <div className="px-3 py-1.5 rounded border border-green-300 bg-green-50 text-green-800 font-mono text-sm w-24 text-right">
+                                  {hasAccijnsABV ? Number(selB.ABV).toFixed(2) : '—'}<span className="text-xs ml-0.5">%</span>
+                                </div>
+                                <Btn s="sm" v="secondary" onClick={startBewerken}>
+                                  {t('batch_abv_bewerk_btn')}
+                                </Btn>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0"
+                                      max="50"
+                                      value={selB.ABV ?? ''}
+                                      onChange={e => setAccijnsABV(e.target.value)}
+                                      placeholder="5.0"
+                                      className="border border-gray-300 rounded px-2 py-1.5 pr-7 text-sm t-input w-24 text-right font-mono"
+                                    />
+                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
+                                  </div>
+                                  {liveABV.abv > 0 && Math.abs(Number(selB.ABV || 0) - liveABV.abv) > 0.01 && (
+                                    <Btn
+                                      s="sm"
+                                      v="secondary"
+                                      onClick={() => setAccijnsABV(liveABV.abv.toFixed(2))}
+                                      title={t('batch_abv_overnemen_tooltip')}
+                                    >
+                                      {t('batch_abv_overnemen')}
+                                    </Btn>
+                                  )}
+                                  <Btn
+                                    s="sm"
+                                    v="green"
+                                    onClick={bevestigDefinitief}
+                                    disabled={!hasAccijnsABV}
+                                  >
+                                    {t('batch_abv_bevestig_btn')}
+                                  </Btn>
+                                  {abvBewerkOpen && isDefinitief && (
+                                    <Btn s="sm" v="secondary" onClick={() => setAbvBewerkOpen(false)}>
+                                      {t('btn_cancel')}
+                                    </Btn>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-gray-400 mt-1">{t('batch_abv_accijns_hint')}</div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               })()}

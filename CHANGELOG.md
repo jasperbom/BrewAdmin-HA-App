@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.86] — 2026-05-21
+
+### Changed — Definitief ABV gereed product
+
+Het invoerveld "ABV gereed product" was tot nu toe altijd zichtbaar zodra de
+brouwdag voorbij was en gaf geen feedback wanneer de waarde definitief
+gemaakt werd. Dat veld is nu een expliciet bevestigingsproces:
+
+- Het veld verschijnt pas vanaf de fase **Conditioneren**. Daarvoor is
+  geen ABV-invoer zichtbaar (de berekende ABV uit metingen blijft wel
+  zichtbaar tijdens Vergisten).
+- Tijdens Conditioneren staat het veld open met een **Bevestig
+  definitief**-knop. Na bevestiging wordt het ABV vastgelegd als
+  `abv_definitief: true` en is dit de basis voor accijns en afvulling.
+- Daarna toont het veld een groene **Definitief**-badge en de waarde
+  read-only in een groen kader. Een **Bewerken**-knop ontgrendelt het
+  veld weer (met confirm-dialog), zodat rekenfouten gecorrigeerd kunnen
+  worden.
+- Voor batches die al in Afgevuld/Gesloten staan en al een ABV-waarde
+  hebben (legacy data zonder de definitief-flag), behandelt de UI de
+  bestaande waarde als definitief.
+- De voor-afvul-waarschuwing "ABV is vermoedelijk een schatting" wordt
+  overgeslagen wanneer `abv_definitief` op true staat.
+
+### Files
+
+- `src/pages/BatchesPage.tsx` — ABV-blok herschreven met definitief/edit-
+  toestanden, `bevestigDefinitief()`/`startBewerken()` handlers, en
+  `doAfvullen()` skipt de schatting-waarschuwing voor bevestigde ABVs.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels voor de bevestig-,
+  bewerk- en badge-labels plus de bijbehorende confirm-tekst.
+
+---
+
 ## [1.9.85] — 2026-05-21
 
 ### Changed — Eindfase batch springt naar Financieel-tabblad
