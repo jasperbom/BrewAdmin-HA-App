@@ -545,6 +545,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [haSyncing, setHaSyncing] = useState(false)
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
+  // Importpopup: kandidaten (nieuwe BF-batches die nog niet lokaal bestaan) en
+  // selectie-state. Bestaande batches worden direct geüpdatet; alleen voor
+  // nieuwe batches vraagt de app expliciet welke geïmporteerd mogen worden.
+  const [bfImportKandidaten, setBfImportKandidaten] = useState<any[] | null>(null)
+  const [bfImportSelectie, setBfImportSelectie] = useState<Record<string, boolean>>({})
   const [takenIngeklapt, setTakenIngeklapt] = useStore('batches_taken_ingeklapt', true)
   const [takenGroepIngeklapt, setTakenGroepIngeklapt] = useStore('batches_taken_groep_ingeklapt', {} as Record<string, boolean>)
   const [ccpMetingForm, setCcpMetingForm] = useState<any>(null)
@@ -782,24 +787,19 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     setBfSyncing(true); setBfMsg('')
     try {
       const bfBatches = await bfGetBatches()
-      let added = 0, updated = 0
-      const newBatches: any[] = [], newBis: any[] = [], updBatches: any[] = [], refreshBisFor: any[] = []
+      let updated = 0
+      const kandidaten: any[] = []
+      const updBatches: any[] = [], refreshBisFor: any[] = []
       for (const bfB of bfBatches) {
         // Match alléén op brewfather_id — app-`batch_nummer` en BF-`batchNo`
         // zijn twee onafhankelijke nummerruimten.
         const existing = bat.find((b: any) => b.brewfather_id === bfB._id)
         const appStatus = BF_TO_APP[bfB.status] || 'Gepland'
         if (!existing) {
-          const nb = {
-            ...bfMapBatch(bfB),
-            id: newId([...bat, ...newBatches]),
-            batch_nummer: nextBatchNummer([...bat, ...newBatches]),
-            created_at: new Date().toISOString(),
-          }
-          newBatches.push(nb)
-          const nbis = bfMapBis(bfB, nb.id, newId([...bi, ...newBis]) + newBis.length)
-          newBis.push(...nbis)
-          added++
+          // Niet meteen importeren — verzamel als kandidaat voor de
+          // import-popup. De gebruiker kiest zelf welke nieuwe batches mee
+          // mogen.
+          kandidaten.push(bfB)
         } else {
           const ch: any = {brewfather_id: bfB._id}
           if (bfB.batchNo != null && !existing.brewfather_batch_nummer) {
@@ -838,25 +838,59 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           updated++
         }
       }
-      if (newBatches.length) setBat((prev: any[]) => [...prev, ...newBatches])
       if (updBatches.length) setBat((prev: any[]) => prev.map((b: any) => {
         const u = updBatches.find((x: any) => x.id===b.id); return u ? {...b, ...u.ch} : b
       }))
-      setBi((prev: any[]) => {
-        let next = [...prev, ...newBis]
-        for (const {batchId, bfB} of refreshBisFor) {
-          next = next.filter((x: any) => x.batch_id !== batchId)
-          const freshBis = bfMapBis(bfB, batchId, newId(next) + next.length)
-          next = [...next, ...freshBis]
-        }
-        return next
-      })
-      setBfMsg(t('msg_bf_sync_success').replace('{n}', String(added)).replace('{m}', String(updated)))
+      if (refreshBisFor.length) {
+        setBi((prev: any[]) => {
+          let next = [...prev]
+          for (const {batchId, bfB} of refreshBisFor) {
+            next = next.filter((x: any) => x.batch_id !== batchId)
+            const freshBis = bfMapBis(bfB, batchId, newId(next) + next.length)
+            next = [...next, ...freshBis]
+          }
+          return next
+        })
+      }
+      if (kandidaten.length) {
+        // Standaard alles voorgeselecteerd — gebruiker kan uitvinken.
+        const init: Record<string, boolean> = {}
+        for (const k of kandidaten) init[k._id] = true
+        setBfImportKandidaten(kandidaten)
+        setBfImportSelectie(init)
+        setBfMsg(t('msg_bf_sync_pending').replace('{n}', String(kandidaten.length)).replace('{m}', String(updated)))
+      } else {
+        setBfMsg(t('msg_bf_sync_success').replace('{n}', '0').replace('{m}', String(updated)))
+      }
       if (bfSync) bfSync()
     } catch(e: any) {
       setBfMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e)))
     }
     setBfSyncing(false)
+  }
+
+  // Importeer de door de gebruiker aangevinkte nieuwe Brewfather-batches.
+  const doBfImport = () => {
+    const kandidaten = bfImportKandidaten || []
+    const selected = kandidaten.filter((k: any) => bfImportSelectie[k._id])
+    if (!selected.length) { setBfImportKandidaten(null); setBfImportSelectie({}); return }
+    const newBatches: any[] = [], newBis: any[] = []
+    for (const bfB of selected) {
+      const nb = {
+        ...bfMapBatch(bfB),
+        id: newId([...bat, ...newBatches]),
+        batch_nummer: nextBatchNummer([...bat, ...newBatches]),
+        created_at: new Date().toISOString(),
+      }
+      newBatches.push(nb)
+      const nbis = bfMapBis(bfB, nb.id, newId([...bi, ...newBis]) + newBis.length)
+      newBis.push(...nbis)
+    }
+    if (newBatches.length) setBat((prev: any[]) => [...prev, ...newBatches])
+    if (newBis.length) setBi((prev: any[]) => [...prev, ...newBis])
+    setBfMsg(t('msg_bf_import_done').replace('{n}', String(newBatches.length)))
+    setBfImportKandidaten(null)
+    setBfImportSelectie({})
   }
 
   const getBi = (bid: number) => bi.filter((x: any) => x.batch_id === bid)
@@ -3629,6 +3663,63 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           </div>
         </Modal>
       )}
+
+      {bfImportKandidaten && bfImportKandidaten.length > 0 && (() => {
+        const kandidaten = bfImportKandidaten
+        const aantalAan = kandidaten.filter((k: any) => bfImportSelectie[k._id]).length
+        const alleAan = aantalAan === kandidaten.length
+        const toggleAlle = () => {
+          const next: Record<string, boolean> = {}
+          for (const k of kandidaten) next[k._id] = !alleAan
+          setBfImportSelectie(next)
+        }
+        const toggle = (id: string) => setBfImportSelectie(s => ({...s, [id]: !s[id]}))
+        return (
+          <Modal title={t('bf_import_title')} onClose={() => { setBfImportKandidaten(null); setBfImportSelectie({}) }} wide>
+            <div className="space-y-3">
+              <div className="text-sm text-gray-600">
+                {t('bf_import_intro').replace('{n}', String(kandidaten.length))}
+              </div>
+              <div className="flex items-center justify-between border-b pb-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" className="t-checkbox" checked={alleAan} onChange={toggleAlle} />
+                  <span>{alleAan ? t('bf_import_deselect_all') : t('bf_import_select_all')}</span>
+                </label>
+                <span className="text-xs text-gray-500">{t('bf_import_selected').replace('{n}', String(aantalAan)).replace('{m}', String(kandidaten.length))}</span>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto divide-y border rounded-lg">
+                {kandidaten.map((k: any) => {
+                  const aan = !!bfImportSelectie[k._id]
+                  const naam = k.recipe?.name || k.name || t('lbl_onbekend')
+                  const stijl = k.recipe?.style?.name || ''
+                  const bfNr = k.batchNo != null ? `BF #${k.batchNo}` : ''
+                  const status = (BF_TO_APP[k.status] || 'Gepland')
+                  return (
+                    <label key={k._id} className="flex items-start gap-3 p-3 cursor-pointer hover:bg-gray-50">
+                      <input type="checkbox" className="t-checkbox mt-1" checked={aan} onChange={() => toggle(k._id)} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium text-sm truncate">{naam}</div>
+                          <Badge s={status} />
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {[bfNr, stijl].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Btn v="secondary" onClick={() => { setBfImportKandidaten(null); setBfImportSelectie({}) }}>{t('btn_cancel')}</Btn>
+                <Btn onClick={doBfImport} disabled={aantalAan === 0}>
+                  {t('bf_import_confirm').replace('{n}', String(aantalAan))}
+                </Btn>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
 
     </div>
   )

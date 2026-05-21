@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.84] — 2026-05-21
+
+### Added — Brewfather batch-import via bevestigings-popup
+
+Bij een Brewfather-sync werden alle nieuwe batches die nog niet in BrewAdmin
+stonden voorheen stilletjes geïmporteerd. Dat is nu opt-in: na `Sync
+Brewfather` opent een popup met alle nieuwe BF-batches en een checkbox per
+batch. De gebruiker selecteert welke daadwerkelijk in BrewAdmin terecht
+komen.
+
+- Bestaande batches worden, net als voorheen, automatisch bijgewerkt
+  (status, OG/FG/ABV, profielen, etc.).
+- De auto-sync bij het opstarten van de app importeert geen nieuwe batches
+  meer — alleen handmatige sync triggert de import-popup.
+
+### Files
+
+- `src/pages/BatchesPage.tsx` — `runBfSync()` verzamelt nieuwe batches als
+  kandidaten; nieuwe `doBfImport()` voert de import uit na bevestiging;
+  modal aan render toegevoegd.
+- `src/App.tsx` — auto-sync slaat nieuwe batches over (`continue`) zodat ze
+  niet ongezien worden aangemaakt.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels voor de import-popup.
+
+---
+
 ## [1.9.83] — 2026-05-18
 
 ### Fixed — Batch-data-verlies door race tussen migraties en server-fetch
