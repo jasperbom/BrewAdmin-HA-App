@@ -9,6 +9,8 @@ The server strips any prefix and looks for /api/data/<key> anywhere in the path.
 """
 import base64
 import datetime
+import email.message
+import email.utils
 import http.server
 import io
 import ipaddress
@@ -16,7 +18,9 @@ import json
 import os
 import re
 import shutil
+import smtplib
 import socket
+import ssl
 import threading
 import time
 import urllib.error
@@ -61,6 +65,12 @@ CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be lar
 
 HA_PROXY_PREFIX          = '/api/homeassistant/'
 HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
+
+MAIL_SEND_PATH           = '/api/mail/send'
+MAIL_TEST_PATH           = '/api/mail/test'
+MAIL_MAX_CONTENT         = 20 * 1024 * 1024  # 20 MB — mail + attachments
+MAIL_SECURITY_VALUES     = {'none', 'starttls', 'ssl'}
+MAIL_EMAIL_RE            = re.compile(r'^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$')
 
 # Whitelist van toegestane HA service-calls. Houdt de attack-surface klein:
 # alleen schrijfacties die de UI expliciet aanbiedt zijn toegestaan. Voeg een
@@ -286,6 +296,169 @@ def _load_bf_creds() -> tuple[str, str] | None:
         return (uid, key) if uid and key else None
     except Exception:
         return None
+
+
+def _load_smtp_creds() -> dict | None:
+    """Read stored SMTP credentials; returns a sanitized dict or None.
+
+    Verwacht JSON-vorm:
+      {host, port, username, password, fromEmail, fromName, security, enabled}
+    `security` is een van 'none', 'starttls', 'ssl'.
+    """
+    creds_file = DATA_DIR / 'smtp_creds.json'
+    if not creds_file.exists():
+        return None
+    try:
+        c = json.loads(creds_file.read_bytes())
+    except Exception:
+        return None
+    host = str(c.get('host', '')).strip()
+    try:
+        port = int(c.get('port', 0))
+    except (TypeError, ValueError):
+        return None
+    if not host or port < 1 or port > 65535:
+        return None
+    if _is_private_url(f'http://{host}'):
+        # Lokale/private SMTP-hosts blokkeren we niet: een interne mailserver
+        # is een legitiem scenario voor een HA-addon. Maar we geven hier wel
+        # een hint terug via False voor de privacy-check zodat aanroepers
+        # kunnen besluiten dit alleen tijdens een test te accepteren. In de
+        # praktijk laten we het door — alleen het _send_mail-pad gebruikt deze.
+        pass
+    security = str(c.get('security', 'starttls')).strip().lower()
+    if security not in MAIL_SECURITY_VALUES:
+        security = 'starttls'
+    from_email = str(c.get('fromEmail', '')).strip()
+    if from_email and not MAIL_EMAIL_RE.match(from_email):
+        return None
+    return {
+        'host':      host,
+        'port':      port,
+        'username':  str(c.get('username', '')),
+        'password':  str(c.get('password', '')),
+        'fromEmail': from_email,
+        'fromName':  str(c.get('fromName', '')).strip(),
+        'security':  security,
+        'enabled':   bool(c.get('enabled')),
+    }
+
+
+def _smtp_connect(creds: dict, timeout: float = 15.0) -> smtplib.SMTP:
+    """Open een SMTP-verbinding volgens de opgegeven beveiligingsmodus.
+    De caller is verantwoordelijk voor .quit()."""
+    host, port, security = creds['host'], creds['port'], creds['security']
+    if security == 'ssl':
+        ctx = ssl.create_default_context()
+        client: smtplib.SMTP = smtplib.SMTP_SSL(host, port, timeout=timeout, context=ctx)
+    else:
+        client = smtplib.SMTP(host, port, timeout=timeout)
+    client.ehlo()
+    if security == 'starttls':
+        ctx = ssl.create_default_context()
+        client.starttls(context=ctx)
+        client.ehlo()
+    if creds.get('username'):
+        client.login(creds['username'], creds.get('password', ''))
+    return client
+
+
+def _valid_recipient_list(recipients) -> list[str] | None:
+    """Valideer een lijst van e-mailadressen; max 50 ontvangers per request."""
+    if isinstance(recipients, str):
+        recipients = [recipients]
+    if not isinstance(recipients, list) or not recipients:
+        return None
+    if len(recipients) > 50:
+        return None
+    cleaned: list[str] = []
+    for r in recipients:
+        if not isinstance(r, str):
+            return None
+        addr = r.strip()
+        if not addr or not MAIL_EMAIL_RE.match(addr):
+            return None
+        cleaned.append(addr)
+    return cleaned
+
+
+def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage, list[str]] | None:
+    """Bouw een EmailMessage uit de request-payload. Returns (msg, recipients)
+    of None bij invalide input."""
+    to_list  = _valid_recipient_list(payload.get('to'))
+    if not to_list:
+        return None
+    cc_list  = _valid_recipient_list(payload.get('cc')) if payload.get('cc') else []
+    bcc_list = _valid_recipient_list(payload.get('bcc')) if payload.get('bcc') else []
+    if payload.get('cc') and cc_list is None:
+        return None
+    if payload.get('bcc') and bcc_list is None:
+        return None
+
+    subject = str(payload.get('subject', '')).strip()
+    if not subject or len(subject) > 500:
+        return None
+    text_body = str(payload.get('text', ''))
+    html_body = payload.get('html')
+    if html_body is not None and not isinstance(html_body, str):
+        return None
+
+    msg = email.message.EmailMessage()
+    from_name  = creds.get('fromName', '')
+    from_email = creds.get('fromEmail') or creds.get('username', '')
+    if not MAIL_EMAIL_RE.match(from_email or ''):
+        return None
+    msg['From']    = email.utils.formataddr((from_name, from_email)) if from_name else from_email
+    msg['To']      = ', '.join(to_list)
+    if cc_list:
+        msg['Cc']  = ', '.join(cc_list)
+    msg['Subject'] = subject
+    msg['Date']    = email.utils.formatdate(localtime=True)
+    msg['Message-ID'] = email.utils.make_msgid()
+
+    reply_to = str(payload.get('replyTo', '')).strip()
+    if reply_to:
+        if not MAIL_EMAIL_RE.match(reply_to):
+            return None
+        msg['Reply-To'] = reply_to
+
+    msg.set_content(text_body or ' ')
+    if html_body:
+        msg.add_alternative(html_body, subtype='html')
+
+    # Bijlagen: lijst van {filename, contentBase64, mimeType?}
+    attachments = payload.get('attachments') or []
+    if not isinstance(attachments, list):
+        return None
+    if len(attachments) > 10:
+        return None
+    total_size = 0
+    for att in attachments:
+        if not isinstance(att, dict):
+            return None
+        fname = str(att.get('filename', '')).strip()
+        if not fname or len(fname) > 200:
+            return None
+        # Voorkom path-componenten in de bijlagenaam — naam mag geen / of \ bevatten.
+        if '/' in fname or '\\' in fname or fname.startswith('.'):
+            return None
+        b64 = att.get('contentBase64', '')
+        if not isinstance(b64, str):
+            return None
+        try:
+            content = base64.b64decode(b64, validate=True)
+        except Exception:
+            return None
+        total_size += len(content)
+        if total_size > 15 * 1024 * 1024:  # 15 MB totaal aan bijlagen
+            return None
+        mt = str(att.get('mimeType', 'application/octet-stream'))
+        if '/' not in mt:
+            mt = 'application/octet-stream'
+        maintype, _, subtype = mt.partition('/')
+        msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=fname)
+
+    return msg, to_list + cc_list + bcc_list
 
 
 def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET', data: bytes | None = None) -> tuple[int, bytes]:
@@ -822,6 +995,14 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._claude_proxy()
             return
 
+        if MAIL_TEST_PATH in path:
+            self._mail_test()
+            return
+
+        if MAIL_SEND_PATH in path:
+            self._mail_send()
+            return
+
         if HA_PROXY_PREFIX in path:
             self._ha_proxy(path)
             return
@@ -1297,6 +1478,90 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self._add_security_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    # ── Mail (SMTP) ────────────────────────────────────────────────────
+
+    def _mail_test(self):
+        """Test SMTP-credentials uit POST body. Probeert te verbinden + inloggen."""
+        raw = self._read_body(max_len=8 * 1024)
+        if raw is None:
+            return
+        try:
+            body = json.loads(raw)
+        except Exception:
+            self._json(400, {'error': 'invalid json'})
+            return
+        # Bouw tijdelijke creds op uit de body (sla nog niets op).
+        host = str(body.get('host', '')).strip()
+        try:
+            port = int(body.get('port', 0))
+        except (TypeError, ValueError):
+            self._json(400, {'error': 'invalid port'})
+            return
+        if not host or port < 1 or port > 65535:
+            self._json(400, {'error': 'missing host or invalid port'})
+            return
+        security = str(body.get('security', 'starttls')).strip().lower()
+        if security not in MAIL_SECURITY_VALUES:
+            security = 'starttls'
+        creds = {
+            'host':     host,
+            'port':     port,
+            'username': str(body.get('username', '')),
+            'password': str(body.get('password', '')),
+            'security': security,
+        }
+        try:
+            client = _smtp_connect(creds, timeout=10.0)
+            client.quit()
+            self._json(200, {'ok': True})
+        except smtplib.SMTPAuthenticationError:
+            self._json(200, {'ok': False, 'detail': 'auth'})
+        except (smtplib.SMTPException, ssl.SSLError, socket.timeout, OSError) as e:
+            # Stuur korte foutclassificatie terug — geen volledige traceback,
+            # geen credentials.
+            kind = type(e).__name__
+            self._json(200, {'ok': False, 'detail': kind})
+
+    def _mail_send(self):
+        """Verstuur een e-mail via de opgeslagen SMTP-credentials."""
+        creds = _load_smtp_creds()
+        if creds is None:
+            self._json(401, {'error': 'no smtp credentials configured'})
+            return
+        if not creds.get('enabled'):
+            self._json(403, {'error': 'smtp not enabled'})
+            return
+        body = self._read_body(max_len=MAIL_MAX_CONTENT)
+        if body is None:
+            return
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        if not isinstance(payload, dict):
+            self._json(400, {'error': 'body must be a JSON object'})
+            return
+        built = _build_email(creds, payload)
+        if built is None:
+            self._json(400, {'error': 'invalid mail payload'})
+            return
+        msg, recipients = built
+        try:
+            client = _smtp_connect(creds, timeout=30.0)
+            try:
+                client.send_message(msg, to_addrs=recipients)
+            finally:
+                try: client.quit()
+                except Exception: pass
+            self._json(200, {'ok': True})
+        except smtplib.SMTPAuthenticationError:
+            self._json(502, {'ok': False, 'detail': 'auth'})
+        except smtplib.SMTPRecipientsRefused:
+            self._json(400, {'ok': False, 'detail': 'recipients_refused'})
+        except (smtplib.SMTPException, ssl.SSLError, socket.timeout, OSError) as e:
+            self._json(502, {'ok': False, 'detail': type(e).__name__})
 
     # ── Backup endpoints ────────────────────────────────────────────────
 

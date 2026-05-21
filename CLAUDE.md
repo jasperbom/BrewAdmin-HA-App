@@ -360,6 +360,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
 | `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials (nooit in backup) |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
+| `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
 
 ---
 
@@ -428,6 +429,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
+| POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
+| POST | `/api/mail/send` | Verstuur e-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen) |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 

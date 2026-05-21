@@ -4,6 +4,64 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.87] — 2026-05-21
+
+### Added — Eigen SMTP-server: pakbon/factuur/bestelling per e-mail
+
+BrewAdmin kan nu vanuit de app rechtstreeks e-mails versturen via een eigen
+SMTP-server. Geen externe service nodig — je configureert host, poort,
+gebruikersnaam, wachtwoord en afzenderadres in **Instellingen → Koppelingen →
+E-mailserver (SMTP)**. Ondersteund: STARTTLS, SSL/TLS en (op eigen
+verantwoordelijkheid) een onversleutelde verbinding voor interne mailservers.
+
+- **Verbinding testen** los van het verzenden: één klik probeert verbinding
+  + login zonder iets op te slaan, en geeft een korte foutclassificatie
+  (`auth`, `SMTPException`, `SSLError`, `timeout`) terug.
+- **Testmail-knop** stuurt een vooraf gevuld testbericht naar een opgegeven
+  adres — handig om DNS/SPF/relay-instellingen te controleren.
+- **Pakbon mailen** vanuit de orderdetail-pagina: de pakbon-HTML wordt
+  inline als mailbody verstuurd (zelfde lay-out als de print-versie),
+  ontvanger-/onderwerp-/tekstvelden zijn vóór verzenden te bewerken.
+- **Verkoopfactuur mailen** vanuit Boekhouding (drie tabellen: vervallen,
+  hoofdoverzicht, klantdetail) én vanuit Bestellingen. Onderwerp en
+  begeleidende tekst worden automatisch ingevuld met factuurnummer, bedrag,
+  vervaldatum, IBAN en brouwerijnaam.
+- **Bestelbevestiging mailen** bij nieuwe bestellingen, met automatisch
+  gegenereerde regel-opsomming.
+- Een `<MailModal>`-component biedt een uniforme verzend-UI met optioneel
+  HTML-voorbeeld via `<iframe srcDoc>`.
+
+Beveiliging: SMTP-credentials worden net als `brewfather_creds`,
+`woocommerce_creds` en `claude_creds` als `secure: true` opgeslagen — niet
+in localStorage, niet in de Excel-backup. De backend valideert payloads
+streng (max 50 ontvangers, max 15 MB aan bijlagen, alleen toegestane
+e-mailtekens) en classificeert SMTP-fouten zonder credentials of stack
+traces terug te geven.
+
+### Files
+
+- `server.py` — `smtplib`/`email.message`-imports toegevoegd; helpers
+  `_load_smtp_creds`, `_smtp_connect`, `_valid_recipient_list`,
+  `_build_email`; endpoints `POST /api/mail/test` en `POST /api/mail/send`
+  met handlers `_mail_test`/`_mail_send`.
+- `src/utils/api.ts` — `mailTestApi()`, `mailSendApi()` en `MailAttachment`-
+  interface.
+- `src/App.tsx` — `smtpCreds`-useStore (secure) en wiring naar
+  `InstellingenPage`, `BestellingenPage` en `BoekhoudingPage`.
+- `src/components/MailModal.tsx` — nieuwe generieke verzend-modal.
+- `src/components/PakbonExport.tsx` — `buildPakbonHTML()`-helper (analoog
+  aan `buildFactuurHTML`).
+- `src/pages/InstellingenPage.tsx` — SMTP-card in de Koppelingen-sectie
+  met host/poort/security/credentials, test- en testmail-knop.
+- `src/pages/BestellingenPage.tsx` — mail-knoppen voor pakbon, factuur en
+  bestelbevestiging in de orderdetail-actiebar.
+- `src/pages/BoekhoudingPage.tsx` — mail-knop in alle drie de
+  verkoopfactuur-tabellen.
+- `src/i18n/{nl,en,de,fr,es}.json` — 47 nieuwe sleutels voor SMTP-
+  configuratie, mailmodal-labels en standaard onderwerp-/lichaam-templates.
+
+---
+
 ## [1.9.86] — 2026-05-21
 
 ### Changed — Definitief ABV gereed product

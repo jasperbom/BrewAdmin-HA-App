@@ -125,7 +125,8 @@ function klantBlock(order: any): string {
 // ─────────────────────────────────────────────
 // PAKBON
 // ─────────────────────────────────────────────
-export function printPakbon(
+
+function buildPakbonBody(
   order: any,
   picks: any[],
   av: any[],
@@ -133,7 +134,7 @@ export function printPakbon(
   brewery: any,
   appName: string,
   factuurLogo: string | null | undefined
-): void {
+): {bodyHtml: string, filename: string, pakbonNr: string} {
   const pakbonNr = order.pakbon_nummer || `P-${order.id}`
   const datum = fmtDate(order.verzend_datum || order.datum)
   const orderRef = order.wc_order_nummer ? `WC #${order.wc_order_nummer}` : `M-${order.id}`
@@ -151,7 +152,7 @@ export function printPakbon(
     </tr>`
   }).join('')
 
-  const html = `<div class="page">
+  const bodyHtml = `<div class="page">
     <div class="hdr">
       ${breweryBlock(brewery, appName, factuurLogo)}
       <div class="hdr-right">
@@ -203,7 +204,36 @@ export function printPakbon(
   </div>`
 
   const filename = order.pakbon_nummer || `Pakbon-${order.id || 'export'}`
-  openPrint(html, filename)
+  return {bodyHtml, filename, pakbonNr}
+}
+
+export function printPakbon(
+  order: any,
+  picks: any[],
+  av: any[],
+  bat: any[],
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): void {
+  const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo)
+  openPrint(r.bodyHtml, r.filename)
+}
+
+// Geeft volledige standalone HTML (incl. <html>/<head>/<style>) terug — voor
+// gebruik als HTML-mailbody.
+export function buildPakbonHTML(
+  order: any,
+  picks: any[],
+  av: any[],
+  bat: any[],
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): {html: string, filename: string} {
+  const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo)
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${r.filename}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  return {html, filename: r.filename}
 }
 
 // ─────────────────────────────────────────────

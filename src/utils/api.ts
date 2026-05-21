@@ -248,6 +248,65 @@ export const bfTest = async (uid: string, key: string): Promise<boolean> => {
   } catch(e) { return false }
 }
 
+// ── Mail (SMTP) ──────────────────────────────────────────────────────────
+export interface SmtpTestBody {
+  host: string
+  port: number
+  username: string
+  password: string
+  security: 'none' | 'starttls' | 'ssl'
+}
+
+// Test SMTP-verbinding zonder iets op te slaan. Server retourneert
+// {ok, detail?} waarbij detail een korte foutclassificatie is.
+export const mailTestApi = async (body: SmtpTestBody): Promise<{ok: boolean, detail?: string}> => {
+  try {
+    const r = await fetch(`${ADDON_BASE}api/mail/test`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) return {ok: false, detail: (d as any).error || `HTTP ${r.status}`}
+    return {ok: (d as any).ok === true, detail: (d as any).detail}
+  } catch (e: any) {
+    return {ok: false, detail: e?.message || 'network'}
+  }
+}
+
+export interface MailAttachment {
+  filename: string
+  contentBase64: string
+  mimeType?: string
+}
+
+export interface MailSendBody {
+  to: string | string[]
+  cc?: string | string[]
+  bcc?: string | string[]
+  replyTo?: string
+  subject: string
+  text: string
+  html?: string
+  attachments?: MailAttachment[]
+}
+
+// Verstuur een mail via de opgeslagen SMTP-credentials. Throwt bij niet-OK
+// response; caller toont een nette foutmelding via t().
+export const mailSendApi = async (body: MailSendBody): Promise<void> => {
+  const r = await _fetchWithRetry(`${ADDON_BASE}api/mail/send`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  }, 1)
+  if (r.status === 429) throw _rateLimitError('Mail', r)
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}))
+    const detail = (err as any).detail || (err as any).error || `HTTP ${r.status}`
+    throw new Error(detail)
+  }
+}
+
 export const callClaudeProxy = async (body: any) => {
   const r = await _fetchWithRetry(`${ADDON_BASE}api/claude/messages`, {
     method: 'POST',
