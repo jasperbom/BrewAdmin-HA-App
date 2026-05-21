@@ -73,16 +73,28 @@ const KlantenPage: React.FC<Props> = ({
   const [synthSourceKey, setSynthSourceKey] = React.useState<string | null>(null)
   const [search, setSearch] = React.useState('')
   const [form, setForm] = React.useState(emptyForm())
+  // `dirty` markeert *door-de-gebruiker-aangepast*. Wordt alleen op `true`
+  // gezet via `update()` (= een handmatige form-wijziging). Pre-fill via
+  // openNewFromSynth zet dirty NIET, anders zou de back-confirm misleidend
+  // verschijnen ("niet-opgeslagen wijzigingen" terwijl je niks aangepast hebt).
   const [dirty, setDirty] = React.useState(false)
   const [mailModal, setMailModal] = React.useState<null | {to:string,subject:string,text:string}>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false)
 
-  // Per-klant statistieken (omzet, openstaand, # bestellingen, laatste datum).
-  // Match via klant_id, en als fallback via case-insensitive email-match — zo
-  // worden ook losse WC-orders met klant_email maar zonder klant_id geteld.
-  // Geannuleerde bestellingen tellen niet mee voor de omzet.
+  // Per-klant statistieken. Match via klant_id, en als fallback via case-
+  // insensitive email-match — zo worden ook losse WC-orders met klant_email
+  // maar zonder klant_id geteld.
+  //
+  // Definities:
+  //   omzet      — strikt gefactureerd: som van alle verkoopfacturen voor
+  //                deze klant (creditnota's hebben een negatieve bruto en
+  //                verlagen de omzet zoals het hoort). Consistent met de
+  //                `verkoopTotals.bruto` in de Boekhouding-pagina.
+  //   openOrders — pipeline: orders die nog niet gefactureerd zijn en niet
+  //                geannuleerd. Pas omzet ZODRA er een factuur is.
+  //   openstaand — open facturen (niet betaald, geen creditnota).
   const statsPerKlant = React.useMemo(() => {
-    const map: Record<number, {bestellingen: any[], facturen: any[], omzet: number, openstaand: number, laatsteDatum: string}> = {}
+    const map: Record<number, {bestellingen: any[], facturen: any[], omzet: number, openOrders: number, openstaand: number, laatsteDatum: string}> = {}
     klanten.forEach(k => {
       const emailLc = (k.email || '').toLowerCase()
       const matchOrder = (b: any) => b.klant_id === k.id
@@ -91,16 +103,16 @@ const KlantenPage: React.FC<Props> = ({
       const bestellingenK = bestellingen.filter(matchOrder)
       const facturenK = verkoopFacturen.filter(matchFactuur)
       const omzet = facturenK.reduce((s: number, f: any) => s + (f.bruto || 0), 0)
-        + bestellingenK
-            .filter((b: any) => b.status !== 'geannuleerd'
-              && !facturenK.some((f: any) => f.bestelling_id === b.id))
-            .reduce((s: number, b: any) => s + orderBruto(b), 0)
+      const openOrders = bestellingenK
+        .filter((b: any) => b.status !== 'geannuleerd'
+          && !facturenK.some((f: any) => f.bestelling_id === b.id))
+        .reduce((s: number, b: any) => s + orderBruto(b), 0)
       const openstaand = facturenK
         .filter((f: any) => f.status !== 'betaald' && f.status !== 'credit')
         .reduce((s: number, f: any) => s + (f.bruto || 0), 0)
       const laatsteDatum = bestellingenK.reduce((d: string, b: any) =>
         (b.datum || '') > d ? b.datum : d, '')
-      map[k.id] = {bestellingen: bestellingenK, facturen: facturenK, omzet, openstaand, laatsteDatum}
+      map[k.id] = {bestellingen: bestellingenK, facturen: facturenK, omzet, openOrders, openstaand, laatsteDatum}
     })
     return map
   }, [klanten, bestellingen, verkoopFacturen])
@@ -143,12 +155,15 @@ const KlantenPage: React.FC<Props> = ({
       groups.get(key)._matchedOrders.push(b)
     })
     return Array.from(groups.values()).map((s: any) => {
-      const omzet = s._matchedOrders
+      // Synth-klanten hebben per definitie nog geen factuur (facturen worden
+      // bij afronden altijd met klant_id aangemaakt), dus omzet = 0. Alle
+      // niet-geannuleerde bestellingen vallen onder "open orders" (pipeline).
+      const openOrders = s._matchedOrders
         .filter((b: any) => b.status !== 'geannuleerd')
         .reduce((sum: number, b: any) => sum + orderBruto(b), 0)
       const laatsteDatum = s._matchedOrders.reduce((d: string, b: any) =>
         (b.datum || '') > d ? b.datum : d, '')
-      return {...s, _stats: {bestellingen: s._matchedOrders, facturen: [], omzet, openstaand: 0, laatsteDatum}}
+      return {...s, _stats: {bestellingen: s._matchedOrders, facturen: [], omzet: 0, openOrders, openstaand: 0, laatsteDatum}}
     })
   }, [klanten, bestellingen])
 
@@ -163,12 +178,13 @@ const KlantenPage: React.FC<Props> = ({
       || (k.telefoon || '').toLowerCase().includes(q)
       || (k.klantnummer || '').toLowerCase().includes(q)
     ) : all
-    const omzetVan = (k: any) =>
-      k._synthetic ? (k._stats?.omzet || 0) : (statsPerKlant[k.id]?.omzet ?? 0)
+    // Echte klanten sorteren op gefactureerde omzet (hoog → laag); synth-
+    // klanten staan onderaan en sorteren op pipeline-waarde (open orders).
+    const rangVan = (k: any) =>
+      k._synthetic ? (k._stats?.openOrders || 0) : (statsPerKlant[k.id]?.omzet ?? 0)
     return [...list].sort((a: any, b: any) => {
-      // Synthetisch onderaan, echt eerst
       if (!!a._synthetic !== !!b._synthetic) return a._synthetic ? 1 : -1
-      const so = omzetVan(b), sa = omzetVan(a)
+      const so = rangVan(b), sa = rangVan(a)
       if (so !== sa) return so - sa
       return (a.naam || '').localeCompare(b.naam || '')
     })
@@ -198,12 +214,15 @@ const KlantenPage: React.FC<Props> = ({
     setSelectedId(null)
     setSynthSourceKey(null)
     setForm(emptyForm())
-    setDirty(true)
+    setDirty(false)
     setView('detail')
   }
 
   // Maak klantkaart aan uit een synthetische entry (bestelling zonder
-  // klantkaart) — formuliervelden komen uit de bestelling.
+  // klantkaart) — formuliervelden komen uit de bestelling. We zetten `dirty`
+  // hier expliciet op false: het formulier bevat data uit de bestelling, maar
+  // de gebruiker heeft zelf nog niets aangepast. Dirty wordt true zodra ze
+  // daadwerkelijk in een veld typt (via `update()`).
   const openNewFromSynth = (synth: any) => {
     setSelectedId(null)
     setSynthSourceKey(synth._synthKey)
@@ -223,7 +242,7 @@ const KlantenPage: React.FC<Props> = ({
       betalingstermijn: '',
       notities: '',
     })
-    setDirty(true)
+    setDirty(false)
     setView('detail')
   }
 
@@ -383,7 +402,7 @@ const KlantenPage: React.FC<Props> = ({
                 ✉ {t('klanten_mail_klant')}
               </Btn>
             )}
-            <Btn onClick={save} disabled={!dirty || !form.naam.trim()}>
+            <Btn onClick={save} disabled={!form.naam.trim() || (selectedId !== null && !dirty && !synthSourceKey)}>
               {t('btn_save')}
             </Btn>
             {selectedId !== null && (
@@ -400,22 +419,27 @@ const KlantenPage: React.FC<Props> = ({
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
               <div className="text-2xl font-bold text-gray-800">{selectedStats.bestellingen.length}</div>
               <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_orders')}</div>
+              {selectedStats.laatsteDatum && (
+                <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_stat_last_order')}: {fmtD(selectedStats.laatsteDatum)}</div>
+              )}
             </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_omzet_tooltip')}>
               <div className="text-2xl font-bold text-green-700">{fmt(selectedStats.omzet)}</div>
               <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_omzet')}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_omzet_sub')}</div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_open_orders_tooltip')}>
+              <div className={`text-2xl font-bold ${selectedStats.openOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
+                {selectedStats.openOrders > 0 ? fmt(selectedStats.openOrders) : '—'}
+              </div>
+              <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_open_orders')}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_open_orders_sub')}</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
               <div className={`text-2xl font-bold ${selectedStats.openstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
                 {selectedStats.openstaand > 0 ? fmt(selectedStats.openstaand) : '—'}
               </div>
               <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_openstaand')}</div>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
-              <div className="text-base font-semibold text-gray-800">
-                {selectedStats.laatsteDatum ? fmtD(selectedStats.laatsteDatum) : '—'}
-              </div>
-              <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_last_order')}</div>
             </div>
           </div>
         )}
@@ -613,7 +637,8 @@ const KlantenPage: React.FC<Props> = ({
   // ── LIJSTWEERGAVE ─────────────────────────────────────────────────────────
 
   const totaalOmzet = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.omzet || 0), 0)
-    + syntheticKlanten.reduce((s: number, k: any) => s + (k._stats?.omzet || 0), 0)
+  const totaalOpenOrders = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.openOrders || 0), 0)
+    + syntheticKlanten.reduce((s: number, k: any) => s + (k._stats?.openOrders || 0), 0)
   const totaalOpenstaand = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.openstaand || 0), 0)
   const synthCount = syntheticKlanten.length
 
@@ -632,14 +657,22 @@ const KlantenPage: React.FC<Props> = ({
       )}
 
       {/* Stats-overzicht */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
           <div className="text-2xl font-bold text-gray-800">{klanten.length}{synthCount > 0 && <span className="text-base text-blue-600 ml-1">+{synthCount}</span>}</div>
           <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_totaal')}</div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_omzet_tooltip')}>
           <div className="text-2xl font-bold text-green-700">{fmt(totaalOmzet)}</div>
           <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_omzet_totaal')}</div>
+          <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_omzet_sub')}</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_open_orders_tooltip')}>
+          <div className={`text-2xl font-bold ${totaalOpenOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
+            {totaalOpenOrders > 0 ? fmt(totaalOpenOrders) : '—'}
+          </div>
+          <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_open_orders_totaal')}</div>
+          <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_open_orders_sub')}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
           <div className={`text-2xl font-bold ${totaalOpenstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
@@ -667,7 +700,8 @@ const KlantenPage: React.FC<Props> = ({
                   <th className="px-3 py-2.5 text-left font-medium">{t('lbl_email')}</th>
                   <th className="px-3 py-2.5 text-left font-medium">{t('lbl_telefoon')}</th>
                   <th className="px-3 py-2.5 text-right font-medium">{t('klanten_stat_orders')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('klanten_stat_omzet')}</th>
+                  <th className="px-3 py-2.5 text-right font-medium" title={t('klanten_omzet_tooltip')}>{t('klanten_stat_omzet')}</th>
+                  <th className="px-3 py-2.5 text-right font-medium" title={t('klanten_open_orders_tooltip')}>{t('klanten_stat_open_orders')}</th>
                   <th className="px-3 py-2.5 text-right font-medium">{t('klanten_stat_openstaand')}</th>
                   <th className="px-3 py-2.5 text-right font-medium">{t('klanten_stat_last_order')}</th>
                 </tr>
@@ -703,6 +737,9 @@ const KlantenPage: React.FC<Props> = ({
                       <td className="px-3 py-2.5 text-right font-mono">{s.bestellingen.length || '—'}</td>
                       <td className="px-3 py-2.5 text-right font-semibold text-green-700">
                         {s.omzet > 0 ? fmt(s.omzet) : '—'}
+                      </td>
+                      <td className={`px-3 py-2.5 text-right font-medium ${s.openOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
+                        {s.openOrders > 0 ? fmt(s.openOrders) : '—'}
                       </td>
                       <td className={`px-3 py-2.5 text-right font-medium ${s.openstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
                         {s.openstaand > 0 ? fmt(s.openstaand) : '—'}
