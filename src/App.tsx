@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { useStore, newId, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, API_BASE, _fetchedKeys } from './utils/api'
+import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys } from './utils/api'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
-import { accijnsCalc, nextBatchNummer, tariefVoorDatum } from './utils/calculations'
+import { accijnsCalc, tariefVoorDatum } from './utils/calculations'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
@@ -489,7 +489,7 @@ function App() {
     (async () => {
       try {
         const bfBatches = await bfGetBatches();
-        const newBatches: any[] = [], newBis: any[] = [], updBatches: any[] = [];
+        const updBatches: any[] = [];
         for (const bfB of bfBatches) {
           // Matchen gebeurt uitsluitend op brewfather_id om te voorkomen dat
           // een toevallige gelijkenis tussen app-`batch_nummer` en BF-`batchNo`
@@ -497,14 +497,9 @@ function App() {
           const existing = bat.find((b: any) => b.brewfather_id === bfB._id);
           const appStatus = BF_TO_APP[bfB.status] || 'Gepland';
           if (!existing) {
-            const nb = {
-              ...bfMapBatch(bfB),
-              id: newId([...bat, ...newBatches]),
-              batch_nummer: nextBatchNummer([...bat, ...newBatches]),
-            };
-            newBatches.push(nb);
-            const nbis = bfMapBis(bfB, nb.id, newId([...bi, ...newBis]) + newBis.length);
-            newBis.push(...nbis);
+            // Auto-sync importeert geen nieuwe batches meer — die komen via
+            // het popup-importscherm op de Batches-pagina (handmatige sync).
+            continue;
           } else {
             const ch: any = {brewfather_id: bfB._id};
             if (bfB.batchNo != null && !existing.brewfather_batch_nummer) {
@@ -528,8 +523,6 @@ function App() {
             updBatches.push({id: existing.id, ch});
           }
         }
-        if (newBatches.length) setBat((prev: any) => [...prev, ...newBatches]);
-        if (newBis.length)     setBi((prev: any)  => [...prev, ...newBis]);
         if (updBatches.length) setBat((prev: any) => prev.map((b: any) => {
           const u = updBatches.find((x: any)=>x.id===b.id); return u ? {...b, ...u.ch} : b;
         }));

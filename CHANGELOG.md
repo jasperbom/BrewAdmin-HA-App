@@ -4,6 +4,92 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.86] — 2026-05-21
+
+### Changed — Definitief ABV gereed product
+
+Het invoerveld "ABV gereed product" was tot nu toe altijd zichtbaar zodra de
+brouwdag voorbij was en gaf geen feedback wanneer de waarde definitief
+gemaakt werd. Dat veld is nu een expliciet bevestigingsproces:
+
+- Het veld verschijnt pas vanaf de fase **Conditioneren**. Daarvoor is
+  geen ABV-invoer zichtbaar (de berekende ABV uit metingen blijft wel
+  zichtbaar tijdens Vergisten).
+- Tijdens Conditioneren staat het veld open met een **Bevestig
+  definitief**-knop. Na bevestiging wordt het ABV vastgelegd als
+  `abv_definitief: true` en is dit de basis voor accijns en afvulling.
+- Daarna toont het veld een groene **Definitief**-badge en de waarde
+  read-only in een groen kader. Een **Bewerken**-knop ontgrendelt het
+  veld weer (met confirm-dialog), zodat rekenfouten gecorrigeerd kunnen
+  worden.
+- Voor batches die al in Afgevuld/Gesloten staan en al een ABV-waarde
+  hebben (legacy data zonder de definitief-flag), behandelt de UI de
+  bestaande waarde als definitief.
+- De voor-afvul-waarschuwing "ABV is vermoedelijk een schatting" wordt
+  overgeslagen wanneer `abv_definitief` op true staat.
+
+### Files
+
+- `src/pages/BatchesPage.tsx` — ABV-blok herschreven met definitief/edit-
+  toestanden, `bevestigDefinitief()`/`startBewerken()` handlers, en
+  `doAfvullen()` skipt de schatting-waarschuwing voor bevestigde ABVs.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels voor de bevestig-,
+  bewerk- en badge-labels plus de bijbehorende confirm-tekst.
+
+---
+
+## [1.9.85] — 2026-05-21
+
+### Changed — Eindfase batch springt naar Financieel-tabblad
+
+Na "Klaar met afvullen" (of een handmatige statuswissel naar
+`Afgevuld`/`Verpakt`/`Gesloten`) opent voortaan automatisch het
+Financieel-tabblad en verschuift de groene fase-indicator van het
+Afvulling-tabblad naar Financieel. De brouwer ziet zo direct het
+kostprijsoverzicht in plaats van het inmiddels afgeronde afvulscherm.
+
+De UI-teksten zijn gelijk getrokken op "Afgevuld" (canoniek datamodel
+sinds v1.9.75): de bevestigingsdialogen en de helptekst onder de
+"Klaar met afvullen"-knop spreken niet langer over "Verpakt".
+
+### Files
+
+- `src/components/batch/BatchTabs.tsx` — groene fase-indicator verplaatst
+  van Afvulling-tab naar Financieel-tab voor `Afgevuld/Verpakt/Gesloten`.
+- `src/pages/BatchesPage.tsx` — `handleStatusChange()` en de "Klaar met
+  afvullen"-knop wisselen `activeTab` naar `financieel`; tab-default voor
+  Afgevuld/Verpakt/Gesloten gaat naar Financieel.
+- `src/i18n/nl.json` — `batch_ready_text`, `err_confirm_mark_packed` en
+  `carb_no_session_confirm` gebruiken consequent "Afgevuld".
+
+---
+
+## [1.9.84] — 2026-05-21
+
+### Added — Brewfather batch-import via bevestigings-popup
+
+Bij een Brewfather-sync werden alle nieuwe batches die nog niet in BrewAdmin
+stonden voorheen stilletjes geïmporteerd. Dat is nu opt-in: na `Sync
+Brewfather` opent een popup met alle nieuwe BF-batches en een checkbox per
+batch. De gebruiker selecteert welke daadwerkelijk in BrewAdmin terecht
+komen.
+
+- Bestaande batches worden, net als voorheen, automatisch bijgewerkt
+  (status, OG/FG/ABV, profielen, etc.).
+- De auto-sync bij het opstarten van de app importeert geen nieuwe batches
+  meer — alleen handmatige sync triggert de import-popup.
+
+### Files
+
+- `src/pages/BatchesPage.tsx` — `runBfSync()` verzamelt nieuwe batches als
+  kandidaten; nieuwe `doBfImport()` voert de import uit na bevestiging;
+  modal aan render toegevoegd.
+- `src/App.tsx` — auto-sync slaat nieuwe batches over (`continue`) zodat ze
+  niet ongezien worden aangemaakt.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe sleutels voor de import-popup.
+
+---
+
 ## [1.9.83] — 2026-05-18
 
 ### Fixed — Batch-data-verlies door race tussen migraties en server-fetch
