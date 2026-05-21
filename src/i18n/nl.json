@@ -2087,6 +2087,8 @@
   "mail_sending": "Bezig met versturen…",
   "mail_send_success": "Mail verstuurd",
   "mail_send_failed": "Verzenden mislukt",
+  "mail_generating_pdf": "PDF maken…",
+  "mail_pdf_failed": "PDF-generatie mislukt",
   "mail_no_smtp": "SMTP is nog niet ingesteld. Ga naar Instellingen → Koppelingen om een e-mailserver te configureren.",
   "mail_no_recipient": "Geen ontvanger ingevuld",
   "mail_no_subject": "Geen onderwerp ingevuld",

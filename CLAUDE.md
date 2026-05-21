@@ -74,7 +74,7 @@ BrewAdmin-HA-App/
 | Build tool | Vite 5.4.10 with `vite-plugin-singlefile` |
 | Styling | Tailwind CSS 3.4.14 |
 | Excel | SheetJS (xlsx 0.20.3) |
-| PDF | pdfjs-dist 3.11.174 (client-side only) |
+| PDF | pdfjs-dist 3.11.174 (lezen, factuur-scan); jsPDF 3 + html2canvas (genereren — mail-bijlagen) |
 | Backend | Python 3.12 (stdlib only, no pip dependencies) |
 | Container | Docker, multi-stage (node:20-alpine → python:3.12-alpine) |
 | Deployment | Home Assistant addon via ingress (port 8099) |

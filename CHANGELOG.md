@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.88] — 2026-05-21
+
+### Added — PDF-bijlage in mailmodule
+
+De mailmodule uit 1.9.87 stuurde de pakbon/factuur inline in de HTML-body. Dat
+is voor sommige ontvangers prima maar minder geschikt voor archivering of
+doorsturen aan de boekhouder. Vanaf nu wordt de pakbon/factuur als echte
+**PDF-bijlage** meegestuurd:
+
+- Nieuwe `src/utils/pdf.ts` met `htmlToPdfBase64()`: rendert de standalone
+  HTML in een verborgen iframe, captureert met `html2canvas` en pakt het in
+  een A4-PDF via `jsPDF` (multi-page wanneer de inhoud langer is dan één
+  pagina). Geeft base64 terug zonder `data:`-prefix.
+- `BestellingenPage.mailOrderPakbon` en `mailOrderFactuur` zijn async
+  geworden: ze genereren eerst de PDF (knop toont "PDF maken…") en openen
+  daarna pas de MailModal met de bijlage al ingevoegd.
+- `BoekhoudingPage.mailVerkoopFactuur` idem; tijdens generatie toont de
+  mail-knop in de tabel een ⏳-spinner per factuur.
+- `MailModal` splitst nu `previewHtml` (alleen voor het preview-iframe) van
+  de daadwerkelijke mailbody — de mail bevat plain text + PDF-bijlage in
+  plaats van een grote HTML-body.
+
+Dependencies: `jspdf` 3.x en `html2canvas` 1.x toegevoegd aan
+`package.json`. Bundle-impact: ~780 KB ongezipt (652 → 894 KB gzip). Geen
+extra backend-dependencies — `server.py` blijft Python stdlib only.
+
+### Files
+
+- `src/utils/pdf.ts` *(nieuw)* — `htmlToPdfBase64(html)` helper.
+- `src/components/MailModal.tsx` — `html` prop hernoemd naar `previewHtml`;
+  `html`-veld niet meer doorgegeven aan `mailSendApi`.
+- `src/pages/BestellingenPage.tsx` — async mail-handlers, `mailGenerating`-
+  state, knoplabels tonen "⏳ PDF maken…" tijdens generatie.
+- `src/pages/BoekhoudingPage.tsx` — async `mailVerkoopFactuur`, `mailGenerating`-
+  state per factuur-ID, ⏳-spinner in alle drie de tabellen.
+- `src/i18n/{nl,en,de,fr,es}.json` — twee nieuwe sleutels:
+  `mail_generating_pdf`, `mail_pdf_failed`.
+- `package.json` / `package-lock.json` — `jspdf` en `html2canvas` als
+  dependencies.
+- `CLAUDE.md` — Tech Stack-tabel bijgewerkt met jsPDF + html2canvas.
+
+---
+
 ## [1.9.87] — 2026-05-21
 
 ### Added — Eigen SMTP-server: pakbon/factuur/bestelling per e-mail

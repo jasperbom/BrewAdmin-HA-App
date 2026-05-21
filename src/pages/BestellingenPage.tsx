@@ -10,6 +10,7 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
+import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
 
 interface BestellingenPageProps {
@@ -1054,59 +1055,77 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     to: string
     subject: string
     text: string
-    html?: string
+    previewHtml?: string
+    attachments?: {filename: string, contentBase64: string, mimeType: string}[]
   }>(null)
+  const [mailGenerating, setMailGenerating] = React.useState(false)
 
   const interpolate = (tpl: string, vars: Record<string, string>): string =>
     Object.keys(vars).reduce((acc, k) => acc.split(`{${k}}`).join(vars[k] ?? ''), tpl)
 
-  const mailOrderPakbon = () => {
+  const mailOrderPakbon = async () => {
     if (!selectedOrder) return
-    const {html} = buildPakbonHTML(selectedOrder, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
-    const pakbonNr = selectedOrder.pakbon_nummer || `P-${selectedOrder.id}`
-    const vars = {
-      naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
-      nr: pakbonNr,
-      brouwerij: (breweryDetails as any)?.naam || appName || '',
+    setMailGenerating(true)
+    try {
+      const {html, filename} = buildPakbonHTML(selectedOrder, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+      const pdfBase64 = await htmlToPdfBase64(html)
+      const pakbonNr = selectedOrder.pakbon_nummer || `P-${selectedOrder.id}`
+      const vars = {
+        naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+        nr: pakbonNr,
+        brouwerij: (breweryDetails as any)?.naam || appName || '',
+      }
+      setMailModal({
+        title: t('mail_modal_title_pakbon'),
+        to: selectedOrder.klant_email || '',
+        subject: interpolate(t('mail_pakbon_subject_default'), vars),
+        text: interpolate(t('mail_pakbon_body_default'), vars),
+        previewHtml: html,
+        attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+      })
+    } catch (e: any) {
+      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
     }
-    setMailModal({
-      title: t('mail_modal_title_pakbon'),
-      to: selectedOrder.klant_email || '',
-      subject: interpolate(t('mail_pakbon_subject_default'), vars),
-      text: interpolate(t('mail_pakbon_body_default'), vars),
-      html,
-    })
+    setMailGenerating(false)
   }
 
-  const mailOrderFactuur = () => {
+  const mailOrderFactuur = async () => {
     if (!selectedOrder) return
     const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
-    const html = buildFactuurHTML(selectedOrder, factuur, breweryDetails||{}, appName, factuurLogo||logo)
-    const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
-    const bedrag = fmt(factuur.bruto || 0)
-    const termijn = (breweryDetails as any)?.betalingstermijn ?? 14
-    const verval = (() => {
-      try {
-        const d = new Date(factuur.datum); d.setDate(d.getDate() + Number(termijn))
-        return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
-      } catch { return '' }
-    })()
-    const vars = {
-      naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
-      nr: factuurNr,
-      bedrag: '€ ' + bedrag,
-      vervaldatum: verval,
-      iban: (breweryDetails as any)?.iban || '',
-      brouwerij: (breweryDetails as any)?.naam || appName || '',
+    setMailGenerating(true)
+    try {
+      const html = buildFactuurHTML(selectedOrder, factuur, breweryDetails||{}, appName, factuurLogo||logo)
+      const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
+      const pdfBase64 = await htmlToPdfBase64(html)
+      const bedrag = fmt(factuur.bruto || 0)
+      const termijn = (breweryDetails as any)?.betalingstermijn ?? 14
+      const verval = (() => {
+        try {
+          const d = new Date(factuur.datum); d.setDate(d.getDate() + Number(termijn))
+          return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
+        } catch { return '' }
+      })()
+      const vars = {
+        naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+        nr: factuurNr,
+        bedrag: '€ ' + bedrag,
+        vervaldatum: verval,
+        iban: (breweryDetails as any)?.iban || '',
+        brouwerij: (breweryDetails as any)?.naam || appName || '',
+      }
+      setMailModal({
+        title: t('mail_modal_title_factuur'),
+        to: selectedOrder.klant_email || '',
+        subject: interpolate(t('mail_factuur_subject_default'), vars),
+        text: interpolate(t('mail_factuur_body_default'), vars),
+        previewHtml: html,
+        attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+      })
+    } catch (e: any) {
+      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
     }
-    setMailModal({
-      title: t('mail_modal_title_factuur'),
-      to: selectedOrder.klant_email || '',
-      subject: interpolate(t('mail_factuur_subject_default'), vars),
-      text: interpolate(t('mail_factuur_body_default'), vars),
-      html,
-    })
+    setMailGenerating(false)
   }
 
   const mailOrderBevestiging = () => {
@@ -1288,8 +1307,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           {(selectedOrder.status === 'afgerond' || selectedOrder.status === 'verzonden') && (<>
             <Btn v="secondary" onClick={printOrderPakbon}>🖨 {t('order_print_pakbon')}</Btn>
             <Btn v="secondary" onClick={printOrderFactuur}>🖨 {t('order_print_factuur')}</Btn>
-            <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>✉ {t('order_mail_pakbon')}</Btn>
-            <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>✉ {t('order_mail_factuur')}</Btn>
+            <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
+            </Btn>
+            <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
+            </Btn>
           </>)}
           {selectedOrder.status === 'nieuw' && (
             <Btn v="secondary" onClick={mailOrderBevestiging} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>✉ {t('order_mail_bevestiging')}</Btn>
@@ -1305,7 +1328,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             initialTo={mailModal.to}
             initialSubject={mailModal.subject}
             initialText={mailModal.text}
-            html={mailModal.html}
+            previewHtml={mailModal.previewHtml}
+            attachments={mailModal.attachments}
             replyTo={(breweryDetails as any)?.email}
             smtpReady={!!smtpCreds?.enabled}
             onClose={() => setMailModal(null)}

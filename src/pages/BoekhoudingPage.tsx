@@ -11,6 +11,7 @@ import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
+import { htmlToPdfBase64 } from '../utils/pdf'
 
 // ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
 const _crcTbl = (() => {
@@ -924,14 +925,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     to: string
     subject: string
     text: string
-    html?: string
+    previewHtml?: string
+    attachments?: {filename: string, contentBase64: string, mimeType: string}[]
     factuurId?: number
   }>(null)
+  const [mailGenerating, setMailGenerating] = React.useState<number | null>(null)
 
   const interpolate = (tpl: string, vars: Record<string, string>): string =>
     Object.keys(vars).reduce((acc, k) => acc.split(`{${k}}`).join(vars[k] ?? ''), tpl)
 
-  const mailVerkoopFactuur = (factuur: any) => {
+  const mailVerkoopFactuur = async (factuur: any) => {
     const inst = (breweryDetails as any) || {}
     const klant = (klanten||[]).find((k:any) => k.id === factuur.klant_id)
     const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
@@ -943,31 +946,39 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       klant_stad: factuur.klant_stad,
       klant_btw_nummer: factuur.klant_btw_nummer,
     }
-    const html = buildFactuurHTML(order, factuur, breweryMet, appName, factuurLogo || logo)
-    const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
-    const verval = (() => {
-      try {
-        const d = new Date(factuur.datum); d.setDate(d.getDate() + Number(termijn))
-        return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
-      } catch { return '' }
-    })()
-    const vars = {
-      naam: factuur.klant_naam || '',
-      nr: factuurNr,
-      bedrag: '€ ' + fmt(factuur.bruto || 0),
-      vervaldatum: verval,
-      iban: inst.iban || '',
-      brouwerij: inst.naam || appName || '',
+    setMailGenerating(factuur.id)
+    try {
+      const html = buildFactuurHTML(order, factuur, breweryMet, appName, factuurLogo || logo)
+      const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
+      const pdfBase64 = await htmlToPdfBase64(html)
+      const verval = (() => {
+        try {
+          const d = new Date(factuur.datum); d.setDate(d.getDate() + Number(termijn))
+          return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
+        } catch { return '' }
+      })()
+      const vars = {
+        naam: factuur.klant_naam || '',
+        nr: factuurNr,
+        bedrag: '€ ' + fmt(factuur.bruto || 0),
+        vervaldatum: verval,
+        iban: inst.iban || '',
+        brouwerij: inst.naam || appName || '',
+      }
+      const ontvanger = klant?.email || ''
+      setMailModal({
+        title: t('mail_modal_title_factuur'),
+        to: ontvanger,
+        subject: interpolate(t('mail_factuur_subject_default'), vars),
+        text: interpolate(t('mail_factuur_body_default'), vars),
+        previewHtml: html,
+        attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+        factuurId: factuur.id,
+      })
+    } catch (e: any) {
+      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
     }
-    const ontvanger = klant?.email || ''
-    setMailModal({
-      title: t('mail_modal_title_factuur'),
-      to: ontvanger,
-      subject: interpolate(t('mail_factuur_subject_default'), vars),
-      text: interpolate(t('mail_factuur_body_default'), vars),
-      html,
-      factuurId: factuur.id,
-    })
+    setMailGenerating(null)
   }
 
   // ── MT940 parser ──────────────────────────────────────────────────────────
@@ -1563,10 +1574,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         className="px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
                         {t('btn_pdf')}
                       </button>
-                      <button onClick={()=>mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled}
+                      <button onClick={()=>mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                         title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_factuur')}
                         className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-xs font-medium border border-blue-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                        {t('btn_mail_short')}
+                        {mailGenerating === f.id ? '⏳' : t('btn_mail_short')}
                       </button>
                       {volgendeActie && (
                         <button onClick={()=>genereerEnMarkeer(f, volgendeActie as any)}
@@ -1634,10 +1645,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                             className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
                             {t('btn_pdf')}
                           </button>
-                          <button onClick={() => mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled}
+                          <button onClick={() => mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                             title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_factuur')}
                             className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-xs font-medium border border-blue-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                            {t('btn_mail_short')}
+                            {mailGenerating === f.id ? '⏳' : t('btn_mail_short')}
                           </button>
                           {f.status !== 'betaald' && f.status !== 'credit' && (() => {
                             const volg = f.status === 'aanmaning' ? null
@@ -1955,10 +1966,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                               className="text-xs px-2 py-0.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-gray-600 transition-colors mr-1">
                               {t('btn_pdf')}
                             </button>
-                            <button onClick={()=>mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled}
+                            <button onClick={()=>mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                               title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_factuur')}
                               className="text-xs px-2 py-0.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded text-blue-700 transition-colors mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
-                              {t('btn_mail_short')}
+                              {mailGenerating === f.id ? '⏳' : t('btn_mail_short')}
                             </button>
                             {f.status !== 'betaald' && f.status !== 'credit' && (() => {
                               const volg = f.status === 'aanmaning' ? null
@@ -3175,7 +3186,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           initialTo={mailModal.to}
           initialSubject={mailModal.subject}
           initialText={mailModal.text}
-          html={mailModal.html}
+          previewHtml={mailModal.previewHtml}
+          attachments={mailModal.attachments}
           replyTo={(breweryDetails as any)?.email}
           smtpReady={!!smtpCreds?.enabled}
           onClose={() => setMailModal(null)}

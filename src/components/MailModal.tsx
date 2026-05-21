@@ -15,7 +15,8 @@ interface Props {
   initialTo: string
   initialSubject: string
   initialText: string
-  html?: string
+  /** HTML alleen voor preview (niet als mailbody verzonden). */
+  previewHtml?: string
   attachments?: MailAttachment[]
   replyTo?: string
   smtpReady: boolean
@@ -24,7 +25,7 @@ interface Props {
 }
 
 export default function MailModal({
-  title, initialTo, initialSubject, initialText, html, attachments,
+  title, initialTo, initialSubject, initialText, previewHtml, attachments,
   replyTo, smtpReady, onClose, onSent,
 }: Props) {
   const [to, setTo] = React.useState(initialTo || '')
@@ -45,7 +46,6 @@ export default function MailModal({
         to: to.split(/[,;]/).map(s => s.trim()).filter(Boolean),
         subject,
         text,
-        html,
         replyTo,
         attachments,
       })
@@ -89,7 +89,7 @@ export default function MailModal({
           </div>
         )}
 
-        {html && (
+        {previewHtml && (
           <div>
             <button
               type="button"
@@ -101,7 +101,7 @@ export default function MailModal({
             {showPreview && (
               <iframe
                 title="preview"
-                srcDoc={html}
+                srcDoc={previewHtml}
                 className="mt-2 w-full h-96 border border-gray-200 rounded bg-white"
               />
             )}

@@ -2087,6 +2087,8 @@
   "mail_sending": "Envoi…",
   "mail_send_success": "E-mail envoyé",
   "mail_send_failed": "Échec de l'envoi",
+  "mail_generating_pdf": "Génération du PDF…",
+  "mail_pdf_failed": "Échec de la génération du PDF",
   "mail_no_smtp": "SMTP n'est pas encore configuré. Allez dans Paramètres → Intégrations pour configurer un serveur e-mail.",
   "mail_no_recipient": "Aucun destinataire",
   "mail_no_subject": "Aucun objet",

@@ -2087,6 +2087,8 @@
   "mail_sending": "Sending…",
   "mail_send_success": "Email sent",
   "mail_send_failed": "Sending failed",
+  "mail_generating_pdf": "Generating PDF…",
+  "mail_pdf_failed": "PDF generation failed",
   "mail_no_smtp": "SMTP is not configured yet. Go to Settings → Integrations to set up an email server.",
   "mail_no_recipient": "No recipient entered",
   "mail_no_subject": "No subject entered",

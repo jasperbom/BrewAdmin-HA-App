@@ -2087,6 +2087,8 @@
   "mail_sending": "Wird gesendet…",
   "mail_send_success": "E-Mail gesendet",
   "mail_send_failed": "Senden fehlgeschlagen",
+  "mail_generating_pdf": "PDF wird erstellt…",
+  "mail_pdf_failed": "PDF-Erstellung fehlgeschlagen",
   "mail_no_smtp": "SMTP ist noch nicht konfiguriert. Gehe zu Einstellungen → Integrationen, um einen E-Mail-Server einzurichten.",
   "mail_no_recipient": "Kein Empfänger angegeben",
   "mail_no_subject": "Kein Betreff angegeben",
