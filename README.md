@@ -87,7 +87,7 @@ A Home Assistant addon for managing a small brewery. Register batches, manage in
 The settings page is organised with a sidebar navigation:
 
 - **Brouwerij** — manage brewery name, app name, logo, tanks, default shipping costs, AGP number, customs number and excise duty officer
-- **Koppelingen** — Brewfather API integration (User ID + API key) and WooCommerce shop integration (store URL + consumer key/secret)
+- **Koppelingen** — Brewfather API integration (User ID + API key), WooCommerce shop integration (store URL + consumer key/secret), Claude AI for invoice scanning, and SMTP email server for sending packing slips, invoices and order confirmations
 - **Home Assistant** — HA API connection settings
 - **Financieel** — VAT period (quarterly/monthly), BTW tariff rates, excise duty rates and optional custom formula, invoice attachments download, AGP goods flow diagram
 - **Ingrediënten** — configurable ingredient types; mutation log

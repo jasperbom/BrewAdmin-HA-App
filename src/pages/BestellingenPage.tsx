@@ -8,7 +8,9 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
-import { printPakbon, printFactuur } from '../components/PakbonExport'
+import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
+import MailModal from '../components/MailModal'
+import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
 
 interface BestellingenPageProps {
@@ -47,6 +49,7 @@ interface BestellingenPageProps {
   locaties?: any[]
   verplaatsingen?: any[]
   afboekingen?: any[]
+  smtpCreds?: any
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -70,7 +73,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   openOrderId=null, setOpenOrderId=()=>{},
   auditLog=[], setAuditLog=()=>{},
   producten=[], productArtikelen=[],
-  locaties=[], verplaatsingen=[], afboekingen=[]
+  locaties=[], verplaatsingen=[], afboekingen=[],
+  smtpCreds={enabled:false},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -1045,6 +1049,105 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     printFactuur(selectedOrder, factuur, breweryDetails||{}, appName, factuurLogo||logo)
   }
 
+  // ── Mail-modal state ────────────────────────────────────────────────────
+  const [mailModal, setMailModal] = React.useState<null | {
+    title: string
+    to: string
+    subject: string
+    text: string
+    previewHtml?: string
+    attachments?: {filename: string, contentBase64: string, mimeType: string}[]
+  }>(null)
+  const [mailGenerating, setMailGenerating] = React.useState(false)
+
+  const interpolate = (tpl: string, vars: Record<string, string>): string =>
+    Object.keys(vars).reduce((acc, k) => acc.split(`{${k}}`).join(vars[k] ?? ''), tpl)
+
+  const mailOrderPakbon = async () => {
+    if (!selectedOrder) return
+    setMailGenerating(true)
+    try {
+      const {html, filename} = buildPakbonHTML(selectedOrder, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+      const pdfBase64 = await htmlToPdfBase64(html)
+      const pakbonNr = selectedOrder.pakbon_nummer || `P-${selectedOrder.id}`
+      const vars = {
+        naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+        nr: pakbonNr,
+        brouwerij: (breweryDetails as any)?.naam || appName || '',
+      }
+      setMailModal({
+        title: t('mail_modal_title_pakbon'),
+        to: selectedOrder.klant_email || '',
+        subject: interpolate(t('mail_pakbon_subject_default'), vars),
+        text: interpolate(t('mail_pakbon_body_default'), vars),
+        previewHtml: html,
+        attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+      })
+    } catch (e: any) {
+      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
+    }
+    setMailGenerating(false)
+  }
+
+  const mailOrderFactuur = async () => {
+    if (!selectedOrder) return
+    const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
+    if (!factuur) { alert(t('err_no_invoice_for_order')); return }
+    setMailGenerating(true)
+    try {
+      const html = buildFactuurHTML(selectedOrder, factuur, breweryDetails||{}, appName, factuurLogo||logo)
+      const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
+      const pdfBase64 = await htmlToPdfBase64(html)
+      const bedrag = fmt(factuur.bruto || 0)
+      const termijn = (breweryDetails as any)?.betalingstermijn ?? 14
+      const verval = (() => {
+        try {
+          const d = new Date(factuur.datum); d.setDate(d.getDate() + Number(termijn))
+          return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
+        } catch { return '' }
+      })()
+      const vars = {
+        naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+        nr: factuurNr,
+        bedrag: '€ ' + bedrag,
+        vervaldatum: verval,
+        iban: (breweryDetails as any)?.iban || '',
+        brouwerij: (breweryDetails as any)?.naam || appName || '',
+      }
+      setMailModal({
+        title: t('mail_modal_title_factuur'),
+        to: selectedOrder.klant_email || '',
+        subject: interpolate(t('mail_factuur_subject_default'), vars),
+        text: interpolate(t('mail_factuur_body_default'), vars),
+        previewHtml: html,
+        attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+      })
+    } catch (e: any) {
+      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
+    }
+    setMailGenerating(false)
+  }
+
+  const mailOrderBevestiging = () => {
+    if (!selectedOrder) return
+    const orderRef = selectedOrder.wc_order_nummer ? `WC-${selectedOrder.wc_order_nummer}` : `M-${selectedOrder.id}`
+    const regelLijst = (selectedOrder.regels||[]).map((r: any) =>
+      `- ${r.aantal}× ${r.bier_naam || r.omschrijving || ''}${r.verpakking_type ? ` (${r.verpakking_type})` : ''}`
+    ).join('\n')
+    const vars = {
+      naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+      nr: orderRef,
+      regels: regelLijst,
+      brouwerij: (breweryDetails as any)?.naam || appName || '',
+    }
+    setMailModal({
+      title: t('mail_modal_title_bestelling'),
+      to: selectedOrder.klant_email || '',
+      subject: interpolate(t('mail_bestelling_subject_default'), vars),
+      text: interpolate(t('mail_bestelling_body_default'), vars),
+    })
+  }
+
   // --- RENDER ---
 
   if (view === 'detail' && selectedOrder) {
@@ -1204,11 +1307,35 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           {(selectedOrder.status === 'afgerond' || selectedOrder.status === 'verzonden') && (<>
             <Btn v="secondary" onClick={printOrderPakbon}>🖨 {t('order_print_pakbon')}</Btn>
             <Btn v="secondary" onClick={printOrderFactuur}>🖨 {t('order_print_factuur')}</Btn>
+            <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
+            </Btn>
+            <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
+            </Btn>
           </>)}
+          {selectedOrder.status === 'nieuw' && (
+            <Btn v="secondary" onClick={mailOrderBevestiging} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>✉ {t('order_mail_bevestiging')}</Btn>
+          )}
           {selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && (
             <Btn v="danger" onClick={() => setShowAnnuleerModal(true)}>{t('order_cancel')}</Btn>
           )}
         </div>
+
+        {mailModal && (
+          <MailModal
+            title={mailModal.title}
+            initialTo={mailModal.to}
+            initialSubject={mailModal.subject}
+            initialText={mailModal.text}
+            previewHtml={mailModal.previewHtml}
+            attachments={mailModal.attachments}
+            replyTo={(breweryDetails as any)?.email}
+            smtpReady={!!smtpCreds?.enabled}
+            onClose={() => setMailModal(null)}
+            onSent={() => logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id: selectedOrder.id, actie:'gewijzigd', omschrijving: `Mail verstuurd: ${mailModal.subject}`})}
+          />
+        )}
 
         {/* Afronden bevestiging */}
         {showAfrondModal && (

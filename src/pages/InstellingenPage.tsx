@@ -4,7 +4,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry, newId } from '../utils/api'
+import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry, newId } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult } from '../utils/calculations'
@@ -238,7 +238,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -693,6 +693,79 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Claude AI ${claudeForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setClaudeMsg('✓ Opgeslagen');
     setTimeout(() => setClaudeMsg(''), 2000);
+  };
+
+  // ── SMTP / e-mailserver ────────────────────────────────────────────────
+  const [smtpForm, setSmtpForm] = React.useState({
+    host:      smtpCreds?.host || '',
+    port:      smtpCreds?.port ?? 587,
+    username:  smtpCreds?.username || '',
+    password:  smtpCreds?.password || '',
+    fromEmail: smtpCreds?.fromEmail || '',
+    fromName:  smtpCreds?.fromName || '',
+    security:  smtpCreds?.security || 'starttls',
+    enabled:   !!smtpCreds?.enabled,
+  });
+  const smtpFormInit = React.useRef(false);
+  React.useEffect(() => {
+    if (!smtpFormInit.current && (smtpCreds?.host || smtpCreds?.username)) {
+      setSmtpForm({
+        host:      smtpCreds.host || '',
+        port:      smtpCreds.port ?? 587,
+        username:  smtpCreds.username || '',
+        password:  smtpCreds.password || '',
+        fromEmail: smtpCreds.fromEmail || '',
+        fromName:  smtpCreds.fromName || '',
+        security:  smtpCreds.security || 'starttls',
+        enabled:   !!smtpCreds.enabled,
+      });
+      smtpFormInit.current = true;
+    }
+  }, [smtpCreds?.host, smtpCreds?.username, smtpCreds?.enabled]);
+  const [smtpMsg, setSmtpMsg] = React.useState('');
+  const [smtpTesting, setSmtpTesting] = React.useState(false);
+  const [smtpSendTo, setSmtpSendTo] = React.useState('');
+  const [smtpSending, setSmtpSending] = React.useState(false);
+
+  const saveSmtp = () => {
+    setSmtpCreds((prev: any) => ({...prev, ...smtpForm, port: Number(smtpForm.port) || 587}));
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`SMTP ${smtpForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
+    setSmtpMsg('✓ ' + t('lbl_saved'));
+    setTimeout(() => setSmtpMsg(''), 2000);
+  };
+
+  const testSmtp = async () => {
+    setSmtpTesting(true); setSmtpMsg('');
+    const res = await mailTestApi({
+      host: smtpForm.host.trim(),
+      port: Number(smtpForm.port) || 0,
+      username: smtpForm.username,
+      password: smtpForm.password,
+      security: smtpForm.security as any,
+    });
+    if (res.ok) {
+      setSmtpMsg('✓ ' + t('settings_smtp_test_ok'));
+    } else {
+      const det = res.detail ? ` (${res.detail})` : '';
+      setSmtpMsg('⚠ ' + t('settings_smtp_test_fail') + det);
+    }
+    setSmtpTesting(false);
+  };
+
+  const sendSmtpTestMail = async () => {
+    if (!smtpSendTo.trim()) { setSmtpMsg('⚠ ' + t('mail_no_recipient')); return; }
+    setSmtpSending(true); setSmtpMsg('');
+    try {
+      await mailSendApi({
+        to: smtpSendTo.trim(),
+        subject: t('settings_smtp_testmail_subject'),
+        text: t('settings_smtp_testmail_body'),
+      });
+      setSmtpMsg('✓ ' + t('mail_send_success'));
+    } catch (e: any) {
+      setSmtpMsg('⚠ ' + t('mail_send_failed') + (e?.message ? `: ${e.message}` : ''));
+    }
+    setSmtpSending(false);
   };
 
   const navItems = [
@@ -1491,6 +1564,101 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p>{t('settings_claude_hint_pdf')}</p>
           <p>{t('settings_claude_hint_scan')}</p>
           <p>{t('settings_claude_hint_model')} <code className="bg-gray-100 px-1 rounded">claude-haiku-4-5</code> {t('settings_claude_hint_fast')}</p>
+        </div>
+      </div>
+
+      {/* SMTP — E-MAILSERVER */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_smtp_section')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_smtp_desc')}</p>
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div className="relative">
+              <input type="checkbox" checked={smtpForm.enabled}
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, enabled: e.target.checked}))}
+                className="sr-only peer" />
+              <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+            </div>
+            <span className="text-sm font-medium text-gray-700">{t('settings_smtp_enable')}</span>
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_host')}</label>
+              <input type="text" value={smtpForm.host}
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, host: e.target.value}))}
+                placeholder="smtp.example.com"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_port')}</label>
+              <input type="number" min="1" max="65535" value={smtpForm.port}
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, port: e.target.value}))}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_security')}</label>
+              <select value={smtpForm.security}
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, security: e.target.value}))}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input bg-white">
+                <option value="starttls">{t('settings_smtp_security_starttls')}</option>
+                <option value="ssl">{t('settings_smtp_security_ssl')}</option>
+                <option value="none">{t('settings_smtp_security_none')}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_user')}</label>
+              <input type="text" value={smtpForm.username} autoComplete="off"
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, username: e.target.value}))}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_pass')}</label>
+              <input type="password" value={smtpForm.password} autoComplete="new-password"
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, password: e.target.value}))}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_from_name')}</label>
+              <input type="text" value={smtpForm.fromName}
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, fromName: e.target.value}))}
+                placeholder={appName || ''}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_from_email')}</label>
+              <input type="email" value={smtpForm.fromEmail}
+                onChange={(e: any) => setSmtpForm((f: any) => ({...f, fromEmail: e.target.value}))}
+                placeholder="info@brouwerij.nl"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={saveSmtp} className="px-4 py-2 tbtn rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
+            <Btn v="secondary" onClick={testSmtp} disabled={smtpTesting || !smtpForm.host}>
+              {smtpTesting ? t('settings_ha_testing') : t('settings_smtp_test')}
+            </Btn>
+          </div>
+
+          <div className="border-t pt-3">
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_smtp_send_testmail')}</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="email" value={smtpSendTo} placeholder="ontvanger@example.com"
+                onChange={(e: any) => setSmtpSendTo(e.target.value)}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1 min-w-48 t-input" />
+              <Btn v="secondary" onClick={sendSmtpTestMail}
+                disabled={smtpSending || !smtpForm.enabled || !smtpSendTo.trim()}>
+                {smtpSending ? t('mail_sending') : t('settings_smtp_send_btn')}
+              </Btn>
+            </div>
+          </div>
+
+          {smtpMsg && <div className={`text-sm font-medium ${smtpMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{smtpMsg}</div>}
+        </div>
+        <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
+          <p>{t('settings_smtp_hint_app_pw')}</p>
+          <p>{t('settings_smtp_hint_ports')}</p>
         </div>
       </div>
       </>}
