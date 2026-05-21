@@ -430,7 +430,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
-| POST | `/api/mail/send` | Verstuur e-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen) |
+| POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 

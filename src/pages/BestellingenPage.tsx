@@ -1055,7 +1055,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     to: string
     subject: string
     text: string
-    previewHtml?: string
     attachments?: {filename: string, contentBase64: string, mimeType: string}[]
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
@@ -1080,7 +1079,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         to: selectedOrder.klant_email || '',
         subject: interpolate(t('mail_pakbon_subject_default'), vars),
         text: interpolate(t('mail_pakbon_body_default'), vars),
-        previewHtml: html,
         attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
       })
     } catch (e: any) {
@@ -1119,7 +1117,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         to: selectedOrder.klant_email || '',
         subject: interpolate(t('mail_factuur_subject_default'), vars),
         text: interpolate(t('mail_factuur_body_default'), vars),
-        previewHtml: html,
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
       })
     } catch (e: any) {
@@ -1328,8 +1325,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             initialTo={mailModal.to}
             initialSubject={mailModal.subject}
             initialText={mailModal.text}
-            previewHtml={mailModal.previewHtml}
             attachments={mailModal.attachments}
+            brewery={breweryDetails as any}
+            logoDataUri={factuurLogo || logo}
             replyTo={(breweryDetails as any)?.email}
             smtpReady={!!smtpCreds?.enabled}
             onClose={() => setMailModal(null)}

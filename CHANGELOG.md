@@ -4,6 +4,48 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.89] — 2026-05-21
+
+### Added — HTML-mails met inline brouwerijlogo
+
+De mails uit 1.9.87 hadden een plain-text body. Vanaf nu wordt elke mail
+verstuurd als **HTML-mail met logo + nette signature** — naast de plain-text
+versie als fallback (`multipart/alternative`).
+
+- Het brouwerijlogo (`factuur_logo` of `app_logo`) wordt als RFC-conforme
+  CID-inline image meegestuurd: server bouwt een `multipart/mixed >
+  multipart/alternative > multipart/related`-structuur en zet
+  `Content-Disposition: inline` op de afbeelding. Werkt in Gmail, Outlook
+  (web + desktop), Apple Mail, Thunderbird, mobiele clients.
+- HTML-template (`src/utils/mailTemplate.ts`) heeft een gecentreerd
+  logo-blok, accent-rand bovenaan, body met `<p>`/`<br>`-formatting, en
+  een signature-blok met brouwerijnaam, adres, e-mail, telefoon, BTW-nr.
+  en IBAN — alle waarden HTML-escaped tegen XSS.
+- MailModal bouwt de HTML-body automatisch uit de bewerkte tekst en toont
+  standaard een live preview-iframe (data:-URI-variant van het logo, zodat
+  CID-verwijzingen in de browser werken). De gebruiker bewerkt alleen
+  plain text — de HTML-wrapping gebeurt onzichtbaar.
+
+### Files
+
+- `server.py` — `_build_email` accepteert nu `inlineImages` (lijst met
+  `{filename, contentBase64, mimeType, contentId}`); valideert CID strikt
+  op `[A-Za-z0-9._-]{1,80}` en alleen `image/*` mimeTypes; gebruikt
+  `add_related(..., disposition='inline')` op de HTML-alternative.
+- `src/utils/api.ts` — `MailInlineImage` interface; `MailSendBody.inlineImages?`.
+- `src/utils/mailTemplate.ts` *(nieuw)* — `buildMailHtml(text, brewery, opts)`
+  en `dataUriToInlineImage(dataUri, cid, filename)` helpers.
+- `src/components/MailModal.tsx` — interne HTML-body-generatie met
+  `useMemo`, automatische omzetting van het brouwerijlogo (data:-URI) naar
+  CID-inline image; preview-iframe vervangt CID door data:-URI zodat het
+  in de browser te zien is.
+- `src/pages/BestellingenPage.tsx`, `BoekhoudingPage.tsx` — geven
+  `brewery` en `logoDataUri` mee aan de MailModal; `previewHtml`-prop
+  verwijderd uit modal-state (preview wordt nu door MailModal zelf
+  gegenereerd uit de tekst).
+
+---
+
 ## [1.9.88] — 2026-05-21
 
 ### Added — PDF-bijlage in mailmodule
