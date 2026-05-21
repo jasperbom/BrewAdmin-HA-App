@@ -925,7 +925,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     to: string
     subject: string
     text: string
-    previewHtml?: string
     attachments?: {filename: string, contentBase64: string, mimeType: string}[]
     factuurId?: number
   }>(null)
@@ -971,7 +970,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         to: ontvanger,
         subject: interpolate(t('mail_factuur_subject_default'), vars),
         text: interpolate(t('mail_factuur_body_default'), vars),
-        previewHtml: html,
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         factuurId: factuur.id,
       })
@@ -3186,8 +3184,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           initialTo={mailModal.to}
           initialSubject={mailModal.subject}
           initialText={mailModal.text}
-          previewHtml={mailModal.previewHtml}
           attachments={mailModal.attachments}
+          brewery={breweryDetails as any}
+          logoDataUri={factuurLogo || logo}
           replyTo={(breweryDetails as any)?.email}
           smtpReady={!!smtpCreds?.enabled}
           onClose={() => setMailModal(null)}

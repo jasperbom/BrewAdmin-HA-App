@@ -280,6 +280,15 @@ export interface MailAttachment {
   mimeType?: string
 }
 
+// Inline image voor in een HTML-mailbody. `contentId` (zonder <...>) wordt
+// in de HTML aangesproken als `<img src="cid:LOGO">`.
+export interface MailInlineImage {
+  filename: string
+  contentBase64: string
+  mimeType: string
+  contentId: string
+}
+
 export interface MailSendBody {
   to: string | string[]
   cc?: string | string[]
@@ -289,6 +298,7 @@ export interface MailSendBody {
   text: string
   html?: string
   attachments?: MailAttachment[]
+  inlineImages?: MailInlineImage[]
 }
 
 // Verstuur een mail via de opgeslagen SMTP-credentials. Throwt bij niet-OK

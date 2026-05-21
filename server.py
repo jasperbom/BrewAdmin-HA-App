@@ -458,6 +458,49 @@ def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage
         maintype, _, subtype = mt.partition('/')
         msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=fname)
 
+    # Inline images: lijst van {filename, contentBase64, mimeType, contentId}.
+    # Worden via add_related op de HTML-alternative gekoppeld zodat het de
+    # standaard multipart/related-structuur krijgt (Gmail, Outlook, Apple Mail).
+    inline_imgs = payload.get('inlineImages') or []
+    if not isinstance(inline_imgs, list):
+        return None
+    if len(inline_imgs) > 10:
+        return None
+    if inline_imgs and not html_body:
+        # Inline images zonder HTML-body hebben geen verwijzingspunt.
+        return None
+    for img in inline_imgs:
+        if not isinstance(img, dict):
+            return None
+        cid = str(img.get('contentId', '')).strip()
+        # CID moet veilig zijn voor in een header — strikt alfanum + . _ -
+        if not cid or not re.match(r'^[A-Za-z0-9._-]{1,80}$', cid):
+            return None
+        ifname = str(img.get('filename', '')).strip() or f'{cid}.png'
+        if len(ifname) > 200 or '/' in ifname or '\\' in ifname or ifname.startswith('.'):
+            return None
+        ib64 = img.get('contentBase64', '')
+        if not isinstance(ib64, str):
+            return None
+        try:
+            icontent = base64.b64decode(ib64, validate=True)
+        except Exception:
+            return None
+        total_size += len(icontent)
+        if total_size > 15 * 1024 * 1024:
+            return None
+        imt = str(img.get('mimeType', 'image/png'))
+        if not imt.startswith('image/') or '/' not in imt:
+            return None
+        imaintype, _, isubtype = imt.partition('/')
+        html_part = msg.get_body(preferencelist=('html',))
+        if html_part is None:
+            return None
+        # `disposition='inline'` zorgt dat strikte mailclients het beeld
+        # daadwerkelijk in de body renderen i.p.v. als losse download tonen.
+        html_part.add_related(icontent, maintype=imaintype, subtype=isubtype,
+                              cid=f'<{cid}>', filename=ifname, disposition='inline')
+
     return msg, to_list + cc_list + bcc_list
 
 
