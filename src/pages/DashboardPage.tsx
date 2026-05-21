@@ -10,7 +10,7 @@ import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 
-function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setPage, tanks, tankStatussen={}, setTankStatussen=()=>{}, tankLog=[], setTankLog=()=>{}, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[]}: any) {
+function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setPage, tanks, tankStatussen={}, setTankStatussen=()=>{}, tankLog=[], setTankLog=()=>{}, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[], bestellingen=[], setOpenOrderId=()=>{}}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -250,7 +250,11 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
   // ── Stat counts ───────────────────────────────────────────────────────────
   const openAccijns    = acc.filter((a: any) => !a.betaald);
   const openAccBed     = openAccijns.reduce((s: any, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0);
-  const openBestellingen = bi.filter((b: any) => ['nieuw','gepickt'].includes(b.status));
+  // Bestellingen-data: 'nieuw' = nog niet gepickt, 'gepickt' = ingepakt
+  // klaar voor verzending. (Eerder werd hier per ongeluk `bi` =
+  // batch_ingredienten gefilterd, waardoor het altijd 0 was.)
+  const openBestellingen = (bestellingen || []).filter((b: any) =>
+    ['nieuw','gepickt'].includes(b.status));
   const actiefBatches  = bat.filter((b: any) => b.status !== 'Gesloten');
 
   // ── Aankomende geplande brouwsels (voor agenda-widget) ────────────────────
@@ -1487,14 +1491,14 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
               <div
                 key={b.id}
                 className="flex items-center justify-between px-5 py-2.5 hover:bg-gray-50 cursor-pointer"
-                onClick={() => setPage('bestellingen')}
+                onClick={() => { setOpenOrderId(b.id); setPage('bestellingen') }}
               >
                 <div>
                   <span className="font-medium text-sm text-gray-800">{b.klant_naam || '—'}</span>
                   <span className="text-xs text-gray-400 ml-2">{fmtD(b.datum)}</span>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${b.status === 'nieuw' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {b.status}
+                  {t(`orders_status_${b.status}`) || b.status}
                 </span>
               </div>
             ))}
