@@ -2,7 +2,7 @@ import React from 'react'
 import { t, getLang } from '../i18n'
 import { tod, ymd, r2, r3 } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
-import { nextKlantnummer } from '../utils/klant'
+import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
@@ -68,6 +68,15 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null}: any) {
+  // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
+  // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
+  // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
+  // raken (de snapshot blijft het historische record).
+  const klantNaamVoor = (f: any): string => {
+    const live = findLiveKlant(f, klanten)
+    return (live?.naam || f?.klant_naam || '').toString()
+  }
+
   const now = new Date();
   const firstOfYear = ymd(new Date(now.getFullYear(), 0, 1));
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
@@ -421,7 +430,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const rows: any[] = [];
     verkoopGefilterd.forEach((f: any) => {
       (f.regels||[]).forEach((r: any) => rows.push([
-        f.datum, f.factuurnummer||'', f.klant_naam||'',
+        f.datum, f.factuurnummer||'', klantNaamVoor(f),
         r.omschrijving||'', r.hoeveelheid??'', r.prijs_per_stuk!=null?Number(r.prijs_per_stuk).toFixed(2):'',
         r.btw_pct??'', r.netto!=null?Number(r.netto).toFixed(2):'', r.btw_bedrag!=null?Number(r.btw_bedrag).toFixed(2):'',
         r.bruto!=null?Number(r.bruto).toFixed(2):'',
@@ -444,7 +453,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       ;(inkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
         .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Inkoop',nummer:f.factuurnummer||`IF-${f.id}`,relatie:f.leverancier||'',netto:f.totaal_netto||0,btw:f.totaal_btw||0,totaal:f.totaal_bruto||0}))
       ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
-        .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:f.klant_naam||'',netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
+        .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:klantNaamVoor(f),netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
       ;(acc||[]).filter((r:any)=>r.betaald===true&&r.datum>=rapportVan&&r.datum<=rapportTot)
         .forEach((r:any)=>{const tot=r.totaal_accijns||r.accijns||0;txs.push({datum:r.datum||'',dagboek:'Accijns',nummer:`ACC-${r.id}`,relatie:r.batch_naam||'',netto:tot,btw:0,totaal:tot})})
       return txs.sort((a,b)=>a.datum.localeCompare(b.datum))
@@ -455,9 +464,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const vfRows: any[][] = []
     ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot).forEach((f:any)=>{
       if ((f.regels||[]).length) {
-        f.regels.forEach((r:any)=>vfRows.push([f.datum,f.factuurnummer||'',f.klant_naam||'',f.status||'',r.omschrijving||'',r.hoeveelheid??'',r.prijs_per_stuk!=null?Number(r.prijs_per_stuk).toFixed(2):'',r.btw_pct??'',r.netto!=null?Number(r.netto).toFixed(2):'',r.btw_bedrag!=null?Number(r.btw_bedrag).toFixed(2):'',r.bruto!=null?Number(r.bruto).toFixed(2):'']))
+        f.regels.forEach((r:any)=>vfRows.push([f.datum,f.factuurnummer||'',klantNaamVoor(f),f.status||'',r.omschrijving||'',r.hoeveelheid??'',r.prijs_per_stuk!=null?Number(r.prijs_per_stuk).toFixed(2):'',r.btw_pct??'',r.netto!=null?Number(r.netto).toFixed(2):'',r.btw_bedrag!=null?Number(r.btw_bedrag).toFixed(2):'',r.bruto!=null?Number(r.bruto).toFixed(2):'']))
       } else {
-        vfRows.push([f.datum,f.factuurnummer||'',f.klant_naam||'',f.status||'','','','','',f.netto!=null?Number(f.netto).toFixed(2):'',f.btw!=null?Number(f.btw).toFixed(2):'',f.bruto!=null?Number(f.bruto).toFixed(2):''])
+        vfRows.push([f.datum,f.factuurnummer||'',klantNaamVoor(f),f.status||'','','','','',f.netto!=null?Number(f.netto).toFixed(2):'',f.btw!=null?Number(f.btw).toFixed(2):'',f.bruto!=null?Number(f.bruto).toFixed(2):''])
       }
     })
     files.push({name:'csv/verkoopfacturen.csv', data: enc.encode('\uFEFF' + [vfHdr,...vfRows].map(csvRow).join('\n'))})
@@ -509,9 +518,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     // 6. Verkoopfacturen als HTML (printbaar naar PDF)
     const inst = (breweryDetails as any)||{}
     ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot).forEach((f:any)=>{
-      const klant = (klanten||[]).find((k:any)=>k.id===f.klant_id)
+      const klant = findLiveKlant(f, klanten)
       const termijn = klant?.betalingstermijn ?? inst?.betalingstermijn ?? 14
-      const order = {klant_naam:f.klant_naam,klant_straat:f.klant_straat,klant_postcode:f.klant_postcode,klant_stad:f.klant_stad,klant_btw_nummer:f.klant_btw_nummer}
+      const order = resolveKlantSnapshot(f, klanten)
       const html = buildFactuurHTML(order, f, {...inst, betalingstermijn:termijn}, '', factuurLogo)
       const bestandsnaam = (f.factuurnummer||`VF-${f.id}`).replace(/[^a-zA-Z0-9_\-]/g,'_')
       files.push({name:`verkoopfacturen/${bestandsnaam}.html`, data: enc.encode(html)})
@@ -861,9 +870,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   // Genereer herinnering/aanmaning PDF én update status
   const genereerEnMarkeer = (f: any, niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning') => {
     const inst = (breweryDetails as any) || {}
-    const klant = (klanten||[]).find((k:any) => k.id === f.klant_id)
+    const klant = findLiveKlant(f, klanten)
     const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
-    printHerinnering(f, {...inst, betalingstermijn: termijn}, '', factuurLogo, niveau)
+    const resolved = resolveKlantSnapshot(f, klanten)
+    printHerinnering(resolved, {...inst, betalingstermijn: termijn}, '', factuurLogo, niveau)
     if (niveau === 'herinnering') markeerHerinnering(f.id)
     else if (niveau === 'tweede_herinnering') markeerTweedeHerinnering(f.id)
     else markeerAanmaning(f.id)
@@ -905,19 +915,17 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   // ── PDF generatie ─────────────────────────────────────────────────────────
+  // Klantgegevens worden via `resolveKlantSnapshot` live uit de klantkaart
+  // gehaald (via klant_id, of email-match als fallback) zodat een wijziging
+  // op de klantenpagina onmiddellijk doorwerkt in nieuw geprinte of gemailde
+  // facturen — de opgeslagen snapshot blijft fallback.
   const genereerFactuurPDF = (factuur: any) => {
     const inst = (breweryDetails as any) || {}
-    const klant = (klanten||[]).find((k:any) => k.id === factuur.klant_id)
+    const resolved = resolveKlantSnapshot(factuur, klanten)
+    const klant = findLiveKlant(factuur, klanten)
     const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
     const breweryMet = {...inst, betalingstermijn: termijn}
-    const order = {
-      klant_naam: factuur.klant_naam,
-      klant_straat: factuur.klant_straat,
-      klant_postcode: factuur.klant_postcode,
-      klant_stad: factuur.klant_stad,
-      klant_btw_nummer: factuur.klant_btw_nummer,
-    }
-    printFactuur(order, factuur, breweryMet, '', factuurLogo)
+    printFactuur(resolved, factuur, breweryMet, '', factuurLogo)
   }
 
   // ── Factuur mailen ────────────────────────────────────────────────────────
@@ -936,19 +944,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   const mailVerkoopFactuur = async (factuur: any) => {
     const inst = (breweryDetails as any) || {}
-    const klant = (klanten||[]).find((k:any) => k.id === factuur.klant_id)
+    const klant = findLiveKlant(factuur, klanten)
+    const resolved = resolveKlantSnapshot(factuur, klanten)
     const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
     const breweryMet = {...inst, betalingstermijn: termijn}
-    const order = {
-      klant_naam: factuur.klant_naam,
-      klant_straat: factuur.klant_straat,
-      klant_postcode: factuur.klant_postcode,
-      klant_stad: factuur.klant_stad,
-      klant_btw_nummer: factuur.klant_btw_nummer,
-    }
     setMailGenerating(factuur.id)
     try {
-      const html = buildFactuurHTML(order, factuur, breweryMet, appName, factuurLogo || logo)
+      const html = buildFactuurHTML(resolved, factuur, breweryMet, appName, factuurLogo || logo)
       const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
       const pdfBase64 = await htmlToPdfBase64(html)
       const verval = (() => {
@@ -958,14 +960,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         } catch { return '' }
       })()
       const vars = {
-        naam: factuur.klant_naam || '',
+        naam: resolved.klant_naam || '',
         nr: factuurNr,
         bedrag: '€ ' + fmt(factuur.bruto || 0),
         vervaldatum: verval,
         iban: inst.iban || '',
         brouwerij: inst.naam || appName || '',
       }
-      const ontvanger = klant?.email || ''
+      const ontvanger = klant?.email || resolved.klant_email || ''
       setMailModal({
         title: t('mail_modal_title_factuur'),
         to: ontvanger,
@@ -1564,7 +1566,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   <div key={f.id} className="flex items-center gap-3 px-4 py-2.5">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm text-gray-900">{f.klant_naam||'—'}</span>
+                        <span className="font-medium text-sm text-gray-900">{klantNaamVoor(f)||'—'}</span>
                         <span className="font-mono text-xs text-gray-400">{f.factuurnummer||''}</span>
                         {statusBadge(f)}
                         <span className="text-xs text-red-600 font-medium">{t('lbl_factuur_vervallen_dagen').replace('{n}',String(dagen))}</span>
@@ -1636,7 +1638,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       onClick={() => { if (f.bestelling_id) { setOpenOrderId(f.bestelling_id); setPage('bestellingen'); } }}>
                       <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                       <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
-                      <td className="py-2 pr-3 font-medium text-gray-800">{f.klant_naam||'—'}</td>
+                      <td className="py-2 pr-3 font-medium text-gray-800">{klantNaamVoor(f)||'—'}</td>
                       <td className="py-2 pr-3">{statusBadge(f)}</td>
                       <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.netto||0)}</td>
                       <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.btw||0)}</td>
@@ -2198,7 +2200,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 <option value="">— {t('lbl_niet_gekoppeld')} —</option>
                                 {extraVerkoop && <option key={extraVerkoop.id} value={extraVerkoop.id}>{extraVerkoop.datum} · {extraVerkoop.klant_naam||'—'} · {fmt(extraVerkoop.bruto||0)} ✓</option>}
                                 {openVerkoop.map((f: any) => (
-                                  <option key={f.id} value={f.id}>{f.datum} · {f.klant_naam||'—'} · {fmt(f.bruto||0)}</option>
+                                  <option key={f.id} value={f.id}>{f.datum} · {klantNaamVoor(f)||'—'} · {fmt(f.bruto||0)}</option>
                                 ))}
                               </select>
                               {(openInkoopNegatief.length > 0 || tx.gekoppeldInkoopId) && (
@@ -2635,7 +2637,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           ;(inkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
             .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Inkoop',nummer:f.factuurnummer||`IF-${f.id}`,relatie:f.leverancier||'—',netto:f.totaal_netto||0,btw:f.totaal_btw||0,totaal:f.totaal_bruto||0}))
           ;(verkoopFacturen||[]).filter((f:any)=>f.datum>=rapportVan&&f.datum<=rapportTot)
-            .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:f.klant_naam||'—',netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
+            .forEach((f:any)=>txs.push({datum:f.datum||'',dagboek:'Verkoop',nummer:f.factuurnummer||`VF-${f.id}`,relatie:klantNaamVoor(f)||'—',netto:f.netto||0,btw:f.btw||0,totaal:f.bruto||0}))
           ;(acc||[]).filter((r:any)=>r.betaald===true&&r.datum>=rapportVan&&r.datum<=rapportTot)
             .forEach((r:any)=>{const tot=r.totaal_accijns||r.accijns||0;txs.push({datum:r.datum||'',dagboek:'Accijns',nummer:`ACC-${r.id}`,relatie:r.batch_naam||'—',netto:tot,btw:0,totaal:tot})})
           ;(kapitaalBoekingen||[]).filter((k:any)=>k.datum>=rapportVan&&k.datum<=rapportTot)

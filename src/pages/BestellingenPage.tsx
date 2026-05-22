@@ -12,6 +12,7 @@ import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '..
 import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
+import { resolveKlantSnapshot } from '../utils/klant'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -123,29 +124,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const selectedOrder = (bestellingen||[]).find((b: any) => b.id === selectedId)
 
-  // Resolve de live klantkaart voor een bestelling. Eerst via klant_id (echte
-  // koppeling), anders via case-insensitieve match op het snapshot-mailadres
-  // (vangt legacy/WC-import-orders zonder klant_id af). Het snapshot op de
-  // bestelling zelf blijft de historische waarheid voor reeds gegenereerde
-  // pakbon/factuur-PDF's — UI-display en mail-velden gebruiken liever de
-  // huidige klantkaart zodat een e-mailwijziging direct doorwerkt.
-  const liveKlantVoor = (order: any): any | null => {
-    if (!order) return null
-    if (order.klant_id != null) {
-      const k = (klanten||[]).find((k: any) => k.id === order.klant_id)
-      if (k) return k
-    }
-    const beLc = (order.klant_email || '').trim().toLowerCase()
-    if (!beLc) return null
-    return (klanten||[]).find((k: any) => (k.email||'').toLowerCase() === beLc) || null
-  }
-  // Velden voor weergave/mail: live klantkaart wint, anders snapshot op order.
-  const klantField = (order: any, ordKey: string, klantKey: string): string => {
-    const k = liveKlantVoor(order)
-    const liveVal = (k && (k[klantKey] || '')).toString().trim()
-    if (liveVal) return liveVal
-    return (order?.[ordKey] || '').toString()
-  }
+  // Snapshot van de bestelling met overschreven klant_*-velden uit de live
+  // klantkaart. Reeds gegenereerde PDF's blijven hun historische snapshot
+  // houden — alleen rendering en mailing volgen de actuele klantkaart.
+  const resolvedSelectedOrder = selectedOrder
+    ? resolveKlantSnapshot(selectedOrder, klanten)
+    : null
 
   // Gefilterde en gesorteerde lijst
   const filtered = [...(bestellingen||[])]
@@ -703,7 +687,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       setUit((prev: any[]) => [...(prev||[]), ...nieuweUitleveringen])
       setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
       setBestellingen((prev: any[]) => prev.map((b: any) =>
-        b.id === selectedOrder.id ? {...b, status: 'gepickt'} : b
+        b.id === selectedOrder.id ? {...b, status: 'gepickt', pick_datum: tod()} : b
       ))
       // Eén log-regel per uitlevering (uitslag uit AGP)
       setLog((prev: any[]) => {
@@ -897,13 +881,24 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     })
     const totaalNetto = rnd2(regelsList.reduce((s: number, r: any) => s + r.netto, 0))
     const totaalBtw = rnd2(regelsList.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    // Klantgegevens uit de live klantkaart (via klant_id of email-match) zodat
+    // de factuur ook bij volgende renders/mails de actuele waarden vindt.
+    const snap = resolveKlantSnapshot(selectedOrder, klanten)
     const verkoopFact: any = {
       id: newId(verkoopFacturen||[]),
       datum: vandaag,
       factuurnummer: factuurNummer,
       bestelling_id: selectedOrder.id,
-      klant_naam: selectedOrder.klant_naam,
-      klant_adres: [selectedOrder.klant_straat, selectedOrder.klant_huisnummer, selectedOrder.klant_postcode, selectedOrder.klant_stad].filter(Boolean).join(' '),
+      klant_id: snap.klant_id ?? null,
+      klant_naam: snap.klant_naam || '',
+      klant_bedrijf: snap.klant_bedrijf || '',
+      klant_email: snap.klant_email || '',
+      klant_straat: snap.klant_straat || '',
+      klant_huisnummer: snap.klant_huisnummer || '',
+      klant_postcode: snap.klant_postcode || '',
+      klant_stad: snap.klant_stad || '',
+      klant_btw_nummer: snap.klant_btw_nummer || '',
+      klant_adres: [snap.klant_straat, snap.klant_huisnummer, snap.klant_postcode, snap.klant_stad].filter(Boolean).join(' '),
       regels: regelsList,
       btw_overzicht,
       netto: totaalNetto,
@@ -1062,17 +1057,39 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setShowPickModal(true)
   }
 
+  // Pakbon-datum = datum van picken. Voorkeur: `pick_datum` op de order
+  // (gezet bij `savePicks`). Voor oudere orders zonder dat veld leiden we
+  // de datum af uit de gekoppelde uitleveringen — die zijn gestempeld op
+  // het moment van pickbevestiging. Pas als alles ontbreekt vallen we
+  // terug op verzend- of orderdatum (= legacy gedrag).
+  const pakbonDatumVoor = (order: any): string => {
+    if (!order) return ''
+    if (order.pick_datum) return order.pick_datum
+    const orderPicks = picksVoorOrder(order.id)
+    const uitIds = new Set<number>()
+    for (const p of orderPicks) {
+      if (p.uitlevering_id) uitIds.add(p.uitlevering_id)
+      for (const id of (p.uitlevering_ids || [])) uitIds.add(id)
+    }
+    const datums = (uit || [])
+      .filter((u: any) => uitIds.has(u.id) && u.datum)
+      .map((u: any) => u.datum as string)
+      .sort()
+    if (datums.length) return datums[0]
+    return order.verzend_datum || order.datum || ''
+  }
+
   const printOrderPakbon = () => {
     if (!selectedOrder) return
-    const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
-    printPakbon(selectedOrder, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+    const orderVoorPakbon = {...resolvedSelectedOrder!, pakbon_datum: pakbonDatumVoor(selectedOrder)}
+    printPakbon(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
   }
 
   const printOrderFactuur = () => {
     if (!selectedOrder) return
     const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
-    printFactuur(selectedOrder, factuur, breweryDetails||{}, appName, factuurLogo||logo)
+    printFactuur(resolvedSelectedOrder!, factuur, breweryDetails||{}, appName, factuurLogo||logo)
   }
 
   // ── Mail-modal state ────────────────────────────────────────────────────
@@ -1095,17 +1112,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!selectedOrder) return
     setMailGenerating(true)
     try {
-      const {html, filename} = buildPakbonHTML(selectedOrder, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+      const orderVoorPakbon = {...resolvedSelectedOrder!, pakbon_datum: pakbonDatumVoor(selectedOrder)}
+      const {html, filename} = buildPakbonHTML(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
       const pdfBase64 = await htmlToPdfBase64(html)
       const pakbonNr = selectedOrder.pakbon_nummer || `P-${selectedOrder.id}`
       const vars = {
-        naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+        naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
         nr: pakbonNr,
         brouwerij: (breweryDetails as any)?.naam || appName || '',
       }
       setMailModal({
         title: t('mail_modal_title_pakbon'),
-        to: klantField(selectedOrder, 'klant_email', 'email'),
+        to: (resolvedSelectedOrder?.klant_email || ''),
         subject: interpolate(t('mail_pakbon_subject_default'), vars),
         text: interpolate(t('mail_pakbon_body_default'), vars),
         attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
@@ -1123,7 +1141,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
     setMailGenerating(true)
     try {
-      const html = buildFactuurHTML(selectedOrder, factuur, breweryDetails||{}, appName, factuurLogo||logo)
+      const html = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryDetails||{}, appName, factuurLogo||logo)
       const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
       const pdfBase64 = await htmlToPdfBase64(html)
       const bedrag = fmt(factuur.bruto || 0)
@@ -1135,7 +1153,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         } catch { return '' }
       })()
       const vars = {
-        naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+        naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
         nr: factuurNr,
         bedrag: '€ ' + bedrag,
         vervaldatum: verval,
@@ -1144,7 +1162,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       }
       setMailModal({
         title: t('mail_modal_title_factuur'),
-        to: klantField(selectedOrder, 'klant_email', 'email'),
+        to: (resolvedSelectedOrder?.klant_email || ''),
         subject: interpolate(t('mail_factuur_subject_default'), vars),
         text: interpolate(t('mail_factuur_body_default'), vars),
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
@@ -1163,14 +1181,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       `- ${r.aantal}× ${r.bier_naam || r.omschrijving || ''}${r.verpakking_type ? ` (${r.verpakking_type})` : ''}`
     ).join('\n')
     const vars = {
-      naam: selectedOrder.klant_naam || selectedOrder.klant_bedrijf || '',
+      naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
       nr: orderRef,
       regels: regelLijst,
       brouwerij: (breweryDetails as any)?.naam || appName || '',
     }
     setMailModal({
       title: t('mail_modal_title_bestelling'),
-      to: klantField(selectedOrder, 'klant_email', 'email'),
+      to: (resolvedSelectedOrder?.klant_email || ''),
       subject: interpolate(t('mail_bestelling_subject_default'), vars),
       text: interpolate(t('mail_bestelling_body_default'), vars),
       kind: 'bevestiging',
@@ -1213,13 +1231,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               direct hier en in alle mail-velden zichtbaar is. Snapshot op
               de order blijft als fallback voor orders zonder match. */}
           {(() => {
-            const naam     = klantField(selectedOrder, 'klant_naam',     'naam')
-            const bedrijf  = klantField(selectedOrder, 'klant_bedrijf',  'bedrijf')
-            const email    = klantField(selectedOrder, 'klant_email',    'email')
-            const straat   = klantField(selectedOrder, 'klant_straat',   'straat')
-            const huisnr   = klantField(selectedOrder, 'klant_huisnummer','huisnummer')
-            const postcode = klantField(selectedOrder, 'klant_postcode', 'postcode')
-            const stad     = klantField(selectedOrder, 'klant_stad',     'stad')
+            const r        = resolvedSelectedOrder || selectedOrder
+            const naam     = r.klant_naam     || ''
+            const bedrijf  = r.klant_bedrijf  || ''
+            const email    = r.klant_email    || ''
+            const straat   = r.klant_straat   || ''
+            const huisnr   = r.klant_huisnummer || ''
+            const postcode = r.klant_postcode || ''
+            const stad     = r.klant_stad     || ''
             return (
               <div className="bg-white rounded-xl shadow-card p-4">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('orders_klant')}</div>
@@ -1241,6 +1260,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Order</div>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">{t('orders_date')}</span><span>{fmtD(selectedOrder.datum)}</span></div>
+              {(() => {
+                const pd = pakbonDatumVoor(selectedOrder)
+                return pd && pd !== selectedOrder.datum
+                  ? <div className="flex justify-between"><span className="text-gray-500">{t('orders_pick_date')}</span><span>{fmtD(pd)}</span></div>
+                  : null
+              })()}
               {selectedOrder.verzend_datum && <div className="flex justify-between"><span className="text-gray-500">{t('factuur_delivery_date')}</span><span>{fmtD(selectedOrder.verzend_datum)}</span></div>}
               <div className="flex justify-between"><span className="text-gray-500">{t('orders_total')}</span><span className="font-semibold">{fmt(totaal)}</span></div>
               {selectedOrder.factuur_nummer && <div className="flex justify-between"><span className="text-gray-500">{t('factuur_number')}</span><span className="font-mono">{selectedOrder.factuur_nummer}</span></div>}

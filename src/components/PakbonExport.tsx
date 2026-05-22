@@ -136,14 +136,22 @@ function buildPakbonBody(
   factuurLogo: string | null | undefined
 ): {bodyHtml: string, filename: string, pakbonNr: string} {
   const pakbonNr = order.pakbon_nummer || `P-${order.id}`
-  const datum = fmtDate(order.verzend_datum || order.datum)
+  // Pakbon-datum = datum van picken (`pakbon_datum` of `pick_datum`).
+  // Verzend-/orderdatum zijn alleen fallback voor oude records waar het
+  // pickmoment niet vastgelegd was.
+  const datum = fmtDate(order.pakbon_datum || order.pick_datum || order.verzend_datum || order.datum)
   const orderRef = order.wc_order_nummer ? `WC #${order.wc_order_nummer}` : `M-${order.id}`
 
   const rows = picks.map((p: any) => {
     const afvulling = av.find((a: any) => a.id === p.afvulling_id)
     const batch = bat.find((b: any) => b.id === p.batch_id)
+    // Toon biernaam zoals besteld (orderregel) — viel anders terug op een
+    // batchnaam als "James Blond V1" die voor de klant verwarrend kan zijn.
+    // Fallback-keten: orderregel.bier_naam → batch.biernaam → batch.naam.
+    const regel = (order?.regels || []).find((r: any) => r.id === p.regel_id)
+    const bierNaam = regel?.bier_naam || batch?.biernaam || batch?.naam || '—'
     return `<tr>
-      <td>${batch?.naam || '—'}</td>
+      <td>${bierNaam}</td>
       <td>${batch?.batch_nummer || '—'}</td>
       <td>${afvulling?.verpakking_type || '—'}</td>
       <td>${afvulling?.inhoud_per_eenheid ? `${afvulling.inhoud_per_eenheid}L` : '—'}</td>

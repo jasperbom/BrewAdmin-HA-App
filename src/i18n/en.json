@@ -1040,6 +1040,7 @@
   "orders_import_wc": "Import WooCommerce",
   "orders_klant": "Customer details",
   "orders_date": "Date",
+  "orders_pick_date": "Pick date",
   "orders_total": "Total",
   "orders_lines": "Order lines",
   "orders_filter_alle": "All",
