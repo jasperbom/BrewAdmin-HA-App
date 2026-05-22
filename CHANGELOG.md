@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.2] — 2026-05-22
+
+### Changed — Pakbon toont biernaam i.p.v. batchnaam (batch # blijft staan)
+
+De eerste kolom op de pakbon-PDF gebruikte `batch.naam`, wat
+intern-administratieve waarden bevat zoals *"James Blond V1"*. Op de
+pakbon hoort gewoon de **biernaam** te staan zoals besteld.
+
+`PakbonExport.buildPakbonBody` zoekt nu eerst de orderregel via
+`pick.regel_id` en gebruikt diens `bier_naam`; valt anders terug op
+`batch.biernaam` en pas als laatste op `batch.naam`. De `Batch #`-kolom
+blijft naast de biernaam staan voor traceability.
+
 ## [1.10.1] — 2026-05-22
 
 ### Fixed — Pakbon-datum is voortaan de pickdatum (niet de orderdatum)

@@ -145,8 +145,13 @@ function buildPakbonBody(
   const rows = picks.map((p: any) => {
     const afvulling = av.find((a: any) => a.id === p.afvulling_id)
     const batch = bat.find((b: any) => b.id === p.batch_id)
+    // Toon biernaam zoals besteld (orderregel) — viel anders terug op een
+    // batchnaam als "James Blond V1" die voor de klant verwarrend kan zijn.
+    // Fallback-keten: orderregel.bier_naam → batch.biernaam → batch.naam.
+    const regel = (order?.regels || []).find((r: any) => r.id === p.regel_id)
+    const bierNaam = regel?.bier_naam || batch?.biernaam || batch?.naam || '—'
     return `<tr>
-      <td>${batch?.naam || '—'}</td>
+      <td>${bierNaam}</td>
       <td>${batch?.batch_nummer || '—'}</td>
       <td>${afvulling?.verpakking_type || '—'}</td>
       <td>${afvulling?.inhoud_per_eenheid ? `${afvulling.inhoud_per_eenheid}L` : '—'}</td>
