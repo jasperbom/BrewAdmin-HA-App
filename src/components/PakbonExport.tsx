@@ -24,19 +24,20 @@ const CSS = `
   .kb { background: #f8f9fa; border-left: 3px solid #d1d5db; padding: 3.5mm 4.5mm; margin-bottom: 7mm; }
   .kn { font-weight: bold; font-size: 12pt; margin-bottom: 3px; }
   .kb p { font-size: 10pt; line-height: 1.55; color: #333; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
-  th { background: #f3f4f6; color: #374151; padding: 4px 6px; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; border-bottom: 1px solid #d1d5db; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 5mm; }
+  th { background: #f3f4f6; color: #374151; padding: 5px 6px; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; }
   th.r { text-align: right; }
-  td { padding: 3px 5px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 10pt; }
+  td { padding: 4px 6px; vertical-align: top; font-size: 10pt; }
   td.r { text-align: right; }
+  tbody tr + tr td { border-top: 1px solid #f0f0f0; }
   .totals { display: flex; justify-content: flex-end; margin-bottom: 5mm; }
-  .totals table { width: 65mm; }
-  .totals td { border: none; padding: 2px 5px; font-size: 10pt; }
-  .totals td.r { font-weight: normal; }
-  .grand-total td { font-weight: bold; font-size: 12pt; border-top: 1px solid #d1d5db !important; padding-top: 2.5mm; }
+  .totals-block { width: 70mm; font-size: 10pt; }
+  .totals-row { display: flex; justify-content: space-between; padding: 2px 5px; }
+  .totals-sep { height: 1px; background: #d1d5db; margin: 1.5mm 5px 0; }
+  .totals-row.grand-total { font-weight: bold; font-size: 12pt; padding-top: 1.5mm; }
   .btw-section { display: flex; justify-content: flex-end; margin-bottom: 4mm; }
   .btw-table { width: auto; min-width: 80mm; margin: 0; }
-  .btw-table th, .btw-table td { font-size: 9pt; padding: 2px 5px; }
+  .btw-table th, .btw-table td { font-size: 9pt; padding: 3px 5px; }
   .pay-block { background: #f0f7ff; border: 1px solid #cce5ff; padding: 3.5mm 4.5mm; border-radius: 3px; font-size: 9.5pt; line-height: 1.85; }
   .pay-block .pay-title { font-weight: bold; font-size: 10.5pt; margin-bottom: 2px; }
   .footer { margin-top: 8mm; border-top: 1px solid #ccc; padding-top: 4mm; font-size: 9pt; color: #555; display: flex; justify-content: space-between; gap: 10mm; }
@@ -372,11 +373,12 @@ function buildFactuurBody(
     </div>` : ''}
 
     <div class="totals">
-      <table>
-        <tr><td>${t('lbl_subtotaal_excl')}</td><td class="r">${fmtEuro(netto)}</td></tr>
-        <tr><td>BTW</td><td class="r">${fmtEuro(btw)}</td></tr>
-        <tr class="grand-total"><td>${t('lbl_totaal_incl')}</td><td class="r">${fmtEuro(bruto)}</td></tr>
-      </table>
+      <div class="totals-block">
+        <div class="totals-row"><span>${t('lbl_subtotaal_excl')}</span><span>${fmtEuro(netto)}</span></div>
+        <div class="totals-row"><span>BTW</span><span>${fmtEuro(btw)}</span></div>
+        <div class="totals-sep"></div>
+        <div class="totals-row grand-total"><span>${t('lbl_totaal_incl')}</span><span>${fmtEuro(bruto)}</span></div>
+      </div>
     </div>
 
     ${(brewery?.factuur_velden?.betaalblok !== false) ? `<div class="pay-block">

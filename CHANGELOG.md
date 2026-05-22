@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.5] — 2026-05-22
+
+### Fixed — Verschoven borders op gegenereerde PDF-facturen
+
+Bij het mailen van facturen wordt de PDF via `html2canvas` + `jsPDF`
+gerasterd. Borders op `td`/`th`-cellen (met `border-collapse: collapse`)
+worden door html2canvas per cel gerenderd, waardoor lijnen niet
+uitlijnen met de tekst — vooral zichtbaar als gebroken horizontale
+streepjes onder cellen en bij de scheidingslijn boven "Totaal incl. BTW".
+
+- Tabel-stijl: `border-collapse: collapse` → `border-collapse: separate;
+  border-spacing: 0`. Tussenrij-borders nu via
+  `tbody tr + tr td { border-top: 1px solid #f0f0f0 }` (één lijn per rij
+  in plaats van per cel-onderkant).
+- Totalenblok: omgezet van `<table>` met `border-top` op de grand-total
+  rij naar een `<div>`-structuur met een vol-breed `1px`-scheidingsdiv.
+  Renders cleaner in html2canvas en de lijn loopt netjes door over de
+  hele kolombreedte.
+
 ## [1.10.4] — 2026-05-22
 
 ### Changed — Zachtere stijl voor factuur- en pakbon-tabellen
