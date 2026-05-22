@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.0] — 2026-05-22
+
+### Changed — Klantgegevens overal live uit de klantkaart (PDF, mail, lijsten, export)
+
+De vorige patch (1.9.99) liet de orderdetail-pagina al live klantgegevens
+zien, maar de **factuur-PDF** en de **mail-bijlage** lazen nog steeds uit
+het opgeslagen snapshot. Daardoor stond op de gegenereerde factuur het
+oude e-mailadres, ook al was de klantkaart inmiddels bijgewerkt.
+
+Centrale helpers `findLiveKlant` en `resolveKlantSnapshot`
+(in `src/utils/klant.ts`) zoeken de live klantkaart op via `klant_id` of
+case-insensitieve email-match en geven een verrijkt snapshot terug met
+de actuele klant_*-velden. Deze helpers worden nu gebruikt op alle
+plaatsen waar klantgegevens uit een snapshot worden gerenderd of
+gemaild:
+
+**BestellingenPage**
+- `printPakbon`, `buildPakbonHTML`, `printFactuur`, `buildFactuurHTML`
+  ontvangen voortaan een resolved snapshot in plaats van de raw
+  `selectedOrder` — de gegenereerde PDF toont de actuele klantgegevens.
+- Mail-template variabelen (`naam`) komen uit de resolved snapshot.
+- Bij het afronden van een order (`rondeAf`) krijgt het verkoopfactuur-
+  record nu ook `klant_id`, `klant_email` en de losse adresvelden mee,
+  zodat de boekhoudingspagina dezelfde klant later via id terugvindt.
+
+**BoekhoudingPage**
+- `genereerFactuurPDF`, `mailVerkoopFactuur`, `genereerEnMarkeer`
+  (herinnering/aanmaning) en de boekhouding-export gebruiken nu de
+  resolved snapshot voor PDF-generatie.
+- De mailontvanger komt eerst uit de live klantkaart, met de resolved
+  snapshot-email als fallback voor losse facturen zonder klant_id.
+- Verkoopfacturen-overzichten en CSV-/journaal-exports tonen de klantnaam
+  via `klantNaamVoor()`, zodat een hernoemde klant overal direct doorwerkt.
+
+Bestaande factuur-records worden niet aangepast — het snapshot blijft
+de historische bron voor reeds gegenereerde PDF's. Alleen nieuwe
+rendering en mailing volgen de actuele klantkaart.
+
 ## [1.9.99] — 2026-05-22
 
 ### Fixed — Orderdetail: klantgegevens & mail-adres lezen live van klantkaart
