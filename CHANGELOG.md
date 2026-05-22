@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.98] — 2026-05-22
+
+### Fixed — Order-detail: pakbon-knoppen op 'gepickt' + mobiele tabel-layout
+
+Op de order-detailpagina liepen twee dingen scheef:
+
+- **Pakbon onbereikbaar bij self-pickup:** zodra alles gepickt was kreeg
+  je alleen *Markeer verzonden*, *Afronden* en *Annuleren* te zien. Wie
+  de bestelling zelf wegbrengt heeft de pakbon op dat moment nodig, niet
+  pas na het verzonden- of afgerond-status. De *Pakbon afdrukken* en
+  *Mail pakbon* knoppen worden nu ook getoond bij status `gepickt` zodra
+  alle regels gepickt zijn (de bestaande pakbon-bouwer valt netjes terug
+  op `P-<id>` zolang er nog geen definitief pakbonnummer is toegekend).
+- **Brouwn sectie-header werd op mobiel afgekapt:** de `SectionHeader`
+  van *Orderregels* en *Picks overzicht* zat *binnen* hetzelfde
+  `overflow-x-auto`-blok als de bredere tabel. Daardoor kreeg de
+  bruine balk de breedte van de scrollende content i.p.v. de viewport
+  en eindigde halverwege het scherm. Header en scroll-container zijn
+  nu gescheiden: de header blijft full-width, alleen de tabel scrolt
+  horizontaal.
+
 ## [1.9.97] — 2026-05-21
 
 ### Changed — Klantnummer is altijd auto-toegekend (geen handmatige invoer)

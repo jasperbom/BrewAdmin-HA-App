@@ -1212,8 +1212,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         </div>
 
         {/* Orderregels */}
-        <div className="bg-white rounded-xl shadow-card overflow-x-auto mb-4">
+        <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
           <SectionHeader title={t('orders_lines')} />
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-xs text-gray-500 bg-gray-50">
               <tr>
@@ -1257,12 +1258,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               })}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Picks overzicht (na picking) */}
         {picks.length > 0 && (
-          <div className="bg-white rounded-xl shadow-card overflow-x-auto mb-4">
+          <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
             <SectionHeader title={t('picking_title')} />
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs text-gray-500 bg-gray-50">
                 <tr>
@@ -1287,6 +1290,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -1302,6 +1306,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             <Btn v="secondary" onClick={addVerzendkosten}>🚚 {t('btn_verzendkosten')}</Btn>
           </>)}
           {selectedOrder.status === 'gepickt' && allPicked && (<>
+            <Btn v="secondary" onClick={printOrderPakbon}>🖨 {t('order_print_pakbon')}</Btn>
+            <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
+            </Btn>
             <Btn v="secondary" onClick={markVerzonden} title={t('tooltip_logistical_status')}>📦 {t('order_mark_shipped')}</Btn>
             <Btn v="green" onClick={() => setShowAfrondModal(true)}>{t('order_complete')}</Btn>
           </>)}
