@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.6] — 2026-05-22
+
+### Added — E-mailtemplates instelbaar + klikbaar logo in mail
+
+**E-mailtemplates** voor pakbon-, factuur- en bestelbevestiging-mails zijn
+nu vanuit Instellingen → Bedrijf aanpasbaar. Per template kun je het
+onderwerp en de tekst overschrijven; leeg laten = standaardtekst
+gebruiken. Per template wordt een knop "Reset naar standaard" getoond
+zodra je iets hebt aangepast. Beschikbare placeholders (`{naam}`, `{nr}`,
+`{brouwerij}`, …) worden onder elk template opgesomd.
+
+- Nieuwe datasleutel `mail_templates` (object met `pakbon`/`factuur`/
+  `bestelling`, elk met `subject` en `body`). Opgenomen in de Excel-backup.
+- `BestellingenPage` en `BoekhoudingPage` lezen via een nieuwe
+  `tplOrDefault()`-helper; bij lege string valt het terug op de bestaande
+  `mail_*_default` i18n-strings — bestaande gebruikers merken niets.
+
+**Klikbaar logo** in uitgaande mails: voeg in Instellingen → Bedrijf het
+website-veld in en het logo bovenaan de mail wordt automatisch een
+`<a>`-link (met `target="_blank"` en `rel="noopener noreferrer"`) naar
+die URL. Bij ontbrekend protocol wordt automatisch `https://` voorgevoegd.
+
+- Nieuw `website`-veld in `brewery_details`
+- `MailBrewery`-interface in `mailTemplate.ts` uitgebreid
+- Geen wijziging als het website-veld leeg blijft
+
 ## [1.10.5] — 2026-05-22
 
 ### Fixed — Verschoven borders op gegenereerde PDF-facturen

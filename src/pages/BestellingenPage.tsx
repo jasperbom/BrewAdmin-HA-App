@@ -51,6 +51,7 @@ interface BestellingenPageProps {
   verplaatsingen?: any[]
   afboekingen?: any[]
   smtpCreds?: any
+  mailTemplates?: any
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -78,6 +79,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   producten=[], productArtikelen=[],
   locaties=[], verplaatsingen=[], afboekingen=[],
   smtpCreds={enabled:false},
+  mailTemplates={},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -1108,6 +1110,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const interpolate = (tpl: string, vars: Record<string, string>): string =>
     Object.keys(vars).reduce((acc, k) => acc.split(`{${k}}`).join(vars[k] ?? ''), tpl)
 
+  // Pakt subject/body uit ingestelde mail_templates; valt terug op de i18n-default
+  // wanneer de gebruiker niets heeft ingevuld (lege string of niet aanwezig).
+  const tplOrDefault = (key: 'pakbon'|'factuur'|'bestelling', field: 'subject'|'body'): string => {
+    const stored = (mailTemplates as any)?.[key]?.[field]
+    if (typeof stored === 'string' && stored.trim()) return stored
+    return t(`mail_${key}_${field === 'subject' ? 'subject' : 'body'}_default`)
+  }
+
   const mailOrderPakbon = async () => {
     if (!selectedOrder) return
     setMailGenerating(true)
@@ -1124,8 +1134,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       setMailModal({
         title: t('mail_modal_title_pakbon'),
         to: (resolvedSelectedOrder?.klant_email || ''),
-        subject: interpolate(t('mail_pakbon_subject_default'), vars),
-        text: interpolate(t('mail_pakbon_body_default'), vars),
+        subject: interpolate(tplOrDefault('pakbon', 'subject'), vars),
+        text: interpolate(tplOrDefault('pakbon', 'body'), vars),
         attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         kind: 'pakbon',
       })
@@ -1163,8 +1173,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       setMailModal({
         title: t('mail_modal_title_factuur'),
         to: (resolvedSelectedOrder?.klant_email || ''),
-        subject: interpolate(t('mail_factuur_subject_default'), vars),
-        text: interpolate(t('mail_factuur_body_default'), vars),
+        subject: interpolate(tplOrDefault('factuur', 'subject'), vars),
+        text: interpolate(tplOrDefault('factuur', 'body'), vars),
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         kind: 'factuur',
       })
@@ -1189,8 +1199,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setMailModal({
       title: t('mail_modal_title_bestelling'),
       to: (resolvedSelectedOrder?.klant_email || ''),
-      subject: interpolate(t('mail_bestelling_subject_default'), vars),
-      text: interpolate(t('mail_bestelling_body_default'), vars),
+      subject: interpolate(tplOrDefault('bestelling', 'subject'), vars),
+      text: interpolate(tplOrDefault('bestelling', 'body'), vars),
       kind: 'bevestiging',
     })
   }

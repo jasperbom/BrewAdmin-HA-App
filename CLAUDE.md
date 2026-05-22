@@ -349,7 +349,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `accijns_instellingen` | object | Accijnstarieven |
 | `btw_instellingen` | object | BTW-aangifte-instellingen (periode) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
-| `brewery_details` | object | Brouwerijnaam, adres, BTW-nr. |
+| `brewery_details` | object | Brouwerijnaam, adres, BTW-nr., website (klikbaar logo in mail) |
+| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |
 | `factuur_counter` | object | Doorlopend factuurnummer per jaar |
 | `ha_instellingen` | object | Home Assistant sensor-instellingen |
 | `bank_koppelingen` | object | Koppeling banktransacties aan facturen/BTW (zie hieronder) |

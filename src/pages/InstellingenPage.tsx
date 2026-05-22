@@ -238,7 +238,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -1161,6 +1161,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_website')}</label>
+              <input type="url" value={breweryDetails?.website||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,website:e.target.value}))}
+                placeholder="https://brouwerij.nl"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+              <p className="text-xs text-gray-400 mt-0.5">{t('settings_website_hint')}</p>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_agp_nummer')}</label>
               <input type="text" value={breweryDetails?.agp_nummer||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,agp_nummer:e.target.value}))}
                 placeholder="NL00000000000"
@@ -1320,6 +1327,70 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-2">{t('settings_verzendkosten_hint')}</p>
+      </div>
+
+      {/* E-mailtemplates */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_mail_templates_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_mail_templates_desc')}</p>
+        <div className="flex flex-col gap-5">
+          {(['pakbon','factuur','bestelling'] as const).map((kind) => {
+            const labelKey = kind === 'pakbon' ? 'settings_mail_template_pakbon'
+              : kind === 'factuur' ? 'settings_mail_template_factuur'
+              : 'settings_mail_template_bestelling'
+            const varsHintKey = `settings_mail_vars_${kind}`
+            const defaultSubject = t(`mail_${kind}_subject_default`)
+            const defaultBody = t(`mail_${kind}_body_default`)
+            const tpl = (mailTemplates as any)?.[kind] || {subject:'', body:''}
+            const isCustom = (tpl.subject && tpl.subject.trim()) || (tpl.body && tpl.body.trim())
+            const updateTpl = (field: 'subject'|'body', val: string) => {
+              setMailTemplates((p: any) => ({
+                ...(p || {}),
+                [kind]: {...((p || {})[kind] || {}), [field]: val},
+              }))
+            }
+            return (
+              <div key={kind} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-gray-700">{t(labelKey)}</h3>
+                  {isCustom && (
+                    <button
+                      type="button"
+                      onClick={() => setMailTemplates((p: any) => ({...(p || {}), [kind]: {subject:'', body:''}}))}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                    >
+                      {t('settings_mail_reset_default')}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings_mail_subject')}</label>
+                    <input
+                      type="text"
+                      value={tpl.subject || ''}
+                      onChange={(e: any) => updateTpl('subject', e.target.value)}
+                      placeholder={defaultSubject}
+                      className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings_mail_body')}</label>
+                    <textarea
+                      value={tpl.body || ''}
+                      onChange={(e: any) => updateTpl('body', e.target.value)}
+                      placeholder={defaultBody}
+                      rows={6}
+                      className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input bg-white font-mono"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400">{t(varsHintKey)}</p>
+                </div>
+              </div>
+            )
+          })}
+          <p className="text-xs text-gray-400">{t('settings_mail_templates_vars_hint')}</p>
+        </div>
       </div>
 
       {/* Alternatieve betaalrekeningen */}
