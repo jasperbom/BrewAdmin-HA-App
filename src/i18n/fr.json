@@ -1037,6 +1037,7 @@
   "orders_import_wc": "Importer WooCommerce",
   "orders_klant": "Données client",
   "orders_date": "Date",
+  "orders_pick_date": "Date de préparation",
   "orders_total": "Total",
   "orders_lines": "Lignes de commande",
   "orders_filter_alle": "Toutes",

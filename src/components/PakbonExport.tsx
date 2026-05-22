@@ -136,7 +136,10 @@ function buildPakbonBody(
   factuurLogo: string | null | undefined
 ): {bodyHtml: string, filename: string, pakbonNr: string} {
   const pakbonNr = order.pakbon_nummer || `P-${order.id}`
-  const datum = fmtDate(order.verzend_datum || order.datum)
+  // Pakbon-datum = datum van picken (`pakbon_datum` of `pick_datum`).
+  // Verzend-/orderdatum zijn alleen fallback voor oude records waar het
+  // pickmoment niet vastgelegd was.
+  const datum = fmtDate(order.pakbon_datum || order.pick_datum || order.verzend_datum || order.datum)
   const orderRef = order.wc_order_nummer ? `WC #${order.wc_order_nummer}` : `M-${order.id}`
 
   const rows = picks.map((p: any) => {

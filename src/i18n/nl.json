@@ -1040,6 +1040,7 @@
   "orders_import_wc": "WooCommerce importeren",
   "orders_klant": "Klantgegevens",
   "orders_date": "Datum",
+  "orders_pick_date": "Pickdatum",
   "orders_total": "Totaal",
   "orders_lines": "Orderregels",
   "orders_filter_alle": "Alle",

@@ -687,7 +687,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       setUit((prev: any[]) => [...(prev||[]), ...nieuweUitleveringen])
       setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
       setBestellingen((prev: any[]) => prev.map((b: any) =>
-        b.id === selectedOrder.id ? {...b, status: 'gepickt'} : b
+        b.id === selectedOrder.id ? {...b, status: 'gepickt', pick_datum: tod()} : b
       ))
       // Eén log-regel per uitlevering (uitslag uit AGP)
       setLog((prev: any[]) => {
@@ -1057,10 +1057,32 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setShowPickModal(true)
   }
 
+  // Pakbon-datum = datum van picken. Voorkeur: `pick_datum` op de order
+  // (gezet bij `savePicks`). Voor oudere orders zonder dat veld leiden we
+  // de datum af uit de gekoppelde uitleveringen — die zijn gestempeld op
+  // het moment van pickbevestiging. Pas als alles ontbreekt vallen we
+  // terug op verzend- of orderdatum (= legacy gedrag).
+  const pakbonDatumVoor = (order: any): string => {
+    if (!order) return ''
+    if (order.pick_datum) return order.pick_datum
+    const orderPicks = picksVoorOrder(order.id)
+    const uitIds = new Set<number>()
+    for (const p of orderPicks) {
+      if (p.uitlevering_id) uitIds.add(p.uitlevering_id)
+      for (const id of (p.uitlevering_ids || [])) uitIds.add(id)
+    }
+    const datums = (uit || [])
+      .filter((u: any) => uitIds.has(u.id) && u.datum)
+      .map((u: any) => u.datum as string)
+      .sort()
+    if (datums.length) return datums[0]
+    return order.verzend_datum || order.datum || ''
+  }
+
   const printOrderPakbon = () => {
     if (!selectedOrder) return
-    const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
-    printPakbon(resolvedSelectedOrder!, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+    const orderVoorPakbon = {...resolvedSelectedOrder!, pakbon_datum: pakbonDatumVoor(selectedOrder)}
+    printPakbon(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
   }
 
   const printOrderFactuur = () => {
@@ -1090,7 +1112,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!selectedOrder) return
     setMailGenerating(true)
     try {
-      const {html, filename} = buildPakbonHTML(resolvedSelectedOrder!, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+      const orderVoorPakbon = {...resolvedSelectedOrder!, pakbon_datum: pakbonDatumVoor(selectedOrder)}
+      const {html, filename} = buildPakbonHTML(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
       const pdfBase64 = await htmlToPdfBase64(html)
       const pakbonNr = selectedOrder.pakbon_nummer || `P-${selectedOrder.id}`
       const vars = {
@@ -1237,6 +1260,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Order</div>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">{t('orders_date')}</span><span>{fmtD(selectedOrder.datum)}</span></div>
+              {(() => {
+                const pd = pakbonDatumVoor(selectedOrder)
+                return pd && pd !== selectedOrder.datum
+                  ? <div className="flex justify-between"><span className="text-gray-500">{t('orders_pick_date')}</span><span>{fmtD(pd)}</span></div>
+                  : null
+              })()}
               {selectedOrder.verzend_datum && <div className="flex justify-between"><span className="text-gray-500">{t('factuur_delivery_date')}</span><span>{fmtD(selectedOrder.verzend_datum)}</span></div>}
               <div className="flex justify-between"><span className="text-gray-500">{t('orders_total')}</span><span className="font-semibold">{fmt(totaal)}</span></div>
               {selectedOrder.factuur_nummer && <div className="flex justify-between"><span className="text-gray-500">{t('factuur_number')}</span><span className="font-mono">{selectedOrder.factuur_nummer}</span></div>}
