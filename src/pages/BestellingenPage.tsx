@@ -40,7 +40,7 @@ interface BestellingenPageProps {
   factuurLogo?: string | null
   openOrderId?: number | null
   setOpenOrderId?: (id: number | null) => void
-  klanten?: any[]
+  klanten: any[]
   setKlanten?: any
   auditLog?: any[]
   setAuditLog?: any
@@ -72,6 +72,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   factuurCounter, setFactuurCounter=()=>{},
   log=[], setLog=()=>{}, factuurLogo=null,
   openOrderId=null, setOpenOrderId=()=>{},
+  klanten=[],
   auditLog=[], setAuditLog=()=>{},
   producten=[], productArtikelen=[],
   locaties=[], verplaatsingen=[], afboekingen=[],
@@ -121,6 +122,30 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [manualVerzending, setManualVerzending] = useState({enabled: false, naam: '', prijs: '', btw_pct: '21'})
 
   const selectedOrder = (bestellingen||[]).find((b: any) => b.id === selectedId)
+
+  // Resolve de live klantkaart voor een bestelling. Eerst via klant_id (echte
+  // koppeling), anders via case-insensitieve match op het snapshot-mailadres
+  // (vangt legacy/WC-import-orders zonder klant_id af). Het snapshot op de
+  // bestelling zelf blijft de historische waarheid voor reeds gegenereerde
+  // pakbon/factuur-PDF's — UI-display en mail-velden gebruiken liever de
+  // huidige klantkaart zodat een e-mailwijziging direct doorwerkt.
+  const liveKlantVoor = (order: any): any | null => {
+    if (!order) return null
+    if (order.klant_id != null) {
+      const k = (klanten||[]).find((k: any) => k.id === order.klant_id)
+      if (k) return k
+    }
+    const beLc = (order.klant_email || '').trim().toLowerCase()
+    if (!beLc) return null
+    return (klanten||[]).find((k: any) => (k.email||'').toLowerCase() === beLc) || null
+  }
+  // Velden voor weergave/mail: live klantkaart wint, anders snapshot op order.
+  const klantField = (order: any, ordKey: string, klantKey: string): string => {
+    const k = liveKlantVoor(order)
+    const liveVal = (k && (k[klantKey] || '')).toString().trim()
+    if (liveVal) return liveVal
+    return (order?.[ordKey] || '').toString()
+  }
 
   // Gefilterde en gesorteerde lijst
   const filtered = [...(bestellingen||[])]
@@ -1080,7 +1105,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       }
       setMailModal({
         title: t('mail_modal_title_pakbon'),
-        to: selectedOrder.klant_email || '',
+        to: klantField(selectedOrder, 'klant_email', 'email'),
         subject: interpolate(t('mail_pakbon_subject_default'), vars),
         text: interpolate(t('mail_pakbon_body_default'), vars),
         attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
@@ -1119,7 +1144,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       }
       setMailModal({
         title: t('mail_modal_title_factuur'),
-        to: selectedOrder.klant_email || '',
+        to: klantField(selectedOrder, 'klant_email', 'email'),
         subject: interpolate(t('mail_factuur_subject_default'), vars),
         text: interpolate(t('mail_factuur_body_default'), vars),
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
@@ -1145,7 +1170,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     setMailModal({
       title: t('mail_modal_title_bestelling'),
-      to: selectedOrder.klant_email || '',
+      to: klantField(selectedOrder, 'klant_email', 'email'),
       subject: interpolate(t('mail_bestelling_subject_default'), vars),
       text: interpolate(t('mail_bestelling_body_default'), vars),
       kind: 'bevestiging',
@@ -1183,19 +1208,33 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Klantgegevens */}
-          <div className="bg-white rounded-xl shadow-card p-4">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('orders_klant')}</div>
-            <div className="font-semibold text-gray-800">{selectedOrder.klant_naam}</div>
-            {selectedOrder.klant_bedrijf && <div className="text-sm text-gray-600">{selectedOrder.klant_bedrijf}</div>}
-            {selectedOrder.klant_email && <div className="text-sm text-gray-500">{selectedOrder.klant_email}</div>}
-            {selectedOrder.klant_straat && (
-              <div className="text-sm text-gray-500 mt-1">
-                {[selectedOrder.klant_straat, selectedOrder.klant_huisnummer].filter(Boolean).join(' ')}<br/>
-                {[selectedOrder.klant_postcode, selectedOrder.klant_stad].filter(Boolean).join(' ')}
+          {/* Klantgegevens — leest live van de klantkaart (via klant_id of
+              email-match) zodat een e-mail-/adreswijziging op de klant
+              direct hier en in alle mail-velden zichtbaar is. Snapshot op
+              de order blijft als fallback voor orders zonder match. */}
+          {(() => {
+            const naam     = klantField(selectedOrder, 'klant_naam',     'naam')
+            const bedrijf  = klantField(selectedOrder, 'klant_bedrijf',  'bedrijf')
+            const email    = klantField(selectedOrder, 'klant_email',    'email')
+            const straat   = klantField(selectedOrder, 'klant_straat',   'straat')
+            const huisnr   = klantField(selectedOrder, 'klant_huisnummer','huisnummer')
+            const postcode = klantField(selectedOrder, 'klant_postcode', 'postcode')
+            const stad     = klantField(selectedOrder, 'klant_stad',     'stad')
+            return (
+              <div className="bg-white rounded-xl shadow-card p-4">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('orders_klant')}</div>
+                <div className="font-semibold text-gray-800">{naam}</div>
+                {bedrijf && <div className="text-sm text-gray-600">{bedrijf}</div>}
+                {email && <div className="text-sm text-gray-500">{email}</div>}
+                {straat && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    {[straat, huisnr].filter(Boolean).join(' ')}<br/>
+                    {[postcode, stad].filter(Boolean).join(' ')}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            )
+          })()}
 
           {/* Orderinfo */}
           <div className="bg-white rounded-xl shadow-card p-4">

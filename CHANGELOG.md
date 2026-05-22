@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.9.99] — 2026-05-22
+
+### Fixed — Orderdetail: klantgegevens & mail-adres lezen live van klantkaart
+
+Wijzigingen op de klantenpagina (vooral het e-mailadres) werkten niet
+altijd door naar bestaande bestellingen. De `klant_email` op de
+bestelling is een snapshot dat alleen werd bijgewerkt op het moment dat
+de gebruiker via *Klanten* opnieuw opslaat — orders die geen `klant_id`
+hadden of buiten de syncable-statussen vielen, bleven hangen op het oude
+adres. Het mailmodaal vulde daardoor nog het oude adres in als ontvanger.
+
+De orderdetailpagina leest klantgegevens nu eerst van de live klantkaart
+(via `klant_id`, met fallback case-insensitieve email-match) en valt
+alleen terug op het order-snapshot als er geen koppeling te leggen is.
+Dat geldt voor:
+
+- het *Klantgegevens*-blok rechtsboven op het orderdetail,
+- de pre-fill van het *Aan*-veld bij *Mail pakbon*, *Mail factuur* en
+  *Mail bestelbevestiging*.
+
+Reeds gegenereerde pakbon- en factuur-PDF's blijven hun historische
+snapshot houden (de PDF zelf wordt niet aangepast — alleen het verzend-
+adres en het scherm-overzicht volgen de actuele klantkaart).
+
 ## [1.9.98] — 2026-05-22
 
 ### Fixed — Order-detail: pakbon-knoppen op 'gepickt' + mobiele tabel-layout
