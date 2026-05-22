@@ -4,6 +4,66 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.6] — 2026-05-22
+
+### Added — E-mailtemplates instelbaar + klikbaar logo in mail
+
+**E-mailtemplates** voor pakbon-, factuur- en bestelbevestiging-mails zijn
+nu vanuit Instellingen → Bedrijf aanpasbaar. Per template kun je het
+onderwerp en de tekst overschrijven; leeg laten = standaardtekst
+gebruiken. Per template wordt een knop "Reset naar standaard" getoond
+zodra je iets hebt aangepast. Beschikbare placeholders (`{naam}`, `{nr}`,
+`{brouwerij}`, …) worden onder elk template opgesomd.
+
+- Nieuwe datasleutel `mail_templates` (object met `pakbon`/`factuur`/
+  `bestelling`, elk met `subject` en `body`). Opgenomen in de Excel-backup.
+- `BestellingenPage` en `BoekhoudingPage` lezen via een nieuwe
+  `tplOrDefault()`-helper; bij lege string valt het terug op de bestaande
+  `mail_*_default` i18n-strings — bestaande gebruikers merken niets.
+
+**Klikbaar logo** in uitgaande mails: voeg in Instellingen → Bedrijf het
+website-veld in en het logo bovenaan de mail wordt automatisch een
+`<a>`-link (met `target="_blank"` en `rel="noopener noreferrer"`) naar
+die URL. Bij ontbrekend protocol wordt automatisch `https://` voorgevoegd.
+
+- Nieuw `website`-veld in `brewery_details`
+- `MailBrewery`-interface in `mailTemplate.ts` uitgebreid
+- Geen wijziging als het website-veld leeg blijft
+
+## [1.10.5] — 2026-05-22
+
+### Fixed — Verschoven borders op gegenereerde PDF-facturen
+
+Bij het mailen van facturen wordt de PDF via `html2canvas` + `jsPDF`
+gerasterd. Borders op `td`/`th`-cellen (met `border-collapse: collapse`)
+worden door html2canvas per cel gerenderd, waardoor lijnen niet
+uitlijnen met de tekst — vooral zichtbaar als gebroken horizontale
+streepjes onder cellen en bij de scheidingslijn boven "Totaal incl. BTW".
+
+- Tabel-stijl: `border-collapse: collapse` → `border-collapse: separate;
+  border-spacing: 0`. Tussenrij-borders nu via
+  `tbody tr + tr td { border-top: 1px solid #f0f0f0 }` (één lijn per rij
+  in plaats van per cel-onderkant).
+- Totalenblok: omgezet van `<table>` met `border-top` op de grand-total
+  rij naar een `<div>`-structuur met een vol-breed `1px`-scheidingsdiv.
+  Renders cleaner in html2canvas en de lijn loopt netjes door over de
+  hele kolombreedte.
+
+## [1.10.4] — 2026-05-22
+
+### Changed — Zachtere stijl voor factuur- en pakbon-tabellen
+
+De donkere `#333` headerbalken en zware accentlijnen op de factuur (en
+pakbon) gaven een harde, "zwarte randen"-uitstraling. Vervangen door een
+licht-grijze headerachtergrond (`#f3f4f6`) met donkere tekst en subtiele
+borders (`#d1d5db`):
+
+- Tabelheader: lichtgrijze achtergrond + dunne `1px` border-bottom in
+  plaats van solide `#333`-balk
+- Klantblok (`.kb`): linker accent-border van `#333` naar `#d1d5db`
+- Grand-total rij in totalenblok: van `2px solid #333` naar `1px solid
+  #d1d5db`
+
 ## [1.10.3] — 2026-05-22
 
 ### Fixed — Kosten weer zichtbaar bij batch-ingrediënten met meerdere regels

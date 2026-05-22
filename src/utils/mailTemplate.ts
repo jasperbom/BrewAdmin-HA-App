@@ -19,6 +19,7 @@ export interface MailBrewery {
   stad?: string
   btw_nummer?: string
   kvk_nummer?: string
+  website?: string
 }
 
 const ACCENT_DARK = '#92400e'
@@ -48,11 +49,18 @@ export function buildMailHtml(
   opts: {logoCid?: string, footerNote?: string} = {},
 ): string {
   const naam = brewery?.naam || 'BrewAdmin'
+  // Normaliseer website-URL: voeg https:// toe als gebruiker zonder protocol invult,
+  // zodat de mailclient er een geldige link van maakt.
+  const websiteRaw = (brewery?.website || '').trim()
+  const websiteUrl = websiteRaw && !/^https?:\/\//i.test(websiteRaw) ? `https://${websiteRaw}` : websiteRaw
+  const wrapLink = (inner: string): string => websiteUrl
+    ? `<a href="${esc(websiteUrl)}" style="text-decoration:none;color:inherit;" target="_blank" rel="noopener noreferrer">${inner}</a>`
+    : inner
   const logoBlock = opts.logoCid
     ? `<div style="text-align:center;padding:24px 0 18px;">
-         <img src="cid:${esc(opts.logoCid)}" alt="${esc(naam)}" style="max-height:72px;max-width:280px;border:0;display:inline-block;" />
+         ${wrapLink(`<img src="cid:${esc(opts.logoCid)}" alt="${esc(naam)}" style="max-height:72px;max-width:280px;border:0;display:inline-block;" />`)}
        </div>`
-    : `<div style="text-align:center;padding:24px 0 18px;font-size:22px;font-weight:bold;color:${ACCENT_DARK};">${esc(naam)}</div>`
+    : `<div style="text-align:center;padding:24px 0 18px;font-size:22px;font-weight:bold;color:${ACCENT_DARK};">${wrapLink(esc(naam))}</div>`
 
   const sigLines: string[] = []
   if (brewery?.naam) sigLines.push(`<strong style="color:${TEXT};">${esc(brewery.naam)}</strong>`)
