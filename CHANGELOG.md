@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.4] — 2026-05-22
+
+### Changed — Zachtere stijl voor factuur- en pakbon-tabellen
+
+De donkere `#333` headerbalken en zware accentlijnen op de factuur (en
+pakbon) gaven een harde, "zwarte randen"-uitstraling. Vervangen door een
+licht-grijze headerachtergrond (`#f3f4f6`) met donkere tekst en subtiele
+borders (`#d1d5db`):
+
+- Tabelheader: lichtgrijze achtergrond + dunne `1px` border-bottom in
+  plaats van solide `#333`-balk
+- Klantblok (`.kb`): linker accent-border van `#333` naar `#d1d5db`
+- Grand-total rij in totalenblok: van `2px solid #333` naar `1px solid
+  #d1d5db`
+
 ## [1.10.3] — 2026-05-22
 
 ### Fixed — Kosten weer zichtbaar bij batch-ingrediënten met meerdere regels

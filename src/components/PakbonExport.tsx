@@ -21,11 +21,11 @@ const CSS = `
   .meta-grid { display: flex; gap: 12mm; flex-wrap: wrap; margin-bottom: 7mm; }
   .meta-block .ml { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 1px; }
   .meta-block .mv { font-size: 10pt; font-weight: 500; color: #222; }
-  .kb { background: #f8f9fa; border-left: 3px solid #333; padding: 3.5mm 4.5mm; margin-bottom: 7mm; }
+  .kb { background: #f8f9fa; border-left: 3px solid #d1d5db; padding: 3.5mm 4.5mm; margin-bottom: 7mm; }
   .kn { font-weight: bold; font-size: 12pt; margin-bottom: 3px; }
   .kb p { font-size: 10pt; line-height: 1.55; color: #333; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
-  th { background: #333; color: #fff; padding: 3px 5px; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; }
+  th { background: #f3f4f6; color: #374151; padding: 4px 6px; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; border-bottom: 1px solid #d1d5db; }
   th.r { text-align: right; }
   td { padding: 3px 5px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 10pt; }
   td.r { text-align: right; }
@@ -33,7 +33,7 @@ const CSS = `
   .totals table { width: 65mm; }
   .totals td { border: none; padding: 2px 5px; font-size: 10pt; }
   .totals td.r { font-weight: normal; }
-  .grand-total td { font-weight: bold; font-size: 12pt; border-top: 2px solid #333 !important; padding-top: 2.5mm; }
+  .grand-total td { font-weight: bold; font-size: 12pt; border-top: 1px solid #d1d5db !important; padding-top: 2.5mm; }
   .btw-section { display: flex; justify-content: flex-end; margin-bottom: 4mm; }
   .btw-table { width: auto; min-width: 80mm; margin: 0; }
   .btw-table th, .btw-table td { font-size: 9pt; padding: 2px 5px; }
