@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.17] — 2026-06-09
+
+### Fixed — Privé-order buiten AGP kon niet afgesloten worden
+
+Bij het picken van een privé-order uit voorraad **buiten de AGP** werden de
+uitslagrecords al direct bij het picken aangemaakt (belastbaar feit op moment
+van picken). Bij het vervolgens **afsluiten** van de order draaide de privé
+pre-flight controle opnieuw over álle picks — óók die al uitgeslagen waren.
+Voor die picks was de voorraad-buiten-AGP al afgetrokken, waardoor de controle
+de voorraad onterecht als ontoereikend zag en het afsluiten blokkeerde met de
+melding "Onvoldoende voorraad buiten AGP".
+
+- De pre-flight in `rondeAf` valideert nu alléén picks die nog géén
+  uitslagrecords hebben; reeds uitgeslagen picks (al gevalideerd bij het
+  picken) worden niet meer dubbel geteld.
+
+- `src/pages/BestellingenPage.tsx`.
+
 ## [1.10.16] — 2026-06-09
 
 ### Fixed — Brewfather-sync overschreef de bevestigde definitieve ABV

@@ -770,10 +770,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // Per pick kunnen er meerdere Uitleveringen ontstaan wanneer voorraad gemengd is.
     const agpLoc = getAgpLocatie(locaties)
 
+    // Records bestaan normaliter al uit savePicks (Douane v2.4 §10.2 — belastbaar
+    // feit op moment van picken). Alleen wanneer een pick (legacy/back-compat)
+    // nog geen uitlevering_ids heeft, maken we de records hier alsnog aan.
+    const picksZonderRecords = picks.filter((p: any) => !((p.uitlevering_ids||[]).length > 0 || p.uitlevering_id))
+
     // Privé-orders: hard pre-flight. AGP mag in geen enkel scenario gebruikt
-    // worden. Controleer alle picks vóór er side-effects ontstaan.
+    // worden. Controleer alléén picks die nog géén uitslagrecords hebben — picks
+    // die bij het picken al uit de voorraad zijn gehaald (en daar al gevalideerd
+    // werden) zouden anders dubbel afgetrokken worden: hun uitlevering staat al
+    // in `uit`, waardoor de voorraad-buiten-AGP onterecht als ontoereikend telt
+    // en het sluiten van de order ten onrechte geblokkeerd wordt.
     if (isPriveOrder) {
-      for (const pick of picks) {
+      for (const pick of picksZonderRecords) {
         const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
         if (!avItem) continue
         if (pick.bron_locatie_id != null && pick.bron_locatie_id === agpLoc.id) {
@@ -793,13 +802,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         }
       }
     }
-    // Records bestaan normaliter al uit savePicks (Douane v2.4 §10.2 — belastbaar
-    // feit op moment van picken). Alleen wanneer een pick (legacy/back-compat)
-    // nog geen uitlevering_ids heeft, maken we de records hier alsnog aan.
     let nieuweUitleveringen: any[] = []
     let nieuweAccijns: any[] = []
     let pickResult: Record<number, {uitlevering_ids: number[], accijns_ids: number[]}> = {}
-    const picksZonderRecords = picks.filter((p: any) => !((p.uitlevering_ids||[]).length > 0 || p.uitlevering_id))
     if (picksZonderRecords.length > 0) {
       const built = bouwUitslagRecords(picksZonderRecords, isPriveOrder, uitleveringForm, uit||[])
       nieuweUitleveringen = built.nieuweUitleveringen
