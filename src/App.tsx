@@ -511,9 +511,11 @@ function App() {
             }
             if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus;
             if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize);
-            if (bfB.measuredOg)  ch.OG  = bfNumSafe(bfB.measuredOg);
-            if (bfB.measuredFg)  ch.FG  = bfNumSafe(bfB.measuredFg);
-            if (bfB.measuredAbv) ch.ABV = bfNumSafe(bfB.measuredAbv);
+            // Gravity op 3 dec, ABV op 2 dec afronden; een door de gebruiker
+            // bevestigde definitieve ABV (abv_definitief) NOOIT overschrijven.
+            if (bfB.measuredOg)  { const _n = Number(bfNumSafe(bfB.measuredOg)); ch.OG = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
+            if (bfB.measuredFg)  { const _n = Number(bfNumSafe(bfB.measuredFg)); ch.FG = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
+            if (bfB.measuredAbv && !existing.abv_definitief) { const _n = Number(bfNumSafe(bfB.measuredAbv)); ch.ABV = isNaN(_n) ? '' : Math.round(_n * 100) / 100; }
             if (bfB.measuredBrewhouseEfficiency != null) ch.brouwzaal_eff = bfNumSafe(bfB.measuredBrewhouseEfficiency);
             else if (bfB.estimatedBrewhouseEfficiency != null && !existing.brouwzaal_eff) ch.brouwzaal_eff = bfNumSafe(bfB.estimatedBrewhouseEfficiency);
             if (bfB.measuredMashEfficiency != null) ch.maisch_eff = bfNumSafe(bfB.measuredMashEfficiency);

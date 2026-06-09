@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.16] — 2026-06-09
+
+### Fixed — Brewfather-sync overschreef de bevestigde definitieve ABV
+
+De Brewfather batch-sync (zowel de automatische in `App.tsx` als de handmatige
+`runBfSync` in `BatchesPage.tsx`) zette OG/FG/ABV onvoorwaardelijk terug naar
+de Brewfather-waarde. Daardoor werd een door de gebruiker **bevestigde
+definitieve ABV** (`abv_definitief`) bij elke sync overschreven met de
+Brewfather-/receptwaarde — vandaar dat het ABV-probleem op een afgeronde batch
+"terugkeerde".
+
+- Een batch met `abv_definitief` wordt **niet meer overschreven** door de sync.
+- Gesynchroniseerde OG/FG (3 dec) en ABV (2 dec) worden nu afgerond, net als
+  bij het toepassen van een recept (v1.10.15).
+
+- `src/App.tsx`, `src/pages/BatchesPage.tsx`.
+
 ## [1.10.15] — 2026-06-09
 
 ### Fixed — Recept koppelen triggerde status-suggestie + OG-afronding
