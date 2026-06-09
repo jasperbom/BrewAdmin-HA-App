@@ -945,14 +945,18 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           }
           if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus
           if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize)
+          // Gravity op 3 dec, ABV op 2 dec afronden (Brewfather kan floating-
+          // point-artefacten teruggeven). Een door de gebruiker bevestigde
+          // definitieve ABV (abv_definitief) NOOIT overschrijven.
           if (bfB.measuredOg) {
-            ch.OG = bfNumSafe(bfB.measuredOg);
+            const _ogN = Number(bfNumSafe(bfB.measuredOg));
+            ch.OG = isNaN(_ogN) ? '' : Math.round(_ogN * 1000) / 1000;
             const _og = Number(ch.OG);
             if (_og >= 1 && _og <= 1.2 && !existing.platogehalte)
               ch.platogehalte = Math.round((-616.868 + 1111.14*_og - 630.272*_og*_og + 135.997*_og*_og*_og)*10)/10;
           }
-          if (bfB.measuredFg)  ch.FG  = bfNumSafe(bfB.measuredFg)
-          if (bfB.measuredAbv) ch.ABV = bfNumSafe(bfB.measuredAbv)
+          if (bfB.measuredFg) { const _fgN = Number(bfNumSafe(bfB.measuredFg)); ch.FG = isNaN(_fgN) ? '' : Math.round(_fgN * 1000) / 1000 }
+          if (bfB.measuredAbv && !existing.abv_definitief) { const _abvN = Number(bfNumSafe(bfB.measuredAbv)); ch.ABV = isNaN(_abvN) ? '' : Math.round(_abvN * 100) / 100 }
           if (bfB.measuredBrewhouseEfficiency != null) ch.brouwzaal_eff = bfNumSafe(bfB.measuredBrewhouseEfficiency)
           else if (bfB.estimatedBrewhouseEfficiency != null && !existing.brouwzaal_eff) ch.brouwzaal_eff = bfNumSafe(bfB.estimatedBrewhouseEfficiency)
           if (bfB.measuredMashEfficiency != null) ch.maisch_eff = bfNumSafe(bfB.measuredMashEfficiency)
@@ -1423,13 +1427,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (!selB || !r) return
     if (selB.status !== 'Gepland') { alert(t('batch_sync_recept_not_planned')); return }
     if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', r.naam || ''))) return
+    // Rond gravity (3 dec) en ABV (2 dec) af: recept-waarden uit Brewfather
+    // kunnen floating-point-artefacten bevatten (bv. 1.0479999…).
+    const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
+    const abv2 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 100) / 100
     const patch: any = {
       recept_id: r.id,
       naam: r.naam || selB.naam,
       stijl: r.stijl || '',
-      OG: r.OG || '',
-      FG: r.FG || '',
-      ABV: r.ABV || '',
+      OG: sg3(r.OG),
+      FG: sg3(r.FG),
+      ABV: abv2(r.ABV),
       liter_vergist: r.batch_size || '',
       kleur: r.kleur || '',
       kooktijd: r.kooktijd || '',
