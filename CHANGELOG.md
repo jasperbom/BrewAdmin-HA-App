@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.14] — 2026-06-09
+
+### Fixed — "Recept toepassen" ook zonder gekoppeld recept
+
+De knop om een recept (opnieuw) op een batch toe te passen verscheen alléén
+als de batch al aan een huidig recept gekoppeld was (`recept_id`). Bij een
+handmatig aangemaakte batch (of een batch waarvan het recept niet meer als
+"huidige" versie bestond) was er dus geen knop — vandaar dat hij niet zichtbaar
+was.
+
+De knop verschijnt nu bij elke batch met status **Gepland** zodra er recepten
+zijn. Hij opent een **recept-kiezer** (met zoekveld) waarmee je een recept
+selecteert; dat wordt gekoppeld (`recept_id`) en de gegevens incl. hopschema
+worden overgenomen. Een al gekoppeld recept wordt met "huidig" gemarkeerd.
+
+- `src/pages/BatchesPage.tsx` — `syncReceptToBatch` veralgemeniseerd naar
+  `applyReceptToBatch(r)` (zet ook `recept_id`); nieuwe recept-kiezer-modal;
+  header-knop toont bij status Gepland (label "Recept toepassen" of, indien al
+  gekoppeld, "⟳ Sync recept").
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe `batch_apply_recept*` /
+  `batch_recept_picker_*`-sleutels.
+
 ## [1.10.13] — 2026-06-09
 
 ### Changed — Hopschema bewerkbaar in recept-editor
