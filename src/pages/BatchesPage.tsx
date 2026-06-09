@@ -602,6 +602,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   // De gebruiker kan via 'Bewerken' opnieuw bewerken; deze flag onthoudt of
   // de edit-mode actief is voor de geselecteerde batch.
   const [abvBewerkOpen, setAbvBewerkOpen] = useState(false)
+  // Recept-kiezer: koppel/(her)pas een recept toe op de batch (alleen 'Gepland').
+  const [receptPickerOpen, setReceptPickerOpen] = useState(false)
+  const [receptPickerZoek, setReceptPickerZoek] = useState('')
   // Los invoerbuffer voor het ABV-veld. Een number-input gekoppeld aan een
   // numerieke state herformatteert tijdens het typen ("8.10" → 8.1), waardoor
   // cijfers wegspringen. We bufferen daarom de ruwe tekst en parsen los.
@@ -1416,12 +1419,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   // batch op "Gepland" staat — daarna zijn er afboekingen/metingen die we niet
   // willen overschrijven. Vervangt batch-velden (naam, stijl, OG/FG/ABV,
   // liter_vergist) én alle batch-ingrediënten (lots worden gereset).
-  const syncReceptToBatch = () => {
-    if (!selB || !selBRecept) return
+  const applyReceptToBatch = (r: any) => {
+    if (!selB || !r) return
     if (selB.status !== 'Gepland') { alert(t('batch_sync_recept_not_planned')); return }
-    if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', selBRecept.naam || ''))) return
-    const r = selBRecept
+    if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', r.naam || ''))) return
     const patch: any = {
+      recept_id: r.id,
       naam: r.naam || selB.naam,
       stijl: r.stijl || '',
       OG: r.OG || '',
@@ -1483,6 +1486,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     })
     addLog({type:'gewijzigd', batch_id:selB.id, referentie:t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
     logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:selB.id, actie:'gewijzigd', omschrijving:t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
+    setReceptPickerOpen(false)
   }
 
   const bAv = sel ? (av||[]).filter((a: any) => a.batch_id === sel) : []
@@ -1670,8 +1674,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
                       <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>{t('batch_move_tank')}</Btn>
                     )}
-                    {selB.status === 'Gepland' && selBRecept && (
-                      <Btn s="sm" v="header" onClick={syncReceptToBatch} title={t('batch_sync_recept_title').replace('{recept}', selBRecept.naam || '')}>{t('batch_sync_recept')}</Btn>
+                    {selB.status === 'Gepland' && (recepten||[]).some((r: any)=>r.is_huidige!==false) && (
+                      <Btn s="sm" v="header" onClick={()=>{setReceptPickerZoek('');setReceptPickerOpen(true)}} title={t('batch_apply_recept_title')}>{selBRecept ? t('batch_sync_recept') : t('batch_apply_recept')}</Btn>
                     )}
                     <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>{t('btn_print')}</Btn>
                     <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
@@ -1686,8 +1690,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   {tanks && tanks.length > 0 && ['Vergisten','Conditioneren'].includes(selB.status) && (
                     <Btn s="sm" v="header" onClick={()=>{setMoveTankTarget('');setMoveTankOpen(true)}}>{t('batch_move_tank')}</Btn>
                   )}
-                  {selB.status === 'Gepland' && selBRecept && (
-                    <Btn s="sm" v="header" onClick={syncReceptToBatch} title={t('batch_sync_recept_title').replace('{recept}', selBRecept.naam || '')}>{t('batch_sync_recept')}</Btn>
+                  {selB.status === 'Gepland' && (recepten||[]).some((r: any)=>r.is_huidige!==false) && (
+                    <Btn s="sm" v="header" onClick={()=>{setReceptPickerZoek('');setReceptPickerOpen(true)}} title={t('batch_apply_recept_title')}>{selBRecept ? t('batch_sync_recept') : t('batch_apply_recept')}</Btn>
                   )}
                   <Btn s="sm" v="header" onClick={()=>printBatch(selB)}>{t('btn_print')}</Btn>
                   <Btn s="sm" v="header" onClick={()=>{setEditId(selB.id);setBForm({...selB});setShowForm(true)}}>{t('btn_edit')}</Btn>
@@ -4124,6 +4128,40 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 {naarToegestaan && <Btn onClick={markVernToegestaan} v="primary">{t('verlies_vern_markeer_toegestaan')}</Btn>}
                 {naarUitgevoerd && <Btn onClick={markVernUitgevoerd} v="green" disabled={vernReviewUploading}>{t('verlies_vern_markeer_uitgevoerd')}</Btn>}
               </div>
+            </div>
+          </Modal>
+        )
+      })()}
+
+      {/* Recept-kiezer: koppel/(her)pas een recept toe op een batch (status 'Gepland') */}
+      {receptPickerOpen && selB && (() => {
+        const q = receptPickerZoek.trim().toLowerCase()
+        const lijst = (recepten||[])
+          .filter((r: any) => r.is_huidige !== false)
+          .filter((r: any) => !q || String(r.naam||'').toLowerCase().includes(q) || String(r.stijl||'').toLowerCase().includes(q))
+          .sort((a: any, b: any) => String(a.naam||'').localeCompare(String(b.naam||'')))
+        return (
+          <Modal title={t('batch_recept_picker_titel')} onClose={() => setReceptPickerOpen(false)}>
+            <div className="space-y-3">
+              <SearchInput value={receptPickerZoek} onChange={setReceptPickerZoek} placeholder={t('batch_recept_picker_zoek')} />
+              {lijst.length === 0 ? (
+                <div className="text-center text-gray-400 text-sm py-6">{t('batch_recept_picker_geen')}</div>
+              ) : (
+                <div className="max-h-[55vh] overflow-y-auto divide-y border rounded-lg">
+                  {lijst.map((r: any) => (
+                    <button key={r.id} onClick={() => applyReceptToBatch(r)}
+                      className="w-full text-left p-3 hover:bg-gray-50 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">{r.naam || t('lbl_naamloos')}</div>
+                        {r.stijl && <div className="text-xs text-gray-500 truncate">{r.stijl}</div>}
+                      </div>
+                      {selB.recept_id === r.id && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 flex-shrink-0">{t('batch_recept_picker_huidig')}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </Modal>
         )
