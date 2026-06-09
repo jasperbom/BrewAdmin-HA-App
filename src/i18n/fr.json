@@ -36,6 +36,8 @@
   "settings_brouwproces_desc": "Condition de stockage par défaut pour les lots de houblon sans réglage propre. Utilisé pour la correction de vieillissement IBU.",
   "settings_hop_storage": "Condition stockage",
   "settings_brouwproces_hop_storage_hint": "Utilisé pour la correction de vieillissement IBU quand un lot houblon n'a pas de valeur de stockage. Vide + congélateur (-18°C) ≈ 5%/an de perte, air + temp ambiante ≈ 50%.",
+  "settings_priming_sugar": "Afficher le calculateur de sucre de refermentation",
+  "settings_priming_sugar_hint": "Affiche un calculateur de sucre pour la refermentation en bouteille dans l'onglet de conditionnement. Désactivé par défaut.",
   "brew_storage": "Condition stockage",
   "brew_storage_vacuum_vries": "Vide + congélateur (-18°C)",
   "brew_storage_vacuum_koel": "Vide + frigo (4°C)",

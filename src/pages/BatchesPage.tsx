@@ -127,7 +127,7 @@ interface BatchesPageProps {
   setDryHops?: any
   koelLogs?: any[]
   setKoelLogs?: any
-  brouwprocesInst?: {hop_storage?: string}
+  brouwprocesInst?: {hop_storage?: string; priming_sugar_enabled?: boolean}
 }
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
@@ -598,6 +598,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   // De gebruiker kan via 'Bewerken' opnieuw bewerken; deze flag onthoudt of
   // de edit-mode actief is voor de geselecteerde batch.
   const [abvBewerkOpen, setAbvBewerkOpen] = useState(false)
+  // Los invoerbuffer voor het ABV-veld. Een number-input gekoppeld aan een
+  // numerieke state herformatteert tijdens het typen ("8.10" → 8.1), waardoor
+  // cijfers wegspringen. We bufferen daarom de ruwe tekst en parsen los.
+  const [abvDraft, setAbvDraft] = useState<string>('')
   // Reset edit-mode bij wisselen van batch.
   React.useEffect(() => { setAbvBewerkOpen(false) }, [sel])
   const [takenIngeklapt, setTakenIngeklapt] = useStore('batches_taken_ingeklapt', true)
@@ -1394,6 +1398,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   // Auto-fetch (global interval) is handled in App.tsx; doHaFetch is used for the manual 🌡 HA button only
 
   const selB = bat.find((b: any) => b.id === sel)
+  // Synchroniseer de ABV-invoerbuffer met de geselecteerde batch.
+  React.useEffect(() => {
+    setAbvDraft(selB?.ABV != null && selB?.ABV !== '' ? String(selB.ABV) : '')
+  }, [sel])
   // Bron-recept van de geselecteerde batch (alleen de huidige versie telt).
   const selBRecept = selB?.recept_id
     ? (recepten||[]).find((r: any) => r.id === selB.recept_id && r.is_huidige !== false)
@@ -1733,7 +1741,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 if (sgPct === null && !latestM && liveABV.abv === 0 && !toonAbvInput) return null
                 const inTankFases = ['Vergisten', 'Conditioneren', 'Afgevuld', 'Verpakt', 'Gesloten']
                 if (!inTankFases.includes(selB.status) && !selB.brouwdag_voltooid) return null
+                // Werk zowel de ruwe invoerbuffer als de geparste batch-ABV bij.
                 const setAccijnsABV = (waarde: string) => {
+                  setAbvDraft(waarde)
                   const v = waarde === '' ? undefined : Number(waarde)
                   setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ABV: v} : b))
                 }
@@ -1753,6 +1763,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 }
                 const startBewerken = () => {
                   if (!confirm(t('batch_abv_bewerk_confirm'))) return
+                  setAbvDraft(selB.ABV != null && selB.ABV !== '' ? String(selB.ABV) : '')
                   setAbvBewerkOpen(true)
                 }
                 // Edit-mode is actief wanneer:
@@ -1844,12 +1855,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <div className="relative">
                                     <input
-                                      type="number"
-                                      step="0.1"
-                                      min="0"
-                                      max="50"
-                                      value={selB.ABV ?? ''}
-                                      onChange={e => setAccijnsABV(e.target.value)}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={abvDraft}
+                                      onChange={e => setAccijnsABV(e.target.value.replace(',', '.'))}
                                       placeholder="5.0"
                                       className="border border-gray-300 rounded px-2 py-1.5 pr-7 text-sm t-input w-24 text-right font-mono"
                                     />
@@ -1992,8 +2001,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 koelLogs={koelLogs} setKoelLogs={setKoelLogs} />
             )}
 
-            {/* Afvulling-tab: priming sugar calc bovenaan */}
-            {activeTab === 'afvulling' && (
+            {/* Afvulling-tab: priming sugar calc bovenaan (optioneel via instelling) */}
+            {activeTab === 'afvulling' && brouwprocesInst?.priming_sugar_enabled && (
               <PrimingSugarCalc batch={selB} afvullingen={av}
                 verliesRegistraties={verliesRegistraties} />
             )}
@@ -3486,7 +3495,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     </div>}
                   </div>
 
-                  {bAv.length > 0 && (
+                  {bAv.length > 0 && !['Afgevuld','Verpakt','Gesloten'].includes(selB.status) && (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between gap-4">
                       <div>
                         <div className="text-sm font-medium text-green-800">{t('batch_ready_confirm')}</div>
@@ -3496,10 +3505,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         const heeftVoltooideCarb = (carbSessies||[]).some((s: any) => s.batch_id === selB.id && s.status === 'voltooid')
                         if (!heeftVoltooideCarb && !confirm(t('carb_no_session_confirm'))) return
                         if (!confirm(t('err_confirm_mark_packed').replace('{name}',selB.naam))) return
-                        setBat((prev: any[])=>prev.map((b: any)=>b.id===sel?{...b,status:'Afgevuld'}:b))
-                        addLog({type:'status',batch_id:sel,referentie:`${selB.status} → Afgevuld`})
-                        logAudit(auditLog,setAuditLog,{entiteit:'Batch',entiteit_id:sel!,actie:'gewijzigd',velden:{status:{oud:selB.status,nieuw:'Afgevuld'}},omschrijving:`Status: ${selB.status} → Afgevuld`})
-                        setActiveTab('financieel')
+                        // Via handleStatusChange zodat de tank automatisch op 'Vuil'
+                        // wordt gezet (HACCP) — niet direct setBat.
+                        handleStatusChange('Afgevuld')
                       }}>
                         {t('batch_ready_button')}
                       </Btn>

@@ -1039,6 +1039,19 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </select>
         </div>
         <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_brouwproces_hop_storage_hint')}</p>
+        <div className="mt-4 pt-4 border-t">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" className="t-checkbox"
+              checked={!!brouwprocesInst?.priming_sugar_enabled}
+              onChange={(e: any) => {
+                const v = e.target.checked
+                setBrouwprocesInst((p: any) => ({...(p || {}), priming_sugar_enabled: v}))
+                logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `Priming sugar calculator → ${v ? 'aan' : 'uit'}`})
+              }} />
+            <span className="text-sm font-medium text-gray-700">{t('settings_priming_sugar')}</span>
+          </label>
+          <p className="mt-1 text-xs text-gray-400">{t('settings_priming_sugar_hint')}</p>
+        </div>
       </div>
 
       {/* Cold-crash preset — brouwproces­instelling, actie via HA-climate op Dashboard */}

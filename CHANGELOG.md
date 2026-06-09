@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.8] — 2026-06-09
+
+### Fixed — Vier batch-issues
+
+- **Definitief ABV-veld sprong/rondde af.** Een number-input gekoppeld aan een
+  numerieke state herformatteerde tijdens het typen ("8.10" → 8.1), waardoor
+  cijfers wegsprongen. Het veld gebruikt nu een losse tekstbuffer
+  (`abvDraft`) en parset de waarde apart; comma-invoer wordt ondersteund.
+- **"Klaar met afvullen" bij afgevulde/gesloten batches verborgen.** De
+  bevestigingsbalk verschijnt niet langer zodra de status `Afgevuld`,
+  `Verpakt` of `Gesloten` is.
+- **Priming sugar calculator is nu een instelling (standaard uit).** Toggle
+  toegevoegd onder Instellingen → Brouwproces (`brouwproces_instellingen.
+  priming_sugar_enabled`); de calculator in het afvul-tabblad verschijnt alleen
+  wanneer aangezet.
+- **Tank bleef op 'Ontsmet' na afvullen.** De "Klaar met afvullen"-knop zette
+  de status direct via `setBat` en omzeilde zo de tank-markering. De knop
+  gebruikt nu `handleStatusChange('Afgevuld')`, waardoor de vrijgekomen tank
+  automatisch op 'Vuil' wordt gezet (HACCP-traceerbaarheid).
+
+**Gewijzigde bestanden:** `src/pages/BatchesPage.tsx`,
+`src/pages/InstellingenPage.tsx`, `src/i18n/{nl,en,de,fr,es}.json`,
+`config.yaml`.
+
 ## [1.10.7] — 2026-06-09
 
 ### Added — Vernietigingsregels bij afgekeurd bier tijdens vergisting

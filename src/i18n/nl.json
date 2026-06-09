@@ -36,6 +36,8 @@
   "settings_brouwproces_desc": "Standaard opslag-conditie voor hop-lots zonder eigen instelling. Wordt gebruikt voor de IBU-verouderingscorrectie.",
   "settings_hop_storage": "Opslag-conditie",
   "settings_brouwproces_hop_storage_hint": "Wordt gebruikt voor IBU-verouderingscorrectie wanneer een hop-lot geen eigen opslag-conditie heeft. Vacuum + diepvries (-18°C) geeft ~5% verlies per jaar, lucht + kamertemp ~50%.",
+  "settings_priming_sugar": "Priming sugar calculator tonen",
+  "settings_priming_sugar_hint": "Toont een rekenhulp voor suiker bij hergisting op fles in het afvul-tabblad. Standaard uit.",
   "brew_storage": "Opslag-conditie",
   "brew_storage_vacuum_vries": "Vacuum + diepvries (-18°C)",
   "brew_storage_vacuum_koel": "Vacuum + koel (4°C)",

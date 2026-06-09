@@ -36,6 +36,8 @@
   "settings_brouwproces_desc": "Default storage condition for hop lots without their own setting. Used for the IBU aging correction.",
   "settings_hop_storage": "Storage condition",
   "settings_brouwproces_hop_storage_hint": "Used for IBU aging correction when a hop lot has no own storage value. Vacuum + freezer (-18°C) gives ~5%/year loss, air + room temp ~50%.",
+  "settings_priming_sugar": "Show priming sugar calculator",
+  "settings_priming_sugar_hint": "Shows a bottle-conditioning sugar calculator on the packaging tab. Off by default.",
   "brew_storage": "Storage condition",
   "brew_storage_vacuum_vries": "Vacuum + freezer (-18°C)",
   "brew_storage_vacuum_koel": "Vacuum + fridge (4°C)",

@@ -36,6 +36,8 @@
   "settings_brouwproces_desc": "Standard-Lagerbedingung für Hopfen-Lots ohne eigene Einstellung. Wird für die IBU-Alterungskorrektur verwendet.",
   "settings_hop_storage": "Lagerbedingung",
   "settings_brouwproces_hop_storage_hint": "Wird für IBU-Alterungskorrektur verwendet, wenn ein Hopfen-Lot keine eigene Lagerung hat. Vakuum + Gefrierfach (-18°C) ≈ 5%/Jahr Verlust, Luft + Raumtemp ≈ 50%.",
+  "settings_priming_sugar": "Priming-Sugar-Rechner anzeigen",
+  "settings_priming_sugar_hint": "Zeigt einen Zuckerrechner für die Flaschengärung im Abfüll-Tab. Standardmäßig aus.",
   "brew_storage": "Lagerbedingung",
   "brew_storage_vacuum_vries": "Vakuum + Gefrierfach (-18°C)",
   "brew_storage_vacuum_koel": "Vakuum + Kühlschrank (4°C)",
