@@ -195,6 +195,15 @@ export interface KoelLog {
   created_at?: string
 }
 
+// Vrije, handmatige notitie bij een batch. Eenvoudig logje dat los staat van
+// de automatische batch-log (voorraad_log) en op elk batch-tabblad zichtbaar is.
+export interface BatchNotitie {
+  id: number
+  batch_id: number
+  ts: string        // ISO-timestamp van aanmaak
+  tekst: string
+}
+
 export interface TankHistorieEntry {
   tank: string
   from: string     // ISO-datum waarop het bier in deze tank kwam

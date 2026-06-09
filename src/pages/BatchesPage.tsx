@@ -17,6 +17,7 @@ import BatchTabs, { BatchTabId } from '../components/batch/BatchTabs'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
 import KoelLogSection from '../components/batch/KoelLogSection'
+import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
 import WaterAdditieSection from '../components/batch/WaterAdditieSection'
 import PrimingSugarCalc from '../components/batch/PrimingSugarCalc'
 import StatusSuggestion from '../components/batch/StatusSuggestion'
@@ -126,6 +127,8 @@ interface BatchesPageProps {
   dryHops?: any[]
   setDryHops?: any
   koelLogs?: any[]
+  batchNotities?: any[]
+  setBatchNotities?: any
   setKoelLogs?: any
   brouwprocesInst?: {hop_storage?: string; priming_sugar_enabled?: boolean}
 }
@@ -525,6 +528,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   hopAddities=[], setHopAddities=()=>{},
   dryHops=[], setDryHops=()=>{},
   koelLogs=[], setKoelLogs=()=>{},
+  batchNotities=[], setBatchNotities=()=>{},
   brouwprocesInst={hop_storage:'vacuum_koel'}
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
@@ -609,6 +613,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [ccpMetingForm, setCcpMetingForm] = useState<any>(null)
   const [metingLogIngeklapt, setMetingLogIngeklapt] = useStore('batches_meting_log_ingeklapt', true)
   const [logIngeklapt, setLogIngeklapt] = useStore('batches_log_ingeklapt', true)
+  const [notitiesIngeklapt, setNotitiesIngeklapt] = useStore('batches_notities_ingeklapt', false)
   const [ingIngeklapt, setIngIngeklapt] = useStore('batches_ing_ingeklapt', false)
   const [afvullenIngeklapt, setAfvullenIngeklapt] = useStore('batches_afvullen_ingeklapt', false)
   const [carbIngeklapt, setCarbIngeklapt] = useStore('batches_carb_ingeklapt', false)
@@ -1975,6 +1980,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
             {/* Tab navigatie */}
             <BatchTabs active={activeTab} onChange={setActiveTab} status={selB.status} />
+
+            {/* Notitie-logje — altijd zichtbaar, onafhankelijk van het actieve tabblad */}
+            <BatchNotitiesSection batch={selB}
+              notities={batchNotities} setNotities={setBatchNotities}
+              open={!notitiesIngeklapt}
+              onToggle={() => setNotitiesIngeklapt((v: boolean) => !v)} />
 
             {/* Brouwdag-tab content */}
             {activeTab === 'brouwdag' && (

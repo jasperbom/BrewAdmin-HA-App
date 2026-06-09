@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.10] — 2026-06-09
+
+### Added — Notitie-logje per batch (altijd zichtbaar)
+
+Je kunt nu heel eenvoudig vrije notities bij een batch maken. Ze komen in een
+simpel, getimestampt logje dat **onder de tab-navigatie** staat en dus op
+**elk** tabblad zichtbaar is — onafhankelijk van info/brouwdag/vergisting/etc.
+Het paneel is inklapbaar (stand wordt onthouden) en toont het aantal notities
+in de header. Enter of de "+ Notitie"-knop voegt toe; nieuwste bovenaan.
+
+- `src/components/batch/BatchNotitiesSection.tsx` — nieuw component.
+- `src/pages/BatchesPage.tsx` — gerenderd direct onder `<BatchTabs>`; nieuwe
+  collapse-state `batches_notities_ingeklapt`.
+- `src/App.tsx` — nieuwe data-key `batch_notities` (useStore), doorgegeven aan
+  `BatchesPage` en opgenomen in Excel-export/import + reset.
+- `src/utils/excel.ts` — sheet `BatchNotities` toegevoegd aan backup.
+- `src/types/index.ts` — `BatchNotitie`-interface.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe `batch_notitie(s)_*`-sleutels.
+
 ## [1.10.9] — 2026-06-09
 
 ### Changed — Koeling-log verplaatst naar brouwdag
