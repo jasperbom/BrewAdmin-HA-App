@@ -378,9 +378,11 @@ export const bfMapRecipe = (r: any, opts: {
   stijl: r.style?.name || '',
   equipment: r.equipment?.name || '',
   batch_size: r.batchSize || '',
-  OG: r.og || '',
-  FG: r.fg || '',
-  ABV: r.abv || '',
+  // Gravity (3 dec) en ABV (2 dec) afronden — Brewfather kan floating-point-
+  // artefacten teruggeven (bv. 1.0479999…) die anders lelijk in beeld komen.
+  OG: r.og != null && r.og !== '' && !isNaN(Number(r.og)) ? Math.round(Number(r.og) * 1000) / 1000 : '',
+  FG: r.fg != null && r.fg !== '' && !isNaN(Number(r.fg)) ? Math.round(Number(r.fg) * 1000) / 1000 : '',
+  ABV: r.abv != null && r.abv !== '' && !isNaN(Number(r.abv)) ? Math.round(Number(r.abv) * 100) / 100 : '',
   IBU: r.ibu || '',
   notities: r.notes || '',
   tags:   Array.isArray(r.searchTags) ? r.searchTags : (r.searchTags ? [r.searchTags] : []),

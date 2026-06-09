@@ -41,9 +41,12 @@ const StatusSuggestion: React.FC<Props> = ({batch, setBat, gistMetingen, afvulli
   let suggestie: {key: string, naarStatus: string, label: string} | null = null
 
   const status = String(batch.status || '')
-  const ogGezet = Number(batch.OG) > 1
+  // OG telt pas als "gemeten" wanneer de brouwdag is afgerond (of de batch al
+  // op 'Brouwen' staat) — niet wanneer enkel de recept-schatting is overgenomen.
+  // Anders zou het koppelen van een recept meteen 'Aan het gisten' suggereren.
+  const ogGemeten = Number(batch.OG) > 1 && (status === 'Brouwen' || !!batch.brouwdag_voltooid)
 
-  if (!negeerd.includes('vergisten') && ogGezet && ['Gepland', 'Brouwen'].includes(status)) {
+  if (!negeerd.includes('vergisten') && ogGemeten && ['Gepland', 'Brouwen'].includes(status)) {
     suggestie = {key: 'vergisten', naarStatus: 'Vergisten', label: t('status_suggest_naar_vergisten')}
   } else if (!negeerd.includes('conditioneren') && status === 'Vergisten' && fgStabiel(mineMetingen as any)) {
     suggestie = {key: 'conditioneren', naarStatus: 'Conditioneren', label: t('status_suggest_naar_conditioneren')}

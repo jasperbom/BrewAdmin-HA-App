@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.15] — 2026-06-09
+
+### Fixed — Recept koppelen triggerde status-suggestie + OG-afronding
+
+- **Status-suggestie 'Aan het gisten' ging te vroeg af.** De suggestie vuurde
+  zodra `OG > 1`, maar dat is ook de overgenomen recept-schatting. Het koppelen
+  van een recept suggereerde daardoor meteen 'Aan het gisten'. De suggestie
+  verschijnt nu pas wanneer de OG echt gemeten is: status al op 'Brouwen' óf
+  de brouwdag afgerond (`brouwdag_voltooid`).
+- **OG/FG/ABV werden lelijk afgerond.** Brewfather-recepten kunnen
+  floating-point-artefacten teruggeven (bv. `1.0479999…`). Die werden rauw
+  overgenomen. OG/FG worden nu op 3 decimalen en ABV op 2 decimalen afgerond,
+  zowel bij het toepassen van een recept (`applyReceptToBatch`) als bij de
+  Brewfather-mapping (`bfMapRecipe`).
+
+- `src/components/batch/StatusSuggestion.tsx`, `src/pages/BatchesPage.tsx`,
+  `src/utils/api.ts`.
+
 ## [1.10.14] — 2026-06-09
 
 ### Fixed — "Recept toepassen" ook zonder gekoppeld recept

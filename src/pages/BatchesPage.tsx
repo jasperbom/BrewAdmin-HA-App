@@ -1423,13 +1423,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (!selB || !r) return
     if (selB.status !== 'Gepland') { alert(t('batch_sync_recept_not_planned')); return }
     if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', r.naam || ''))) return
+    // Rond gravity (3 dec) en ABV (2 dec) af: recept-waarden uit Brewfather
+    // kunnen floating-point-artefacten bevatten (bv. 1.0479999…).
+    const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
+    const abv2 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 100) / 100
     const patch: any = {
       recept_id: r.id,
       naam: r.naam || selB.naam,
       stijl: r.stijl || '',
-      OG: r.OG || '',
-      FG: r.FG || '',
-      ABV: r.ABV || '',
+      OG: sg3(r.OG),
+      FG: sg3(r.FG),
+      ABV: abv2(r.ABV),
       liter_vergist: r.batch_size || '',
       kleur: r.kleur || '',
       kooktijd: r.kooktijd || '',
