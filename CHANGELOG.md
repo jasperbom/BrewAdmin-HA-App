@@ -4,6 +4,117 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.12] — 2026-06-09
+
+### Fixed — Carbonatie-kopdruk werd onderschat
+
+`carbDrukBar` gebruikte een lineaire benadering met een te flauwe helling
+(0.30 bar per volume CO₂, terwijl de werkelijke ~0.68 bar/vol is). Daardoor
+kwam de benodigde kopdruk te laag uit, vooral bij hogere CO₂-volumes
+(Belgische stijlen). Vervangen door de standaard carbonatie-vergelijking
+`V = (Pg + 14.695)·(0.01821 + 0.09011·e^(−(T_F−32)/43.11)) − 0.003342`,
+opgelost naar gauge-druk en omgerekend naar bar.
+
+Voorbeeld (2 °C): 3.5 vols ging van 1.15 bar (16.7 PSI) → 1.38 bar (19.9 PSI);
+4.5 vols van 1.45 bar → 2.06 bar. Reeds opgeslagen carbonatie-sessies behouden
+hun historische streefdruk; nieuwe sessies en de live-preview gebruiken de
+gecorrigeerde formule.
+
+- `src/utils/calculations.ts` — `carbDrukBar` herschreven.
+
+## [1.10.11] — 2026-06-09
+
+### Changed — Notitie-logje standaard ingeklapt
+
+Het notitie-paneel start nu ingeklapt (alleen de balk met de telling); de
+in-/uitgeklapte stand wordt nog steeds onthouden.
+
+- `src/pages/BatchesPage.tsx` — default van `batches_notities_ingeklapt` → `true`.
+
+## [1.10.10] — 2026-06-09
+
+### Added — Notitie-logje per batch (altijd zichtbaar)
+
+Je kunt nu heel eenvoudig vrije notities bij een batch maken. Ze komen in een
+simpel, getimestampt logje dat **onder de tab-navigatie** staat en dus op
+**elk** tabblad zichtbaar is — onafhankelijk van info/brouwdag/vergisting/etc.
+Het paneel is inklapbaar (stand wordt onthouden) en toont het aantal notities
+in de header. Enter of de "+ Notitie"-knop voegt toe; nieuwste bovenaan.
+
+- `src/components/batch/BatchNotitiesSection.tsx` — nieuw component.
+- `src/pages/BatchesPage.tsx` — gerenderd direct onder `<BatchTabs>`; nieuwe
+  collapse-state `batches_notities_ingeklapt`.
+- `src/App.tsx` — nieuwe data-key `batch_notities` (useStore), doorgegeven aan
+  `BatchesPage` en opgenomen in Excel-export/import + reset.
+- `src/utils/excel.ts` — sheet `BatchNotities` toegevoegd aan backup.
+- `src/types/index.ts` — `BatchNotitie`-interface.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe `batch_notitie(s)_*`-sleutels.
+
+## [1.10.9] — 2026-06-09
+
+### Changed — Koeling-log verplaatst naar brouwdag
+
+De koeling-log registreert wortkoeling (platenwisselaar, dompelkoeler,
+counterflow) — dat hoort bij het einde van de brouwdag, niet bij de
+conditionering. De sectie staat nu in het **Brouwdag**-tabblad (onder de
+water­additie-sectie) in plaats van bij **Conditionering**. Geen datawijziging:
+de records (`koel_logs`) blijven ongewijzigd.
+
+- `src/pages/BatchesPage.tsx` — `KoelLogSection` verplaatst van het
+  `conditionering`- naar het `brouwdag`-tabblad.
+
+## [1.10.8] — 2026-06-09
+
+### Fixed — Vier batch-issues
+
+- **Definitief ABV-veld sprong/rondde af.** Een number-input gekoppeld aan een
+  numerieke state herformatteerde tijdens het typen ("8.10" → 8.1), waardoor
+  cijfers wegsprongen. Het veld gebruikt nu een losse tekstbuffer
+  (`abvDraft`) en parset de waarde apart; comma-invoer wordt ondersteund.
+- **"Klaar met afvullen" bij afgevulde/gesloten batches verborgen.** De
+  bevestigingsbalk verschijnt niet langer zodra de status `Afgevuld`,
+  `Verpakt` of `Gesloten` is.
+- **Priming sugar calculator is nu een instelling (standaard uit).** Toggle
+  toegevoegd onder Instellingen → Brouwproces (`brouwproces_instellingen.
+  priming_sugar_enabled`); de calculator in het afvul-tabblad verschijnt alleen
+  wanneer aangezet.
+- **Tank bleef op 'Ontsmet' na afvullen.** De "Klaar met afvullen"-knop zette
+  de status direct via `setBat` en omzeilde zo de tank-markering. De knop
+  gebruikt nu `handleStatusChange('Afgevuld')`, waardoor de vrijgekomen tank
+  automatisch op 'Vuil' wordt gezet (HACCP-traceerbaarheid).
+
+**Gewijzigde bestanden:** `src/pages/BatchesPage.tsx`,
+`src/pages/InstellingenPage.tsx`, `src/i18n/{nl,en,de,fr,es}.json`,
+`config.yaml`.
+
+## [1.10.7] — 2026-06-09
+
+### Added — Vernietigingsregels bij afgekeurd bier tijdens vergisting
+
+De Douane-vernietigingsflow die al bestond voor afgevuld bier
+(ProductenPage) is nu ook beschikbaar in de **verliesregistratie** van een
+batch tijdens de vergisting. Wanneer je een verliespost met bron
+**Afgekeurd** registreert, start dezelfde 3-staps-flow onder de
+schorsingsregeling (AGP):
+
+1. **Aangevraagd** — datum indiening verklaring vernietiging + upload van de
+   bij de Douane ingediende verklaring (PDF) zijn verplicht.
+2. **Toegestaan** — verwerk de schriftelijke toestemming van de Douane
+   (datum + optioneel kenmerk).
+3. **Uitgevoerd** — registreer de uitvoeringsdatum en upload bewijs
+   (foto/video). Hierbij vervalt de potentiële accijnsschuld voor deze
+   hoeveelheid.
+
+De status wordt als pill in de verliestabel getoond met een knop om de
+volgende stap te verwerken.
+
+- `src/types/index.ts` — `VerliesRegistratie` uitgebreid met
+  `vernietiging_status`, `verklaring_ingediend_op`, `toestemming_ontvangen_op`,
+  `kenmerk_douane`, `uitgevoerd_op` en `bijlagen`.
+- `src/pages/BatchesPage.tsx` — stap-1-velden in het verlies-formulier,
+  statuspill + doorzetknop in de tabel, en een vernietigingsreview-modal.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe `verlies_vern_*`-sleutels.
+
 ## [1.10.6] — 2026-05-22
 
 ### Added — E-mailtemplates instelbaar + klikbaar logo in mail

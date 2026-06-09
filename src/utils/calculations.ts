@@ -285,14 +285,26 @@ export const berekenProductKostprijs = (
 // 1 vol CO2 ≈ 1.9632 g/L opgelost (standaard brouwersconstante).
 export const CO2_G_PER_L_PER_VOL = 1.9632
 
-// Benodigde kopdruk voor een gewenst CO2-gehalte bij een gegeven
-// tanktemperatuur. Lineaire benadering van Henry's-law die binnen ±0.05 bar
-// correct is voor 0–10 °C en 1.8–3.8 vols (99% van het brouwersbereik).
-// Geijkt op: V=2.5 vols, T=2 °C → P ≈ 0.85 bar (12.3 PSI).
+// Benodigde kopdruk (evenwichtsdruk) voor een gewenst CO2-gehalte bij een
+// gegeven tanktemperatuur. Gebruikt de standaard carbonatie-vergelijking die
+// vrijwel alle brouwcalculators hanteren — geldig over het hele bereik (een
+// eerdere lineaire benadering onderschatte de druk fors bij hoge vols):
+//
+//   V = (Pg + 14.695) · (0.01821 + 0.09011·e^(−(T_F−32)/43.11)) − 0.003342
+//
+// met V = volumes CO2, Pg = gauge-druk (PSI), T_F = temperatuur in °F.
+// Opgelost naar Pg en omgerekend naar bar. Voorbeelden:
+//   V=2.5, T=2 °C  → ≈ 0.69 bar (10.1 PSI)
+//   V=3.5, T=2 °C  → ≈ 1.38 bar (19.9 PSI)
+//   V=2.5, T=4 °C  → ≈ 0.81 bar (11.8 PSI)
 export const carbDrukBar = (volsCO2: number, tempC: number): number => {
   const v = Number(volsCO2) || 0
   const t = Number(tempC) || 0
-  return 0.85 + (v - 2.5) * 0.30 + (t - 2) * 0.035
+  const tF = t * 9 / 5 + 32
+  const denom = 0.01821 + 0.09011 * Math.exp(-(tF - 32) / 43.11)
+  const psiGauge = (v + 0.003342) / denom - 14.695
+  const bar = psiGauge / 14.5038
+  return bar > 0 ? bar : 0
 }
 
 // Bar → PSI conversie (1 bar = 14.5038 PSI).
