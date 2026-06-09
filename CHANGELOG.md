@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.12] — 2026-06-09
+
+### Fixed — Carbonatie-kopdruk werd onderschat
+
+`carbDrukBar` gebruikte een lineaire benadering met een te flauwe helling
+(0.30 bar per volume CO₂, terwijl de werkelijke ~0.68 bar/vol is). Daardoor
+kwam de benodigde kopdruk te laag uit, vooral bij hogere CO₂-volumes
+(Belgische stijlen). Vervangen door de standaard carbonatie-vergelijking
+`V = (Pg + 14.695)·(0.01821 + 0.09011·e^(−(T_F−32)/43.11)) − 0.003342`,
+opgelost naar gauge-druk en omgerekend naar bar.
+
+Voorbeeld (2 °C): 3.5 vols ging van 1.15 bar (16.7 PSI) → 1.38 bar (19.9 PSI);
+4.5 vols van 1.45 bar → 2.06 bar. Reeds opgeslagen carbonatie-sessies behouden
+hun historische streefdruk; nieuwe sessies en de live-preview gebruiken de
+gecorrigeerde formule.
+
+- `src/utils/calculations.ts` — `carbDrukBar` herschreven.
+
 ## [1.10.11] — 2026-06-09
 
 ### Changed — Notitie-logje standaard ingeklapt
