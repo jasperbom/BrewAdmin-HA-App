@@ -1986,6 +1986,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   recepten={recepten} />
                 <WaterAdditieSection batch={selB}
                   waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
+                {/* Wortkoeling aan het einde van de brouwdag (plate/dompel/counterflow) */}
+                <KoelLogSection batch={selB}
+                  koelLogs={koelLogs} setKoelLogs={setKoelLogs} />
               </>
             )}
 
@@ -1993,12 +1996,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
             {activeTab === 'vergisting' && (
               <DryHopSection batch={selB}
                 dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
-            )}
-
-            {/* Conditionering-tab: koel-log onder carbonatie */}
-            {activeTab === 'conditionering' && (
-              <KoelLogSection batch={selB}
-                koelLogs={koelLogs} setKoelLogs={setKoelLogs} />
             )}
 
             {/* Afvulling-tab: priming sugar calc bovenaan (optioneel via instelling) */}

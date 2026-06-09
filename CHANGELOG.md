@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.9] — 2026-06-09
+
+### Changed — Koeling-log verplaatst naar brouwdag
+
+De koeling-log registreert wortkoeling (platenwisselaar, dompelkoeler,
+counterflow) — dat hoort bij het einde van de brouwdag, niet bij de
+conditionering. De sectie staat nu in het **Brouwdag**-tabblad (onder de
+water­additie-sectie) in plaats van bij **Conditionering**. Geen datawijziging:
+de records (`koel_logs`) blijven ongewijzigd.
+
+- `src/pages/BatchesPage.tsx` — `KoelLogSection` verplaatst van het
+  `conditionering`- naar het `brouwdag`-tabblad.
+
 ## [1.10.8] — 2026-06-09
 
 ### Fixed — Vier batch-issues
