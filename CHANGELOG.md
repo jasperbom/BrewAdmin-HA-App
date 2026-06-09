@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.11] — 2026-06-09
+
+### Changed — Notitie-logje standaard ingeklapt
+
+Het notitie-paneel start nu ingeklapt (alleen de balk met de telling); de
+in-/uitgeklapte stand wordt nog steeds onthouden.
+
+- `src/pages/BatchesPage.tsx` — default van `batches_notities_ingeklapt` → `true`.
+
 ## [1.10.10] — 2026-06-09
 
 ### Added — Notitie-logje per batch (altijd zichtbaar)
