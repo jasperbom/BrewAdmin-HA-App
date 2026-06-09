@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.13] — 2026-06-09
+
+### Changed — Hopschema bewerkbaar in recept-editor
+
+Onderzoek naar "het hopschema kwam niet goed over" wees uit dat het
+overname-pad (recept → batch) de tijden correct mapt (`tijd` → `tijdstip_min`)
+in alle drie de routes (Brouwen-vanuit-recept, nieuwe batch, en
+recept-opnieuw-toepassen). Het echte gat: **hop-tijden en -gebruik waren in
+de recept-editor niet te bewerken** — alleen de ingredient-koppeling. Als de
+tijden in een (lokaal) recept ontbraken, kon je ze nergens corrigeren.
+
+- `src/pages/ReceptenPage.tsx` — hop-rijen van de huidige receptversie hebben
+  nu een inline-editor voor **gebruik** (koken/whirlpool/dry-hop/maisch) en
+  **tijd** (min, of dagen bij dry-hop). Tijd-weergave toont nu ook een waarde
+  van 0 (flame-out) i.p.v. die te verbergen.
+
+Workflow: corrigeer het hopschema in het recept en gebruik daarna
+**"Recept opnieuw toepassen"** op de batch (beschikbaar zolang de status nog
+**Gepland** is, dus vóór 'Brouwen') om de bijgewerkte tijden over te nemen.
+
 ## [1.10.12] — 2026-06-09
 
 ### Fixed — Carbonatie-kopdruk werd onderschat

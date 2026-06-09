@@ -226,8 +226,31 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
             )}
           </td>
           <td className="px-3 py-2 text-xs text-gray-400">
-            {item.gebruik||''}
-            {item.tijd ? <span className="ml-1 text-gray-300">· {item.tijd} {item.tijdEenheid==='day'?'d':'min'}</span> : null}
+            {cat === 'hop' && !readOnly ? (
+              <div className="flex items-center gap-1" onClick={(e: any) => e.stopPropagation()}>
+                <select value={String(item.gebruik || 'boil').toLowerCase()}
+                  onChange={(e: any) => {
+                    const g = e.target.value
+                    updateReceptIng('hop', idx, { gebruik: g, tijdEenheid: g === 'dry hop' ? 'day' : 'min' })
+                  }}
+                  className="border border-gray-200 rounded px-1 py-0.5 text-xs t-input">
+                  <option value="boil">{t('hop_gebruik_boil')}</option>
+                  <option value="whirlpool">{t('hop_gebruik_whirlpool')}</option>
+                  <option value="dry hop">{t('hop_gebruik_dryhop')}</option>
+                  <option value="mash">{t('hop_gebruik_mash')}</option>
+                </select>
+                <input type="number" step="1" min="0" value={item.tijd ?? ''}
+                  onChange={(e: any) => updateReceptIng('hop', idx, { tijd: e.target.value === '' ? '' : Number(e.target.value) })}
+                  className="w-14 border border-gray-200 rounded px-1 py-0.5 text-right t-input"
+                  placeholder="—" />
+                <span className="text-gray-300">{String(item.gebruik || '').toLowerCase() === 'dry hop' ? t('lbl_dagen') : t('lbl_minuten')}</span>
+              </div>
+            ) : (
+              <>
+                {item.gebruik || ''}
+                {item.tijd != null && item.tijd !== '' ? <span className="ml-1 text-gray-300">· {item.tijd} {item.tijdEenheid === 'day' ? t('lbl_dagen') : t('lbl_minuten')}</span> : null}
+              </>
+            )}
           </td>
           <td className="px-3 py-2 text-sm text-right whitespace-nowrap">
             {ok!==null
