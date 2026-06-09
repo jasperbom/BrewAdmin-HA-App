@@ -925,6 +925,16 @@ export interface VerliesRegistratie {
   liter: number
   notitie?: string
   created_at?: string
+  // ── Vernietigingsflow (Douane §7.2.3) ──────────────────────────────────────
+  // Alleen relevant bij bron 'afgekeurd': vernietiging van bier onder de
+  // schorsingsregeling (AGP). Zelfde 3-staps-flow als bij afgevuld bier
+  // (zie Afboeking): Aangevraagd → Toegestaan → Uitgevoerd.
+  vernietiging_status?: VernietigingStatus
+  verklaring_ingediend_op?: string   // datum indiening verklaring vernietiging
+  toestemming_ontvangen_op?: string  // datum schriftelijke toestemming Douane
+  kenmerk_douane?: string            // referentienummer/kenmerk Douane
+  uitgevoerd_op?: string             // datum waarop vernietiging is uitgevoerd
+  bijlagen?: AfboekingBijlage[]      // verklaring-PDF + bewijs (foto/video)
 }
 
 export interface HaSensor {

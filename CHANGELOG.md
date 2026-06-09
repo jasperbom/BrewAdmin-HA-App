@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.7] — 2026-06-09
+
+### Added — Vernietigingsregels bij afgekeurd bier tijdens vergisting
+
+De Douane-vernietigingsflow die al bestond voor afgevuld bier
+(ProductenPage) is nu ook beschikbaar in de **verliesregistratie** van een
+batch tijdens de vergisting. Wanneer je een verliespost met bron
+**Afgekeurd** registreert, start dezelfde 3-staps-flow onder de
+schorsingsregeling (AGP):
+
+1. **Aangevraagd** — datum indiening verklaring vernietiging + upload van de
+   bij de Douane ingediende verklaring (PDF) zijn verplicht.
+2. **Toegestaan** — verwerk de schriftelijke toestemming van de Douane
+   (datum + optioneel kenmerk).
+3. **Uitgevoerd** — registreer de uitvoeringsdatum en upload bewijs
+   (foto/video). Hierbij vervalt de potentiële accijnsschuld voor deze
+   hoeveelheid.
+
+De status wordt als pill in de verliestabel getoond met een knop om de
+volgende stap te verwerken.
+
+- `src/types/index.ts` — `VerliesRegistratie` uitgebreid met
+  `vernietiging_status`, `verklaring_ingediend_op`, `toestemming_ontvangen_op`,
+  `kenmerk_douane`, `uitgevoerd_op` en `bijlagen`.
+- `src/pages/BatchesPage.tsx` — stap-1-velden in het verlies-formulier,
+  statuspill + doorzetknop in de tabel, en een vernietigingsreview-modal.
+- `src/i18n/{nl,en,de,fr,es}.json` — nieuwe `verlies_vern_*`-sleutels.
+
 ## [1.10.6] — 2026-05-22
 
 ### Added — E-mailtemplates instelbaar + klikbaar logo in mail
