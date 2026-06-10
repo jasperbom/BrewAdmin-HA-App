@@ -2448,6 +2448,57 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                       }
                     }
                     const ING_TYPES: Record<string,string> = {Mout:t('ing_type_mout'),Hop:t('ing_type_hop'),Gist:t('ing_type_gist'),Suiker:t('ing_type_suiker'),Overig:t('ing_type_overig')}
+                    // Recept-hoeveelheid per groep (in de eenheid van de groep) zodat we
+                    // subtiel kunnen tonen dat de batch-hoeveelheid afwijkt van het recept.
+                    const receptQtyVoorGroep = (g: any): number | null => {
+                      if (!selBRecept) return null
+                      const items = [
+                        ...(selBRecept.mout||[]), ...(selBRecept.hop||[]),
+                        ...(selBRecept.gist||[]), ...(selBRecept.overig||[]),
+                      ]
+                      const naamLc = String(g.naam||'').toLowerCase()
+                      const ids = new Set(g.rows.map((r: any) => r.ingredient_id).filter(Boolean))
+                      const match = items.filter((i: any) =>
+                        (i.ingredient_id && ids.has(i.ingredient_id)) ||
+                        String(i.naam||'').toLowerCase() === naamLc)
+                      if (!match.length) return null
+                      let sum = 0
+                      for (const m of match) {
+                        const q = convertEenheid(Number(m.hoeveelheid||0), m.eenheid||g.eenheid, g.eenheid)
+                        if (q === null) return null
+                        sum += q
+                      }
+                      return r3(sum)
+                    }
+                    const receptAfwijking = (afwijkend: boolean, receptQty: number | null, eenheid: string) => {
+                      if (!afwijkend || receptQty === null) return null
+                      return (
+                        <div className="text-[10px] font-sans font-normal text-amber-600 whitespace-nowrap"
+                          title={t('batch_ing_recept_afwijking_title').replace('{n}', String(receptQty)).replace('{unit}', eenheid)}>
+                          ≠ {t('batch_ing_recept_afwijking').replace('{n}', String(receptQty)).replace('{unit}', eenheid)}
+                        </div>
+                      )
+                    }
+                    // Hoeveelheid: inline aanpasbaar zolang de regel nog niet is afgeboekt.
+                    const qtyCell = (x: any) => x.afgeboekt ? (
+                      <span className="font-mono text-xs whitespace-nowrap">{fmtQty(x.hoeveelheid)} {x.eenheid}</span>
+                    ) : (
+                      <span className="whitespace-nowrap">
+                        <input type="number" step="any" min="0" value={x.hoeveelheid}
+                          onClick={(e: any) => e.stopPropagation()}
+                          onChange={(e: any) => {
+                            const v = e.target.value
+                            setBi((prev: any[]) => prev.map((b: any) => b.id===x.id ? {...b, hoeveelheid:v} : b))
+                          }}
+                          onBlur={(e: any) => {
+                            const n = Number(e.target.value)
+                            setBi((prev: any[]) => prev.map((b: any) => b.id===x.id ? {...b, hoeveelheid:(isNaN(n)||n<0)?0:n} : b))
+                          }}
+                          title={t('batch_ing_qty_edit_title')}
+                          className="w-16 border border-transparent hover:border-gray-300 rounded px-1 py-0.5 text-right font-mono text-xs bg-transparent t-input"
+                        /> <span className="font-mono text-xs">{x.eenheid}</span>
+                      </span>
+                    )
                     const renderKoppelPill = (biRow: any, groepKey: string) => {
                       const isOpen = koppelGroep === groepKey
                       const ingById = biRow.ingredient_id ? ing.find((i: any) => i.id === biRow.ingredient_id) : null
@@ -2499,6 +2550,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     }
                     return groupsArr.map(g => {
                       const totalQty  = r3(g.rows.reduce((s: number, r: any) => s+Number(r.hoeveelheid||0), 0))
+                      const receptQty = receptQtyVoorGroep(g)
+                      const afwijkend = receptQty !== null && Math.abs(totalQty - receptQty) > 0.001
                       const bookedQty = r3(g.rows.filter((r: any) => r.afgeboekt).reduce((s: number, r: any) => s+Number(r.hoeveelheid||0), 0))
                       const remainQty = r3(totalQty - bookedQty)
                       const multi     = g.rows.length > 1
@@ -2518,7 +2571,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                 {renderKoppelPill(g.rows[0], g.key)}
                               </td>
                               <td className="px-3 py-1.5 text-gray-500 text-xs">{g.type}</td>
-                              <td className="px-3 py-1.5 text-right font-mono text-xs font-semibold text-gray-700">{totalQty} {g.eenheid}</td>
+                              <td className="px-3 py-1.5 text-right font-mono text-xs font-semibold text-gray-700">
+                                {totalQty} {g.eenheid}
+                                {receptAfwijking(afwijkend, receptQty, g.eenheid)}
+                              </td>
                               <td className="px-3 py-1.5 text-xs">
                                 {bookedQty > 0 && <span className="text-green-700">✓ {bookedQty} {g.eenheid} {t('ing_booked_suffix')}</span>}
                                 {!volledig && <span className="text-amber-700 font-medium ml-2">· {t('batch_ingredient_still_needed')} {remainQty} {g.eenheid} {t('batch_ingredient_still_needed_text')}</span>}
@@ -2597,13 +2653,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               <tr key={x.id} className={multi ? 'bg-white' : ''}>
                                 <td className={`px-3 py-1.5 ${multi ? 'pl-5 text-gray-500 text-xs' : ''}`}>
                                   {multi ? (
-                                    <><span className="text-gray-300 mr-1">↳</span><span>{fmtQty(x.hoeveelheid)} {x.eenheid}</span></>
+                                    <><span className="text-gray-300 mr-1">↳</span>{qtyCell(x)}</>
                                   ) : (
                                     <><span className="align-middle">{x.ingredient_naam}</span>{renderKoppelPill(x, g.key)}</>
                                   )}
                                 </td>
                                 <td className="px-3 py-1.5 text-gray-500 text-xs">{multi ? '' : (ING_TYPES[x.ingredient_type]||x.ingredient_type)}</td>
-                                <td className="px-3 py-1.5 text-right font-mono text-xs">{multi ? '' : <>{fmtQty(x.hoeveelheid)} {x.eenheid}</>}</td>
+                                <td className="px-3 py-1.5 text-right font-mono text-xs">{multi ? '' : <>
+                                  {qtyCell(x)}
+                                  {receptAfwijking(afwijkend, receptQty, g.eenheid)}
+                                </>}</td>
                                 <td className="px-3 py-1.5">{lotCell}</td>
                                 <td className="px-3 py-1.5 text-right text-xs">{kosten!==null?fmt(kosten):'—'}</td>
                                 <td className="px-3 py-1.5"><button onClick={()=>removeBI(x.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button></td>

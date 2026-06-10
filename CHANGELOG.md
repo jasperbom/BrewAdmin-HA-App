@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.35] — 2026-06-10
+
+### Added — Batches: hoeveelheid aanpasbaar bij het boeken van ingrediënten
+
+In de ingrediëntentabel van een batch is de hoeveelheid nu **inline aan te
+passen** zolang de regel nog niet is afgeboekt (klik op het getal en typ een
+nieuwe waarde). Wijkt de totale hoeveelheid van een ingredient af van het
+gekoppelde recept, dan verschijnt een **subtiele amberkleurige indicator**
+(`≠ recept: …`) naast de hoeveelheid, met een tooltip die de receptwaarde
+toont. Afgeboekte regels blijven alleen-lezen.
+
+Bestanden: `src/pages/BatchesPage.tsx`, `src/i18n/*.json`.
+
 ## [1.10.34] — 2026-06-10
 
 ### Changed — Batchflow (bèta): elke fase als inklapbare kaart
