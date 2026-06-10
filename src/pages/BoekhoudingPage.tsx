@@ -2717,7 +2717,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       {mainTab==='btw_aangifte' && (()=>{
         const periode = (btwInst as any)?.periode || 'kwartaal';
         const periodes = getPeriodes(aangifteYear, periode);
-        const today = now.toISOString().slice(0,10);
+        // tod() = lokale kalenderdag; toISOString() is UTC en gaf rond
+        // middernacht (CET/CEST) een dag verschil in de periodestatus.
+        const today = tod();
 
         return (<>
           {/* Jaar-selector + ophaalknop */}

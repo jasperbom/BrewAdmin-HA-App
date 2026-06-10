@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.24] — 2026-06-10
+
+### Fixed — BTW-periodestatus gebruikte UTC-datum
+
+Het BTW-aangifte-tabblad bepaalde "vandaag" met `toISOString()` (UTC). Voor
+NL/BE (CET/CEST) leverde dat rond middernacht en bij jaar-/kwartaalgrenzen
+de verkeerde kalenderdag op, waardoor een periode een dag te vroeg of te
+laat als Lopend/Openstaand werd geclassificeerd. Nu via `tod()` (lokale
+kalenderdag) uit `format.ts`.
+
+- `src/pages/BoekhoudingPage.tsx`.
+
 ## [1.10.23] — 2026-06-10
 
 ### Fixed — Lokale PDF-factuur-scan werkte niet (dode pdfjs-dependency)
