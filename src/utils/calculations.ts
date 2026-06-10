@@ -1,6 +1,35 @@
 import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog } from '../types'
-import { convertEenheid } from './constants'
+import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd } from './format'
+
+// ── Gereedschap: pH-correctie ───────────────────────────────────────────────
+// Berekent de benodigde dosis zuur (mL en gram) om de pH van een gegeven
+// volume vloeistof te verlagen van `phHuidig` naar `phDoel`. Volume-gebaseerd
+// model — zie ZUUR_MIDDELEN in constants.ts voor de aannames. Geeft null als
+// de invoer ongeldig is (geen volume, of doel ≥ huidig: dan is geen verzuring
+// nodig). De waarde is een richtdosis; meet altijd na en doseer bij.
+export interface PhCorrectieResultaat {
+  ml: number
+  gram: number
+  drop: number      // pH-verlaging (huidig − doel)
+}
+
+export const berekenZuurCorrectie = (
+  volumeL: number,
+  phHuidig: number,
+  phDoel: number,
+  middel: ZuurMiddel
+): PhCorrectieResultaat | null => {
+  const v = Number(volumeL)
+  const h = Number(phHuidig)
+  const d = Number(phDoel)
+  if (!middel || !(v > 0) || isNaN(h) || isNaN(d)) return null
+  const drop = h - d
+  if (drop <= 0) return null
+  const ml = v * (drop / 0.1) * middel.ml_per_liter_per_01
+  const gram = ml * middel.densiteit
+  return { ml, gram, drop }
+}
 
 // ── Veilige formule-evaluator ───────────────────────────────────────────────
 // Evalueert de custom accijnsformule zonder new Function()/eval. De formule is

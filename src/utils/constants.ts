@@ -308,6 +308,27 @@ export const SCHOONMAAK_FREQUENTIES = [
   {key:'anders',      label:'haccp_freq_anders'},
 ]
 
+// ── Gereedschap: pH-correctie ───────────────────────────────────────────────
+// Zuurmiddelen voor het verlagen van de pH van water/wort/maisch. Het model is
+// volume-gebaseerd: `ml_per_liter_per_01` is de hoeveelheid middel (mL) die de
+// pH van 1 liter vloeistof met 0,1 verlaagt volgens de gangbare brouw-vuistregel
+// (1 mL melkzuur 88% per ±19 L per 0,1 pH; voor andere concentraties geschaald
+// met 88/concentratie). Het is een richtwaarde — de echte buffercapaciteit van
+// maisch hangt af van de stortsamenstelling, dus altijd meten en bijdoseren.
+// Nieuwe middelen toevoegen = een extra rij in deze lijst.
+export interface ZuurMiddel {
+  key: string
+  labelKey: string            // i18n-sleutel voor de naam
+  concentratie: number        // massa-% (informatief, getoond in UI)
+  ml_per_liter_per_01: number // mL middel per liter per 0,1 pH-verlaging
+  densiteit: number           // g/mL (om de dosis ook in gram te tonen)
+}
+
+export const ZUUR_MIDDELEN: ZuurMiddel[] = [
+  // Melkzuur 80%: 88%-vuistregel (1 mL/18,93 L/0,1 pH = 0,05284) × 88/80
+  { key: 'melkzuur_80', labelKey: 'tool_ph_middel_melkzuur80', concentratie: 80, ml_per_liter_per_01: 0.0581, densiteit: 1.19 },
+]
+
 export const BF_TO_APP: Record<string,string> = {
   Planning:'Gepland',Brewing:'Brouwen',Fermenting:'Vergisten',
   Conditioning:'Conditioneren',Carbonating:'Conditioneren',

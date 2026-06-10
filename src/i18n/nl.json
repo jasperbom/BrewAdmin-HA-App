@@ -2275,5 +2275,20 @@
   "flow_sum_afvullingen": "Afvullingen",
   "flow_alles_klaar": "Alles afgerond — klaar voor de volgende fase",
   "flow_punten_open": "{n} punten nog open",
-  "flow_volgende": "Volgende fase: {fase}"
+  "flow_volgende": "Volgende fase: {fase}",
+  "nav_gereedschap": "Gereedschap",
+  "nav_tool_phcorrectie": "pH-correctie",
+  "tool_ph_titel": "pH-correctie berekenen",
+  "tool_ph_uitleg": "Bereken hoeveel zuur je nodig hebt om een volume vloeistof (water, wort of maisch) van de huidige pH naar de doel-pH te brengen.",
+  "tool_ph_volume": "Volume (liter)",
+  "tool_ph_middel": "Zuur",
+  "tool_ph_huidig": "Huidige pH",
+  "tool_ph_doel": "Doel-pH",
+  "tool_ph_middel_melkzuur80": "Melkzuur 80%",
+  "tool_ph_resultaat": "Benodigde dosis",
+  "tool_ph_drop": "Voor een pH-verlaging van {drop}",
+  "tool_ph_vooraf": "Tip: doseer eerst ±{ml} mL (80%), meet daarna en doseer bij tot je de doel-pH bereikt.",
+  "tool_ph_doel_te_hoog": "De doel-pH moet lager zijn dan de huidige pH — dit gereedschap berekent alleen verzuren.",
+  "tool_ph_vul_in": "Vul volume, huidige pH en doel-pH in om de dosis te berekenen.",
+  "tool_ph_disclaimer": "Richtwaarde op basis van de vuistregel ±1 mL melkzuur 88% per 19 L per 0,1 pH (geschaald naar 80%). De werkelijke buffercapaciteit van maisch hangt af van de storting, dus meet altijd na en doseer bij."
 }

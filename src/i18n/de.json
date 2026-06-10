@@ -2275,5 +2275,20 @@
   "flow_sum_afvullingen": "Abfüllungen",
   "flow_alles_klaar": "Alles erledigt — bereit für die nächste Phase",
   "flow_punten_open": "{n} Punkte noch offen",
-  "flow_volgende": "Nächste Phase: {fase}"
+  "flow_volgende": "Nächste Phase: {fase}",
+  "nav_gereedschap": "Werkzeuge",
+  "nav_tool_phcorrectie": "pH-Korrektur",
+  "tool_ph_titel": "pH-Korrektur berechnen",
+  "tool_ph_uitleg": "Berechne, wie viel Säure du brauchst, um ein Flüssigkeitsvolumen (Wasser, Würze oder Maische) von der aktuellen auf die Ziel-pH zu bringen.",
+  "tool_ph_volume": "Volumen (Liter)",
+  "tool_ph_middel": "Säure",
+  "tool_ph_huidig": "Aktueller pH",
+  "tool_ph_doel": "Ziel-pH",
+  "tool_ph_middel_melkzuur80": "Milchsäure 80%",
+  "tool_ph_resultaat": "Benötigte Dosis",
+  "tool_ph_drop": "Für eine pH-Senkung von {drop}",
+  "tool_ph_vooraf": "Tipp: Gib zuerst etwa {ml} mL (80%) hinzu, miss dann und dosiere nach, bis du den Ziel-pH erreichst.",
+  "tool_ph_doel_te_hoog": "Der Ziel-pH muss niedriger sein als der aktuelle pH — dieses Werkzeug berechnet nur das Ansäuern.",
+  "tool_ph_vul_in": "Gib Volumen, aktuellen pH und Ziel-pH ein, um die Dosis zu berechnen.",
+  "tool_ph_disclaimer": "Richtwert nach der Faustregel von ca. 1 mL Milchsäure 88% pro 19 L pro 0,1 pH (auf 80% skaliert). Die tatsächliche Pufferkapazität der Maische hängt von der Schüttung ab, also immer nachmessen und nachdosieren."
 }

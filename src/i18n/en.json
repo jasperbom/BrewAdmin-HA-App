@@ -2275,5 +2275,20 @@
   "flow_sum_afvullingen": "Packaging runs",
   "flow_alles_klaar": "All done — ready for the next phase",
   "flow_punten_open": "{n} items still open",
-  "flow_volgende": "Next phase: {fase}"
+  "flow_volgende": "Next phase: {fase}",
+  "nav_gereedschap": "Tools",
+  "nav_tool_phcorrectie": "pH correction",
+  "tool_ph_titel": "Calculate pH correction",
+  "tool_ph_uitleg": "Calculate how much acid you need to bring a volume of liquid (water, wort or mash) from the current pH to the target pH.",
+  "tool_ph_volume": "Volume (litres)",
+  "tool_ph_middel": "Acid",
+  "tool_ph_huidig": "Current pH",
+  "tool_ph_doel": "Target pH",
+  "tool_ph_middel_melkzuur80": "Lactic acid 80%",
+  "tool_ph_resultaat": "Required dose",
+  "tool_ph_drop": "For a pH drop of {drop}",
+  "tool_ph_vooraf": "Tip: add about {ml} mL first (80%), then measure and top up until you reach the target pH.",
+  "tool_ph_doel_te_hoog": "The target pH must be lower than the current pH — this tool only calculates acidification.",
+  "tool_ph_vul_in": "Enter volume, current pH and target pH to calculate the dose.",
+  "tool_ph_disclaimer": "Estimate based on the rule of thumb of about 1 mL of 88% lactic acid per 19 L per 0.1 pH (scaled to 80%). The real buffering capacity of a mash depends on the grist, so always measure and top up."
 }

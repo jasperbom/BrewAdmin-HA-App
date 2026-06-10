@@ -2275,5 +2275,20 @@
   "flow_sum_afvullingen": "Conditionnements",
   "flow_alles_klaar": "Tout est terminé — prêt pour la phase suivante",
   "flow_punten_open": "{n} points encore ouverts",
-  "flow_volgende": "Phase suivante : {fase}"
+  "flow_volgende": "Phase suivante : {fase}",
+  "nav_gereedschap": "Outils",
+  "nav_tool_phcorrectie": "Correction du pH",
+  "tool_ph_titel": "Calculer la correction du pH",
+  "tool_ph_uitleg": "Calculez la quantité d'acide nécessaire pour amener un volume de liquide (eau, moût ou maische) du pH actuel au pH cible.",
+  "tool_ph_volume": "Volume (litres)",
+  "tool_ph_middel": "Acide",
+  "tool_ph_huidig": "pH actuel",
+  "tool_ph_doel": "pH cible",
+  "tool_ph_middel_melkzuur80": "Acide lactique 80 %",
+  "tool_ph_resultaat": "Dose requise",
+  "tool_ph_drop": "Pour une baisse de pH de {drop}",
+  "tool_ph_vooraf": "Astuce : ajoutez d'abord environ {ml} mL (80 %), puis mesurez et complétez jusqu'à atteindre le pH cible.",
+  "tool_ph_doel_te_hoog": "Le pH cible doit être inférieur au pH actuel — cet outil ne calcule que l'acidification.",
+  "tool_ph_vul_in": "Saisissez le volume, le pH actuel et le pH cible pour calculer la dose.",
+  "tool_ph_disclaimer": "Valeur indicative basée sur la règle empirique d'environ 1 mL d'acide lactique 88 % par 19 L par 0,1 pH (mise à l'échelle à 80 %). La capacité tampon réelle d'une maische dépend de la composition, alors mesurez toujours et complétez."
 }

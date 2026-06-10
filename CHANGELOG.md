@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.28] — 2026-06-10
+
+### Added — Menu "Gereedschap" met pH-correctie
+
+Nieuw hoofdmenu **Gereedschap** met als eerste tool **pH-correctie**: vul
+volume, huidige pH en doel-pH in en kies een zuur (voorlopig melkzuur 80%);
+de tool berekent de benodigde dosis in mL en gram, plus een tip om ±80%
+vooraf te doseren en daarna bij te meten.
+
+Het rekenmodel is volume-gebaseerd op de brouw-vuistregel (±1 mL melkzuur
+88% per 19 L per 0,1 pH, geschaald naar de gekozen concentratie). Zuurmiddelen
+staan in `ZUUR_MIDDELEN` (`constants.ts`) zodat extra middelen later met één
+regel toegevoegd kunnen worden; de berekening zit in `berekenZuurCorrectie`
+(`calculations.ts`).
+
+Bestanden: `src/pages/GereedschapPage.tsx` (nieuw), `src/utils/constants.ts`,
+`src/utils/calculations.ts`, `src/App.tsx`, `src/i18n/*.json`.
+
 ## [1.10.27] — 2026-06-10
 
 ### Added — Fermentatiegrafiek in Batchflow (bèta)

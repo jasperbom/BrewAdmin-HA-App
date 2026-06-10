@@ -2275,5 +2275,20 @@
   "flow_sum_afvullingen": "Envasados",
   "flow_alles_klaar": "Todo completado — listo para la siguiente fase",
   "flow_punten_open": "{n} puntos pendientes",
-  "flow_volgende": "Siguiente fase: {fase}"
+  "flow_volgende": "Siguiente fase: {fase}",
+  "nav_gereedschap": "Herramientas",
+  "nav_tool_phcorrectie": "Corrección de pH",
+  "tool_ph_titel": "Calcular corrección de pH",
+  "tool_ph_uitleg": "Calcula cuánto ácido necesitas para llevar un volumen de líquido (agua, mosto o maceración) del pH actual al pH objetivo.",
+  "tool_ph_volume": "Volumen (litros)",
+  "tool_ph_middel": "Ácido",
+  "tool_ph_huidig": "pH actual",
+  "tool_ph_doel": "pH objetivo",
+  "tool_ph_middel_melkzuur80": "Ácido láctico 80%",
+  "tool_ph_resultaat": "Dosis necesaria",
+  "tool_ph_drop": "Para una bajada de pH de {drop}",
+  "tool_ph_vooraf": "Consejo: añade primero unos {ml} mL (80%), luego mide y completa hasta alcanzar el pH objetivo.",
+  "tool_ph_doel_te_hoog": "El pH objetivo debe ser menor que el pH actual: esta herramienta solo calcula la acidificación.",
+  "tool_ph_vul_in": "Introduce el volumen, el pH actual y el pH objetivo para calcular la dosis.",
+  "tool_ph_disclaimer": "Valor orientativo basado en la regla de aproximadamente 1 mL de ácido láctico 88% por 19 L por 0,1 pH (escalado al 80%). La capacidad tampón real de la maceración depende de la molienda, así que mide siempre y completa."
 }
