@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.20] — 2026-06-10
+
+### Security — Custom accijnsformule draait niet langer als JavaScript
+
+De custom accijnsformule werd via `new Function()` als echt JavaScript
+uitgevoerd. Omdat `accijns_instellingen` in de Excel-backup zit, kon een
+kwaadaardig backup-bestand zo stille code-executie krijgen (toegang tot
+`fetch`, `localStorage`, …). De formule gaat nu door een eigen veilige
+expressie-evaluator (`evalAccijnsFormule`) die alleen rekenkunde toestaat:
+getallen, de variabelen `liter`/`abv`/`hl`/`r1`/`r2`/`plato`, `+ - * / % **`,
+vergelijkingen, `&& || !`, ternary en een whitelist van `Math.`-functies.
+
+Tevens gefixt: de formule-preview in Instellingen testte zonder `plato`,
+waardoor de preview kon afwijken van de werkelijke berekening — de preview
+gebruikt nu exact dezelfde evaluator en parameterset.
+
+- `src/utils/calculations.ts`, `src/pages/InstellingenPage.tsx`.
+
 ## [1.10.19] — 2026-06-10
 
 ### Security — Stored XSS in pakbon/factuur/herinnering-print verholpen

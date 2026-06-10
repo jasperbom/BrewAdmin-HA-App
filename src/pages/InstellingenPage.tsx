@@ -7,7 +7,7 @@ import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry, newId } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
-import { berekenAccijnsImpact, AccijnsImpactResult } from '../utils/calculations'
+import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
 import { fmt, fmtD, tod } from '../utils/format'
 
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
@@ -259,8 +259,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const testFormula = (formula: any) => {
     if (!formula.trim()) { setFormulaError(''); return true; }
     try {
-      const liter = 100, abv = 5, hl = 1, r1 = 7.51, r2 = 24.17;
-      const result = new Function('liter','abv','hl','r1','r2', `"use strict"; return (${formula});`)(liter,abv,hl,r1,r2);
+      // Zelfde veilige evaluator + parameterset (incl. plato) als de echte
+      // berekening in accijnsCalc — zo kan de preview niet afwijken van runtime.
+      const result = evalAccijnsFormule(formula, { liter: 100, abv: 5, hl: 1, r1: 7.51, r2: 24.17, plato: 12 });
       if (typeof result !== 'number' || isNaN(result)) throw new Error('geen getal');
       setFormulaError('');
       return true;
