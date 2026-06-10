@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.25] — 2026-06-10
+
+### Fixed — Versienummer in de app liep achter
+
+`__APP_VERSION__` stond hardcoded op `1.8.1` in `vite.config.ts`, waardoor de
+UI een verkeerd versienummer toonde. De build leest de versie nu rechtstreeks
+uit `config.yaml` (single source of truth), zodat dit niet opnieuw kan
+verlopen.
+
+- `vite.config.ts`.
+
 ## [1.10.24] — 2026-06-10
 
 ### Fixed — BTW-periodestatus gebruikte UTC-datum
