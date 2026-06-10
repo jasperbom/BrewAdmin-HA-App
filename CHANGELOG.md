@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.18] — 2026-06-10
+
+### Security — Server-hardening (security-review)
+
+- **Ingress source-IP-check**: wanneer de app als HA-addon draait
+  (`SUPERVISOR_TOKEN` aanwezig) accepteert de server alleen nog requests van
+  de HA-ingress-gateway (`172.30.32.2`) en loopback. Voorheen kon elke andere
+  addon/container op het interne hassio-netwerk de ongeauthenticeerde API
+  benaderen, inclusief opgeslagen credentials en de HA service-call-proxy.
+- **CSP aangescherpt**: de CDN-whitelist (`unpkg.com`, `cdn.tailwindcss.com`,
+  `cdn.sheetjs.com`) is verwijderd uit `script-src`/`worker-src`/`connect-src`
+  — de build is volledig single-file, dus externe scripts zijn nooit nodig.
+- **ThreadingHTTPServer**: één trage upstream-call (Claude/Brewfather/SMTP)
+  blokkeert niet langer alle andere requests.
+- **Atomaire data-writes**: `/api/data/<key>`-saves en interne JSON-writes
+  gaan nu via tempbestand + `os.replace` en onder de bestaande `_data_lock`,
+  zodat een crash mid-write geen corrupt JSON-bestand achterlaat en
+  achtergrondthreads geen halve merges overschrijven.
+
+- `server.py`.
+
 ## [1.10.17] — 2026-06-09
 
 ### Fixed — Privé-order buiten AGP kon niet afgesloten worden

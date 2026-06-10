@@ -141,14 +141,17 @@ _SEC_HEADERS = [
     ('Permissions-Policy',     'geolocation=(), microphone=(), camera=()'),
 ]
 
-# Extra headers only on the HTML page
+# Extra headers only on the HTML page. De build is volledig single-file
+# (alles geïnlined door vite-plugin-singlefile), dus externe CDN's zijn niet
+# nodig — alleen 'unsafe-inline' voor de bundle en blob: voor workers. Elke
+# extra whitelisted host zou een XSS toestaan om willekeurige scripts na te
+# laden, dus houd deze lijst leeg.
 _CSP = (
     "default-src 'none'; "
-    "script-src 'unsafe-inline' "
-        "https://unpkg.com https://cdn.tailwindcss.com https://cdn.sheetjs.com; "
+    "script-src 'unsafe-inline'; "
     "style-src 'unsafe-inline'; "
-    "worker-src blob: https://unpkg.com; "
-    "connect-src 'self' https://unpkg.com; "
+    "worker-src blob:; "
+    "connect-src 'self'; "
     "img-src 'self' data: blob:; "
     "frame-src blob: 'self'; "
     "font-src 'self' data:; "
@@ -169,6 +172,29 @@ _TRUSTED_ORIGINS = frozenset((
 def _trusted_origin(origin: str) -> str | None:
     """Return origin if it is a known dev/preview origin, else None."""
     return origin if origin in _TRUSTED_ORIGINS else None
+
+
+# Wanneer de app als HA-addon draait (SUPERVISOR_TOKEN aanwezig) mag alleen de
+# ingress-gateway van Home Assistant requests sturen. Zonder deze check kan
+# elke andere addon/container op het interne hassio-netwerk de volledige —
+# ongeauthenticeerde — API benaderen (incl. opgeslagen credentials en de
+# HA service-call-proxy). Zie de HA-documentatie over ingress:
+# "you must only allow connections from 172.30.32.2".
+_INGRESS_GATEWAY_IP = '172.30.32.2'
+
+
+def _client_allowed(ip: str) -> bool:
+    """True als dit client-IP requests mag doen. Buiten HA (lokale dev,
+    geen SUPERVISOR_TOKEN) is alles toegestaan; als addon alleen de
+    ingress-gateway en loopback (container-interne healthchecks)."""
+    if not os.environ.get('SUPERVISOR_TOKEN'):
+        return True
+    if ip == _INGRESS_GATEWAY_IP:
+        return True
+    try:
+        return ipaddress.ip_address(ip).is_loopback
+    except ValueError:
+        return False
 
 
 def _is_private_url(url: str) -> bool:
@@ -595,10 +621,19 @@ def _read_json(key: str, default=None):
         return default
 
 
+def _atomic_write_bytes(filepath: Path, data: bytes) -> None:
+    """Schrijf atomair: eerst naar een tempbestand in dezelfde map, dan
+    os.replace. Een crash mid-write kan zo nooit een half/corrupt JSON-bestand
+    achterlaten (relevant voor de 7-jaars AGP-retentie)."""
+    tmp = filepath.with_name(f'.{filepath.name}.tmp')
+    tmp.write_bytes(data)
+    os.replace(tmp, filepath)
+
+
 def _write_json(key: str, data) -> None:
-    """Schrijf data als JSON naar /data/."""
+    """Schrijf data als JSON naar /data/ (atomair)."""
     filepath = DATA_DIR / f'{key}.json'
-    filepath.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    _atomic_write_bytes(filepath, json.dumps(data, ensure_ascii=False).encode('utf-8'))
 
 
 def _ha_fetch_state(entity_id: str) -> float | None:
@@ -908,6 +943,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
     def _rate_check(self) -> bool:
         ip = self.client_address[0]
+        if not _client_allowed(ip):
+            self._json(403, {'error': 'forbidden'})
+            return False
         if not _check_rate(ip):
             self._json(429, {'error': 'too many requests'}, extra_headers=[('Retry-After', str(_retry_after(ip)))])
             return False
@@ -936,6 +974,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
     # ── request routing ────────────────────────────────────────────────────
 
     def do_OPTIONS(self):
+        if not _client_allowed(self.client_address[0]):
+            self._json(403, {'error': 'forbidden'})
+            return
         origin = self.headers.get('Origin', '')
         allowed = _trusted_origin(origin)
         self.send_response(204)
@@ -1073,7 +1114,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 self._json(400, {'error': 'invalid json'})
                 return
             filepath = DATA_DIR / f'{key}.json'
-            filepath.write_bytes(body)
+            # Onder _data_lock zodat de achtergrondthreads (cold-crash,
+            # auto-metingen) die read-modify-write doen op dezelfde bestanden
+            # geen halve merge overschrijven; atomair tegen corruptie.
+            with _data_lock:
+                _atomic_write_bytes(filepath, body)
             self._json(200, {'ok': True})
             return
 
@@ -1727,5 +1772,7 @@ if __name__ == '__main__':
     _coldcrash_thread.start()
     print('Cold-crash thread gestart (elke minuut)', flush=True)
 
-    server = http.server.HTTPServer(('0.0.0.0', port), BrouwerijHandler)
+    # ThreadingHTTPServer: één trage upstream-call (Claude 90s, Brewfather 30s,
+    # SMTP 30s) mag niet alle andere requests — UI laden, data-saves — blokkeren.
+    server = http.server.ThreadingHTTPServer(('0.0.0.0', port), BrouwerijHandler)
     server.serve_forever()
