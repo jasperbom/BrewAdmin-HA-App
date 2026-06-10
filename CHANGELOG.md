@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.26] — 2026-06-10
+
+### Added — Batchflow (bèta): stapsgewijs door de batch
+
+Nieuwe pagina **Brouwerij → Batchflow (bèta)**: een begeleide, stapsgewijze
+weergave die je georganiseerd door de batch heen leidt — van Gepland via
+Brouwen, Vergisten en Conditioneren naar Afgevuld en Gesloten.
+
+- Overzicht met voortgangskaarten per actieve batch (fase x van 6).
+- Fasen-stepper per batch; eerdere/toekomstige fasen zijn ter referentie te
+  bekijken.
+- Per fase een automatische checklist op basis van de echte batchdata
+  (recept gekoppeld, ingrediënten afgeboekt, OG/FG, SG stabiel,
+  carbonatie voltooid, ABV definitief, afvullingen, restvolume).
+- Fase-overgangen met bevestiging bij openstaande punten; tank wordt net als
+  op de Batches-pagina automatisch op `Vuil` gezet bij vertrek.
+- Snelle SG/temp/pH-meting tijdens vergisten/conditioneren en gedeelde
+  batchnotities; doorklik naar de volledige Batches-pagina voor de rest.
+- Volledig vertaald (nl/en/de/fr/es).
+
+Bestanden: `src/pages/BatchFlowPage.tsx` (nieuw), `src/App.tsx`,
+`src/i18n/*.json`.
+
 ## [1.10.25] — 2026-06-10
 
 ### Fixed — Versienummer in de app liep achter
