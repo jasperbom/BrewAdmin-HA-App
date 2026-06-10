@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.27] — 2026-06-10
+
+### Added — Fermentatiegrafiek in Batchflow (bèta)
+
+De fermentatiegrafiek (SG/temp/pH met zoom, pan en tooltip) is nu ook
+zichtbaar in de Batchflow-fasen Vergisten en Conditioneren. Het
+grafiekcomponent is daarvoor uit `BatchesPage.tsx` geëxtraheerd naar het
+gedeelde `src/components/batch/FermentatieGrafiek.tsx` — beide pagina's
+gebruiken nu exact dezelfde grafiek.
+
+Bestanden: `src/components/batch/FermentatieGrafiek.tsx` (nieuw),
+`src/pages/BatchesPage.tsx`, `src/pages/BatchFlowPage.tsx`.
+
 ## [1.10.26] — 2026-06-10
 
 ### Added — Batchflow (bèta): stapsgewijs door de batch

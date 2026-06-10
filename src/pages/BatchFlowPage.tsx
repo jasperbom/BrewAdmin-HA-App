@@ -10,6 +10,7 @@ import Badge from '../components/ui/Badge'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
+import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
@@ -290,6 +291,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   // ── Detail: stepper + fasepaneel ──────────────────────────────────────────
   const faseStatus = STATUSSEN[getoondeFase]
+  const mijnMetingen = (gistMetingen || []).filter((m: any) => m.batch_id === selB.id)
+  // Starttijdstip van de vergisting voor de X-as van de grafiek — zelfde
+  // afleiding als op de Batches-pagina (tank_historie, anders batch.datum).
+  const vergistStartTs: number | null = (() => {
+    const hist: any[] = Array.isArray(selB.tank_historie) ? selB.tank_historie : []
+    const entry = hist.find((h: any) => h?.status === 'Vergisten')
+    const iso = entry?.from || selB.datum
+    if (!iso) return null
+    const ts = new Date(`${iso}T00:00`).getTime()
+    return isNaN(ts) ? null : ts
+  })()
   const mijnAv = (av || []).filter((a: any) => a.batch_id === selB.id)
   const mijnVerlies = (verliesRegistraties || []).filter((v: any) => v.batch_id === selB.id)
   const afgevuldL = mijnAv.reduce((s: number, a: any) =>
@@ -381,6 +393,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Fermentatiegrafiek (gedeeld component met de batchpagina) */}
+          {['Vergisten', 'Conditioneren'].includes(faseStatus) && (
+            mijnMetingen.length >= 2 ? (
+              <div className="border border-gray-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('batch_gist_chart')}</div>
+                <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
+              </div>
+            ) : (
+              <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
+            )
           )}
 
           {/* Snelle SG-meting tijdens vergisten/conditioneren */}
