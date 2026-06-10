@@ -2300,5 +2300,6 @@
   "tool_ph_disclaimer_water": "Richtwert auf Basis der Alkalität deines Wassers (1 mEq = 50 mg CaCO₃; effektive Säurestärke ≈10,3 mEq/mL für Milchsäure 80% um pH 5,5). Miss den pH nach der Zugabe und dosiere nach.",
   "batch_info_boil_ph": "Koch-pH",
   "flow_veld_titel": "Daten eingeben",
-  "flow_veld_liter": "Vergorenes Volumen (L)"
+  "flow_veld_liter": "Vergorenes Volumen (L)",
+  "flow_tank_niet_ontsmet": "Achtung: dieser Tank steht auf „{status}“ — reinige und desinfiziere den Tank vor dem Brautag."
 }

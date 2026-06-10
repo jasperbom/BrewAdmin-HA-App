@@ -491,7 +491,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       ['Liter vergist', b.liter_vergist ? b.liter_vergist + ' L' : ''],
       ['Maisch eff.', b.maisch_eff ? b.maisch_eff + '%' : ''],
       ['Brouwzaal eff.', b.brouwzaal_eff ? b.brouwzaal_eff + '%' : ''],
-      ['Maisch pH', b.maisch_ph], ['Product pH', b.product_ph],
+      ['Maisch pH', b.maisch_ph], ['Kook pH', b.kook_ph], ['Product pH', b.product_ph],
       ['Kleur', b.kleur ? b.kleur + ' EBC' : ''],
       ['Kooktijd', b.kooktijd ? b.kooktijd + ' min' : ''],
       ['Tank', b.tank],

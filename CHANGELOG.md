@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.33] — 2026-06-10
+
+### Improved — Batchflow (bèta): slimmer invullen
+
+Verfijningen aan het inline-invullen uit 1.10.32:
+
+- **ABV definitief** is nu ook in de Batchflow te bevestigen (met badge,
+  log-entry en vergrendeld veld) en weer vrij te geven — net als op de
+  Batches-pagina. Voorheen bleef die checklist-regel onbereikbaar.
+- **OG invullen berekent automatisch het platogehalte** (zelfde formule als
+  de Batches-pagina).
+- **Tankkeuze toont de reinigingsstatus** (bv. "FV2 — Vuil") en geeft een
+  waarschuwing als de gekozen tank niet ontsmet is; de checklist-status is nu
+  vertaald i.p.v. de ruwe waarde.
+- **Ongewijzigde velden worden niet meer opgeslagen** (geen overbodige
+  server-writes bij het verlaten van een veld).
+- **Kook-pH** verschijnt nu ook op de afdruk van een batch.
+
+Bestanden: `src/pages/BatchFlowPage.tsx`, `src/pages/BatchesPage.tsx`,
+`src/i18n/*.json`.
+
 ## [1.10.32] — 2026-06-10
 
 ### Added — Batchflow (bèta): inline invullen + kook-pH

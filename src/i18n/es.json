@@ -2300,5 +2300,6 @@
   "tool_ph_disclaimer_water": "Valor orientativo basado en la alcalinidad del agua (1 mEq = 50 mg CaCO₃; fuerza ácida efectiva ≈10,3 mEq/mL para ácido láctico 80% en torno a pH 5,5). Mide el pH tras añadir y completa.",
   "batch_info_boil_ph": "pH de hervido",
   "flow_veld_titel": "Introducir datos",
-  "flow_veld_liter": "Volumen fermentado (L)"
+  "flow_veld_liter": "Volumen fermentado (L)",
+  "flow_tank_niet_ontsmet": "Atención: este tanque está marcado como «{status}»: limpia y desinfecta el tanque antes del día de elaboración."
 }

@@ -2300,5 +2300,6 @@
   "tool_ph_disclaimer_water": "Valeur indicative basée sur l'alcalinité de votre eau (1 mEq = 50 mg CaCO₃ ; force acide effective ≈10,3 mEq/mL pour l'acide lactique 80 % autour de pH 5,5). Mesurez le pH après l'ajout et complétez.",
   "batch_info_boil_ph": "pH d'ébullition",
   "flow_veld_titel": "Saisir les données",
-  "flow_veld_liter": "Volume fermenté (L)"
+  "flow_veld_liter": "Volume fermenté (L)",
+  "flow_tank_niet_ontsmet": "Attention : cette cuve est marquée « {status} » — nettoyez et désinfectez la cuve avant le jour de brassage."
 }
