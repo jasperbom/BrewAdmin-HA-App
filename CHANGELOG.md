@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.23] — 2026-06-10
+
+### Fixed — Lokale PDF-factuur-scan werkte niet (dode pdfjs-dependency)
+
+`extractPdfText()` wachtte op `window.pdfjsLib`, maar niets laadde die global
+— de lokale PDF-tekstextractie retourneerde dus altijd een lege string,
+waardoor élke PDF-factuur (onnodig) naar de Claude-API ging en gebruikers
+zonder Claude-key helemaal niet konden scannen. `pdfjs-dist` wordt nu echt
+meegebundeld; de worker draait via een blob-URL (past binnen de CSP
+`worker-src blob:`). De `getDocument`-call gebruikt `isEvalSupported: false`
+als mitigatie voor CVE-2024-4367 (JS-executie via een kwaadaardig PDF-font).
+
+- `src/components/InkoopFactuurModal.tsx`.
+
 ## [1.10.22] — 2026-06-10
 
 ### Fixed — Mislukte saves worden automatisch opnieuw geprobeerd
