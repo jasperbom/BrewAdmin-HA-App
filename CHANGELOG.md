@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.30] — 2026-06-10
+
+### Fixed — Wit scherm in Home Assistant ingress
+
+De security-hardening van 1.10.18 zette `X-Frame-Options: DENY` op elke
+response. Home Assistant ingress toont de addon echter in een iframe, dus
+elke build vanaf 1.10.18 gaf een wit scherm in HA ("Refused to display …
+in a frame"). Dit bleef onopgemerkt doordat de Docker-build sinds 1.10.25
+stuk was (gefixt in 1.10.29).
+
+- `X-Frame-Options` is nu `SAMEORIGIN`: de HA-frontend framet de addon
+  vanaf dezelfde origin en werkt weer; vreemde sites blijven geblokkeerd.
+- CSP uitgebreid met `frame-ancestors 'self'` (het moderne equivalent).
+
+Bestanden: `server.py`.
+
 ## [1.10.29] — 2026-06-10
 
 ### Fixed — Docker-build van de addon faalde sinds 1.10.25
