@@ -2301,5 +2301,8 @@
   "batch_info_boil_ph": "Kook pH",
   "flow_veld_titel": "Gegevens invullen",
   "flow_veld_liter": "Vergist volume (L)",
-  "flow_tank_niet_ontsmet": "Let op: deze tank staat op “{status}” — reinig en ontsmet de tank vóór de brouwdag."
+  "flow_tank_niet_ontsmet": "Let op: deze tank staat op “{status}” — reinig en ontsmet de tank vóór de brouwdag.",
+  "flow_pill_actief": "Nu",
+  "flow_pill_afgerond": "Afgerond",
+  "flow_pill_komt": "Later"
 }
