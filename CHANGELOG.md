@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.21] — 2026-06-10
+
+### Fixed — `brouwproces_instellingen` ontbrak in Excel-backup
+
+De sleutel `brouwproces_instellingen` (o.a. `hop_storage`) werd door
+`doExport`/`doImport` in `App.tsx` wel doorgegeven, maar `excel.ts` schreef
+hem niet naar het Instellingen-sheet en las hem niet terug. Hierdoor ging
+deze instelling bij elke backup/restore-cyclus verloren.
+
+- `src/utils/excel.ts`.
+
 ## [1.10.20] — 2026-06-10
 
 ### Security — Custom accijnsformule draait niet langer als JavaScript
