@@ -10,7 +10,8 @@ COPY vendor/ ./vendor/
 RUN npm ci
 
 # Kopieer broncode en bouw
-COPY vite.config.ts tsconfig.json tailwind.config.js postcss.config.js index.html ./
+# config.yaml is nodig omdat vite.config.ts daar de app-versie uit leest
+COPY vite.config.ts tsconfig.json tailwind.config.js postcss.config.js index.html config.yaml ./
 COPY src/ ./src/
 RUN npm run build
 

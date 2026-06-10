@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.29] — 2026-06-10
+
+### Fixed — Docker-build van de addon faalde sinds 1.10.25
+
+Sinds 1.10.25 leest `vite.config.ts` de app-versie uit `config.yaml`, maar de
+Dockerfile kopieerde dat bestand niet naar de frontend-build-stage. De
+addon-build faalde daardoor met `ENOENT: no such file or directory, open
+'/build/config.yaml'`. Twee fixes:
+
+- `config.yaml` wordt nu meegekopieerd in de Dockerfile, zodat het juiste
+  versienummer in de bundle komt.
+- `vite.config.ts` valt terug op `'dev'` als `config.yaml` ontbreekt, zodat
+  een ontbrekend bestand de build nooit meer laat crashen.
+
+Bestanden: `Dockerfile`, `vite.config.ts`.
+
 ## [1.10.28] — 2026-06-10
 
 ### Added — Menu "Gereedschap" met pH-correctie
