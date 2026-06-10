@@ -134,9 +134,11 @@ def _retry_after(ip: str) -> int:
 
 
 # Security headers added to every response
+# X-Frame-Options: SAMEORIGIN (niet DENY) — Home Assistant ingress toont de
+# addon in een iframe vanaf dezelfde origin; DENY geeft daar een wit scherm.
 _SEC_HEADERS = [
     ('X-Content-Type-Options', 'nosniff'),
-    ('X-Frame-Options',        'DENY'),
+    ('X-Frame-Options',        'SAMEORIGIN'),
     ('Referrer-Policy',        'strict-origin-when-cross-origin'),
     ('Permissions-Policy',     'geolocation=(), microphone=(), camera=()'),
 ]
@@ -154,6 +156,7 @@ _CSP = (
     "connect-src 'self'; "
     "img-src 'self' data: blob:; "
     "frame-src blob: 'self'; "
+    "frame-ancestors 'self'; "
     "font-src 'self' data:; "
     "base-uri 'self'; "
     "form-action 'self'"
