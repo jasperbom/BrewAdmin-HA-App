@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.19] — 2026-06-10
+
+### Security — Stored XSS in pakbon/factuur/herinnering-print verholpen
+
+Klant- en ordervelden uit WooCommerce (bedrijfsnaam, naam, adres, opmerkingen,
+biernaam, omschrijvingen) werden zonder HTML-escaping in de print-HTML
+geïnterpoleerd die via `document.write` in een same-origin popup wordt gezet.
+Een kwaadwillende bestelnaam kon zo scripts uitvoeren in de app-context.
+Alle geïnterpoleerde datavelden gaan nu door een `esc()`-helper (zelfde
+patroon als `mailTemplate.ts`).
+
+- `src/components/PakbonExport.tsx`.
+
 ## [1.10.18] — 2026-06-10
 
 ### Security — Server-hardening (security-review)
