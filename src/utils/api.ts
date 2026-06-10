@@ -140,6 +140,37 @@ const lsGet = (k: string, d: any = []) => {
   try { return JSON.parse(localStorage.getItem('craftery_' + k) ?? 'null') ?? d } catch(e) { return d }
 }
 
+// ── Retry van mislukte saves ────────────────────────────────────────────────
+// Een POST die faalt (server kort onbereikbaar) liet voorheen `modified`
+// permanent op true staan zonder nieuwe poging: de wijziging stond dan alleen
+// nog in localStorage en ging verloren zodra die gewist werd. Hier houden we
+// per key de laatste mislukte payload bij en proberen die periodiek opnieuw.
+// Een sequence-nummer per key voorkomt dat een oude (tragere) response of
+// retry een nieuwere save overschrijft.
+const _saveSeq = new Map<string, number>()
+const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void}>()
+let _retryTimer: ReturnType<typeof setInterval> | null = null
+
+const _flushPendingSaves = () => {
+  if (_pendingSaves.size === 0) {
+    if (_retryTimer) { clearInterval(_retryTimer); _retryTimer = null }
+    return
+  }
+  for (const [key, entry] of [..._pendingSaves.entries()]) {
+    _postToServer(key, entry.data).then(ok => {
+      if (_saveSeq.get(key) !== entry.seq) return // nieuwere save gedaan
+      if (ok) {
+        _pendingSaves.delete(key)
+        entry.onOk()
+      }
+    })
+  }
+}
+
+const _scheduleRetry = () => {
+  if (!_retryTimer) _retryTimer = setInterval(_flushPendingSaves, 15_000)
+}
+
 export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void, () => void] => {
   const { secure = false } = opts
   _allKeys.add(key)
@@ -181,7 +212,18 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     setData((prev: any) => {
       const next = typeof val === 'function' ? val(prev) : val
       if (!secure) lsSet(key, next)
-      _postToServer(key, next).then(ok => { if (ok) modified.current = false })
+      const seq = (_saveSeq.get(key) || 0) + 1
+      _saveSeq.set(key, seq)
+      _pendingSaves.delete(key) // nieuwe save vervangt elke oudere retry
+      _postToServer(key, next).then(ok => {
+        if (_saveSeq.get(key) !== seq) return // er is al een nieuwere save
+        if (ok) {
+          modified.current = false
+        } else {
+          _pendingSaves.set(key, {seq, data: next, onOk: () => { modified.current = false }})
+          _scheduleRetry()
+        }
+      })
       return next
     })
   }

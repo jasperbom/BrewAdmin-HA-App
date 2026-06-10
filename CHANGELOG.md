@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.22] — 2026-06-10
+
+### Fixed — Mislukte saves worden automatisch opnieuw geprobeerd
+
+Een POST naar `/api/data/<key>` die faalde (server kort onbereikbaar) liet de
+`modified`-vlag permanent op true staan zonder nieuwe poging — de wijziging
+stond dan alleen nog in localStorage en kon stil verloren gaan. `useStore`
+houdt nu per key de laatste mislukte payload bij en probeert die elke 15
+seconden opnieuw; een sequence-nummer per key voorkomt dat een oude retry een
+nieuwere save overschrijft.
+
+- `src/utils/api.ts`.
+
 ## [1.10.21] — 2026-06-10
 
 ### Fixed — `brouwproces_instellingen` ontbrak in Excel-backup
