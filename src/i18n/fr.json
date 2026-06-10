@@ -2290,5 +2290,16 @@
   "tool_ph_vooraf": "Astuce : ajoutez d'abord environ {ml} mL (80 %), puis mesurez et complétez jusqu'à atteindre le pH cible.",
   "tool_ph_doel_te_hoog": "Le pH cible doit être inférieur au pH actuel — cet outil ne calcule que l'acidification.",
   "tool_ph_vul_in": "Saisissez le volume, le pH actuel et le pH cible pour calculer la dose.",
-  "tool_ph_disclaimer": "Valeur indicative basée sur la règle empirique d'environ 1 mL d'acide lactique 88 % par 19 L par 0,1 pH (mise à l'échelle à 80 %). La capacité tampon réelle d'une maische dépend de la composition, alors mesurez toujours et complétez."
+  "tool_ph_disclaimer": "Valeur indicative basée sur la règle empirique d'environ 1 mL d'acide lactique 88 % par 19 L par 0,1 pH (mise à l'échelle à 80 %). La capacité tampon réelle d'une maische dépend de la composition, alors mesurez toujours et complétez.",
+  "tool_ph_uitleg_maisch": "La maische et le moût sont fortement tamponnés par le malt. Saisissez le volume, le pH actuel et le pH cible ; la dose varie selon la baisse de pH souhaitée.",
+  "tool_ph_uitleg_water": "L'eau de brassage (p. ex. l'eau de rinçage) n'a presque pas de pouvoir tampon. Vous neutralisez l'alcalinité (HCO₃⁻), donc la dose dépend de l'alcalinité de votre eau, pas d'un pH cible. Trop d'acide dépasse vite la cible ici.",
+  "tool_ph_modus_maisch": "Maische / moût",
+  "tool_ph_modus_water": "Eau de brassage",
+  "tool_ph_alkaliniteit": "Alcalinité (mg/L CaCO₃)",
+  "tool_ph_water_doel": "Amène l'eau à environ pH 5,4 (≈95 % de l'alcalinité neutralisée).",
+  "tool_ph_disclaimer_water": "Valeur indicative basée sur l'alcalinité de votre eau (1 mEq = 50 mg CaCO₃ ; force acide effective ≈10,3 mEq/mL pour l'acide lactique 80 % autour de pH 5,5). Mesurez le pH après l'ajout et complétez.",
+  "batch_info_boil_ph": "pH d'ébullition",
+  "flow_veld_titel": "Saisir les données",
+  "flow_veld_liter": "Volume fermenté (L)",
+  "flow_tank_niet_ontsmet": "Attention : cette cuve est marquée « {status} » — nettoyez et désinfectez la cuve avant le jour de brassage."
 }

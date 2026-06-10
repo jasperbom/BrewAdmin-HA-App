@@ -320,13 +320,15 @@ export interface ZuurMiddel {
   key: string
   labelKey: string            // i18n-sleutel voor de naam
   concentratie: number        // massa-% (informatief, getoond in UI)
-  ml_per_liter_per_01: number // mL middel per liter per 0,1 pH-verlaging
+  ml_per_liter_per_01: number // mL middel per liter per 0,1 pH-verlaging (maisch/wort-model)
+  meq_per_ml: number          // effectieve zuursterkte in mEq/mL rond pH 5,5 (water-model)
   densiteit: number           // g/mL (om de dosis ook in gram te tonen)
 }
 
 export const ZUUR_MIDDELEN: ZuurMiddel[] = [
-  // Melkzuur 80%: 88%-vuistregel (1 mL/18,93 L/0,1 pH = 0,05284) × 88/80
-  { key: 'melkzuur_80', labelKey: 'tool_ph_middel_melkzuur80', concentratie: 80, ml_per_liter_per_01: 0.0581, densiteit: 1.19 },
+  // Melkzuur 80%: 88%-vuistregel (1 mL/18,93 L/0,1 pH = 0,05284) × 88/80.
+  // meq_per_ml: effectieve sterkte bij pH ±5,5 (niet-volledige dissociatie).
+  { key: 'melkzuur_80', labelKey: 'tool_ph_middel_melkzuur80', concentratie: 80, ml_per_liter_per_01: 0.0581, meq_per_ml: 10.3, densiteit: 1.19 },
 ]
 
 export const BF_TO_APP: Record<string,string> = {

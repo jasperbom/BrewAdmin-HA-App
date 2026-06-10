@@ -3,18 +3,23 @@ import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd } from './format'
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────
-// Berekent de benodigde dosis zuur (mL en gram) om de pH van een gegeven
-// volume vloeistof te verlagen van `phHuidig` naar `phDoel`. Volume-gebaseerd
-// model — zie ZUUR_MIDDELEN in constants.ts voor de aannames. Geeft null als
-// de invoer ongeldig is (geen volume, of doel ≥ huidig: dan is geen verzuring
-// nodig). De waarde is een richtdosis; meet altijd na en doseer bij.
+// Aanzuren werkt heel anders voor maisch/wort dan voor brouwwater:
+//
+//  • Maisch/wort is zwaar gebufferd door de mout. De dosis schaalt dan met de
+//    gewenste pH-daling: `berekenZuurCorrectieMaisch` (volume-vuistregel).
+//  • Brouwwater (bijv. spoelwater) heeft nauwelijks buffer; wat je neutraliseert
+//    is de alkaliniteit (HCO₃⁻). De dosis schaalt met de alkaliniteit, niet met
+//    de pH-daling: `berekenZuurCorrectieWater`. De maisch-vuistregel zou hier
+//    enorm overschieten.
+//
+// Beide geven null bij ongeldige invoer. De waarden zijn richtdoses; meet na.
 export interface PhCorrectieResultaat {
   ml: number
   gram: number
-  drop: number      // pH-verlaging (huidig − doel)
+  drop: number      // pH-verlaging (huidig − doel), alleen bij het maisch-model
 }
 
-export const berekenZuurCorrectie = (
+export const berekenZuurCorrectieMaisch = (
   volumeL: number,
   phHuidig: number,
   phDoel: number,
@@ -29,6 +34,26 @@ export const berekenZuurCorrectie = (
   const ml = v * (drop / 0.1) * middel.ml_per_liter_per_01
   const gram = ml * middel.densiteit
   return { ml, gram, drop }
+}
+
+// Water-aanzuren op basis van alkaliniteit (residuele alkaliniteit verwaarloosd).
+// Totaal te neutraliseren = alkaliniteit (mg/L als CaCO₃) × volume / 50 = mEq.
+// (1 mEq alkaliniteit = 50 mg CaCO₃.) Bij een doel-pH rond 5,4–5,5 wordt vrijwel
+// alle bicarbonaat geneutraliseerd; we doseren daarom op ±95% van de alkaliniteit
+// zodat de pH niet doorschiet richting 4,3. mL = mEq_te_neutraliseren / mEq_per_mL.
+export const berekenZuurCorrectieWater = (
+  volumeL: number,
+  alkaliniteit: number,   // mg/L als CaCO₃ (= "totale hardheid KH" omgerekend)
+  middel: ZuurMiddel,
+  doelFractie = 0.95      // aandeel alkaliniteit dat geneutraliseerd wordt
+): PhCorrectieResultaat | null => {
+  const v = Number(volumeL)
+  const a = Number(alkaliniteit)
+  if (!middel || !middel.meq_per_ml || !(v > 0) || isNaN(a) || a <= 0) return null
+  const meq = (a * v / 50) * doelFractie
+  const ml = meq / middel.meq_per_ml
+  const gram = ml * middel.densiteit
+  return { ml, gram, drop: 0 }
 }
 
 // ── Veilige formule-evaluator ───────────────────────────────────────────────

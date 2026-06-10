@@ -4,6 +4,69 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.33] — 2026-06-10
+
+### Improved — Batchflow (bèta): slimmer invullen
+
+Verfijningen aan het inline-invullen uit 1.10.32:
+
+- **ABV definitief** is nu ook in de Batchflow te bevestigen (met badge,
+  log-entry en vergrendeld veld) en weer vrij te geven — net als op de
+  Batches-pagina. Voorheen bleef die checklist-regel onbereikbaar.
+- **OG invullen berekent automatisch het platogehalte** (zelfde formule als
+  de Batches-pagina).
+- **Tankkeuze toont de reinigingsstatus** (bv. "FV2 — Vuil") en geeft een
+  waarschuwing als de gekozen tank niet ontsmet is; de checklist-status is nu
+  vertaald i.p.v. de ruwe waarde.
+- **Ongewijzigde velden worden niet meer opgeslagen** (geen overbodige
+  server-writes bij het verlaten van een veld).
+- **Kook-pH** verschijnt nu ook op de afdruk van een batch.
+
+Bestanden: `src/pages/BatchFlowPage.tsx`, `src/pages/BatchesPage.tsx`,
+`src/i18n/*.json`.
+
+## [1.10.32] — 2026-06-10
+
+### Added — Batchflow (bèta): inline invullen + kook-pH
+
+In de Batchflow kun je nu de kerngegevens per fase rechtstreeks invullen
+zonder naar de Batches-pagina te springen; het overzicht (fasen-checklist)
+vinkt live mee af:
+
+- **Gepland**: tank kiezen en brouwdatum.
+- **Brouwen**: OG, vergist volume, maisch-pH en **kook-pH**.
+- **Vergisten**: FG.
+- **Conditioneren**: ABV en product-pH.
+
+Velden worden bij verlaten (of Enter) opgeslagen, zodat de server niet bij
+elke toetsaanslag wordt aangeroepen.
+
+Nieuw batchveld **kook-pH** (`kook_ph`) is ook toegevoegd aan de Batches-pagina
+(info-overzicht + bewerkformulier) en aan de Excel-backup.
+
+Bestanden: `src/pages/BatchFlowPage.tsx`, `src/pages/BatchesPage.tsx`,
+`src/types/index.ts`, `src/i18n/*.json`.
+
+## [1.10.31] — 2026-06-10
+
+### Fixed — pH-correctie schoot door bij brouwwater
+
+De pH-correctie-tool (1.10.28) gebruikte één rekenmodel voor zowel maisch als
+brouwwater. Dat klopt voor maisch/wort (zwaar gebufferd door de mout), maar
+schiet fors door bij brouwwater: water heeft nauwelijks buffer en je
+neutraliseert er de alkaliniteit (HCO₃⁻), niet een pH-daling. De tool heeft nu
+twee modi:
+
+- **Maisch / wort** — onveranderd: volume + huidige pH + doel-pH → dosis schaalt
+  met de pH-daling.
+- **Brouwwater** — nieuw: volume + alkaliniteit (mg/L CaCO₃) → dosis op basis
+  van de te neutraliseren alkaliniteit (1 mEq = 50 mg CaCO₃; effectieve
+  zuursterkte ±10,3 mEq/mL voor melkzuur 80%), gedoseerd op ±95% zodat de pH
+  niet richting 4,3 doorschiet.
+
+Bestanden: `src/utils/calculations.ts`, `src/utils/constants.ts`,
+`src/pages/GereedschapPage.tsx`, `src/i18n/*.json`.
+
 ## [1.10.30] — 2026-06-10
 
 ### Fixed — Wit scherm in Home Assistant ingress

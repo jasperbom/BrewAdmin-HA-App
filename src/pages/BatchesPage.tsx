@@ -240,7 +240,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
 
-  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',tank_dagen:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
+  const emptyB = {batch_nummer:'',naam:'',biernaam:'',stijl:'',status:'Gepland',liter_vergist:'',OG:'',FG:'',ABV:'',tank:'',tank_dagen:'',electra_kosten:'',water_kosten:'',schoonmaak_kosten:'',overige_kosten:'',notities:'',brouwzaal_eff:'',maisch_eff:'',maisch_ph:'',kook_ph:'',product_ph:'',datum:tod(),platogehalte:'',gn_code:'',product_id:''}
   const emptyI = {ingredient_id:'',ingredient_naam:'',ingredient_type:'Mout',hoeveelheid:'',eenheid:'kg',lot_id:'',kosten:'',afboeken:false}
 
 
@@ -491,7 +491,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       ['Liter vergist', b.liter_vergist ? b.liter_vergist + ' L' : ''],
       ['Maisch eff.', b.maisch_eff ? b.maisch_eff + '%' : ''],
       ['Brouwzaal eff.', b.brouwzaal_eff ? b.brouwzaal_eff + '%' : ''],
-      ['Maisch pH', b.maisch_ph], ['Product pH', b.product_ph],
+      ['Maisch pH', b.maisch_ph], ['Kook pH', b.kook_ph], ['Product pH', b.product_ph],
       ['Kleur', b.kleur ? b.kleur + ' EBC' : ''],
       ['Kooktijd', b.kooktijd ? b.kooktijd + ' min' : ''],
       ['Tank', b.tank],
@@ -822,7 +822,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       const oud = bat.find((b: any) => b.id === editId)
       const velden: Record<string,string> = {naam:'Naam',stijl:'Stijl',batch_nummer:'Batch #',tank:'Tank',
         liter_vergist:'Liters',OG:'OG',FG:'FG',ABV:'ABV',
-        brouwzaal_eff:'Brouwzaal eff.',maisch_eff:'Maisch eff.',maisch_ph:'Maisch pH',product_ph:'Product pH',
+        brouwzaal_eff:'Brouwzaal eff.',maisch_eff:'Maisch eff.',maisch_ph:'Maisch pH',kook_ph:'Kook pH',product_ph:'Product pH',
         electra_kosten:'Elektra',water_kosten:'Water',schoonmaak_kosten:'Schoonmaak',overige_kosten:'Overig',notities:'Notities',platogehalte:'Plato',gn_code:'GN-code'}
       // Recept-doel achter meetwaarden: maakt afwijking direct zichtbaar in
       // de log. Alleen velden waar het recept een doelwaarde voor heeft.
@@ -1718,6 +1718,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 selB.brouwzaal_eff ? [t('batch_info_brew_efficiency'), `${Number(selB.brouwzaal_eff).toFixed(1)}%`] : null,
                 selB.maisch_eff    ? [t('batch_info_mash_efficiency'), `${Number(selB.maisch_eff).toFixed(1)}%`] : null,
                 selB.maisch_ph     ? [t('batch_info_mash_ph'),         Number(selB.maisch_ph).toFixed(2)] : null,
+                selB.kook_ph       ? [t('batch_info_boil_ph'),         Number(selB.kook_ph).toFixed(2)] : null,
                 selB.product_ph    ? [t('batch_info_product_ph'),      Number(selB.product_ph).toFixed(2)] : null,
                 selB.kleur         ? [t('recipe_kleur'),               `${selB.kleur} EBC`] : null,
                 selB.kooktijd      ? [t('recipe_kooktijd'),            `${selB.kooktijd} min`] : null,
@@ -3632,6 +3633,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               <Inp label={t('batch_info_brew_efficiency')} type="number" value={bForm.brouwzaal_eff||''} onChange={(v: string)=>setBForm((f: any)=>({...f,brouwzaal_eff:v}))} placeholder="75" />
               <Inp label={t('batch_info_mash_efficiency')} type="number" value={bForm.maisch_eff||''} onChange={(v: string)=>setBForm((f: any)=>({...f,maisch_eff:v}))} placeholder="80" />
               <Inp label={t('batch_info_mash_ph')} type="number" value={bForm.maisch_ph||''} onChange={(v: string)=>setBForm((f: any)=>({...f,maisch_ph:v}))} placeholder="5.4" />
+              <Inp label={t('batch_info_boil_ph')} type="number" value={bForm.kook_ph||''} onChange={(v: string)=>setBForm((f: any)=>({...f,kook_ph:v}))} placeholder="5.2" />
               <Inp label={t('batch_info_product_ph')} type="number" value={bForm.product_ph||''} onChange={(v: string)=>setBForm((f: any)=>({...f,product_ph:v}))} placeholder="4.3" />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
