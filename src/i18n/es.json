@@ -2301,5 +2301,8 @@
   "batch_info_boil_ph": "pH de hervido",
   "flow_veld_titel": "Introducir datos",
   "flow_veld_liter": "Volumen fermentado (L)",
-  "flow_tank_niet_ontsmet": "Atención: este tanque está marcado como «{status}»: limpia y desinfecta el tanque antes del día de elaboración."
+  "flow_tank_niet_ontsmet": "Atención: este tanque está marcado como «{status}»: limpia y desinfecta el tanque antes del día de elaboración.",
+  "flow_pill_actief": "Ahora",
+  "flow_pill_afgerond": "Hecho",
+  "flow_pill_komt": "Después"
 }

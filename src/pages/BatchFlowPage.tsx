@@ -103,10 +103,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   log, setLog, auditLog, setAuditLog, setPage, setNavBatchId,
 }) => {
   const [sel, setSel] = useState<number | null>(null)
-  const [viewFase, setViewFase] = useState<number | null>(null)
+  const [openFasen, setOpenFasen] = useState<number[]>([])
   const [geslotenOpen, setGeslotenOpen] = useState(false)
   const [notitiesOpen, setNotitiesOpen] = useState(false)
   const [mForm, setMForm] = useState({sg: '', temp: '', ph: ''})
+
+  // Open een batch: standaard alleen de actieve fase opengeklapt.
+  const openBatch = (id: number) => {
+    const b = bat.find((x: any) => x.id === id)
+    setSel(id)
+    setOpenFasen(b ? [faseIndex(b.status)] : [0])
+    setNotitiesOpen(false)
+  }
+  const toggleFase = (i: number) =>
+    setOpenFasen(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i])
 
   const STATUS_LABELS: Record<string, string> = {
     Gepland: t('status_planning'), Brouwen: t('status_brewing'), Vergisten: t('status_fermenting'),
@@ -120,7 +130,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   const selB = bat.find((b: any) => b.id === sel) || null
   const huidigeFase = selB ? faseIndex(selB.status) : 0
-  const getoondeFase = viewFase ?? huidigeFase
 
   const actieveBatches = useMemo(() =>
     (bat || []).filter((b: any) => b.status !== 'Gesloten')
@@ -132,9 +141,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     [bat])
 
   // ── Checklist per fase, berekend uit de echte batchdata ───────────────────
-  const checklist = useMemo((): ChecklistItem[] => {
+  // Functie i.p.v. memo: elke fasekaart berekent zijn eigen checklist, ook de
+  // fasen die nog niet (of niet meer) actief zijn.
+  const berekenChecklist = (faseIdx: number): ChecklistItem[] => {
     if (!selB) return []
-    const fase = STATUSSEN[getoondeFase]
+    const fase = STATUSSEN[faseIdx]
     const mijnBi = (bi || []).filter((x: any) => x.batch_id === selB.id)
     const mijnMetingen = (gistMetingen || []).filter((m: any) => m.batch_id === selB.id)
     const mijnAv = (av || []).filter((a: any) => a.batch_id === selB.id)
@@ -201,9 +212,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       ]
     }
     return []
-  }, [selB, getoondeFase, bi, gistMetingen, av, carbSessies, verliesRegistraties, batchTakenItems, tankStatussen])
-
-  const klaar = checklist.filter(c => c.done).length
+  }
 
   // ── Status-overgang (zelfde gedrag als BatchesPage: tank wordt vuil bij vertrek)
   const gaNaarFase = (nieuweIdx: number) => {
@@ -220,14 +229,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, status: nieuweStatus} : b))
     setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), type: 'status', batch_id: selB.id, referentie: `${oudeStatus} → ${nieuweStatus}`}])
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', velden: {status: {oud: oudeStatus, nieuw: nieuweStatus}}, omschrijving: `Status: ${oudeStatus} → ${nieuweStatus}`})
-    setViewFase(null)
+    // Klap de nieuwe actieve fase open (en houd de vorige open zoals hij was).
+    setOpenFasen(prev => prev.includes(nieuweIdx) ? prev : [...prev, nieuweIdx])
   }
 
   const naarVolgende = () => {
     if (!selB || huidigeFase >= STATUSSEN.length - 1) return
     const volgende = huidigeFase + 1
-    const open = checklist.length - klaar
-    if (getoondeFase === huidigeFase && open > 0) {
+    const huidigeChecklist = berekenChecklist(huidigeFase)
+    const open = huidigeChecklist.filter(c => !c.done).length
+    if (open > 0) {
       const msg = t('flow_confirm_incomplete')
         .replace('{n}', String(open))
         .replace('{fase}', STATUS_LABELS[STATUSSEN[volgende]])
@@ -310,7 +321,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return (
       <div
         className="bg-white rounded-xl p-4 shadow-card border border-gray-100 cursor-pointer hover:shadow-card-md transition-shadow"
-        onClick={() => { setSel(b.id); setViewFase(null); setNotitiesOpen(false) }}
+        onClick={() => openBatch(b.id)}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
@@ -372,8 +383,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // ── Detail: stepper + fasepaneel ──────────────────────────────────────────
-  const faseStatus = STATUSSEN[getoondeFase]
+  // ── Detail: stepper + per-fase inklapbare kaarten ─────────────────────────
   const mijnMetingen = (gistMetingen || []).filter((m: any) => m.batch_id === selB.id)
   // Starttijdstip van de vergisting voor de X-as van de grafiek — zelfde
   // afleiding als op de Batches-pagina (tank_historie, anders batch.datum).
@@ -391,6 +401,160 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     s + (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0), 0)
   const verliesL = mijnVerlies.reduce((s: number, v: any) => s + (Number(v.liter) || 0), 0)
 
+  // Inhoud van één fasekaart (checklist + invulvelden + extra's per fase).
+  const renderFaseInhoud = (i: number) => {
+    const faseStatus = STATUSSEN[i]
+    const cl = berekenChecklist(i)
+    const klaarN = cl.filter(c => c.done).length
+    const isHuidig = i === huidigeFase
+    return (
+      <div className="p-4 space-y-4">
+        <p className="text-sm text-gray-600">{FASE_DESC[faseStatus]}</p>
+        {!isHuidig && (
+          <div className="text-xs px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-500">
+            {i < huidigeFase ? t('flow_fase_afgerond') : t('flow_fase_toekomstig')}
+          </div>
+        )}
+
+        {/* Checklist */}
+        {cl.length > 0 && (
+          <div className="space-y-1.5">
+            {cl.map(c => (
+              <div key={c.key} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${c.done ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-orange-100 text-orange-600 ring-1 ring-orange-200'}`}>
+                  {c.done ? '✓' : '○'}
+                </span>
+                <span className={`text-sm flex-1 ${c.done ? 'text-gray-700' : 'text-gray-600'}`}>{c.label}</span>
+                {c.detail && <span className="text-xs text-gray-400">{c.detail}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Invullen — Gepland: tank + datum */}
+        {faseStatus === 'Gepland' && (
+          <div className="border border-gray-200 rounded-lg p-3">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
+                opts={(tanks || []).map((tk: any) => {
+                  const naam = tk.naam ?? String(tk.id)
+                  const st = tankStatussen?.[naam]?.status
+                  const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : null
+                  return { v: naam, l: stLabel ? `${naam} — ${stLabel}` : naam }
+                })} />
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+              </div>
+            </div>
+            {selB.tank && tankStatussen?.[selB.tank]?.status && tankStatussen[selB.tank].status !== 'Ontsmet' && (
+              <div className="text-xs px-3 py-2 mt-3 rounded-lg bg-orange-50 border border-orange-200 text-orange-700">
+                {t('flow_tank_niet_ontsmet').replace('{status}', t(TANK_REINIGING_LABEL_KEY[tankStatussen[selB.tank].status] || '') || tankStatussen[selB.tank].status)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Invullen — fasen met numerieke velden */}
+        {FASE_VELDEN[faseStatus] && (
+          <div className="border border-gray-200 rounded-lg p-3">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {FASE_VELDEN[faseStatus].map(veld => (
+                <FlowVeld key={veld.key} label={t(veld.labelKey)} value={selB[veld.key]}
+                  onCommit={commitNum(veld.key)} step={veld.step} placeholder={veld.ph}
+                  disabled={veld.key === 'ABV' && !!selB.abv_definitief} />
+              ))}
+            </div>
+            {faseStatus === 'Conditioneren' && (
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+                {selB.abv_definitief ? (
+                  <>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 ring-1 ring-green-200">
+                      {t('batch_abv_definitief_badge')}
+                    </span>
+                    <Btn v="secondary" s="sm" onClick={bewerkAbv}>{t('batch_abv_bewerk_btn')}</Btn>
+                  </>
+                ) : (
+                  <Btn v="green" s="sm" onClick={bevestigAbv} disabled={!Number(selB.ABV)}>
+                    {t('batch_abv_bevestig_btn')}
+                  </Btn>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fermentatiegrafiek (gedeeld component met de batchpagina) */}
+        {['Vergisten', 'Conditioneren'].includes(faseStatus) && (
+          mijnMetingen.length >= 2 ? (
+            <div className="border border-gray-200 rounded-lg p-3">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('batch_gist_chart')}</div>
+              <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
+            </div>
+          ) : (
+            <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
+          )
+        )}
+
+        {/* Snelle SG-meting tijdens vergisten/conditioneren */}
+        {['Vergisten', 'Conditioneren'].includes(faseStatus) && (
+          <div className="border border-gray-200 rounded-lg p-3">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_meting_snel')}</div>
+            <div className="flex flex-wrap items-end gap-2">
+              <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
+              <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder="19.5" cls="w-28" />
+              <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
+              <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
+            </div>
+          </div>
+        )}
+
+        {/* Samenvatting bij Gesloten */}
+        {faseStatus === 'Gesloten' && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {l: t('flow_sum_vergist'), v: `${Number(selB.liter_vergist) || 0} L`},
+              {l: t('flow_sum_afgevuld'), v: `${afgevuldL.toFixed(1)} L`},
+              {l: t('flow_sum_verlies'), v: `${verliesL.toFixed(1)} L`},
+              {l: t('flow_sum_afvullingen'), v: String(mijnAv.length)},
+            ].map(x => (
+              <div key={x.l} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{x.l}</div>
+                <div className="text-lg font-bold text-gray-800">{x.v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Fase-acties — alleen op de actieve fase */}
+        {isHuidig && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
+            <div className="text-xs text-gray-500">
+              {cl.length === 0 ? '' : klaarN === cl.length
+                ? <span className="text-green-600 font-medium">{t('flow_alles_klaar')}</span>
+                : t('flow_punten_open').replace('{n}', String(cl.length - klaarN))}
+            </div>
+            <div className="flex items-center gap-2">
+              {huidigeFase > 0 && (
+                <Btn v="secondary" s="sm" onClick={naarVorige}>
+                  ← {STATUS_LABELS[STATUSSEN[huidigeFase - 1]]}
+                </Btn>
+              )}
+              {huidigeFase < STATUSSEN.length - 1 && (
+                <Btn s="sm" onClick={naarVolgende}>
+                  {t('flow_volgende').replace('{fase}', STATUS_LABELS[STATUSSEN[huidigeFase + 1]])} →
+                </Btn>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
@@ -401,20 +565,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         <div className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-2">
-              <Btn v="secondary" s="sm" onClick={() => { setSel(null); setViewFase(null) }}>← {t('flow_terug')}</Btn>
+              <Btn v="secondary" s="sm" onClick={() => setSel(null)}>← {t('flow_terug')}</Btn>
               <Badge s={selB.status} />
               {selB.stijl && <span className="text-xs text-gray-500">{selB.stijl}</span>}
             </div>
             <Btn v="secondary" s="sm" onClick={openInBatches}>{t('flow_open_batches')}</Btn>
           </div>
 
-          {/* Stepper */}
+          {/* Stepper — klikken klapt de bijbehorende fasekaart open/dicht */}
           <div className="overflow-x-auto pb-1">
             <div className="flex items-start min-w-[560px]">
               {STATUSSEN.map((s, i) => {
                 const done = i < huidigeFase
                 const actief = i === huidigeFase
-                const bekeken = i === getoondeFase
+                const open = openFasen.includes(i)
                 return (
                   <React.Fragment key={s}>
                     {i > 0 && (
@@ -422,11 +586,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                         style={{backgroundColor: i <= huidigeFase ? 'var(--t-accent)' : '#e5e7eb'}} />
                     )}
                     <button
-                      onClick={() => setViewFase(i === huidigeFase ? null : i)}
+                      onClick={() => toggleFase(i)}
                       className="flex flex-col items-center gap-1 w-20 flex-shrink-0 cursor-pointer group"
                     >
                       <span
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${bekeken ? 'ring-2 ring-offset-2' : ''}`}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${open ? 'ring-2 ring-offset-2' : ''}`}
                         style={done || actief
                           ? {backgroundColor: actief ? 'var(--t-accent)' : 'var(--t-light)', borderColor: 'var(--t-accent)', color: actief ? '#fff' : 'var(--t-text)', ['--tw-ring-color' as any]: 'var(--t-accent)'}
                           : {backgroundColor: '#fff', borderColor: '#e5e7eb', color: '#9ca3af', ['--tw-ring-color' as any]: '#9ca3af'}}
@@ -446,158 +610,34 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         </div>
       </div>
 
-      {/* Fasepaneel */}
-      <div className="bg-white rounded-xl shadow-card overflow-hidden t-card-l">
-        <SectionHeader
-          solid
-          title={`${getoondeFase + 1}. ${STATUS_LABELS[faseStatus]}`}
-          info={checklist.length > 0
-            ? t('flow_voortgang').replace('{x}', String(klaar)).replace('{y}', String(checklist.length))
-            : null}
-        />
-        <div className="p-4 space-y-4">
-          <p className="text-sm text-gray-600">{FASE_DESC[faseStatus]}</p>
-          {getoondeFase !== huidigeFase && (
-            <div className="text-xs px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-500">
-              {getoondeFase < huidigeFase ? t('flow_fase_afgerond') : t('flow_fase_toekomstig')}
-            </div>
-          )}
-
-          {/* Checklist */}
-          {checklist.length > 0 && (
-            <div className="space-y-1.5">
-              {checklist.map(c => (
-                <div key={c.key} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${c.done ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-orange-100 text-orange-600 ring-1 ring-orange-200'}`}>
-                    {c.done ? '✓' : '○'}
-                  </span>
-                  <span className={`text-sm flex-1 ${c.done ? 'text-gray-700' : 'text-gray-600'}`}>{c.label}</span>
-                  {c.detail && <span className="text-xs text-gray-400">{c.detail}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Invullen — bewerkbare batchvelden voor de huidige fase */}
-          {getoondeFase === huidigeFase && faseStatus === 'Gepland' && (
-            <div className="border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
-                  opts={(tanks || []).map((tk: any) => {
-                    const naam = tk.naam ?? String(tk.id)
-                    const st = tankStatussen?.[naam]?.status
-                    const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : null
-                    return { v: naam, l: stLabel ? `${naam} — ${stLabel}` : naam }
-                  })} />
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
-                  <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
-                </div>
-              </div>
-              {selB.tank && tankStatussen?.[selB.tank]?.status && tankStatussen[selB.tank].status !== 'Ontsmet' && (
-                <div className="text-xs px-3 py-2 mt-3 rounded-lg bg-orange-50 border border-orange-200 text-orange-700">
-                  {t('flow_tank_niet_ontsmet').replace('{status}', t(TANK_REINIGING_LABEL_KEY[tankStatussen[selB.tank].status] || '') || tankStatussen[selB.tank].status)}
-                </div>
-              )}
-            </div>
-          )}
-          {getoondeFase === huidigeFase && FASE_VELDEN[faseStatus] && (
-            <div className="border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {FASE_VELDEN[faseStatus].map(veld => (
-                  <FlowVeld key={veld.key} label={t(veld.labelKey)} value={selB[veld.key]}
-                    onCommit={commitNum(veld.key)} step={veld.step} placeholder={veld.ph}
-                    disabled={veld.key === 'ABV' && !!selB.abv_definitief} />
-                ))}
-              </div>
-              {faseStatus === 'Conditioneren' && (
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                  {selB.abv_definitief ? (
-                    <>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 ring-1 ring-green-200">
-                        {t('batch_abv_definitief_badge')}
-                      </span>
-                      <Btn v="secondary" s="sm" onClick={bewerkAbv}>{t('batch_abv_bewerk_btn')}</Btn>
-                    </>
-                  ) : (
-                    <Btn v="green" s="sm" onClick={bevestigAbv} disabled={!Number(selB.ABV)}>
-                      {t('batch_abv_bevestig_btn')}
-                    </Btn>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Fermentatiegrafiek (gedeeld component met de batchpagina) */}
-          {['Vergisten', 'Conditioneren'].includes(faseStatus) && (
-            mijnMetingen.length >= 2 ? (
-              <div className="border border-gray-200 rounded-lg p-3">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('batch_gist_chart')}</div>
-                <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
-              </div>
-            ) : (
-              <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
-            )
-          )}
-
-          {/* Snelle SG-meting tijdens vergisten/conditioneren */}
-          {getoondeFase === huidigeFase && ['Vergisten', 'Conditioneren'].includes(faseStatus) && (
-            <div className="border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_meting_snel')}</div>
-              <div className="flex flex-wrap items-end gap-2">
-                <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
-                <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder="19.5" cls="w-28" />
-                <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
-                <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
-              </div>
-            </div>
-          )}
-
-          {/* Samenvatting bij Gesloten */}
-          {faseStatus === 'Gesloten' && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                {l: t('flow_sum_vergist'), v: `${Number(selB.liter_vergist) || 0} L`},
-                {l: t('flow_sum_afgevuld'), v: `${afgevuldL.toFixed(1)} L`},
-                {l: t('flow_sum_verlies'), v: `${verliesL.toFixed(1)} L`},
-                {l: t('flow_sum_afvullingen'), v: String(mijnAv.length)},
-              ].map(x => (
-                <div key={x.l} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{x.l}</div>
-                  <div className="text-lg font-bold text-gray-800">{x.v}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Fase-acties */}
-          {getoondeFase === huidigeFase && (
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
-              <div className="text-xs text-gray-500">
-                {checklist.length === 0 ? '' : klaar === checklist.length
-                  ? <span className="text-green-600 font-medium">{t('flow_alles_klaar')}</span>
-                  : t('flow_punten_open').replace('{n}', String(checklist.length - klaar))}
-              </div>
-              <div className="flex items-center gap-2">
-                {huidigeFase > 0 && (
-                  <Btn v="secondary" s="sm" onClick={naarVorige}>
-                    ← {STATUS_LABELS[STATUSSEN[huidigeFase - 1]]}
-                  </Btn>
-                )}
-                {huidigeFase < STATUSSEN.length - 1 && (
-                  <Btn s="sm" onClick={naarVolgende}>
-                    {t('flow_volgende').replace('{fase}', STATUS_LABELS[STATUSSEN[huidigeFase + 1]])} →
-                  </Btn>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Eén inklapbare kaart per fase */}
+      {STATUSSEN.map((s, i) => {
+        const cl = berekenChecklist(i)
+        const klaarN = cl.filter(c => c.done).length
+        const isOpen = openFasen.includes(i)
+        const isHuidig = i === huidigeFase
+        const statusPill = isHuidig
+          ? <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white/25 text-white">{t('flow_pill_actief')}</span>
+          : i < huidigeFase
+            ? <span className="text-white/70">{t('flow_pill_afgerond')}</span>
+            : <span className="text-white/50">{t('flow_pill_komt')}</span>
+        return (
+          <div key={s} className="bg-white rounded-xl shadow-card overflow-hidden t-card-l">
+            <SectionHeader
+              solid
+              open={isOpen}
+              onToggle={() => toggleFase(i)}
+              rounded={isOpen ? 'top' : 'full'}
+              title={`${i + 1}. ${STATUS_LABELS[s]}`}
+              info={<>
+                {cl.length > 0 && <span>{klaarN}/{cl.length}</span>}
+                {statusPill}
+              </>}
+            />
+            {isOpen && renderFaseInhoud(i)}
+          </div>
+        )
+      })}
 
       {/* Notities (gedeeld component met de batchpagina) */}
       <BatchNotitiesSection

@@ -2301,5 +2301,8 @@
   "batch_info_boil_ph": "Boil pH",
   "flow_veld_titel": "Fill in data",
   "flow_veld_liter": "Fermented volume (L)",
-  "flow_tank_niet_ontsmet": "Note: this tank is marked “{status}” — clean and sanitise the tank before brew day."
+  "flow_tank_niet_ontsmet": "Note: this tank is marked “{status}” — clean and sanitise the tank before brew day.",
+  "flow_pill_actief": "Now",
+  "flow_pill_afgerond": "Done",
+  "flow_pill_komt": "Later"
 }

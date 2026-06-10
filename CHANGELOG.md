@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.34] — 2026-06-10
+
+### Changed — Batchflow (bèta): elke fase als inklapbare kaart
+
+De detailweergave toont nu **alle zes fasen als losse inklapbare kaarten** in
+plaats van één paneel met een stepper. Daardoor kun je elke fase openen en
+bewerken/corrigeren, óók als die nog niet (of niet meer) aan de beurt is:
+
+- De actieve fase klapt automatisch open; de andere staan dicht.
+- Open of sluit een kaart via het pijltje in de balk of via de stepper bovenaan.
+- Elke kaart toont rechts zijn voortgang (bv. "3/4") en een status-pill
+  (Nu / Afgerond / Later).
+- Alle invulvelden (tank, datum, OG, FG, ABV, pH's, metingen) zijn in elke
+  fase bewerkbaar; de fase-overgangsknoppen blijven alleen op de actieve fase.
+
+Bestanden: `src/pages/BatchFlowPage.tsx`, `src/i18n/*.json`.
+
 ## [1.10.33] — 2026-06-10
 
 ### Improved — Batchflow (bèta): slimmer invullen

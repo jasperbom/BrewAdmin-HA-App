@@ -2301,5 +2301,8 @@
   "batch_info_boil_ph": "pH d'ébullition",
   "flow_veld_titel": "Saisir les données",
   "flow_veld_liter": "Volume fermenté (L)",
-  "flow_tank_niet_ontsmet": "Attention : cette cuve est marquée « {status} » — nettoyez et désinfectez la cuve avant le jour de brassage."
+  "flow_tank_niet_ontsmet": "Attention : cette cuve est marquée « {status} » — nettoyez et désinfectez la cuve avant le jour de brassage.",
+  "flow_pill_actief": "En cours",
+  "flow_pill_afgerond": "Terminé",
+  "flow_pill_komt": "Plus tard"
 }
