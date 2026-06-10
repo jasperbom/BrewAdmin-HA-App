@@ -4,6 +4,60 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.28] — 2026-06-10
+
+### Added — Menu "Gereedschap" met pH-correctie
+
+Nieuw hoofdmenu **Gereedschap** met als eerste tool **pH-correctie**: vul
+volume, huidige pH en doel-pH in en kies een zuur (voorlopig melkzuur 80%);
+de tool berekent de benodigde dosis in mL en gram, plus een tip om ±80%
+vooraf te doseren en daarna bij te meten.
+
+Het rekenmodel is volume-gebaseerd op de brouw-vuistregel (±1 mL melkzuur
+88% per 19 L per 0,1 pH, geschaald naar de gekozen concentratie). Zuurmiddelen
+staan in `ZUUR_MIDDELEN` (`constants.ts`) zodat extra middelen later met één
+regel toegevoegd kunnen worden; de berekening zit in `berekenZuurCorrectie`
+(`calculations.ts`).
+
+Bestanden: `src/pages/GereedschapPage.tsx` (nieuw), `src/utils/constants.ts`,
+`src/utils/calculations.ts`, `src/App.tsx`, `src/i18n/*.json`.
+
+## [1.10.27] — 2026-06-10
+
+### Added — Fermentatiegrafiek in Batchflow (bèta)
+
+De fermentatiegrafiek (SG/temp/pH met zoom, pan en tooltip) is nu ook
+zichtbaar in de Batchflow-fasen Vergisten en Conditioneren. Het
+grafiekcomponent is daarvoor uit `BatchesPage.tsx` geëxtraheerd naar het
+gedeelde `src/components/batch/FermentatieGrafiek.tsx` — beide pagina's
+gebruiken nu exact dezelfde grafiek.
+
+Bestanden: `src/components/batch/FermentatieGrafiek.tsx` (nieuw),
+`src/pages/BatchesPage.tsx`, `src/pages/BatchFlowPage.tsx`.
+
+## [1.10.26] — 2026-06-10
+
+### Added — Batchflow (bèta): stapsgewijs door de batch
+
+Nieuwe pagina **Brouwerij → Batchflow (bèta)**: een begeleide, stapsgewijze
+weergave die je georganiseerd door de batch heen leidt — van Gepland via
+Brouwen, Vergisten en Conditioneren naar Afgevuld en Gesloten.
+
+- Overzicht met voortgangskaarten per actieve batch (fase x van 6).
+- Fasen-stepper per batch; eerdere/toekomstige fasen zijn ter referentie te
+  bekijken.
+- Per fase een automatische checklist op basis van de echte batchdata
+  (recept gekoppeld, ingrediënten afgeboekt, OG/FG, SG stabiel,
+  carbonatie voltooid, ABV definitief, afvullingen, restvolume).
+- Fase-overgangen met bevestiging bij openstaande punten; tank wordt net als
+  op de Batches-pagina automatisch op `Vuil` gezet bij vertrek.
+- Snelle SG/temp/pH-meting tijdens vergisten/conditioneren en gedeelde
+  batchnotities; doorklik naar de volledige Batches-pagina voor de rest.
+- Volledig vertaald (nl/en/de/fr/es).
+
+Bestanden: `src/pages/BatchFlowPage.tsx` (nieuw), `src/App.tsx`,
+`src/i18n/*.json`.
+
 ## [1.10.25] — 2026-06-10
 
 ### Fixed — Versienummer in de app liep achter
