@@ -2290,5 +2290,12 @@
   "tool_ph_vooraf": "Consejo: añade primero unos {ml} mL (80%), luego mide y completa hasta alcanzar el pH objetivo.",
   "tool_ph_doel_te_hoog": "El pH objetivo debe ser menor que el pH actual: esta herramienta solo calcula la acidificación.",
   "tool_ph_vul_in": "Introduce el volumen, el pH actual y el pH objetivo para calcular la dosis.",
-  "tool_ph_disclaimer": "Valor orientativo basado en la regla de aproximadamente 1 mL de ácido láctico 88% por 19 L por 0,1 pH (escalado al 80%). La capacidad tampón real de la maceración depende de la molienda, así que mide siempre y completa."
+  "tool_ph_disclaimer": "Valor orientativo basado en la regla de aproximadamente 1 mL de ácido láctico 88% por 19 L por 0,1 pH (escalado al 80%). La capacidad tampón real de la maceración depende de la molienda, así que mide siempre y completa.",
+  "tool_ph_uitleg_maisch": "La maceración y el mosto están muy tamponados por la malta. Introduce el volumen, el pH actual y el pH objetivo; la dosis varía según la bajada de pH deseada.",
+  "tool_ph_uitleg_water": "El agua de elaboración (p. ej. agua de lavado) casi no tiene tampón. Neutralizas la alcalinidad (HCO₃⁻), así que la dosis depende de la alcalinidad del agua, no de un pH objetivo. Aquí, demasiado ácido se pasa rápido.",
+  "tool_ph_modus_maisch": "Maceración / mosto",
+  "tool_ph_modus_water": "Agua de elaboración",
+  "tool_ph_alkaliniteit": "Alcalinidad (mg/L CaCO₃)",
+  "tool_ph_water_doel": "Lleva el agua a aproximadamente pH 5,4 (≈95% de la alcalinidad neutralizada).",
+  "tool_ph_disclaimer_water": "Valor orientativo basado en la alcalinidad del agua (1 mEq = 50 mg CaCO₃; fuerza ácida efectiva ≈10,3 mEq/mL para ácido láctico 80% en torno a pH 5,5). Mide el pH tras añadir y completa."
 }

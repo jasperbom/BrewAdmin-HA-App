@@ -2290,5 +2290,12 @@
   "tool_ph_vooraf": "Tip: add about {ml} mL first (80%), then measure and top up until you reach the target pH.",
   "tool_ph_doel_te_hoog": "The target pH must be lower than the current pH — this tool only calculates acidification.",
   "tool_ph_vul_in": "Enter volume, current pH and target pH to calculate the dose.",
-  "tool_ph_disclaimer": "Estimate based on the rule of thumb of about 1 mL of 88% lactic acid per 19 L per 0.1 pH (scaled to 80%). The real buffering capacity of a mash depends on the grist, so always measure and top up."
+  "tool_ph_disclaimer": "Estimate based on the rule of thumb of about 1 mL of 88% lactic acid per 19 L per 0.1 pH (scaled to 80%). The real buffering capacity of a mash depends on the grist, so always measure and top up.",
+  "tool_ph_uitleg_maisch": "Mash and wort are heavily buffered by the malt. Enter volume, current pH and target pH; the dose scales with the desired pH drop.",
+  "tool_ph_uitleg_water": "Brewing water (e.g. sparge water) has almost no buffer. You neutralise the alkalinity (HCO₃⁻), so the dose depends on your water's alkalinity, not on a pH target. Too much acid overshoots quickly here.",
+  "tool_ph_modus_maisch": "Mash / wort",
+  "tool_ph_modus_water": "Brewing water",
+  "tool_ph_alkaliniteit": "Alkalinity (mg/L CaCO₃)",
+  "tool_ph_water_doel": "Brings the water to about pH 5.4 (≈95% of the alkalinity neutralised).",
+  "tool_ph_disclaimer_water": "Estimate based on your water's alkalinity (1 mEq = 50 mg CaCO₃; effective acid strength ≈10.3 mEq/mL for 80% lactic acid around pH 5.5). Measure the pH after adding and top up."
 }

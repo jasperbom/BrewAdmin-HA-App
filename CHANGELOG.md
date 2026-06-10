@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.31] — 2026-06-10
+
+### Fixed — pH-correctie schoot door bij brouwwater
+
+De pH-correctie-tool (1.10.28) gebruikte één rekenmodel voor zowel maisch als
+brouwwater. Dat klopt voor maisch/wort (zwaar gebufferd door de mout), maar
+schiet fors door bij brouwwater: water heeft nauwelijks buffer en je
+neutraliseert er de alkaliniteit (HCO₃⁻), niet een pH-daling. De tool heeft nu
+twee modi:
+
+- **Maisch / wort** — onveranderd: volume + huidige pH + doel-pH → dosis schaalt
+  met de pH-daling.
+- **Brouwwater** — nieuw: volume + alkaliniteit (mg/L CaCO₃) → dosis op basis
+  van de te neutraliseren alkaliniteit (1 mEq = 50 mg CaCO₃; effectieve
+  zuursterkte ±10,3 mEq/mL voor melkzuur 80%), gedoseerd op ±95% zodat de pH
+  niet richting 4,3 doorschiet.
+
+Bestanden: `src/utils/calculations.ts`, `src/utils/constants.ts`,
+`src/pages/GereedschapPage.tsx`, `src/i18n/*.json`.
+
 ## [1.10.30] — 2026-06-10
 
 ### Fixed — Wit scherm in Home Assistant ingress

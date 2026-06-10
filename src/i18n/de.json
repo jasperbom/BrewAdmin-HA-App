@@ -2290,5 +2290,12 @@
   "tool_ph_vooraf": "Tipp: Gib zuerst etwa {ml} mL (80%) hinzu, miss dann und dosiere nach, bis du den Ziel-pH erreichst.",
   "tool_ph_doel_te_hoog": "Der Ziel-pH muss niedriger sein als der aktuelle pH — dieses Werkzeug berechnet nur das Ansäuern.",
   "tool_ph_vul_in": "Gib Volumen, aktuellen pH und Ziel-pH ein, um die Dosis zu berechnen.",
-  "tool_ph_disclaimer": "Richtwert nach der Faustregel von ca. 1 mL Milchsäure 88% pro 19 L pro 0,1 pH (auf 80% skaliert). Die tatsächliche Pufferkapazität der Maische hängt von der Schüttung ab, also immer nachmessen und nachdosieren."
+  "tool_ph_disclaimer": "Richtwert nach der Faustregel von ca. 1 mL Milchsäure 88% pro 19 L pro 0,1 pH (auf 80% skaliert). Die tatsächliche Pufferkapazität der Maische hängt von der Schüttung ab, also immer nachmessen und nachdosieren.",
+  "tool_ph_uitleg_maisch": "Maische und Würze sind stark durch das Malz gepuffert. Gib Volumen, aktuellen pH und Ziel-pH ein; die Dosis skaliert mit der gewünschten pH-Senkung.",
+  "tool_ph_uitleg_water": "Brauwasser (z. B. Nachgusswasser) ist kaum gepuffert. Du neutralisierst die Alkalität (HCO₃⁻), die Dosis hängt also von der Alkalität deines Wassers ab, nicht von einem pH-Ziel. Zu viel Säure schießt hier schnell über.",
+  "tool_ph_modus_maisch": "Maische / Würze",
+  "tool_ph_modus_water": "Brauwasser",
+  "tool_ph_alkaliniteit": "Alkalität (mg/L CaCO₃)",
+  "tool_ph_water_doel": "Bringt das Wasser auf etwa pH 5,4 (≈95% der Alkalität neutralisiert).",
+  "tool_ph_disclaimer_water": "Richtwert auf Basis der Alkalität deines Wassers (1 mEq = 50 mg CaCO₃; effektive Säurestärke ≈10,3 mEq/mL für Milchsäure 80% um pH 5,5). Miss den pH nach der Zugabe und dosiere nach."
 }

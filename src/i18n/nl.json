@@ -2290,5 +2290,12 @@
   "tool_ph_vooraf": "Tip: doseer eerst ±{ml} mL (80%), meet daarna en doseer bij tot je de doel-pH bereikt.",
   "tool_ph_doel_te_hoog": "De doel-pH moet lager zijn dan de huidige pH — dit gereedschap berekent alleen verzuren.",
   "tool_ph_vul_in": "Vul volume, huidige pH en doel-pH in om de dosis te berekenen.",
-  "tool_ph_disclaimer": "Richtwaarde op basis van de vuistregel ±1 mL melkzuur 88% per 19 L per 0,1 pH (geschaald naar 80%). De werkelijke buffercapaciteit van maisch hangt af van de storting, dus meet altijd na en doseer bij."
+  "tool_ph_disclaimer": "Richtwaarde op basis van de vuistregel ±1 mL melkzuur 88% per 19 L per 0,1 pH (geschaald naar 80%). De werkelijke buffercapaciteit van maisch hangt af van de storting, dus meet altijd na en doseer bij.",
+  "tool_ph_uitleg_maisch": "Maisch en wort zijn zwaar gebufferd door de mout. Vul volume, huidige pH en doel-pH in; de dosis schaalt met de gewenste pH-daling.",
+  "tool_ph_uitleg_water": "Brouwwater (bijv. spoelwater) heeft nauwelijks buffer. Je neutraliseert de alkaliniteit (HCO₃⁻), dus de dosis hangt af van de alkaliniteit van je water, niet van een pH-doel. Te veel zuur schiet hier snel door.",
+  "tool_ph_modus_maisch": "Maisch / wort",
+  "tool_ph_modus_water": "Brouwwater",
+  "tool_ph_alkaliniteit": "Alkaliniteit (mg/L CaCO₃)",
+  "tool_ph_water_doel": "Brengt het water naar ±pH 5,4 (≈95% van de alkaliniteit geneutraliseerd).",
+  "tool_ph_disclaimer_water": "Richtwaarde op basis van de alkaliniteit van je water (1 mEq = 50 mg CaCO₃; effectieve zuursterkte ±10,3 mEq/mL voor melkzuur 80% rond pH 5,5). Meet de pH na het toevoegen en doseer bij."
 }
