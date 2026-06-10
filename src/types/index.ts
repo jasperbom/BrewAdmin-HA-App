@@ -55,6 +55,7 @@ export interface Batch {
   brouwzaal_eff?: number | string
   maisch_eff?: number | string
   maisch_ph?: number | string
+  kook_ph?: number | string        // boil pH (na/tijdens koken)
   product_ph?: number | string
   kleur?: number | string
   kooktijd?: number | string

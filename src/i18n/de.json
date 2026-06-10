@@ -2297,5 +2297,8 @@
   "tool_ph_modus_water": "Brauwasser",
   "tool_ph_alkaliniteit": "Alkalität (mg/L CaCO₃)",
   "tool_ph_water_doel": "Bringt das Wasser auf etwa pH 5,4 (≈95% der Alkalität neutralisiert).",
-  "tool_ph_disclaimer_water": "Richtwert auf Basis der Alkalität deines Wassers (1 mEq = 50 mg CaCO₃; effektive Säurestärke ≈10,3 mEq/mL für Milchsäure 80% um pH 5,5). Miss den pH nach der Zugabe und dosiere nach."
+  "tool_ph_disclaimer_water": "Richtwert auf Basis der Alkalität deines Wassers (1 mEq = 50 mg CaCO₃; effektive Säurestärke ≈10,3 mEq/mL für Milchsäure 80% um pH 5,5). Miss den pH nach der Zugabe und dosiere nach.",
+  "batch_info_boil_ph": "Koch-pH",
+  "flow_veld_titel": "Daten eingeben",
+  "flow_veld_liter": "Vergorenes Volumen (L)"
 }

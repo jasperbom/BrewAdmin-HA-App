@@ -2297,5 +2297,8 @@
   "tool_ph_modus_water": "Brouwwater",
   "tool_ph_alkaliniteit": "Alkaliniteit (mg/L CaCO₃)",
   "tool_ph_water_doel": "Brengt het water naar ±pH 5,4 (≈95% van de alkaliniteit geneutraliseerd).",
-  "tool_ph_disclaimer_water": "Richtwaarde op basis van de alkaliniteit van je water (1 mEq = 50 mg CaCO₃; effectieve zuursterkte ±10,3 mEq/mL voor melkzuur 80% rond pH 5,5). Meet de pH na het toevoegen en doseer bij."
+  "tool_ph_disclaimer_water": "Richtwaarde op basis van de alkaliniteit van je water (1 mEq = 50 mg CaCO₃; effectieve zuursterkte ±10,3 mEq/mL voor melkzuur 80% rond pH 5,5). Meet de pH na het toevoegen en doseer bij.",
+  "batch_info_boil_ph": "Kook pH",
+  "flow_veld_titel": "Gegevens invullen",
+  "flow_veld_liter": "Vergist volume (L)"
 }

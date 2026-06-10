@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.32] — 2026-06-10
+
+### Added — Batchflow (bèta): inline invullen + kook-pH
+
+In de Batchflow kun je nu de kerngegevens per fase rechtstreeks invullen
+zonder naar de Batches-pagina te springen; het overzicht (fasen-checklist)
+vinkt live mee af:
+
+- **Gepland**: tank kiezen en brouwdatum.
+- **Brouwen**: OG, vergist volume, maisch-pH en **kook-pH**.
+- **Vergisten**: FG.
+- **Conditioneren**: ABV en product-pH.
+
+Velden worden bij verlaten (of Enter) opgeslagen, zodat de server niet bij
+elke toetsaanslag wordt aangeroepen.
+
+Nieuw batchveld **kook-pH** (`kook_ph`) is ook toegevoegd aan de Batches-pagina
+(info-overzicht + bewerkformulier) en aan de Excel-backup.
+
+Bestanden: `src/pages/BatchFlowPage.tsx`, `src/pages/BatchesPage.tsx`,
+`src/types/index.ts`, `src/i18n/*.json`.
+
 ## [1.10.31] — 2026-06-10
 
 ### Fixed — pH-correctie schoot door bij brouwwater

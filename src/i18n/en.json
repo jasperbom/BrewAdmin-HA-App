@@ -2297,5 +2297,8 @@
   "tool_ph_modus_water": "Brewing water",
   "tool_ph_alkaliniteit": "Alkalinity (mg/L CaCO₃)",
   "tool_ph_water_doel": "Brings the water to about pH 5.4 (≈95% of the alkalinity neutralised).",
-  "tool_ph_disclaimer_water": "Estimate based on your water's alkalinity (1 mEq = 50 mg CaCO₃; effective acid strength ≈10.3 mEq/mL for 80% lactic acid around pH 5.5). Measure the pH after adding and top up."
+  "tool_ph_disclaimer_water": "Estimate based on your water's alkalinity (1 mEq = 50 mg CaCO₃; effective acid strength ≈10.3 mEq/mL for 80% lactic acid around pH 5.5). Measure the pH after adding and top up.",
+  "batch_info_boil_ph": "Boil pH",
+  "flow_veld_titel": "Fill in data",
+  "flow_veld_liter": "Fermented volume (L)"
 }

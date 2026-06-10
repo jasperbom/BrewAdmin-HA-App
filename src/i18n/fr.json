@@ -2297,5 +2297,8 @@
   "tool_ph_modus_water": "Eau de brassage",
   "tool_ph_alkaliniteit": "Alcalinité (mg/L CaCO₃)",
   "tool_ph_water_doel": "Amène l'eau à environ pH 5,4 (≈95 % de l'alcalinité neutralisée).",
-  "tool_ph_disclaimer_water": "Valeur indicative basée sur l'alcalinité de votre eau (1 mEq = 50 mg CaCO₃ ; force acide effective ≈10,3 mEq/mL pour l'acide lactique 80 % autour de pH 5,5). Mesurez le pH après l'ajout et complétez."
+  "tool_ph_disclaimer_water": "Valeur indicative basée sur l'alcalinité de votre eau (1 mEq = 50 mg CaCO₃ ; force acide effective ≈10,3 mEq/mL pour l'acide lactique 80 % autour de pH 5,5). Mesurez le pH après l'ajout et complétez.",
+  "batch_info_boil_ph": "pH d'ébullition",
+  "flow_veld_titel": "Saisir les données",
+  "flow_veld_liter": "Volume fermenté (L)"
 }

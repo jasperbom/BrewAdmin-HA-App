@@ -8,6 +8,7 @@ import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
 import Badge from '../components/ui/Badge'
 import Inp from '../components/ui/Inp'
+import Sel from '../components/ui/Sel'
 import SectionHeader from '../components/ui/SectionHeader'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
@@ -34,6 +35,53 @@ interface ChecklistItem {
   label: string
   done: boolean
   detail?: string
+}
+
+// Inline-invulveld dat lokaal bewerkt wordt en pas bij verlaten (onBlur) of
+// Enter wordt opgeslagen — zo wordt de server niet bij elke toetsaanslag
+// aangeroepen, maar blijft het overzicht (checklist) wel live bijwerken.
+const FlowVeld: React.FC<{
+  label: string
+  value: any
+  onCommit: (v: string) => void
+  step?: string
+  placeholder?: string
+}> = ({ label, value, onCommit, step, placeholder }) => {
+  const [v, setV] = React.useState<string>(value != null && value !== '' ? String(value) : '')
+  React.useEffect(() => { setV(value != null && value !== '' ? String(value) : '') }, [value])
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      <input
+        type="number"
+        value={v}
+        step={step}
+        placeholder={placeholder}
+        onChange={e => setV(e.target.value)}
+        onBlur={() => onCommit(v)}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-300"
+      />
+    </div>
+  )
+}
+
+// Bewerkbare batchvelden per fase. De checklist hierboven leest dezelfde velden,
+// dus invullen vinkt de bijbehorende controle automatisch af.
+const FASE_VELDEN: Record<string, { key: string, labelKey: string, step: string, ph: string }[]> = {
+  Brouwen: [
+    { key: 'OG', labelKey: 'batch_info_og', step: '0.001', ph: '1.052' },
+    { key: 'liter_vergist', labelKey: 'flow_veld_liter', step: '0.1', ph: '20' },
+    { key: 'maisch_ph', labelKey: 'batch_info_mash_ph', step: '0.01', ph: '5.40' },
+    { key: 'kook_ph', labelKey: 'batch_info_boil_ph', step: '0.01', ph: '5.20' },
+  ],
+  Vergisten: [
+    { key: 'FG', labelKey: 'batch_info_fg', step: '0.001', ph: '1.012' },
+  ],
+  Conditioneren: [
+    { key: 'ABV', labelKey: 'batch_info_alcohol', step: '0.1', ph: '5.2' },
+    { key: 'product_ph', labelKey: 'batch_info_product_ph', step: '0.01', ph: '4.30' },
+  ],
 }
 
 // Legacy-status 'Verpakt' telt als 'Afgevuld' in de flow
@@ -214,6 +262,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setPage('batches')
   }
 
+  // Schrijf een veld direct naar de batch. Numerieke waarden worden als getal
+  // opgeslagen, lege strings blijven leeg (zodat checklist-checks weer afgaan).
+  const updateBatch = (patch: any) => {
+    if (!selB) return
+    setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
+  }
+  const commitNum = (key: string) => (v: string) => {
+    const s = (v ?? '').trim()
+    updateBatch({ [key]: s === '' ? '' : (isNaN(Number(s)) ? s : Number(s)) })
+  }
+
   const betaBadge = (
     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider bg-purple-100 text-purple-700 ring-1 ring-purple-200">
       {t('flow_beta')}
@@ -392,6 +451,33 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   {c.detail && <span className="text-xs text-gray-400">{c.detail}</span>}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Invullen — bewerkbare batchvelden voor de huidige fase */}
+          {getoondeFase === huidigeFase && faseStatus === 'Gepland' && (
+            <div className="border border-gray-200 rounded-lg p-3">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
+                  opts={(tanks || []).map((tk: any) => ({ v: tk.naam ?? String(tk.id), l: tk.naam ?? String(tk.id) }))} />
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                  <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                </div>
+              </div>
+            </div>
+          )}
+          {getoondeFase === huidigeFase && FASE_VELDEN[faseStatus] && (
+            <div className="border border-gray-200 rounded-lg p-3">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {FASE_VELDEN[faseStatus].map(veld => (
+                  <FlowVeld key={veld.key} label={t(veld.labelKey)} value={selB[veld.key]}
+                    onCommit={commitNum(veld.key)} step={veld.step} placeholder={veld.ph} />
+                ))}
+              </div>
             </div>
           )}
 

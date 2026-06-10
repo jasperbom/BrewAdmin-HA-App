@@ -2297,5 +2297,8 @@
   "tool_ph_modus_water": "Agua de elaboración",
   "tool_ph_alkaliniteit": "Alcalinidad (mg/L CaCO₃)",
   "tool_ph_water_doel": "Lleva el agua a aproximadamente pH 5,4 (≈95% de la alcalinidad neutralizada).",
-  "tool_ph_disclaimer_water": "Valor orientativo basado en la alcalinidad del agua (1 mEq = 50 mg CaCO₃; fuerza ácida efectiva ≈10,3 mEq/mL para ácido láctico 80% en torno a pH 5,5). Mide el pH tras añadir y completa."
+  "tool_ph_disclaimer_water": "Valor orientativo basado en la alcalinidad del agua (1 mEq = 50 mg CaCO₃; fuerza ácida efectiva ≈10,3 mEq/mL para ácido láctico 80% en torno a pH 5,5). Mide el pH tras añadir y completa.",
+  "batch_info_boil_ph": "pH de hervido",
+  "flow_veld_titel": "Introducir datos",
+  "flow_veld_liter": "Volumen fermentado (L)"
 }
