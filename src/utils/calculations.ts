@@ -2,12 +2,132 @@ import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsin
 import { convertEenheid } from './constants'
 import { ymd } from './format'
 
+// ── Veilige formule-evaluator ───────────────────────────────────────────────
+// Evalueert de custom accijnsformule zonder new Function()/eval. De formule is
+// opgeslagen app-data en reist mee in de Excel-backup; uitvoeren als echt
+// JavaScript zou een stored code-executie-vector zijn (een kwaadaardig
+// backup-bestand krijgt dan toegang tot fetch, localStorage, enz.). Deze
+// evaluator ondersteunt alleen rekenkunde: getallen, de aangeleverde
+// variabelen, + - * / % **, vergelijkingen, && || !, ternary (?:) en een
+// whitelist van Math-functies. Gooit een Error met uitleg bij ongeldige invoer.
+
+type FormuleTok = { kind: 'num', v: number } | { kind: 'id', v: string } | { kind: 'op', v: string }
+
+const FORMULE_MATH_FNS: Record<string, (...a: number[]) => number> = {
+  min: Math.min, max: Math.max, round: Math.round, floor: Math.floor,
+  ceil: Math.ceil, abs: Math.abs, sqrt: Math.sqrt, pow: Math.pow,
+  log: Math.log, exp: Math.exp,
+}
+
+const _formuleTokenize = (src: string): FormuleTok[] => {
+  const toks: FormuleTok[] = []
+  let i = 0
+  while (i < src.length) {
+    const c = src[i]
+    if (/\s/.test(c)) { i++; continue }
+    if (/[0-9.]/.test(c)) {
+      const m = src.slice(i).match(/^\d*\.?\d+(e[+-]?\d+)?/i)
+      if (!m) throw new Error(`ongeldig getal op positie ${i}`)
+      toks.push({kind: 'num', v: parseFloat(m[0])}); i += m[0].length; continue
+    }
+    if (/[A-Za-z_]/.test(c)) {
+      const m = src.slice(i).match(/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?/)!
+      toks.push({kind: 'id', v: m[0]}); i += m[0].length; continue
+    }
+    const three = src.slice(i, i + 3)
+    if (three === '===' || three === '!==') {
+      toks.push({kind: 'op', v: three.slice(0, 2)}); i += 3; continue
+    }
+    const two = src.slice(i, i + 2)
+    if (['**', '<=', '>=', '==', '!=', '&&', '||'].includes(two)) {
+      toks.push({kind: 'op', v: two}); i += 2; continue
+    }
+    if ('+-*/%()<>?:,!'.includes(c)) { toks.push({kind: 'op', v: c}); i++; continue }
+    throw new Error(`onbekend teken '${c}'`)
+  }
+  return toks
+}
+
+export const evalAccijnsFormule = (expr: string, vars: Record<string, number>): number => {
+  const toks = _formuleTokenize(expr)
+  let p = 0
+  const isOp = (v: string) => { const t = toks[p]; return !!t && t.kind === 'op' && t.v === v }
+  const eat = (v: string) => {
+    if (!isOp(v)) throw new Error(`'${v}' verwacht`)
+    p++
+  }
+  const ternary = (): number => {
+    const c = or()
+    if (isOp('?')) { p++; const a = ternary(); eat(':'); const b = ternary(); return c ? a : b }
+    return c
+  }
+  const or  = (): number => { let v = and(); while (isOp('||')) { p++; v = v || and() } return v }
+  const and = (): number => { let v = eq();  while (isOp('&&')) { p++; v = v && eq() } return v }
+  const eq  = (): number => {
+    let v = rel()
+    while (isOp('==') || isOp('!=')) { const op = toks[p++].v; const r = rel(); v = (op === '==' ? v === r : v !== r) ? 1 : 0 }
+    return v
+  }
+  const rel = (): number => {
+    let v = add()
+    while (isOp('<') || isOp('>') || isOp('<=') || isOp('>=')) {
+      const op = toks[p++].v; const r = add()
+      v = (op === '<' ? v < r : op === '>' ? v > r : op === '<=' ? v <= r : v >= r) ? 1 : 0
+    }
+    return v
+  }
+  const add = (): number => {
+    let v = mul()
+    while (isOp('+') || isOp('-')) { const op = toks[p++].v; const r = mul(); v = op === '+' ? v + r : v - r }
+    return v
+  }
+  const mul = (): number => {
+    let v = unary()
+    while (isOp('*') || isOp('/') || isOp('%')) { const op = toks[p++].v; const r = unary(); v = op === '*' ? v * r : op === '/' ? v / r : v % r }
+    return v
+  }
+  const unary = (): number => {
+    if (isOp('-')) { p++; return -unary() }
+    if (isOp('+')) { p++; return +unary() }
+    if (isOp('!')) { p++; return unary() ? 0 : 1 }
+    return powr()
+  }
+  const powr = (): number => {
+    const base = primary()
+    if (isOp('**')) { p++; return Math.pow(base, unary()) }
+    return base
+  }
+  const primary = (): number => {
+    const t = toks[p]
+    if (!t) throw new Error('onverwacht einde van formule')
+    if (t.kind === 'num') { p++; return t.v }
+    if (t.kind === 'id') {
+      p++
+      if (t.v.startsWith('Math.')) {
+        const fn = FORMULE_MATH_FNS[t.v.slice(5)]
+        if (!fn) throw new Error(`onbekende functie ${t.v}`)
+        eat('(')
+        const args: number[] = []
+        if (!isOp(')')) { args.push(ternary()); while (isOp(',')) { p++; args.push(ternary()) } }
+        eat(')')
+        return fn(...args)
+      }
+      if (t.v in vars) return Number(vars[t.v]) || 0
+      throw new Error(`onbekende variabele '${t.v}'`)
+    }
+    if (t.kind === 'op' && t.v === '(') { p++; const v = ternary(); eat(')'); return v }
+    throw new Error(`onverwacht teken '${(t as any).v}'`)
+  }
+  const result = ternary()
+  if (p !== toks.length) throw new Error('onverwachte tekens na einde van formule')
+  return result
+}
+
 export const accijnsCalc = (L: number, abv: number, r1 = 7.51, r2 = 24.17, inst: AccijnsInst | null = null, plato?: number): number => {
   const liter = L; const hl = L / 100
   if (inst?.customFormulaEnabled && inst?.customFormula) {
     try {
-      // @ts-ignore
-      const result = new Function('liter','abv','hl','r1','r2','plato', `"use strict"; return (${inst.customFormula});`)(liter, abv || 0, hl, r1, r2, plato || 0)
+      const result = evalAccijnsFormule(inst.customFormula, { liter, abv: abv || 0, hl, r1, r2, plato: plato || 0 })
       if (typeof result === 'number' && !isNaN(result)) return result
     } catch(e) {}
   }

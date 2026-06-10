@@ -4,6 +4,119 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.25] — 2026-06-10
+
+### Fixed — Versienummer in de app liep achter
+
+`__APP_VERSION__` stond hardcoded op `1.8.1` in `vite.config.ts`, waardoor de
+UI een verkeerd versienummer toonde. De build leest de versie nu rechtstreeks
+uit `config.yaml` (single source of truth), zodat dit niet opnieuw kan
+verlopen.
+
+- `vite.config.ts`.
+
+## [1.10.24] — 2026-06-10
+
+### Fixed — BTW-periodestatus gebruikte UTC-datum
+
+Het BTW-aangifte-tabblad bepaalde "vandaag" met `toISOString()` (UTC). Voor
+NL/BE (CET/CEST) leverde dat rond middernacht en bij jaar-/kwartaalgrenzen
+de verkeerde kalenderdag op, waardoor een periode een dag te vroeg of te
+laat als Lopend/Openstaand werd geclassificeerd. Nu via `tod()` (lokale
+kalenderdag) uit `format.ts`.
+
+- `src/pages/BoekhoudingPage.tsx`.
+
+## [1.10.23] — 2026-06-10
+
+### Fixed — Lokale PDF-factuur-scan werkte niet (dode pdfjs-dependency)
+
+`extractPdfText()` wachtte op `window.pdfjsLib`, maar niets laadde die global
+— de lokale PDF-tekstextractie retourneerde dus altijd een lege string,
+waardoor élke PDF-factuur (onnodig) naar de Claude-API ging en gebruikers
+zonder Claude-key helemaal niet konden scannen. `pdfjs-dist` wordt nu echt
+meegebundeld; de worker draait via een blob-URL (past binnen de CSP
+`worker-src blob:`). De `getDocument`-call gebruikt `isEvalSupported: false`
+als mitigatie voor CVE-2024-4367 (JS-executie via een kwaadaardig PDF-font).
+
+- `src/components/InkoopFactuurModal.tsx`.
+
+## [1.10.22] — 2026-06-10
+
+### Fixed — Mislukte saves worden automatisch opnieuw geprobeerd
+
+Een POST naar `/api/data/<key>` die faalde (server kort onbereikbaar) liet de
+`modified`-vlag permanent op true staan zonder nieuwe poging — de wijziging
+stond dan alleen nog in localStorage en kon stil verloren gaan. `useStore`
+houdt nu per key de laatste mislukte payload bij en probeert die elke 15
+seconden opnieuw; een sequence-nummer per key voorkomt dat een oude retry een
+nieuwere save overschrijft.
+
+- `src/utils/api.ts`.
+
+## [1.10.21] — 2026-06-10
+
+### Fixed — `brouwproces_instellingen` ontbrak in Excel-backup
+
+De sleutel `brouwproces_instellingen` (o.a. `hop_storage`) werd door
+`doExport`/`doImport` in `App.tsx` wel doorgegeven, maar `excel.ts` schreef
+hem niet naar het Instellingen-sheet en las hem niet terug. Hierdoor ging
+deze instelling bij elke backup/restore-cyclus verloren.
+
+- `src/utils/excel.ts`.
+
+## [1.10.20] — 2026-06-10
+
+### Security — Custom accijnsformule draait niet langer als JavaScript
+
+De custom accijnsformule werd via `new Function()` als echt JavaScript
+uitgevoerd. Omdat `accijns_instellingen` in de Excel-backup zit, kon een
+kwaadaardig backup-bestand zo stille code-executie krijgen (toegang tot
+`fetch`, `localStorage`, …). De formule gaat nu door een eigen veilige
+expressie-evaluator (`evalAccijnsFormule`) die alleen rekenkunde toestaat:
+getallen, de variabelen `liter`/`abv`/`hl`/`r1`/`r2`/`plato`, `+ - * / % **`,
+vergelijkingen, `&& || !`, ternary en een whitelist van `Math.`-functies.
+
+Tevens gefixt: de formule-preview in Instellingen testte zonder `plato`,
+waardoor de preview kon afwijken van de werkelijke berekening — de preview
+gebruikt nu exact dezelfde evaluator en parameterset.
+
+- `src/utils/calculations.ts`, `src/pages/InstellingenPage.tsx`.
+
+## [1.10.19] — 2026-06-10
+
+### Security — Stored XSS in pakbon/factuur/herinnering-print verholpen
+
+Klant- en ordervelden uit WooCommerce (bedrijfsnaam, naam, adres, opmerkingen,
+biernaam, omschrijvingen) werden zonder HTML-escaping in de print-HTML
+geïnterpoleerd die via `document.write` in een same-origin popup wordt gezet.
+Een kwaadwillende bestelnaam kon zo scripts uitvoeren in de app-context.
+Alle geïnterpoleerde datavelden gaan nu door een `esc()`-helper (zelfde
+patroon als `mailTemplate.ts`).
+
+- `src/components/PakbonExport.tsx`.
+
+## [1.10.18] — 2026-06-10
+
+### Security — Server-hardening (security-review)
+
+- **Ingress source-IP-check**: wanneer de app als HA-addon draait
+  (`SUPERVISOR_TOKEN` aanwezig) accepteert de server alleen nog requests van
+  de HA-ingress-gateway (`172.30.32.2`) en loopback. Voorheen kon elke andere
+  addon/container op het interne hassio-netwerk de ongeauthenticeerde API
+  benaderen, inclusief opgeslagen credentials en de HA service-call-proxy.
+- **CSP aangescherpt**: de CDN-whitelist (`unpkg.com`, `cdn.tailwindcss.com`,
+  `cdn.sheetjs.com`) is verwijderd uit `script-src`/`worker-src`/`connect-src`
+  — de build is volledig single-file, dus externe scripts zijn nooit nodig.
+- **ThreadingHTTPServer**: één trage upstream-call (Claude/Brewfather/SMTP)
+  blokkeert niet langer alle andere requests.
+- **Atomaire data-writes**: `/api/data/<key>`-saves en interne JSON-writes
+  gaan nu via tempbestand + `os.replace` en onder de bestaande `_data_lock`,
+  zodat een crash mid-write geen corrupt JSON-bestand achterlaat en
+  achtergrondthreads geen halve merges overschrijven.
+
+- `server.py`.
+
 ## [1.10.17] — 2026-06-09
 
 ### Fixed — Privé-order buiten AGP kon niet afgesloten worden

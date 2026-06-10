@@ -59,8 +59,16 @@ const CSS = `
   }
 `
 
+// HTML-escape voor alle data die in de print-HTML wordt ge\u00efnterpoleerd.
+// Klant-/ordervelden komen rechtstreeks uit WooCommerce; zonder escaping zou
+// een kwaadwillende bedrijfsnaam of opmerking scripts kunnen uitvoeren in de
+// app-origin zodra het printvenster opent (document.write erft de origin).
+const esc = (v: any): string => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
 function fmtEuro(n: number): string {
-  return '\u20ac\u202f' + n.toFixed(2).replace('.', ',')
+  return '\u20ac\u202f' + Number(n || 0).toFixed(2).replace('.', ',')
 }
 
 function fmtDate(d: string | undefined): string {
@@ -72,7 +80,7 @@ function fmtDate(d: string | undefined): string {
 function openPrint(html: string, filename: string): void {
   const w = window.open('', '_blank', 'width=900,height=700')
   if (!w) { alert(t('err_popup_blocked')); return }
-  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${filename}</title><style>${CSS}</style></head><body>${html}</body></html>`)
+  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${CSS}</style></head><body>${html}</body></html>`)
   w.document.close()
   w.focus()
   // Sluit popup automatisch na opslaan/annuleren print
@@ -83,7 +91,7 @@ function openPrint(html: string, filename: string): void {
 function breweryBlock(brewery: any, appName: string, logo: string | null | undefined): string {
   const fv = brewery?.factuur_velden || {}
   const showLogo = fv.logo !== false
-  const logoHtml = showLogo && logo ? `<img src="${logo}" class="logo" alt="logo" />` : ''
+  const logoHtml = showLogo && logo ? `<img src="${esc(logo)}" class="logo" alt="logo" />` : ''
   const naam = brewery?.naam || appName || 'Brouwerij'
   const straat = [brewery?.straat, brewery?.huisnummer].filter(Boolean).join(' ')
   const plaats = [brewery?.postcode, brewery?.stad].filter(Boolean).join(' ')
@@ -95,12 +103,12 @@ function breweryBlock(brewery: any, appName: string, logo: string | null | undef
     fv.iban !== false && brewery?.iban ? `IBAN: ${brewery.iban}` : '',
     fv.email !== false ? (brewery?.email || '') : '',
     fv.telefoon !== false ? (brewery?.telefoon || '') : '',
-  ].filter(Boolean).map(l => `<div>${l}</div>`).join('')
+  ].filter(Boolean).map(l => `<div>${esc(l)}</div>`).join('')
   return `
     <div class="hdr-left">
       ${logoHtml}
       <div>
-        <div class="bi-naam">${naam}</div>
+        <div class="bi-naam">${esc(naam)}</div>
         ${infoLines ? `<div class="bi-info">${infoLines}</div>` : ''}
       </div>
     </div>`
@@ -108,16 +116,16 @@ function breweryBlock(brewery: any, appName: string, logo: string | null | undef
 
 function klantBlock(order: any): string {
   const lines: string[] = []
-  if (order.klant_bedrijf) lines.push(`<strong>${order.klant_bedrijf}</strong>`)
-  if (order.klant_naam) lines.push(order.klant_naam)
+  if (order.klant_bedrijf) lines.push(`<strong>${esc(order.klant_bedrijf)}</strong>`)
+  if (order.klant_naam) lines.push(esc(order.klant_naam))
   const straat = order.klant_straat && order.klant_huisnummer
     ? `${order.klant_straat} ${order.klant_huisnummer}`
     : (order.klant_straat || '')
-  if (straat) lines.push(straat)
+  if (straat) lines.push(esc(straat))
   const plaats = [order.klant_postcode, order.klant_stad].filter(Boolean).join('  ')
-  if (plaats) lines.push(plaats)
-  if (order.klant_btw_nummer) lines.push(`BTW: ${order.klant_btw_nummer}`)
-  if (order.klant_email) lines.push(order.klant_email)
+  if (plaats) lines.push(esc(plaats))
+  if (order.klant_btw_nummer) lines.push(`BTW: ${esc(order.klant_btw_nummer)}`)
+  if (order.klant_email) lines.push(esc(order.klant_email))
   if (!lines.length) lines.push('—')
   const [first, ...rest] = lines
   return `<div class="kn">${first}</div>${rest.map(l => `<p>${l}</p>`).join('')}`
@@ -152,12 +160,12 @@ function buildPakbonBody(
     const regel = (order?.regels || []).find((r: any) => r.id === p.regel_id)
     const bierNaam = regel?.bier_naam || batch?.biernaam || batch?.naam || '—'
     return `<tr>
-      <td>${bierNaam}</td>
-      <td>${batch?.batch_nummer || '—'}</td>
-      <td>${afvulling?.verpakking_type || '—'}</td>
-      <td>${afvulling?.inhoud_per_eenheid ? `${afvulling.inhoud_per_eenheid}L` : '—'}</td>
+      <td>${esc(bierNaam)}</td>
+      <td>${esc(batch?.batch_nummer || '—')}</td>
+      <td>${esc(afvulling?.verpakking_type || '—')}</td>
+      <td>${afvulling?.inhoud_per_eenheid ? `${esc(afvulling.inhoud_per_eenheid)}L` : '—'}</td>
       <td>${afvulling?.tht ? fmtDate(afvulling.tht) : '—'}</td>
-      <td class="r">${p.aantal}</td>
+      <td class="r">${esc(p.aantal)}</td>
     </tr>`
   }).join('')
 
@@ -166,13 +174,13 @@ function buildPakbonBody(
       ${breweryBlock(brewery, appName, factuurLogo)}
       <div class="hdr-right">
         <div class="doc-title">PAKBON</div>
-        <div class="doc-nr">${pakbonNr}</div>
+        <div class="doc-nr">${esc(pakbonNr)}</div>
       </div>
     </div>
 
     <div class="meta-grid">
-      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${datum}</div></div>
-      <div class="meta-block"><div class="ml">Order</div><div class="mv">${orderRef}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${esc(datum)}</div></div>
+      <div class="meta-block"><div class="ml">Order</div><div class="mv">${esc(orderRef)}</div></div>
     </div>
 
     <div class="kb">
@@ -196,7 +204,7 @@ function buildPakbonBody(
       </tbody>
     </table>
 
-    ${order.opmerkingen ? `<div class="remarks"><strong>Opmerking:</strong> ${order.opmerkingen}</div>` : ''}
+    ${order.opmerkingen ? `<div class="remarks"><strong>Opmerking:</strong> ${esc(order.opmerkingen)}</div>` : ''}
 
     <div class="footer">
       <div class="sign-block">
@@ -241,7 +249,7 @@ export function buildPakbonHTML(
   factuurLogo: string | null | undefined
 ): {html: string, filename: string} {
   const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo)
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${r.filename}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
 
@@ -288,17 +296,17 @@ function buildFactuurBody(
   })()
 
   const regelRows = regels.map((r: any) => `<tr>
-    <td>${r.omschrijving || '—'}</td>
+    <td>${esc(r.omschrijving || '—')}</td>
     <td class="r">${fmtQty(r.hoeveelheid)}</td>
     <td class="r">${fmtEuro(r.prijs_per_stuk)}</td>
-    <td class="r">${r.btw_pct}%</td>
+    <td class="r">${esc(r.btw_pct)}%</td>
     <td class="r">${fmtEuro(r.netto)}</td>
     <td class="r">${fmtEuro(r.btw_bedrag)}</td>
     <td class="r">${fmtEuro(r.bruto)}</td>
   </tr>`).join('')
 
   const btwRows = btwOverzicht.map((b: any) => `<tr>
-    <td>BTW ${b.tarief}%</td>
+    <td>BTW ${esc(b.tarief)}%</td>
     <td class="r">${fmtEuro(b.netto)}</td>
     <td class="r">${fmtEuro(b.btw)}</td>
     <td class="r">${fmtEuro(b.netto + b.btw)}</td>
@@ -326,13 +334,13 @@ function buildFactuurBody(
       ${breweryBlock(brewery, appName, factuurLogo)}
       <div class="hdr-right">
         <div class="doc-title">${isCredit ? t('lbl_creditnota_titel') : t('lbl_factuur_titel')}</div>
-        <div class="doc-nr">${factuurnummer}</div>
+        <div class="doc-nr">${esc(factuurnummer)}</div>
         ${factuur.status === 'betaald' ? '<div style="margin-top:2mm"><span class="badge badge-green">✓ Betaald</span></div>' : ''}
       </div>
     </div>
 
     <div class="meta-grid">
-      ${metaItems.map(m => `<div class="meta-block"><div class="ml">${m.label}</div><div class="mv">${m.val}</div></div>`).join('')}
+      ${metaItems.map(m => `<div class="meta-block"><div class="ml">${esc(m.label)}</div><div class="mv">${esc(m.val)}</div></div>`).join('')}
     </div>
 
     <div class="kb">
@@ -383,12 +391,12 @@ function buildFactuurBody(
 
     ${(brewery?.factuur_velden?.betaalblok !== false) ? `<div class="pay-block">
       <div class="pay-title">${t('lbl_betaalinformatie')}</div>
-      ${brewery?.iban ? `<div>IBAN: <strong>${brewery.iban}</strong>${naam ? ` &nbsp;t.n.v. ${naam}` : ''}</div>` : ''}
-      <div>Bedrag: <strong>${fmtEuro(bruto)}</strong> &nbsp;·&nbsp; Vervaldatum: <strong>${vervalDatum}</strong></div>
-      <div>o.v.v. factuurnummer <strong>${factuurnummer}</strong></div>
+      ${brewery?.iban ? `<div>IBAN: <strong>${esc(brewery.iban)}</strong>${naam ? ` &nbsp;t.n.v. ${esc(naam)}` : ''}</div>` : ''}
+      <div>Bedrag: <strong>${fmtEuro(bruto)}</strong> &nbsp;·&nbsp; Vervaldatum: <strong>${esc(vervalDatum)}</strong></div>
+      <div>o.v.v. factuurnummer <strong>${esc(factuurnummer)}</strong></div>
     </div>` : ''}
 
-    ${order?.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${order.opmerkingen}</div>` : ''}
+    ${order?.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${esc(order.opmerkingen)}</div>` : ''}
   </div>`
 
   return {bodyHtml, filename: `Factuur-${factuurnummer}`}
@@ -404,7 +412,7 @@ export function buildFactuurHTML(
 ): string {
   const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
   if (!result) return ''
-  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${result.filename}</title><style>${CSS}</style></head><body>${result.bodyHtml}</body></html>`
+  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(result.filename)}</title><style>${CSS}</style></head><body>${result.bodyHtml}</body></html>`
 }
 
 // Opent printvenster
@@ -510,18 +518,18 @@ export function printHerinnering(
     ${noticeHtml}
 
     <div class="meta-grid" style="margin-bottom:5mm">
-      <div class="meta-block"><div class="ml">${t('lbl_originele_factuur')}</div><div class="mv">${factuurnummer}</div></div>
-      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${factuurdatum}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_originele_factuur')}</div><div class="mv">${esc(factuurnummer)}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${esc(factuurdatum)}</div></div>
       <div class="meta-block"><div class="ml">${t('lbl_vervaldatum').replace('{n}',String(betalingstermijn))}</div><div class="mv">${origVerval}</div></div>
       <div class="meta-block"><div class="ml">${t('lbl_openstaand_bedrag')}</div><div class="mv" style="font-weight:bold;font-size:13pt">${fmtEuro(bruto)}</div></div>
     </div>
 
     ${(fv.betaalblok !== false) ? `<div class="pay-block">
       <div class="pay-title">${t('lbl_betaalinformatie')}</div>
-      ${brewery?.iban ? `<div>IBAN: <strong>${brewery.iban}</strong>${naam ? ` &nbsp;t.n.v. ${naam}` : ''}</div>` : ''}
+      ${brewery?.iban ? `<div>IBAN: <strong>${esc(brewery.iban)}</strong>${naam ? ` &nbsp;t.n.v. ${esc(naam)}` : ''}</div>` : ''}
       <div>${t('lbl_openstaand_bedrag')}: <strong>${fmtEuro(bruto)}</strong></div>
-      <div>${t('lbl_nieuw_vervaldag')}: <strong>${nieuweVerval}</strong></div>
-      <div>o.v.v. factuurnummer <strong>${factuurnummer}</strong></div>
+      <div>${t('lbl_nieuw_vervaldag')}: <strong>${esc(nieuweVerval)}</strong></div>
+      <div>o.v.v. factuurnummer <strong>${esc(factuurnummer)}</strong></div>
     </div>` : ''}
   </div>`
 
