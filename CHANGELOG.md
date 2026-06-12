@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.36] — 2026-06-12
+
+### Added — Batchflow (bèta): volledige werkbladen per fase
+
+Elke fase heeft nu invulvelden en afvinkbare taken voor het hele brouwproces:
+
+- **Gepland** — receptkaart met doelen (OG/FG/ABV/IBU/volume), ingrediëntenlijst
+  met voorraadcheck per regel (op voorraad / tekort / geen voorraad), tank- en
+  datumkeuze en de Voorbereiding-checklist uit het batch-takensysteem.
+- **Brouwen** — chronologisch werkblad: brouwwater (volumes/pH/mineralen) →
+  ingrediënten afwegen & per regel afboeken van de voorraad (lot-keuze, zelfde
+  FEFO-gedrag als de Batches-pagina) → brouwdag-wizard met maischschema,
+  hopschema en meetpunten → wortkoeling → Brouwen/Brouwdag-taken.
+- **Vergisten** — vergistingsschema met stap-navigatie (staptemperatuur wordt
+  automatisch naar de gekoppelde HA-climate gestuurd), tanktemperatuur lezen
+  én setpoint sturen via Home Assistant, fermentatie-progressiebar (OG →
+  doel-FG op basis van de laatste meting), snelle metingen + grafiek, dry-hop
+  afboeken + dry-hopschema en verliesregistratie (monsters).
+- **Conditioneren** — temperatuurcontrols (incl. cold-crash-doel), compacte
+  carbonisatiesessies (start/voltooi/afbreek met drukberekening), definitieve
+  ABV, verliesregistratie (gist dump e.d.) en tankverplaatsing naar een
+  ontsmette bright tank.
+- **Afvullen** (hernoemd van "Afgevuld" in de flow) — Botteldag/hygiëne-
+  checklist, volledige afvulregistratie (product, verpakking incl. voorraad,
+  THT, accijns-voorcalc) en definitieve verliezen met restvolume-indicator.
+- **Gereed** (hernoemd van "Gesloten" in de flow) — kerngetallen (OG, FG, ABV,
+  rendement, liters, verliezen) en financieel resultaat: kostprijs (brouwkosten
+  + verpakking + accijns, per liter/stuk) plus potentiële opbrengst en marge op
+  basis van de verkoopprijzen van gekoppelde artikelen.
+
+De fase-checklists zijn per fase gekoppeld aan de juiste takengroepen
+(Voorbereiding, Brouwen/Brouwdag, Gisting, Botteldag). De statuslabels elders
+in de app blijven ongewijzigd; alleen de flow gebruikt de actiegerichte namen.
+
+Bestanden: `src/pages/BatchFlowPage.tsx`, `src/App.tsx`, `src/i18n/*.json`.
+
 ## [1.10.35] — 2026-06-10
 
 ### Added — Batches: hoeveelheid aanpasbaar bij het boeken van ingrediënten
