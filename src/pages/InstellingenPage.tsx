@@ -4,7 +4,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, HaStateEntry, newId } from '../utils/api'
+import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
@@ -238,7 +238,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, resetApp=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -496,6 +496,51 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [claudeMsg, setClaudeMsg] = React.useState('');
   const [sensorTests, setSensorTests] = React.useState<Record<number,string>>({});
   const [sensorTesting, setSensorTesting] = React.useState<number|null>(null);
+
+  // ── CO₂-cilinder weegsensor ──────────────────────────────────────────────
+  const [co2Test, setCo2Test] = React.useState('');
+  const [co2Testing, setCo2Testing] = React.useState(false);
+  const testCo2Sensor = async () => {
+    const entity = haInst?.co2_entity
+    if (!entity) return
+    setCo2Testing(true); setCo2Test('')
+    try {
+      const d = await haGetState(entity)
+      setCo2Test(`✓ ${d.state}${d.unit ? ' '+d.unit : ''}`)
+    } catch (e: any) {
+      setCo2Test(`⚠ ${t('settings_ha_error')}: ${e.message}`)
+    }
+    setCo2Testing(false)
+  }
+
+  // ── Meldingen (HA notify) ────────────────────────────────────────────────
+  const [notifyServices, setNotifyServices] = React.useState<string[]>([]);
+  const [notifyLoading, setNotifyLoading] = React.useState(false);
+  const [notifyMsg, setNotifyMsg] = React.useState('');
+  const [notifyTesting, setNotifyTesting] = React.useState(false);
+  const loadNotifyServices = async () => {
+    setNotifyLoading(true); setNotifyMsg('')
+    try {
+      const list = await haListNotifyServices()
+      setNotifyServices(list)
+      setNotifyMsg(t('settings_ha_discovered').replace('{n}', String(list.length)))
+    } catch (e: any) {
+      setNotifyMsg(`⚠ ${e.message}`)
+    }
+    setNotifyLoading(false)
+  }
+  const testNotify = async () => {
+    const svc = notificatieInst?.notify_service
+    if (!svc) return
+    setNotifyTesting(true); setNotifyMsg('')
+    try {
+      await haNotify(svc, t('notif_test_title'), t('notif_test_body'))
+      setNotifyMsg(`✓ ${t('notif_test_sent')}`)
+    } catch (e: any) {
+      setNotifyMsg(`⚠ ${e.message}`)
+    }
+    setNotifyTesting(false)
+  }
 
   const testSensor = async (id: number, entity: string) => {
     if (!entity) return
@@ -775,6 +820,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
     {id:'koppelingen',   label:t('settings_koppelingen'),  icon:'🔗'},
     {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
+    {id:'meldingen',     label:t('settings_meldingen'),    icon:'🔔'},
     {id:'categorieen',   label:t('settings_categorieen'),  icon:'🗂'},
     {id:'taken',         label:t('settings_batch_taken'),  icon:'📋'},
     {id:'app',           label:t('settings_app'),          icon:'⚙️'},
@@ -1823,6 +1869,51 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       </div>
 
+      {/* ── CO₂-cilinder weegsensor ── */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ha_co2_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_ha_co2_desc')}</p>
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={haInst?.co2_enabled||false}
+              onChange={e => {setHaInst((p: any) => ({...p, co2_enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`HA CO₂-sensor ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
+        </label>
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Btn v="secondary" s="sm" onClick={() => discoverDomain('sensor')} disabled={haDiscovering==='sensor'}>
+            {haDiscovering==='sensor' ? t('settings_ha_loading') : t('settings_ha_discover')}
+          </Btn>
+          {renderClassFilter('sensor')}
+        </div>
+
+        <div className="flex items-end gap-2 flex-wrap">
+          <div className="flex-1 min-w-48">
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+            {renderEntityPicker('sensor', 'co2', haInst?.co2_entity||'',
+              v => setHaInst((p: any) => ({...p, co2_entity: v})), 'sensor.co2_cilinder_gewicht')}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_co2_unit')}</label>
+            <select value={haInst?.co2_unit || 'kg'} onChange={e => setHaInst((p: any) => ({...p, co2_unit: e.target.value}))}
+              className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input bg-white">
+              <option value="kg">{t('settings_ha_co2_unit_kg')}</option>
+              <option value="g">{t('settings_ha_co2_unit_g')}</option>
+            </select>
+          </div>
+          <Btn v="secondary" s="sm" onClick={testCo2Sensor} disabled={co2Testing || !haInst?.co2_entity}>
+            {co2Testing ? t('settings_ha_testing') : t('btn_test')}
+          </Btn>
+        </div>
+        {co2Test && (
+          <div className={`mt-2 text-sm font-medium ${co2Test.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{co2Test}</div>
+        )}
+        <p className="mt-3 text-xs text-gray-400">{t('settings_ha_co2_hint')}</p>
+      </div>
+
       {/* ── Climate ── */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ha_climate_title')}</h2>
@@ -2111,6 +2202,68 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           )}
         </div>
         <Btn v="secondary" s="sm" onClick={() => addHaEntity('switches')}>{t('btn_switch_toevoegen')}</Btn>
+      </div>
+      </>}
+
+      {/* MELDINGEN (HA notify) */}
+      {activeSection==='meldingen' && <>
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_notif_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_notif_desc')}</p>
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={notificatieInst?.enabled||false}
+              onChange={e => {setNotificatieInst((p: any) => ({...p, enabled: e.target.checked}));logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`HA-meldingen ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('settings_notif_ha_enable')}</span>
+        </label>
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Btn v="secondary" s="sm" onClick={loadNotifyServices} disabled={notifyLoading}>
+            {notifyLoading ? t('settings_ha_loading') : t('settings_notif_discover')}
+          </Btn>
+        </div>
+
+        <div className="flex items-end gap-2 flex-wrap mb-1">
+          <div className="flex-1 min-w-56">
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_notif_service')}</label>
+            {notifyServices.length > 0 ? (
+              <select value={notificatieInst?.notify_service || ''}
+                onChange={e => setNotificatieInst((p: any) => ({...p, notify_service: e.target.value}))}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-full t-input bg-white">
+                <option value="">{t('opt_select')}</option>
+                {notifyServices.map((s: string) => <option key={s} value={s}>notify.{s}</option>)}
+              </select>
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-gray-400">notify.</span>
+                <input type="text" value={notificatieInst?.notify_service || ''}
+                  onChange={e => setNotificatieInst((p: any) => ({...p, notify_service: e.target.value.replace(/^notify\./, '')}))}
+                  placeholder="mobile_app_iphone"
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm flex-1 t-input" />
+              </div>
+            )}
+          </div>
+          <Btn v="secondary" s="sm" onClick={testNotify} disabled={notifyTesting || !notificatieInst?.notify_service}>
+            {notifyTesting ? t('settings_ha_testing') : t('settings_notif_test')}
+          </Btn>
+        </div>
+        {notifyMsg && (
+          <div className={`mt-1 text-sm font-medium ${notifyMsg.startsWith('✓') ? 'text-green-600' : (notifyMsg.startsWith('⚠') ? 'text-red-600' : 'text-gray-500')}`}>{notifyMsg}</div>
+        )}
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mt-5">
+          <div className="relative">
+            <input type="checkbox" checked={notificatieInst?.on_screen !== false}
+              onChange={e => setNotificatieInst((p: any) => ({...p, on_screen: e.target.checked}))} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('settings_notif_onscreen')}</span>
+        </label>
+
+        <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_notif_hint')}</p>
       </div>
       </>}
 

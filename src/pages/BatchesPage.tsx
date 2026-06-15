@@ -2776,7 +2776,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
               const previewOpgelost = co2GramOpgelost(curVols, batchLiter)
               const previewVerbruik = co2GramTotaalVerbruik(curVols, batchLiter, curVerlies)
 
-              const startSessie = () => {
+              // CO₂-cilinder weegsensor beschikbaar voor live bewaking?
+              const co2SensorOn = !!(haInst?.co2_enabled && haInst?.co2_entity)
+
+              const startSessie = async () => {
                 if (!batchLiter) { alert(t('carb_no_batch_liter')); return }
                 if (actief) { alert(t('carb_already_active')); return }
                 const vols = Number(carbForm.doel_co2_vol) || defaultVols
@@ -2798,6 +2801,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   doel_co2_gram_verbruik: co2GramTotaalVerbruik(vols, batchLiter, verliesFactor),
                   status: 'actief',
                   created_at: new Date().toISOString(),
+                }
+                // CO₂-bewaking: leg startgewicht van de fles vast (in gram). Lukt
+                // de uitlezing niet, dan vult de server het nulpunt later zelf in.
+                if (co2SensorOn && carbForm.co2_bewaking !== false) {
+                  nieuw.co2_monitoring = true
+                  try {
+                    const d = await haGetState(haInst.co2_entity)
+                    const raw = parseFloat(d.state)
+                    if (!isNaN(raw)) nieuw.start_cilinder_gram = haInst.co2_unit === 'kg' ? raw * 1000 : raw
+                  } catch {}
                 }
                 setCarbSessies((prev: any[]) => [...(prev||[]), nieuw])
                 logAudit(auditLog, setAuditLog, {entiteit:'Carbonatiesessie', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Batch ${selB.naam||''}: ${vols} vols @ ${temp}°C (${carbForm.methode})`})
@@ -2908,6 +2921,34 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             </div>
                           </div>
                         </div>
+                        {actief.co2_monitoring && (() => {
+                          const doel = Number(actief.doel_co2_gram_verbruik) || 0
+                          const live = Number(actief.verbruikt_co2_gram_live) || 0
+                          const pct = doel > 0 ? Math.min(100, Math.round(live / doel * 100)) : 0
+                          const bereikt = !!actief.doel_bereikt_op
+                          return (
+                            <div className="pt-2 border-t border-green-200">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('carb_co2_monitor_label')}</span>
+                                {bereikt
+                                  ? <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">{t('carb_co2_monitor_reached')}</span>
+                                  : <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">{pct}%</span>}
+                              </div>
+                              <div className="h-2.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all ${bereikt ? 'bg-green-500' : 'bg-blue-500'}`} style={{width: `${pct}%`}}></div>
+                              </div>
+                              <div className="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                                <span>{t('carb_co2_monitor_added').replace('{n}', live.toFixed(0))} / {doel.toFixed(0)} {t('carb_g_consumption_short')}</span>
+                                {actief.start_cilinder_gram != null && <span>{t('carb_co2_monitor_start')}: {Number(actief.start_cilinder_gram).toFixed(0)} g</span>}
+                                {actief.huidig_cilinder_gram != null && <span>{t('carb_co2_monitor_current')}: {Number(actief.huidig_cilinder_gram).toFixed(0)} g</span>}
+                                {actief.laatste_meting_op && <span className="text-gray-400">{t('carb_co2_monitor_updated')}: {new Date(actief.laatste_meting_op).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>}
+                              </div>
+                              {actief.start_cilinder_gram == null && (
+                                <div className="mt-1 text-xs text-orange-600">{t('carb_co2_monitor_waiting')}</div>
+                              )}
+                            </div>
+                          )
+                        })()}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-green-200">
                           <Inp label={t('carb_actual_pressure')} type="number" value={carbComplete.werkelijke_druk_bar} onChange={(v: string)=>setCarbComplete((f: any)=>({...f, werkelijke_druk_bar: v}))} placeholder={Number(actief.doel_druk_bar).toFixed(2)} step="0.01" />
                           <div>
@@ -2941,6 +2982,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             <span>{t('carb_method_kopdruk')}</span>
                           </label>
                         </div>
+                        {co2SensorOn && (
+                          <label className="flex items-center gap-1.5 cursor-pointer text-sm" title={t('carb_co2_monitor_tooltip')}>
+                            <input type="checkbox" checked={carbForm.co2_bewaking !== false} onChange={e=>setCarbForm((f: any)=>({...f, co2_bewaking: e.target.checked}))} className="t-checkbox" />
+                            <span>{t('carb_co2_monitor_enable')}</span>
+                          </label>
+                        )}
                         <div className={`grid grid-cols-2 ${carbForm.methode==='stone'?'sm:grid-cols-3':'sm:grid-cols-2'} gap-2`}>
                           <div>
                             <Inp label={t('carb_target_vols')} type="number" value={carbForm.doel_co2_vol} onChange={(v: string)=>setCarbForm((f: any)=>({...f, doel_co2_vol: v}))} placeholder={defaultVols.toFixed(1)} step="0.1" />
