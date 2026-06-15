@@ -702,7 +702,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       try {
         const d = await haGetState(haInst.co2_entity)
         const raw = parseFloat(d.state)
-        if (!isNaN(raw)) nieuw.start_cilinder_gram = haInst.co2_unit === 'kg' ? raw * 1000 : raw
+        // Standaard kg (consistent met de server); gram alleen als expliciet zo ingesteld.
+        if (!isNaN(raw)) nieuw.start_cilinder_gram = (haInst.co2_unit || 'kg') === 'g' ? raw : raw * 1000
       } catch {}
     }
     setCarbSessies((prev: any[]) => [...(prev || []), nieuw])
