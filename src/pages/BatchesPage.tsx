@@ -2809,7 +2809,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                   try {
                     const d = await haGetState(haInst.co2_entity)
                     const raw = parseFloat(d.state)
-                    if (!isNaN(raw)) nieuw.start_cilinder_gram = haInst.co2_unit === 'kg' ? raw * 1000 : raw
+                    // Standaard kg (consistent met de server); gram alleen als
+                    // expliciet zo ingesteld.
+                    if (!isNaN(raw)) nieuw.start_cilinder_gram = (haInst.co2_unit || 'kg') === 'g' ? raw : raw * 1000
                   } catch {}
                 }
                 setCarbSessies((prev: any[]) => [...(prev||[]), nieuw])
@@ -2926,6 +2928,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                           const live = Number(actief.verbruikt_co2_gram_live) || 0
                           const pct = doel > 0 ? Math.min(100, Math.round(live / doel * 100)) : 0
                           const bereikt = !!actief.doel_bereikt_op
+                          // Flesgewicht wordt intern in gram bewaard; toon het in
+                          // de eenheid die de gebruiker bij de sensor koos.
+                          const co2Unit = haInst?.co2_unit || 'kg'
+                          const fmtCil = (g: number) => co2Unit === 'kg' ? `${(g/1000).toFixed(2)} kg` : `${g.toFixed(0)} g`
                           return (
                             <div className="pt-2 border-t border-green-200">
                               <div className="flex items-center justify-between mb-1">
@@ -2939,8 +2945,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                               </div>
                               <div className="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5">
                                 <span>{t('carb_co2_monitor_added').replace('{n}', live.toFixed(0))} / {doel.toFixed(0)} {t('carb_g_consumption_short')}</span>
-                                {actief.start_cilinder_gram != null && <span>{t('carb_co2_monitor_start')}: {Number(actief.start_cilinder_gram).toFixed(0)} g</span>}
-                                {actief.huidig_cilinder_gram != null && <span>{t('carb_co2_monitor_current')}: {Number(actief.huidig_cilinder_gram).toFixed(0)} g</span>}
+                                {actief.start_cilinder_gram != null && <span>{t('carb_co2_monitor_start')}: {fmtCil(Number(actief.start_cilinder_gram))}</span>}
+                                {actief.huidig_cilinder_gram != null && <span>{t('carb_co2_monitor_current')}: {fmtCil(Number(actief.huidig_cilinder_gram))}</span>}
                                 {actief.laatste_meting_op && <span className="text-gray-400">{t('carb_co2_monitor_updated')}: {new Date(actief.laatste_meting_op).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>}
                               </div>
                               {actief.start_cilinder_gram == null && (

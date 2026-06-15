@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.38] — 2026-06-15
+
+### Fixed — CO₂-eenheid (kg) werd als gram behandeld
+
+De eenheid-keuzelijst toonde standaard "kg" maar sloeg `co2_unit` pas op bij een
+actieve wijziging. Een lege waarde werd bij het vastleggen van het startgewicht
+als **gram** geïnterpreteerd (alleen exact `kg` telde), terwijl de server juist
+kg als standaard nam. Daardoor leek de sensor "in gram" te werken.
+
+- Frontend gaat nu overal uit van **kg als standaard** (gram alleen indien
+  expliciet ingesteld), consistent met de server.
+- Het flesgewicht in het carbonisatie-blok wordt nu getoond in de gekozen
+  eenheid (bv. `6,50 kg` i.p.v. `6500 g`). De *toegevoegde* CO₂ blijft in gram.
+
+> Een carbonisatiesessie die vóór deze fix is gestart heeft het startgewicht in
+> de verkeerde eenheid vastgelegd — breek die af en start opnieuw.
+
 ## [1.10.37] — 2026-06-15
 
 ### Added — Carbonisatiebewaking via CO₂-weegsensor
