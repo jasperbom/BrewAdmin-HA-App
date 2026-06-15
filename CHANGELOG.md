@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.37] — 2026-06-15
+
+### Added — Carbonisatiebewaking via CO₂-weegsensor
+
+De carbonisatie-tool kan nu het verbruik van de CO₂-fles live volgen en een
+melding geven zodra het berekende doel bereikt is:
+
+- **Instellingen → Home Assistant → CO₂-cilinder weegsensor** — koppel een
+  HA-sensor die het flesgewicht meet en kies of die in **kg** of **gram**
+  rapporteert (de app rekent intern altijd in gram).
+- **Start carbonisatie** legt het flesgewicht vast als nulpunt. De server volgt
+  daarna elke minuut het verbruik (start − huidig gewicht) en vergelijkt dit met
+  het berekende `doel_co2_gram_verbruik`. Een voortgangsbalk toont het percentage
+  in het carbonisatie-blok (Batches én Batchflow). Werkt ook als de browser dicht
+  is — de bewaking draait server-side.
+- **Instellingen → Meldingen** — nieuwe sectie voor notificaties. Kies een HA
+  `notify`-service (bv. `notify.mobile_app_iphone`) en stuur een testmelding.
+  Zodra het CO₂-doel bereikt is, verschijnt een melding op het scherm én een
+  push naar de gekozen HA-gebruiker. Deze meldingsinstellingen zijn herbruikbaar
+  voor toekomstige notificaties.
+
 ## [1.10.36] — 2026-06-12
 
 ### Added — Batchflow (bèta): volledige werkbladen per fase

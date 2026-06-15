@@ -666,7 +666,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   }
 
   // ── Carbonatie (compacte variant van de Batches-sessie-flow) ──────────────
-  const startCarbSessie = () => {
+  const co2SensorOn = !!(haInst?.co2_enabled && haInst?.co2_entity)
+  const startCarbSessie = async () => {
     if (!selB) return
     const batchLiter = Number(selB.liter_vergist || 0)
     if (!batchLiter) { alert(t('carb_no_batch_liter')); return }
@@ -693,6 +694,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       doel_co2_gram_verbruik: co2GramTotaalVerbruik(vols, batchLiter, verliesFactor),
       status: 'actief',
       created_at: new Date().toISOString(),
+    }
+    // CO₂-bewaking: leg het flesgewicht bij start vast (gram). Bij een mislukte
+    // uitlezing vult de server het nulpunt later zelf in.
+    if (co2SensorOn) {
+      nieuw.co2_monitoring = true
+      try {
+        const d = await haGetState(haInst.co2_entity)
+        const raw = parseFloat(d.state)
+        if (!isNaN(raw)) nieuw.start_cilinder_gram = haInst.co2_unit === 'kg' ? raw * 1000 : raw
+      } catch {}
     }
     setCarbSessies((prev: any[]) => [...(prev || []), nieuw])
     logAudit(auditLog, setAuditLog, {entiteit: 'Carbonatiesessie', entiteit_id: nieuw.id, actie: 'aangemaakt', omschrijving: `Batch ${selB.naam || ''}: ${vols} vols @ ${temp}°C (${carbForm.methode})`})
@@ -1293,6 +1304,29 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 </div>
               </div>
             </div>
+            {actief.co2_monitoring && (() => {
+              const doel = Number(actief.doel_co2_gram_verbruik) || 0
+              const live = Number(actief.verbruikt_co2_gram_live) || 0
+              const pct = doel > 0 ? Math.min(100, Math.round(live / doel * 100)) : 0
+              const bereikt = !!actief.doel_bereikt_op
+              return (
+                <div className="pt-2 border-t border-green-200">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_co2_monitor_label')}</span>
+                    {bereikt
+                      ? <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">{t('carb_co2_monitor_reached')}</span>
+                      : <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">{pct}%</span>}
+                  </div>
+                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${bereikt ? 'bg-green-500' : 'bg-blue-500'}`} style={{width: `${pct}%`}}></div>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {t('carb_co2_monitor_added').replace('{n}', live.toFixed(0))} / {doel.toFixed(0)} {t('carb_g_consumption_short')}
+                    {actief.start_cilinder_gram == null && <span className="ml-1 text-orange-600">· {t('carb_co2_monitor_waiting')}</span>}
+                  </div>
+                </div>
+              )
+            })()}
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-green-200">
               <Inp label={t('carb_actual_pressure')} type="number" step="0.01" value={carbComplete.werkelijke_druk_bar}
                 onChange={(v: string) => setCarbComplete((f: any) => ({...f, werkelijke_druk_bar: v}))}

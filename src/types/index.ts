@@ -912,6 +912,17 @@ export interface CarbonatieSessie {
   status: 'actief' | 'voltooid' | 'afgebroken'
   opmerking?: string
   created_at?: string
+  // ── CO₂-cilinder bewaking via HA-sensor ──────────────────────────────────
+  // Wanneer een CO₂-weegsensor is gekoppeld (ha_instellingen.co2_*) en de
+  // bewaking bij start is ingeschakeld, houdt de server (en de app) het
+  // flesgewicht bij en vergelijkt het verbruik met `doel_co2_gram_verbruik`.
+  co2_monitoring?: boolean             // sensor-bewaking actief voor deze sessie
+  start_cilinder_gram?: number         // flesgewicht (gram) bij start
+  huidig_cilinder_gram?: number        // laatst gemeten flesgewicht (gram)
+  verbruikt_co2_gram_live?: number     // start − huidig (gram), ≥ 0
+  laatste_meting_op?: string           // ISO-timestamp laatste sensoruitlezing
+  doel_bereikt_op?: string             // ISO-timestamp moment doel bereikt
+  genotificeerd?: boolean              // melding verstuurd (dedupe)
 }
 
 // Bron van een bierverliespost. Identifier wordt opgeslagen; UI vertaalt via i18n.
@@ -991,6 +1002,23 @@ export interface HaInst {
   lights?: HaLight[]
   switches_enabled?: boolean
   switches?: HaSwitch[]
+  // ── CO₂-cilinder weegsensor ──────────────────────────────────────────────
+  // Eén sensor die het gewicht van de CO₂-fles meet. Gebruikt bij carbonisatie
+  // om het verbruik live te volgen. `co2_unit` bepaalt hoe de sensorwaarde
+  // geïnterpreteerd wordt (kg of gram); intern rekent de app altijd in gram.
+  co2_enabled?: boolean
+  co2_entity?: string           // entity_id (sensor.*) van de weegschaal
+  co2_unit?: 'kg' | 'g'         // eenheid die de sensor rapporteert
+}
+
+// Meldingsinstellingen. Eén centrale plek voor notificaties die de app via
+// Home Assistant naar een gebruiker stuurt. Nu gebruikt voor de carbonisatie-
+// melding (CO₂-doel bereikt); later herbruikbaar voor andere meldingen.
+// `notify_service` is het deel ná `notify.` (bv. `mobile_app_iphone`).
+export interface NotificatieInst {
+  enabled: boolean              // HA-push-melding aan/uit
+  notify_service: string        // notify-service naam (zonder `notify.`-prefix)
+  on_screen?: boolean           // scherm-melding in de app tonen (default aan)
 }
 
 // Cold-crash preset dat via het Dashboard per tank getriggerd kan worden.

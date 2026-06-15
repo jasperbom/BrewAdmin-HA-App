@@ -353,7 +353,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `brewery_details` | object | Brouwerijnaam, adres, BTW-nr., website (klikbaar logo in mail) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |
 | `factuur_counter` | object | Doorlopend factuurnummer per jaar |
-| `ha_instellingen` | object | Home Assistant sensor-instellingen |
+| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`) |
+| `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties aan facturen/BTW (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |
 | `factuur_logo` | string\|null | Base64 factuurlogo |

@@ -77,6 +77,28 @@ export const haCallService = async (
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
 }
 
+// Haal de beschikbare HA notify-services op (zonder `notify.`-prefix). Wordt
+// gebruikt in de meldingsinstellingen om een keuzelijst te tonen.
+export const haListNotifyServices = async (): Promise<string[]> => {
+  const r = await _fetchWithRetry(_HA_PROXY + '_notify_list', undefined, 1)
+  if (r.status === 429) throw _rateLimitError('HA', r)
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
+  const d = await r.json()
+  return Array.isArray(d.services) ? d.services : []
+}
+
+// Verstuur een notify-melding via HA. `service` is de notify-service-naam
+// zonder `notify.`-prefix (bv. `mobile_app_iphone`).
+export const haNotify = async (service: string, title: string, message: string): Promise<void> => {
+  const r = await _fetchWithRetry(_HA_PROXY + '_notify', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({service, title, message}),
+  }, 1)
+  if (r.status === 429) throw _rateLimitError('HA', r)
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
+}
+
 // Sync state
 export const _allKeys     = new Set<string>()
 export const _fetchedKeys = new Set<string>()

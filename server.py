@@ -697,6 +697,30 @@ def _ha_set_climate_temperature(entity_id: str, temperature: float) -> bool:
         return False
 
 
+def _ha_notify(service: str, title: str, message: str) -> bool:
+    """Stuur een notificatie via een HA notify-service (notify.<service>).
+    `service` is het deel ná `notify.` (bv. `mobile_app_iphone`). Return True
+    bij success. De service-naam wordt streng gevalideerd zodat er geen ander
+    domein/pad geïnjecteerd kan worden."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token:
+        return False
+    if not isinstance(service, str) or not re.match(r'^[a-z0-9_]+$', service):
+        return False
+    try:
+        payload = json.dumps({'title': title, 'message': message}).encode('utf-8')
+        req = urllib.request.Request(
+            f'{HA_SUPERVISOR_BASE}/services/notify/{service}',
+            data=payload,
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=10):
+            return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def _auto_metingen_loop(interval: float = 600.0) -> None:
     """Achtergrondloop: haal elke 10 minuten temperatuurmetingen op van HA sensoren
     voor batches in status Vergisten of Conditioneren, en sla deze op."""
@@ -721,6 +745,100 @@ def _cold_crash_loop(interval: float = 60.0) -> None:
         except Exception as exc:
             print(f'[cold-crash] error: {exc}', flush=True)
         time.sleep(interval)
+
+
+def _carbonatie_co2_loop(interval: float = 60.0) -> None:
+    """Achtergrondloop: volg elke minuut het gewicht van de CO₂-cilinder voor
+    actieve carbonisatie-sessies met bewaking, en stuur een melding zodra het
+    berekende CO₂-verbruik bereikt is. Draait ook als de browser dicht is."""
+    time.sleep(25)  # kort wachten zodat de server volledig opgestart is
+    while True:
+        try:
+            _carbonatie_co2_tick()
+        except Exception as exc:
+            print(f'[carb-co2] error: {exc}', flush=True)
+        time.sleep(interval)
+
+
+def _carbonatie_co2_tick() -> None:
+    """Lees de CO₂-weegsensor en werk elke actieve sessie met `co2_monitoring`
+    bij. Berekent verbruik = startgewicht − huidig gewicht (in gram). Wanneer
+    het verbruik `doel_co2_gram_verbruik` haalt, wordt de sessie gemarkeerd en
+    eenmalig een HA-melding gestuurd (indien ingeschakeld)."""
+    with _data_lock:
+        ha_inst = _read_json('ha_instellingen', {}) or {}
+    if not ha_inst.get('co2_enabled') or not ha_inst.get('co2_entity'):
+        return
+    entity = ha_inst['co2_entity']
+    unit = ha_inst.get('co2_unit') or 'kg'
+
+    with _data_lock:
+        sessies = _read_json('carbonatie_sessies', []) or []
+    actief = [s for s in sessies
+              if s.get('status') == 'actief' and s.get('co2_monitoring')]
+    if not actief:
+        return
+
+    raw = _ha_fetch_state(entity)
+    if raw is None:
+        print(f'[carb-co2] kon sensor {entity} niet lezen — skip', flush=True)
+        return
+    huidig_gram = raw * 1000.0 if unit == 'kg' else raw
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    with _data_lock:
+        notif = _read_json('notificatie_instellingen', {}) or {}
+        batches = _read_json('batches', []) or []
+
+    updates: dict[int, dict] = {}
+    notify_jobs: list[tuple[str, str, str]] = []
+
+    for s in actief:
+        patch: dict = {
+            'huidig_cilinder_gram': round(huidig_gram, 1),
+            'laatste_meting_op': now_iso,
+        }
+        start = s.get('start_cilinder_gram')
+        # Geen startgewicht (sensor lag bij start plat): leg de eerste meting
+        # vast als nulpunt en wacht op de volgende ronde.
+        if start is None:
+            patch['start_cilinder_gram'] = round(huidig_gram, 1)
+            patch['verbruikt_co2_gram_live'] = 0.0
+            updates[s['id']] = patch
+            continue
+
+        verbruikt = start - huidig_gram
+        if verbruikt < 0:
+            verbruikt = 0.0  # fles bijgevuld of meetruis
+        patch['verbruikt_co2_gram_live'] = round(verbruikt, 1)
+
+        doel = float(s.get('doel_co2_gram_verbruik') or 0)
+        if doel > 0 and verbruikt >= doel and not s.get('genotificeerd'):
+            patch['doel_bereikt_op'] = now_iso
+            patch['genotificeerd'] = True
+            if notif.get('enabled') and notif.get('notify_service'):
+                batch = next((b for b in batches if b.get('id') == s.get('batch_id')), {}) or {}
+                bnaam = batch.get('naam') or batch.get('biernaam') or f"batch {s.get('batch_id')}"
+                titel = 'BrewAdmin — carbonisatie gereed'
+                bericht = (f"{bnaam}: CO₂-doel bereikt — {round(verbruikt)} g toegevoegd "
+                           f"(doel {round(doel)} g). Sluit de carbonisatie af.")
+                notify_jobs.append((notif['notify_service'], titel, bericht))
+        updates[s['id']] = patch
+
+    if updates:
+        # Her-lees onder lock en merge alleen de bewakingsvelden terug, zodat we
+        # gelijktijdige UI-schrijfacties (start/voltooien) niet overschrijven.
+        with _data_lock:
+            current = _read_json('carbonatie_sessies', []) or []
+            for c in current:
+                p = updates.get(c.get('id'))
+                if p:
+                    c.update(p)
+            _write_json('carbonatie_sessies', current)
+
+    for service, titel, bericht in notify_jobs:
+        ok = _ha_notify(service, titel, bericht)
+        print(f"[carb-co2] notify {service}: {'ok' if ok else 'mislukt'}", flush=True)
 
 
 def _auto_metingen_tick() -> None:
@@ -1360,6 +1478,22 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._ha_call_service(parts[0], parts[1])
             return
 
+        # Lijst van beschikbare notify-services (voor de meldingsinstellingen).
+        if tail == '_notify_list':
+            if self.command != 'GET':
+                self._json(405, {'error': 'method not allowed'})
+                return
+            self._ha_notify_list()
+            return
+
+        # Verstuur een notify-melding (test-knop / app-trigger).
+        if tail == '_notify':
+            if self.command != 'POST':
+                self._json(405, {'error': 'method not allowed'})
+                return
+            self._ha_notify_endpoint()
+            return
+
         # Anders: enkele entity-state ophalen.
         entity_id = tail
         if not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$', entity_id):
@@ -1496,6 +1630,59 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(e.code, {'error': msg})
         except Exception:
             self._json(502, {'error': 'could not reach Home Assistant API'})
+
+    def _ha_notify_list(self):
+        """Haal de beschikbare notify-services op (domein `notify`) zodat de
+        meldingsinstellingen een keuzelijst kunnen tonen. Geeft alleen de
+        service-namen terug (zonder `notify.`-prefix)."""
+        token = os.environ.get('SUPERVISOR_TOKEN', '')
+        if not token:
+            self._json(503, {'error': 'SUPERVISOR_TOKEN not available — app must run as HA addon'})
+            return
+        try:
+            req = urllib.request.Request(
+                f'{HA_SUPERVISOR_BASE}/services',
+                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                raw = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            self._json(e.code, {'error': f'HA API returned {e.code}'})
+            return
+        except Exception:
+            self._json(502, {'error': 'could not reach Home Assistant API'})
+            return
+        services: list[str] = []
+        for dom in raw if isinstance(raw, list) else []:
+            if dom.get('domain') == 'notify':
+                services = sorted((dom.get('services') or {}).keys())
+                break
+        self._json(200, {'services': services})
+
+    def _ha_notify_endpoint(self):
+        """Verstuur een notify-melding op verzoek van de frontend. Body = JSON
+        met `service` (zonder prefix), `title` en `message`."""
+        body = self._read_body(max_len=8 * 1024)
+        if body is None:
+            return
+        try:
+            payload = json.loads(body) if body else {}
+        except Exception:
+            self._json(400, {'error': 'invalid JSON body'})
+            return
+        if not isinstance(payload, dict):
+            self._json(400, {'error': 'body must be a JSON object'})
+            return
+        service = payload.get('service', '')
+        if not isinstance(service, str) or not re.match(r'^[a-z0-9_]+$', service):
+            self._json(400, {'error': 'invalid or missing service'})
+            return
+        title = str(payload.get('title', ''))[:200]
+        message = str(payload.get('message', ''))[:1000]
+        if _ha_notify(service, title, message):
+            self._json(200, {'ok': True})
+        else:
+            self._json(502, {'error': 'notify failed'})
 
     def _handle_upload(self):
         """Accept a base64-encoded file upload and save it to UPLOAD_DIR."""
@@ -1774,6 +1961,11 @@ if __name__ == '__main__':
     _coldcrash_thread = threading.Thread(target=_cold_crash_loop, daemon=True)
     _coldcrash_thread.start()
     print('Cold-crash thread gestart (elke minuut)', flush=True)
+
+    # Start background CO₂-carbonisatie-bewakingsthread (every minute)
+    _carb_co2_thread = threading.Thread(target=_carbonatie_co2_loop, daemon=True)
+    _carb_co2_thread.start()
+    print('Carbonisatie CO₂-bewaking thread gestart (elke minuut)', flush=True)
 
     # ThreadingHTTPServer: één trage upstream-call (Claude 90s, Brewfather 30s,
     # SMTP 30s) mag niet alle andere requests — UI laden, data-saves — blokkeren.

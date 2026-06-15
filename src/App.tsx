@@ -101,7 +101,7 @@ function App() {
   const [mailTemplates, setMailTemplates] = useStore('mail_templates', {pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}});
   const [factuurCounter, setFactuurCounter] = useStore('factuur_counter', {jaar:0,nr:0});
   const [gistMetingen, setGistMetingen, refreshGistMetingen] = useStore('gist_metingen', []);
-  const [carbSessies, setCarbSessies] = useStore('carbonatie_sessies', []);
+  const [carbSessies, setCarbSessies, refreshCarbSessies] = useStore('carbonatie_sessies', []);
   const [verliesRegistraties, setVerliesRegistraties] = useStore('verlies_registraties', []);
   const [brouwdagStappen, setBrouwdagStappen] = useStore('brouwdag_stappen', []);
   const [waterAddities, setWaterAddities] = useStore('water_addities', []);
@@ -110,6 +110,7 @@ function App() {
   const [koelLogs, setKoelLogs] = useStore('koel_logs', []);
   const [batchNotities, setBatchNotities] = useStore('batch_notities', []);
   const [haInst, setHaInst] = useStore('ha_instellingen', {enabled: false, sensors: []});
+  const [notificatieInst, setNotificatieInst] = useStore('notificatie_instellingen', {enabled: false, notify_service: '', on_screen: true});
   const [coldcrashInst, setColdcrashInst] = useStore('coldcrash_instellingen', {enabled: false, target_temp: 2, ramp_per_uur: 1});
   const [planningInst, setPlanningInst] = useStore('planning_instellingen', {conditioneren_dagen: 14});
   const [brouwprocesInst, setBrouwprocesInst] = useStore('brouwproces_instellingen', {hop_storage: 'vacuum_koel'});
@@ -726,6 +727,24 @@ function App() {
     return () => clearInterval(id)
   }, [haInst?.enabled])
 
+  // CO₂-carbonisatiebewaking draait server-side (server.py _carbonatie_co2_loop).
+  // De app haalt de sessies periodiek opnieuw op zodat live verbruik en het
+  // bereikte doel zichtbaar worden zonder zelf te schrijven (geen race).
+  React.useEffect(() => {
+    if (!haInst?.co2_enabled) return
+    const id = setInterval(refreshCarbSessies, 60 * 1000)
+    return () => clearInterval(id)
+  }, [haInst?.co2_enabled])
+
+  // Scherm-melding wanneer een actieve sessie z'n CO₂-doel haalt. We onthouden
+  // bevestigde sessie-id's lokaal zodat de banner na sluiten niet terugkomt.
+  const [carbAcked, setCarbAcked] = React.useState<number[]>([])
+  const carbDoelBereikt = React.useMemo(() => {
+    if (notificatieInst?.on_screen === false) return []
+    return (carbSessies || []).filter((s: any) =>
+      s.status === 'actief' && s.doel_bereikt_op && !carbAcked.includes(s.id))
+  }, [carbSessies, carbAcked, notificatieInst?.on_screen])
+
   const doExport = () => {
     excelExport({
       ingredienten: ing, lots, batches: bat, batch_ingredienten: bi,
@@ -770,6 +789,7 @@ function App() {
       brewery_details: breweryDetails, factuur_counter: factuurCounter,
       mail_templates: mailTemplates,
       ha_instellingen: haInst,
+      notificatie_instellingen: notificatieInst,
       coldcrash_instellingen: coldcrashInst,
       planning_instellingen: planningInst,
       brouwproces_instellingen: brouwprocesInst,
@@ -852,6 +872,7 @@ function App() {
       if (d.factuur_counter) setFactuurCounter(d.factuur_counter);
       if (d.mail_templates && typeof d.mail_templates === 'object') setMailTemplates(d.mail_templates);
       if (d.ha_instellingen) setHaInst(d.ha_instellingen);
+      if (d.notificatie_instellingen) setNotificatieInst(d.notificatie_instellingen);
       if (d.coldcrash_instellingen) setColdcrashInst(d.coldcrash_instellingen);
       if (d.planning_instellingen) setPlanningInst(d.planning_instellingen);
       if (d.brouwproces_instellingen) setBrouwprocesInst(d.brouwproces_instellingen);
@@ -954,6 +975,30 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{backgroundColor:'var(--t-bg)'}}>
+      {carbDoelBereikt.length > 0 && (
+        <div className="sticky top-0 z-50 space-y-px">
+          {carbDoelBereikt.map((s: any) => {
+            const b = (bat || []).find((x: any) => x.id === s.batch_id)
+            const bnaam = b?.naam || b?.biernaam || t('lbl_naamloos')
+            return (
+              <div key={s.id} className="bg-green-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                  <span>{t('carb_notify_screen').replace('{batch}', bnaam)
+                    .replace('{verbruikt}', String(Math.round(Number(s.verbruikt_co2_gram_live) || 0)))
+                    .replace('{doel}', String(Math.round(Number(s.doel_co2_gram_verbruik) || 0)))}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => { setNavBatchId(s.batch_id); setPage('batches') }}
+                    className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('carb_notify_open_batch')}</button>
+                  <button onClick={() => setCarbAcked((p: number[]) => [...p, s.id])}
+                    className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
       <nav className="text-white sticky top-0 z-40 shadow-lg border-b" style={navStyle}>
         <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-2 overflow-x-auto">
           <img
@@ -1026,7 +1071,7 @@ function App() {
         {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} gistMetingen={gistMetingen} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} />}
-        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} resetApp={resetApp} />}
+        {page==='instellingen' && <InstellingenPage accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} resetApp={resetApp} />}
       </main>
       </PageErrorBoundary>
     </div>
