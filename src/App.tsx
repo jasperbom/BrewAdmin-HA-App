@@ -729,12 +729,17 @@ function App() {
 
   // CO₂-carbonisatiebewaking draait server-side (server.py _carbonatie_co2_loop).
   // De app haalt de sessies periodiek opnieuw op zodat live verbruik en het
-  // bereikte doel zichtbaar worden zonder zelf te schrijven (geen race).
+  // bereikte doel zichtbaar worden — alleen wanneer er werkelijk een actieve
+  // bewaakte sessie is, om onnodige verversingen/re-renders te vermijden.
+  const hasCarbMonitor = React.useMemo(
+    () => (carbSessies || []).some((s: any) => s.status === 'actief' && s.co2_monitoring),
+    [carbSessies]
+  )
   React.useEffect(() => {
-    if (!haInst?.co2_enabled) return
+    if (!haInst?.co2_enabled || !hasCarbMonitor) return
     const id = setInterval(refreshCarbSessies, 60 * 1000)
     return () => clearInterval(id)
-  }, [haInst?.co2_enabled])
+  }, [haInst?.co2_enabled, hasCarbMonitor])
 
   // Scherm-melding wanneer een actieve sessie z'n CO₂-doel haalt. We onthouden
   // bevestigde sessie-id's lokaal zodat de banner na sluiten niet terugkomt.

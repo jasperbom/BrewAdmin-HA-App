@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.39] — 2026-06-15
+
+### Fixed — CO₂-bewaking liet de app vastlopen op opslaan + foute startwaarde
+
+Een carbonisatiesessie met een fout vastgelegd startgewicht (bv. uit een sessie
+van vóór de eenheid-fix: `Start 0.02 kg` terwijl de fles 23 kg weegt) bereikte
+het doel nooit, waardoor de server `carbonatie_sessies` **elke minuut** bleef
+herschrijven en de UI telkens her-renderde — wat als "vastlopen op opslaan"
+voelde.
+
+- **Auto-herstel:** is de fles zwaarder dan bij start (> 50 g), dan herijkt de
+  server het nulpunt naar de huidige meting. Een mismatch- of verwisselde-fles-
+  sessie repareert zichzelf binnen één minuut — herstarten is niet nodig.
+- **Geen schrijf-churn meer:** de server schrijft de sessie alleen terug bij een
+  echte verandering (≥ 1 g) of wanneer het doel net bereikt is.
+- **Frontend pollt gerichter:** de app ververst de sessies alleen nog wanneer er
+  daadwerkelijk een actieve bewaakte sessie is.
+
 ## [1.10.38] — 2026-06-15
 
 ### Fixed — CO₂-eenheid (kg) werd als gram behandeld

@@ -798,6 +798,11 @@ def _carbonatie_co2_tick() -> None:
             'huidig_cilinder_gram': round(huidig_gram, 1),
             'laatste_meting_op': now_iso,
         }
+        # Schrijf alleen terug bij een betekenisvolle verandering, anders blijft
+        # het databestand elke minuut churnen (en her-rendert de UI onnodig).
+        prev = s.get('huidig_cilinder_gram')
+        changed = prev is None or abs(huidig_gram - float(prev)) >= 1.0
+
         start = s.get('start_cilinder_gram')
         # Geen startgewicht (sensor lag bij start plat): leg de eerste meting
         # vast als nulpunt en wacht op de volgende ronde.
@@ -807,13 +812,24 @@ def _carbonatie_co2_tick() -> None:
             updates[s['id']] = patch
             continue
 
-        verbruikt = start - huidig_gram
+        # Fles zwaarder dan bij start (> 50 g): tijdens carboniseren onmogelijk —
+        # duidt op een verwisselde/bijgevulde fles of een eenheid-mismatch bij
+        # start (bv. start in gram, sensor nu in kg). Herijk het nulpunt naar de
+        # huidige meting zodat de bewaking zichzelf herstelt zonder herstart.
+        if huidig_gram > float(start) + 50:
+            patch['start_cilinder_gram'] = round(huidig_gram, 1)
+            patch['verbruikt_co2_gram_live'] = 0.0
+            updates[s['id']] = patch
+            continue
+
+        verbruikt = float(start) - huidig_gram
         if verbruikt < 0:
-            verbruikt = 0.0  # fles bijgevuld of meetruis
+            verbruikt = 0.0  # kleine meetruis
         patch['verbruikt_co2_gram_live'] = round(verbruikt, 1)
 
         doel = float(s.get('doel_co2_gram_verbruik') or 0)
-        if doel > 0 and verbruikt >= doel and not s.get('genotificeerd'):
+        doel_nu_bereikt = doel > 0 and verbruikt >= doel and not s.get('genotificeerd')
+        if doel_nu_bereikt:
             patch['doel_bereikt_op'] = now_iso
             patch['genotificeerd'] = True
             if notif.get('enabled') and notif.get('notify_service'):
@@ -823,7 +839,11 @@ def _carbonatie_co2_tick() -> None:
                 bericht = (f"{bnaam}: CO₂-doel bereikt — {round(verbruikt)} g toegevoegd "
                            f"(doel {round(doel)} g). Sluit de carbonisatie af.")
                 notify_jobs.append((notif['notify_service'], titel, bericht))
-        updates[s['id']] = patch
+
+        # Sla over wanneer er niets noemenswaardigs veranderde (sensor stabiel,
+        # doel niet net bereikt) — voorkomt schrijf-churn.
+        if changed or doel_nu_bereikt:
+            updates[s['id']] = patch
 
     if updates:
         # Her-lees onder lock en merge alleen de bewakingsvelden terug, zodat we
