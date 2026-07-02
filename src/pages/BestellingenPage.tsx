@@ -357,6 +357,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           const prijs = art?.verkoopprijs != null
             ? Number(art.verkoopprijs)
             : (Number(item.quantity||1) > 0 ? parseFloat(item.subtotal||'0') / Number(item.quantity||1) : 0)
+          // BTW% bepalen — voorkeur: het geconfigureerde artikel-tarief (`btw_pct`),
+          // anders afgeleid uit de WooCommerce-belasting op de regel, anders het
+          // standaardtarief 21% (bier). Let op: het veld heet `btw_pct`, niet `btw`.
+          const artBtw = art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : null
+          const lineTotal = parseFloat(item.total || item.subtotal || '0')
+          const lineTax = parseFloat(item.total_tax || item.subtotal_tax || '0')
+          const afgeleidBtw = lineTotal > 0 && lineTax > 0 ? Math.round((lineTax / lineTotal) * 100) : null
+          const btwPct = artBtw != null ? artBtw : (afgeleidBtw != null ? afgeleidBtw : 21)
           return {
             id: i + 1,
             type: 'bier',
@@ -367,7 +375,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             verpakking_type: art?.verpakking_type || '',
             aantal: Number(item.quantity||1),
             prijs_per_stuk: prijs,
-            btw_pct: art?.btw != null ? Number(art.btw) : 9,
+            btw_pct: btwPct,
             omschrijving: item.name || '',
           }
         })

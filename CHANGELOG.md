@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.40] — 2026-07-02
+
+### Fixed — WooCommerce-import zette bier met 21% BTW op 9%
+
+Bij het importeren van WooCommerce-bestellingen kregen alle regels het lage
+tarief van 9% BTW, ook bier dat op 21% hoort. Oorzaak: de import las het
+BTW-tarief uit het niet-bestaande veld `art.btw` (het artikelveld heet
+`btw_pct`), waardoor de code altijd terugviel op de hardcoded `9`.
+
+- **Artikel-tarief wordt nu correct gelezen** via `btw_pct`, zodat bier het
+  ingestelde tarief (21%) meekrijgt.
+- **Afgeleid tarief als fallback:** is er geen gekoppeld artikel, dan wordt het
+  BTW% berekend uit de WooCommerce-belasting op de regel (`total_tax / total`).
+- **Standaard 21% i.p.v. 9%** wanneer geen enkele bron een tarief oplevert —
+  passend voor bier.
+
+---
+
 ## [1.10.39] — 2026-06-15
 
 ### Fixed — CO₂-bewaking liet de app vastlopen op opslaan + foute startwaarde
