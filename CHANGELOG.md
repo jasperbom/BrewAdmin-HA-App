@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.42] — 2026-07-02
+
+### Toegevoegd — BTW corrigeren op een reeds afgeronde bestelling
+
+Een afgeronde bestelling is normaal vergrendeld, maar een verkeerd
+geïmporteerd BTW-tarief (bijv. bier op 9% i.p.v. 21%) moest alsnog te
+herstellen zijn. Via de knop **"BTW corrigeren"** in de kop van de
+orderregeltabel ontgrendel je bewust de BTW-dropdown op een afgeronde order.
+
+Belangrijk: bij het afronden wordt een verkoopfactuur opgesteld die een
+bevroren kopie is van de orderregels, en de BTW-aangifte leest uit die factuur.
+De correctie werkt daarom **ook de gekoppelde verkoopfactuur bij** — inclusief
+herberekende btw-bedragen, btw-overzicht en totalen — zodat de BTW-aangifte weer
+klopt. De wijziging wordt vastgelegd in de audit-log.
+
+---
+
 ## [1.10.41] — 2026-07-02
 
 ### Toegevoegd — BTW-tarief per orderregel aanpasbaar

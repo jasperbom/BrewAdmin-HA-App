@@ -85,6 +85,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  // Ontgrendelt het corrigeren van de BTW op een reeds afgeronde order (past dan
+  // ook de gekoppelde verkoopfactuur aan). Bewust expliciet, want normaal is een
+  // afgeronde order vergrendeld.
+  const [btwCorrectie, setBtwCorrectie] = useState<number | null>(null)
 
   // Navigate to order when openOrderId is set (e.g. from BoekhoudingPage)
   React.useEffect(() => {
@@ -1062,17 +1066,55 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     ))
   }
 
+  // Herbereken alle afgeleide BTW-velden van een verkoopfactuur uit zijn regels
+  // (netto/btw_bedrag/bruto per regel + btw_overzicht + totalen). Zelfde rekenwijze
+  // als bij het opstellen in `rondeAf`.
+  const herberekenFactuur = (fact: any) => {
+    const rnd2 = (n: number) => Math.round(n * 100) / 100
+    const regels = (fact.regels||[]).map((r: any) => {
+      const netto = rnd2(Number(r.hoeveelheid||0) * Number(r.prijs_per_stuk||0))
+      const btw_bedrag = rnd2(netto * Number(r.btw_pct||0) / 100)
+      return {...r, netto, btw_bedrag, bruto: rnd2(netto + btw_bedrag)}
+    })
+    const tarieven = [...new Set(regels.map((r: any) => Number(r.btw_pct||0)))] as number[]
+    const btw_overzicht = tarieven.map(tarief => {
+      const rv = regels.filter((r: any) => Number(r.btw_pct||0) === tarief)
+      return {
+        tarief,
+        netto: rnd2(rv.reduce((s: number, r: any) => s + r.netto, 0)),
+        btw: rnd2(rv.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
+      }
+    })
+    const totaalNetto = rnd2(regels.reduce((s: number, r: any) => s + r.netto, 0))
+    const totaalBtw = rnd2(regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    return {...fact, regels, btw_overzicht, netto: totaalNetto, btw: totaalBtw, bruto: rnd2(totaalNetto + totaalBtw)}
+  }
+
   // BTW% van een bestaande orderregel aanpassen (bijv. WC-import die bier op 9%
-  // zette corrigeren naar 21%). Alleen mogelijk zolang de order niet is afgerond.
+  // zette corrigeren naar 21%). Bij een afgeronde order (na expliciete
+  // "BTW corrigeren") wordt ook de al opgestelde verkoopfactuur meegecorrigeerd,
+  // want de BTW-aangifte leest uit de factuur, niet uit de order.
   const updateRegelBtw = (regelId: number, nieuwBtw: number) => {
     if (!selectedOrder) return
-    const regel = (selectedOrder.regels||[]).find((r: any) => r.id === regelId)
+    const orderRegels = selectedOrder.regels||[]
+    const regelIdx = orderRegels.findIndex((r: any) => r.id === regelId)
+    const regel = orderRegels[regelIdx]
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id
         ? {...b, regels: (b.regels||[]).map((r: any) => r.id === regelId ? {...r, btw_pct: nieuwBtw} : r)}
         : b
     ))
-    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%`})
+    // Gekoppelde verkoopfactuur meecorrigeren. De factuurregels zijn 1-op-1 in
+    // dezelfde volgorde uit de orderregels opgebouwd (statiegeldregels komen
+    // erná), dus factuurregel op positie `regelIdx` hoort bij deze orderregel.
+    if (selectedOrder.factuur_id != null && regelIdx >= 0) {
+      setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => {
+        if (f.id !== selectedOrder.factuur_id) return f
+        const regels = (f.regels||[]).map((fr: any, i: number) => i === regelIdx ? {...fr, btw_pct: nieuwBtw} : fr)
+        return herberekenFactuur({...f, regels})
+      }))
+    }
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%${selectedOrder.factuur_id != null ? ` (factuur ${selectedOrder.factuur_nummer||selectedOrder.factuur_id} bijgewerkt)` : ''}`})
   }
 
   // Beschikbare BTW-tarieven voor de dropdown (uit instellingen, met fallback).
@@ -1319,7 +1361,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Orderregels */}
         <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
-          <SectionHeader title={t('orders_lines')} />
+          <SectionHeader
+            title={t('orders_lines')}
+            info={selectedOrder.status === 'afgerond' ? (
+              btwCorrectie === selectedOrder.id
+                ? <button onClick={() => setBtwCorrectie(null)} className="underline hover:text-white">{t('orders_btw_correctie_klaar')}</button>
+                : <button onClick={() => setBtwCorrectie(selectedOrder.id)} className="underline hover:text-white">{t('orders_btw_correctie')}</button>
+            ) : undefined}
+          />
+          {btwCorrectie === selectedOrder.id && (
+            <div className="px-4 py-2 bg-orange-50 text-orange-700 text-xs border-b border-orange-100">
+              {t('orders_btw_correctie_hint')}
+            </div>
+          )}
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-xs text-gray-500 bg-gray-50">
@@ -1339,7 +1393,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const volledig = gepickt >= r.aantal
                 const isVrij = r.type === 'vrij' || r.type === 'verzending'
                 const canDelete = isVrij && selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd'
-                const canEditBtw = selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd'
+                const isBtwCorrectie = selectedOrder.status === 'afgerond' && btwCorrectie === selectedOrder.id
+                const canEditBtw = (selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd') || isBtwCorrectie
                 return (
                   <tr key={r.id} className={isVrij ? 'bg-blue-50' : volledig ? 'bg-green-50' : ''}>
                     <td className="px-3 py-2 font-medium">
