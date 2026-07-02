@@ -176,7 +176,15 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const productStats = useMemo(() => {
     const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number}> = {};
     for (const p of (producten||[])) {
-      const pBatches = (bat||[]).filter((b: any) => b.product_id === p.id);
+      // Batch-set: batches die direct op het product staan (`b.product_id`) én
+      // batches die via een afvulling aan het product zijn gekoppeld
+      // (`afvulling.product_id`). Bij afvullen wordt het product namelijk op de
+      // afvulling gezet, niet terug op de batch — zonder deze unie telde die
+      // batch niet mee ("0 batches gebrouwen").
+      const avBatchIds = new Set(
+        (av||[]).filter((a: any) => a.product_id === p.id).map((a: any) => a.batch_id)
+      );
+      const pBatches = (bat||[]).filter((b: any) => b.product_id === p.id || avBatchIds.has(b.id));
       const batchIds = new Set(pBatches.map((b: any) => b.id));
       const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
       const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
@@ -259,17 +267,42 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'gewijzigd', omschrijving: `Product "${selProduct?.naam || ''}" status → ${newStatus}`});
   };
 
-  // Foto upload (max 2MB per foto)
+  // Foto upload — de afbeelding wordt vóór opslag verkleind (max 1000px) en als
+  // JPEG gecomprimeerd. De ruwe base64 werd anders inline in de `producten`-
+  // sleutel opgeslagen; een foto van ~2 MB blies dan de localStorage-quota op
+  // waardoor de app crashte bij het opslaan. Na compressie is een foto ~100–200 kB.
   const handleFotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { setMsg(t('err_foto_te_groot').replace('{max}', '2MB')); return; }
+    if (file.size > 10 * 1024 * 1024) { setMsg(t('err_foto_te_groot').replace('{max}', '10MB')); return; }
     const fotos = form.afbeeldingen || [];
     if (fotos.length >= 5) { setMsg(t('err_max_fotos').replace('{max}', '5')); return; }
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setForm((f: any) => ({...f, afbeeldingen: [...(f.afbeeldingen||[]), ev.target?.result as string]}));
+      const dataUrl = ev.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const MAX = 1000;
+          let {width, height} = img;
+          if (width > MAX || height > MAX) {
+            const schaal = Math.min(MAX / width, MAX / height);
+            width = Math.round(width * schaal);
+            height = Math.round(height * schaal);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { setMsg(t('err_foto_verwerken')); return; }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.82);
+          setForm((f: any) => ({...f, afbeeldingen: [...(f.afbeeldingen||[]), compressed]}));
+        } catch { setMsg(t('err_foto_verwerken')); }
+      };
+      img.onerror = () => setMsg(t('err_foto_verwerken'));
+      img.src = dataUrl;
     };
+    reader.onerror = () => setMsg(t('err_foto_verwerken'));
     reader.readAsDataURL(file);
     e.target.value = '';
   };

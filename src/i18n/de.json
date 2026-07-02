@@ -1587,6 +1587,8 @@
   "err_product_naam_duplicaat": "Ein Produkt mit diesem Namen existiert bereits",
   "err_foto_te_groot": "Foto ist zu groß (max {max})",
   "err_max_fotos": "Maximal {max} Fotos pro Produkt",
+  "err_foto_verwerken": "Foto konnte nicht verarbeitet werden",
+  "orders_edit_btw": "MwSt.-Satz ändern",
   "lbl_product_toon_gearchiveerd": "Archivierte anzeigen",
   "confirm_product_verwijderen": "Möchten Sie dieses Produkt wirklich löschen?",
   "ph_product_naam": "Name des Bieres",

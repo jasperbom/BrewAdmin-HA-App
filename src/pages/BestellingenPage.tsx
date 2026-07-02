@@ -52,6 +52,7 @@ interface BestellingenPageProps {
   afboekingen?: any[]
   smtpCreds?: any
   mailTemplates?: any
+  btwTarieven?: (number | string)[]
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -80,6 +81,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   locaties=[], verplaatsingen=[], afboekingen=[],
   smtpCreds={enabled:false},
   mailTemplates={},
+  btwTarieven=[0, 9, 21],
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -357,6 +359,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           const prijs = art?.verkoopprijs != null
             ? Number(art.verkoopprijs)
             : (Number(item.quantity||1) > 0 ? parseFloat(item.subtotal||'0') / Number(item.quantity||1) : 0)
+          // BTW% bepalen — voorkeur: het geconfigureerde artikel-tarief (`btw_pct`),
+          // anders afgeleid uit de WooCommerce-belasting op de regel, anders het
+          // standaardtarief 21% (bier). Let op: het veld heet `btw_pct`, niet `btw`.
+          const artBtw = art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : null
+          const lineTotal = parseFloat(item.total || item.subtotal || '0')
+          const lineTax = parseFloat(item.total_tax || item.subtotal_tax || '0')
+          const afgeleidBtw = lineTotal > 0 && lineTax > 0 ? Math.round((lineTax / lineTotal) * 100) : null
+          const btwPct = artBtw != null ? artBtw : (afgeleidBtw != null ? afgeleidBtw : 21)
           return {
             id: i + 1,
             type: 'bier',
@@ -367,7 +377,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             verpakking_type: art?.verpakking_type || '',
             aantal: Number(item.quantity||1),
             prijs_per_stuk: prijs,
-            btw_pct: art?.btw != null ? Number(art.btw) : 9,
+            btw_pct: btwPct,
             omschrijving: item.name || '',
           }
         })
@@ -1052,6 +1062,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     ))
   }
 
+  // BTW% van een bestaande orderregel aanpassen (bijv. WC-import die bier op 9%
+  // zette corrigeren naar 21%). Alleen mogelijk zolang de order niet is afgerond.
+  const updateRegelBtw = (regelId: number, nieuwBtw: number) => {
+    if (!selectedOrder) return
+    const regel = (selectedOrder.regels||[]).find((r: any) => r.id === regelId)
+    setBestellingen((prev: any[]) => prev.map((b: any) =>
+      b.id === selectedOrder.id
+        ? {...b, regels: (b.regels||[]).map((r: any) => r.id === regelId ? {...r, btw_pct: nieuwBtw} : r)}
+        : b
+    ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%`})
+  }
+
+  // Beschikbare BTW-tarieven voor de dropdown (uit instellingen, met fallback).
+  const btwOpts = ((btwTarieven && btwTarieven.length ? btwTarieven : [0, 9, 21]))
+    .map((p: any) => ({v: String(p), l: `${p}%`}))
+
   const openPickModal = () => {
     if (!selectedOrder) return
     // Initialiseer draft picks vanuit bestaande picks
@@ -1312,6 +1339,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const volledig = gepickt >= r.aantal
                 const isVrij = r.type === 'vrij' || r.type === 'verzending'
                 const canDelete = isVrij && selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd'
+                const canEditBtw = selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd'
                 return (
                   <tr key={r.id} className={isVrij ? 'bg-blue-50' : volledig ? 'bg-green-50' : ''}>
                     <td className="px-3 py-2 font-medium">
@@ -1323,7 +1351,21 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     <td className="px-3 py-2 text-gray-600">{r.verpakking_type}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.aantal}×</td>
                     <td className="px-3 py-2 text-right">{fmt(r.prijs_per_stuk)}</td>
-                    <td className="px-3 py-2 text-right">{r.btw_pct}%</td>
+                    <td className="px-3 py-2 text-right">
+                      {canEditBtw ? (
+                        <select
+                          value={String(r.btw_pct)}
+                          onChange={(e) => updateRegelBtw(r.id, Number(e.target.value))}
+                          className="border border-gray-200 rounded px-1.5 py-1 text-sm bg-white t-input outline-none"
+                          title={t('orders_edit_btw')}
+                        >
+                          {btwOpts.some((o: any) => o.v === String(r.btw_pct))
+                            ? null
+                            : <option value={String(r.btw_pct)}>{r.btw_pct}%</option>}
+                          {btwOpts.map((o: any) => <option key={o.v} value={o.v}>{o.l}</option>)}
+                        </select>
+                      ) : `${r.btw_pct}%`}
+                    </td>
                     <td className="px-3 py-2 text-right font-semibold">{fmt(r.aantal * r.prijs_per_stuk)}</td>
                     <td className="px-3 py-2 text-center">
                       {canDelete

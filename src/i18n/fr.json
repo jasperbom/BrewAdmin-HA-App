@@ -1584,6 +1584,8 @@
   "err_product_naam_duplicaat": "Un produit avec ce nom existe déjà",
   "err_foto_te_groot": "Photo trop grande (max {max})",
   "err_max_fotos": "Maximum {max} photos par produit",
+  "err_foto_verwerken": "La photo n'a pas pu être traitée",
+  "orders_edit_btw": "Modifier le taux de TVA",
   "lbl_product_toon_gearchiveerd": "Afficher archivés",
   "confirm_product_verwijderen": "Voulez-vous vraiment supprimer ce produit ?",
   "ph_product_naam": "Nom de la bière",
