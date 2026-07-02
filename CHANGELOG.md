@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.41] — 2026-07-02
+
+### Toegevoegd — BTW-tarief per orderregel aanpasbaar
+
+Op een bestaande bestelling kun je nu per regel het BTW-tarief wijzigen via een
+dropdown in de orderregeltabel (tarieven uit je BTW-instellingen). Zo corrigeer
+je bijvoorbeeld een WooCommerce-import waarbij bier op 9% i.p.v. 21% stond,
+zonder de bestelling opnieuw te hoeven importeren. Aanpassen kan zolang de
+bestelling niet is afgerond of geannuleerd.
+
+### Fixed — Product toonde "0 batches" na afvullen
+
+Een product dat tijdens het afvullen aan een batch werd gekoppeld, toonde op de
+Productenpagina "0 batches gebrouwen". De telling keek alleen naar
+`batch.product_id`, terwijl de koppeling bij afvullen op de afvulling wordt
+gezet. De telling neemt nu ook batches mee die via een afvulling aan het product
+hangen.
+
+### Fixed — App crashte bij uploaden van een productfoto
+
+Een productfoto werd ongecomprimeerd (volledige base64) in de lokale opslag
+bewaard; een grote foto overschreed de localStorage-quota, wat een onafgevangen
+fout en een crash gaf. Foto's worden nu vóór opslag verkleind (max 1000 px) en
+als JPEG gecomprimeerd, en een volle localStorage laat de app niet langer
+crashen.
+
+---
+
 ## [1.10.40] — 2026-07-02
 
 ### Fixed — WooCommerce-import zette bier met 21% BTW op 9%

@@ -1584,6 +1584,8 @@
   "err_product_naam_duplicaat": "Ya existe un producto con este nombre",
   "err_foto_te_groot": "La foto es demasiado grande (máx. {max})",
   "err_max_fotos": "Máximo {max} fotos por producto",
+  "err_foto_verwerken": "No se pudo procesar la foto",
+  "orders_edit_btw": "Cambiar el tipo de IVA",
   "lbl_product_toon_gearchiveerd": "Mostrar archivados",
   "confirm_product_verwijderen": "¿Seguro que quieres eliminar este producto?",
   "ph_product_naam": "Nombre de la cerveza",
