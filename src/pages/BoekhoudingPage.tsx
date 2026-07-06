@@ -152,12 +152,20 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       if (!map[id]) map[id] = {opgenomen:0, afgelost:0, openstaand:0}
       map[id].afgelost += (k.bedrag||0)
     }
+    // Aflossing in natura: een verkoopfactuur (bijv. geleverd bier) die met de
+    // schuld verrekend is telt als aflossing voor het brutobedrag.
+    for (const f of (verkoopFacturen||[])) {
+      const id = f.verrekend_alt_id
+      if (id == null) continue
+      if (!map[id]) map[id] = {opgenomen:0, afgelost:0, openstaand:0}
+      map[id].afgelost += (f.bruto||0)
+    }
     for (const id of Object.keys(map)) {
       const v = map[Number(id)]
       v.openstaand = (v.opgenomen||0) - (v.afgelost||0)
     }
     return map
-  }, [altRekeningen, inkoopFacturen, bankKoppelingen])
+  }, [altRekeningen, inkoopFacturen, bankKoppelingen, verkoopFacturen])
 
   const totaleSchuldAltRekeningen = React.useMemo(() =>
     Object.values(schuldPerAltRekening).reduce((s: number, v: any) => s + Math.max(0, v.openstaand||0), 0),
@@ -176,6 +184,27 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       f.id === factuurId ? {...f, status:'open', betaald_via_alt_id: undefined, betaald_datum: undefined} : f
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Betaling via alt. rekening ongedaan gemaakt'})
+  }
+
+  // ── Verkoopfactuur verrekenen met alt-rekening-schuld (aflossing in natura) ──
+  // Bijv. bier geleverd aan de eigenaar: de factuur wordt niet per bank betaald
+  // maar lost de schuld aan de privé/alt-rekening af voor het brutobedrag.
+  // Omzet, BTW en accijns blijven gewoon via de factuur/bestelling lopen.
+  const [verrekenFactuurId, setVerrekenFactuurId] = React.useState<number|null>(null)
+
+  const verrekenMetAltRekening = (factuurId: number, altRekeningId: number) => {
+    const r = (altRekeningen||[]).find((x: any) => x.id === altRekeningId)
+    setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
+      f.id === factuurId ? {...f, status: 'betaald', verrekend_alt_id: altRekeningId, betaald_datum: f.betaald_datum || tod()} : f
+    ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:`Verrekend met schuld aan ${r?.naam||'alt. rekening'}`})
+  }
+
+  const ontkoppelVerrekening = (factuurId: number) => {
+    setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
+      f.id === factuurId ? {...f, status: 'open', verrekend_alt_id: undefined, betaald_datum: undefined} : f
+    ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Verrekening met alt. rekening ongedaan gemaakt'})
   }
 
   const koppelAflossing = (txIndex: number, altRekeningId: number) => {
@@ -1760,7 +1789,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                       <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
                       <td className="py-2 pr-3 font-medium text-gray-800">{klantNaamVoor(f)||'—'}</td>
-                      <td className="py-2 pr-3">{statusBadge(f)}</td>
+                      <td className="py-2 pr-3">
+                        {statusBadge(f)}
+                        {f.verrekend_alt_id != null && (() => {
+                          const r = (altRekeningen||[]).find((x: any) => x.id === f.verrekend_alt_id)
+                          return (
+                            <span className="ml-1 text-[10px] text-purple-600 font-medium whitespace-nowrap" onClick={(e: any)=>e.stopPropagation()}>
+                              ↔ {t('lbl_verrekend_met')} {r?.naam||'?'}
+                              <button onClick={()=>ontkoppelVerrekening(f.id)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors" title={t('btn_ontkoppel')}>×</button>
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.netto||0)}</td>
                       <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.btw||0)}</td>
                       <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.bruto||0)}</td>
@@ -1791,6 +1831,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                             <button onClick={() => markeerBetaald(f.id)}
                               className="px-2 py-0.5 bg-green-50 hover:bg-green-100 text-green-700 rounded text-xs font-medium border border-green-200 transition-colors">
                               {t('btn_mark_paid')}
+                            </button>
+                          )}
+                          {f.status !== 'betaald' && (altRekeningen||[]).length > 0 && (
+                            <button onClick={() => setVerrekenFactuurId(f.id)}
+                              title={t('title_verreken_alt')}
+                              className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-xs font-medium border border-purple-200 transition-colors">
+                              {t('btn_verreken_alt')}
                             </button>
                           )}
                         </div>
@@ -2557,6 +2604,56 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       </>)}
 
       {/* Betaald-via-alt modal (Inkoop-tab) */}
+      {/* Verkoopfactuur verrekenen met alt-rekening-schuld (aflossing in natura) */}
+      {verrekenFactuurId !== null && (() => {
+        const f = (verkoopFacturen||[]).find((x: any) => x.id === verrekenFactuurId)
+        return (
+          <Modal title={t('title_verreken_alt')} onClose={()=>setVerrekenFactuurId(null)}>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">{t('msg_kies_verreken_rekening')}</p>
+              {f && (
+                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+                  <div>{f.datum} · <span className="font-medium text-gray-700">{klantNaamVoor(f)||'—'}</span></div>
+                  <div className="font-mono">{fmt(f.bruto||0)}</div>
+                </div>
+              )}
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                {(altRekeningen||[]).map((r: any) => {
+                  const schuld = schuldPerAltRekening[r.id]?.openstaand || 0
+                  return (
+                    <button key={r.id} onClick={()=>{ verrekenMetAltRekening(verrekenFactuurId!, r.id); setVerrekenFactuurId(null) }}
+                      className="w-full text-left px-3 py-2 border border-gray-200 rounded-lg hover:bg-purple-50 hover:border-purple-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-gray-800">{r.naam}</span>
+                        <span className={`text-xs font-semibold ${schuld > 0 ? 'text-purple-700' : 'text-gray-400'}`}>
+                          {t('lbl_schuld_openstaand')}: {fmt(schuld)}
+                        </span>
+                      </div>
+                      {(r.iban || r.eigenaar) && (
+                        <div className="text-xs text-gray-500">
+                          {r.eigenaar && <span>{r.eigenaar}</span>}
+                          {r.eigenaar && r.iban && <span> · </span>}
+                          {r.iban && <span className="font-mono">{r.iban}</span>}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+                {(altRekeningen||[]).length === 0 && (
+                  <div className="text-center py-4 text-gray-400 text-sm">{t('msg_geen_alt_rekeningen')}</div>
+                )}
+              </div>
+              <div className="flex justify-end pt-2">
+                <button onClick={()=>setVerrekenFactuurId(null)}
+                  className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                  {t('btn_cancel')}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
+
       {betaalViaAltFactuurId !== null && (() => {
         const f = (inkoopFacturen||[]).find((x: any) => x.id === betaalViaAltFactuurId)
         return (

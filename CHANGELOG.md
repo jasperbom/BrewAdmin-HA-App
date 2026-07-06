@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.48] — 2026-07-06
+
+### Toegevoegd — Verkoopfactuur verrekenen met alt-rekening-schuld (aflossing in natura)
+
+Bier leveren en dat als aflossing van de schuld aan bijv. je privérekening
+laten tellen, in plaats van een bankbetaling te ontvangen:
+
+- Op een openstaande verkoopfactuur (Boekhouding → Verkoop) staat nu een
+  knop **"Verrekenen"** (zichtbaar zodra er alternatieve betaalrekeningen
+  bestaan). Kies de rekening: de factuur gaat op **betaald** en het
+  **brutobedrag** wordt als aflossing van die schuld geteld.
+- De openstaande schuld daalt overal mee: balans (passiva), Bank-tab en de
+  rekeningtabel in Instellingen (met de openstaande schuld per rekening ook
+  zichtbaar in de keuzemodal).
+- De verrekende factuur toont een paars "Verrekend met …"-label; via het
+  ×-je is de verrekening ongedaan te maken (factuur terug naar open, schuld
+  weer omhoog).
+- Omzet, BTW en accijns blijven gewoon via de normale factuur-/bestelflow
+  lopen — de verrekening raakt alleen de betaalkant. Zo blijft een levering
+  aan de eigenaar fiscaal correct (BTW over de verkoop, accijns via
+  picking/uitslag).
+
+---
+
 ## [1.10.47] — 2026-07-06
 
 ### Toegevoegd — Accijnsbetaling achteraf koppelen op betaalde maanden
