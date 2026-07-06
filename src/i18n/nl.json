@@ -848,6 +848,7 @@
   "lbl_koppel_betaling": "Koppel betaling",
   "lbl_koppel_teruggave": "Koppel teruggave",
   "lbl_accijns_betaling_gekoppeld": "Accijnsbetaling gekoppeld",
+  "msg_accijns_koppel_achteraf": "Deze maand staat op betaald zonder gekoppelde banktransactie — koppel alsnog het betaalbewijs.",
   "lbl_selecteer_transactie": "Kies banktransactie",
   "msg_geen_banktxn_geladen": "Geen bankafschrift geladen — importeer eerst via Bank-tab",
   "btn_ontkoppel": "Ontkoppel",

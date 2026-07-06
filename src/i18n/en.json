@@ -848,6 +848,7 @@
   "lbl_koppel_betaling": "Link payment",
   "lbl_koppel_teruggave": "Link refund",
   "lbl_accijns_betaling_gekoppeld": "Excise payment linked",
+  "msg_accijns_koppel_achteraf": "This month is marked as paid without a linked bank transaction — link the payment proof retroactively.",
   "lbl_selecteer_transactie": "Select transaction",
   "msg_geen_banktxn_geladen": "No bank statement loaded — import first via Bank tab",
   "btn_ontkoppel": "Unlink",

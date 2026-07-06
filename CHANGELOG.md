@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.47] — 2026-07-06
+
+### Toegevoegd — Accijnsbetaling achteraf koppelen op betaalde maanden
+
+Maanden die al (handmatig) op **betaald** stonden vóórdat de accijns-
+bankkoppeling bestond, konden het betaalbewijs niet meer koppelen: de
+selector verscheen alleen bij status "ingediend". Op zo'n maandkaart
+verschijnt nu alsnog de koppel-selector met een hint ("koppel alsnog het
+betaalbewijs"), inclusief voorgestelde matches op het maandbedrag. Bij het
+koppelen wordt de betaaldatum van de aangifte bijgewerkt naar de werkelijke
+transactiedatum. Dit werkt ook voor oude maanden van vóór de
+aangifte-workflow (records betaald zonder aangifte-record).
+
+---
+
 ## [1.10.46] — 2026-07-06
 
 ### Verbeterd — Factuurscanner (AI) fors betrouwbaarder

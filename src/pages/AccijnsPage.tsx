@@ -275,13 +275,36 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                 <ControleBlok aangifte={aangifte} monthKey={monthKey} setAangifteControle={setAangifteControle} readOnly={wfStatus !== 'berekend'} />
               )}
               {/* Bankbetaling koppelen — zelfde patroon als de BTW-periodekaart.
-                  De betaaldatum wordt dan de werkelijke transactiedatum. */}
-              {wfStatus === 'ingediend' && !!koppelAccijnsBetaling && (() => {
+                  De betaaldatum wordt dan de werkelijke transactiedatum. Ook
+                  maanden die al (handmatig) op betaald staan zonder gekoppelde
+                  transactie kunnen het betaalbewijs alsnog achteraf koppelen. */}
+              {!!koppelAccijnsBetaling && (() => {
+                const koppelInfo = accijnsKoppelingInfo ? accijnsKoppelingInfo(monthKey) : null
+                if (koppelInfo) {
+                  return (
+                    <div className="mt-4 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-3">
+                      <span className="text-xs text-green-700 font-medium">
+                        ✓ {t('lbl_accijns_betaling_gekoppeld')}{koppelInfo.datum ? ` · ${fmtD(koppelInfo.datum)}` : ''}{koppelInfo.bedrag != null ? ` · ${fmt(koppelInfo.bedrag)}` : ''}
+                      </span>
+                      {ontkoppelAccijnsBetaling && (
+                        <button onClick={() => ontkoppelAccijnsBetaling(monthKey)}
+                          className="text-xs text-gray-400 hover:text-red-500 ml-2 transition-colors">
+                          {t('btn_ontkoppel')}
+                        </button>
+                      )}
+                    </div>
+                  )
+                }
+                // Achteraf koppelen: maand is betaald (via de knop, of legacy:
+                // alle records betaald) maar mist het bankbewijs.
+                const retro = wfStatus === 'betaald' || (allPaid && wfStatus !== 'ingediend')
+                if (wfStatus !== 'ingediend' && !retro) return null
                 const aangifteBedrag = Math.abs(Number(aangifte?.bedrag ?? monthTotal))
                 const nearMatches = (bankDebets||[]).filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00)
                 const others = (bankDebets||[]).filter((tx: any) => !nearMatches.includes(tx))
                 return (
-                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
+                    {retro && <p className="text-xs text-amber-700">{t('msg_accijns_koppel_achteraf')}</p>}
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-amber-700 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
                       {(bankDebets||[]).length > 0 ? (
@@ -309,23 +332,6 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                         <span className="text-xs text-amber-600 italic">{t('msg_geen_banktxn_geladen')}</span>
                       )}
                     </div>
-                  </div>
-                )
-              })()}
-              {wfStatus === 'betaald' && !!accijnsKoppelingInfo && (() => {
-                const info = accijnsKoppelingInfo(monthKey)
-                if (!info) return null
-                return (
-                  <div className="mt-4 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-3">
-                    <span className="text-xs text-green-700 font-medium">
-                      ✓ {t('lbl_accijns_betaling_gekoppeld')}{info.datum ? ` · ${fmtD(info.datum)}` : ''}{info.bedrag != null ? ` · ${fmt(info.bedrag)}` : ''}
-                    </span>
-                    {ontkoppelAccijnsBetaling && (
-                      <button onClick={() => ontkoppelAccijnsBetaling(monthKey)}
-                        className="text-xs text-gray-400 hover:text-red-500 ml-2 transition-colors">
-                        {t('btn_ontkoppel')}
-                      </button>
-                    )}
                   </div>
                 )
               })()}
