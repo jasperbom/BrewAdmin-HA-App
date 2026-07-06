@@ -3278,6 +3278,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   {t('lbl_voorbelasting_per_tarief')} — <span style={{color:'var(--t-accent)'}}>{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</span>
                 </h3>
                 <p className="text-xs text-gray-400 mb-4">{t('lbl_gebruik_rubriek_5b')}</p>
+                {(() => {
+                  // Verlegde BTW (rubriek 4a/4b) is óók aftrekbaar als voorbelasting.
+                  // Toon die als aparte rijen zodat het tabeltotaal exact gelijk is
+                  // aan rubriek 5b in de invulhulp hieronder. Bruto = netto: de
+                  // leverancier factureert bij verlegging zonder BTW.
+                  const verlegdRows = [
+                    {rubriek: '4a', ...verlegdAangifte.rubriek4a},
+                    {rubriek: '4b', ...verlegdAangifte.rubriek4b},
+                  ].filter(r => r.netto > 0 || r.btw > 0)
+                  const totNetto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0) + verlegdRows.reduce((s,r)=>s+r.netto,0)
+                  const totBtw   = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0)   + verlegdRows.reduce((s,r)=>s+r.btw,0)
+                  const totBruto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0) + verlegdRows.reduce((s,r)=>s+r.netto,0)
+                  return (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
@@ -3300,16 +3313,31 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         <td className="py-2 text-right text-gray-800">{fmt(r.netto+r.btw)}</td>
                       </tr>
                     ))}
+                    {verlegdRows.map((r: any)=>(
+                      <tr key={`verlegd-${r.rubriek}`} className="border-b border-gray-50">
+                        <td className="py-2 pr-3">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700"
+                            title={t('title_verlegd_badge').replace('{rubriek}', r.rubriek).replace('{btw}', fmt(r.btw))}>
+                            ⇄ {t('lbl_btw_verlegd_kort')} {r.rubriek}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-right text-gray-700">{fmt(r.netto)}</td>
+                        <td className="py-2 pr-3 text-right font-semibold text-blue-700">{fmt(r.btw)}</td>
+                        <td className="py-2 text-right text-gray-800">{fmt(r.netto)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-gray-200">
                       <td className="py-2 pr-3 text-xs font-semibold text-gray-500 uppercase">{t('lbl_total')}</td>
-                      <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0))}</td>
-                      <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0))}</td>
-                      <td className="py-2 text-right font-bold text-gray-900">{fmt(btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0))}</td>
+                      <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(totNetto)}</td>
+                      <td className="py-2 pr-3 text-right font-bold text-blue-700">{fmt(totBtw)}</td>
+                      <td className="py-2 text-right font-bold text-gray-900">{fmt(totBruto)}</td>
                     </tr>
                   </tfoot>
                 </table>
+                  )
+                })()}
               </div>
 
               {/* Controle door tweede paar ogen — Douane v2.4 §12.4 */}
