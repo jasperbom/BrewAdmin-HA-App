@@ -797,6 +797,11 @@ export interface VerkoopFactuur {
   aanmaning_datum?: string
   // Voor creditnota's: verwijzing naar de oorspronkelijke factuur (optioneel)
   credit_van_factuur_id?: number | null
+  // Verrekend met de schuld aan een alternatieve betaalrekening (aflossing in
+  // natura, bijv. bier geleverd aan de eigenaar i.p.v. een bankbetaling).
+  // Het brutobedrag telt als aflossing van die schuld.
+  verrekend_alt_id?: number | null
+  betaald_datum?: string
 }
 
 export interface BreweryDetails {
