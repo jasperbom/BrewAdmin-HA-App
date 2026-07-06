@@ -848,6 +848,7 @@
   "lbl_koppel_betaling": "Lier paiement",
   "lbl_koppel_teruggave": "Lier remboursement",
   "lbl_accijns_betaling_gekoppeld": "Paiement d'accise lié",
+  "msg_accijns_koppel_achteraf": "Ce mois est marqué comme payé sans transaction bancaire liée — liez la preuve de paiement a posteriori.",
   "lbl_selecteer_transactie": "Sélectionner transaction",
   "msg_geen_banktxn_geladen": "Aucun relevé bancaire chargé — importer d'abord via l'onglet Banque",
   "btn_ontkoppel": "Dissocier",

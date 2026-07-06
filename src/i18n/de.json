@@ -848,6 +848,7 @@
   "lbl_koppel_betaling": "Zahlung verknüpfen",
   "lbl_koppel_teruggave": "Erstattung verknüpfen",
   "lbl_accijns_betaling_gekoppeld": "Verbrauchsteuerzahlung verknüpft",
+  "msg_accijns_koppel_achteraf": "Dieser Monat ist als bezahlt markiert, ohne verknüpfte Banktransaktion — verknüpfen Sie den Zahlungsnachweis nachträglich.",
   "lbl_selecteer_transactie": "Transaktion wählen",
   "msg_geen_banktxn_geladen": "Kein Kontoauszug geladen — zuerst über Bank-Tab importieren",
   "btn_ontkoppel": "Verknüpfung lösen",
