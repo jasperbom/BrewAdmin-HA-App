@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.53] — 2026-07-06
+
+### Verbeterd — Verlegde BTW zichtbaar in de factuurmodal + waarschuwing bij 0%-regels
+
+Bij een verlegde factuur (intracommunautair / import) toonde de modal
+"BTW: €0,00" en was de zelfberekende BTW voor rubriek 4a/4b nergens
+zichtbaar — het leek alsof er niets berekend werd. Bovendien telde een
+verlegde regel die (nog) op 0% stond geruisloos voor €0 mee in rubriek
+4a/4b. Nu:
+
+- De factuurmodal toont bij verlegde BTW een paars informatieblok onder de
+  totalen: **"Zelf aan te geven BTW (rubriek 4a/4b): €X"** met uitsplitsing
+  per tarief, plus uitleg dat dit bedrag niet in de factuurtotalen zit
+  (verschuldigd én voorbelasting, per saldo €0).
+- Staan er verlegde regels op 0%, dan verschijnt daar een waarschuwing met
+  het bedrag en een knop **"Vul standaardtarieven"** (ingrediënten volgens
+  ingrediënttype, onderdelen/overig 21%). Handig ook om een eerder
+  opgeslagen factuur te repareren: openen → knop → opslaan.
+- Het rubriek 4a/4b-kaartje in de BTW-aangifte waarschuwt wanneer er
+  verlegde regels op 0% in de periode zitten, met het bedrag waarover geen
+  BTW wordt berekend.
+
 ## [1.10.52] — 2026-07-06
 
 ### Verbeterd — Factuurscan herkent verlegde BTW (intracommunautaire verwerving)

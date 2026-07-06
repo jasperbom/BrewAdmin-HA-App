@@ -724,6 +724,37 @@ function InkoopFactuurModal({
     return Object.entries(map).filter(([,v]) => v>0).sort(([a],[b]) => Number(a)-Number(b))
   })()
 
+  // Zelf aan te geven BTW bij verlegde facturen (rubriek 4a/4b): berekend
+  // over de regel-tarieven, los van de factuurtotalen (die blijven €0 BTW).
+  const verlegdBtwPerTarief = (() => {
+    if (!isVerlegd) return [] as [string, number][]
+    const map: Record<string, number> = {}
+    ;[...productLijst, ...verpakkingLijst].forEach((p: any) => {
+      const k = Number(p.btw_tarief || 0); if (!map[k]) map[k] = 0
+      map[k] += (parseFloat(p.totaalprijs) || 0) * k / 100
+    })
+    vrijeList.forEach((r: any) => {
+      const k = Number(r.btw_tarief || 0); if (!map[k]) map[k] = 0
+      map[k] += (parseFloat(r.netto) || 0) * k / 100
+    })
+    return Object.entries(map).filter(([, v]) => v > 0).sort(([a], [b]) => Number(a) - Number(b))
+  })()
+  const verlegdBtwTotaal = verlegdBtwPerTarief.reduce((s, [, v]) => s + (v as number), 0)
+  // Netto van verlegde regels die (nog) op 0% staan: daarover wordt in
+  // rubriek 4a/4b geen BTW berekend — dat is vrijwel altijd een omissie.
+  const verlegdNulNetto = !isVerlegd ? 0
+    : productLijst.reduce((s: number, p: any) => s + (!Number(p.btw_tarief) ? (parseFloat(p.totaalprijs) || 0) : 0), 0)
+    + verpakkingLijst.reduce((s: number, v: any) => s + (!Number(v.btw_tarief) ? (parseFloat(v.totaalprijs) || 0) : 0), 0)
+    + vrijeList.reduce((s: number, r: any) => s + (!Number(r.btw_tarief) ? (parseFloat(r.netto) || 0) : 0), 0)
+
+  // Vul regels op 0% met het Nederlandse standaardtarief (ingrediënten per
+  // type via ingTypeBtw, anders 9%; onderdelen en vrije regels 21%).
+  const vulVerlegdeTarieven = () => {
+    setProductLijst(prev => prev.map((p: any) => Number(p.btw_tarief) ? p : {...p, btw_tarief: String(ingTypeBtw[p.type] ?? 9)}))
+    setVerpakkingLijst(prev => prev.map((vp: any) => Number(vp.btw_tarief) ? vp : {...vp, btw_tarief: '21'}))
+    setVrijeList(prev => prev.map((r: any) => Number(r.btw_tarief) ? r : {...r, btw_tarief: 21}))
+  }
+
   return (
     <Modal title={initialData ? t('modal_title_edit_invoice') : t('modal_title_receipt')} onClose={onClose} wide={!showPdfViewer} ultrawide={showPdfViewer}>
       <div className={showPdfViewer ? 'grid grid-cols-2 gap-4' : ''}>
@@ -788,11 +819,7 @@ function InkoopFactuurModal({
                   const heeftNul = productLijst.some((p: any) => !Number(p.btw_tarief))
                     || verpakkingLijst.some((vp: any) => !Number(vp.btw_tarief))
                     || vrijeList.some((r: any) => !Number(r.btw_tarief))
-                  if (heeftNul && confirm(t('confirm_verlegd_tarieven'))) {
-                    setProductLijst(prev => prev.map((p: any) => Number(p.btw_tarief) ? p : {...p, btw_tarief: String(ingTypeBtw[p.type] ?? 9)}))
-                    setVerpakkingLijst(prev => prev.map((vp: any) => Number(vp.btw_tarief) ? vp : {...vp, btw_tarief: '21'}))
-                    setVrijeList(prev => prev.map((r: any) => Number(r.btw_tarief) ? r : {...r, btw_tarief: 21}))
-                  }
+                  if (heeftNul && confirm(t('confirm_verlegd_tarieven'))) vulVerlegdeTarieven()
                 }
               }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm">
@@ -1298,6 +1325,28 @@ function InkoopFactuurModal({
             </div>
             {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
               <p className="text-xs text-amber-600 mt-1.5">{t('msg_manual_adjusted')}</p>
+            )}
+            {isVerlegd && (
+              <div className="mt-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-800">
+                <div>
+                  <span className="font-semibold">{t('lbl_verlegd_btw_zelf')}: €{verlegdBtwTotaal.toFixed(2)}</span>
+                  {verlegdBtwPerTarief.length > 0 && (
+                    <span className="ml-2 text-purple-600">
+                      {verlegdBtwPerTarief.map(([k, v]) => `${k}%: €${(v as number).toFixed(2)}`).join(' · ')}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-purple-600">{t('hint_verlegd_btw_zelf')}</div>
+                {verlegdNulNetto > 0 && (
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap text-orange-700">
+                    <span>⚠ {t('warn_verlegd_nul_tarief').replace('{bedrag}', verlegdNulNetto.toFixed(2))}</span>
+                    <button type="button" onClick={vulVerlegdeTarieven}
+                      className="px-2 py-0.5 rounded border border-orange-300 text-orange-700 hover:bg-orange-100 font-medium">
+                      {t('btn_vul_standaardtarieven')}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

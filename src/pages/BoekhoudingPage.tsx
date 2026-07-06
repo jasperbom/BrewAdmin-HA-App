@@ -327,7 +327,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const periode = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
     const targetKey = selectedPeriode?.key
     const yearPrefix = `${aangifteYear}-`
-    const init = () => ({ netto: 0, btw: 0 })
+    const init = () => ({ netto: 0, btw: 0, nulNetto: 0 })
     const totals = { intracom_eu: init(), import_niet_eu: init() }
     inkoopFacturen
       .filter((f: any) => {
@@ -342,10 +342,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         const tarief = Number(r.btw_tarief) || 0
         totals[soort].netto += netto
         totals[soort].btw   += netto * tarief / 100
+        // Verlegde regels op 0%: grondslag telt mee maar er wordt geen BTW
+        // berekend — vrijwel altijd een omissie, dus apart bijhouden voor
+        // een waarschuwing in het rubriek-kaartje.
+        if (!tarief && netto > 0) totals[soort].nulNetto += netto
       }))
     return {
-      rubriek4a: { netto: r2(totals.import_niet_eu.netto), btw: r2(totals.import_niet_eu.btw) },
-      rubriek4b: { netto: r2(totals.intracom_eu.netto),    btw: r2(totals.intracom_eu.btw) },
+      rubriek4a: { netto: r2(totals.import_niet_eu.netto), btw: r2(totals.import_niet_eu.btw), nulNetto: r2(totals.import_niet_eu.nulNetto) },
+      rubriek4b: { netto: r2(totals.intracom_eu.netto),    btw: r2(totals.intracom_eu.btw),    nulNetto: r2(totals.intracom_eu.nulNetto) },
     }
   }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
 
@@ -3408,12 +3412,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_4a')}</div>
                     <div className="font-bold text-gray-800 text-base">{fmt(verlegdAangifte.rubriek4a.netto)}</div>
                     <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(verlegdAangifte.rubriek4a.btw)}</div>
+                    {verlegdAangifte.rubriek4a.nulNetto > 0 && (
+                      <div className="text-xs text-orange-600 font-medium mb-1">⚠ {t('warn_rubriek_verlegd_nul').replace('{bedrag}', fmt(verlegdAangifte.rubriek4a.nulNetto))}</div>
+                    )}
                     <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_4a_hint')}</div>
                   </div>
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_4b')}</div>
                     <div className="font-bold text-gray-800 text-base">{fmt(verlegdAangifte.rubriek4b.netto)}</div>
                     <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(verlegdAangifte.rubriek4b.btw)}</div>
+                    {verlegdAangifte.rubriek4b.nulNetto > 0 && (
+                      <div className="text-xs text-orange-600 font-medium mb-1">⚠ {t('warn_rubriek_verlegd_nul').replace('{bedrag}', fmt(verlegdAangifte.rubriek4b.nulNetto))}</div>
+                    )}
                     <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_4b_hint')}</div>
                   </div>
                 </div>
