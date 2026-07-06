@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.50] — 2026-07-06
+
+### Verbeterd — Factuurscan koppelt regels aan ingrediënten en onderdelen
+
+De factuurscan zette elke herkende regel op het tabblad **Vrije regels**,
+waarna alles handmatig verplaatst moest worden. De scan verdeelt de regels
+nu automatisch:
+
+- **Ingrediëntregels** (mout, hop, gist, …) komen op het ingrediënten-tabblad
+  terecht, mét hoeveelheid, eenheid, prijs per eenheid en BTW. Bestaat het
+  ingredient al, dan wordt de regel eraan gekoppeld (het lot komt bij het
+  juiste ingredient); anders wordt de regel als nieuw ingredient voorgesteld.
+- **Onderdeelregels** (flessen, blikken, kroonkurken, etiketten, …) komen op
+  het onderdelen-tabblad en worden gekoppeld aan het bestaande onderdeel
+  zodat de voorraad op het juiste product bijgeboekt wordt; onbekende
+  onderdelen worden als nieuw onderdeel voorgesteld.
+- Alleen wat écht overig is (statiegeld, transport, kortingen, diensten)
+  blijft een vrije regel — met een passende kostensoort voorgeselecteerd.
+
+Het herkennen gebeurt op twee manieren: de AI-scan krijgt de lijst met
+bekende ingrediënten en onderdelen mee en wijst zelf de match aan, en als
+vangnet matcht de app lokaal op (genormaliseerde) naam. Regels zonder
+bruikbare hoeveelheid of met een negatief bedrag blijven bewust vrije
+regels, zodat er nooit een onbetrouwbare voorraadmutatie ontstaat. De
+melding na de scan toont de verdeling over de drie tabbladen.
+
 ## [1.10.49] — 2026-07-06
 
 ### Toegevoegd — Vast kortingspercentage per klant (niet op verzendkosten)
