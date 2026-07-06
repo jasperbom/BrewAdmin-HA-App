@@ -7,7 +7,7 @@ import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel } from '../utils/btw'
-import InkoopFactuurModal from '../components/InkoopFactuurModal'
+import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
@@ -67,7 +67,7 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -1902,6 +1902,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onderdelen={onderdelen}
             initialTab="ingredienten"
             onSave={saveVrijeFactuur}
+            scanCorrecties={scanCorrecties}
+            onScanCorrectie={(c: any) => setScanCorrecties((prev: any) => registreerScanCorrectie(prev || [], c))}
             onClose={()=>setShowVrijeFactuur(false)}
             claudeCreds={claudeCreds}
             breweryNaam={(breweryDetails as any)?.naam || ''}
@@ -1920,6 +1922,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             initialTab="ingredienten"
             initialData={editingFactuur}
             onSave={updateFactuur}
+            scanCorrecties={scanCorrecties}
+            onScanCorrectie={(c: any) => setScanCorrecties((prev: any) => registreerScanCorrectie(prev || [], c))}
             onClose={()=>setEditingFactuur(null)}
             claudeCreds={claudeCreds}
             breweryNaam={(breweryDetails as any)?.naam || ''}
@@ -2548,6 +2552,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             initialTab="vrije"
             initialData={boekingInitialData}
             onSave={saveBoekingFactuur}
+            scanCorrecties={scanCorrecties}
+            onScanCorrectie={(c: any) => setScanCorrecties((prev: any) => registreerScanCorrectie(prev || [], c))}
             onClose={()=>{ setBoekingTxIndex(null); setBoekingInitialData(null); setBoekingForm(emptyBoekingForm()) }}
             claudeCreds={claudeCreds}
             breweryNaam={(breweryDetails as any)?.naam || ''}

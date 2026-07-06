@@ -94,6 +94,15 @@ const vindBestaand = (regel: any, items: any[]) => {
     .sort((a: any, b: any) => _normNaam(b.naam).length - _normNaam(a.naam).length)[0] || null
 }
 
+// Onthoud een handmatige herclassificatie (regel verplaatst naar een andere
+// categorie) zodat volgende scans dezelfde omschrijving meteen goed indelen.
+// De laatste correctie per (genormaliseerde) tekst wint; maximaal 300 bewaard.
+export const registreerScanCorrectie = (prev: any[], c: {tekst: string, soort: string}) => {
+  const nt = _normNaam(c.tekst)
+  if (!nt) return prev || []
+  return [...(prev || []).filter((x: any) => _normNaam(x?.tekst) !== nt), {tekst: c.tekst, soort: c.soort}].slice(-300)
+}
+
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((res, rej) => {
     const reader = new FileReader()
@@ -146,7 +155,7 @@ const FACTUUR_EXTRACTIE_TOOL = {
   },
 }
 
-const bouwFactuurPrompt = (leveranciers: string[], breweryNaam?: string, ingNamen: string[] = [], onderdeelNamen: string[] = []) => {
+const bouwFactuurPrompt = (leveranciers: string[], breweryNaam?: string, ingNamen: string[] = [], onderdeelNamen: string[] = [], correcties: any[] = []) => {
   let p = `Extraheer de gegevens uit deze inkoopfactuur voor een brouwerij en geef ze door via de tool.
 
 Regels:
@@ -162,6 +171,7 @@ Regels:
   if (ingNamen.length) p += `\n- Bekende ingrediënten: ${ingNamen.slice(0, 150).join(', ')}.`
   if (onderdeelNamen.length) p += `\n- Bekende onderdelen/verpakkingen: ${onderdeelNamen.slice(0, 100).join(', ')}.`
   if (ingNamen.length || onderdeelNamen.length) p += `\n- Hoort een regel duidelijk bij een bekend ingredient of onderdeel (ook bij kleine spellingverschillen of extra tekst zoals gewicht/merk), zet dan in "match_naam" exact de schrijfwijze uit de lijst; anders null.`
+  if (correcties.length) p += `\n- De gebruiker heeft eerdere scans zo gecorrigeerd — volg deze indeling altijd, ook bij vergelijkbare omschrijvingen: ${correcties.slice(-40).map((c: any) => `"${c.tekst}" = ${c.soort}`).join('; ')}.`
   p += `
 - Nederlandse bedragnotatie: "1.234,56" betekent 1234.56.
 - Gebruik null voor gegevens die niet op de factuur staan. Verzin niets.`
@@ -184,9 +194,9 @@ const _normEenheid = (v: any): string | null => {
   return m[String(v || '').trim().toLowerCase()] || null
 }
 
-async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leveranciers?: string[], breweryNaam?: string, ingNamen?: string[], onderdeelNamen?: string[]}): Promise<any> {
+async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leveranciers?: string[], breweryNaam?: string, ingNamen?: string[], onderdeelNamen?: string[], correcties?: any[]}): Promise<any> {
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-  const prompt = bouwFactuurPrompt(ctx?.leveranciers || [], ctx?.breweryNaam, ctx?.ingNamen || [], ctx?.onderdeelNamen || [])
+  const prompt = bouwFactuurPrompt(ctx?.leveranciers || [], ctx?.breweryNaam, ctx?.ingNamen || [], ctx?.onderdeelNamen || [], ctx?.correcties || [])
   let messages: any[]
   if (isPdf) {
     const text = await extractPdfText(file)
@@ -278,6 +288,12 @@ interface InkoopFactuurModalProps {
   ingTypeBtw?: Record<string, number>
   initialData?: any
   kostenSoorten?: string[]
+  // Eerdere handmatige herclassificaties ({tekst, soort}) — sturen zowel de
+  // AI-scan als de lokale indeling van scanregels.
+  scanCorrecties?: any[]
+  // Callback wanneer de gebruiker een regel naar een andere categorie
+  // verplaatst; de parent bewaart dit via registreerScanCorrectie.
+  onScanCorrectie?: (c: {tekst: string, soort: string}) => void
   // Geeft op basis van een factuurdatum aan of de BTW naar een andere periode
   // doorrolt (omdat de oorspronkelijke aangifte al ingediend/betaald is).
   // null = geen rollover nodig.
@@ -288,7 +304,8 @@ function InkoopFactuurModal({
   knownLeveranciers=[], ing=[], lots=[], onderdelen=[], onSave, onClose,
   initialTab='ingredienten', initialIngId='', claudeCreds=null, breweryNaam='',
   ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
-  kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo
+  kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo,
+  scanCorrecties=[], onScanCorrectie
 }: InkoopFactuurModalProps) {
   const defaultType = ingTypes[0] || 'Mout'
 
@@ -446,6 +463,93 @@ function InkoopFactuurModal({
     setVrijeForm(emptyVrije); setVrijeTotInclBtw(false); setVrijeBrutoStr('')
   }
 
+  // ── Regels verplaatsen tussen categorieën ──────────────────────────────
+  // Elke verplaatsing wordt als correctie doorgegeven zodat volgende scans
+  // dezelfde omschrijving meteen in de juiste categorie zetten.
+  const meldCorrectie = (tekst: string, soort: string) => {
+    if (tekst && onScanCorrectie) onScanCorrectie({tekst: tekst.trim(), soort})
+  }
+
+  // Houd een editing-index kloppend wanneer regel i uit de lijst verdwijnt.
+  const schuifEditIdx = (setIdx: (fn: any) => void, i: number) =>
+    setIdx((prev: number|null) => prev === null ? null : prev === i ? null : prev > i ? prev - 1 : prev)
+
+  const verplaatsProduct = (i: number, naar: 'verpakking' | 'overig') => {
+    const p = productLijst[i]
+    if (!p) return
+    const naam = p._naam || p.nieuw || ''
+    setProductLijst(prev => prev.filter((_: any, j: number) => j !== i))
+    schuifEditIdx(setEditingProductIdx, i)
+    meldCorrectie(naam, naar)
+    const netto = p.totaalprijs || (p.prijs && p.qty ? (Number(p.prijs) * Number(p.qty)).toFixed(2) : '')
+    if (naar === 'verpakking') {
+      const od = vindBestaand({omschrijving: naam}, onderdelen)
+      setVerpakkingLijst(prev => [...prev, {
+        od_id: od ? String(od.id) : '', naam: od?.naam || naam, type: od?.type || '',
+        lotnr: p.lotnr || '', aantal: p.qty, prijs_per_stuk: p.prijs,
+        totaalprijs: p.totaalprijs, btw_tarief: p.btw_tarief,
+        _naam: od?.naam || naam, _id: p._id,
+      }])
+    } else {
+      setVrijeList(prev => [...prev, {naam, netto: String(netto), btw_tarief: Number(p.btw_tarief) || 0, kostensoort: 'Overig', _id: p._id}])
+    }
+  }
+
+  const verplaatsVerpakking = (i: number, naar: 'ingredient' | 'overig') => {
+    const v = verpakkingLijst[i]
+    if (!v) return
+    const naam = v._naam || v.naam || ''
+    setVerpakkingLijst(prev => prev.filter((_: any, j: number) => j !== i))
+    schuifEditIdx(setEditingVerpakkingIdx, i)
+    meldCorrectie(naam, naar)
+    if (naar === 'ingredient') {
+      const m = vindBestaand({omschrijving: naam}, ing)
+      setProductLijst(prev => [...prev, {
+        ing_id: m ? String(m.id) : '', nieuw: m ? '' : naam, type: m?.type || defaultType,
+        fabrikant: '', lotnr: v.lotnr || '', qty: v.aantal, eenh: 'stuks', tht: '',
+        prijs: v.prijs_per_stuk, totaalprijs: v.totaalprijs, btw_tarief: v.btw_tarief,
+        bf_props: {}, _naam: m?.naam || naam, _id: v._id,
+      }])
+    } else {
+      const netto = v.totaalprijs || (v.prijs_per_stuk && v.aantal ? (Number(v.prijs_per_stuk) * Number(v.aantal)).toFixed(2) : '')
+      setVrijeList(prev => [...prev, {naam, netto: String(netto), btw_tarief: Number(v.btw_tarief) || 0, kostensoort: 'Overig', _id: v._id}])
+    }
+  }
+
+  const verplaatsVrije = (i: number, naar: 'ingredient' | 'verpakking') => {
+    const r = vrijeList[i]
+    if (!r) return
+    setVrijeList(prev => prev.filter((_: any, j: number) => j !== i))
+    schuifEditIdx(setEditingVrijeIdx, i)
+    meldCorrectie(r.naam, naar)
+    // Vrije regels hebben geen hoeveelheid; zet de gegevens in het formulier
+    // zodat de gebruiker die aanvult en de regel daarna toevoegt.
+    setScanFout(null)
+    setScanInfo(t('msg_regel_verplaatst_aanvullen'))
+    const qty = r._hoeveelheid ? String(r._hoeveelheid) : ''
+    const netto = parseFloat(r.netto) || 0
+    const perStuk = qty && netto ? String((netto / Number(qty)).toFixed(4)) : ''
+    if (naar === 'ingredient') {
+      const m = vindBestaand({omschrijving: r.naam}, ing)
+      setProductForm({
+        ing_id: m ? String(m.id) : '', nieuw: m ? '' : r.naam, type: m?.type || defaultType,
+        fabrikant: '', lotnr: '', qty, eenh: r._eenheid || initialEenh, tht: '',
+        prijs: perStuk, totaalprijs: netto ? netto.toFixed(2) : '', btw_tarief: String(r.btw_tarief ?? 21), bf_props: {},
+      })
+      setProductTotInclBtw(false); setProductBrutoStr(''); setEditingProductIdx(null)
+      setTab('ingredienten')
+    } else {
+      const od = vindBestaand({omschrijving: r.naam}, onderdelen)
+      setVOntvForm({
+        od_id: od ? String(od.id) : '', naam: od?.naam || r.naam, type: od?.type || '',
+        lotnr: '', aantal: qty, prijs_per_stuk: perStuk, totaalprijs: netto ? netto.toFixed(2) : '',
+        btw_tarief: String(r.btw_tarief ?? 21),
+      })
+      setVerpakTotInclBtw(false); setVerpakBrutoStr(''); setEditingVerpakkingIdx(null)
+      setTab('verpakkingen')
+    }
+  }
+
   const verwerkScanData = (data: any): {nIng: number, nVerpak: number, nVrij: number} => {
     if (data.leverancier && !leverancierNieuw && leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
       const known = knownLeveranciers.find((l: string) => l.toLowerCase() === data.leverancier.toLowerCase())
@@ -463,14 +567,19 @@ function InkoopFactuurModal({
       const prod: any[] = [], verpak: any[] = [], vrij: any[] = []
       data.regels.forEach((r: any, i: number) => {
         const id = Date.now() + i
+        // Een eerdere handmatige correctie van de gebruiker overrulet altijd
+        // de classificatie van het model.
+        const correctie = (scanCorrecties || []).find((c: any) => _normNaam(c?.tekst) === _normNaam(r.omschrijving))
+        const soort = correctie?.soort || r.soort
         // Onderdelen-classificatie weegt zwaarder dan een toevallige
-        // ingredient-naammatch en andersom.
-        const matchIng = r.soort !== 'verpakking' ? vindBestaand(r, ing) : null
-        const matchOd = !matchIng ? vindBestaand(r, onderdelen) : null
+        // ingredient-naammatch en andersom; bij een correctie wordt alleen
+        // nog in de gecorrigeerde categorie gematcht.
+        const matchIng = soort !== 'verpakking' && (!correctie || soort === 'ingredient') ? vindBestaand(r, ing) : null
+        const matchOd = !matchIng && (!correctie || soort === 'verpakking') ? vindBestaand(r, onderdelen) : null
         // Kortingen/negatieve bedragen en regels zonder hoeveelheid blijven
         // vrije regels: daar valt geen betrouwbare voorraadmutatie van te maken.
         if (r.netto > 0 && r.hoeveelheid) {
-          if (matchIng || (!matchOd && r.soort === 'ingredient')) {
+          if (matchIng || (!matchOd && soort === 'ingredient')) {
             const ingLots = matchIng ? lots.filter((l: any) => l.ingredient_id === matchIng.id) : []
             const eenhTelling: Record<string, number> = {}
             ingLots.forEach((l: any) => { if (l.eenheid) eenhTelling[l.eenheid] = (eenhTelling[l.eenheid] || 0) + 1 })
@@ -485,7 +594,7 @@ function InkoopFactuurModal({
             })
             return
           }
-          if (matchOd || r.soort === 'verpakking') {
+          if (matchOd || soort === 'verpakking') {
             verpak.push({
               od_id: matchOd ? String(matchOd.id) : '', naam: matchOd?.naam || r.omschrijving,
               type: matchOd?.type || '', lotnr: '',
@@ -496,10 +605,13 @@ function InkoopFactuurModal({
             return
           }
         }
-        const ks = r.soort === 'ingredient' ? 'Grondstoffen' : r.soort === 'verpakking' ? 'Verpakkingsmateriaal' : 'Overig'
+        const ks = soort === 'ingredient' ? 'Grondstoffen' : soort === 'verpakking' ? 'Verpakkingsmateriaal' : 'Overig'
+        // _hoeveelheid/_eenheid bewaren zodat de regel later alsnog compleet
+        // naar ingredient/onderdeel verplaatst kan worden.
         vrij.push({
           naam: r.omschrijving, netto: String(r.netto), btw_tarief: r.btw_pct,
-          kostensoort: kostenSoorten.includes(ks) ? ks : 'Overig', _id: id,
+          kostensoort: kostenSoorten.includes(ks) ? ks : 'Overig',
+          _hoeveelheid: r.hoeveelheid || null, _eenheid: r.eenheid || null, _id: id,
         })
       })
       setProductLijst(prod); setVerpakkingLijst(verpak); setVrijeList(vrij)
@@ -516,6 +628,7 @@ function InkoopFactuurModal({
         leveranciers: knownLeveranciers, breweryNaam,
         ingNamen: ing.map((i: any) => i.naam).filter(Boolean),
         onderdeelNamen: onderdelen.map((o: any) => o.naam).filter(Boolean),
+        correcties: scanCorrecties,
       })
       const {nIng, nVerpak, nVrij} = verwerkScanData(data)
       if (nIng + nVerpak + nVrij > 0) {
@@ -1047,8 +1160,16 @@ function InkoopFactuurModal({
                       <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.prijs?`€${p.prijs}`:'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{p.totaalprijs?`€${p.totaalprijs}`:'—'}</td>
-                      <td className="px-2 py-2 text-right">
-                        <button onClick={e => {e.stopPropagation();setProductLijst((prev: any) => prev.filter((_: any,j: number)=>j!==i));}}
+                      <td className="px-2 py-2 text-right whitespace-nowrap">
+                        <select value="" title={t('lbl_move_to')}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => {e.stopPropagation(); const v=e.target.value; if(v) verplaatsProduct(i, v as any)}}
+                          className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white mr-1 cursor-pointer">
+                          <option value="">⇄</option>
+                          <option value="verpakking">→ {t('tab_onderdelen')}</option>
+                          <option value="overig">→ {t('tab_vrije_regels')}</option>
+                        </select>
+                        <button onClick={e => {e.stopPropagation();setProductLijst((prev: any) => prev.filter((_: any,j: number)=>j!==i));schuifEditIdx(setEditingProductIdx, i);}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>
@@ -1061,8 +1182,16 @@ function InkoopFactuurModal({
                       <td className="px-3 py-2 text-gray-500">{v.lotnr||'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{v.prijs_per_stuk?`€${v.prijs_per_stuk}`:'—'}</td>
                       <td className="px-3 py-2 text-gray-500">{v.totaalprijs?`€${v.totaalprijs}`:'—'}</td>
-                      <td className="px-2 py-2 text-right">
-                        <button onClick={e => {e.stopPropagation();setVerpakkingLijst((prev: any) => prev.filter((_: any,j: number)=>j!==i));}}
+                      <td className="px-2 py-2 text-right whitespace-nowrap">
+                        <select value="" title={t('lbl_move_to')}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => {e.stopPropagation(); const nv=e.target.value; if(nv) verplaatsVerpakking(i, nv as any)}}
+                          className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white mr-1 cursor-pointer">
+                          <option value="">⇄</option>
+                          <option value="ingredient">→ {t('ing_tab_ingredients')}</option>
+                          <option value="overig">→ {t('tab_vrije_regels')}</option>
+                        </select>
+                        <button onClick={e => {e.stopPropagation();setVerpakkingLijst((prev: any) => prev.filter((_: any,j: number)=>j!==i));schuifEditIdx(setEditingVerpakkingIdx, i);}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>
@@ -1075,8 +1204,16 @@ function InkoopFactuurModal({
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
                       <td className="px-3 py-2 text-gray-500">€{parseFloat(r.netto).toFixed(2)}</td>
-                      <td className="px-2 py-2 text-right">
-                        <button onClick={e => {e.stopPropagation();setVrijeList((prev: any) => prev.filter((_: any,j: number)=>j!==i));}}
+                      <td className="px-2 py-2 text-right whitespace-nowrap">
+                        <select value="" title={t('lbl_move_to')}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => {e.stopPropagation(); const nv=e.target.value; if(nv) verplaatsVrije(i, nv as any)}}
+                          className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white mr-1 cursor-pointer">
+                          <option value="">⇄</option>
+                          <option value="ingredient">→ {t('ing_tab_ingredients')}</option>
+                          <option value="verpakking">→ {t('tab_onderdelen')}</option>
+                        </select>
+                        <button onClick={e => {e.stopPropagation();setVrijeList((prev: any) => prev.filter((_: any,j: number)=>j!==i));schuifEditIdx(setEditingVrijeIdx, i);}}
                           className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
                       </td>
                     </tr>

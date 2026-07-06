@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.51] — 2026-07-06
+
+### Toegevoegd — Factuurregels verplaatsen tussen categorieën + zelflerende scan
+
+Een verkeerd ingedeelde regel (bijv. een product dat als onderdeel werd
+gezien terwijl het een vrije regel moest zijn) is nu direct te corrigeren:
+
+- Elke regel in de toegevoegde-productenlijst heeft een **⇄-knopje** waarmee
+  je hem naar één van de andere twee categorieën verplaatst (ingrediënt ↔
+  onderdeel ↔ vrije regel, alle richtingen). Bij het verplaatsen wordt
+  automatisch geprobeerd te koppelen aan een bestaand ingredient/onderdeel.
+- Een vrije regel heeft geen hoeveelheid; bij verplaatsen náár ingrediënt of
+  onderdeel wordt het invoerformulier voorgevuld (incl. gescande hoeveelheid
+  en eenheid als die bekend zijn) zodat je alleen hoeft aan te vullen en op
+  "Toevoegen" te klikken.
+- **De scan leert van je correcties.** Elke verplaatsing wordt opgeslagen
+  (nieuwe datasleutel `scan_correcties`, max. 300, zit in de Excel-backup).
+  Bij een volgende scan krijgt de AI de eerdere correcties mee in de prompt
+  én overrulet de app de classificatie lokaal wanneer dezelfde omschrijving
+  opnieuw voorkomt — die regel komt dan meteen in de juiste categorie.
+
 ## [1.10.50] — 2026-07-06
 
 ### Verbeterd — Factuurscan koppelt regels aan ingrediënten en onderdelen

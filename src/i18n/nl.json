@@ -874,6 +874,8 @@
   "msg_scanning": "Factuur wordt gescand…",
   "msg_scan_regels_toegevoegd": "{n} factuurregels overgenomen als vrije regels — controleer bedragen en BTW",
   "msg_scan_regels_verdeeld": "Scan verwerkt: {i} ingrediëntregels, {v} onderdeelregels, {o} vrije regels — controleer hoeveelheden, bedragen en BTW",
+  "lbl_move_to": "Verplaats naar…",
+  "msg_regel_verplaatst_aanvullen": "Regel verplaatst — vul de hoeveelheid aan en voeg de regel toe aan de lijst",
   "msg_scan_klaar": "Scan verwerkt — herkende velden zijn ingevuld",
   "lbl_klant_korting": "Vaste korting (%)",
   "msg_klantkorting_toegepast": "Klantkorting {pct}% wordt automatisch toegepast (niet op verzendkosten)",

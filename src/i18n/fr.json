@@ -871,6 +871,8 @@
   "msg_scanning": "Scan de la facture en cours…",
   "msg_scan_regels_toegevoegd": "{n} lignes de facture reprises comme lignes libres — vérifiez les montants et la TVA",
   "msg_scan_regels_verdeeld": "Scan traité : {i} lignes d'ingrédients, {v} lignes de composants, {o} lignes libres — vérifiez les quantités, montants et TVA",
+  "lbl_move_to": "Déplacer vers…",
+  "msg_regel_verplaatst_aanvullen": "Ligne déplacée — complétez la quantité et ajoutez la ligne à la liste",
   "msg_scan_klaar": "Scan traité — les champs reconnus ont été remplis",
   "lbl_klant_korting": "Remise fixe (%)",
   "msg_klantkorting_toegepast": "La remise client de {pct}% est appliquée automatiquement (pas sur les frais de port)",

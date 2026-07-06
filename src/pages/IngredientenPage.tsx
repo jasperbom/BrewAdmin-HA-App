@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
-import InkoopFactuurModal from '../components/InkoopFactuurModal'
+import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { useStore } from '../utils/api'
@@ -39,6 +39,8 @@ interface Props {
   btwInst?: any
   btwAangiftes?: any[]
   bankKoppelingen?: Record<string, any>
+  scanCorrecties?: any[]
+  setScanCorrecties?: (v: any) => void
 }
 
 const IngredientenPage: React.FC<Props> = ({
@@ -47,7 +49,8 @@ const IngredientenPage: React.FC<Props> = ({
   bi = [], bat = [], setInkoopFacturen = () => {}, claudeCreds = null,
   ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {}, kostenSoorten = BUILTIN_KOSTEN_SOORTEN,
   bfCreds = null, auditLog = [], setAuditLog = () => {},
-  btwInst = {}, btwAangiftes = [], bankKoppelingen = {}
+  btwInst = {}, btwAangiftes = [], bankKoppelingen = {},
+  scanCorrecties = [], setScanCorrecties = () => {}
 }) => {
   const btwPeriodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
   const btwIngediendeKeys = React.useMemo(
@@ -807,6 +810,8 @@ const IngredientenPage: React.FC<Props> = ({
           ingTypeBtw={ingTypeBtw}
           kostenSoorten={kostenSoorten}
           getRolloverInfo={getRolloverInfo}
+          scanCorrecties={scanCorrecties}
+          onScanCorrectie={(c: any) => setScanCorrecties((prev: any) => registreerScanCorrectie(prev || [], c))}
         />
       )}
 
