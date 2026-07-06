@@ -871,6 +871,8 @@
   "btn_close_viewer": "✕ Sluiten",
   "btn_view_file": "📄 Bekijken",
   "msg_scanning": "Factuur wordt gescand…",
+  "msg_scan_regels_toegevoegd": "{n} factuurregels overgenomen als vrije regels — controleer bedragen en BTW",
+  "msg_scan_klaar": "Scan verwerkt — herkende velden zijn ingevuld",
   "tab_vrije_regels": "Vrije regels",
   "lbl_totaalprijs": "Totaalprijs (€)",
   "lbl_incl_btw": "incl. BTW",

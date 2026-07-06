@@ -871,6 +871,8 @@
   "btn_close_viewer": "✕ Close",
   "btn_view_file": "📄 View",
   "msg_scanning": "Scanning invoice…",
+  "msg_scan_regels_toegevoegd": "{n} invoice lines added as free lines — check amounts and VAT",
+  "msg_scan_klaar": "Scan processed — recognized fields have been filled",
   "tab_vrije_regels": "Free lines",
   "lbl_totaalprijs": "Total price (€)",
   "lbl_incl_btw": "incl. VAT",

@@ -871,6 +871,8 @@
   "btn_close_viewer": "✕ Schließen",
   "btn_view_file": "📄 Anzeigen",
   "msg_scanning": "Rechnung wird gescannt…",
+  "msg_scan_regels_toegevoegd": "{n} Rechnungszeilen als freie Zeilen übernommen — Beträge und MwSt. prüfen",
+  "msg_scan_klaar": "Scan verarbeitet — erkannte Felder wurden ausgefüllt",
   "tab_vrije_regels": "Freie Zeilen",
   "lbl_totaalprijs": "Gesamtpreis (€)",
   "lbl_incl_btw": "inkl. MwSt.",

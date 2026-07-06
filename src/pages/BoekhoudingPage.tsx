@@ -1857,6 +1857,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onSave={saveVrijeFactuur}
             onClose={()=>setShowVrijeFactuur(false)}
             claudeCreds={claudeCreds}
+            breweryNaam={(breweryDetails as any)?.naam || ''}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
@@ -1874,6 +1875,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onSave={updateFactuur}
             onClose={()=>setEditingFactuur(null)}
             claudeCreds={claudeCreds}
+            breweryNaam={(breweryDetails as any)?.naam || ''}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
@@ -2501,6 +2503,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onSave={saveBoekingFactuur}
             onClose={()=>{ setBoekingTxIndex(null); setBoekingInitialData(null); setBoekingForm(emptyBoekingForm()) }}
             claudeCreds={claudeCreds}
+            breweryNaam={(breweryDetails as any)?.naam || ''}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}

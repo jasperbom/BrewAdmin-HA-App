@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.46] — 2026-07-06
+
+### Verbeterd — Factuurscanner (AI) fors betrouwbaarder
+
+De AI-factuurscan was onbetrouwbaar door een stapeling van oorzaken; die zijn
+stuk voor stuk aangepakt:
+
+- **Gegarandeerd geldige uitvoer.** De scan dwingt nu structured output af via
+  tool-use (`tool_choice`) — de API valideert het antwoord tegen een schema.
+  Voorheen werd JSON met een regex uit vrije tekst gevist, wat regelmatig
+  misging.
+- **Deterministische extractie.** `temperature: 0` in plaats van de default
+  (1.0) — dezelfde factuur gaf voorheen wisselende resultaten.
+- **Beter model.** Scans draaien nu op Claude Sonnet (aanzienlijk sterker op
+  gescande/gefotografeerde facturen), met automatische terugval op Haiku als
+  de API-sleutel dat model niet ondersteunt.
+- **Slimmere prompt.** Expliciete Nederlandse factuurregels: factuurdatum ≠
+  vervaldatum, factuurnummer ≠ klant-/order-/BTW-nummer, leverancier = de
+  afzender (nooit de eigen brouwerij — de brouwerijnaam gaat mee als context)
+  en herkenning van bekende leveranciers zodat de schrijfwijze consistent
+  blijft. Ook Nederlandse bedragnotatie (1.234,56) wordt benoemd.
+- **Factuurregels worden nu ook gescand.** Naast leverancier/nummer/datum
+  neemt de scan de factuurregels over als vrije regels (omschrijving, netto,
+  BTW%) — alleen wanneer er nog niets handmatig is ingevoerd. Het tabblad
+  springt naar de regels en een melding vraagt om controle.
+- **Leesbare foutmeldingen.** API-fouten toonden "[object Object]"; nu de
+  echte foutmelding (bijv. ongeldige API-sleutel).
+
+---
+
 ## [1.10.45] — 2026-07-06
 
 ### Toegevoegd — Accijnsbetaling koppelen aan een banktransactie

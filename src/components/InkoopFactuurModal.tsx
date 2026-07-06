@@ -77,31 +77,84 @@ async function fileToBase64(file: File): Promise<string> {
   })
 }
 
-const CLAUDE_FACTUUR_META_PROMPT = `Je bent een assistent die factuurmetadata extraheert voor een brouwerij.
-Analyseer de factuur en geef ALLEEN een JSON object terug (geen uitleg, geen markdown):
-{
-  "leverancier": "naam leverancier of null",
-  "factuurnummer": "factuurnummer of null",
-  "datum": "YYYY-MM-DD of null"
-}`
+// Geforceerde structured output via tool-use: de API valideert het antwoord
+// tegen dit schema, waardoor kapotte/ontbrekende JSON (de grootste bron van
+// mislukte scans) niet meer kan voorkomen.
+const FACTUUR_EXTRACTIE_TOOL = {
+  name: 'factuur_extractie',
+  description: 'Geef de uit de inkoopfactuur geëxtraheerde gegevens door.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      leverancier: {type: ['string', 'null'], description: 'Naam van de partij die de factuur verstuurt'},
+      factuurnummer: {type: ['string', 'null']},
+      datum: {type: ['string', 'null'], description: 'Factuurdatum als YYYY-MM-DD'},
+      regels: {
+        type: 'array',
+        description: 'Alle factuurregels',
+        items: {
+          type: 'object',
+          properties: {
+            omschrijving: {type: 'string'},
+            netto: {type: 'number', description: 'Regelbedrag exclusief BTW in euro (korting = negatief)'},
+            btw_pct: {type: 'number', description: 'BTW-percentage van deze regel: 0, 9 of 21'},
+          },
+          required: ['omschrijving', 'netto'],
+        },
+      },
+      totalen: {
+        type: 'object',
+        description: 'Factuurtotalen zoals vermeld op de factuur',
+        properties: {
+          netto: {type: ['number', 'null']},
+          btw: {type: ['number', 'null']},
+          bruto: {type: ['number', 'null']},
+        },
+      },
+    },
+    required: ['leverancier', 'factuurnummer', 'datum'],
+  },
+}
 
-async function scanFactuurBestand(file: File, claudeApiKey?: string): Promise<any> {
+const bouwFactuurPrompt = (leveranciers: string[], breweryNaam?: string) => {
+  let p = `Extraheer de gegevens uit deze inkoopfactuur voor een brouwerij en geef ze door via de tool.
+
+Regels:
+- "leverancier" is de partij die de factuur VERSTUURT (afzender: logo/briefhoofd, KvK, IBAN) — nooit de geadresseerde/klant.`
+  if (breweryNaam) p += `\n- De eigen brouwerij heet "${breweryNaam}"; die is de ontvanger en dus nooit de leverancier.`
+  if (leveranciers.length) p += `\n- Bekende leveranciers: ${leveranciers.slice(0, 50).join(', ')}. Komt de afzender (vrijwel) overeen met een naam uit deze lijst, gebruik dan exact die schrijfwijze.`
+  p += `
+- "factuurnummer" is het factuurnummer — NIET het klantnummer, debiteurennummer, ordernummer, offertenummer, pakbonnummer of BTW-nummer.
+- "datum" is de factuurdatum — NIET de vervaldatum, leverdatum of besteldatum.
+- "regels": elke factuurregel met omschrijving, nettobedrag EXCLUSIEF BTW en BTW-percentage (0, 9 of 21). Kortingen als negatief bedrag. Statiegeld, transport- en administratiekosten zijn ook regels. Sla subtotalen en lege regels over.
+- Nederlandse bedragnotatie: "1.234,56" betekent 1234.56.
+- Gebruik null voor gegevens die niet op de factuur staan. Verzin niets.`
+  return p
+}
+
+// Sonnet is aanzienlijk betrouwbaarder op gescande/gefotografeerde facturen;
+// bij een API-sleutel zonder toegang tot dat model vallen we terug op Haiku.
+const SCAN_MODEL = 'claude-sonnet-5'
+const SCAN_MODEL_FALLBACK = 'claude-haiku-4-5-20251001'
+
+async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leveranciers?: string[], breweryNaam?: string}): Promise<any> {
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+  const prompt = bouwFactuurPrompt(ctx?.leveranciers || [], ctx?.breweryNaam)
   let messages: any[]
   if (isPdf) {
     const text = await extractPdfText(file)
     if (text.length > 120) {
       if (!claudeApiKey) {
         const local = parseFactuurTekstLokaal(text)
-        return { leverancier: null, datum: local.datum, factuurnummer: local.factuurnummer, _source: 'lokaal' }
+        return { leverancier: null, datum: local.datum, factuurnummer: local.factuurnummer, regels: [], _source: 'lokaal' }
       }
-      messages = [{role: 'user', content: `${CLAUDE_FACTUUR_META_PROMPT}\n\nFactuurtekst:\n${text.slice(0, 8000)}`}]
+      messages = [{role: 'user', content: `${prompt}\n\nFactuurtekst:\n${text.slice(0, 12000)}`}]
     } else {
       if (!claudeApiKey) throw new Error(t('err_pdf_no_text'))
       const b64 = await fileToBase64(file)
       messages = [{role: 'user', content: [
         {type: 'document', source: {type: 'base64', media_type: 'application/pdf', data: b64}},
-        {type: 'text', text: CLAUDE_FACTUUR_META_PROMPT},
+        {type: 'text', text: prompt},
       ]}]
     }
   } else {
@@ -110,15 +163,48 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string): Promise<an
     const mt = file.type || 'image/jpeg'
     messages = [{role: 'user', content: [
       {type: 'image', source: {type: 'base64', media_type: mt, data: b64}},
-      {type: 'text', text: CLAUDE_FACTUUR_META_PROMPT},
+      {type: 'text', text: prompt},
     ]}]
   }
-  const result = await callClaudeProxy({model: 'claude-haiku-4-5-20251001', max_tokens: 500, messages})
-  const raw = result.content?.[0]?.text || ''
-  const m = raw.match(/\{[\s\S]*\}/)
-  if (!m) throw new Error(t('err_no_json_in_claude_response'))
-  const parsed = JSON.parse(m[0])
-  return { leverancier: parsed.leverancier || null, datum: parsed.datum || null, factuurnummer: parsed.factuurnummer || null, _source: 'claude' }
+  // temperature 0: extractie moet deterministisch zijn, niet creatief.
+  const doCall = (model: string) => callClaudeProxy({
+    model, max_tokens: 2000, temperature: 0,
+    tools: [FACTUUR_EXTRACTIE_TOOL],
+    tool_choice: {type: 'tool', name: 'factuur_extractie'},
+    messages,
+  })
+  let result: any
+  try {
+    result = await doCall(SCAN_MODEL)
+  } catch (e: any) {
+    if (/not_found|model/i.test(e?.message || '')) result = await doCall(SCAN_MODEL_FALLBACK)
+    else throw e
+  }
+  const toolUse = (result.content || []).find((b: any) => b.type === 'tool_use')
+  let parsed: any = toolUse?.input && typeof toolUse.input === 'object' ? toolUse.input : null
+  if (!parsed) {
+    // Vangnet: sommige antwoorden bevatten alsnog tekst-JSON
+    const raw = (result.content || []).map((b: any) => b.text || '').join('')
+    const m = raw.match(/\{[\s\S]*\}/)
+    if (!m) throw new Error(t('err_no_json_in_claude_response'))
+    parsed = JSON.parse(m[0])
+  }
+  const datum = typeof parsed.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.datum) ? parsed.datum : null
+  const regels = (Array.isArray(parsed.regels) ? parsed.regels : [])
+    .map((r: any) => ({
+      omschrijving: String(r?.omschrijving || '').trim(),
+      netto: Number(r?.netto),
+      btw_pct: [0, 9, 21].includes(Number(r?.btw_pct)) ? Number(r?.btw_pct) : 21,
+    }))
+    .filter((r: any) => r.omschrijving && isFinite(r.netto) && r.netto !== 0)
+  return {
+    leverancier: parsed.leverancier || null,
+    datum,
+    factuurnummer: parsed.factuurnummer || null,
+    regels,
+    totalen: parsed.totalen || null,
+    _source: 'claude',
+  }
 }
 
 interface InkoopFactuurModalProps {
@@ -131,6 +217,9 @@ interface InkoopFactuurModalProps {
   initialTab?: string
   initialIngId?: string
   claudeCreds?: any
+  // Naam van de eigen brouwerij — context voor de factuurscan zodat het model
+  // de geadresseerde nooit als leverancier aanwijst.
+  breweryNaam?: string
   ingTypes?: string[]
   ingTypeBtw?: Record<string, number>
   initialData?: any
@@ -143,7 +232,7 @@ interface InkoopFactuurModalProps {
 
 function InkoopFactuurModal({
   knownLeveranciers=[], ing=[], lots=[], onderdelen=[], onSave, onClose,
-  initialTab='ingredienten', initialIngId='', claudeCreds=null,
+  initialTab='ingredienten', initialIngId='', claudeCreds=null, breweryNaam='',
   ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
   kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo
 }: InkoopFactuurModalProps) {
@@ -255,6 +344,7 @@ function InkoopFactuurModal({
 
   const [isScanning, setIsScanning] = useState(false)
   const [scanFout, setScanFout] = useState<string|null>(null)
+  const [scanInfo, setScanInfo] = useState<string|null>(null)
 
   React.useEffect(() => { setManualNetto(null); setManualBtw(null); setManualBruto(null) },
     [productLijst.length, verpakkingLijst.length, vrijeList.length])
@@ -302,7 +392,7 @@ function InkoopFactuurModal({
     setVrijeForm(emptyVrije); setVrijeTotInclBtw(false); setVrijeBrutoStr('')
   }
 
-  const verwerkScanData = (data: any) => {
+  const verwerkScanData = (data: any): number => {
     if (data.leverancier && !leverancierNieuw && leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
       const known = knownLeveranciers.find((l: string) => l.toLowerCase() === data.leverancier.toLowerCase())
       if (known) setLeverancierSel(known)
@@ -310,14 +400,34 @@ function InkoopFactuurModal({
     }
     if (data.factuurnummer && !factuurNr) setFactuurNr(data.factuurnummer)
     if (data.datum && datum === tod()) setDatum(data.datum)
+    // Herkende factuurregels overnemen als vrije regels, maar alleen wanneer
+    // er nog niets is ingevoerd — een scan mag handwerk nooit overschrijven.
+    // De gebruiker verplaatst/verfijnt ze daarna zelf (ingrediënt/verpakking).
+    if (Array.isArray(data.regels) && data.regels.length
+        && productLijst.length === 0 && verpakkingLijst.length === 0 && vrijeList.length === 0) {
+      setVrijeList(data.regels.map((r: any, i: number) => ({
+        naam: r.omschrijving, netto: String(r.netto), btw_tarief: r.btw_pct,
+        kostensoort: 'Overig', _id: Date.now() + i,
+      })))
+      return data.regels.length
+    }
+    return 0
   }
 
   const doScanFactuur = async () => {
     if (!bijlageFile) return
-    setIsScanning(true); setScanFout(null)
+    setIsScanning(true); setScanFout(null); setScanInfo(null)
     try {
-      const data = await scanFactuurBestand(bijlageFile, claudeCreds?.apiKey)
-      verwerkScanData(data)
+      const data = await scanFactuurBestand(bijlageFile, claudeCreds?.apiKey, {
+        leveranciers: knownLeveranciers, breweryNaam,
+      })
+      const nRegels = verwerkScanData(data)
+      if (nRegels > 0) {
+        setScanInfo(t('msg_scan_regels_toegevoegd').replace('{n}', String(nRegels)))
+        setTab('vrije')
+      } else if (data._source === 'claude') {
+        setScanInfo(t('msg_scan_klaar'))
+      }
     } catch(e: any) {
       setScanFout(e.message || 'Scan mislukt')
     } finally {
@@ -526,6 +636,7 @@ function InkoopFactuurModal({
               </div>
             )}
             {scanFout && <p className="mt-2 text-xs text-red-600">⚠ {scanFout}</p>}
+            {scanInfo && !scanFout && <p className="mt-2 text-xs text-green-700">✓ {scanInfo}</p>}
           </div>
         </div>
 

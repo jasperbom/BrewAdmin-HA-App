@@ -868,6 +868,8 @@
   "btn_close_viewer": "✕ Fermer",
   "btn_view_file": "📄 Voir",
   "msg_scanning": "Scan de la facture en cours…",
+  "msg_scan_regels_toegevoegd": "{n} lignes de facture reprises comme lignes libres — vérifiez les montants et la TVA",
+  "msg_scan_klaar": "Scan traité — les champs reconnus ont été remplis",
   "tab_vrije_regels": "Lignes libres",
   "lbl_totaalprijs": "Prix total (€)",
   "lbl_incl_btw": "TTC",
