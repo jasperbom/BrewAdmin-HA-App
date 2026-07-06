@@ -1078,6 +1078,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const openVerkoop = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
       const openInkoop = (inkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
       const nieuweKoppelingen: Record<string, any> = {}
+      // Auto-gematchte accijnsmaanden: na de map als betaald markeren
+      // (aangiftestatus + accijnsrecords), met de transactiedatum als betaaldatum.
+      const accijnsAutoBetaald: {maand: string, datum: string}[] = []
       const gematcht = afschrift.transacties.map((tx: any) => {
         const key = txKey(tx)
         // Eerder opgeslagen koppeling terugzetten
@@ -1089,6 +1092,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             gekoppeldInkoopId: opgeslagen.soort === 'inkoop' ? opgeslagen.factuurId : null,
             gekoppeldKapitaalId: opgeslagen.soort === 'kapitaal' ? opgeslagen.factuurId : null,
             gekoppeldBtwPeriode: opgeslagen.soort === 'btw' ? opgeslagen.periodeKey : undefined,
+            gekoppeldAccijnsMaand: opgeslagen.soort === 'accijns' ? opgeslagen.maandKey : undefined,
             gekoppeldAflossingAltId: opgeslagen.soort === 'aflossing' ? opgeslagen.altRekeningId : undefined,
             autoGematcht: true,
             herinneringsGematcht: true,
@@ -1113,6 +1117,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: inkoopCredit.id}
             return {...tx, gekoppeldInkoopId: inkoopCredit.id, autoGematcht: true}
           }
+          // BTW-teruggave: een ingediende aangifte met negatief bedrag wordt
+          // door de Belastingdienst uitbetaald en komt dus als CREDIT binnen.
+          const teruggaveAangifte = (btwAangiftes||[]).find((a: any) => {
+            if (!a?.periodeKey) return false;
+            if (btwBetaaldePerioden.has(a.periodeKey)) return false;
+            const bedrag = Number(a.bedrag||0);
+            return bedrag < 0 && Math.abs(tx.bedrag - Math.abs(bedrag)) <= 1.00;
+          });
+          if (teruggaveAangifte) {
+            nieuweKoppelingen[key] = {soort: 'btw', periodeKey: teruggaveAangifte.periodeKey}
+            return {...tx, gekoppeldBtwPeriode: teruggaveAangifte.periodeKey, autoGematcht: true}
+          }
         } else {
           const match = openInkoop.find((f: any) => Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
           if (match) {
@@ -1125,15 +1141,31 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: retro.id}
             return {...tx, gekoppeldInkoopId:retro.id, autoGematcht:true, retroGematcht:true}
           }
-          // BTW-aangifte match op ingediende periode (±1 EUR tolerantie voor euro-afronding)
+          // BTW-aangifte match op ingediende periode (±1 EUR tolerantie voor
+          // euro-afronding). Alleen aangiftes met een POSITIEF bedrag (te
+          // betalen) — een teruggave (negatief) komt als credit binnen en
+          // mag nooit aan een debettransactie gematcht worden.
           const openAangifte = (btwAangiftes||[]).find((a: any) => {
             if (!a?.periodeKey) return false;
             if (btwBetaaldePerioden.has(a.periodeKey)) return false;
-            return Math.abs(Math.abs(tx.bedrag) - Math.abs(Number(a.bedrag||0))) <= 1.00;
+            const bedrag = Number(a.bedrag||0);
+            return bedrag >= 0 && Math.abs(tx.bedrag - bedrag) <= 1.00;
           });
           if (openAangifte) {
             nieuweKoppelingen[key] = {soort: 'btw', periodeKey: openAangifte.periodeKey}
             return {...tx, gekoppeldBtwPeriode: openAangifte.periodeKey, autoGematcht: true}
+          }
+          // Accijnsaangifte match: ingediende maand met bedrag (±1 EUR)
+          const openAccijnsAangifte = (accijnsAangiftes||[]).find((a: any) => {
+            if (!a?.maand || a.status !== 'ingediend') return false;
+            if (accijnsBetaaldeMaanden.has(a.maand)) return false;
+            const bedrag = Number(a.bedrag||0);
+            return bedrag > 0 && Math.abs(tx.bedrag - bedrag) <= 1.00;
+          });
+          if (openAccijnsAangifte) {
+            nieuweKoppelingen[key] = {soort: 'accijns', maandKey: openAccijnsAangifte.maand}
+            accijnsAutoBetaald.push({maand: openAccijnsAangifte.maand, datum: tx.datum})
+            return {...tx, gekoppeldAccijnsMaand: openAccijnsAangifte.maand, autoGematcht: true}
           }
         }
         return tx
@@ -1141,6 +1173,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       if (Object.keys(nieuweKoppelingen).length > 0) {
         setBankKoppelingen((prev: any) => ({...prev, ...nieuweKoppelingen}))
       }
+      accijnsAutoBetaald.forEach(({maand, datum}) => markeerAccijnsMaandBetaald(maand, datum))
       setBankAfschrift(afschrift)
       setBankTransacties(gematcht)
     }
@@ -1191,6 +1224,86 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       t.gekoppeldBtwPeriode === periodeKey ? {...t, gekoppeldBtwPeriode: undefined} : t
     ));
   };
+
+  // ── Accijns-bankkoppeling — spiegel van het BTW-patroon ─────────────────────
+  // Maanden waarvan een banktransactie als accijnsbetaling gekoppeld is
+  const accijnsBetaaldeMaanden = React.useMemo(() => {
+    const s = new Set<string>();
+    Object.values(bankKoppelingen as any).forEach((k: any) => {
+      if (k?.soort === 'accijns' && k.maandKey) s.add(k.maandKey);
+    });
+    return s;
+  }, [bankKoppelingen]);
+
+  // Aangiftestatus → betaald + alle accijnsrecords van de maand betaald,
+  // met de werkelijke betaaldatum (transactiedatum) i.p.v. "vandaag".
+  const markeerAccijnsMaandBetaald = (maandKey: string, datum: string) => {
+    setAccijnsAangiftes((prev: any[]) => {
+      const existing = (prev||[]).find((x: any) => x.maand === maandKey)
+      if (existing) return prev.map((x: any) => x.maand === maandKey ? {...x, status: 'betaald', betaald_datum: datum} : x)
+      return [...(prev||[]), {maand: maandKey, status: 'betaald', betaald_datum: datum}]
+    })
+    setAcc((prev: any[]) => (prev||[]).map((a: any) => {
+      const d = new Date(a.datum)
+      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+      return k === maandKey && !a.betaald ? {...a, betaald: true, betaal_datum: datum} : a
+    }))
+  }
+
+  const koppelAccijnsBetaling = (txKeyStr: string, maandKey: string) => {
+    const tx = bankTransacties.find((t: any) => txKey(t) === txKeyStr)
+    if (!tx) return
+    setBankKoppelingen((k: any) => ({...k, [txKeyStr]: {soort: 'accijns', maandKey}}))
+    setBankTransacties((prev: any[]) => prev.map((t: any) =>
+      txKey(t) === txKeyStr ? {...t, gekoppeldAccijnsMaand: maandKey} : t
+    ))
+    markeerAccijnsMaandBetaald(maandKey, tx.datum)
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt', omschrijving:`Accijnsmaand ${maandKey} gekoppeld (betaald ${tx.datum})`});
+  }
+
+  const ontkoppelAccijnsBetaling = (maandKey: string) => {
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'verwijderd', omschrijving:`Accijnsmaand ${maandKey} ontkoppeld`});
+    setBankKoppelingen((k: any) => {
+      const c = {...k};
+      Object.keys(c).forEach(key => { if (c[key]?.soort === 'accijns' && c[key].maandKey === maandKey) delete c[key]; });
+      return c;
+    });
+    setBankTransacties((prev: any[]) => prev.map((t: any) =>
+      t.gekoppeldAccijnsMaand === maandKey ? {...t, gekoppeldAccijnsMaand: undefined} : t
+    ));
+    // Status terug naar ingediend en betaald-vlaggen terugdraaien
+    setAccijnsAangiftes((prev: any[]) => (prev||[]).map((x: any) =>
+      x.maand === maandKey ? {...x, status: 'ingediend', betaald_datum: undefined} : x
+    ))
+    setAcc((prev: any[]) => (prev||[]).map((a: any) => {
+      const d = new Date(a.datum)
+      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+      return k === maandKey && a.betaald ? {...a, betaald: false, betaal_datum: null} : a
+    }))
+  }
+
+  // Gekoppelde banktransactie-info voor een accijnsmaand (voor weergave op de
+  // Accijns-pagina). Valt terug op alleen-koppeling als er geen MT940 geladen is.
+  const accijnsKoppelingInfo = (maandKey: string): {datum?: string, bedrag?: number} | null => {
+    const entry = Object.keys(bankKoppelingen as any).find((key: string) => {
+      const k = (bankKoppelingen as any)[key]
+      return k?.soort === 'accijns' && k.maandKey === maandKey
+    })
+    if (!entry) return null
+    const tx = bankTransacties.find((t: any) => txKey(t) === entry)
+    if (tx) return {datum: tx.datum, bedrag: tx.bedrag}
+    // txKey-formaat: datum|type|bedrag|referentie
+    const [datum, , bedrag] = entry.split('|')
+    return {datum, bedrag: Number(bedrag) || undefined}
+  }
+
+  // Nog niet gekoppelde debettransacties, als opties voor de koppel-selector
+  // op de Accijns-pagina.
+  const bankDebetsVoorKoppeling = React.useMemo(() =>
+    bankTransacties
+      .filter((tx: any) => tx.type === 'D' && !tx.gekoppeldInkoopId && !tx.gekoppeldBtwPeriode && !tx.gekoppeldAccijnsMaand)
+      .map((tx: any) => ({key: txKey(tx), datum: tx.datum, label: tx.tegenpartij || tx.omschrijving || '?', bedrag: tx.bedrag})),
+  [bankTransacties]);
 
   const markeerInkoopBetaald = (id: number, betaaldDatum?: string) => {
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
@@ -1744,6 +1857,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onSave={saveVrijeFactuur}
             onClose={()=>setShowVrijeFactuur(false)}
             claudeCreds={claudeCreds}
+            breweryNaam={(breweryDetails as any)?.naam || ''}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
@@ -1761,6 +1875,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onSave={updateFactuur}
             onClose={()=>setEditingFactuur(null)}
             claudeCreds={claudeCreds}
+            breweryNaam={(breweryDetails as any)?.naam || ''}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
@@ -2195,8 +2310,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           {tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-blue-600 mr-2">↩ {t('lbl_onthouden_koppeling')}
                             <button onClick={()=>{
                               const key = txKey(tx)
+                              // Accijnskoppeling: ook aangifte- en recordstatus terugdraaien
+                              if (tx.gekoppeldAccijnsMaand) { ontkoppelAccijnsBetaling(tx.gekoppeldAccijnsMaand) }
                               setBankKoppelingen((k: any) => { const c={...k}; delete c[key]; return c })
-                              setBankTransacties((prev: any[]) => prev.map((t: any, j: number) => j===i ? {...t, gekoppeldFactuurId:null, gekoppeldInkoopId:null, gekoppeldKapitaalId:null, gekoppeldBtwPeriode:undefined, herinneringsGematcht:false, autoGematcht:false} : t))
+                              setBankTransacties((prev: any[]) => prev.map((t: any, j: number) => j===i ? {...t, gekoppeldFactuurId:null, gekoppeldInkoopId:null, gekoppeldKapitaalId:null, gekoppeldBtwPeriode:undefined, gekoppeldAccijnsMaand:undefined, herinneringsGematcht:false, autoGematcht:false} : t))
                             }} className="ml-1 text-gray-400 hover:text-red-500 transition-colors" title={t('btn_ontkoppel_herinnering')}>×</button>
                           </span>}
                           {tx.retroGematcht && <span className="text-xs text-gray-500 mr-2">✓ {t('lbl_retro_gematcht')}</span>}
@@ -2244,6 +2361,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                     setBankKoppelingen((k: any) => { const c={...k}; delete c[txKey(tx)]; return c })
                                   }} className="ml-1 text-gray-400 hover:text-red-500">×</button>
                                 </span>
+                              ) : tx.gekoppeldBtwPeriode ? (
+                                /* BTW-teruggave: uitbetaling door de Belastingdienst komt als credit binnen */
+                                <span className="text-xs text-orange-600 font-medium">
+                                  ✓ BTW {tx.gekoppeldBtwPeriode}
+                                  <button onClick={()=>ontkoppelBtwBetaling(tx.gekoppeldBtwPeriode)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors">×</button>
+                                </span>
                               ) : !tx.gekoppeldFactuurId && !tx.herinneringsGematcht && (
                                 <>
                                   <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
@@ -2277,6 +2400,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 <span className="text-xs text-orange-600 font-medium">
                                   ✓ BTW {tx.gekoppeldBtwPeriode}
                                   <button onClick={()=>ontkoppelBtwBetaling(tx.gekoppeldBtwPeriode)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors">×</button>
+                                </span>
+                              ) : tx.gekoppeldAccijnsMaand ? (
+                                <span className="text-xs text-purple-600 font-medium">
+                                  ✓ {t('nav_accijns')} {tx.gekoppeldAccijnsMaand}
+                                  <button onClick={()=>ontkoppelAccijnsBetaling(tx.gekoppeldAccijnsMaand)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors">×</button>
                                 </span>
                               ) : tx.gekoppeldAflossingAltId ? (() => {
                                 const r = (altRekeningen||[]).find((x: any) => x.id === tx.gekoppeldAflossingAltId)
@@ -2375,6 +2503,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             onSave={saveBoekingFactuur}
             onClose={()=>{ setBoekingTxIndex(null); setBoekingInitialData(null); setBoekingForm(emptyBoekingForm()) }}
             claudeCreds={claudeCreds}
+            breweryNaam={(breweryDetails as any)?.naam || ''}
             ingTypes={ingTypes}
             ingTypeBtw={ingTypeBtw}
             kostenSoorten={kostenSoorten}
@@ -2711,7 +2840,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       </>)}
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
-      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} />}
+      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} bankDebets={bankDebetsVoorKoppeling} koppelAccijnsBetaling={koppelAccijnsBetaling} ontkoppelAccijnsBetaling={ontkoppelAccijnsBetaling} accijnsKoppelingInfo={accijnsKoppelingInfo} />}
 
       {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
       {mainTab==='btw_aangifte' && (()=>{
@@ -2953,27 +3082,32 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         </div>
                       );
                     }
-                    // isIngediend: toon koppel-selector met euro-tolerantie rond aangifte-bedrag
+                    // isIngediend: toon koppel-selector met euro-tolerantie rond
+                    // aangifte-bedrag. Een POSITIEF bedrag is een betaling aan de
+                    // Belastingdienst (debettransactie); een NEGATIEF bedrag is
+                    // een teruggave die als CREDIT op de rekening binnenkomt.
+                    const isTeruggave = Number(aangifte?.bedrag || 0) < 0;
                     const aangifteBedrag = Math.abs(Number(aangifte?.bedrag || 0));
-                    const allDebits = bankTransacties.filter((tx: any) =>
-                      tx.type === 'D' && !tx.gekoppeldInkoopId && !tx.gekoppeldBtwPeriode
+                    const kandidaten = bankTransacties.filter((tx: any) => isTeruggave
+                      ? tx.type === 'C' && !tx.gekoppeldFactuurId && !tx.gekoppeldInkoopId && !tx.gekoppeldKapitaalId && !tx.gekoppeldBtwPeriode
+                      : tx.type === 'D' && !tx.gekoppeldInkoopId && !tx.gekoppeldBtwPeriode
                     );
-                    const nearMatches = allDebits.filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00);
-                    const otherDebits = allDebits.filter((tx: any) => !nearMatches.includes(tx));
+                    const nearMatches = kandidaten.filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00);
+                    const otherDebits = kandidaten.filter((tx: any) => !nearMatches.includes(tx));
                     return (
                       <div className="border-t border-amber-200 pt-2 space-y-1" onClick={(e: any)=>e.stopPropagation()}>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-amber-700 font-medium">
-                            {t('lbl_aangifte_ingediend_op').replace('{datum}', aangifte.ingediend_datum || '')} · € {fmt(aangifteBedrag)}
+                            {t('lbl_aangifte_ingediend_op').replace('{datum}', aangifte.ingediend_datum || '')} · {isTeruggave ? `${t('lbl_terug')} ` : ''}€ {fmt(aangifteBedrag)}
                           </span>
                           <button onClick={()=>ontkoppelAangifteIngediend(p.key)}
                             className="text-xs text-gray-400 hover:text-red-500 transition-colors">
                             {t('btn_ongedaan')}
                           </button>
                         </div>
-                        {allDebits.length > 0 ? (
+                        {kandidaten.length > 0 ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-amber-700 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
+                            <span className="text-xs text-amber-700 font-medium shrink-0">{t(isTeruggave ? 'lbl_koppel_teruggave' : 'lbl_koppel_betaling')}</span>
                             <select onChange={(e: any)=>{
                               const idx = bankTransacties.findIndex((tx: any) => txKey(tx) === e.target.value);
                               if (idx >= 0) koppelBtwBetaling(idx, p.key);

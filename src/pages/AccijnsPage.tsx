@@ -88,7 +88,7 @@ const ControleBlok: React.FC<{
   )
 }
 
-function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}}: any) {
+function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}, bankDebets=[], koppelAccijnsBetaling=null, ontkoppelAccijnsBetaling=null, accijnsKoppelingInfo=null}: any) {
   const {useState, useMemo} = React;
   // acc records: {id, batch_id, batch_nummer, uitlevering_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
   const getAccijns = (a: any) => Number(a.accijns ?? a.totaal_accijns ?? 0);
@@ -175,10 +175,17 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
       return
     }
     const datumKey = status === 'berekend' ? 'berekend_datum' : status === 'ingediend' ? 'ingediend_datum' : 'betaald_datum'
+    // Bij indienen het maandtotaal vastleggen: dat maakt automatisch matchen
+    // van de bankbetaling mogelijk (zelfde patroon als de BTW-aangifte).
+    const extra: any = {}
+    if (status === 'ingediend') {
+      const records = byMonth[monthKey] || []
+      extra.bedrag = Math.round(records.reduce((s: number, a: any) => s + getAccijns(a), 0) * 100) / 100
+    }
     setAccijnsAangiftes((prev: any[]) => {
       const existing = prev.find((x: any) => x.maand === monthKey)
-      if (existing) return prev.map((x: any) => x.maand === monthKey ? {...x, status, [datumKey]: datum} : x)
-      return [...prev, {maand: monthKey, status, [datumKey]: datum}]
+      if (existing) return prev.map((x: any) => x.maand === monthKey ? {...x, status, [datumKey]: datum, ...extra} : x)
+      return [...prev, {maand: monthKey, status, [datumKey]: datum, ...extra}]
     })
     logAudit(auditLog, setAuditLog, {entiteit:'Accijnsaangifte', entiteit_id:0, actie:'gewijzigd', omschrijving:`Aangifte ${monthKey} → ${status}`});
     if (status === 'betaald') markMonthPaid(monthKey)
@@ -267,6 +274,61 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
               {showControle && (
                 <ControleBlok aangifte={aangifte} monthKey={monthKey} setAangifteControle={setAangifteControle} readOnly={wfStatus !== 'berekend'} />
               )}
+              {/* Bankbetaling koppelen — zelfde patroon als de BTW-periodekaart.
+                  De betaaldatum wordt dan de werkelijke transactiedatum. */}
+              {wfStatus === 'ingediend' && !!koppelAccijnsBetaling && (() => {
+                const aangifteBedrag = Math.abs(Number(aangifte?.bedrag ?? monthTotal))
+                const nearMatches = (bankDebets||[]).filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00)
+                const others = (bankDebets||[]).filter((tx: any) => !nearMatches.includes(tx))
+                return (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-amber-700 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
+                      {(bankDebets||[]).length > 0 ? (
+                        <select onChange={(e: any) => { if (e.target.value) koppelAccijnsBetaling(e.target.value, monthKey) }} defaultValue=""
+                          className="border border-amber-200 rounded px-2 py-0.5 text-xs focus:outline-none flex-1 min-w-0 bg-white">
+                          <option value="">— {t('lbl_selecteer_transactie')} —</option>
+                          {nearMatches.length > 0 && (
+                            <optgroup label={t('lbl_match_voorgesteld')}>
+                              {nearMatches.map((tx: any) => {
+                                const diff = Math.abs(tx.bedrag) - aangifteBedrag
+                                const diffLbl = diff === 0 ? '' : ` (${diff > 0 ? '+' : ''}€${fmt(Math.abs(diff))})`
+                                return <option key={tx.key} value={tx.key}>{tx.datum} · {tx.label} · {fmt(tx.bedrag)}{diffLbl}</option>
+                              })}
+                            </optgroup>
+                          )}
+                          {others.length > 0 && (
+                            <optgroup label={t('lbl_overige_transacties')}>
+                              {others.map((tx: any) => (
+                                <option key={tx.key} value={tx.key}>{tx.datum} · {tx.label} · {fmt(tx.bedrag)}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      ) : (
+                        <span className="text-xs text-amber-600 italic">{t('msg_geen_banktxn_geladen')}</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+              {wfStatus === 'betaald' && !!accijnsKoppelingInfo && (() => {
+                const info = accijnsKoppelingInfo(monthKey)
+                if (!info) return null
+                return (
+                  <div className="mt-4 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-3">
+                    <span className="text-xs text-green-700 font-medium">
+                      ✓ {t('lbl_accijns_betaling_gekoppeld')}{info.datum ? ` · ${fmtD(info.datum)}` : ''}{info.bedrag != null ? ` · ${fmt(info.bedrag)}` : ''}
+                    </span>
+                    {ontkoppelAccijnsBetaling && (
+                      <button onClick={() => ontkoppelAccijnsBetaling(monthKey)}
+                        className="text-xs text-gray-400 hover:text-red-500 ml-2 transition-colors">
+                        {t('btn_ontkoppel')}
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
               <div className="mt-4 flex items-center justify-between">
                 {(() => {
                   const nextStep: Record<string,string> = {open:'berekend', berekend:'ingediend', ingediend:'betaald'}

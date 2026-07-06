@@ -389,8 +389,14 @@ export const callClaudeProxy = async (body: any) => {
   }, 1)
   if (r.status === 429) throw _rateLimitError('Claude', r)
   if (!r.ok) {
-    const err = await r.json().catch(() => ({}))
-    throw new Error((err as any).error || `HTTP ${r.status}`)
+    const err: any = await r.json().catch(() => ({}))
+    // Anthropic-fouten zijn objecten ({type, error:{type, message}}); de
+    // proxy geeft ze 1-op-1 door. Zonder uitpakken toonde de UI
+    // "[object Object]" in plaats van de echte foutmelding.
+    const e = err.error
+    const msg = typeof e === 'string' ? e
+      : (e?.message ? `${e.type ? e.type + ': ' : ''}${e.message}` : `HTTP ${r.status}`)
+    throw new Error(msg)
   }
   return r.json()
 }
