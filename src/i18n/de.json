@@ -880,6 +880,8 @@
   "hint_verlegd_btw_zelf": "Zählt nicht zu den Rechnungssummen; wird in der Erklärung als geschuldet und zugleich als Vorsteuer (5b) erfasst — per Saldo €0.",
   "warn_verlegd_nul_tarief": "Zeilen im Wert von €{bedrag} stehen auf 0% — dafür wird keine MwSt. für Rubrik 4a/4b berechnet.",
   "btn_vul_standaardtarieven": "Standardsätze eintragen",
+  "lbl_btw_verlegd_kort": "MwSt. verlagert",
+  "title_verlegd_badge": "Zählt in Rubrik {rubriek} der Erklärung mit — selbst anzumeldende MwSt.: {btw}",
   "warn_rubriek_verlegd_nul": "{bedrag} an Reverse-Charge-Zeilen steht auf 0% — Rechnung öffnen und den Satz pro Zeile eintragen.",
   "confirm_verlegd_tarieven": "Reverse Charge: Die Rechnung weist 0% MwSt. aus, für die Erklärung (Rubrik 4a/4b) gilt jedoch der niederländische Satz. Zeilen mit 0% jetzt mit dem Standardsatz füllen (Zutaten nach Typ, sonst 21%)?",
   "msg_regel_verplaatst_aanvullen": "Zeile verschoben — Menge ergänzen und die Zeile zur Liste hinzufügen",

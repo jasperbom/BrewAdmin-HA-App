@@ -1986,6 +1986,20 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           ↪ BTW {periodeKeyLabel(f.btw_periode)}
                         </span>
                       )}
+                      {(() => {
+                        // Verlegd-badge: laat zien dat deze factuur in rubriek
+                        // 4a/4b meetelt en voor welk zelfberekend BTW-bedrag.
+                        const vr = (f.regels||[]).filter((r: any) => r.btw_soort === 'intracom_eu' || r.btw_soort === 'import_niet_eu')
+                        if (!vr.length) return null
+                        const vrBtw = vr.reduce((s: number, r: any) => s + (Number(r.netto)||0) * (Number(r.btw_tarief)||0) / 100, 0)
+                        const rubriek = vr[0].btw_soort === 'intracom_eu' ? '4b' : '4a'
+                        return (
+                          <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700"
+                            title={t('title_verlegd_badge').replace('{rubriek}', rubriek).replace('{btw}', fmt(r2(vrBtw)))}>
+                            ⇄ {t('lbl_btw_verlegd_kort')} {rubriek}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.totaal_netto||0)}</td>
                     <td className="py-2 pr-3 text-right text-blue-600 whitespace-nowrap">{fmt(f.totaal_btw||0)}</td>

@@ -877,6 +877,8 @@
   "hint_verlegd_btw_zelf": "Non comprise dans les totaux de la facture ; déclarée à la fois comme due et comme TVA déductible (5b) — solde €0.",
   "warn_verlegd_nul_tarief": "€{bedrag} de lignes sont à 0% — aucune TVA n'est calculée dessus pour la rubrique 4a/4b.",
   "btn_vul_standaardtarieven": "Appliquer les taux par défaut",
+  "lbl_btw_verlegd_kort": "TVA autoliquidée",
+  "title_verlegd_badge": "Comptée dans la rubrique {rubriek} de la déclaration — TVA à autoliquider : {btw}",
   "warn_rubriek_verlegd_nul": "{bedrag} de lignes autoliquidées sont à 0% — ouvrez la facture et renseignez le taux par ligne.",
   "confirm_verlegd_tarieven": "TVA autoliquidée : la facture indique 0% de TVA, mais le taux néerlandais s'applique pour la déclaration (rubrique 4a/4b). Remplir maintenant les lignes à 0% avec le taux par défaut (ingrédients selon le type, autres 21%) ?",
   "msg_regel_verplaatst_aanvullen": "Ligne déplacée — complétez la quantité et ajoutez la ligne à la liste",

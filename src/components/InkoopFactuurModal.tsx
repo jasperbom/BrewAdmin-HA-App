@@ -1331,8 +1331,8 @@ function InkoopFactuurModal({
                 <div>
                   <span className="font-semibold">{t('lbl_verlegd_btw_zelf')}: €{verlegdBtwTotaal.toFixed(2)}</span>
                   {verlegdBtwPerTarief.length > 0 && (
-                    <span className="ml-2 text-purple-600">
-                      {verlegdBtwPerTarief.map(([k, v]) => `${k}%: €${(v as number).toFixed(2)}`).join(' · ')}
+                    <span className="ml-1 text-purple-600">
+                      ({verlegdBtwPerTarief.map(([k, v]) => `${k}%: €${(v as number).toFixed(2)}`).join(' · ')})
                     </span>
                   )}
                 </div>

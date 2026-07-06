@@ -880,6 +880,8 @@
   "hint_verlegd_btw_zelf": "Telt niet mee in de factuurtotalen; wordt in de BTW-aangifte als verschuldigd én als voorbelasting (5b) opgenomen — per saldo €0.",
   "warn_verlegd_nul_tarief": "€{bedrag} aan regels staat op 0% — daarover wordt geen BTW berekend voor rubriek 4a/4b.",
   "btn_vul_standaardtarieven": "Vul standaardtarieven",
+  "lbl_btw_verlegd_kort": "BTW verlegd",
+  "title_verlegd_badge": "Telt mee in rubriek {rubriek} van de BTW-aangifte — zelf aan te geven BTW: {btw}",
   "warn_rubriek_verlegd_nul": "{bedrag} aan verlegde regels staat op 0% — open de factuur en vul het tarief per regel in.",
   "confirm_verlegd_tarieven": "BTW verlegd: op de factuur staat 0% BTW, maar voor de aangifte (rubriek 4a/4b) geldt het Nederlandse tarief. Regels met 0% nu invullen met het standaardtarief (ingrediënten volgens type, overig 21%)?",
   "msg_regel_verplaatst_aanvullen": "Regel verplaatst — vul de hoeveelheid aan en voeg de regel toe aan de lijst",

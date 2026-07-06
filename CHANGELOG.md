@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.54] — 2026-07-06
+
+### Verbeterd — Verlegd-badge in de facturenlijst + layoutfix
+
+- De inkoop-facturenlijst toont per factuur een paarse badge **"⇄ BTW
+  verlegd 4b"** (of 4a bij import) wanneer de opgeslagen factuur verlegde
+  regels bevat. De tooltip toont het zelfberekende BTW-bedrag dat in de
+  aangifte meetelt. Zo is direct te zien of een intracommunautaire factuur
+  correct is opgeslagen — ontbreekt de badge, dan is de factuur nog als
+  binnenlands geboekt (openen → BTW-soort omzetten → opslaan).
+- Layoutfix in het "Zelf aan te geven BTW"-blok: de uitsplitsing per tarief
+  staat nu tussen haakjes, zodat totaal en percentages niet aan elkaar
+  plakken.
+
 ## [1.10.53] — 2026-07-06
 
 ### Verbeterd — Verlegde BTW zichtbaar in de factuurmodal + waarschuwing bij 0%-regels
