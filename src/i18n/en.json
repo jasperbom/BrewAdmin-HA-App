@@ -873,6 +873,7 @@
   "btn_view_file": "📄 View",
   "msg_scanning": "Scanning invoice…",
   "msg_scan_regels_toegevoegd": "{n} invoice lines added as free lines — check amounts and VAT",
+  "msg_scan_regels_verdeeld": "Scan processed: {i} ingredient lines, {v} part lines, {o} free lines — check quantities, amounts and VAT",
   "msg_scan_klaar": "Scan processed — recognized fields have been filled",
   "lbl_klant_korting": "Fixed discount (%)",
   "msg_klantkorting_toegepast": "Customer discount {pct}% is applied automatically (not on shipping costs)",

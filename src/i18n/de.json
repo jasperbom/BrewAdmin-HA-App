@@ -873,6 +873,7 @@
   "btn_view_file": "📄 Anzeigen",
   "msg_scanning": "Rechnung wird gescannt…",
   "msg_scan_regels_toegevoegd": "{n} Rechnungszeilen als freie Zeilen übernommen — Beträge und MwSt. prüfen",
+  "msg_scan_regels_verdeeld": "Scan verarbeitet: {i} Zutatenzeilen, {v} Teilezeilen, {o} freie Zeilen — Mengen, Beträge und MwSt. prüfen",
   "msg_scan_klaar": "Scan verarbeitet — erkannte Felder wurden ausgefüllt",
   "lbl_klant_korting": "Fester Rabatt (%)",
   "msg_klantkorting_toegepast": "Kundenrabatt {pct}% wird automatisch angewendet (nicht auf Versandkosten)",

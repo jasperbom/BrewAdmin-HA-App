@@ -68,6 +68,32 @@ function parseFactuurTekstLokaal(text: string) {
   return result
 }
 
+// Naam-normalisatie voor het matchen van scanregels aan bestaande
+// ingrediënten/onderdelen: kleine letters, accenten en leestekens weg.
+const _normNaam = (s: any) => String(s || '').toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, ' ').trim()
+
+// Zoek een bestaand item (ingredient of onderdeel) bij een scanregel.
+// Eerst de match die het model aanwees, daarna lokaal: naam gelijk aan de
+// omschrijving of als losse woordreeks erin (langste naam wint, zodat
+// "Pilsner Mout" boven "Mout" gaat).
+const vindBestaand = (regel: any, items: any[]) => {
+  if (regel.match_naam) {
+    const nm = _normNaam(regel.match_naam)
+    const m = items.find((i: any) => _normNaam(i.naam) === nm)
+    if (m) return m
+  }
+  const no = _normNaam(regel.omschrijving)
+  if (!no) return null
+  return items
+    .filter((i: any) => {
+      const ni = _normNaam(i.naam)
+      return ni.length >= 3 && (ni === no || ` ${no} `.includes(` ${ni} `))
+    })
+    .sort((a: any, b: any) => _normNaam(b.naam).length - _normNaam(a.naam).length)[0] || null
+}
+
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((res, rej) => {
     const reader = new FileReader()
@@ -98,6 +124,10 @@ const FACTUUR_EXTRACTIE_TOOL = {
             omschrijving: {type: 'string'},
             netto: {type: 'number', description: 'Regelbedrag exclusief BTW in euro (korting = negatief)'},
             btw_pct: {type: 'number', description: 'BTW-percentage van deze regel: 0, 9 of 21'},
+            soort: {type: ['string', 'null'], enum: ['ingredient', 'verpakking', 'overig', null], description: 'Soort regel: "ingredient" = brouwgrondstof (mout, hop, gist, suiker, kruiden), "verpakking" = verpakkingsmateriaal/onderdeel (flessen, blikken, fusten, kroonkurken, deksels, etiketten, dozen), "overig" = al het andere (statiegeld, transport, kortingen, diensten)'},
+            hoeveelheid: {type: ['number', 'null'], description: 'Geleverde hoeveelheid of aantal op deze regel, in de opgegeven eenheid'},
+            eenheid: {type: ['string', 'null'], description: 'Eenheid van de hoeveelheid: kg, g, L, mL, pkg of stuks'},
+            match_naam: {type: ['string', 'null'], description: 'Exacte naam uit de lijst bekende ingrediënten of onderdelen wanneer deze regel daar (vrijwel zeker) bij hoort, anders null'},
           },
           required: ['omschrijving', 'netto'],
         },
@@ -116,7 +146,7 @@ const FACTUUR_EXTRACTIE_TOOL = {
   },
 }
 
-const bouwFactuurPrompt = (leveranciers: string[], breweryNaam?: string) => {
+const bouwFactuurPrompt = (leveranciers: string[], breweryNaam?: string, ingNamen: string[] = [], onderdeelNamen: string[] = []) => {
   let p = `Extraheer de gegevens uit deze inkoopfactuur voor een brouwerij en geef ze door via de tool.
 
 Regels:
@@ -127,6 +157,12 @@ Regels:
 - "factuurnummer" is het factuurnummer — NIET het klantnummer, debiteurennummer, ordernummer, offertenummer, pakbonnummer of BTW-nummer.
 - "datum" is de factuurdatum — NIET de vervaldatum, leverdatum of besteldatum.
 - "regels": elke factuurregel met omschrijving, nettobedrag EXCLUSIEF BTW en BTW-percentage (0, 9 of 21). Kortingen als negatief bedrag. Statiegeld, transport- en administratiekosten zijn ook regels. Sla subtotalen en lege regels over.
+- Classificeer elke regel via "soort": "ingredient" (brouwgrondstoffen), "verpakking" (verpakkingsmateriaal en onderdelen) of "overig" (statiegeld, transport, administratie, kortingen, diensten).
+- Geef bij ingrediënt- en verpakkingsregels ook "hoeveelheid" en "eenheid" (kg, g, L, mL, pkg of stuks) zoals de regel vermeldt.`
+  if (ingNamen.length) p += `\n- Bekende ingrediënten: ${ingNamen.slice(0, 150).join(', ')}.`
+  if (onderdeelNamen.length) p += `\n- Bekende onderdelen/verpakkingen: ${onderdeelNamen.slice(0, 100).join(', ')}.`
+  if (ingNamen.length || onderdeelNamen.length) p += `\n- Hoort een regel duidelijk bij een bekend ingredient of onderdeel (ook bij kleine spellingverschillen of extra tekst zoals gewicht/merk), zet dan in "match_naam" exact de schrijfwijze uit de lijst; anders null.`
+  p += `
 - Nederlandse bedragnotatie: "1.234,56" betekent 1234.56.
 - Gebruik null voor gegevens die niet op de factuur staan. Verzin niets.`
   return p
@@ -137,9 +173,20 @@ Regels:
 const SCAN_MODEL = 'claude-sonnet-5'
 const SCAN_MODEL_FALLBACK = 'claude-haiku-4-5-20251001'
 
-async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leveranciers?: string[], breweryNaam?: string}): Promise<any> {
+// Normaliseer een eenheid uit de scan naar een waarde uit EENHEDEN.
+const _normEenheid = (v: any): string | null => {
+  const m: Record<string, string> = {
+    kg: 'kg', kilo: 'kg', kilogram: 'kg', g: 'g', gr: 'g', gram: 'g',
+    l: 'L', lt: 'L', ltr: 'L', liter: 'L', ml: 'mL',
+    pkg: 'pkg', pak: 'pkg', zak: 'pkg', doos: 'pkg',
+    st: 'stuks', stk: 'stuks', stuk: 'stuks', stuks: 'stuks', pcs: 'stuks', x: 'stuks',
+  }
+  return m[String(v || '').trim().toLowerCase()] || null
+}
+
+async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leveranciers?: string[], breweryNaam?: string, ingNamen?: string[], onderdeelNamen?: string[]}): Promise<any> {
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-  const prompt = bouwFactuurPrompt(ctx?.leveranciers || [], ctx?.breweryNaam)
+  const prompt = bouwFactuurPrompt(ctx?.leveranciers || [], ctx?.breweryNaam, ctx?.ingNamen || [], ctx?.onderdeelNamen || [])
   let messages: any[]
   if (isPdf) {
     const text = await extractPdfText(file)
@@ -168,7 +215,7 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leve
   }
   // temperature 0: extractie moet deterministisch zijn, niet creatief.
   const doCall = (model: string) => callClaudeProxy({
-    model, max_tokens: 2000, temperature: 0,
+    model, max_tokens: 4000, temperature: 0,
     tools: [FACTUUR_EXTRACTIE_TOOL],
     tool_choice: {type: 'tool', name: 'factuur_extractie'},
     messages,
@@ -191,11 +238,18 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leve
   }
   const datum = typeof parsed.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.datum) ? parsed.datum : null
   const regels = (Array.isArray(parsed.regels) ? parsed.regels : [])
-    .map((r: any) => ({
-      omschrijving: String(r?.omschrijving || '').trim(),
-      netto: Number(r?.netto),
-      btw_pct: [0, 9, 21].includes(Number(r?.btw_pct)) ? Number(r?.btw_pct) : 21,
-    }))
+    .map((r: any) => {
+      const hoeveelheid = Number(r?.hoeveelheid)
+      return {
+        omschrijving: String(r?.omschrijving || '').trim(),
+        netto: Number(r?.netto),
+        btw_pct: [0, 9, 21].includes(Number(r?.btw_pct)) ? Number(r?.btw_pct) : 21,
+        soort: ['ingredient', 'verpakking', 'overig'].includes(r?.soort) ? r.soort : null,
+        hoeveelheid: isFinite(hoeveelheid) && hoeveelheid > 0 ? hoeveelheid : null,
+        eenheid: _normEenheid(r?.eenheid),
+        match_naam: typeof r?.match_naam === 'string' && r.match_naam.trim() ? r.match_naam.trim() : null,
+      }
+    })
     .filter((r: any) => r.omschrijving && isFinite(r.netto) && r.netto !== 0)
   return {
     leverancier: parsed.leverancier || null,
@@ -392,7 +446,7 @@ function InkoopFactuurModal({
     setVrijeForm(emptyVrije); setVrijeTotInclBtw(false); setVrijeBrutoStr('')
   }
 
-  const verwerkScanData = (data: any): number => {
+  const verwerkScanData = (data: any): {nIng: number, nVerpak: number, nVrij: number} => {
     if (data.leverancier && !leverancierNieuw && leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
       const known = knownLeveranciers.find((l: string) => l.toLowerCase() === data.leverancier.toLowerCase())
       if (known) setLeverancierSel(known)
@@ -400,18 +454,58 @@ function InkoopFactuurModal({
     }
     if (data.factuurnummer && !factuurNr) setFactuurNr(data.factuurnummer)
     if (data.datum && datum === tod()) setDatum(data.datum)
-    // Herkende factuurregels overnemen als vrije regels, maar alleen wanneer
-    // er nog niets is ingevoerd — een scan mag handwerk nooit overschrijven.
-    // De gebruiker verplaatst/verfijnt ze daarna zelf (ingrediënt/verpakking).
+    // Herkende factuurregels overnemen, maar alleen wanneer er nog niets is
+    // ingevoerd — een scan mag handwerk nooit overschrijven. Regels worden
+    // per soort verdeeld: ingrediënten gekoppeld aan bestaande ingrediënten,
+    // verpakkingen/onderdelen aan bestaande onderdelen, de rest vrije regels.
     if (Array.isArray(data.regels) && data.regels.length
         && productLijst.length === 0 && verpakkingLijst.length === 0 && vrijeList.length === 0) {
-      setVrijeList(data.regels.map((r: any, i: number) => ({
-        naam: r.omschrijving, netto: String(r.netto), btw_tarief: r.btw_pct,
-        kostensoort: 'Overig', _id: Date.now() + i,
-      })))
-      return data.regels.length
+      const prod: any[] = [], verpak: any[] = [], vrij: any[] = []
+      data.regels.forEach((r: any, i: number) => {
+        const id = Date.now() + i
+        // Onderdelen-classificatie weegt zwaarder dan een toevallige
+        // ingredient-naammatch en andersom.
+        const matchIng = r.soort !== 'verpakking' ? vindBestaand(r, ing) : null
+        const matchOd = !matchIng ? vindBestaand(r, onderdelen) : null
+        // Kortingen/negatieve bedragen en regels zonder hoeveelheid blijven
+        // vrije regels: daar valt geen betrouwbare voorraadmutatie van te maken.
+        if (r.netto > 0 && r.hoeveelheid) {
+          if (matchIng || (!matchOd && r.soort === 'ingredient')) {
+            const ingLots = matchIng ? lots.filter((l: any) => l.ingredient_id === matchIng.id) : []
+            const eenhTelling: Record<string, number> = {}
+            ingLots.forEach((l: any) => { if (l.eenheid) eenhTelling[l.eenheid] = (eenhTelling[l.eenheid] || 0) + 1 })
+            const lotEenh = Object.keys(eenhTelling).sort((a, b) => eenhTelling[b] - eenhTelling[a])[0]
+            prod.push({
+              ing_id: matchIng ? String(matchIng.id) : '', nieuw: matchIng ? '' : r.omschrijving,
+              type: matchIng?.type || defaultType, fabrikant: '', lotnr: '',
+              qty: String(r.hoeveelheid), eenh: r.eenheid || lotEenh || 'kg', tht: '',
+              prijs: String((r.netto / r.hoeveelheid).toFixed(4)), totaalprijs: String(r.netto.toFixed(2)),
+              btw_tarief: String(r.btw_pct), bf_props: {},
+              _naam: matchIng?.naam || r.omschrijving, _id: id,
+            })
+            return
+          }
+          if (matchOd || r.soort === 'verpakking') {
+            verpak.push({
+              od_id: matchOd ? String(matchOd.id) : '', naam: matchOd?.naam || r.omschrijving,
+              type: matchOd?.type || '', lotnr: '',
+              aantal: String(r.hoeveelheid), prijs_per_stuk: String((r.netto / r.hoeveelheid).toFixed(4)),
+              totaalprijs: String(r.netto.toFixed(2)), btw_tarief: String(r.btw_pct),
+              _naam: matchOd?.naam || r.omschrijving, _id: id,
+            })
+            return
+          }
+        }
+        const ks = r.soort === 'ingredient' ? 'Grondstoffen' : r.soort === 'verpakking' ? 'Verpakkingsmateriaal' : 'Overig'
+        vrij.push({
+          naam: r.omschrijving, netto: String(r.netto), btw_tarief: r.btw_pct,
+          kostensoort: kostenSoorten.includes(ks) ? ks : 'Overig', _id: id,
+        })
+      })
+      setProductLijst(prod); setVerpakkingLijst(verpak); setVrijeList(vrij)
+      return {nIng: prod.length, nVerpak: verpak.length, nVrij: vrij.length}
     }
-    return 0
+    return {nIng: 0, nVerpak: 0, nVrij: 0}
   }
 
   const doScanFactuur = async () => {
@@ -420,11 +514,14 @@ function InkoopFactuurModal({
     try {
       const data = await scanFactuurBestand(bijlageFile, claudeCreds?.apiKey, {
         leveranciers: knownLeveranciers, breweryNaam,
+        ingNamen: ing.map((i: any) => i.naam).filter(Boolean),
+        onderdeelNamen: onderdelen.map((o: any) => o.naam).filter(Boolean),
       })
-      const nRegels = verwerkScanData(data)
-      if (nRegels > 0) {
-        setScanInfo(t('msg_scan_regels_toegevoegd').replace('{n}', String(nRegels)))
-        setTab('vrije')
+      const {nIng, nVerpak, nVrij} = verwerkScanData(data)
+      if (nIng + nVerpak + nVrij > 0) {
+        setScanInfo(t('msg_scan_regels_verdeeld')
+          .replace('{i}', String(nIng)).replace('{v}', String(nVerpak)).replace('{o}', String(nVrij)))
+        setTab(nIng ? 'ingredienten' : nVerpak ? 'verpakkingen' : 'vrije')
       } else if (data._source === 'claude') {
         setScanInfo(t('msg_scan_klaar'))
       }
