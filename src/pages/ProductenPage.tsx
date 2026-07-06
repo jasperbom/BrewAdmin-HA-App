@@ -408,14 +408,26 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.id !== id));
   };
 
+  // Marge op een prijs excl. BTW t.o.v. de kostprijs per eenheid.
+  const margeVoorPrijs = (kostprijsPerEenheid: number, prijsExcl: number) =>
+    prijsExcl > 0
+      ? {eur: prijsExcl - kostprijsPerEenheid, pct: ((prijsExcl - kostprijsPerEenheid) / prijsExcl) * 100}
+      : null;
+
+  // Kostprijs/marge-inschatting per artikel: kostprijs per liter van het
+  // product (ingrediënten + utility + verpakking + accijns, uit
+  // berekenProductKostprijs) × inhoud van de verpakking. Verkoop- en
+  // B2B-prijs staan excl. BTW opgeslagen (saveArtikel normaliseert).
   const berekenMarge = (art: any) => {
     const stats = productStats[sel!];
-    if (!stats || stats.kostprijs <= 0 || !art.inhoud_liter) return null;
-    const kostprijsPerEenheid = stats.kostprijs * Number(art.inhoud_liter || 0);
-    const verkoopprijs = Number(art.verkoopprijs || 0);
-    if (verkoopprijs <= 0) return null;
-    const marge = ((verkoopprijs - kostprijsPerEenheid) / verkoopprijs) * 100;
-    return {kostprijsPerEenheid, marge};
+    const inhoud = Number(art.inhoud_liter || 0);
+    if (!stats || stats.kostprijs <= 0 || !inhoud) return null;
+    const kostprijsPerEenheid = stats.kostprijs * inhoud;
+    return {
+      kostprijsPerEenheid,
+      consument: margeVoorPrijs(kostprijsPerEenheid, Number(art.verkoopprijs || 0)),
+      b2b: margeVoorPrijs(kostprijsPerEenheid, Number(art.b2b_prijs || 0)),
+    };
   };
 
   // Afboeken
@@ -1197,6 +1209,39 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                       </label>
                     </div>
                   </div>
+                  {/* Live kostprijs/marge-inschatting tijdens het invullen — de
+                      prijsvelden respecteren de incl/excl-BTW-toggles. */}
+                  {(() => {
+                    const stats = productStats[sel!];
+                    const vp = (verpakkingen||[]).find((v: any) => v.id === Number(artForm.verpakking_id));
+                    const inhoud = Number(vp?.inhoud_liter ?? artForm.inhoud_liter ?? 0);
+                    if (!stats || stats.kostprijs <= 0) {
+                      return <p className="mt-2 text-[11px] text-gray-400 italic">{t('msg_geen_kostprijs_bekend')}</p>;
+                    }
+                    if (!inhoud) return null;
+                    const kost = stats.kostprijs * inhoud;
+                    const btw = Number(artForm.btw_pct || 0);
+                    const naarExcl = (val: any, incl: boolean) => {
+                      const n = Number(val || 0);
+                      return incl && n > 0 ? n / (1 + btw / 100) : n;
+                    };
+                    const cons = margeVoorPrijs(kost, naarExcl(artForm.verkoopprijs, prijsInclBtw));
+                    const b2b = margeVoorPrijs(kost, naarExcl(artForm.b2b_prijs, b2bPrijsInclBtw));
+                    const chip = (label: string, m: {eur: number, pct: number} | null) => m && (
+                      <span className={`px-2 py-0.5 rounded-full font-medium ${m.eur >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {label}: {m.pct.toFixed(0)}% ({fmt(m.eur)})
+                      </span>
+                    );
+                    return (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+                          {t('lbl_kostprijs_stuk')}: {fmt(kost)} ({inhoud.toFixed(2)}L × {fmt(stats.kostprijs)}/L)
+                        </span>
+                        {chip(t('lbl_product_marge'), cons)}
+                        {chip(`${t('lbl_product_marge')} ${t('lbl_b2b')}`, b2b)}
+                      </div>
+                    );
+                  })()}
                   <div className="flex gap-2 mt-2">
                     <Btn onClick={saveArtikel} s="sm">{t('btn_product_opslaan')}</Btn>
                     <Btn onClick={() => setArtForm(null)} s="sm" v="secondary">{t('btn_product_annuleren')}</Btn>
@@ -1216,6 +1261,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                         <th className="text-right py-1 font-medium">{t('lbl_product_prijs')}</th>
                         <th className="text-right py-1 font-medium">{t('lbl_product_b2b_prijs')}</th>
                         <th className="text-right py-1 font-medium">{t('lbl_product_btw')}</th>
+                        <th className="text-right py-1 font-medium">{t('lbl_kostprijs_stuk')}</th>
                         <th className="text-right py-1 font-medium">{t('lbl_product_marge')}</th>
                         <th className="w-16"></th>
                       </tr>
@@ -1243,7 +1289,19 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                             <td className="py-1.5 text-right">{a.verkoopprijs ? fmt(a.verkoopprijs) : '-'}</td>
                             <td className="py-1.5 text-right">{a.b2b_prijs ? fmt(a.b2b_prijs) : '-'}</td>
                             <td className="py-1.5 text-right">{a.btw_pct != null ? `${a.btw_pct}%` : '-'}</td>
-                            <td className="py-1.5 text-right">{margeInfo ? `${margeInfo.marge.toFixed(0)}%` : '-'}</td>
+                            <td className="py-1.5 text-right text-gray-600">{margeInfo ? fmt(margeInfo.kostprijsPerEenheid) : '-'}</td>
+                            <td className="py-1.5 text-right">
+                              {margeInfo?.consument ? (
+                                <span className={`font-medium ${margeInfo.consument.eur >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                  {margeInfo.consument.pct.toFixed(0)}% ({fmt(margeInfo.consument.eur)})
+                                </span>
+                              ) : '-'}
+                              {margeInfo?.b2b && (
+                                <div className={`text-[10px] ${margeInfo.b2b.eur >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                  {t('lbl_b2b')}: {margeInfo.b2b.pct.toFixed(0)}% ({fmt(margeInfo.b2b.eur)})
+                                </div>
+                              )}
+                            </td>
                             <td className="py-1.5 text-right">
                               <button onClick={() => startArtEdit(a)} className="text-gray-400 hover:text-gray-600 mr-1">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">

@@ -741,6 +741,9 @@ export interface Klant {
   telefoon?: string
   betalingstermijn?: number
   klant_type?: KlantType
+  // Vast kortingspercentage; wordt bij handmatige orders automatisch als
+  // kortingsregel toegepast over de productregels (niet op verzendkosten).
+  korting_pct?: number
 }
 
 export interface BankTransactie {

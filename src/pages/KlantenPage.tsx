@@ -50,6 +50,9 @@ const emptyForm = () => ({
   btw_nummer: '', kvk_nummer: '',
   email: '', telefoon: '',
   betalingstermijn: '' as string | number,
+  // Vast kortingspercentage voor deze klant; wordt bij handmatige orders
+  // automatisch als kortingsregel toegepast (niet op verzendkosten).
+  korting_pct: '' as string | number,
   notities: '',
 })
 
@@ -234,6 +237,7 @@ const KlantenPage: React.FC<Props> = ({
       btw_nummer: k.btw_nummer || '', kvk_nummer: k.kvk_nummer || '',
       email: k.email || '', telefoon: k.telefoon || '',
       betalingstermijn: k.betalingstermijn ?? '',
+      korting_pct: k.korting_pct ?? '',
       notities: k.notities || '',
     })
     setDirty(false)
@@ -270,6 +274,7 @@ const KlantenPage: React.FC<Props> = ({
       email: synth.email || '',
       telefoon: '',
       betalingstermijn: '',
+      korting_pct: '',
       notities: '',
     })
     setDirty(false)
@@ -309,6 +314,7 @@ const KlantenPage: React.FC<Props> = ({
       email: form.email.trim() || undefined,
       telefoon: form.telefoon.trim() || undefined,
       betalingstermijn: form.betalingstermijn === '' ? undefined : Number(form.betalingstermijn),
+      korting_pct: form.korting_pct === '' || Number(form.korting_pct) === 0 ? undefined : Number(form.korting_pct),
       notities: form.notities.trim() || undefined,
     }
     // Strip undefined-keys
@@ -565,6 +571,7 @@ const KlantenPage: React.FC<Props> = ({
               </div>
               <Inp label={t('lbl_telefoon')} value={form.telefoon} onChange={v => update({telefoon: v})} />
               <Inp label={t('settings_betalingstermijn')} type="number" value={form.betalingstermijn} onChange={v => update({betalingstermijn: v})} placeholder="14" />
+              <Inp label={t('lbl_klant_korting')} type="number" value={form.korting_pct} onChange={v => update({korting_pct: v})} placeholder="0" />
             </div>
           </div>
 

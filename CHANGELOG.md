@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.49] — 2026-07-06
+
+### Toegevoegd — Vast kortingspercentage per klant (niet op verzendkosten)
+
+Op de klantkaart staat een nieuw veld **"Vaste korting (%)"**. Bij het
+aanmaken van een handmatige bestelling voor die klant (herkend op e-mail,
+anders op exacte naam) wordt de korting automatisch als negatieve
+kortingsregel toegevoegd — berekend over de productregels, bewust **niet**
+over de verzendkosten. Bij gemengde BTW-tarieven komt er één kortingsregel
+per tarief zodat de BTW-aangifte blijft kloppen. Het bestelformulier toont
+vooraf een melding dat de korting toegepast gaat worden, en op de
+orderdetail is de kortingsregel herkenbaar aan een %-teken.
+
+### Verbeterd — Kosten en marges zichtbaar bij artikelen/SKU's
+
+Bij Producten → Artikelen was de marge maar een kaal percentage. Nu:
+
+- **Tijdens het aanmaken/bewerken** van een artikel verschijnt direct een
+  live inschatting: kostprijs per stuk (kostprijs/liter van het product ×
+  inhoud van de gekozen verpakking — inclusief ingrediënten, utility,
+  verpakking én accijns) en de marge in % en € voor zowel de consumenten-
+  als de B2B-prijs. De berekening respecteert de incl/excl-BTW-toggles.
+- De **artikeltabel** kreeg een kolom "Kostprijs/stuk" en toont de marge nu
+  in % én € (groen/rood), met de B2B-marge eronder.
+- Is er nog geen kostprijs (geen afgevulde batch), dan legt een hint dat uit
+  in plaats van stil niets te tonen.
+
+---
+
 ## [1.10.48] — 2026-07-06
 
 ### Toegevoegd — Verkoopfactuur verrekenen met alt-rekening-schuld (aflossing in natura)
