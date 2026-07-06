@@ -432,6 +432,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setTimeout(() => setWcMsg(''), 8000)
   }
 
+  // Klantkaart bij de handmatige order zoeken (e-mail eerst, anders exacte
+  // naam) — voor het automatisch toepassen van het klant-kortingspercentage.
+  const klantVoorManualForm = (): any => {
+    const email = (manualForm.klant_email || '').trim().toLowerCase()
+    const naam = (manualForm.klant_naam || '').trim().toLowerCase()
+    if (email) {
+      const k = (klanten||[]).find((k: any) => (k.email || '').toLowerCase() === email)
+      if (k) return k
+    }
+    if (naam) return (klanten||[]).find((k: any) => (k.naam || '').trim().toLowerCase() === naam) || null
+    return null
+  }
+
   // --- Handmatige order opslaan ---
   const saveManualOrder = () => {
     if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
@@ -440,6 +453,37 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     if (!manualForm.regels.length) { alert(t('err_order_min_lines')); return }
     let regels = [...manualForm.regels];
+    // Klantkorting: vast percentage van de klantkaart, toegepast over de
+    // productregels — bewust vóór de verzendkosten berekend zodat de korting
+    // daar niet op geldt. Eén negatieve kortingsregel per BTW-tarief, zodat
+    // de BTW-aangifte per tarief blijft kloppen.
+    const kortingKlant = klantVoorManualForm()
+    const kortingPct = Number(kortingKlant?.korting_pct || 0)
+    if (kortingPct > 0) {
+      const perBtw: Record<string, number> = {}
+      for (const r of regels) {
+        if (r.type && r.type !== 'bier') continue
+        const netto = Number(r.aantal||0) * Number(r.prijs_per_stuk||0)
+        if (netto <= 0) continue
+        const k = String(Number(r.btw_pct||0))
+        perBtw[k] = (perBtw[k]||0) + netto
+      }
+      for (const [btwPct, som] of Object.entries(perBtw)) {
+        const bedrag = Math.round(som * kortingPct) / 100
+        if (bedrag <= 0) continue
+        const oms = t('lbl_korting_pct').replace('{pct}', String(kortingPct))
+        regels.push({
+          id: regels.length + 1,
+          type: 'korting',
+          bier_naam: oms,
+          verpakking_type: '',
+          aantal: 1,
+          prijs_per_stuk: -bedrag,
+          btw_pct: Number(btwPct),
+          omschrijving: oms,
+        })
+      }
+    }
     if (manualVerzending.enabled && Number(manualVerzending.prijs) > 0) {
       regels.push({
         id: regels.length + 1,
@@ -1439,7 +1483,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               {(selectedOrder.regels||[]).map((r: any) => {
                 const gepickt = gepicktVoorRegel(selectedOrder.id, r.id)
                 const volledig = gepickt >= r.aantal
-                const isVrij = r.type === 'vrij' || r.type === 'verzending'
+                const isVrij = r.type === 'vrij' || r.type === 'verzending' || r.type === 'korting'
                 const canDelete = isVrij && selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd'
                 const isBtwCorrectie = selectedOrder.status === 'afgerond' && btwCorrectie === selectedOrder.id
                 const canEditBtw = (selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd') || isBtwCorrectie
@@ -1450,6 +1494,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       {r.sku && <span className="ml-1 font-mono text-xs text-gray-400">[{r.sku}]</span>}
                       {r.type === 'verzending' && <span className="ml-1 text-xs text-blue-500">🚚</span>}
                       {r.type === 'vrij' && <span className="ml-1 text-xs text-purple-500">✎</span>}
+                      {r.type === 'korting' && <span className="ml-1 text-xs font-semibold text-green-600">%</span>}
                     </td>
                     <td className="px-3 py-2 text-gray-600">{r.verpakking_type}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.aantal}×</td>
@@ -2036,6 +2081,15 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <Inp label={t('manual_order_klant_naam') + ' *'} value={manualForm.klant_naam} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_naam: v}))} placeholder="Jan Janssen" />
                 <Inp label={t('manual_order_klant_email')} value={manualForm.klant_email} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_email: v}))} placeholder="jan@example.nl" />
               </div>
+              {(() => {
+                const k = klantVoorManualForm()
+                const pct = Number(k?.korting_pct || 0)
+                return pct > 0 ? (
+                  <div className="mt-1.5 text-xs text-green-600">
+                    ✓ {t('msg_klantkorting_toegepast').replace('{pct}', String(pct))}
+                  </div>
+                ) : null
+              })()}
               <div className="grid grid-cols-2 gap-3 mt-2">
                 <Inp label={t('lbl_company') + (manualForm.klant_type === 'zakelijk' ? ' *' : '')} value={manualForm.klant_bedrijf} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_bedrijf: v}))} placeholder={t('lbl_company')} />
                 <Inp label={t('lbl_address')} value={manualForm.klant_straat} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_straat: v}))} placeholder="Hoofdstraat 1" />
