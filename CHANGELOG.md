@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.45] — 2026-07-06
+
+### Toegevoegd — Accijnsbetaling koppelen aan een banktransactie
+
+De accijnsaangifte kent nu hetzelfde bankkoppelingspad als de BTW-aangifte:
+
+- Bij **"markeer als ingediend"** wordt het maandtotaal als aangiftebedrag
+  vastgelegd.
+- Bij MT940-import wordt een debettransactie **automatisch gematcht** op een
+  ingediende accijnsaangifte (±€1 tolerantie); handmatig koppelen kan via een
+  selector op de maandkaart van de Accijns-pagina (voorgestelde matches
+  bovenaan).
+- Bij het koppelen gaat de aangifte naar **betaald** en worden alle
+  accijnsrecords van de maand betaald gemarkeerd met de **werkelijke
+  transactiedatum** als betaaldatum (voorheen: de dag van aanklikken) — beter
+  audittrail richting Douane, met de banktransactie als betaalbewijs.
+- Ontkoppelen draait de status terug naar "ingediend" en herstelt de
+  betaald-vlaggen. Koppelingen overleven een MT940-herimport.
+- In de banktransactielijst toont een gekoppelde accijnsbetaling een eigen
+  "✓ Accijns"-label.
+
+De knop "markeer als betaald" blijft werken als handmatige fallback zonder
+bankafschrift.
+
+### Gerepareerd — BTW-teruggave was niet te koppelen
+
+Een aangifte met negatief bedrag (teruggave) wordt door de Belastingdienst
+**uitbetaald** en komt dus als credittransactie binnen. De koppel-selector op
+de periodekaart en de automatische matching keken alleen naar
+debettransacties, waardoor een teruggave nooit te koppelen was en de periode
+op "Openstaand" bleef staan. Nu:
+
+- Bij een teruggave toont de selector **credittransacties** ("Koppel
+  teruggave") en matcht de MT940-import automatisch op binnenkomende
+  betalingen.
+- Een positieve aangifte matcht alleen nog op debet-, een negatieve alleen op
+  credittransacties (voorheen kon een teruggave per ongeluk aan een
+  debettransactie van hetzelfde bedrag gematcht worden).
+- De gekoppelde teruggave is ook zichtbaar (en te ontkoppelen) op de
+  creditregel in de banktransactielijst.
+
+---
+
 ## [1.10.44] — 2026-07-06
 
 ### Gerepareerd — WooCommerce-voorraadpush pushte te weinig (of 0)

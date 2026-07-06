@@ -846,6 +846,8 @@
   "stat_accijns_niet_ingediend_sub": "Último mes aún no presentado",
   "lbl_btw_betaling_gekoppeld": "Pago bancario vinculado",
   "lbl_koppel_betaling": "Vincular pago",
+  "lbl_koppel_teruggave": "Vincular devolución",
+  "lbl_accijns_betaling_gekoppeld": "Pago de impuestos especiales vinculado",
   "lbl_selecteer_transactie": "Seleccionar transacción",
   "msg_geen_banktxn_geladen": "No hay extracto bancario cargado — importe primero desde la pestaña Banco",
   "btn_ontkoppel": "Desvincular",
