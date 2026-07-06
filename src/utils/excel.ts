@@ -77,6 +77,7 @@ export const excelExport = (data: any) => {
     addSheet('BatchTakenItems',       data.batch_taken_items)
     addSheet('BatchTakenGroepen',     data.batch_taken_groepen)
     addSheet('InkoopFacturen',        data.inkoop_facturen)
+    addSheet('ScanCorrecties',        data.scan_correcties)
     addSheet('VerkoopFacturen',       data.verkoop_facturen)
     addSheet('Bestellingen',          data.bestellingen)
     addSheet('BestellingPicks',       data.bestelling_picks)
@@ -255,6 +256,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         batch_taken_items:            parse('BatchTakenItems'),
         batch_taken_groepen:          parse('BatchTakenGroepen'),
         inkoop_facturen:              parse('InkoopFacturen'),
+        scan_correcties:              parse('ScanCorrecties'),
         verkoop_facturen:             parse('VerkoopFacturen'),
         bestellingen:                 parse('Bestellingen'),
         bestelling_picks:             parse('BestellingPicks'),

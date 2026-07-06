@@ -335,6 +335,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `hygiene_items` | array | Hygiëne-controleitems |
 | `hygiene_groups` | array | Hygiëne-groepen |
 | `inkoop_facturen` | array | Inkoopfacturen |
+| `scan_correcties` | array | Handmatige herclassificaties van factuurscan-regels ({tekst, soort}) — sturen volgende scans |
 | `verkoop_facturen` | array | Verkoopfacturen |
 | `bestellingen` | array | WooCommerce-bestellingen |
 | `bestelling_picks` | array | Pickregels per bestelling |

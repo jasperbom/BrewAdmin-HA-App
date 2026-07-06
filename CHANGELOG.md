@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.52] — 2026-07-06
+
+### Verbeterd — Factuurscan herkent verlegde BTW (intracommunautaire verwerving)
+
+Bij een intracommunautaire verwerving of import van buiten de EU staat 0%
+BTW op de factuur, terwijl voor de aangifte (rubriek 4a/4b) het Nederlandse
+tarief zelf berekend moet worden. De scan hield daar geen rekening mee:
+regels kregen het gescande 0% en de BTW-soort bleef op "Binnenlands" staan.
+Nu:
+
+- **De scan herkent verlegde BTW** (0% BTW plus signalen als
+  "intracommunautaire levering", "BTW verlegd", "reverse charge",
+  buitenlands BTW-nummer) en zet de BTW-soort automatisch op
+  Intracommunautair (EU) of Import (niet-EU). Een handmatige keuze van de
+  gebruiker wordt nooit overschreven.
+- **Bij verlegde BTW vult de scan per regel het Nederlandse tarief in** in
+  plaats van het gescande 0%: voor ingrediënten het standaard-BTW% per
+  ingrediënttype (instelbaar; anders 9%), voor onderdelen en overige regels
+  21%. Zo klopt de zelfberekende BTW in rubriek 4a/4b direct.
+- **Handmatig omzetten** van Binnenlands naar een verlegde soort terwijl er
+  regels op 0% staan: de app biedt aan om die regels met het
+  standaardtarief te vullen.
+
+## [1.10.51] — 2026-07-06
+
+### Toegevoegd — Factuurregels verplaatsen tussen categorieën + zelflerende scan
+
+Een verkeerd ingedeelde regel (bijv. een product dat als onderdeel werd
+gezien terwijl het een vrije regel moest zijn) is nu direct te corrigeren:
+
+- Elke regel in de toegevoegde-productenlijst heeft een **⇄-knopje** waarmee
+  je hem naar één van de andere twee categorieën verplaatst (ingrediënt ↔
+  onderdeel ↔ vrije regel, alle richtingen). Bij het verplaatsen wordt
+  automatisch geprobeerd te koppelen aan een bestaand ingredient/onderdeel.
+- Een vrije regel heeft geen hoeveelheid; bij verplaatsen náár ingrediënt of
+  onderdeel wordt het invoerformulier voorgevuld (incl. gescande hoeveelheid
+  en eenheid als die bekend zijn) zodat je alleen hoeft aan te vullen en op
+  "Toevoegen" te klikken.
+- **De scan leert van je correcties.** Elke verplaatsing wordt opgeslagen
+  (nieuwe datasleutel `scan_correcties`, max. 300, zit in de Excel-backup).
+  Bij een volgende scan krijgt de AI de eerdere correcties mee in de prompt
+  én overrulet de app de classificatie lokaal wanneer dezelfde omschrijving
+  opnieuw voorkomt — die regel komt dan meteen in de juiste categorie.
+
 ## [1.10.50] — 2026-07-06
 
 ### Verbeterd — Factuurscan koppelt regels aan ingrediënten en onderdelen
