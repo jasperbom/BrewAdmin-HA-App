@@ -1829,6 +1829,13 @@ export const openBestellingReserveringen = (
   return res
 }
 
+// Een pick waarvoor al uitslag-records bestaan (uitlevering_id(s) gezet bij
+// volledig picken) telt niet meer mee als reservering: de uitlevering zelf
+// verlaagt de voorraad al. Zonder deze check wordt de voorraad tussen picken
+// en afronden dubbel verlaagd (pick én uitlevering).
+export const pickUitgeslagen = (p: any): boolean =>
+  p?.uitlevering_id != null || (Array.isArray(p?.uitlevering_ids) && p.uitlevering_ids.length > 0)
+
 // Gereserveerd aantal voor één artikel: match primair op SKU, anders op
 // biernaam + verpakkingstype.
 export const gereserveerdVoorArtikel = (reserveringen: OpenReservering[], art: any): number =>

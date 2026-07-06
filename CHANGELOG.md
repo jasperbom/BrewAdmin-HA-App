@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.44] — 2026-07-06
+
+### Gerepareerd — WooCommerce-voorraadpush pushte te weinig (of 0)
+
+Twee oorzaken gevonden en verholpen:
+
+1. **Verkeerde artikel↔afvulling-matching.** De push zocht afvullingen
+   uitsluitend via de *batch* (batch-productkoppeling of batchnaam ==
+   productnaam). Maar bij het afvullen wordt het product juist op de
+   *afvulling* gezet (product + artikel-SKU), niet op de batch. Afvullingen
+   van batches zonder productkoppeling telden daardoor niet mee en er werd
+   te weinig — vaak 0 — naar WooCommerce gepusht. De matching gebruikt nu
+   dezelfde drie tiers als de bestellingenpagina: eerst de artikel-SKU op de
+   afvulling, dan het product op de afvulling, pas daarna de batch. De
+   verpakkingsmatch is bovendien hoofdletterongevoelig gemaakt.
+
+2. **Dubbeltelling tussen picken en afronden.** Bij volledig picken worden
+   uitslag-records aangemaakt, maar de picks bleven óók als reservering
+   meetellen totdat de order werd afgerond. De beschikbare voorraad (en dus
+   de push) was in die periode dubbel verlaagd. Picks waarvoor al een
+   uitslag bestaat tellen nu niet meer mee als aparte reservering — dit is
+   ook rechtgetrokken in het voorraadoverzicht op de productpagina en in de
+   beschikbaarheidscontrole bij het picken.
+
+Daarnaast logt de push nu een waarschuwing in het WC-logboek wanneer een
+SKU niet in WooCommerce gevonden wordt, in plaats van het artikel stil over
+te slaan.
+
+---
+
 ## [1.10.43] — 2026-07-06
 
 ### Gewijzigd — WooCommerce-import: privé/zakelijk-detectie gerepareerd

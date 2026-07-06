@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
-import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, openBestellingReserveringen, gereserveerdVoorArtikel } from '../utils/calculations'
+import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen } from '../utils/calculations'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -124,6 +124,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const beschikbaarVoorAfvulling = (a: any): number => {
     const gepickt = ((bestellingPicks||[]) as any[]).filter((p: any) => {
       if (p.afvulling_id !== a.id) return false;
+      if (pickUitgeslagen(p)) return false; // uitlevering telt al mee hieronder
       const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
       return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
     }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
@@ -135,6 +136,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const gepicktVoorAfvulling = (a: any): number =>
     ((bestellingPicks||[]) as any[]).filter((p: any) => {
       if (p.afvulling_id !== a.id) return false;
+      if (pickUitgeslagen(p)) return false; // zit al in "Uitgeleverd"
       const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
       return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
     }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
@@ -156,6 +158,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     // Actieve picks op deze afvulling aftrekken op hun bron-locatie (of AGP)
     for (const p of ((bestellingPicks||[]) as any[])) {
       if (p.afvulling_id !== a.id) continue;
+      if (pickUitgeslagen(p)) continue; // uitlevering al verwerkt in voorraadPerLocatie
       const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
       if (!b || b.status === 'afgerond' || b.status === 'geannuleerd') continue;
       const locId = p.bron_locatie_id ?? agpId;
@@ -602,11 +605,36 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // zachte reserveringen uit open bestellingen. WooCommerce verlaagt zijn
   // eigen voorraad al zodra een bestelling binnenkomt — zonder deze aftrek
   // zou een push die verlaging weer ongedaan maken (oversell-risico).
+  //
+  // Matching in drie tiers (zelfde volgorde als getAvailableAfvullingen op de
+  // bestellingenpagina): eerst de exacte artikel-SKU op de afvulling, dan het
+  // product op de afvulling (wordt bij afvullen gezet, niet op de batch!),
+  // pas daarna via de batch. De oude matcher keek alléén naar de batch,
+  // waardoor afvullingen met product/SKU maar zonder batch-productkoppeling
+  // niet meetelden en er te weinig (of 0) gepusht werd.
   const wcBeschikbaarVoorArt = (art: any) => {
+    const artVt = (art.verpakking_type || '').toLowerCase();
+    const artNaam = (art.biernaam || '').toLowerCase();
+    const vpMatch = (a: any) => {
+      const avVt = (a.verpakking_type || '').toLowerCase();
+      if (!avVt || !artVt) return false;
+      if (avVt === artVt) return true;
+      // Afvulling draagt vaak de verpakkingsNAAM ("Vichy 33cL"), het artikel
+      // het TYPE ("fles") — map via de verpakkingenlijst, hoofdletterongevoelig.
+      return (verpakkingen||[]).some((v: any) =>
+        (v.type || '').toLowerCase() === artVt && (v.naam || '').toLowerCase() === avVt);
+    };
     const fysiek = (av||[]).filter((a: any) => {
+      // Tier 1: afvulling met artikel-SKU matcht uitsluitend op die SKU
+      if (a.artikel_sku) return a.artikel_sku === art.artikelnummer;
+      // Tier 2: product op de afvulling zelf
+      if (art._product_id && a.product_id === art._product_id) return vpMatch(a);
+      // Tier 3: via de batch (oude afvullingen zonder product/SKU)
       const b = bat.find((bx: any) => bx.id === a.batch_id);
-      return b && (b.product_id === art._product_id || b.naam === art.biernaam) &&
-        (a.verpakking_type === art.verpakking_type || (verpakkingen||[]).some((v: any) => v.type === art.verpakking_type && v.naam === a.verpakking_type));
+      if (!b) return false;
+      const bierMatch = (art._product_id && b.product_id === art._product_id)
+        || (!!artNaam && ((b.naam || '').toLowerCase() === artNaam || (b.biernaam || '').toLowerCase() === artNaam));
+      return bierMatch && vpMatch(a);
     }).reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
     return Math.max(0, fysiek - gereserveerdVoorArtikel(openReserveringen, art));
   };
@@ -627,7 +655,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         const beschikbaar = wcBeschikbaarVoorArt(art);
         addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, '');
         const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
-        if (!prods?.length) continue;
+        if (!prods?.length) {
+          // Stil overslaan verbergt configuratiefouten — log het zodat de
+          // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
+          addWcLog('fout', `⚠ SKU "${art.artikelnummer}" niet gevonden in WooCommerce (${art.biernaam} ${art.verpakking_type})`);
+          continue;
+        }
         await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
         bijgewerkt++;
       }

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie } from '../utils/calculations'
+import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -176,6 +176,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       .filter((p: any) => {
         if (p.afvulling_id !== a.id) return false
         if (excludeBestellingId && p.bestelling_id === excludeBestellingId) return false
+        // Picks met uitslag-records tellen al mee via `uitgeleverd` hieronder
+        if (pickUitgeslagen(p)) return false
         const b = (bestellingen||[]).find((bs: any) => bs.id === p.bestelling_id)
         return b && b.status !== 'afgerond' && b.status !== 'geannuleerd'
       })
@@ -196,6 +198,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     for (const p of ((bestellingPicks||[]) as any[])) {
       if (p.afvulling_id !== a.id) continue
       if (excludeBestellingId && p.bestelling_id === excludeBestellingId) continue
+      // Picks met uitslag-records zitten al in voorraadPerLocatie (uitleveringen)
+      if (pickUitgeslagen(p)) continue
       const b = (bestellingen||[]).find((bs: any) => bs.id === p.bestelling_id)
       if (!b || b.status === 'afgerond' || b.status === 'geannuleerd') continue
       const locId = p.bron_locatie_id ?? agp.id
