@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
-import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs } from '../utils/calculations'
+import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, openBestellingReserveringen, gereserveerdVoorArtikel } from '../utils/calculations'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -168,6 +168,38 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     return res;
   };
 
+  // Zachte reserveringen uit open bestellingen (nog niet gepickt). Net als in
+  // WooCommerce zelf telt een binnengekomen bestelling direct als gereserveerde
+  // voorraad, ook al is er nog geen afvulling gekozen (picking).
+  const openReserveringen = useMemo(
+    () => openBestellingReserveringen(bestellingen || [], bestellingPicks || []),
+    [bestellingen, bestellingPicks]
+  );
+
+  // Matcht het verpakkingstype van een bestelregel/artikel (bijv. "fles") op
+  // het verpakkingstype van een afvulling (kan ook de verpakkingsnaam zijn,
+  // bijv. "Vichy 33cL").
+  const vpTypeMatch = (artType: string, afvVt: string): boolean => {
+    const a = (artType || '').toLowerCase(), b = (afvVt || '').toLowerCase();
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return (verpakkingen || []).some((v: any) => (v.type || '').toLowerCase() === a && (v.naam || '').toLowerCase() === b);
+  };
+
+  // Reserveringen die bij één product horen: match op SKU van de
+  // productartikelen (of legacy artikelen met dezelfde biernaam), anders op
+  // productnaam.
+  const reserveringenVoorProduct = (p: any) => {
+    if (!p) return [];
+    const skus = new Set([
+      ...(productArtikelen || []).filter((pa: any) => pa.product_id === p.id && pa.artikelnummer).map((pa: any) => pa.artikelnummer),
+      ...(artikelen || []).filter((a: any) => a.artikelnummer && (a.biernaam || '').toLowerCase() === (p.naam || '').toLowerCase()).map((a: any) => a.artikelnummer),
+    ]);
+    return openReserveringen.filter((r: any) =>
+      (r.sku && skus.has(r.sku)) || (r.bier_naam || '').toLowerCase() === (p.naam || '').toLowerCase()
+    );
+  };
+
   // Statistieken per product. Kostprijs/liter komt uit `berekenProductKostprijs`
   // en gebruikt dezelfde scope als het kostprijsoverzicht op de Batch-pagina:
   // ingrediënten + utility + verpakking + accijns, gedeeld door werkelijk
@@ -188,13 +220,16 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const batchIds = new Set(pBatches.map((b: any) => b.id));
       const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
       const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
-      const voorraad = pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
+      // Beschikbaar = fysiek beschikbaar minus zachte reserveringen uit open
+      // (nog niet gepickte) bestellingen.
+      const inBestelling = reserveringenVoorProduct(p).reduce((s: number, r: any) => s + r.aantal, 0);
+      const voorraad = Math.max(0, pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0) - inBestelling);
       const uitgeleverd = pAv.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
       const {kostprijs_per_liter} = berekenProductKostprijs(p.id, bat, bi, lots, av, verpakkingen, onderdelen, acc);
       stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: kostprijs_per_liter};
     }
     return stats;
-  }, [producten, bat, av, uit, bi, lots, verpakkingen, onderdelen, acc, bestellingen, bestellingPicks, afboekingen]);
+  }, [producten, bat, av, uit, bi, lots, verpakkingen, onderdelen, acc, bestellingen, bestellingPicks, afboekingen, productArtikelen, artikelen]);
 
   const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel), [productArtikelen, sel]);
   const selRecepten = useMemo(() => {
@@ -213,16 +248,25 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const batchIds = new Set(selBatches.map((b: any) => b.id));
     const pAv = (av||[]).filter((a: any) => a.product_id === sel || (!a.product_id && batchIds.has(a.batch_id)));
     const vTypes = [...new Set(pAv.map((a: any) => a.verpakking_type).filter(Boolean))].sort() as string[];
+    const prodReserveringen = reserveringenVoorProduct(selProduct);
     return vTypes.map(vt => {
       const rows = pAv.filter((a: any) => a.verpakking_type === vt);
       const totAfgevuld = rows.reduce((s: number, a: any) => s + Number(a.hoeveelheid||0), 0);
       const totGepickt = rows.reduce((s: number, a: any) => s + gepicktVoorAfvulling(a), 0);
       const totUitgeleverd = rows.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
       const totAfgeboekt = rows.reduce((s: number, a: any) => s + afgeboektVoorAfvulling(a), 0);
-      const totBeschikbaar = rows.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
-      return {vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totBeschikbaar};
+      // Zachte reserveringen uit open bestellingen voor dit verpakkingstype;
+      // regels zonder verpakkingstype worden via hun SKU-artikel geresolved.
+      const totInBestelling = prodReserveringen.filter((r: any) => {
+        const rVt = r.verpakking_type
+          || (r.sku ? ((productArtikelen||[]).find((pa: any) => pa.artikelnummer === r.sku)?.verpakking_type
+            || (artikelen||[]).find((a: any) => a.artikelnummer === r.sku)?.verpakking_type || '') : '');
+        return vpTypeMatch(rVt, vt);
+      }).reduce((s: number, r: any) => s + r.aantal, 0);
+      const totBeschikbaar = Math.max(0, rows.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0) - totInBestelling);
+      return {vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar};
     });
-  }, [sel, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen]);
+  }, [sel, selProduct, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen, productArtikelen, artikelen, verpakkingen]);
 
   const startEdit = (product?: any) => {
     if (product) {
@@ -554,12 +598,18 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     setWcSyncLog((prev: any[]) => [entry, ...(prev||[])].slice(0, 100));
   };
 
-  const wcBeschikbaarVoorArt = (art: any) =>
-    (av||[]).filter((a: any) => {
+  // Voorraad die naar WooCommerce gepusht wordt: fysiek beschikbaar minus
+  // zachte reserveringen uit open bestellingen. WooCommerce verlaagt zijn
+  // eigen voorraad al zodra een bestelling binnenkomt — zonder deze aftrek
+  // zou een push die verlaging weer ongedaan maken (oversell-risico).
+  const wcBeschikbaarVoorArt = (art: any) => {
+    const fysiek = (av||[]).filter((a: any) => {
       const b = bat.find((bx: any) => bx.id === a.batch_id);
       return b && (b.product_id === art._product_id || b.naam === art.biernaam) &&
         (a.verpakking_type === art.verpakking_type || (verpakkingen||[]).some((v: any) => v.type === art.verpakking_type && v.naam === a.verpakking_type));
     }).reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
+    return Math.max(0, fysiek - gereserveerdVoorArtikel(openReserveringen, art));
+  };
 
   const wcPushAll = async () => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
@@ -895,13 +945,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   rounded={voorraadOpen ? 'top' : 'full'}
                   title={t('lbl_product_voorraad')}
                 />
-                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totBeschikbaar}) => (
+                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar}) => (
                   <div key={vt}>
                     <div className="px-4 py-2 bg-gray-50 border-b border-t flex items-center justify-between text-sm">
                       <span className="font-medium text-gray-700">{vt}</span>
                       <div className="flex gap-3 text-xs text-gray-500">
                         <span className="text-gray-400">{t('voorraad_afgevuld')}: <strong>{totAfgevuld}×</strong></span>
                         {totGepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>{totGepickt}×</strong></span>}
+                        {totInBestelling > 0 && <span className="text-orange-500">{t('voorraad_in_bestelling')}: <strong>{totInBestelling}×</strong></span>}
                         {totUitgeleverd > 0 && <span className="text-blue-500">{t('voorraad_uitgeleverd')}: <strong>{totUitgeleverd}×</strong></span>}
                         {totAfgeboekt > 0 && <span className="text-red-400">{t('voorraad_afgeboekt')}: <strong>{totAfgeboekt}×</strong></span>}
                         <span className={`font-bold ${totBeschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>{t('voorraad_beschikbaar')}: {totBeschikbaar}×</span>

@@ -386,7 +386,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           }
         })
         const company = (o.billing?.company || '').trim()
-        const vatNr = (o.billing?.vat_number || o.meta_data?.find?.((m: any) => /vat|btw/i.test(m.key||''))?.value || '').toString().trim()
+        // BTW-nummer alléén uit échte BTW-nummervelden (bijv. _billing_vat_number,
+        // billing_eu_vat_number, btw_nummer). WooCommerce zet op elke order
+        // standaard meta zoals `is_vat_exempt: "no"` — de eerdere generieke
+        // /vat|btw/-match pakte die key, waardoor élke import onterecht als
+        // zakelijk werd gemarkeerd. De waarde moet bovendien op een BTW-nummer
+        // lijken (bevat cijfers, geen ja/nee-vlag).
+        const vatMeta = (Array.isArray(o.meta_data) ? o.meta_data : []).find((m: any) =>
+          /(vat|btw)[_-]?(number|nummer|nr|id)\b/i.test(String(m?.key || '')))
+        const vatRaw = String(o.billing?.vat_number || vatMeta?.value || '').trim()
+        const vatNr = /\d/.test(vatRaw) && !/^(yes|no|true|false|0|1)$/i.test(vatRaw) ? vatRaw : ''
         const klantType: 'prive' | 'zakelijk' = (company || vatNr) ? 'zakelijk' : 'prive'
         const nb: any = {
           id: newId([...(bestellingen||[]), ...nieuw]),
@@ -586,6 +595,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       }
     }
     return {nieuweUitleveringen, nieuweAccijns, pickResult}
+  }
+
+  // --- Klanttype (privé/zakelijk) van een bestaande order corrigeren ---
+  // Alleen vóór het picken: de pick-logica (wel/niet uit AGP leveren) leest
+  // dit veld. Handig om een verkeerd gedetecteerde WooCommerce-import recht
+  // te zetten.
+  const wijzigKlantType = (kt: 'prive' | 'zakelijk') => {
+    if (!selectedOrder) return
+    setBestellingen((prev: any[]) => prev.map((b: any) =>
+      b.id === selectedOrder.id ? {...b, klant_type: kt} : b
+    ))
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Bestelling',
+      entiteit_id: selectedOrder.id,
+      actie: 'gewijzigd',
+      omschrijving: `Klanttype gewijzigd naar ${kt === 'zakelijk' ? 'zakelijk' : 'privé'}`,
+    })
   }
 
   // --- Picking opslaan ---
@@ -1300,11 +1326,29 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           </span>
           {(() => {
             const kType = effectiveKlantType(selectedOrder)
-            return kType ? (
+            if (!kType) return null
+            // Vóór het picken mag privé/zakelijk nog gecorrigeerd worden
+            // (bijv. een verkeerd gedetecteerde WooCommerce-import). Daarna is
+            // het type bevroren omdat de AGP-allocatie erop gebaseerd is.
+            const aanpasbaar = selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd'
+            if (!aanpasbaar) return (
               <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${kType === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                 {t(kType === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
               </span>
-            ) : null
+            )
+            return (
+              <div className="inline-flex bg-gray-100 rounded-full p-0.5" title={t('tip_order_klant_type')}>
+                {(['prive', 'zakelijk'] as const).map(kt => (
+                  <button key={kt} type="button"
+                    onClick={() => { if (kt !== kType) wijzigKlantType(kt) }}
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold transition-colors ${kType === kt
+                      ? (kt === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700')
+                      : 'text-gray-400 hover:text-gray-600'}`}>
+                    {t(kt === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
+                  </button>
+                ))}
+              </div>
+            )
           })()}
           <span className="text-sm text-gray-500 ml-auto">{fmtD(selectedOrder.datum)}</span>
         </div>
