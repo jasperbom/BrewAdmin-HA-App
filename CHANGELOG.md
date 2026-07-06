@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.43] — 2026-07-06
+
+### Gewijzigd — WooCommerce-import: privé/zakelijk-detectie gerepareerd
+
+Elke WooCommerce-order werd bij import onterecht als **zakelijk** gemarkeerd.
+Oorzaak: de BTW-nummer-detectie matchte op élke metadata-key met "vat" of
+"btw" erin, en WooCommerce zet standaard op iedere order de meta
+`is_vat_exempt: "no"` — waardoor altijd een "BTW-nummer" gevonden werd. De
+detectie kijkt nu alleen naar échte BTW-nummervelden (zoals
+`_billing_vat_number`, `billing_eu_vat_number`, `btw_nummer`) en eist dat de
+waarde op een BTW-nummer lijkt. Een order is nu alleen zakelijk als er een
+bedrijfsnaam of geldig BTW-nummer op staat.
+
+Daarnaast kan het klanttype (privé/zakelijk) van een bestaande order nu op de
+orderdetailpagina gecorrigeerd worden zolang er nog niet gepickt is — daarna
+is het bevroren omdat de AGP-allocatie erop is gebaseerd.
+
+### Toegevoegd — Voorraadreservering voor open bestellingen
+
+Geïmporteerde (en handmatige) bestellingen reserveren het bestelde bier nu
+direct in de voorraad, net zoals WooCommerce zelf de voorraad verlaagt zodra
+een bestelling binnenkomt:
+
+- Op de productpagina toont het voorraadoverzicht per verpakkingstype een
+  nieuwe telling **"In bestellingen"** (nog niet gepickte regels van open
+  orders) en is **"Beschikbaar"** verlaagd met die reservering. De
+  voorraad-statistiek van het product rekent de reservering ook mee.
+- De **WooCommerce-voorraadpush** trekt de open reserveringen af van de
+  gepushte aantallen. Voorheen zette een push de voorraad in WooCommerce
+  terug omhoog terwijl daar al een bestelling op die voorraad liep
+  (oversell-risico).
+- Zodra een regel gepickt is, gaat de reservering over in de bestaande
+  "Gereserveerd"-telling (picks); dubbeltellen wordt voorkomen.
+
+---
+
 ## [1.10.42] — 2026-07-02
 
 ### Toegevoegd — BTW corrigeren op een reeds afgeronde bestelling

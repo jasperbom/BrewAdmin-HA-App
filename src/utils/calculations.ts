@@ -1790,6 +1790,54 @@ export const hopVerouderdeAlpha = (
   }
 }
 
+// ── Open-bestelling reserveringen ────────────────────────────────────────────
+// Zodra een bestelling binnenkomt (WooCommerce-import of handmatig) geldt het
+// bestelde bier als zachte reservering van de voorraad — net zoals WooCommerce
+// zelf de voorraad direct verlaagt bij een nieuwe bestelling. Een regel
+// reserveert het nog niet gepickte deel; zodra er gepickt is telt dat deel al
+// mee via de picks zelf (harde reservering per afvulling).
+export interface OpenReservering {
+  sku: string | null
+  bier_naam: string
+  verpakking_type: string
+  aantal: number
+}
+
+export const openBestellingReserveringen = (
+  bestellingen: any[],
+  bestellingPicks: any[],
+): OpenReservering[] => {
+  const res: OpenReservering[] = []
+  for (const b of (bestellingen || [])) {
+    if (b.status !== 'nieuw' && b.status !== 'bevestigd') continue
+    for (const r of (b.regels || [])) {
+      if ((r.type || 'bier') !== 'bier') continue
+      const gepickt = (bestellingPicks || [])
+        .filter((p: any) => p.bestelling_id === b.id && p.regel_id === r.id)
+        .reduce((s: number, p: any) => s + Number(p.aantal || 0), 0)
+      const rest = Number(r.aantal || 0) - gepickt
+      if (rest > 0) {
+        res.push({
+          sku: r.sku || null,
+          bier_naam: r.bier_naam || '',
+          verpakking_type: r.verpakking_type || '',
+          aantal: rest,
+        })
+      }
+    }
+  }
+  return res
+}
+
+// Gereserveerd aantal voor één artikel: match primair op SKU, anders op
+// biernaam + verpakkingstype.
+export const gereserveerdVoorArtikel = (reserveringen: OpenReservering[], art: any): number =>
+  (reserveringen || []).filter(r => {
+    if (r.sku && art?.artikelnummer) return r.sku === art.artikelnummer
+    return (r.bier_naam || '').toLowerCase() === (art?.biernaam || '').toLowerCase()
+      && (r.verpakking_type || '').toLowerCase() === (art?.verpakking_type || '').toLowerCase()
+  }).reduce((s, r) => s + r.aantal, 0)
+
 // ── Vergisting-helpers ───────────────────────────────────────────────────────
 // Detecteert of FG bereikt is op basis van SG-stabiliteit. Conditie: ≥3
 // metingen, en de laatste 3 vallen binnen `tol` (default 0.001) over een
