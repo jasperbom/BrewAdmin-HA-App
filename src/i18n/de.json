@@ -875,6 +875,8 @@
   "msg_scan_regels_toegevoegd": "{n} Rechnungszeilen als freie Zeilen übernommen — Beträge und MwSt. prüfen",
   "msg_scan_regels_verdeeld": "Scan verarbeitet: {i} Zutatenzeilen, {v} Teilezeilen, {o} freie Zeilen — Mengen, Beträge und MwSt. prüfen",
   "lbl_move_to": "Verschieben nach…",
+  "msg_scan_verlegd": "Verlagerte MwSt. (Reverse Charge) erkannt — niederländische Sätze für die Erklärung eingetragen (Rubrik 4a/4b)",
+  "confirm_verlegd_tarieven": "Reverse Charge: Die Rechnung weist 0% MwSt. aus, für die Erklärung (Rubrik 4a/4b) gilt jedoch der niederländische Satz. Zeilen mit 0% jetzt mit dem Standardsatz füllen (Zutaten nach Typ, sonst 21%)?",
   "msg_regel_verplaatst_aanvullen": "Zeile verschoben — Menge ergänzen und die Zeile zur Liste hinzufügen",
   "msg_scan_klaar": "Scan verarbeitet — erkannte Felder wurden ausgefüllt",
   "lbl_klant_korting": "Fester Rabatt (%)",

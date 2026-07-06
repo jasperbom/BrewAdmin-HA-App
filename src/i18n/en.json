@@ -875,6 +875,8 @@
   "msg_scan_regels_toegevoegd": "{n} invoice lines added as free lines — check amounts and VAT",
   "msg_scan_regels_verdeeld": "Scan processed: {i} ingredient lines, {v} part lines, {o} free lines — check quantities, amounts and VAT",
   "lbl_move_to": "Move to…",
+  "msg_scan_verlegd": "Reverse-charged VAT detected — Dutch rates filled in for the VAT return (box 4a/4b)",
+  "confirm_verlegd_tarieven": "Reverse-charged VAT: the invoice shows 0% VAT, but the Dutch rate applies for the VAT return (box 4a/4b). Fill lines at 0% with the default rate now (ingredients by type, other 21%)?",
   "msg_regel_verplaatst_aanvullen": "Line moved — fill in the quantity and add the line to the list",
   "msg_scan_klaar": "Scan processed — recognized fields have been filled",
   "lbl_klant_korting": "Fixed discount (%)",

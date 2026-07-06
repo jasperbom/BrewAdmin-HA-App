@@ -875,6 +875,8 @@
   "msg_scan_regels_toegevoegd": "{n} factuurregels overgenomen als vrije regels — controleer bedragen en BTW",
   "msg_scan_regels_verdeeld": "Scan verwerkt: {i} ingrediëntregels, {v} onderdeelregels, {o} vrije regels — controleer hoeveelheden, bedragen en BTW",
   "lbl_move_to": "Verplaats naar…",
+  "msg_scan_verlegd": "Verlegde BTW herkend — Nederlandse tarieven ingevuld voor de aangifte (rubriek 4a/4b)",
+  "confirm_verlegd_tarieven": "BTW verlegd: op de factuur staat 0% BTW, maar voor de aangifte (rubriek 4a/4b) geldt het Nederlandse tarief. Regels met 0% nu invullen met het standaardtarief (ingrediënten volgens type, overig 21%)?",
   "msg_regel_verplaatst_aanvullen": "Regel verplaatst — vul de hoeveelheid aan en voeg de regel toe aan de lijst",
   "msg_scan_klaar": "Scan verwerkt — herkende velden zijn ingevuld",
   "lbl_klant_korting": "Vaste korting (%)",

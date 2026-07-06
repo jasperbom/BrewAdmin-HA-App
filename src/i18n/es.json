@@ -872,6 +872,8 @@
   "msg_scan_regels_toegevoegd": "{n} líneas de factura añadidas como líneas libres — revise importes e IVA",
   "msg_scan_regels_verdeeld": "Escaneo procesado: {i} líneas de ingredientes, {v} líneas de componentes, {o} líneas libres — revise cantidades, importes e IVA",
   "lbl_move_to": "Mover a…",
+  "msg_scan_verlegd": "IVA con inversión del sujeto pasivo detectado — tipos neerlandeses aplicados para la declaración (casilla 4a/4b)",
+  "confirm_verlegd_tarieven": "IVA con inversión del sujeto pasivo: la factura muestra 0% de IVA, pero para la declaración (casilla 4a/4b) se aplica el tipo neerlandés. ¿Rellenar ahora las líneas al 0% con el tipo por defecto (ingredientes según tipo, resto 21%)?",
   "msg_regel_verplaatst_aanvullen": "Línea movida — complete la cantidad y añada la línea a la lista",
   "msg_scan_klaar": "Escaneo procesado — los campos reconocidos se han rellenado",
   "lbl_klant_korting": "Descuento fijo (%)",

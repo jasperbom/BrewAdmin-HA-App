@@ -124,6 +124,7 @@ const FACTUUR_EXTRACTIE_TOOL = {
       leverancier: {type: ['string', 'null'], description: 'Naam van de partij die de factuur verstuurt'},
       factuurnummer: {type: ['string', 'null']},
       datum: {type: ['string', 'null'], description: 'Factuurdatum als YYYY-MM-DD'},
+      btw_soort: {type: ['string', 'null'], enum: ['binnenlands', 'intracom_eu', 'import_niet_eu', null], description: '"intracom_eu" = leverancier in een ander EU-land en BTW verlegd (0% BTW, vermelding als "intracommunautaire levering", "BTW verlegd" of "reverse charge", buitenlands BTW-nummer); "import_niet_eu" = leverancier buiten de EU; anders "binnenlands"'},
       regels: {
         type: 'array',
         description: 'Alle factuurregels',
@@ -165,6 +166,7 @@ Regels:
   p += `
 - "factuurnummer" is het factuurnummer — NIET het klantnummer, debiteurennummer, ordernummer, offertenummer, pakbonnummer of BTW-nummer.
 - "datum" is de factuurdatum — NIET de vervaldatum, leverdatum of besteldatum.
+- "btw_soort": "intracom_eu" wanneer de leverancier in een ander EU-land is gevestigd en de BTW is verlegd (0% BTW met een vermelding zoals "intracommunautaire levering", "BTW verlegd", "reverse charge" of "VAT shifted"); "import_niet_eu" bij een leverancier buiten de EU; anders "binnenlands".
 - "regels": elke factuurregel met omschrijving, nettobedrag EXCLUSIEF BTW en BTW-percentage (0, 9 of 21). Kortingen als negatief bedrag. Statiegeld, transport- en administratiekosten zijn ook regels. Sla subtotalen en lege regels over.
 - Classificeer elke regel via "soort": "ingredient" (brouwgrondstoffen), "verpakking" (verpakkingsmateriaal en onderdelen) of "overig" (statiegeld, transport, administratie, kortingen, diensten).
 - Geef bij ingrediënt- en verpakkingsregels ook "hoeveelheid" en "eenheid" (kg, g, L, mL, pkg of stuks) zoals de regel vermeldt.`
@@ -265,6 +267,7 @@ async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leve
     leverancier: parsed.leverancier || null,
     datum,
     factuurnummer: parsed.factuurnummer || null,
+    btw_soort: ['binnenlands', 'intracom_eu', 'import_niet_eu'].includes(parsed.btw_soort) ? parsed.btw_soort : null,
     regels,
     totalen: parsed.totalen || null,
     _source: 'claude',
@@ -558,6 +561,17 @@ function InkoopFactuurModal({
     }
     if (data.factuurnummer && !factuurNr) setFactuurNr(data.factuurnummer)
     if (data.datum && datum === tod()) setDatum(data.datum)
+    // Herkende verlegde BTW (intracom-EU / import-niet-EU) overnemen; een
+    // handmatige keuze van de gebruiker wordt nooit teruggezet.
+    const scanSoort = ['intracom_eu', 'import_niet_eu'].includes(data.btw_soort) ? data.btw_soort : null
+    if (scanSoort && btwSoort === 'binnenlands') setBtwSoort(scanSoort)
+    // Bij verlegde BTW staat 0% op de factuur, maar voor de aangifte
+    // (rubriek 4a/4b) geldt het Nederlandse tarief dat op de goederen van
+    // toepassing is: per ingrediënttype uit ingTypeBtw (anders 9%), 21% voor
+    // onderdelen en overige regels.
+    const verlegd = !!scanSoort || btwSoort !== 'binnenlands'
+    const nlTarief = (rijSoort: string, ingType?: string) =>
+      rijSoort === 'ingredient' ? Number(ingTypeBtw[ingType || ''] ?? 9) : 21
     // Herkende factuurregels overnemen, maar alleen wanneer er nog niets is
     // ingevoerd — een scan mag handwerk nooit overschrijven. Regels worden
     // per soort verdeeld: ingrediënten gekoppeld aan bestaande ingrediënten,
@@ -584,12 +598,13 @@ function InkoopFactuurModal({
             const eenhTelling: Record<string, number> = {}
             ingLots.forEach((l: any) => { if (l.eenheid) eenhTelling[l.eenheid] = (eenhTelling[l.eenheid] || 0) + 1 })
             const lotEenh = Object.keys(eenhTelling).sort((a, b) => eenhTelling[b] - eenhTelling[a])[0]
+            const ingType = matchIng?.type || defaultType
             prod.push({
               ing_id: matchIng ? String(matchIng.id) : '', nieuw: matchIng ? '' : r.omschrijving,
-              type: matchIng?.type || defaultType, fabrikant: '', lotnr: '',
+              type: ingType, fabrikant: '', lotnr: '',
               qty: String(r.hoeveelheid), eenh: r.eenheid || lotEenh || 'kg', tht: '',
               prijs: String((r.netto / r.hoeveelheid).toFixed(4)), totaalprijs: String(r.netto.toFixed(2)),
-              btw_tarief: String(r.btw_pct), bf_props: {},
+              btw_tarief: String(verlegd ? nlTarief('ingredient', ingType) : r.btw_pct), bf_props: {},
               _naam: matchIng?.naam || r.omschrijving, _id: id,
             })
             return
@@ -599,7 +614,7 @@ function InkoopFactuurModal({
               od_id: matchOd ? String(matchOd.id) : '', naam: matchOd?.naam || r.omschrijving,
               type: matchOd?.type || '', lotnr: '',
               aantal: String(r.hoeveelheid), prijs_per_stuk: String((r.netto / r.hoeveelheid).toFixed(4)),
-              totaalprijs: String(r.netto.toFixed(2)), btw_tarief: String(r.btw_pct),
+              totaalprijs: String(r.netto.toFixed(2)), btw_tarief: String(verlegd ? nlTarief('verpakking') : r.btw_pct),
               _naam: matchOd?.naam || r.omschrijving, _id: id,
             })
             return
@@ -609,7 +624,8 @@ function InkoopFactuurModal({
         // _hoeveelheid/_eenheid bewaren zodat de regel later alsnog compleet
         // naar ingredient/onderdeel verplaatst kan worden.
         vrij.push({
-          naam: r.omschrijving, netto: String(r.netto), btw_tarief: r.btw_pct,
+          naam: r.omschrijving, netto: String(r.netto),
+          btw_tarief: verlegd ? nlTarief(soort || 'overig', matchIng?.type) : r.btw_pct,
           kostensoort: kostenSoorten.includes(ks) ? ks : 'Overig',
           _hoeveelheid: r.hoeveelheid || null, _eenheid: r.eenheid || null, _id: id,
         })
@@ -631,12 +647,14 @@ function InkoopFactuurModal({
         correcties: scanCorrecties,
       })
       const {nIng, nVerpak, nVrij} = verwerkScanData(data)
+      const verlegdNote = ['intracom_eu', 'import_niet_eu'].includes(data.btw_soort)
+        ? ' · ' + t('msg_scan_verlegd') : ''
       if (nIng + nVerpak + nVrij > 0) {
         setScanInfo(t('msg_scan_regels_verdeeld')
-          .replace('{i}', String(nIng)).replace('{v}', String(nVerpak)).replace('{o}', String(nVrij)))
+          .replace('{i}', String(nIng)).replace('{v}', String(nVerpak)).replace('{o}', String(nVrij)) + verlegdNote)
         setTab(nIng ? 'ingredienten' : nVerpak ? 'verpakkingen' : 'vrije')
       } else if (data._source === 'claude') {
-        setScanInfo(t('msg_scan_klaar'))
+        setScanInfo(t('msg_scan_klaar') + verlegdNote)
       }
     } catch(e: any) {
       setScanFout(e.message || 'Scan mislukt')
@@ -760,7 +778,23 @@ function InkoopFactuurModal({
           </div>
           <div className="mt-3">
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_btw_soort')}</label>
-            <select value={btwSoort} onChange={e => setBtwSoort(e.target.value as any)}
+            <select value={btwSoort} onChange={e => {
+                const v = e.target.value as any
+                setBtwSoort(v)
+                // Wissel naar verlegd terwijl regels op 0% staan: bied aan om
+                // het Nederlandse tarief in te vullen (nodig voor rubriek
+                // 4a/4b — op de factuur zelf staat immers 0%).
+                if (v !== 'binnenlands') {
+                  const heeftNul = productLijst.some((p: any) => !Number(p.btw_tarief))
+                    || verpakkingLijst.some((vp: any) => !Number(vp.btw_tarief))
+                    || vrijeList.some((r: any) => !Number(r.btw_tarief))
+                  if (heeftNul && confirm(t('confirm_verlegd_tarieven'))) {
+                    setProductLijst(prev => prev.map((p: any) => Number(p.btw_tarief) ? p : {...p, btw_tarief: String(ingTypeBtw[p.type] ?? 9)}))
+                    setVerpakkingLijst(prev => prev.map((vp: any) => Number(vp.btw_tarief) ? vp : {...vp, btw_tarief: '21'}))
+                    setVrijeList(prev => prev.map((r: any) => Number(r.btw_tarief) ? r : {...r, btw_tarief: 21}))
+                  }
+                }
+              }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm">
               <option value="binnenlands">{t('lbl_btw_soort_binnenlands')}</option>
               <option value="intracom_eu">{t('lbl_btw_soort_intracom_eu')}</option>

@@ -872,6 +872,8 @@
   "msg_scan_regels_toegevoegd": "{n} lignes de facture reprises comme lignes libres — vérifiez les montants et la TVA",
   "msg_scan_regels_verdeeld": "Scan traité : {i} lignes d'ingrédients, {v} lignes de composants, {o} lignes libres — vérifiez les quantités, montants et TVA",
   "lbl_move_to": "Déplacer vers…",
+  "msg_scan_verlegd": "TVA autoliquidée détectée — taux néerlandais appliqués pour la déclaration (rubrique 4a/4b)",
+  "confirm_verlegd_tarieven": "TVA autoliquidée : la facture indique 0% de TVA, mais le taux néerlandais s'applique pour la déclaration (rubrique 4a/4b). Remplir maintenant les lignes à 0% avec le taux par défaut (ingrédients selon le type, autres 21%) ?",
   "msg_regel_verplaatst_aanvullen": "Ligne déplacée — complétez la quantité et ajoutez la ligne à la liste",
   "msg_scan_klaar": "Scan traité — les champs reconnus ont été remplis",
   "lbl_klant_korting": "Remise fixe (%)",
