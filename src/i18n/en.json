@@ -880,6 +880,8 @@
   "hint_verlegd_btw_zelf": "Not included in the invoice totals; reported in the VAT return as both due and deductible input VAT (5b) — net €0.",
   "warn_verlegd_nul_tarief": "€{bedrag} of lines is at 0% — no VAT is calculated on them for box 4a/4b.",
   "btn_vul_standaardtarieven": "Fill default rates",
+  "lbl_btw_verlegd_kort": "VAT reverse-charged",
+  "title_verlegd_badge": "Included in box {rubriek} of the VAT return — self-assessed VAT: {btw}",
   "warn_rubriek_verlegd_nul": "{bedrag} of reverse-charged lines is at 0% — open the invoice and set the rate per line.",
   "confirm_verlegd_tarieven": "Reverse-charged VAT: the invoice shows 0% VAT, but the Dutch rate applies for the VAT return (box 4a/4b). Fill lines at 0% with the default rate now (ingredients by type, other 21%)?",
   "msg_regel_verplaatst_aanvullen": "Line moved — fill in the quantity and add the line to the list",

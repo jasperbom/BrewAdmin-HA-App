@@ -877,6 +877,8 @@
   "hint_verlegd_btw_zelf": "No se incluye en los totales de la factura; se declara como devengado y a la vez como IVA deducible (5b) — saldo €0.",
   "warn_verlegd_nul_tarief": "€{bedrag} en líneas está al 0% — no se calcula IVA sobre ellas para la casilla 4a/4b.",
   "btn_vul_standaardtarieven": "Aplicar tipos por defecto",
+  "lbl_btw_verlegd_kort": "IVA invertido",
+  "title_verlegd_badge": "Se incluye en la casilla {rubriek} de la declaración — IVA a autoliquidar: {btw}",
   "warn_rubriek_verlegd_nul": "{bedrag} en líneas con inversión del sujeto pasivo está al 0% — abra la factura y rellene el tipo por línea.",
   "confirm_verlegd_tarieven": "IVA con inversión del sujeto pasivo: la factura muestra 0% de IVA, pero para la declaración (casilla 4a/4b) se aplica el tipo neerlandés. ¿Rellenar ahora las líneas al 0% con el tipo por defecto (ingredientes según tipo, resto 21%)?",
   "msg_regel_verplaatst_aanvullen": "Línea movida — complete la cantidad y añada la línea a la lista",
