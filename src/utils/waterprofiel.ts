@@ -139,7 +139,10 @@ export interface WaterDoelprofiel {
 export const WATER_DOELPROFIELEN: WaterDoelprofiel[] = [
   { key: 'licht',        labelKey: 'water_doel_licht',        doel: {ca: 50,  mg: 5,  na: 10, cl: 60,  so4: 60,  hco3: 25} },
   { key: 'hoppig',       labelKey: 'water_doel_hoppig',       doel: {ca: 110, mg: 10, na: 15, cl: 50,  so4: 220, hco3: 30} },
+  { key: 'neipa',        labelKey: 'water_doel_neipa',        doel: {ca: 110, mg: 10, na: 25, cl: 160, so4: 80,  hco3: 40} },
   { key: 'gebalanceerd', labelKey: 'water_doel_gebalanceerd', doel: {ca: 80,  mg: 8,  na: 20, cl: 75,  so4: 80,  hco3: 50} },
+  { key: 'saison',       labelKey: 'water_doel_saison',       doel: {ca: 75,  mg: 8,  na: 15, cl: 55,  so4: 130, hco3: 25} },
+  { key: 'tripel',       labelKey: 'water_doel_tripel',       doel: {ca: 70,  mg: 6,  na: 15, cl: 60,  so4: 90,  hco3: 35} },
   { key: 'moutig',       labelKey: 'water_doel_moutig',       doel: {ca: 90,  mg: 10, na: 30, cl: 100, so4: 60,  hco3: 110} },
   { key: 'donker',       labelKey: 'water_doel_donker',       doel: {ca: 100, mg: 10, na: 35, cl: 60,  so4: 55,  hco3: 160} },
   { key: 'tarwe',        labelKey: 'water_doel_tarwe',        doel: {ca: 60,  mg: 8,  na: 15, cl: 70,  so4: 70,  hco3: 60} },

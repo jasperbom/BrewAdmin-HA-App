@@ -2485,5 +2485,14 @@
   "water_col_delta": "Δ",
   "tool_water_vul_in": "Gib das Volumen ein, um das Ergebnis zu sehen.",
   "tool_water_kies_profiel": "Wähle oder erstelle zuerst oben ein Wasserprofil.",
-  "tool_water_disclaimer": "Richtwerte auf Basis gängiger Brauliteratur. Ionen über dem Ziel lassen sich nur durch Verdünnen mit RO-/VE-Wasser senken. Milchsäure senkt das Hydrogencarbonat; prüfe den Maische-pH immer per Messung."
+  "tool_water_disclaimer": "Richtwerte auf Basis gängiger Brauliteratur. Ionen über dem Ziel lassen sich nur durch Verdünnen mit RO-/VE-Wasser senken. Milchsäure senkt das Hydrogencarbonat; prüfe den Maische-pH immer per Messung.",
+  "water_doel_neipa": "NEIPA / Hazy",
+  "water_doel_saison": "Saison",
+  "water_doel_tripel": "Tripel / starkes Blond",
+  "tool_water_doel_nieuw": "+ Eigenes Zielprofil",
+  "tool_water_doel_nieuw_naam": "Eigenes Zielprofil",
+  "tool_water_doel_kopieer": "Als eigenes Profil kopieren",
+  "tool_water_doel_eigen": "eigen",
+  "tool_water_doel_bewerken": "Eigenes Zielprofil bearbeiten",
+  "confirm_water_doel_verwijderen": "Dieses Zielprofil löschen?"
 }

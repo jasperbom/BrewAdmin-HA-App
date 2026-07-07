@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.56] — 2026-07-07
+
+### Nieuw — Waterprofiel: meer stijlprofielen + eigen doelprofielen
+
+- Drie extra ingebouwde doelprofielen: **NEIPA / hazy** (chloride-voorwaarts),
+  **Saison** en **Tripel / sterk blond**.
+- **Eigen doelprofielen**: maak een leeg doelprofiel aan of kopieer een
+  ingebouwd stijlprofiel als startpunt, en pas naam en alle zes ionwaarden
+  aan. Eigen profielen verschijnen in de doelprofiel-keuzelijst (gemarkeerd
+  met "eigen"), zijn te verwijderen en worden opgeslagen onder de nieuwe
+  data-sleutel `water_doelprofielen` (zit ook in de Excel-backup).
+
 ## [1.10.55] — 2026-07-07
 
 ### Nieuw — Gereedschap: Waterprofiel met PDF-scan en brouwwater-calculator

@@ -2485,5 +2485,14 @@
   "water_col_delta": "Δ",
   "tool_water_vul_in": "Saisissez le volume pour voir le résultat.",
   "tool_water_kies_profiel": "Sélectionnez ou créez d'abord un profil d'eau ci-dessus.",
-  "tool_water_disclaimer": "Valeurs indicatives issues de la littérature brassicole courante. Les ions au-dessus de la cible ne peuvent être réduits qu'en diluant avec de l'eau osmosée/déminéralisée. L'acide lactique réduit le bicarbonate ; vérifiez toujours le pH d'empâtage par une mesure."
+  "tool_water_disclaimer": "Valeurs indicatives issues de la littérature brassicole courante. Les ions au-dessus de la cible ne peuvent être réduits qu'en diluant avec de l'eau osmosée/déminéralisée. L'acide lactique réduit le bicarbonate ; vérifiez toujours le pH d'empâtage par une mesure.",
+  "water_doel_neipa": "NEIPA / hazy",
+  "water_doel_saison": "Saison",
+  "water_doel_tripel": "Triple / blonde forte",
+  "tool_water_doel_nieuw": "+ Profil cible personnalisé",
+  "tool_water_doel_nieuw_naam": "Profil cible personnalisé",
+  "tool_water_doel_kopieer": "Copier comme profil personnalisé",
+  "tool_water_doel_eigen": "perso",
+  "tool_water_doel_bewerken": "Modifier le profil cible personnalisé",
+  "confirm_water_doel_verwijderen": "Supprimer ce profil cible ?"
 }

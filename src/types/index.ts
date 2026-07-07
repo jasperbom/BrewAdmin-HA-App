@@ -1280,3 +1280,16 @@ export interface WaterProfiel {
   ph?: number | null
   hardheid_dh?: number | null
 }
+
+// Eigen (gebruikersgedefinieerd) doelprofiel voor brouwwater, naast de
+// ingebouwde stijlprofielen in WATER_DOELPROFIELEN. Ionen in mg/L.
+export interface WaterDoelprofielEigen {
+  id: number
+  naam: string
+  ca: number | null
+  mg: number | null
+  na: number | null
+  cl: number | null
+  so4: number | null
+  hco3: number | null
+}

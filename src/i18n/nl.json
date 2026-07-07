@@ -2485,5 +2485,14 @@
   "water_col_delta": "Δ",
   "tool_water_vul_in": "Vul het volume in om het resultaat te zien.",
   "tool_water_kies_profiel": "Kies of maak eerst een waterprofiel hierboven.",
-  "tool_water_disclaimer": "Richtwaarden op basis van gangbare brouwliteratuur. Ionen boven het doel zijn alleen te verlagen door te verdunnen met RO/demi-water. Melkzuur verlaagt het bicarbonaat; controleer de maisch-pH altijd met een meting."
+  "tool_water_disclaimer": "Richtwaarden op basis van gangbare brouwliteratuur. Ionen boven het doel zijn alleen te verlagen door te verdunnen met RO/demi-water. Melkzuur verlaagt het bicarbonaat; controleer de maisch-pH altijd met een meting.",
+  "water_doel_neipa": "NEIPA / hazy",
+  "water_doel_saison": "Saison",
+  "water_doel_tripel": "Tripel / sterk blond",
+  "tool_water_doel_nieuw": "+ Eigen doelprofiel",
+  "tool_water_doel_nieuw_naam": "Eigen doelprofiel",
+  "tool_water_doel_kopieer": "Kopieer als eigen profiel",
+  "tool_water_doel_eigen": "eigen",
+  "tool_water_doel_bewerken": "Eigen doelprofiel bewerken",
+  "confirm_water_doel_verwijderen": "Dit doelprofiel verwijderen?"
 }

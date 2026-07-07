@@ -11,7 +11,7 @@ import {
   alkaliniteitCaCO3, restAlkaliniteit, sulfaatChlorideRatio,
 } from '../utils/waterprofiel'
 import type { WaterIonen, WaterRapportResultaat } from '../utils/waterprofiel'
-import type { WaterProfiel } from '../types'
+import type { WaterProfiel, WaterDoelprofielEigen } from '../types'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Btn from '../components/ui/Btn'
@@ -21,6 +21,8 @@ interface GereedschapPageProps {
   tool?: string
   waterProfielen?: WaterProfiel[]
   setWaterProfielen?: (v: any) => void
+  waterDoelprofielen?: WaterDoelprofielEigen[]
+  setWaterDoelprofielen?: (v: any) => void
   claudeCreds?: any
 }
 
@@ -176,10 +178,12 @@ const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
 interface WaterToolProps {
   profielen: WaterProfiel[]
   setProfielen: (v: any) => void
+  doelprofielen: WaterDoelprofielEigen[]
+  setDoelprofielen: (v: any) => void
   claudeCreds?: any
 }
 
-const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, claudeCreds }) => {
+const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, doelprofielen, setDoelprofielen, claudeCreds }) => {
   const lijst = Array.isArray(profielen) ? profielen : []
   const [actiefIdState, setActiefId] = useState<number | null>(null)
   const actief = lijst.find(p => p.id === actiefIdState) ?? lijst[lijst.length - 1] ?? null
@@ -314,7 +318,39 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, c
 
   const vol = parseFloat(volume)
   const verd = Math.min(100, Math.max(0, parseFloat(verdunning) || 0))
-  const doel = WATER_DOELPROFIELEN.find(d => d.key === doelKey)?.doel || null
+
+  // Doelprofiel: ingebouwd stijlprofiel óf eigen profiel (waarde 'c<id>').
+  const eigenDoelLijst = Array.isArray(doelprofielen) ? doelprofielen : []
+  const eigenDoel = doelKey.startsWith('c')
+    ? eigenDoelLijst.find(p => 'c' + p.id === doelKey) ?? null
+    : null
+  const ingebouwdDoel = WATER_DOELPROFIELEN.find(d => d.key === doelKey) || null
+  const doel: WaterIonen | null = eigenDoel
+    ? {ca: Number(eigenDoel.ca) || 0, mg: Number(eigenDoel.mg) || 0, na: Number(eigenDoel.na) || 0,
+       cl: Number(eigenDoel.cl) || 0, so4: Number(eigenDoel.so4) || 0, hco3: Number(eigenDoel.hco3) || 0}
+    : (ingebouwdDoel?.doel || null)
+
+  const nieuwEigenDoel = (basisDoel: WaterIonen | null, naam: string) => {
+    const p: WaterDoelprofielEigen = {
+      id: Date.now(), naam,
+      ca: basisDoel?.ca ?? null, mg: basisDoel?.mg ?? null, na: basisDoel?.na ?? null,
+      cl: basisDoel?.cl ?? null, so4: basisDoel?.so4 ?? null, hco3: basisDoel?.hco3 ?? null,
+    }
+    setDoelprofielen((prev: any[]) => [...(Array.isArray(prev) ? prev : []), p])
+    setDoelKey('c' + p.id)
+  }
+
+  const updEigenDoel = (patch: Partial<WaterDoelprofielEigen>) => {
+    if (!eigenDoel) return
+    setDoelprofielen((prev: any[]) => (Array.isArray(prev) ? prev : []).map((p: any) => p.id === eigenDoel.id ? {...p, ...patch} : p))
+  }
+
+  const verwijderEigenDoel = () => {
+    if (!eigenDoel) return
+    if (!confirm(t('confirm_water_doel_verwijderen'))) return
+    setDoelprofielen((prev: any[]) => (Array.isArray(prev) ? prev : []).filter((p: any) => p.id !== eigenDoel.id))
+    setDoelKey('')
+  }
 
   const zoutGram: Record<string, number> = {}
   for (const z of WATER_ZOUTEN) { const g = parseFloat(doses[z.key]); if (g > 0) zoutGram[z.key] = g }
@@ -349,7 +385,10 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, c
   }
 
   const profielOpts = lijst.map(p => ({v: String(p.id), l: p.naam || t('lbl_onbekend')}))
-  const doelOpts = WATER_DOELPROFIELEN.map(d => ({v: d.key, l: t(d.labelKey)}))
+  const doelOpts = [
+    ...WATER_DOELPROFIELEN.map(d => ({v: d.key, l: t(d.labelKey)})),
+    ...eigenDoelLijst.map(p => ({v: 'c' + p.id, l: `${p.naam || t('lbl_onbekend')} (${t('tool_water_doel_eigen')})`})),
+  ]
 
   const basisRatio = actief ? sulfaatChlorideRatio(basis) : null
   const aangepastRatio = aangepast ? sulfaatChlorideRatio(aangepast) : null
@@ -451,6 +490,32 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, c
                 <Sel label={t('tool_water_doel')} value={doelKey} onChange={setDoelKey} opts={doelOpts} />
               </div>
 
+              <div className="flex flex-wrap items-center gap-2">
+                <Btn v="secondary" s="sm" onClick={() => nieuwEigenDoel(doel, t('tool_water_doel_nieuw_naam'))}>
+                  {t('tool_water_doel_nieuw')}
+                </Btn>
+                {ingebouwdDoel && (
+                  <Btn v="secondary" s="sm" onClick={() => nieuwEigenDoel(ingebouwdDoel.doel, t(ingebouwdDoel.labelKey))}>
+                    {t('tool_water_doel_kopieer')}
+                  </Btn>
+                )}
+              </div>
+
+              {eigenDoel && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('tool_water_doel_bewerken')}</div>
+                    <Btn v="danger" s="sm" onClick={verwijderEigenDoel}>{t('btn_delete')}</Btn>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <Inp label={t('tool_water_profiel_naam')} value={eigenDoel.naam || ''} onChange={v => updEigenDoel({naam: v})} cls="col-span-2" />
+                    {WATER_ION_KEYS.map(k => (
+                      <Inp key={k} label={`${WATER_ION_LABELS[k]} (mg/L)`} value={eigenDoel[k] ?? ''} onChange={v => updEigenDoel({[k]: numVeld(v)} as any)} type="number" step="1" min="0" />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                   <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('tool_water_doses')}</div>
@@ -527,11 +592,11 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, c
   )
 }
 
-const GereedschapPage: React.FC<GereedschapPageProps> = ({ tool = 'ph', waterProfielen = [], setWaterProfielen = () => {}, claudeCreds }) => {
+const GereedschapPage: React.FC<GereedschapPageProps> = ({ tool = 'ph', waterProfielen = [], setWaterProfielen = () => {}, waterDoelprofielen = [], setWaterDoelprofielen = () => {}, claudeCreds }) => {
   return (
     <div className="space-y-4">
       {tool === 'ph' && <PhCorrectieTool />}
-      {tool === 'water' && <WaterProfielTool profielen={waterProfielen} setProfielen={setWaterProfielen} claudeCreds={claudeCreds} />}
+      {tool === 'water' && <WaterProfielTool profielen={waterProfielen} setProfielen={setWaterProfielen} doelprofielen={waterDoelprofielen} setDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
     </div>
   )
 }

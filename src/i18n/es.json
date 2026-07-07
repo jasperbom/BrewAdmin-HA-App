@@ -2485,5 +2485,14 @@
   "water_col_delta": "Δ",
   "tool_water_vul_in": "Introduce el volumen para ver el resultado.",
   "tool_water_kies_profiel": "Primero selecciona o crea un perfil de agua arriba.",
-  "tool_water_disclaimer": "Valores orientativos según la literatura cervecera habitual. Los iones por encima del objetivo solo pueden reducirse diluyendo con agua RO/desmineralizada. El ácido láctico reduce el bicarbonato; comprueba siempre el pH del macerado con una medición."
+  "tool_water_disclaimer": "Valores orientativos según la literatura cervecera habitual. Los iones por encima del objetivo solo pueden reducirse diluyendo con agua RO/desmineralizada. El ácido láctico reduce el bicarbonato; comprueba siempre el pH del macerado con una medición.",
+  "water_doel_neipa": "NEIPA / hazy",
+  "water_doel_saison": "Saison",
+  "water_doel_tripel": "Tripel / rubia fuerte",
+  "tool_water_doel_nieuw": "+ Perfil objetivo propio",
+  "tool_water_doel_nieuw_naam": "Perfil objetivo propio",
+  "tool_water_doel_kopieer": "Copiar como perfil propio",
+  "tool_water_doel_eigen": "propio",
+  "tool_water_doel_bewerken": "Editar perfil objetivo propio",
+  "confirm_water_doel_verwijderen": "¿Eliminar este perfil objetivo?"
 }

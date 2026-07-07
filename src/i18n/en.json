@@ -2485,5 +2485,14 @@
   "water_col_delta": "Δ",
   "tool_water_vul_in": "Enter the volume to see the result.",
   "tool_water_kies_profiel": "First select or create a water profile above.",
-  "tool_water_disclaimer": "Guideline values based on common brewing literature. Ions above the target can only be lowered by diluting with RO/distilled water. Lactic acid reduces bicarbonate; always verify mash pH with a measurement."
+  "tool_water_disclaimer": "Guideline values based on common brewing literature. Ions above the target can only be lowered by diluting with RO/distilled water. Lactic acid reduces bicarbonate; always verify mash pH with a measurement.",
+  "water_doel_neipa": "NEIPA / hazy",
+  "water_doel_saison": "Saison",
+  "water_doel_tripel": "Tripel / strong blonde",
+  "tool_water_doel_nieuw": "+ Custom target profile",
+  "tool_water_doel_nieuw_naam": "Custom target profile",
+  "tool_water_doel_kopieer": "Copy as custom profile",
+  "tool_water_doel_eigen": "custom",
+  "tool_water_doel_bewerken": "Edit custom target profile",
+  "confirm_water_doel_verwijderen": "Delete this target profile?"
 }
