@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.57] — 2026-07-07
+
+### Opgelost — Voorbelasting-tabel kwam niet overeen met invulhulp (rubriek 5b)
+
+- De tabel **"Voorbelasting per BTW-tarief"** toonde alleen binnenlandse
+  inkoop-BTW, terwijl rubriek 5b in de invulhulp daaronder ook de verlegde
+  BTW (rubriek 4a/4b) meetelt — die is immers gelijktijdig aftrekbaar als
+  voorbelasting. De twee bedragen weken daardoor af zodra er verlegde
+  facturen (intracom-EU / import niet-EU) in de periode zaten.
+- De tabel toont verlegde BTW nu als aparte paarse rijen ("⇄ BTW verlegd
+  4a/4b") met netto-grondslag en zelfberekende BTW; het tabeltotaal is
+  daarmee exact gelijk aan rubriek 5b in de invulhulp. De bruto-kolom van
+  een verlegde rij is gelijk aan de netto-grondslag, want de leverancier
+  factureert bij verlegging zonder BTW.
+
 ## [1.10.56] — 2026-07-07
 
 ### Nieuw — Waterprofiel: meer stijlprofielen + eigen doelprofielen
@@ -41,7 +56,6 @@ Nieuw gereedschap **Gereedschap → Waterprofiel**:
   afwijking; "Stel doses voor" berekent automatisch een startdosering.
 - PDF-tekstextractie is nu gedeeld tussen factuurscan en waterprofiel
   (`src/utils/pdfText.ts`).
-
 ## [1.10.54] — 2026-07-06
 
 ### Verbeterd — Verlegd-badge in de facturenlijst + layoutfix
