@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.56] — 2026-07-07
+
+### Nieuw — Waterprofiel: meer stijlprofielen + eigen doelprofielen
+
+- Drie extra ingebouwde doelprofielen: **NEIPA / hazy** (chloride-voorwaarts),
+  **Saison** en **Tripel / sterk blond**.
+- **Eigen doelprofielen**: maak een leeg doelprofiel aan of kopieer een
+  ingebouwd stijlprofiel als startpunt, en pas naam en alle zes ionwaarden
+  aan. Eigen profielen verschijnen in de doelprofiel-keuzelijst (gemarkeerd
+  met "eigen"), zijn te verwijderen en worden opgeslagen onder de nieuwe
+  data-sleutel `water_doelprofielen` (zit ook in de Excel-backup).
+
+## [1.10.55] — 2026-07-07
+
+### Nieuw — Gereedschap: Waterprofiel met PDF-scan en brouwwater-calculator
+
+Nieuw gereedschap **Gereedschap → Waterprofiel**:
+
+- **PDF-upload van het waterkwaliteitsrapport** van je waterbedrijf (bijv.
+  Vitens). De brouwrelevante waarden — calcium, magnesium, natrium, chloride,
+  sulfaat, waterstofcarbonaat, pH en hardheid — worden lokaal uit de PDF
+  gelezen (meest recente periode). Lukt dat niet (afwijkend formaat of
+  gescande PDF), dan kan het rapport optioneel met Claude AI worden gelezen.
+- Profielen worden opgeslagen (nieuwe data-sleutel `water_profielen`, zit ook
+  in de Excel-backup) en zijn achteraf handmatig te corrigeren of volledig
+  handmatig aan te maken.
+- **Afgeleide waarden**: alkaliniteit (als CaCO₃), restalkaliniteit (Kolbach)
+  en de sulfaat/chloride-verhouding met karakterduiding (hoppig / moutig /
+  gebalanceerd).
+- **Brouwwater-calculator**: kies een doelprofiel per bierstijl (pils, hoppig/
+  IPA, gebalanceerd, moutig, donker, tarwe), vul volume en eventuele
+  verdunning met RO/demi-water in, en doseer brouwzouten (gips,
+  calciumchloride, epsomzout, keukenzout, natriumbicarbonaat) en melkzuur 80%.
+  De resultaattabel toont bron → na aanpassing → doel met kleurgecodeerde
+  afwijking; "Stel doses voor" berekent automatisch een startdosering.
+- PDF-tekstextractie is nu gedeeld tussen factuurscan en waterprofiel
+  (`src/utils/pdfText.ts`).
+
 ## [1.10.54] — 2026-07-06
 
 ### Verbeterd — Verlegd-badge in de facturenlijst + layoutfix

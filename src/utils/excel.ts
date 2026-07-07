@@ -88,6 +88,8 @@ export const excelExport = (data: any) => {
     addSheet('VerliesRegistraties',   data.verlies_registraties)
     addSheet('BrouwdagStappen',       data.brouwdag_stappen)
     addSheet('WaterAddities',         data.water_addities)
+    addSheet('WaterProfielen',        data.water_profielen)
+    addSheet('WaterDoelprofielen',    data.water_doelprofielen)
     addSheet('HopAddities',           data.hop_addities)
     addSheet('DryHops',               data.dry_hops)
     addSheet('KoelLogs',              data.koel_logs)
@@ -267,6 +269,8 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         verlies_registraties:         parse('VerliesRegistraties'),
         brouwdag_stappen:             parse('BrouwdagStappen'),
         water_addities:               parse('WaterAddities'),
+        water_profielen:              parse('WaterProfielen'),
+        water_doelprofielen:          parse('WaterDoelprofielen'),
         hop_addities:                 parse('HopAddities'),
         dry_hops:                     parse('DryHops'),
         koel_logs:                    parse('KoelLogs'),

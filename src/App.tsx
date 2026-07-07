@@ -106,6 +106,8 @@ function App() {
   const [verliesRegistraties, setVerliesRegistraties] = useStore('verlies_registraties', []);
   const [brouwdagStappen, setBrouwdagStappen] = useStore('brouwdag_stappen', []);
   const [waterAddities, setWaterAddities] = useStore('water_addities', []);
+  const [waterProfielen, setWaterProfielen] = useStore('water_profielen', []);
+  const [waterDoelprofielen, setWaterDoelprofielen] = useStore('water_doelprofielen', []);
   const [hopAddities, setHopAddities] = useStore('hop_addities', []);
   const [dryHops, setDryHops] = useStore('dry_hops', []);
   const [koelLogs, setKoelLogs] = useStore('koel_logs', []);
@@ -776,6 +778,8 @@ function App() {
       verlies_registraties: verliesRegistraties,
       brouwdag_stappen: brouwdagStappen,
       water_addities: waterAddities,
+      water_profielen: waterProfielen,
+      water_doelprofielen: waterDoelprofielen,
       hop_addities: hopAddities,
       dry_hops: dryHops,
       koel_logs: koelLogs,
@@ -848,6 +852,8 @@ function App() {
       if (Array.isArray(d.verlies_registraties)) setVerliesRegistraties(d.verlies_registraties);
       if (Array.isArray(d.brouwdag_stappen)) setBrouwdagStappen(d.brouwdag_stappen);
       if (Array.isArray(d.water_addities)) setWaterAddities(d.water_addities);
+      if (Array.isArray(d.water_profielen)) setWaterProfielen(d.water_profielen);
+      if (Array.isArray(d.water_doelprofielen)) setWaterDoelprofielen(d.water_doelprofielen);
       if (Array.isArray(d.hop_addities)) setHopAddities(d.hop_addities);
       if (Array.isArray(d.dry_hops)) setDryHops(d.dry_hops);
       if (Array.isArray(d.koel_logs)) setKoelLogs(d.koel_logs);
@@ -951,6 +957,7 @@ function App() {
     {id:'haccp',l:t('nav_haccp')},
     {id:'gereedschap',l:t('nav_gereedschap'),sub:[
       {id:'tool_phcorrectie',l:t('nav_tool_phcorrectie')},
+      {id:'tool_waterprofiel',l:t('nav_tool_waterprofiel')},
     ]},
     {id:'administratie',l:t('nav_administratie'),sub:[
       {id:'boekhouding',l:t('nav_boekhouding')},
@@ -1071,6 +1078,7 @@ function App() {
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} accijnsInst={accijnsInst} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} wcCreds={wcCreds} artikelen={artikelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} hopAddities={hopAddities} setHopAddities={setHopAddities} dryHops={dryHops} setDryHops={setDryHops} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} brouwprocesInst={brouwprocesInst} haInst={haInst} haTankTemps={haTankTemps} planningInst={planningInst} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} recepten={recepten} />}
         {page==='batchflow' && <BatchFlowPage bat={bat} setBat={setBat} bi={bi} setBi={setBi} ing={ing} lots={lots} setLots={setLots} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} artikelen={artikelen} accijnsInst={accijnsInst} acc={acc} recepten={recepten} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} dryHops={dryHops} setDryHops={setDryHops} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwprocesInst={brouwprocesInst} haInst={haInst} haTankTemps={haTankTemps} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} />}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
+        {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} afboekingen={afboekingen} smtpCreds={smtpCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} />}
         {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} setOpenOrderId={setOpenOrderId} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} auditLog={auditLog} setAuditLog={setAuditLog} />}

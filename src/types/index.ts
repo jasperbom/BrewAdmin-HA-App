@@ -1261,3 +1261,35 @@ export interface BtwAangifte extends AangifteControle {
   ingediend_datum?: string
   betaald_datum?: string
 }
+
+// Waterprofiel van het bronwater (gereedschap: Waterprofiel). Ionen in mg/L,
+// hardheid in °D. Waarden komen uit een gescand waterkwaliteitsrapport of
+// handmatige invoer en zijn achteraf bewerkbaar.
+export interface WaterProfiel {
+  id: number
+  naam: string
+  bron?: string | null        // waterbedrijf/pompstation uit het rapport
+  periode?: string | null     // rapportageperiode, bijv. "Januari - Maart 2026"
+  datum: string               // aanmaakdatum YYYY-MM-DD
+  ca: number | null
+  mg: number | null
+  na: number | null
+  cl: number | null
+  so4: number | null
+  hco3: number | null
+  ph?: number | null
+  hardheid_dh?: number | null
+}
+
+// Eigen (gebruikersgedefinieerd) doelprofiel voor brouwwater, naast de
+// ingebouwde stijlprofielen in WATER_DOELPROFIELEN. Ionen in mg/L.
+export interface WaterDoelprofielEigen {
+  id: number
+  naam: string
+  ca: number | null
+  mg: number | null
+  na: number | null
+  cl: number | null
+  so4: number | null
+  hco3: number | null
+}

@@ -345,6 +345,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
 | `verlies_registraties` | array | Verliesposten per batch (tankrest, leiding, schuim, monster, afgekeurd, overig) |
 | `batch_notities` | array | Vrije, handmatige notities per batch (timestamped logje) |
+| `water_profielen` | array | Waterprofielen bronwater (gereedschap Waterprofiel): ionen in mg/L uit een gescand waterkwaliteitsrapport of handmatige invoer |
+| `water_doelprofielen` | array | Eigen doelprofielen brouwwater (gereedschap Waterprofiel), naast de ingebouwde stijlprofielen |
 | `kapitaal_boekingen` | array | Kapitaalstortingen / -onttrekkingen |
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
