@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.58] — 2026-07-08
+
+### Opgelost — Klanten kwamen niet als suggestie bij handmatige bestelling; e-mail werd niet automatisch ingevuld
+
+- Het naamveld van een handmatige bestelling toont nu een suggestielijst
+  (autocomplete) met alle klanten uit het klantenbestand.
+- Bij een exacte match op een klantnaam (getypt of via de suggestielijst)
+  worden e-mailadres, bedrijf, adres, postcode, plaats en klanttype nu
+  automatisch vanaf de klantkaart ingevuld — voorheen werd alleen het
+  kortingspercentage herkend maar bleef het e-mailveld leeg.
+- De bestelling onthoudt de koppeling naar de klantkaart (`klant_id`),
+  zodat de klantkorting en latere weergave/mailing direct via de
+  klantkaart matchen in plaats van via naam of e-mail.
+
+---
+
 ## [1.10.57] — 2026-07-07
 
 ### Opgelost — Voorbelasting-tabel kwam niet overeen met invulhulp (rubriek 5b)

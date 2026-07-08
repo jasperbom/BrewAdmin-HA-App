@@ -119,6 +119,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // Manual order form
   const emptyManual = {
+    klant_id: null as number | null,
     klant_naam: '', klant_email: '', klant_bedrijf: '',
     klant_straat: '', klant_huisnummer: '', klant_postcode: '', klant_stad: '',
     opmerkingen: '',
@@ -432,9 +433,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setTimeout(() => setWcMsg(''), 8000)
   }
 
-  // Klantkaart bij de handmatige order zoeken (e-mail eerst, anders exacte
-  // naam) — voor het automatisch toepassen van het klant-kortingspercentage.
+  // Klantkaart bij de handmatige order zoeken (gekoppeld id eerst, dan
+  // e-mail, anders exacte naam) — voor het automatisch toepassen van het
+  // klant-kortingspercentage.
   const klantVoorManualForm = (): any => {
+    if (manualForm.klant_id != null) {
+      const k = (klanten||[]).find((k: any) => k.id === manualForm.klant_id)
+      if (k) return k
+    }
     const email = (manualForm.klant_email || '').trim().toLowerCase()
     const naam = (manualForm.klant_naam || '').trim().toLowerCase()
     if (email) {
@@ -443,6 +449,36 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     if (naam) return (klanten||[]).find((k: any) => (k.naam || '').trim().toLowerCase() === naam) || null
     return null
+  }
+
+  // Naamveld handmatige order: bij een exacte match op een klantnaam worden
+  // e-mail, bedrijf en adres automatisch vanaf de klantkaart ingevuld (niet-
+  // lege kaartwaarden winnen, net als resolveKlantSnapshot). Vervalt de match,
+  // dan wordt alleen de koppeling (klant_id) losgelaten — reeds ingevulde
+  // velden blijven staan.
+  const handleManualNaamChange = (naam: string) => {
+    setManualForm((f: any) => {
+      const next: any = {...f, klant_naam: naam}
+      const lc = naam.trim().toLowerCase()
+      const k = lc ? (klanten||[]).find((kl: any) => (kl.naam || '').trim().toLowerCase() === lc) : null
+      if (k) {
+        next.klant_id = k.id
+        const vul = (snapKey: string, val: any) => {
+          const v = (val ?? '').toString().trim()
+          if (v) next[snapKey] = v
+        }
+        vul('klant_email', k.email)
+        vul('klant_bedrijf', k.bedrijf)
+        vul('klant_straat', k.straat)
+        vul('klant_huisnummer', k.huisnummer)
+        vul('klant_postcode', k.postcode)
+        vul('klant_stad', k.stad)
+        next.klant_type = k.klant_type || (k.bedrijf ? 'zakelijk' : f.klant_type)
+      } else if (f.klant_id != null) {
+        next.klant_id = null
+      }
+      return next
+    })
   }
 
   // --- Handmatige order opslaan ---
@@ -2078,7 +2114,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Inp label={t('manual_order_klant_naam') + ' *'} value={manualForm.klant_naam} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_naam: v}))} placeholder="Jan Janssen" />
+                <Inp label={t('manual_order_klant_naam') + ' *'} value={manualForm.klant_naam} onChange={handleManualNaamChange} placeholder="Jan Janssen" list="manual-order-klanten" />
+                <datalist id="manual-order-klanten">
+                  {[...(klanten||[])].sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||'')).map((k: any) => (
+                    <option key={k.id} value={k.naam} />
+                  ))}
+                </datalist>
                 <Inp label={t('manual_order_klant_email')} value={manualForm.klant_email} onChange={(v: string) => setManualForm((f: any) => ({...f, klant_email: v}))} placeholder="jan@example.nl" />
               </div>
               {(() => {
