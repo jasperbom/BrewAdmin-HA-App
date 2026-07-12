@@ -301,8 +301,8 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
           <h4 className="text-sm font-semibold text-gray-700">{titel}</h4>
           {badge}
         </div>
-        <div className="rounded-lg border border-gray-200 overflow-hidden">
-          <table className="w-full">
+        <div className="rounded-lg border border-gray-200 overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 text-xs text-gray-400 uppercase">
                 <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
