@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.59] — 2026-07-12
+
+### Opgelost — Recept-ingrediëntentabellen liepen op mobiel buiten beeld
+
+- De ingrediëntentabellen (mout, hop, gist, overig) in het receptdetail
+  waren op smalle (mobiele) schermen aan de rechterkant afgekapt: de
+  kolommen "Beschikbaar" en de statusbol vielen buiten beeld zonder dat je
+  erbij kon. De tabelcontainer gebruikte `overflow-hidden`, waardoor de
+  inhoud werd geknipt in plaats van scrollbaar te zijn.
+- De container is nu horizontaal scrollbaar (`overflow-x-auto`) en de tabel
+  heeft een minimumbreedte, zodat alle kolommen bereikbaar blijven en de
+  kolomindeling niet meer wordt platgedrukt — dezelfde aanpak als bij de
+  maisch- en vergistingsschema-tabellen.
+
+---
+
 ## [1.10.58] — 2026-07-08
 
 ### Opgelost — Klanten kwamen niet als suggestie bij handmatige bestelling; e-mail werd niet automatisch ingevuld
