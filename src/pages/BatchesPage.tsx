@@ -805,8 +805,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (bForm.tank) {
       const oudBat = editId ? bat.find((b: any) => b.id === editId) : null
       const oudeTankBij = oudBat?.tank || ''
-      // Hardblokkering: tank moet status `Ontsmet` zijn voor toewijzing (uitzondering: huidige tank van bewerkte batch).
-      if (bForm.tank !== oudeTankBij) {
+      // Hardblokkering: tank moet `Ontsmet` zijn zodra het bier de tank in
+      // gaat (Vergisten/Conditioneren). Bij plannen (Gepland/Brouwen) mag
+      // elke tank gekozen worden — ontsmetten gebeurt op de brouwdag zelf.
+      // Uitzondering blijft de huidige tank van de bewerkte batch.
+      if (bForm.tank !== oudeTankBij && ['Vergisten', 'Conditioneren'].includes(bForm.status)) {
         const tankStatus = tankStatussen?.[bForm.tank]?.status || 'Ontsmet'
         if (tankStatus !== 'Ontsmet') {
           const tankNaam = (tanks||[]).find((tk: any) => tk.id === bForm.tank)?.naam || bForm.tank
@@ -3694,18 +3697,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         const eerste = conflicten[0]
                         const eersteP = eerste ? _batchPeriode(eerste) : null
                         const label = tk.naam ? `${tk.naam} (${tk.id})` : String(tk.id)
+                        // Reinigingsstatus is informatief, geen blokkade: bij
+                        // het plannen mag elke tank — ontsmetten gebeurt op de
+                        // brouwdag zelf. De ontsmet-eis wordt pas afgedwongen
+                        // zodra het bier de tank in gaat (zie saveBatch).
                         const tStatus = tankStatussen?.[tk.id]?.status || 'Ontsmet'
-                        const isHuidige = tk.id === bForm.tank
-                        const statusBlokkeert = tStatus !== 'Ontsmet' && !isHuidige
-                        let tag: string
-                        if (statusBlokkeert) {
-                          tag = ` · ${t(TANK_REINIGING_LABEL_KEY[tStatus] || '')}`
-                        } else if (vrij) {
-                          tag = ` · ${t('tank_vrij')}`
-                        } else {
-                          tag = ` · ${t('tank_bezet')} ${eerste?.naam || ''}${eersteP ? ` (${fmtD(eersteP.van)}→${fmtD(eersteP.tot)})` : ''}`
-                        }
-                        return <option key={tk.id} value={tk.id} disabled={statusBlokkeert}>
+                        const stTag = tStatus !== 'Ontsmet' ? ` · ${t(TANK_REINIGING_LABEL_KEY[tStatus] || '')}` : ''
+                        const tag = vrij
+                          ? ` · ${t('tank_vrij')}${stTag}`
+                          : ` · ${t('tank_bezet')} ${eerste?.naam || ''}${eersteP ? ` (${fmtD(eersteP.van)}→${fmtD(eersteP.tot)})` : ''}${stTag}`
+                        return <option key={tk.id} value={tk.id}>
                           {label}{tag}
                         </option>
                       })}

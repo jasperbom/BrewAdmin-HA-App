@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.67] — 2026-07-14
+
+### Nieuw — Tankkeuze met beschikbaarheid bij het plannen van een batch
+
+- De plus-kaart in de batch flow heeft nu ook een tankkeuze. Per tank zie je
+  direct de beschikbaarheid: **vrij**, **gepland** (al geclaimd door een
+  andere geplande batch — kiezen mag) of **bezet** (er zit bier in de tank —
+  niet selecteerbaar), plus de reinigingsstatus als die niet Ontsmet is.
+
+### Gewijzigd — Ontsmet-eis verplaatst van plannen naar brouwdag
+
+- Een tank hoeft niet meer Ontsmet te zijn om hem aan een batch te koppelen:
+  ontsmetten doe je op de brouwdag zelf. Bij het plannen (Gepland/Brouwen)
+  mag daarom elke tank gekozen worden — in het batchformulier zijn vuile of
+  gereinigde tanks niet langer uitgegrijsd; de reinigingsstatus blijft als
+  informatie zichtbaar.
+- De ontsmet-eis wordt nu afgedwongen op het moment dat het bier de tank in
+  gaat: bij het opslaan van een batch met status Vergisten/Conditioneren
+  (harde blokkering, zoals voorheen) en bij de flow-overgang naar Vergisten
+  (bevestigingsvraag met de huidige tankstatus). Tankverplaatsingen van bier
+  vereisen onveranderd een ontsmette doeltank.
+
+## [1.10.66] — 2026-07-14
+
+### Nieuw — Nieuwe batch plannen vanuit de batch flow
+
+- Het batchflow-overzicht heeft naast de actieve batches een plus-kaart
+  gekregen: **Nieuwe batch plannen**. Klikken opent een compact formulier in
+  dezelfde kaart waarin je een recept kiest (optioneel), de naam en brouwdatum
+  invult en het batchnummer automatisch voorgesteld krijgt.
+- Bij aanmaken met recept worden — net als via de Recepten-pagina — de
+  receptdoelen (OG/FG/ABV) als verwacht-waarden, het volume, kleur, kooktijd,
+  vergistings- en maischprofiel én alle recept-ingrediënten overgenomen. De
+  nieuwe batch opent direct in de flow op de fase Gepland.
+
 ## [1.10.65] — 2026-07-14
 
 ### Opgelost — Vergistingsvoortgang weer zichtbaar op dashboard en batchpagina

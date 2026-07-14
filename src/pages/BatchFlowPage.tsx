@@ -9,7 +9,7 @@ import {
 import {
   markTankVuilBijVertrek, fgStabiel, tankRestVolume, appendTankHistorie,
   carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols,
-  berekenVoorcalcVoorAfvulling,
+  berekenVoorcalcVoorAfvulling, nextBatchNummer,
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import Btn from '../components/ui/Btn'
@@ -296,6 +296,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [toonNieuwProduct, setToonNieuwProduct] = useState(false)
   // Tankverplaatsing
   const [moveTankTarget, setMoveTankTarget] = useState('')
+  // Nieuwe batch plannen vanaf het overzicht (plus-kaart)
+  const [nieuwOpen, setNieuwOpen] = useState(false)
+  const [nieuwForm, setNieuwForm] = useState<any>({recept_id: '', naam: '', datum: tod(), tank: ''})
 
   // Open een batch: standaard alleen de actieve fase opengeklapt.
   const openBatch = (id: number) => {
@@ -342,6 +345,141 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   // ── Gedeelde helpers ───────────────────────────────────────────────────────
   const addLog = (entry: any) => setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), ...entry}])
+
+  // ── Nieuwe batch plannen (plus-kaart in het overzicht) ────────────────────
+  // Zelfde recept→batch-vertaling als de Recepten- en Batches-pagina: doelen
+  // komen in verwacht_* (geen metingen), ingrediënten worden batch-regels.
+  const beschikbareRecepten = useMemo(() =>
+    (recepten || []).filter((r: any) => r.is_huidige !== false)
+      .sort((a: any, b: any) => String(a.naam || '').localeCompare(String(b.naam || ''))),
+    [recepten])
+
+  // Beschikbaarheid per tank voor de tankkeuze bij het plannen. Een tank met
+  // bier erin (Vergisten/Conditioneren) is niet selecteerbaar; een tank die al
+  // door een geplande batch geclaimd is, tonen we als waarschuwing maar mag
+  // wel (dubbel plannen kan bewust zijn). De reinigingsstatus is puur
+  // informatief — ontsmetten gebeurt pas op de brouwdag zelf, dus een vuile
+  // tank inplannen is gewoon toegestaan.
+  const tankOpties = useMemo(() => (tanks || []).map((tk: any) => {
+    const naam = tk.naam || tk.id
+    const bezet = (bat || []).find((b: any) => b.tank === tk.id && ['Vergisten', 'Conditioneren'].includes(b.status))
+    const gepland = !bezet ? (bat || []).find((b: any) =>
+      b.tank === tk.id && ['Gepland', 'Brouwen'].includes(b.status)) : null
+    const st = tankStatussen?.[tk.id]?.status
+    const stLabel = st && st !== 'Ontsmet' ? (t(TANK_REINIGING_LABEL_KEY[st] || '') || st) : null
+    const beschikbaarheid = bezet
+      ? `${t('tank_bezet')} ${bezet.naam || bezet.batch_nummer || ''}`
+      : gepland
+        ? t('flow_nieuw_tank_gepland').replace('{naam}', gepland.naam || gepland.batch_nummer || '')
+        : t('tank_vrij')
+    return {
+      v: tk.id,
+      l: `${naam}${tk.soort ? ` (${tk.soort})` : ''} — ${beschikbaarheid}${stLabel ? ` · ${stLabel}` : ''}`,
+      d: !!bezet,
+    }
+  }), [tanks, bat, tankStatussen])
+
+  const maakNieuweBatch = () => {
+    const recept = nieuwForm.recept_id
+      ? beschikbareRecepten.find((r: any) => String(r.id) === String(nieuwForm.recept_id))
+      : null
+    const naam = String(nieuwForm.naam || '').trim() || recept?.naam || ''
+    if (!naam) { alert(t('err_name_required')); return }
+    // Alleen actief gebruik blokkeert (er zit bier in de tank). Geen
+    // ontsmet-eis bij het plannen: de tank wordt op de brouwdag ontsmet.
+    if (nieuwForm.tank) {
+      const bezet = (bat || []).find((b: any) => b.tank === nieuwForm.tank && ['Vergisten', 'Conditioneren'].includes(b.status))
+      if (bezet) { alert(t('err_tank_occupied').replace('{tank}', nieuwForm.tank).replace('{name}', bezet.naam)); return }
+    }
+    // Rond gravity (3 dec) en ABV (2 dec) af: recept-waarden uit Brewfather
+    // kunnen floating-point-artefacten bevatten (bv. 1.0479999…).
+    const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
+    const abv2 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 100) / 100
+    const nb: any = {
+      id: newId(bat || []),
+      batch_nummer: nextBatchNummer(bat || []),
+      naam,
+      stijl: recept?.stijl || '',
+      status: 'Gepland',
+      datum: nieuwForm.datum || tod(),
+      tank: nieuwForm.tank || '',
+      OG: '', FG: '', ABV: '',
+      created_at: new Date().toISOString(),
+    }
+    if (recept) {
+      nb.recept_id = recept.id
+      nb.verwacht_og = sg3(recept.OG)
+      nb.verwacht_fg = sg3(recept.FG)
+      nb.verwacht_abv = abv2(recept.ABV)
+      nb.liter_vergist = recept.batch_size || ''
+      nb.kleur = recept.kleur || ''
+      nb.kooktijd = recept.kooktijd || ''
+      nb.kook_volume = recept.kook_volume || ''
+      nb.vergistingsprofiel = recept.vergistingsprofiel || []
+      nb.maischprofiel = recept.maischprofiel || []
+    }
+    setBat((prev: any[]) => [...(prev || []), nb])
+    addLog({type: 'aangemaakt', batch_id: nb.id, referentie: nb.naam})
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: nb.id, actie: 'aangemaakt', omschrijving: nb.naam})
+    if (recept) {
+      const receptIng = [
+        ...(recept.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
+        ...(recept.hop    || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
+        ...(recept.gist   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'pkg', ingredient_id: i.ingredient_id ?? null })),
+        ...(recept.overig || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
+      ]
+      setBi((prev: any[]) => {
+        const startId = (prev || []).length ? Math.max(...prev.map((x: any) => x.id)) + 1 : 1
+        const nieuwe = receptIng.map((item: any, idx: number) => {
+          const ingMatch = item.ingredient_id
+            ? (ing || []).find((i: any) => i.id === item.ingredient_id)
+            : (ing || []).find((i: any) => i.naam.toLowerCase() === String(item.ingredient_naam || '').toLowerCase())
+          // Fallback voor brouwkundige eigenschappen: als het recept ze niet
+          // leverde, kijk dan in het gekoppelde Ingredient.bf_props.
+          const bfp = ingMatch?.bf_props || {}
+          const tType = String(item.ingredient_type || '').toLowerCase()
+          const isHop = tType === 'hop'
+          const isMout = tType === 'mout' || tType === 'suiker'
+          return {
+            id: startId + idx,
+            batch_id: nb.id,
+            ingredient_id: ingMatch ? ingMatch.id : null,
+            ingredient_naam: item.ingredient_naam,
+            ingredient_type: item.ingredient_type,
+            hoeveelheid: Number(item.hoeveelheid) || 0,
+            ...(isMout && {
+              extract_pct: item.extract_pct != null && item.extract_pct !== ''
+                ? Number(item.extract_pct)
+                : (bfp.yield != null ? Number(bfp.yield) : ''),
+            }),
+            ...(isHop && {
+              alpha_pct: item.alpha_pct != null && item.alpha_pct !== ''
+                ? Number(item.alpha_pct)
+                : (bfp.alpha != null ? Number(bfp.alpha) : ''),
+              tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== ''
+                ? Number(item.tijdstip_min) : '',
+              gebruik: String(item.gebruik || 'boil').toLowerCase(),
+              temp_c: item.temp_c != null && item.temp_c !== '' ? Number(item.temp_c) : '',
+            }),
+            eenheid: item.eenheid,
+            lot_id: null,
+            kosten: null,
+            afgeboekt: false,
+          }
+        })
+        return [...(prev || []), ...nieuwe]
+      })
+    }
+    setNieuwForm({recept_id: '', naam: '', datum: tod(), tank: ''})
+    setNieuwOpen(false)
+    // Direct de flow van de nieuwe batch openen op de fase Gepland.
+    setSel(nb.id)
+    setOpenFasen([0])
+    setOpenStappen({})
+    setNotitiesOpen(false)
+    setMoveTankTarget('')
+    setAvF(emptyAvF)
+  }
 
   const batchRecept = selB?.recept_id
     ? (recepten || []).find((r: any) => r.id === selB.recept_id && r.is_huidige !== false)
@@ -545,6 +683,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const nieuweStatus = STATUSSEN[nieuweIdx]
     const oudeStatus = selB.status
     if (oudeStatus === nieuweStatus) return
+    // Ontsmet-check op het moment dat het bier de tank in gaat: plannen mag
+    // op elke tank (ontsmetten gebeurt op de brouwdag), maar bij de overgang
+    // naar Vergisten hoort de tank ontsmet te zijn. Niet blokkerend — de
+    // gebruiker kan bewust doorgaan (bv. als de status niet is bijgewerkt).
+    if (nieuweStatus === 'Vergisten' && nieuweIdx > faseIndex(oudeStatus) && selB.tank) {
+      const st = tankStatussen?.[selB.tank]?.status
+      if (st && st !== 'Ontsmet') {
+        const stLabel = t(TANK_REINIGING_LABEL_KEY[st] || '') || st
+        if (!confirm(t('flow_confirm_tank_ontsmet').replace('{tank}', selB.tank).replace('{status}', stLabel))) return
+      }
+    }
     const leegtTank = ['Afgevuld', 'Gesloten'].includes(nieuweStatus)
       && !['Afgevuld', 'Verpakt', 'Gesloten'].includes(oudeStatus) && selB.tank
     if (leegtTank) {
@@ -904,6 +1053,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   // ── Overzicht (geen batch geselecteerd) ───────────────────────────────────
   if (!selB) {
+    const nieuwRecept = nieuwForm.recept_id
+      ? beschikbareRecepten.find((r: any) => String(r.id) === String(nieuwForm.recept_id))
+      : null
     return (
       <div className="space-y-4">
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
@@ -913,15 +1065,50 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
         <div>
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_actieve')}</div>
-          {actieveBatches.length === 0 ? (
-            <div className="bg-white rounded-xl p-6 shadow-card border border-gray-100 text-sm text-gray-500 italic">
-              {t('flow_geen_batches')}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {actieveBatches.map((b: any) => <BatchKaart key={b.id} b={b} />)}
-            </div>
+          {actieveBatches.length === 0 && (
+            <div className="text-sm text-gray-500 italic mb-2">{t('flow_geen_batches')}</div>
           )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {actieveBatches.map((b: any) => <BatchKaart key={b.id} b={b} />)}
+            {nieuwOpen ? (
+              <div className="bg-white rounded-xl p-4 shadow-card t-card-l">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="font-semibold text-gray-800">{t('flow_nieuw_titel')}</div>
+                  <span className="text-xs text-gray-400 font-mono">#{nextBatchNummer(bat || [])}</span>
+                </div>
+                <div className="space-y-3">
+                  <Sel label={t('flow_nieuw_recept')} value={String(nieuwForm.recept_id)}
+                    onChange={(v: string) => setNieuwForm((f: any) => ({...f, recept_id: v}))}
+                    ph={t('flow_nieuw_recept_ph')}
+                    opts={beschikbareRecepten.map((r: any) => ({v: String(r.id), l: `${r.naam}${r.stijl ? ` — ${r.stijl}` : ''}`}))} />
+                  <Inp label={t('lbl_name')} value={nieuwForm.naam}
+                    onChange={(v: string) => setNieuwForm((f: any) => ({...f, naam: v}))}
+                    placeholder={nieuwRecept?.naam || t('flow_nieuw_naam_ph')} />
+                  {(tanks || []).length > 0 && (
+                    <div>
+                      <Sel label={t('lbl_tank')} value={String(nieuwForm.tank)}
+                        onChange={(v: string) => setNieuwForm((f: any) => ({...f, tank: v}))}
+                        ph={t('flow_nieuw_tank_ph')} opts={tankOpties} />
+                      <div className="text-[11px] text-gray-400 mt-1">{t('flow_nieuw_tank_hint')}</div>
+                    </div>
+                  )}
+                  <Inp label={t('flow_nieuw_datum')} type="date" value={nieuwForm.datum}
+                    onChange={(v: string) => setNieuwForm((f: any) => ({...f, datum: v}))} />
+                  <div className="flex items-center gap-2 pt-1">
+                    <Btn s="sm" onClick={maakNieuweBatch}>{t('flow_nieuw_plan_btn')}</Btn>
+                    <Btn v="secondary" s="sm" onClick={() => setNieuwOpen(false)}>{t('btn_cancel')}</Btn>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button type="button"
+                onClick={() => { setNieuwForm({recept_id: '', naam: '', datum: tod(), tank: ''}); setNieuwOpen(true) }}
+                className="rounded-xl border-2 border-dashed border-gray-300 bg-white/60 min-h-[8rem] flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] transition-colors cursor-pointer">
+                <span className="text-3xl leading-none font-light">+</span>
+                <span className="text-sm font-medium">{t('flow_nieuw_kaart')}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {geslotenBatches.length > 0 && (
