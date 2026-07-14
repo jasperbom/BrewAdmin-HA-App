@@ -4,6 +4,7 @@ import { t } from '../../i18n'
 interface SelOption {
   v: string
   l: string
+  d?: boolean // optie uitgeschakeld (niet selecteerbaar, wel zichtbaar)
 }
 
 interface SelProps {
@@ -27,7 +28,8 @@ const Sel: React.FC<SelProps> = ({label, value, onChange, opts, ph, cls=''}) => 
     >
       <option value="">{ph || t('ph_choose')}</option>
       {opts.map(o => (
-        <option key={typeof o === 'object' ? o.v : o} value={typeof o === 'object' ? o.v : o}>
+        <option key={typeof o === 'object' ? o.v : o} value={typeof o === 'object' ? o.v : o}
+          disabled={typeof o === 'object' ? !!o.d : false}>
           {typeof o === 'object' ? o.l : o}
         </option>
       ))}

@@ -298,7 +298,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [moveTankTarget, setMoveTankTarget] = useState('')
   // Nieuwe batch plannen vanaf het overzicht (plus-kaart)
   const [nieuwOpen, setNieuwOpen] = useState(false)
-  const [nieuwForm, setNieuwForm] = useState<any>({recept_id: '', naam: '', datum: tod()})
+  const [nieuwForm, setNieuwForm] = useState<any>({recept_id: '', naam: '', datum: tod(), tank: ''})
 
   // Open een batch: standaard alleen de actieve fase opengeklapt.
   const openBatch = (id: number) => {
@@ -354,12 +354,43 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       .sort((a: any, b: any) => String(a.naam || '').localeCompare(String(b.naam || ''))),
     [recepten])
 
+  // Beschikbaarheid per tank voor de tankkeuze bij het plannen. Een tank met
+  // bier erin (Vergisten/Conditioneren) is niet selecteerbaar; een tank die al
+  // door een geplande batch geclaimd is, tonen we als waarschuwing maar mag
+  // wel (dubbel plannen kan bewust zijn). De reinigingsstatus is puur
+  // informatief — ontsmetten gebeurt pas op de brouwdag zelf, dus een vuile
+  // tank inplannen is gewoon toegestaan.
+  const tankOpties = useMemo(() => (tanks || []).map((tk: any) => {
+    const naam = tk.naam || tk.id
+    const bezet = (bat || []).find((b: any) => b.tank === tk.id && ['Vergisten', 'Conditioneren'].includes(b.status))
+    const gepland = !bezet ? (bat || []).find((b: any) =>
+      b.tank === tk.id && ['Gepland', 'Brouwen'].includes(b.status)) : null
+    const st = tankStatussen?.[tk.id]?.status
+    const stLabel = st && st !== 'Ontsmet' ? (t(TANK_REINIGING_LABEL_KEY[st] || '') || st) : null
+    const beschikbaarheid = bezet
+      ? `${t('tank_bezet')} ${bezet.naam || bezet.batch_nummer || ''}`
+      : gepland
+        ? t('flow_nieuw_tank_gepland').replace('{naam}', gepland.naam || gepland.batch_nummer || '')
+        : t('tank_vrij')
+    return {
+      v: tk.id,
+      l: `${naam}${tk.soort ? ` (${tk.soort})` : ''} — ${beschikbaarheid}${stLabel ? ` · ${stLabel}` : ''}`,
+      d: !!bezet,
+    }
+  }), [tanks, bat, tankStatussen])
+
   const maakNieuweBatch = () => {
     const recept = nieuwForm.recept_id
       ? beschikbareRecepten.find((r: any) => String(r.id) === String(nieuwForm.recept_id))
       : null
     const naam = String(nieuwForm.naam || '').trim() || recept?.naam || ''
     if (!naam) { alert(t('err_name_required')); return }
+    // Alleen actief gebruik blokkeert (er zit bier in de tank). Geen
+    // ontsmet-eis bij het plannen: de tank wordt op de brouwdag ontsmet.
+    if (nieuwForm.tank) {
+      const bezet = (bat || []).find((b: any) => b.tank === nieuwForm.tank && ['Vergisten', 'Conditioneren'].includes(b.status))
+      if (bezet) { alert(t('err_tank_occupied').replace('{tank}', nieuwForm.tank).replace('{name}', bezet.naam)); return }
+    }
     // Rond gravity (3 dec) en ABV (2 dec) af: recept-waarden uit Brewfather
     // kunnen floating-point-artefacten bevatten (bv. 1.0479999…).
     const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
@@ -371,6 +402,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       stijl: recept?.stijl || '',
       status: 'Gepland',
       datum: nieuwForm.datum || tod(),
+      tank: nieuwForm.tank || '',
       OG: '', FG: '', ABV: '',
       created_at: new Date().toISOString(),
     }
@@ -438,7 +470,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         return [...(prev || []), ...nieuwe]
       })
     }
-    setNieuwForm({recept_id: '', naam: '', datum: tod()})
+    setNieuwForm({recept_id: '', naam: '', datum: tod(), tank: ''})
     setNieuwOpen(false)
     // Direct de flow van de nieuwe batch openen op de fase Gepland.
     setSel(nb.id)
@@ -651,6 +683,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const nieuweStatus = STATUSSEN[nieuweIdx]
     const oudeStatus = selB.status
     if (oudeStatus === nieuweStatus) return
+    // Ontsmet-check op het moment dat het bier de tank in gaat: plannen mag
+    // op elke tank (ontsmetten gebeurt op de brouwdag), maar bij de overgang
+    // naar Vergisten hoort de tank ontsmet te zijn. Niet blokkerend — de
+    // gebruiker kan bewust doorgaan (bv. als de status niet is bijgewerkt).
+    if (nieuweStatus === 'Vergisten' && nieuweIdx > faseIndex(oudeStatus) && selB.tank) {
+      const st = tankStatussen?.[selB.tank]?.status
+      if (st && st !== 'Ontsmet') {
+        const stLabel = t(TANK_REINIGING_LABEL_KEY[st] || '') || st
+        if (!confirm(t('flow_confirm_tank_ontsmet').replace('{tank}', selB.tank).replace('{status}', stLabel))) return
+      }
+    }
     const leegtTank = ['Afgevuld', 'Gesloten'].includes(nieuweStatus)
       && !['Afgevuld', 'Verpakt', 'Gesloten'].includes(oudeStatus) && selB.tank
     if (leegtTank) {
@@ -1041,6 +1084,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   <Inp label={t('lbl_name')} value={nieuwForm.naam}
                     onChange={(v: string) => setNieuwForm((f: any) => ({...f, naam: v}))}
                     placeholder={nieuwRecept?.naam || t('flow_nieuw_naam_ph')} />
+                  {(tanks || []).length > 0 && (
+                    <div>
+                      <Sel label={t('lbl_tank')} value={String(nieuwForm.tank)}
+                        onChange={(v: string) => setNieuwForm((f: any) => ({...f, tank: v}))}
+                        ph={t('flow_nieuw_tank_ph')} opts={tankOpties} />
+                      <div className="text-[11px] text-gray-400 mt-1">{t('flow_nieuw_tank_hint')}</div>
+                    </div>
+                  )}
                   <Inp label={t('flow_nieuw_datum')} type="date" value={nieuwForm.datum}
                     onChange={(v: string) => setNieuwForm((f: any) => ({...f, datum: v}))} />
                   <div className="flex items-center gap-2 pt-1">
@@ -1051,7 +1102,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               </div>
             ) : (
               <button type="button"
-                onClick={() => { setNieuwForm({recept_id: '', naam: '', datum: tod()}); setNieuwOpen(true) }}
+                onClick={() => { setNieuwForm({recept_id: '', naam: '', datum: tod(), tank: ''}); setNieuwOpen(true) }}
                 className="rounded-xl border-2 border-dashed border-gray-300 bg-white/60 min-h-[8rem] flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] transition-colors cursor-pointer">
                 <span className="text-3xl leading-none font-light">+</span>
                 <span className="text-sm font-medium">{t('flow_nieuw_kaart')}</span>
