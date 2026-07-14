@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.70] — 2026-07-14
+
+### Verbeterd — Kassa via het dashboard + lot-voorraad in het Hop-schema
+
+- De **Kassa** is verplaatst uit het hoofdmenu naar een knop bovenaan het
+  dashboard — het menu blijft compacter en de kassa is nog steeds met één
+  klik bereikbaar.
+- In het **Hop-schema** (brouwdag) toont de lot-keuzelijst nu per lot de
+  beschikbare voorraad, omgerekend naar de eenheid van de hop-additie.
+- Dekt het gekozen lot de hoeveelheid niet, dan verschijnt een waarschuwing
+  met een **Splits restant**-knop: de additie wordt gesplitst in een regel
+  voor wat het lot nog heeft en een extra regel voor het restant, waarvoor
+  een ander lot gekozen kan worden.
+
+## [1.10.69] — 2026-07-14
+
+### Verbeterd — Bestellingen op naam koppelen aan een klant
+
+- Ongekoppelde bestellingen met **exact dezelfde klantnaam** (maar zonder of
+  met een afwijkend e-mailadres) zijn nu ook aan de klantkaart te koppelen.
+  De hint-banner in de klantdetail telt deze bestellingen mee en de knop
+  "Koppel bestellingen aan deze klant" koppelt ze in één keer.
+- Bij het opslaan van een klantkaart worden naam-matches ook automatisch
+  gekoppeld, net als e-mailmatches.
+
 ## [1.10.68] — 2026-07-14
 
 ### Nieuw — Kassa (POS) voor directe bierverkoop

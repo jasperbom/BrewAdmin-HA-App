@@ -876,6 +876,12 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
 
   return (
     <div>
+      {/* ── Kassa-snelknop — de kassa zit niet in het hoofdmenu maar wordt
+          vanaf het dashboard geopend. ─────────────────────────────────────── */}
+      <div className="flex justify-end mb-4">
+        <Btn s="lg" onClick={() => setPage('kassa')}>{t('dash_kassa_open')}</Btn>
+      </div>
+
       {/* ── Stat cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label={t('lbl_stock_available')}    value={beschVoorraad}              sub={t('lbl_units_uitgeleverd')}                              color="green"                                               onClick={() => setPage('agp')} />

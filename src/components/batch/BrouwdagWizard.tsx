@@ -1,7 +1,8 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { newId, mapHopGebruik } from '../../utils/api'
-import { tod } from '../../utils/format'
+import { tod, r3 } from '../../utils/format'
+import { convertEenheid } from '../../utils/constants'
 import {
   mashEfficiency, brouwzaalEfficiency, kookVerdampingPct,
   iBUTinseth, totaalMaxExtract, hopVerouderdeAlpha
@@ -624,6 +625,33 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
         const beschikbareLots = (h: any) => h.ingredient_id
           ? (lots || []).filter(l => l.ingredient_id === h.ingredient_id)
           : []
+        // Voorraad van een lot omgerekend naar de gevraagde eenheid;
+        // null als de eenheden niet converteerbaar zijn.
+        const lotVoorraadIn = (l: any, eenheid: string): number | null =>
+          convertEenheid(Number(l?.hoeveelheid || 0), l?.eenheid || eenheid, eenheid)
+        // Splitst een hop-additie waarvan het gekozen lot de hoeveelheid niet
+        // dekt in twee regels: de huidige regel gaat terug naar wat het lot
+        // nog beschikbaar heeft, het restant komt als nieuwe regel (zonder
+        // lot) met dezelfde tijd/gebruik — daar kan vervolgens een ander lot
+        // voor gekozen worden. Zelfde principe als de automatische splitsing
+        // bij het afboeken in de batch flow.
+        const splitsHopOverLots = (h: any, beschikbaarInEenheid: number) => {
+          if (!setBi) return
+          const nodig = Number(h.hoeveelheid) || 0
+          const deel = r3(Math.min(beschikbaarInEenheid, nodig))
+          const rest = r3(nodig - deel)
+          if (deel <= 0 || rest <= 0) return
+          setBi((prev: any[]) => [
+            ...prev.map((x: any) => x.id === h.id ? {...x, hoeveelheid: deel} : x),
+            {
+              id: newId(prev), batch_id: h.batch_id, ingredient_id: h.ingredient_id,
+              ingredient_naam: h.ingredient_naam, ingredient_type: h.ingredient_type,
+              hoeveelheid: rest, eenheid: h.eenheid, gebruik: h.gebruik,
+              tijdstip_min: h.tijdstip_min, temp_c: h.temp_c,
+              lot_id: '', alpha_pct: '',
+            },
+          ])
+        }
         return (
           <div className="bg-white rounded-xl shadow-card overflow-hidden">
             <SectionHeader
@@ -742,22 +770,51 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                                 parts.push(`α ${aOrig}%`)
                               }
                             }
+                            // Beschikbare voorraad, omgerekend naar de eenheid
+                            // van de hop-additie waar dat kan.
+                            const voorr = lotVoorraadIn(l, h.eenheid || 'g')
+                            parts.push(voorr != null
+                              ? `${r3(voorr)} ${h.eenheid || 'g'}`
+                              : `${l.hoeveelheid} ${l.eenheid || ''}`.trim())
                             return parts.join(' · ')
                           }
+                          // Dekt het gekozen lot de gevraagde hoeveelheid?
+                          const gekozenLot = h.lot_id ? lotsBeschikbaar.find((l: any) => l.id === h.lot_id) : null
+                          const lotBesch = gekozenLot ? lotVoorraadIn(gekozenLot, h.eenheid || 'g') : null
+                          const nodigQty = Number(h.hoeveelheid) || 0
+                          const lotTekort = gekozenLot && lotBesch != null && nodigQty > 0
+                            && lotBesch < nodigQty - 0.001
                           return (
                           <tr key={h.id}>
                             <td className="px-3 py-1.5">{h.ingredient_naam}</td>
                             <td className="px-3 py-1.5 text-right text-gray-600">{h.hoeveelheid} {h.eenheid || 'g'}</td>
                             <td className="px-3 py-1.5">
                               {lotsBeschikbaar.length > 0 ? (
-                                <select value={h.lot_id || ''}
-                                  onChange={e => updHopLot(h.id, e.target.value)}
-                                  className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[16rem]">
-                                  <option value="">{t('hop_schema_geen_lot')}</option>
-                                  {lotsBeschikbaar.map((l: any) => (
-                                    <option key={l.id} value={l.id}>{lotLabel(l)}</option>
-                                  ))}
-                                </select>
+                                <>
+                                  <select value={h.lot_id || ''}
+                                    onChange={e => updHopLot(h.id, e.target.value)}
+                                    className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[16rem]">
+                                    <option value="">{t('hop_schema_geen_lot')}</option>
+                                    {lotsBeschikbaar.map((l: any) => (
+                                      <option key={l.id} value={l.id}>{lotLabel(l)}</option>
+                                    ))}
+                                  </select>
+                                  {lotTekort && (
+                                    <div className="text-[10px] text-amber-700 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                      <span>{t('hop_schema_lot_tekort')
+                                        .replace('{beschikbaar}', String(r3(Math.max(0, lotBesch as number))))
+                                        .replace('{nodig}', String(r3(nodigQty)))
+                                        .replace('{eenheid}', h.eenheid || 'g')}</span>
+                                      {setBi && (lotBesch as number) > 0.001 && (
+                                        <button onClick={() => splitsHopOverLots(h, lotBesch as number)}
+                                          className="underline font-semibold hover:no-underline"
+                                          title={t('hop_schema_splits_hint')}>
+                                          {t('hop_schema_splits_btn')}
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
                               ) : (
                                 <span className="text-xs text-gray-400">—</span>
                               )}

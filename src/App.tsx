@@ -1044,7 +1044,8 @@ function App() {
     ]},
     {id:'producten',l:t('nav_producten')},
     {id:'bestellingen',l:t('nav_bestellingen')},
-    {id:'kassa',l:t('nav_kassa')},
+    // 'kassa' staat bewust niet in het menu — de kassa wordt geopend via de
+    // knop op het dashboard (DashboardPage).
     {id:'klanten',l:t('nav_klanten')},
     {id:'agp',l:t('nav_agp')},
     {id:'haccp',l:t('nav_haccp')},
