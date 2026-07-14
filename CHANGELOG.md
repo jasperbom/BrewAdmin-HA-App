@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.69] — 2026-07-14
+
+### Verbeterd — Bestellingen op naam koppelen aan een klant
+
+- Ongekoppelde bestellingen met **exact dezelfde klantnaam** (maar zonder of
+  met een afwijkend e-mailadres) zijn nu ook aan de klantkaart te koppelen.
+  De hint-banner in de klantdetail telt deze bestellingen mee en de knop
+  "Koppel bestellingen aan deze klant" koppelt ze in één keer.
+- Bij het opslaan van een klantkaart worden naam-matches ook automatisch
+  gekoppeld, net als e-mailmatches.
+
 ## [1.10.68] — 2026-07-14
 
 ### Nieuw — Kassa (POS) voor directe bierverkoop

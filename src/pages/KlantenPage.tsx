@@ -4,6 +4,8 @@
  * - Detail-view met bewerkbare velden, bestellingen, facturen en mail-knop.
  * - Matched bestellingen/facturen via klant_id, OF (fallback) klant_email match
  *   voor losse WC-orders die nog niet aan een klantkaart gekoppeld zijn.
+ * - Ongekoppelde orders zijn aan een klantkaart te koppelen op e-mail óf op
+ *   exact dezelfde klantnaam (zie matchOngekoppeldeOrder).
  */
 import React from 'react'
 import { t } from '../i18n'
@@ -59,6 +61,19 @@ const emptyForm = () => ({
 // Bruto-totaal van een bestelling op basis van de regels (aantal × prijs × (1 + btw%)).
 const orderBruto = (b: any): number => (b.regels || []).reduce(
   (s: number, r: any) => s + (r.aantal || 0) * (r.prijs_per_stuk || 0) * (1 + (r.btw_pct || 0) / 100), 0)
+
+// Match een ongekoppelde bestelling op een klantkaart: e-mail (primair) of
+// exact dezelfde naam (fallback, getrimd + case-insensitief). Zo zijn ook
+// bestellingen zonder of met afwijkend e-mailadres maar met dezelfde
+// klantnaam aan het account te koppelen.
+const matchOngekoppeldeOrder = (b: any, email: string, naam: string): boolean => {
+  if (b.klant_id != null) return false
+  const emailLc = (email || '').trim().toLowerCase()
+  const naamLc = (naam || '').trim().toLowerCase()
+  const beLc = (b.klant_email || '').trim().toLowerCase()
+  const bnLc = (b.klant_naam || '').trim().toLowerCase()
+  return !!((emailLc && beLc === emailLc) || (naamLc && bnLc === naamLc))
+}
 
 const KlantenPage: React.FC<Props> = ({
   klanten, setKlanten, bestellingen, setBestellingen, verkoopFacturen,
@@ -334,8 +349,8 @@ const KlantenPage: React.FC<Props> = ({
       setSelectedId(savedKlantId)
     }
 
-    // Auto-koppel ongekoppelde bestellingen aan deze klant. Drie matching-
-    // strategieën — alle drie zijn nodig om edge-cases af te dekken:
+    // Auto-koppel ongekoppelde bestellingen aan deze klant. Vier matching-
+    // strategieën — alle vier zijn nodig om edge-cases af te dekken:
     //
     //   1. Synth-source-key: als de gebruiker via "Uit bestelling" is
     //      binnengekomen, koppel exact die bestellingen — onafhankelijk
@@ -351,14 +366,21 @@ const KlantenPage: React.FC<Props> = ({
     //      via email-fallback aan deze klant gematcht waren, krijgen nu
     //      hun klant_id zodat ze niet als "ongekoppeld" achterblijven
     //      wanneer de gebruiker het e-mailadres aanpast.
+    //
+    //   4. Naam-match: bestellingen met exact dezelfde klantnaam maar
+    //      zonder (matchend) e-mailadres — bv. een WC-gastbestelling met
+    //      een ander adres — horen ook bij deze klant. De hint-banner in
+    //      de detailweergave toont vooraf hoeveel er gekoppeld worden.
     const newEmailLc = (payload.email || '').toLowerCase()
     const oldEmailLc = oldEmail.toLowerCase()
+    const newNaamLc = payload.naam.toLowerCase()
     const toLink = bestellingen.filter((b: any) => {
       if (b.klant_id != null) return false
       const beLc = (b.klant_email || '').toLowerCase()
       const beNameKey = (b.klant_naam || '').trim().toLowerCase()
       if (newEmailLc && beLc === newEmailLc) return true
       if (oldEmailLc && oldEmailLc !== newEmailLc && beLc === oldEmailLc) return true
+      if (newNaamLc && beNameKey === newNaamLc) return true
       if (synthSourceKey && (beLc || beNameKey) === synthSourceKey) return true
       return false
     })
@@ -421,20 +443,20 @@ const KlantenPage: React.FC<Props> = ({
     setSelectedId(null)
   }
 
-  // Koppel losse WC-orders die op e-mail matchen aan deze klant (klant_id zetten).
-  const koppelOrdersOpEmail = () => {
-    if (!selected?.email) return
-    const emailLc = selected.email.toLowerCase()
+  // Koppel losse WC-orders die op e-mail óf naam matchen aan deze klant
+  // (klant_id zetten). De order-snapshot blijft ongemoeid zodat een afwijkend
+  // e-mailadres op de bestelling bewaard blijft.
+  const koppelOrders = () => {
+    if (!selected) return
     const toLink = bestellingen.filter((b: any) =>
-      !b.klant_id && b.klant_email && b.klant_email.toLowerCase() === emailLc
-    )
+      matchOngekoppeldeOrder(b, selected.email || '', selected.naam || ''))
     if (toLink.length === 0) { alert(t('klanten_no_unlinked_orders')); return }
     if (!confirm(t('klanten_link_orders_confirm').replace('{n}', String(toLink.length)))) return
     const ids = new Set(toLink.map((b: any) => b.id))
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       ids.has(b.id) ? {...b, klant_id: selected.id} : b
     ))
-    logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:selected.id, actie:'gewijzigd', omschrijving:`${toLink.length} bestelling(en) gekoppeld via e-mail`})
+    logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:selected.id, actie:'gewijzigd', omschrijving:`${toLink.length} bestelling(en) gekoppeld via e-mail/naam`})
   }
 
   const mailKlant = () => {
@@ -450,14 +472,14 @@ const KlantenPage: React.FC<Props> = ({
 
   if (view === 'detail') {
     const emailValid = !form.email || EMAIL_RE.test(form.email.trim())
-    // Bij bestaande klant: gebruik de opgeslagen e-mail (klanten zonder e-mail
-    // hebben geen orders om te koppelen). Bij een nieuwe klant: kijk in het
-    // formulier — zo ziet de gebruiker direct hoeveel orders straks gekoppeld
-    // worden op opslaan.
+    // Ongekoppelde orders die op e-mail óf naam bij deze klant horen. Bij een
+    // bestaande klant: match op de opgeslagen gegevens (de koppel-knop werkt
+    // daar ook mee). Bij een nieuwe klant: kijk in het formulier — zo ziet de
+    // gebruiker direct hoeveel orders straks gekoppeld worden op opslaan.
     const checkEmail = (selectedId !== null ? selected?.email : form.email.trim()) || ''
-    const ongekoppeldeOrders = checkEmail
-      ? bestellingen.filter((b: any) => !b.klant_id && b.klant_email
-          && b.klant_email.toLowerCase() === checkEmail.toLowerCase()).length
+    const checkNaam = (selectedId !== null ? selected?.naam : form.naam.trim()) || ''
+    const ongekoppeldeOrders = (checkEmail || checkNaam)
+      ? bestellingen.filter((b: any) => matchOngekoppeldeOrder(b, checkEmail, checkNaam)).length
       : 0
 
     return (
@@ -603,7 +625,7 @@ const KlantenPage: React.FC<Props> = ({
                 : t('klanten_unlinked_hint_new').replace('{n}', String(ongekoppeldeOrders))}
             </div>
             {selectedId !== null && (
-              <Btn v="blue" onClick={koppelOrdersOpEmail}>{t('klanten_link_orders_btn')}</Btn>
+              <Btn v="blue" onClick={koppelOrders}>{t('klanten_link_orders_btn')}</Btn>
             )}
           </div>
         )}
