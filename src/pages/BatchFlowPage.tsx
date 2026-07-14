@@ -1674,12 +1674,22 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
     return (
       <div className="p-4 space-y-3">
-        <p className="text-sm text-gray-600">{FASE_DESC[faseStatus]}</p>
+        {/* Compacte kop — de fase is al geselecteerd via de tijdlijn hierboven,
+            dus een grote headerbalk is niet nodig. */}
+        <p className="text-sm text-gray-600">
+          <span className="font-semibold text-gray-800">{i + 1}. {STATUS_LABELS[faseStatus]}</span>
+          {cl.length > 0 && <span className="ml-2 text-xs text-gray-400">{klaarN}/{cl.length}</span>}
+          <span className="block mt-0.5">{FASE_DESC[faseStatus]}</span>
+        </p>
         {!isHuidig && (
           <div className="text-xs px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-500">
             {i < huidigeFase ? t('flow_fase_afgerond') : t('flow_fase_toekomstig')}
           </div>
         )}
+
+        {/* Stappen: op desktop in twee kolommen (masonry via CSS columns),
+            zodat je meer in één oogopslag ziet. */}
+        <div className="lg:columns-2 lg:gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
 
         {/* ── Gepland ─────────────────────────────────────────────────────── */}
         {faseStatus === 'Gepland' && (() => {
@@ -1835,8 +1845,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             </FlowStap>
           </>
         )}
+        </div>
 
-        {/* ── Gereed: samenvatting + financieel resultaat ──────────────────── */}
+        {/* ── Gereed: samenvatting + financieel resultaat (volle breedte) ──── */}
         {faseStatus === 'Gesloten' && (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1942,34 +1953,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         </div>
       </div>
 
-      {/* Eén inklapbare kaart per fase */}
-      {STATUSSEN.map((s, i) => {
-        const cl = berekenChecklist(i)
-        const klaarN = cl.filter(c => c.done).length
-        const isOpen = openFasen.includes(i)
-        const isHuidig = i === huidigeFase
-        const statusPill = isHuidig
-          ? <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white/25 text-white">{t('flow_pill_actief')}</span>
-          : i < huidigeFase
-            ? <span className="text-white/70">{t('flow_pill_afgerond')}</span>
-            : <span className="text-white/50">{t('flow_pill_komt')}</span>
-        return (
-          <div key={s} className="bg-white rounded-xl shadow-card overflow-hidden t-card-l">
-            <SectionHeader
-              solid
-              open={isOpen}
-              onToggle={() => toggleFase(i)}
-              rounded={isOpen ? 'top' : 'full'}
-              title={`${i + 1}. ${STATUS_LABELS[s]}`}
-              info={<>
-                {cl.length > 0 && <span>{klaarN}/{cl.length}</span>}
-                {statusPill}
-              </>}
-            />
-            {isOpen && renderFaseInhoud(i)}
-          </div>
-        )
-      })}
+      {/* Alleen de in de tijdlijn geselecteerde fase(n) — de stepper hierboven
+          is de selector, dus een eigen (inklap)header per fase is overbodig. */}
+      {STATUSSEN.map((s, i) => openFasen.includes(i) && (
+        <div key={s} className="bg-white rounded-xl shadow-card overflow-hidden t-card-l">
+          {renderFaseInhoud(i)}
+        </div>
+      ))}
 
       {/* Notities (gedeeld component met de batchpagina) */}
       <BatchNotitiesSection

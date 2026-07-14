@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.62] — 2026-07-14
+
+### Gewijzigd — Batchflow beta: fasekaarten zonder header + twee kolommen op desktop
+
+- De fasekaarten (Gepland, Brouwen, Vergisten, …) hebben geen eigen
+  inklapheader meer: de tijdlijn bovenaan is dé selector. Selecteer je een
+  fase in de tijdlijn, dan zie je alleen die fase — de overige fasen (en hun
+  headerbalken) verdwijnen volledig. Dat scheelt ruimte; een compacte
+  titelregel met voortgangsteller vervangt de headerbalk.
+- Op desktop (breed scherm) staan de stappen van een fase in **twee
+  kolommen**, zodat je meer in één oogopslag ziet. Op mobiel blijft het één
+  kolom.
+
 ## [1.10.61] — 2026-07-14
 
 ### Opgelost — Maisch-/brouwzaalrendement stond onterecht op 100%
