@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, ADDON_BASE } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
-import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling, effectiefOG, effectiefFG } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
@@ -726,8 +726,12 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
 
   const sgProgress = (batch: any) => {
     const m = latestMeting(batch.id)
-    if (!m || !batch.OG || !batch.FG || Number(batch.OG) <= Number(batch.FG)) return null
-    return Math.min(100, Math.max(0, (Number(batch.OG) - m.sg) / (Number(batch.OG) - Number(batch.FG)) * 100))
+    // Gemeten OG/FG met terugval op verwacht_og/verwacht_fg: een batch die nog
+    // gist heeft sinds de verwacht-gravity-migratie geen gemeten FG meer.
+    const og = effectiefOG(batch)
+    const fg = effectiefFG(batch)
+    if (!m || !og || !fg || og <= fg) return null
+    return Math.min(100, Math.max(0, (og - m.sg) / (og - fg) * 100))
   }
 
   const ingKosten = (b: any) => getBi(b.id).reduce((s: number, x: any) => {
@@ -1482,11 +1486,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     {sgPct !== null && (
                       <>
                         <div className="flex justify-between text-xs text-gray-400 mb-1">
-                          <span>OG {selB.OG}</span>
+                          <span>OG {effectiefOG(selB)}</span>
                           <span className="font-medium text-gray-600">
                             {t('dashboard_sg_progress').replace('{pct}', String(Math.round(sgPct)))}
                           </span>
-                          <span>FG {selB.FG}</span>
+                          <span>FG {effectiefFG(selB)}</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div

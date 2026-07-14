@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD, fmtQty, tod } from '../utils/format'
-import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie, TANK_STATUSSEN } from '../utils/calculations'
+import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie, TANK_STATUSSEN, effectiefOG, effectiefFG } from '../utils/calculations'
 import { STATUS_CLR, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { haCallService, haGetState } from '../utils/api'
@@ -386,8 +386,12 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
 
   const sgProgress = (batch: any) => {
     const m = latestMeting(batch.id);
-    if (!m || !batch.OG || !batch.FG || Number(batch.OG) <= Number(batch.FG)) return null;
-    return Math.min(100, Math.max(0, (Number(batch.OG) - m.sg) / (Number(batch.OG) - Number(batch.FG)) * 100));
+    // Gemeten OG/FG met terugval op verwacht_og/verwacht_fg: een batch die nog
+    // gist heeft sinds de verwacht-gravity-migratie geen gemeten FG meer.
+    const og = effectiefOG(batch);
+    const fg = effectiefFG(batch);
+    if (!m || !og || !fg || og <= fg) return null;
+    return Math.min(100, Math.max(0, (og - m.sg) / (og - fg) * 100));
   };
 
   const saveMeting = () => {
@@ -1159,11 +1163,11 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
                     {sgPct !== null && (
                       <>
                         <div className="flex justify-between text-xs text-gray-400 mb-1">
-                          <span>OG {batch.OG}</span>
+                          <span>OG {effectiefOG(batch)}</span>
                           <span className="font-medium text-gray-600">
                             {t('dashboard_sg_progress').replace('{pct}', String(Math.round(sgPct)))}
                           </span>
-                          <span>FG {batch.FG}</span>
+                          <span>FG {effectiefFG(batch)}</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
