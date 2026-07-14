@@ -42,6 +42,11 @@ export interface Batch {
   OG?: number
   FG?: number
   ABV?: number
+  // Verwachte (recept-/Brewfather-)waarden — placeholder totdat de echte
+  // meetwaarde in OG/FG/ABV wordt ingevuld (zie batch_verwacht_gravity-migratie).
+  verwacht_og?: number | string
+  verwacht_fg?: number | string
+  verwacht_abv?: number | string
   tank?: string
   tank_dagen?: number | string     // geplande tank-bezetting in dagen
   datum?: string

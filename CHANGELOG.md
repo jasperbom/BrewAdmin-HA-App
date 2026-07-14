@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.65] — 2026-07-14
+
+### Opgelost — Vergistingsvoortgang weer zichtbaar op dashboard en batchpagina
+
+- Sinds de verwacht-FG/OG-migratie (1.10.62) heeft een batch die nog gist geen
+  gemeten FG meer — de voortgangsbalk "Vergistingsvoortgang" op het dashboard
+  (tankkaarten) en de batchdetailpagina verdween daardoor. De berekening valt
+  nu terug op `verwacht_og`/`verwacht_fg` (recept-doel of Brewfather-schatting),
+  net als de batch flow al deed, zodat de voortgang weer toont zodra er een
+  SG-meting is.
+
 ## [1.10.64] — 2026-07-14
 
 ### Gewijzigd — Tijdlijn batch flow: één stap tegelijk

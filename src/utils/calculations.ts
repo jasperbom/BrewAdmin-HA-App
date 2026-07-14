@@ -827,6 +827,25 @@ export const berekenABV = (og: number, fg: number): number => {
   return (o - f) * 131.25
 }
 
+// ── Effectieve OG/FG voor de vergistingsvoortgang ───────────────────────────
+// Gemeten waarde eerst, anders het verwacht_*-veld (recept-doel of
+// Brewfather-schatting). Sinds de verwacht-gravity-migratie heeft een batch
+// die nog gist geen gemeten FG meer — de voortgangsbalk rekent dan naar het
+// verwachte FG toe. Geeft null als geen van beide is ingevuld.
+export const effectiefOG = (batch: any): number | null => {
+  const og = Number(batch?.OG)
+  if (og > 0) return og
+  const v = Number(batch?.verwacht_og)
+  return v > 0 ? v : null
+}
+
+export const effectiefFG = (batch: any): number | null => {
+  const fg = Number(batch?.FG)
+  if (fg > 0) return fg
+  const v = Number(batch?.verwacht_fg)
+  return v > 0 ? v : null
+}
+
 // Live ABV op basis van SG-metingen tijdens de vergisting. Gebruikt
 // `batch.OG` als beginwaarde (of de hoogste SG-meting als fallback) en de
 // meest recente SG-meting als actuele FG. `isFinal` is true zodra de batch
