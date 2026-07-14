@@ -4,7 +4,7 @@ import { newId, haGetState, haCallService } from '../utils/api'
 import { tod, fmtD, fmt, r3 } from '../utils/format'
 import {
   STATUSSEN, TANK_REINIGING_LABEL_KEY, VERLIES_BRONNEN, convertEenheid,
-  DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN,
+  DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase,
 } from '../utils/constants'
 import {
   markTankVuilBijVertrek, fgStabiel, tankRestVolume, appendTankHistorie,
@@ -151,15 +151,6 @@ const FASE_VELDEN: Record<string, { key: string, labelKey: string, step: string,
     { key: 'ABV', labelKey: 'batch_info_alcohol', step: '0.1', ph: '5.2' },
     { key: 'product_ph', labelKey: 'batch_info_product_ph', step: '0.01', ph: '4.30' },
   ],
-}
-
-// Welke takengroepen horen bij welke fase (default-groep-IDs uit constants:
-// 1=Voorbereiding, 2=Brouwen, 3=Gisting, 4=Brouwdag, 5=Botteldag).
-const FASE_TAKEN_GROEPEN: Record<string, number[]> = {
-  Gepland: [1],
-  Brouwen: [2, 4],
-  Vergisten: [3],
-  Afgevuld: [5],
 }
 
 // Legacy-status 'Verpakt' telt als 'Afgevuld' in de flow
@@ -316,8 +307,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setMoveTankTarget('')
     setAvF(emptyAvF)
   }
+  // Eén fase tegelijk: een stap in de tijdlijn selecteren deselecteert de
+  // vorige; nogmaals klikken klapt de geselecteerde fase weer dicht.
   const toggleFase = (i: number) =>
-    setOpenFasen(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i])
+    setOpenFasen(prev => prev.includes(i) ? [] : [i])
   // Stap open/dicht: default = open zolang niet-afgerond; klikken zet expliciet.
   const stapOpen = (id: string, done: boolean) => id in openStappen ? openStappen[id] : !done
   const toggleStap = (id: string, done: boolean) =>
@@ -358,8 +351,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     .filter((it: any) => it.actief !== false)
   const takenGroepen = batchTakenGroepen?.length ? batchTakenGroepen : DEFAULT_BATCH_TAKEN_GROEPEN
   const taakLabel = (it: any) => it?.labelKey ? t(it.labelKey) : (it?.label || '')
+  // Groepen per flow-fase: via het `fase`-veld op de groep (met legacy-fallback
+  // op groep-ID voor oudere data — zie groepFase in constants).
+  const groepenVoorFase = (fase: string) => takenGroepen
+    .filter((g: any) => groepFase(g) === fase)
+    .sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0))
   const takenVoorFase = (fase: string) => {
-    const groepIds = FASE_TAKEN_GROEPEN[fase] || []
+    const groepIds = groepenVoorFase(fase).map((g: any) => g.id)
     return takenItems.filter((it: any) => it.type === 'check' && groepIds.includes(it.group_id))
   }
   const toggleCheck = (itemId: any) => {
@@ -510,12 +508,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     if (fase === 'Conditioneren') {
       const carbKlaar = mijnCarb.some((c: any) => c.status === 'voltooid')
-      return [
+      const items: (ChecklistItem | null)[] = [
         {key: 'carb', label: t('flow_chk_carb'), done: carbKlaar,
          detail: mijnCarb.length ? String(mijnCarb.length) : undefined},
         {key: 'abv', label: t('flow_chk_abv'), done: !!selB.abv_definitief,
          detail: Number(selB.ABV) > 0 ? `${selB.ABV}%` : undefined},
+        takenItem('taken', 'flow_chk_taken'),
       ]
+      return items.filter(Boolean) as ChecklistItem[]
     }
     if (fase === 'Afgevuld') {
       const rest = tankRestVolume(selB, mijnAv as any, mijnVerlies as any)
@@ -527,6 +527,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
          detail: mijnAv.length ? `${mijnAv.length} — ${afgevuldL.toFixed(1)} L` : undefined},
         {key: 'restvolume', label: t('flow_chk_restvolume'), done: rest <= 0.5,
          detail: `${rest.toFixed(1)} L`},
+      ]
+      return items.filter(Boolean) as ChecklistItem[]
+    }
+    if (fase === 'Gesloten') {
+      const items: (ChecklistItem | null)[] = [
+        takenItem('taken', 'flow_chk_taken'),
       ]
       return items.filter(Boolean) as ChecklistItem[]
     }
@@ -991,10 +997,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const items = takenVoorFase(fase)
     if (!items.length) return null
     const checks = selB.taken_checks || {}
-    const perGroep = (FASE_TAKEN_GROEPEN[fase] || [])
-      .map(gid => ({
-        groep: takenGroepen.find((g: any) => g.id === gid),
-        items: items.filter((i: any) => i.group_id === gid).sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0)),
+    const perGroep = groepenVoorFase(fase)
+      .map((groep: any) => ({
+        groep,
+        items: items.filter((i: any) => i.group_id === groep.id).sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0)),
       }))
       .filter(g => g.items.length > 0)
     return (
@@ -1825,6 +1831,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             <FlowStap title={t('flow_sectie_tankmove')} optional done={false} {...so('tankmove', true)}>
               {renderTankMove()}
             </FlowStap>
+            {takenVoorFase('Conditioneren').length > 0 && (
+              <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                {renderTaken('Conditioneren')}
+              </FlowStap>
+            )}
           </>
         )}
 
@@ -1844,6 +1855,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               {renderVerlies('tankrest')}
             </FlowStap>
           </>
+        )}
+
+        {/* ── Gereed: afsluitende taken ────────────────────────────────────── */}
+        {faseStatus === 'Gesloten' && takenVoorFase('Gesloten').length > 0 && (
+          <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+            {renderTaken('Gesloten')}
+          </FlowStap>
         )}
         </div>
 
@@ -1915,8 +1933,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             <Btn v="secondary" s="sm" onClick={openInBatches}>{t('flow_open_batches')}</Btn>
           </div>
 
-          {/* Stepper — klikken klapt de bijbehorende fasekaart open/dicht */}
-          <div className="overflow-x-auto pb-1">
+          {/* Stepper — klikken klapt de bijbehorende fasekaart open/dicht.
+              De padding geeft de selectie-ring (ring-2 + offset-2 = 4px buiten
+              de cirkel) ruimte binnen de overflow-container, anders wordt hij
+              aan de boven- en zijkant afgesneden. */}
+          <div className="overflow-x-auto px-1 pt-1 pb-1">
             <div className="flex items-start min-w-[560px]">
               {STATUSSEN.map((s, i) => {
                 const done = i < huidigeFase

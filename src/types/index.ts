@@ -527,6 +527,9 @@ export interface BatchTaakGroep {
   id: number
   naam: string
   volgorde?: number
+  // Batch-flow-stap (waarde uit STATUSSEN) waar deze groep bij hoort.
+  // '' = bewust geen fase; undefined = legacy (koppeling via BATCH_TAKEN_LEGACY_FASE).
+  fase?: string
 }
 
 export interface BatchTaakItem {

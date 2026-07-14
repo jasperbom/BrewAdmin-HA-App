@@ -5,7 +5,7 @@ import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
 import { accijnsCalc, tariefVoorDatum } from './utils/calculations'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
 import DashboardPage from './pages/DashboardPage'
@@ -83,6 +83,7 @@ function App() {
   const [batchTakenItems, setBatchTakenItems] = useStore('batch_taken_items', DEFAULT_BATCH_TAKEN_ITEMS);
   const [batchTakenGroepen, setBatchTakenGroepen] = useStore('batch_taken_groepen', DEFAULT_BATCH_TAKEN_GROEPEN);
   const [takenMigratie, setTakenMigratie] = useStore('batch_taken_migratie_v1', null);
+  const [takenFaseMigratie, setTakenFaseMigratie] = useStore('batch_taken_fase_migratie_v1', null);
   const [legeFacturenMigratie, setLegeFacturenMigratie] = useStore('lege_facturen_migratie_v1', null);
   const [batchAfgevuldMigratie, setBatchAfgevuldMigratie] = useStore('batch_status_afgevuld_migratie_v1', null);
   const [verwachtGravityMigratie, setVerwachtGravityMigratie] = useStore('batch_verwacht_gravity_migratie_v1', null);
@@ -389,6 +390,38 @@ function App() {
     const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenMigratie]);
+
+  // Eénmalige migratie: sinds de batch-taken per flow-stap werken (groepen met
+  // een `fase`-veld) horen ook Conditioneren en Gereed een eigen takengroep te
+  // hebben. Bestaande installaties hebben hun groepen al opgeslagen, dus de
+  // nieuwe defaults uit constants komen daar nooit vanzelf bij — hier voegen we
+  // ze eenmalig toe (met uniek ID, zodat eigen groepen nooit botsen). Wacht op
+  // de v1-migratie hierboven, anders zou die onze toevoeging overschrijven.
+  const takenFaseMigratieRef = React.useRef(false);
+  React.useEffect(() => {
+    if (takenFaseMigratieRef.current) return;
+    if (takenFaseMigratie === 'v1') { takenFaseMigratieRef.current = true; return; }
+    if (takenMigratie !== 'v1' && takenMigratie !== 'done') return;
+    const needed = ['batch_taken_groepen', 'batch_taken_fase_migratie_v1'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    const run = () => {
+      if (takenFaseMigratieRef.current) return;
+      takenFaseMigratieRef.current = true;
+      const groepen = Array.isArray(batchTakenGroepen) && batchTakenGroepen.length
+        ? batchTakenGroepen : DEFAULT_BATCH_TAKEN_GROEPEN;
+      const heeftFase = (fase: string) => groepen.some((g: any) => groepFase(g) === fase);
+      let maxId = groepen.reduce((m: number, g: any) => Math.max(m, g.id || 0), 0);
+      const nieuw: any[] = [];
+      if (!heeftFase('Conditioneren')) nieuw.push({id: ++maxId, naam: t('batch_taken_groep_conditioneren') || 'Conditioneren', volgorde: groepen.length + nieuw.length, fase: 'Conditioneren'});
+      if (!heeftFase('Gesloten')) nieuw.push({id: ++maxId, naam: t('batch_taken_groep_gereed') || 'Gereed', volgorde: groepen.length + nieuw.length, fase: 'Gesloten'});
+      if (nieuw.length > 0) setBatchTakenGroepen([...groepen, ...nieuw]);
+      setTakenFaseMigratie('v1');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [takenFaseMigratie, takenMigratie, batchTakenGroepen]);
 
   // Eenmalige migratie: bestaande batches met status 'Verpakt' worden hernoemd
   // naar 'Afgevuld' (canonieke status sinds v1.9.75). 'Verpakt' blijft in de

@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.64] — 2026-07-14
+
+### Gewijzigd — Tijdlijn batch flow: één stap tegelijk
+
+- Een stap selecteren in de tijdlijn deselecteert automatisch de eerder
+  geselecteerde stap: je ziet altijd maar één fasekaart tegelijk. Nogmaals
+  klikken op de geselecteerde stap klapt de fase weer dicht.
+
+## [1.10.63] — 2026-07-14
+
+### Nieuw — Batch-taken per flow-stap
+
+- Elke stap van de batch flow heeft nu z'n eigen taken. Takengroepen zijn
+  gekoppeld aan een flow-stap via een nieuw **Flow-stap**-veld (Instellingen →
+  Batch-taken): kies per groep bij welke stap (Gepland, Brouwen, Vergisten,
+  Conditioneren, Afvullen, Gereed) de taken horen — of "Geen flow-stap" voor
+  groepen die alleen op de batchpagina zichtbaar moeten zijn.
+- Nieuwe standaardgroepen **Conditioneren** en **Gereed**, zodat ook die
+  stappen een eigen takenlijst hebben. Bestaande installaties krijgen deze
+  groepen er via een eenmalige migratie automatisch bij; bestaande groepen
+  behouden hun huidige koppeling (Voorbereiding → Gepland, Brouwen/Brouwdag →
+  Brouwen, Gisting → Vergisten, Botteldag → Afvullen).
+- De fasekaarten Conditioneren en Gereed tonen het takenblok en tellen de
+  taken mee in de fase-checklist, net als de andere stappen.
+
+### Opgelost — Selectie-ring in de tijdlijn werd afgesneden
+
+- De ring om het stapcijfer van een geselecteerde fase in de batch flow werd
+  aan de bovenkant (en bij de eerste stap aan de linkerkant) afgesneden door
+  de scroll-container van de tijdlijn. De tijdlijn heeft nu ruimte rondom
+  zodat de ring volledig zichtbaar is.
+
 ## [1.10.62] — 2026-07-14
 
 ### Gewijzigd — Batchflow beta: fasekaarten zonder header + twee kolommen op desktop

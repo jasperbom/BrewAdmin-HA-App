@@ -205,15 +205,34 @@ export const DEFAULT_CCP_DEFINITIES = [
 // Default-groepen en -items voor nieuwe installaties. Bestaande installaties
 // krijgen via de migratie in App.tsx hun oude hygiene/brouwdag/botteldag/CCP-
 // definities in dit schema teruggemapt.
-// Groep-IDs 1-6 zijn gereserveerd voor de standaard-categorieën.
+// Groep-IDs 1-8 zijn gereserveerd voor de standaard-categorieën.
+// `fase` koppelt een groep aan een batch-flow-stap (waarde uit STATUSSEN);
+// de taken van die groep verschijnen dan op die stap in de batch flow.
 export const DEFAULT_BATCH_TAKEN_GROEPEN = [
-  {id:1, naam:'Voorbereiding', volgorde:0},
-  {id:2, naam:'Brouwen', volgorde:1},
-  {id:3, naam:'Gisting', volgorde:2},
-  {id:4, naam:'Brouwdag', volgorde:3},
-  {id:5, naam:'Botteldag', volgorde:4},
+  {id:1, naam:'Voorbereiding', volgorde:0, fase:'Gepland'},
+  {id:2, naam:'Brouwen', volgorde:1, fase:'Brouwen'},
+  {id:3, naam:'Gisting', volgorde:2, fase:'Vergisten'},
+  {id:4, naam:'Brouwdag', volgorde:3, fase:'Brouwen'},
+  {id:5, naam:'Botteldag', volgorde:4, fase:'Afgevuld'},
   {id:6, naam:'Kritische controlepunten (HACCP)', volgorde:5},
+  {id:7, naam:'Conditioneren', volgorde:6, fase:'Conditioneren'},
+  {id:8, naam:'Gereed', volgorde:7, fase:'Gesloten'},
 ]
+
+// Legacy-koppeling groep-ID → flow-fase voor opgeslagen groepen van vóór het
+// `fase`-veld (de oorspronkelijke default-IDs 1-5). Groepen mét een expliciet
+// `fase`-veld ('' = bewust geen fase) gaan altijd vóór op deze koppeling.
+export const BATCH_TAKEN_LEGACY_FASE: Record<number, string> = {
+  1: 'Gepland', 2: 'Brouwen', 3: 'Vergisten', 4: 'Brouwen', 5: 'Afgevuld',
+}
+export const groepFase = (g: any): string | null =>
+  g?.fase !== undefined ? (g.fase || null) : (BATCH_TAKEN_LEGACY_FASE[g?.id] ?? null)
+
+// i18n-labels per flow-fase (zelfde actiegerichte labels als de batch flow)
+export const FASE_LABEL_KEYS: Record<string, string> = {
+  Gepland: 'status_planning', Brouwen: 'status_brewing', Vergisten: 'status_fermenting',
+  Conditioneren: 'status_conditioning', Afgevuld: 'flow_fase_afvullen', Gesloten: 'flow_fase_gereed',
+}
 
 // IDs zijn uniek over alle typen heen. Ranges:
 //   1-99   = check-items uit hygiëne-defaults
