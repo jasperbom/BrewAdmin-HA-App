@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.68] — 2026-07-14
+
+### Nieuw — Kassa (POS) voor directe bierverkoop
+
+- Nieuw **Kassa**-scherm in de hoofdnavigatie: producten aantikken, bon
+  opbouwen en direct afrekenen (contant, PIN of op rekening). Eén bevestiging
+  boekt alles in één keer: bestelling (afgerond), picks, uitleveringen,
+  accijns (bij levering uit AGP), voorraadlog en verkoopfactuur — bij contant/
+  PIN meteen op status Betaald.
+- **Terugkerende klanten direct in beeld**: recente klanten als één-tik-chips
+  (met aantal aankopen en laatste aankoopdatum), zoeken op naam/bedrijf/
+  nummer/e-mail, en bij een geselecteerde klant zijn eerdere aankopen als
+  snelknoppen om de vaste bestelling te herhalen. Klantkorting en B2B-prijzen
+  worden automatisch toegepast; openstaand saldo is zichtbaar.
+- Productkaarten tonen live voorraad (FEFO-allocatie bij verkoop; privé/
+  balieverkoop alleen uit voorraad buiten AGP, conform de bestaande
+  orderregels). Automatische statiegeldregels op de factuur, vrije regels
+  voor overige verkoop, en snel een nieuwe klant aanmaken vanaf de kassa.
+
 ## [1.10.67] — 2026-07-14
 
 ### Nieuw — Tankkeuze met beschikbaarheid bij het plannen van een batch
