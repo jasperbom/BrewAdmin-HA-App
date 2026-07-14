@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
-import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN } from '../utils/constants'
+import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId } from '../utils/api'
 import Modal from '../components/ui/Modal'
@@ -2793,6 +2793,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           [next[idx],next[swap]]=[next[swap],next[idx]];
           setBatchTakenGroepen(next.map((g: any, i: number)=>({...g, volgorde:i})));
         };
+        // Koppel een groep aan een batch-flow-stap; de taken van de groep
+        // verschijnen dan op die stap in de batch flow. '' = geen stap.
+        const setGroepFase = (id: number, fase: string) => {
+          const g = groups.find((g: any) => g.id === id);
+          setBatchTakenGroepen(groups.map((g: any) => g.id === id ? { ...g, fase } : g));
+          const faseLabel = fase ? t(FASE_LABEL_KEYS[fase] || '') || fase : '—';
+          logAudit(auditLog, setAuditLog, { entiteit: 'BatchTaakGroep', entiteit_id: id, actie: 'gewijzigd', omschrijving: `Groep "${g?.naam||id}" gekoppeld aan flow-stap: ${faseLabel}` });
+        };
         const renameGroep = (id: number) => {
           const naam = editGroepNaam.trim();
           if (!naam) { setEditGroepId(null); return; }
@@ -2881,6 +2889,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                     ) : (
                       <span className="flex-1 text-sm font-medium text-teal-800 cursor-pointer hover:underline" onClick={() => { setEditGroepId(g.id); setEditGroepNaam(g.naam); }}>{g.naam}</span>
                     )}
+                    <select value={groepFase(g) || ''} onChange={(e: any)=>setGroepFase(g.id, e.target.value)}
+                      title={t('settings_taken_fase_label')}
+                      className="text-xs border border-teal-200 bg-white text-teal-700 rounded px-1.5 py-0.5 focus:outline-none focus:border-teal-500">
+                      <option value="">{t('settings_taken_fase_geen')}</option>
+                      {STATUSSEN.map((s: string) => (
+                        <option key={s} value={s}>{t(FASE_LABEL_KEYS[s] || '') || s}</option>
+                      ))}
+                    </select>
                     <span className="text-xs text-teal-500">{items.filter((i: any)=>i.group_id===g.id).length} items</span>
                     <button onClick={()=>moveGroep(g.id,-1)} disabled={idx===0} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▲</button>
                     <button onClick={()=>moveGroep(g.id,1)} disabled={idx===groups.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
