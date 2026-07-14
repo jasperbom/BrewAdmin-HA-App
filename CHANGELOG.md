@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.64] — 2026-07-14
+
+### Gewijzigd — Tijdlijn batch flow: één stap tegelijk
+
+- Een stap selecteren in de tijdlijn deselecteert automatisch de eerder
+  geselecteerde stap: je ziet altijd maar één fasekaart tegelijk. Nogmaals
+  klikken op de geselecteerde stap klapt de fase weer dicht.
+
 ## [1.10.63] — 2026-07-14
 
 ### Nieuw — Batch-taken per flow-stap

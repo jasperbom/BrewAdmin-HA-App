@@ -307,8 +307,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setMoveTankTarget('')
     setAvF(emptyAvF)
   }
+  // Eén fase tegelijk: een stap in de tijdlijn selecteren deselecteert de
+  // vorige; nogmaals klikken klapt de geselecteerde fase weer dicht.
   const toggleFase = (i: number) =>
-    setOpenFasen(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i])
+    setOpenFasen(prev => prev.includes(i) ? [] : [i])
   // Stap open/dicht: default = open zolang niet-afgerond; klikken zet expliciet.
   const stapOpen = (id: string, done: boolean) => id in openStappen ? openStappen[id] : !done
   const toggleStap = (id: string, done: boolean) =>
