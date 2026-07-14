@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.66] — 2026-07-14
+
+### Nieuw — Nieuwe batch plannen vanuit de batch flow
+
+- Het batchflow-overzicht heeft naast de actieve batches een plus-kaart
+  gekregen: **Nieuwe batch plannen**. Klikken opent een compact formulier in
+  dezelfde kaart waarin je een recept kiest (optioneel), de naam en brouwdatum
+  invult en het batchnummer automatisch voorgesteld krijgt.
+- Bij aanmaken met recept worden — net als via de Recepten-pagina — de
+  receptdoelen (OG/FG/ABV) als verwacht-waarden, het volume, kleur, kooktijd,
+  vergistings- en maischprofiel én alle recept-ingrediënten overgenomen. De
+  nieuwe batch opent direct in de flow op de fase Gepland.
+
 ## [1.10.65] — 2026-07-14
 
 ### Opgelost — Vergistingsvoortgang weer zichtbaar op dashboard en batchpagina
