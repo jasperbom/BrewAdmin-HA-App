@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.61] — 2026-07-14
+
+### Opgelost — Maisch-/brouwzaalrendement stond onterecht op 100%
+
+- De omrekening van Brewfather-`potential` (SG, bv. 1.037) naar extract-yield
+  gebruikte een verkeerde factor (`/3.84`), waardoor een mout ~9,6% yield kreeg
+  in plaats van ~80%. Daardoor viel het theoretisch maximale extract veel te
+  laag uit en werd de maisch-/brouwzaal-efficiency op 100% afgekapt. De
+  omrekening is gecorrigeerd (1.037 → ~80%, 1.046 → 100%).
+- `_normYield` herkent nu ook een per ongeluk als extract_pct opgeslagen
+  SG-potentiaal (1.0–1.2) en valt terug op de standaard-yield (80%) bij een
+  onwaarschijnlijk lage waarde (< 30%). Zo wordt de efficiency van bestaande
+  batches met foutieve extract-data ook meteen realistisch, zonder migratie.
+
 ## [1.10.60] — 2026-07-14
 
 ### Gewijzigd — Batchflow beta: echte flow met inklapbare stappen
