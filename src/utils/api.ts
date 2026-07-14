@@ -460,7 +460,7 @@ export const bfMapRecipe = (r: any, opts: {
     naam: f.name||'', hoeveelheid: Number(f.amount||0), eenheid: 'kg',
     // Yield is het diastatisch extract% (0-100). `potential` is een SG-waarde
     // (1.037 = 80% yield). Beide accepteren als bron voor extract_pct.
-    extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)*1000/3.84*10)/10 : ''),
+    extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)/0.046*100*10)/10 : ''),
   })),
   hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik: mapHopGebruik(h.use), tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min', alpha_pct: h.alpha != null ? Number(h.alpha) : '', temp_c: h.temp != null ? Number(h.temp) : ''})),
   gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
@@ -654,10 +654,16 @@ export const bfMapBatch = (b: any) => ({
   stijl:          b.recipe?.style?.name || '',
   status:         BF_TO_APP[b.status] || 'Gepland',
   liter_vergist:  bfNumSafe(b.measuredBatchSize || b.estimatedBatchSize || b.recipe?.batchSize),
-  OG:  bfNumSafe(b.measuredOg  || b.estimatedOg),
-  FG:  bfNumSafe(b.measuredFg  || b.estimatedFg),
-  ABV: bfNumSafe(b.measuredAbv || b.estimatedAbv),
-  platogehalte: (() => { const og = Number(bfNumSafe(b.measuredOg || b.estimatedOg)); return og >= 1 && og <= 1.2 ? Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og)*10)/10 : ''; })(),
+  // Gemeten waarden alleen uit de `measured*`-velden: een geschatte OG/FG/ABV
+  // (recept-doel) is géén meting en hoort in de `verwacht_*`-velden, zodat de
+  // flow ze als placeholder toont en de gebruiker ze zelf moet bevestigen.
+  OG:  bfNumSafe(b.measuredOg),
+  FG:  bfNumSafe(b.measuredFg),
+  ABV: bfNumSafe(b.measuredAbv),
+  verwacht_og:  bfNumSafe(b.estimatedOg),
+  verwacht_fg:  bfNumSafe(b.estimatedFg),
+  verwacht_abv: bfNumSafe(b.estimatedAbv),
+  platogehalte: (() => { const og = Number(bfNumSafe(b.measuredOg)); return og >= 1 && og <= 1.2 ? Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og)*10)/10 : ''; })(),
   tank:'', electra_kosten:'', water_kosten:'', schoonmaak_kosten:'', overige_kosten:'',
   notities: (Array.isArray(b.notes)?b.notes.join(' '):(typeof b.notes==='object'&&b.notes?'':b.notes||'')) || (Array.isArray(b.tasteNotes)?b.tasteNotes.join(' '):(typeof b.tasteNotes==='object'&&b.tasteNotes?'':b.tasteNotes||'')),
   brouwzaal_eff: bfNumSafe(b.measuredBrewhouseEfficiency != null ? b.measuredBrewhouseEfficiency : b.estimatedBrewhouseEfficiency),
@@ -697,7 +703,7 @@ export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
     ingredient_type: 'Mout',
     hoeveelheid: Number(f.amount||0).toFixed(3),
     eenheid: 'kg',
-    extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)*1000/3.84*10)/10 : ''),
+    extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)/0.046*100*10)/10 : ''),
   }))
   // Hop: bewaar alpha%, kooktijd (min vóór einde) en gebruik (boil/whirlpool/dry-hop)
   // voor IBU-berekening via Tinseth. `time` in BF is min vóór einde koken.

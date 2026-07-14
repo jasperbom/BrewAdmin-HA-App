@@ -1569,10 +1569,16 @@ export const voorspelFG = (og: number, attPct: number): number => {
 // `yield` mag als fractie (0.80) of als percentage (80) worden opgegeven —
 // we normaliseren intern. Als invoer ontbreekt of onlogisch is, geven we 0.
 const _normYield = (y: number): number => {
-  const v = Number(y) || 0
-  if (v <= 0) return 0.80         // default mout-yield
-  if (v > 1) return v / 100        // 80 → 0.80
-  return v
+  let v = Number(y) || 0
+  if (v <= 0) return 0.80                     // ontbreekt → default mout-yield
+  if (v > 1 && v < 1.2) v = (v - 1) / 0.046   // SG-potential (1.037) → fractie (~0.80)
+  else if (v > 1) v = v / 100                 // percentage (80) → 0.80
+  // Een onwaarschijnlijk lage yield (< 30%) voor een vergistbaar duidt op
+  // foutieve data (bv. een verkeerd omgerekende `potential`). Zonder deze
+  // vangnet zou `maxExtract` veel te laag uitvallen en de maisch-/brouwzaal-
+  // efficiency kunstmatig op 100% worden afgekapt. Val dan terug op de default.
+  if (v < 0.30) return 0.80
+  return Math.min(1, v)
 }
 
 const _gravityPoints = (sg: number): number => Math.max(0, (Number(sg) || 1) - 1) * 1000

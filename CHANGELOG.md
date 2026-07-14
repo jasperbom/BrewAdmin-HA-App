@@ -4,6 +4,66 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.62] — 2026-07-14
+
+### Gewijzigd — Batchflow beta: fasekaarten zonder header + twee kolommen op desktop
+
+- De fasekaarten (Gepland, Brouwen, Vergisten, …) hebben geen eigen
+  inklapheader meer: de tijdlijn bovenaan is dé selector. Selecteer je een
+  fase in de tijdlijn, dan zie je alleen die fase — de overige fasen (en hun
+  headerbalken) verdwijnen volledig. Dat scheelt ruimte; een compacte
+  titelregel met voortgangsteller vervangt de headerbalk.
+- Op desktop (breed scherm) staan de stappen van een fase in **twee
+  kolommen**, zodat je meer in één oogopslag ziet. Op mobiel blijft het één
+  kolom.
+
+## [1.10.61] — 2026-07-14
+
+### Opgelost — Maisch-/brouwzaalrendement stond onterecht op 100%
+
+- De omrekening van Brewfather-`potential` (SG, bv. 1.037) naar extract-yield
+  gebruikte een verkeerde factor (`/3.84`), waardoor een mout ~9,6% yield kreeg
+  in plaats van ~80%. Daardoor viel het theoretisch maximale extract veel te
+  laag uit en werd de maisch-/brouwzaal-efficiency op 100% afgekapt. De
+  omrekening is gecorrigeerd (1.037 → ~80%, 1.046 → 100%).
+- `_normYield` herkent nu ook een per ongeluk als extract_pct opgeslagen
+  SG-potentiaal (1.0–1.2) en valt terug op de standaard-yield (80%) bij een
+  onwaarschijnlijk lage waarde (< 30%). Zo wordt de efficiency van bestaande
+  batches met foutieve extract-data ook meteen realistisch, zonder migratie.
+
+## [1.10.60] — 2026-07-14
+
+### Gewijzigd — Batchflow beta: echte flow met inklapbare stappen
+
+- Elke fase in de batchflow bestaat nu uit **inklapbare stappen** waarin de
+  checklist-status én de velden/acties om die stap af te ronden bij elkaar
+  staan. Je hoeft niet meer langs een rij checkboxes naar beneden te scrollen
+  om bij de invulvelden te komen — ze zitten in hetzelfde blok.
+- Afgeronde stappen klappen automatisch dicht (met een groen vinkje in de
+  kop), zodat je per fase alleen ziet wat er nog moet gebeuren. Aanvullende
+  (optionele) stappen — schema, temperatuur, verlies, tankverplaatsing,
+  extra metingen — starten ingeklapt.
+- Bij het doorschuiven naar de volgende fase klapt de afgeronde fase dicht en
+  opent alleen de nieuwe actieve fase.
+
+### Opgelost — Verwacht FG/OG/ABV werd getoond als gemeten waarde
+
+- Een batch die uit een recept of uit Brewfather kwam, kreeg de doel-OG/FG/ABV
+  direct in de **gemeten** velden gezet. Daardoor toonde een batch die nog aan
+  het gisten was al een "definitieve" FG. OG/FG/ABV uit een recept of
+  Brewfather-schatting worden nu bewaard als **verwacht** (`verwacht_og/fg/abv`)
+  en in de batchflow getoond als placeholder met het label "Verwacht (recept)".
+  Pas wanneer je de waarde zelf invult wordt het een echte, gemeten waarde.
+- Bestaande batches worden eenmalig gemigreerd: een FG op een nog niet
+  uitvergiste batch (en een OG vóór de brouwdag, en een niet-bevestigde ABV)
+  verhuist naar het verwacht-veld.
+
+### Opgelost — Foutmelding bij batch met lege pH-/SG-meting
+
+- Een gistingsmeting zonder pH- of SG-waarde (lege invoer) veroorzaakte de
+  foutmelding "toFixed is not a function" op de batchdetailpagina. De
+  meetwaarden worden nu veilig genumeriseerd voordat ze worden weergegeven.
+
 ## [1.10.59] — 2026-07-12
 
 ### Opgelost — Recept-ingrediëntentabellen liepen op mobiel buiten beeld

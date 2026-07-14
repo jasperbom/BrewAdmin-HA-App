@@ -85,6 +85,7 @@ function App() {
   const [takenMigratie, setTakenMigratie] = useStore('batch_taken_migratie_v1', null);
   const [legeFacturenMigratie, setLegeFacturenMigratie] = useStore('lege_facturen_migratie_v1', null);
   const [batchAfgevuldMigratie, setBatchAfgevuldMigratie] = useStore('batch_status_afgevuld_migratie_v1', null);
+  const [verwachtGravityMigratie, setVerwachtGravityMigratie] = useStore('batch_verwacht_gravity_migratie_v1', null);
   const [lang, setLangStore] = useStore('app_lang', detectLang());
   const [inkoopFacturen, setInkoopFacturen] = useStore('inkoop_facturen', []);
   const [scanCorrecties, setScanCorrecties] = useStore('scan_correcties', []);
@@ -413,6 +414,58 @@ function App() {
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [batchAfgevuldMigratie]);
 
+  // Eenmalige migratie: gemeten OG/FG/ABV die in werkelijkheid recept-/Brewfather-
+  // schattingen waren, worden verplaatst naar de `verwacht_*`-velden. Voorheen
+  // kopieerden we het recept-doel in de gemeten velden, waardoor een batch die
+  // nog gist al een "definitieve" FG toonde. Domeinregel:
+  //   • FG (Final Gravity) is pas bekend ná de vergisting → een FG op een batch
+  //     die nog op Gepland/Brouwen/Vergisten staat is per definitie een schatting.
+  //   • OG wordt op de brouwdag gemeten → een OG vóór/tijdens Brouwen is nog een
+  //     schatting; vanaf Vergisten laten we hem staan (dan is hij gemeten).
+  //   • ABV volgt uit OG/FG → idem als FG, tenzij door de gebruiker bevestigd.
+  // De verplaatste waarde blijft als `verwacht_*` bewaard (voor de placeholder).
+  const verwachtGravityMigratieRef = React.useRef(false);
+  React.useEffect(() => {
+    if (verwachtGravityMigratieRef.current) return;
+    if (verwachtGravityMigratie === 'v1') { verwachtGravityMigratieRef.current = true; return; }
+    const ready = () => _fetchedKeys.has('batches') && _fetchedKeys.has('batch_verwacht_gravity_migratie_v1');
+    const run = () => {
+      if (verwachtGravityMigratieRef.current) return;
+      verwachtGravityMigratieRef.current = true;
+      const heeft = (v: any) => v !== '' && v != null && !isNaN(Number(v)) && Number(v) > 0;
+      let changed = false;
+      const next = (bat || []).map((b: any) => {
+        if (!b) return b;
+        const status = b.status === 'Verpakt' ? 'Afgevuld' : b.status;
+        const patch: any = {};
+        // FG verplaatsen zolang de batch nog niet uitvergist is.
+        if (['Gepland', 'Brouwen', 'Vergisten'].includes(status) && heeft(b.FG)) {
+          if (!heeft(b.verwacht_fg)) patch.verwacht_fg = b.FG;
+          patch.FG = '';
+        }
+        // OG verplaatsen zolang de brouwdag nog niet geweest is.
+        if (['Gepland', 'Brouwen'].includes(status) && heeft(b.OG)) {
+          if (!heeft(b.verwacht_og)) patch.verwacht_og = b.OG;
+          patch.OG = '';
+          patch.platogehalte = '';
+        }
+        // ABV verplaatsen tenzij door de gebruiker als definitief bevestigd.
+        if (['Gepland', 'Brouwen', 'Vergisten'].includes(status) && heeft(b.ABV) && !b.abv_definitief) {
+          if (!heeft(b.verwacht_abv)) patch.verwacht_abv = b.ABV;
+          patch.ABV = '';
+        }
+        if (Object.keys(patch).length) { changed = true; return { ...b, ...patch }; }
+        return b;
+      });
+      if (changed) setBat(next);
+      setVerwachtGravityMigratie('v1');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000);
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [verwachtGravityMigratie]);
+
   // Eenmalige migratie: bestaande tanks krijgen default status `Ontsmet` zodat
   // huidige workflows niet breken (alle bestaande tanks zijn impliciet klaar).
   const tankStatusMigratieRef = React.useRef(false);
@@ -522,6 +575,11 @@ function App() {
             if (bfB.measuredOg)  { const _n = Number(bfNumSafe(bfB.measuredOg)); ch.OG = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
             if (bfB.measuredFg)  { const _n = Number(bfNumSafe(bfB.measuredFg)); ch.FG = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
             if (bfB.measuredAbv && !existing.abv_definitief) { const _n = Number(bfNumSafe(bfB.measuredAbv)); ch.ABV = isNaN(_n) ? '' : Math.round(_n * 100) / 100; }
+            // Schattingen (recept-doel) blijven als 'verwacht' bewaard — dit zijn
+            // géén metingen en overschrijven de gemeten velden nooit.
+            if (bfB.estimatedOg)  { const _n = Number(bfNumSafe(bfB.estimatedOg));  ch.verwacht_og  = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
+            if (bfB.estimatedFg)  { const _n = Number(bfNumSafe(bfB.estimatedFg));  ch.verwacht_fg  = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
+            if (bfB.estimatedAbv) { const _n = Number(bfNumSafe(bfB.estimatedAbv)); ch.verwacht_abv = isNaN(_n) ? '' : Math.round(_n * 100) / 100; }
             if (bfB.measuredBrewhouseEfficiency != null) ch.brouwzaal_eff = bfNumSafe(bfB.measuredBrewhouseEfficiency);
             else if (bfB.estimatedBrewhouseEfficiency != null && !existing.brouwzaal_eff) ch.brouwzaal_eff = bfNumSafe(bfB.estimatedBrewhouseEfficiency);
             if (bfB.measuredMashEfficiency != null) ch.maisch_eff = bfNumSafe(bfB.measuredMashEfficiency);
