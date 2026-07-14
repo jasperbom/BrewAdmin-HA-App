@@ -537,7 +537,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (metingen.length > 0) {
       html += `<h2>${t('batch_gist_export_header')} (${metingen.length})</h2><table><tr><th>${t('batch_gist_date_time')}</th><th class="r">SG</th><th class="r">pH</th><th class="r">°C</th><th>${t('batch_gist_remark')}</th></tr>`
       metingen.forEach((m: any) => {
-        html += `<tr><td>${m.datum||''}${m.tijd?' '+m.tijd:''}</td><td class="r">${m.sg!=null?m.sg.toFixed(3):'—'}</td><td class="r">${m.ph!=null?m.ph.toFixed(1):'—'}</td><td class="r">${m.temp!=null?m.temp+'°':'—'}</td><td>${m.opmerking||''}</td></tr>`
+        html += `<tr><td>${m.datum||''}${m.tijd?' '+m.tijd:''}</td><td class="r">${m.sg!==''&&m.sg!=null&&!isNaN(Number(m.sg))?Number(m.sg).toFixed(3):'—'}</td><td class="r">${m.ph!==''&&m.ph!=null&&!isNaN(Number(m.ph))?Number(m.ph).toFixed(1):'—'}</td><td class="r">${m.temp!==''&&m.temp!=null&&!isNaN(Number(m.temp))?Number(m.temp)+'°':'—'}</td><td>${m.opmerking||''}</td></tr>`
       })
       html += `</table>`
     }
@@ -631,6 +631,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
           }
           if (bfB.measuredFg) { const _fgN = Number(bfNumSafe(bfB.measuredFg)); ch.FG = isNaN(_fgN) ? '' : Math.round(_fgN * 1000) / 1000 }
           if (bfB.measuredAbv && !existing.abv_definitief) { const _abvN = Number(bfNumSafe(bfB.measuredAbv)); ch.ABV = isNaN(_abvN) ? '' : Math.round(_abvN * 100) / 100 }
+          // Schattingen (recept-doel) blijven als 'verwacht' bewaard — géén meting.
+          if (bfB.estimatedOg)  { const _n = Number(bfNumSafe(bfB.estimatedOg));  ch.verwacht_og  = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000 }
+          if (bfB.estimatedFg)  { const _n = Number(bfNumSafe(bfB.estimatedFg));  ch.verwacht_fg  = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000 }
+          if (bfB.estimatedAbv) { const _n = Number(bfNumSafe(bfB.estimatedAbv)); ch.verwacht_abv = isNaN(_n) ? '' : Math.round(_n * 100) / 100 }
           if (bfB.measuredBrewhouseEfficiency != null) ch.brouwzaal_eff = bfNumSafe(bfB.measuredBrewhouseEfficiency)
           else if (bfB.estimatedBrewhouseEfficiency != null && !existing.brouwzaal_eff) ch.brouwzaal_eff = bfNumSafe(bfB.estimatedBrewhouseEfficiency)
           if (bfB.measuredMashEfficiency != null) ch.maisch_eff = bfNumSafe(bfB.measuredMashEfficiency)
@@ -1109,9 +1113,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       recept_id: r.id,
       naam: r.naam || selB.naam,
       stijl: r.stijl || '',
-      OG: sg3(r.OG),
-      FG: sg3(r.FG),
-      ABV: abv2(r.ABV),
+      // OG/FG/ABV uit het recept zijn doelen (verwacht), geen metingen. Ze komen
+      // in de verwacht_*-velden en tonen als placeholder; de gebruiker vult de
+      // echte gemeten waarde zelf in. De gemeten velden blijven leeg (de batch
+      // staat op 'Gepland', dus er is nog niets gemeten).
+      OG: '',
+      FG: '',
+      ABV: '',
+      verwacht_og: sg3(r.OG),
+      verwacht_fg: sg3(r.FG),
+      verwacht_abv: abv2(r.ABV),
       liter_vergist: r.batch_size || '',
       kleur: r.kleur || '',
       kooktijd: r.kooktijd || '',
@@ -1964,9 +1975,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                   {batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).map((m: any) => (
                                     <tr key={m.id} className={`hover:bg-gray-50 ${m.auto ? 'opacity-50' : ''}`}>
                                       <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}{m.auto ? <span className="ml-1 text-gray-400 text-xs italic">auto</span> : ''}</td>
-                                      <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg != null ? m.sg.toFixed(3) : '—'}</td>
-                                      <td className="px-2 py-1.5 text-right font-mono text-blue-700">{m.ph != null ? m.ph.toFixed(1) : '—'}</td>
-                                      <td className="px-2 py-1.5 text-right font-mono text-red-500">{m.temp != null ? `${m.temp}°` : '—'}</td>
+                                      <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg !== '' && m.sg != null && !isNaN(Number(m.sg)) ? Number(m.sg).toFixed(3) : '—'}</td>
+                                      <td className="px-2 py-1.5 text-right font-mono text-blue-700">{m.ph !== '' && m.ph != null && !isNaN(Number(m.ph)) ? Number(m.ph).toFixed(1) : '—'}</td>
+                                      <td className="px-2 py-1.5 text-right font-mono text-red-500">{m.temp !== '' && m.temp != null && !isNaN(Number(m.temp)) ? `${Number(m.temp)}°` : '—'}</td>
                                       <td className="px-2 py-1.5 text-gray-400 italic">{m.opmerking || ''}</td>
                                       <td className="px-2 py-1.5">
                                         <button onClick={() => deleteMeting(m.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>

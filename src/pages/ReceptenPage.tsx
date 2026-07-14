@@ -532,9 +532,15 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                     setPreNieuwBatch({
                       naam: selRec.naam,
                       stijl: selRec.stijl || '',
-                      OG: selRec.OG || '',
-                      FG: selRec.FG || '',
-                      ABV: selRec.ABV || '',
+                      // OG/FG/ABV uit het recept zijn doelen (verwacht), geen
+                      // metingen — ze komen in verwacht_* en tonen in de flow als
+                      // placeholder tot de gebruiker de echte waarde invult.
+                      OG: '',
+                      FG: '',
+                      ABV: '',
+                      verwacht_og: selRec.OG || '',
+                      verwacht_fg: selRec.FG || '',
+                      verwacht_abv: selRec.ABV || '',
                       liter_vergist: selRec.batch_size || '',
                       recept_id: selRec.id,
                       // Brouwkundige eigenschappen overnemen zodat het Dashboard

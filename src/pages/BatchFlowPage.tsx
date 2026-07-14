@@ -76,11 +76,15 @@ const FlowVeld: React.FC<{
   step?: string
   placeholder?: string
   disabled?: boolean
-}> = ({ label, value, onCommit, step, placeholder, disabled }) => {
+  verwacht?: string | null
+}> = ({ label, value, onCommit, step, placeholder, disabled, verwacht }) => {
   const ext = value != null && value !== '' ? String(value) : ''
   const [v, setV] = React.useState<string>(ext)
   React.useEffect(() => { setV(ext) }, [ext])
   const commit = () => { if (v.trim() !== ext.trim()) onCommit(v) }
+  // Zolang het veld leeg is tonen we de verwachte (doel)waarde als placeholder —
+  // deze is expliciet géén meting en moet door de gebruiker zelf ingevuld worden.
+  const ph = verwacht != null && verwacht !== '' ? verwacht : placeholder
   return (
     <div>
       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
@@ -88,16 +92,48 @@ const FlowVeld: React.FC<{
         type="number"
         value={v}
         step={step}
-        placeholder={placeholder}
+        placeholder={ph}
         disabled={disabled}
         onChange={e => setV(e.target.value)}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
         className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-300 ${disabled ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
       />
+      {verwacht != null && verwacht !== '' && ext === '' && (
+        <div className="text-[11px] text-gray-400 mt-1">{t('flow_verwacht_hint').replace('{v}', verwacht)}</div>
+      )}
     </div>
   )
 }
+
+// Eén inklapbaar "stap"-blok binnen een fase: de checklist-status én de velden/
+// acties om die stap af te ronden zitten in hetzelfde blok. Afgeronde stappen
+// klappen standaard dicht (open = !done) zodat je niet te veel tegelijk ziet.
+const FlowStap: React.FC<{
+  title: React.ReactNode
+  done?: boolean
+  optional?: boolean
+  detail?: React.ReactNode
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}> = ({ title, done, optional, detail, open, onToggle, children }) => (
+  <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <button type="button" onClick={onToggle}
+      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors">
+      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+        done ? 'bg-green-100 text-green-700 ring-1 ring-green-200'
+             : optional ? 'bg-gray-100 text-gray-400'
+             : 'bg-orange-100 text-orange-600 ring-1 ring-orange-200'}`}>
+        {done ? '✓' : optional ? '·' : '○'}
+      </span>
+      <span className="text-sm font-semibold text-gray-700 flex-1 min-w-0">{title}</span>
+      {detail != null && detail !== '' && <span className="text-xs text-gray-400 flex-shrink-0">{detail}</span>}
+      <span className={`text-gray-300 text-[10px] flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+    </button>
+    {open && <div className="px-3 pb-3 pt-1 border-t border-gray-100 space-y-3">{children}</div>}
+  </div>
+)
 
 // Bewerkbare batchvelden per fase. De checklist hierboven leest dezelfde velden,
 // dus invullen vinkt de bijbehorende controle automatisch af.
@@ -251,6 +287,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 }) => {
   const [sel, setSel] = useState<number | null>(null)
   const [openFasen, setOpenFasen] = useState<number[]>([])
+  // Handmatig open/dicht-geklapte stappen. Zolang een stap hier niet in staat,
+  // volgt hij de default (open = niet-afgerond).
+  const [openStappen, setOpenStappen] = useState<Record<string, boolean>>({})
   const [geslotenOpen, setGeslotenOpen] = useState(false)
   const [notitiesOpen, setNotitiesOpen] = useState(false)
   const [mForm, setMForm] = useState({sg: '', temp: '', ph: ''})
@@ -272,12 +311,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const b = bat.find((x: any) => x.id === id)
     setSel(id)
     setOpenFasen(b ? [faseIndex(b.status)] : [0])
+    setOpenStappen({})
     setNotitiesOpen(false)
     setMoveTankTarget('')
     setAvF(emptyAvF)
   }
   const toggleFase = (i: number) =>
     setOpenFasen(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i])
+  // Stap open/dicht: default = open zolang niet-afgerond; klikken zet expliciet.
+  const stapOpen = (id: string, done: boolean) => id in openStappen ? openStappen[id] : !done
+  const toggleStap = (id: string, done: boolean) =>
+    setOpenStappen(prev => ({ ...prev, [id]: !(id in prev ? prev[id] : !done) }))
 
   // Fasenamen in de flow zijn actiegericht: "Afvullen" en "Gereed" i.p.v. de
   // toestandslabels "Afgevuld"/"Gesloten" die elders in de app gelden.
@@ -504,8 +548,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, status: nieuweStatus} : b))
     setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), type: 'status', batch_id: selB.id, referentie: `${oudeStatus} → ${nieuweStatus}`}])
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', velden: {status: {oud: oudeStatus, nieuw: nieuweStatus}}, omschrijving: `Status: ${oudeStatus} → ${nieuweStatus}`})
-    // Klap de nieuwe actieve fase open (en houd de vorige open zoals hij was).
-    setOpenFasen(prev => prev.includes(nieuweIdx) ? prev : [...prev, nieuweIdx])
+    // De afgeronde fase klapt dicht; alleen de nieuwe actieve fase blijft open,
+    // zodat je steeds maar één fase tegelijk ziet (de "flow"). Stap-status reset.
+    setOpenFasen([nieuweIdx])
+    setOpenStappen({})
   }
 
   const naarVolgende = () => {
@@ -913,7 +959,19 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       .sort((a: any, b: any) => (String(b.datum || '') + 'T' + String(b.tijd || '00:00')).localeCompare(String(a.datum || '') + 'T' + String(a.tijd || '00:00')))
     return ms.length ? Number(ms[0].sg) : null
   })()
-  const fgDoel = Number(selB.FG) > 0 ? Number(selB.FG) : (Number(batchRecept?.FG) > 0 ? Number(batchRecept?.FG) : null)
+  const fgDoel = Number(selB.FG) > 0 ? Number(selB.FG)
+    : Number(selB.verwacht_fg) > 0 ? Number(selB.verwacht_fg)
+    : (Number(batchRecept?.FG) > 0 ? Number(batchRecept?.FG) : null)
+
+  // Verwachte (doel)waarde voor OG/FG/ABV: eerst het opgeslagen verwacht_*-veld
+  // (recept-doel of Brewfather-schatting), anders het gekoppelde recept. Wordt
+  // als placeholder getoond zolang de gebruiker de echte meetwaarde niet invult.
+  const verwachtVoor = (key: string): string | null => {
+    const vk: any = { OG: 'verwacht_og', FG: 'verwacht_fg', ABV: 'verwacht_abv' }[key]
+    let v: any = vk && selB[vk] != null && selB[vk] !== '' ? selB[vk] : null
+    if ((v == null || v === '') && batchRecept) v = ({ OG: batchRecept.OG, FG: batchRecept.FG, ABV: batchRecept.ABV } as any)[key]
+    return (v != null && v !== '' && Number(v) > 0) ? String(v) : null
+  }
 
   // Doeltemperatuur uit het schema: cold-crash-target wint, anders de huidige
   // vergistingsstap.
@@ -939,15 +997,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         items: items.filter((i: any) => i.group_id === gid).sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0)),
       }))
       .filter(g => g.items.length > 0)
-    const gedaan = items.filter((i: any) => checks[i.id]).length
     return (
-      <div className="border border-gray-200 rounded-lg p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_sectie_taken')}</div>
-          <div className="text-xs text-gray-400">{gedaan}/{items.length}</div>
-        </div>
-        <div className="space-y-3">
-          {perGroep.map(({groep, items: gItems}) => (
+      <div className="space-y-3">
+        {perGroep.map(({groep, items: gItems}) => (
             <div key={groep?.id}>
               {perGroep.length > 1 && groep && (
                 <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{groep.naam}</div>
@@ -962,7 +1014,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               </div>
             </div>
           ))}
-        </div>
       </div>
     )
   }
@@ -989,12 +1040,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   }
 
   // Afweeg/afboek-tabel: lot kiezen + per regel afboeken van de voorraad.
-  const renderAfboekTabel = (rows: any[], titel: string) => (
-    <div className="border border-gray-200 rounded-lg p-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{titel}</div>
-        <div className="text-xs text-gray-400">{rows.filter((r: any) => r.afgeboekt).length}/{rows.length}</div>
-      </div>
+  const renderAfboekTabel = (rows: any[]) => (
+    <div>
       {rows.length === 0 ? (
         <div className="text-sm text-gray-400 italic">{t('flow_afboek_geen')}</div>
       ) : (
@@ -1064,8 +1111,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       ['IBU', batchRecept.IBU], [t('flow_recept_volume'), batchRecept.batch_size ? `${batchRecept.batch_size} L` : ''],
     ] : []
     return (
-      <div className="border border-gray-200 rounded-lg p-3 space-y-3">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_sectie_recept')}</div>
+      <div className="space-y-3">
         {batchRecept ? (
           <>
             <div className="flex flex-wrap items-baseline gap-2">
@@ -1121,8 +1167,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const receptProfiel: any[] = Array.isArray(batchRecept?.vergistingsprofiel) ? batchRecept!.vergistingsprofiel : []
     if (!profiel.length) {
       return (
-        <div className="border border-gray-200 rounded-lg p-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_sectie_schema')}</div>
+        <div>
           <div className="text-sm text-gray-400 italic">{t('flow_schema_geen')}</div>
           {receptProfiel.length > 0 && (
             <div className="mt-2">
@@ -1138,15 +1183,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const dagenInStap = stapStart ? Math.max(0, (Date.now() - new Date(stapStart).getTime()) / 86400000) : null
     const stapDoelDagen = Number(profiel[stapIdx]?.tijd) || null
     return (
-      <div className="border border-gray-200 rounded-lg p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_sectie_schema')}</div>
-          {dagenInStap != null && stapDoelDagen != null && (
-            <div className={`text-xs ${dagenInStap >= stapDoelDagen ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
-              {t('flow_schema_dag_x').replace('{x}', String(Math.floor(dagenInStap) + 1)).replace('{y}', String(stapDoelDagen))}
-            </div>
-          )}
-        </div>
+      <div>
+        {dagenInStap != null && stapDoelDagen != null && (
+          <div className={`text-xs mb-2 ${dagenInStap >= stapDoelDagen ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
+            {t('flow_schema_dag_x').replace('{x}', String(Math.floor(dagenInStap) + 1)).replace('{y}', String(stapDoelDagen))}
+          </div>
+        )}
         <div className="space-y-1">
           {profiel.map((s: any, i: number) => {
             const actief = i === stapIdx
@@ -1185,17 +1227,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const huidige = laatsteSg ?? (Number(selB.FG) > 0 ? Number(selB.FG) : null)
     if (!(og > 1) || fgDoel == null || huidige == null || og <= fgDoel) {
       return (
-        <div className="border border-gray-200 rounded-lg p-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('flow_progressie')}</div>
-          <div className="text-xs text-gray-400 italic">{t('flow_progressie_hint')}</div>
-        </div>
+        <div className="text-xs text-gray-400 italic">{t('flow_progressie_hint')}</div>
       )
     }
     const pct = Math.min(100, Math.max(0, (og - huidige) / (og - fgDoel) * 100))
     return (
-      <div className="border border-gray-200 rounded-lg p-3">
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_progressie')}</div>
+      <div>
+        <div className="flex items-center justify-end mb-1.5">
           <div className="text-xs text-gray-500">
             {t('flow_progressie_sg')}: <span className="font-mono font-medium">{huidige.toFixed(3)}</span>
           </div>
@@ -1217,13 +1255,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const renderVerlies = (bronDefault: string) => {
     const bronnen = VERLIES_BRONNEN.filter(b => b.key !== 'afgekeurd')
     return (
-      <div className="border border-gray-200 rounded-lg p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_sectie_verlies')}</div>
-          {mijnVerlies.length > 0 && (
-            <div className="text-xs text-gray-400">{mijnVerlies.length} {t('batch_verlies_posten')} · {verliesL.toFixed(1)} L</div>
-          )}
-        </div>
+      <div>
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <input type="date" value={verliesForm.datum}
             onChange={e => setVerliesForm((f: any) => ({...f, datum: e.target.value}))}
@@ -1275,14 +1307,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const curTemp = carbForm.tank_temp_c === '' ? (sensorTemp ?? 2) : (Number(carbForm.tank_temp_c) || 0)
     const previewDruk = carbDrukBar(curVols, curTemp)
     return (
-      <div className="border border-gray-200 rounded-lg p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
-            {t('carb_title')}
-            {actief && <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>}
-          </div>
-          {voltooid.length > 0 && <div className="text-xs text-gray-400">{voltooid.length} {t('carb_status_completed').toLowerCase()}</div>}
-        </div>
+      <div>
         {actief ? (
           <div className="border border-green-200 bg-green-50 rounded-lg p-3 space-y-2">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
@@ -1379,8 +1404,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   // Tankverplaatsing (bright tank / lagering)
   const renderTankMove = () => (
-    <div className="border border-gray-200 rounded-lg p-3">
-      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_sectie_tankmove')}</div>
+    <div>
       <div className="flex flex-wrap items-end gap-2">
         <Sel label={t('batch_move_tank_label')} value={moveTankTarget} onChange={setMoveTankTarget}
           cls="w-56"
@@ -1404,9 +1428,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           selB, accijnsInst)
       : null
     return (
-      <div className="border border-gray-200 rounded-lg p-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_sectie_afvullen')}</div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-end">
           <div className={`text-xs ${rest > 0.5 ? 'text-orange-600' : 'text-gray-400'}`}>
             {t('flow_restvolume')}: {rest.toFixed(1)} L
           </div>
@@ -1591,16 +1614,66 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // Inhoud van één fasekaart (checklist + invulvelden + extra's per fase).
+  // Numerieke fasevelden (OG/FG/ABV/pH). OG/FG/ABV tonen de verwachte doelwaarde
+  // als placeholder — die is géén meting en moet door de gebruiker zelf ingevuld.
+  const renderFaseVelden = (faseStatus: string) => FASE_VELDEN[faseStatus] ? (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {FASE_VELDEN[faseStatus].map(veld => (
+        <FlowVeld key={veld.key} label={t(veld.labelKey)} value={selB[veld.key]}
+          onCommit={commitNum(veld.key)} step={veld.step} placeholder={veld.ph}
+          verwacht={['OG', 'FG', 'ABV'].includes(veld.key) ? verwachtVoor(veld.key) : null}
+          disabled={veld.key === 'ABV' && !!selB.abv_definitief} />
+      ))}
+    </div>
+  ) : null
+
+  // Snelle SG-meting (vergisten/conditioneren).
+  const renderMetingForm = () => (
+    <div className="flex flex-wrap items-end gap-2">
+      <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
+      <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder="19.5" cls="w-28" />
+      <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
+      <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
+    </div>
+  )
+  const renderGrafiek = () => mijnMetingen.length >= 2
+    ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
+    : <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
+
+  // Inhoud van één fasekaart. Elke stap combineert de checklist-status én de
+  // velden/acties die nodig zijn om die stap af te ronden in één inklapbaar blok;
+  // afgeronde stappen klappen standaard dicht zodat je niet te veel tegelijk ziet.
   const renderFaseInhoud = (i: number) => {
     const faseStatus = STATUSSEN[i]
     const cl = berekenChecklist(i)
+    const clMap: Record<string, ChecklistItem> = Object.fromEntries(cl.map(c => [c.key, c]))
     const klaarN = cl.filter(c => c.done).length
     const isHuidig = i === huidigeFase
     const brouwBi = mijnBi.filter((x: any) => !isDryHopRij(x))
     const dryHopBi = mijnBi.filter((x: any) => isDryHopRij(x))
+    // Stabiele open/dicht-props voor een FlowStap (id uniek per fase+stap).
+    const so = (id: string, done: boolean) => ({
+      open: stapOpen(`${i}:${id}`, done),
+      onToggle: () => toggleStap(`${i}:${id}`, done),
+    })
+    const abvKnop = (
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+        {selB.abv_definitief ? (
+          <>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 ring-1 ring-green-200">
+              {t('batch_abv_definitief_badge')}
+            </span>
+            <Btn v="secondary" s="sm" onClick={bewerkAbv}>{t('batch_abv_bewerk_btn')}</Btn>
+          </>
+        ) : (
+          <Btn v="green" s="sm" onClick={bevestigAbv} disabled={!Number(selB.ABV)}>
+            {t('batch_abv_bevestig_btn')}
+          </Btn>
+        )}
+      </div>
+    )
     return (
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-3">
         <p className="text-sm text-gray-600">{FASE_DESC[faseStatus]}</p>
         {!isHuidig && (
           <div className="text-xs px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-500">
@@ -1608,165 +1681,158 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </div>
         )}
 
-        {/* Checklist */}
-        {cl.length > 0 && (
-          <div className="space-y-1.5">
-            {cl.map(c => (
-              <div key={c.key} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${c.done ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-orange-100 text-orange-600 ring-1 ring-orange-200'}`}>
-                  {c.done ? '✓' : '○'}
-                </span>
-                <span className={`text-sm flex-1 ${c.done ? 'text-gray-700' : 'text-gray-600'}`}>{c.label}</span>
-                {c.detail && <span className="text-xs text-gray-400">{c.detail}</span>}
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* ── Gepland ─────────────────────────────────────────────────────── */}
-        {faseStatus === 'Gepland' && (
-          <>
-            {renderReceptKaart()}
-            <div className="border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
-                  opts={(tanks || []).map((tk: any) => {
-                    const naam = tk.naam ?? String(tk.id)
-                    const st = tankStatussen?.[naam]?.status
-                    const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : null
-                    return { v: naam, l: stLabel ? `${naam} — ${stLabel}` : naam }
-                  })} />
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
-                  <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+        {faseStatus === 'Gepland' && (() => {
+          const receptDone = !!clMap.recept?.done && !!clMap.ingredienten?.done
+          const planningDone = !!clMap.tank?.done && !!clMap.datum?.done
+          const planningDetail = [selB.tank || null, selB.datum ? fmtD(selB.datum) : null].filter(Boolean).join(' · ')
+          return (
+            <>
+              <FlowStap title={t('flow_sectie_recept')} done={receptDone} detail={clMap.ingredienten?.detail} {...so('recept', receptDone)}>
+                {renderReceptKaart()}
+              </FlowStap>
+              <FlowStap title={t('flow_stap_planning')} done={planningDone} detail={planningDetail || undefined} {...so('planning', planningDone)}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
+                    opts={(tanks || []).map((tk: any) => {
+                      const naam = tk.naam ?? String(tk.id)
+                      const st = tankStatussen?.[naam]?.status
+                      const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : null
+                      return { v: naam, l: stLabel ? `${naam} — ${stLabel}` : naam }
+                    })} />
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                    <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                  </div>
                 </div>
-              </div>
-              {selB.tank && tankStatussen?.[selB.tank]?.status && tankStatussen[selB.tank].status !== 'Ontsmet' && (
-                <div className="text-xs px-3 py-2 mt-3 rounded-lg bg-orange-50 border border-orange-200 text-orange-700">
-                  {t('flow_tank_niet_ontsmet').replace('{status}', t(TANK_REINIGING_LABEL_KEY[tankStatussen[selB.tank].status] || '') || tankStatussen[selB.tank].status)}
-                </div>
+                {selB.tank && tankStatussen?.[selB.tank]?.status && tankStatussen[selB.tank].status !== 'Ontsmet' && (
+                  <div className="text-xs px-3 py-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-700">
+                    {t('flow_tank_niet_ontsmet').replace('{status}', t(TANK_REINIGING_LABEL_KEY[tankStatussen[selB.tank].status] || '') || tankStatussen[selB.tank].status)}
+                  </div>
+                )}
+              </FlowStap>
+              {takenVoorFase('Gepland').length > 0 && (
+                <FlowStap title={t('flow_chk_voorbereiding')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                  {renderTaken('Gepland')}
+                </FlowStap>
               )}
-            </div>
-            {renderTaken('Gepland')}
-          </>
-        )}
+            </>
+          )
+        })()}
 
-        {/* ── Brouwen: water → afwegen/afboeken → brouwdag-wizard → koeling ── */}
+        {/* ── Brouwen ─────────────────────────────────────────────────────── */}
         {faseStatus === 'Brouwen' && (
           <>
+            <FlowStap title={t('flow_sectie_afboeken')} done={!!clMap.afgeboekt?.done} detail={clMap.afgeboekt?.detail} {...so('afboeken', !!clMap.afgeboekt?.done)}>
+              {renderAfboekTabel(brouwBi)}
+            </FlowStap>
+            <FlowStap title={t('flow_veld_titel')} done={!!clMap.og?.done && !!clMap.liter?.done}
+              detail={[clMap.og?.detail, clMap.liter?.detail].filter(Boolean).join(' · ') || undefined}
+              {...so('meetwaarden', !!clMap.og?.done && !!clMap.liter?.done)}>
+              {renderFaseVelden('Brouwen')}
+            </FlowStap>
             <WaterAdditieSection batch={selB}
               waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
-            {renderAfboekTabel(brouwBi, t('flow_sectie_afboeken'))}
             <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
               stappen={brouwdagStappen} setStappen={setBrouwdagStappen}
               tanks={tanks} lots={lots} ingredienten={ing}
               hopStorageDefault={brouwprocesInst?.hop_storage}
               recepten={recepten} />
             <KoelLogSection batch={selB} koelLogs={koelLogs} setKoelLogs={setKoelLogs} />
-            {renderTaken('Brouwen')}
-          </>
-        )}
-
-        {/* ── Vergisten: schema → temperatuur → progressie → meten → dry-hop → verlies */}
-        {faseStatus === 'Vergisten' && (
-          <>
-            {renderVergistingsSchema()}
-            <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
-              doelTemp={doelTemp} doelLabel={t('flow_temp_doel')} />
-            {renderProgressie()}
-          </>
-        )}
-
-        {/* ── Conditioneren: temperatuur (cold-crash) + carbonatie ─────────── */}
-        {faseStatus === 'Conditioneren' && (
-          <>
-            <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
-              doelTemp={doelTemp} doelLabel={selB.cold_crash_datum ? t('flow_temp_doel_coldcrash') : t('flow_temp_doel')} />
-            {renderCarbonatie()}
-          </>
-        )}
-
-        {/* Invullen — fasen met numerieke velden */}
-        {FASE_VELDEN[faseStatus] && (
-          <div className="border border-gray-200 rounded-lg p-3">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_veld_titel')}</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {FASE_VELDEN[faseStatus].map(veld => (
-                <FlowVeld key={veld.key} label={t(veld.labelKey)} value={selB[veld.key]}
-                  onCommit={commitNum(veld.key)} step={veld.step} placeholder={veld.ph}
-                  disabled={veld.key === 'ABV' && !!selB.abv_definitief} />
-              ))}
-            </div>
-            {faseStatus === 'Conditioneren' && (
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                {selB.abv_definitief ? (
-                  <>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 ring-1 ring-green-200">
-                      {t('batch_abv_definitief_badge')}
-                    </span>
-                    <Btn v="secondary" s="sm" onClick={bewerkAbv}>{t('batch_abv_bewerk_btn')}</Btn>
-                  </>
-                ) : (
-                  <Btn v="green" s="sm" onClick={bevestigAbv} disabled={!Number(selB.ABV)}>
-                    {t('batch_abv_bevestig_btn')}
-                  </Btn>
-                )}
-              </div>
+            {takenVoorFase('Brouwen').length > 0 && (
+              <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                {renderTaken('Brouwen')}
+              </FlowStap>
             )}
-          </div>
-        )}
-
-        {/* Snelle SG-meting tijdens vergisten/conditioneren */}
-        {['Vergisten', 'Conditioneren'].includes(faseStatus) && (
-          <div className="border border-gray-200 rounded-lg p-3">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_meting_snel')}</div>
-            <div className="flex flex-wrap items-end gap-2">
-              <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
-              <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder="19.5" cls="w-28" />
-              <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
-              <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
-            </div>
-          </div>
-        )}
-
-        {/* Fermentatiegrafiek (gedeeld component met de batchpagina) */}
-        {['Vergisten', 'Conditioneren'].includes(faseStatus) && (
-          mijnMetingen.length >= 2 ? (
-            <div className="border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('batch_gist_chart')}</div>
-              <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
-            </div>
-          ) : (
-            <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
-          )
-        )}
-
-        {/* ── Vergisten (vervolg): dry-hop + verlies + taken ───────────────── */}
-        {faseStatus === 'Vergisten' && (
-          <>
-            {dryHopBi.length > 0 && renderAfboekTabel(dryHopBi, t('flow_dryhop_afboek_titel'))}
-            <DryHopSection batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
-            {renderVerlies('monster')}
-            {renderTaken('Vergisten')}
           </>
         )}
 
-        {/* ── Conditioneren (vervolg): verlies + tankverplaatsing ──────────── */}
+        {/* ── Vergisten ───────────────────────────────────────────────────── */}
+        {faseStatus === 'Vergisten' && (() => {
+          const metingenDone = !!clMap.metingen?.done && !!clMap.fg?.done && !!clMap.fg_stabiel?.done
+          return (
+            <>
+              <FlowStap title={t('flow_sectie_schema')} optional done={schemaProfiel.length > 0} {...so('schema', true)}>
+                {renderVergistingsSchema()}
+                <div className="pt-1">
+                  <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
+                    doelTemp={doelTemp} doelLabel={t('flow_temp_doel')} />
+                </div>
+              </FlowStap>
+              <FlowStap title={t('flow_stap_metingen')} done={metingenDone}
+                detail={[clMap.metingen?.detail && `${clMap.metingen.detail}×`, clMap.fg?.detail].filter(Boolean).join(' · ') || undefined}
+                {...so('metingen', metingenDone)}>
+                {renderFaseVelden('Vergisten')}
+                {renderProgressie()}
+                {renderMetingForm()}
+                {renderGrafiek()}
+              </FlowStap>
+              {dryHopBi.length > 0 && (
+                <FlowStap title={t('flow_dryhop_afboek_titel')} done={!!clMap.dryhop?.done} detail={clMap.dryhop?.detail} {...so('dryhop', !!clMap.dryhop?.done)}>
+                  {renderAfboekTabel(dryHopBi)}
+                </FlowStap>
+              )}
+              <DryHopSection batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
+              <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
+                detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
+                {...so('verlies', true)}>
+                {renderVerlies('monster')}
+              </FlowStap>
+              {takenVoorFase('Vergisten').length > 0 && (
+                <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                  {renderTaken('Vergisten')}
+                </FlowStap>
+              )}
+            </>
+          )
+        })()}
+
+        {/* ── Conditioneren ───────────────────────────────────────────────── */}
         {faseStatus === 'Conditioneren' && (
           <>
-            {renderVerlies('gist_dump')}
-            {renderTankMove()}
+            <FlowStap title={t('flow_temp_titel')} optional done={!!selB.cold_crash_datum} {...so('temp', true)}>
+              <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
+                doelTemp={doelTemp} doelLabel={selB.cold_crash_datum ? t('flow_temp_doel_coldcrash') : t('flow_temp_doel')} />
+            </FlowStap>
+            <FlowStap title={t('carb_title')} done={!!clMap.carb?.done} detail={clMap.carb?.detail} {...so('carb', !!clMap.carb?.done)}>
+              {renderCarbonatie()}
+            </FlowStap>
+            <FlowStap title={t('flow_chk_abv')} done={!!clMap.abv?.done} detail={clMap.abv?.detail} {...so('abv', !!clMap.abv?.done)}>
+              {renderFaseVelden('Conditioneren')}
+              {abvKnop}
+            </FlowStap>
+            <FlowStap title={t('flow_meting_snel')} optional done={mijnMetingen.length >= 2}
+              detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined} {...so('meting', true)}>
+              {renderMetingForm()}
+              {renderGrafiek()}
+            </FlowStap>
+            <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
+              detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
+              {...so('verlies', mijnVerlies.length > 0)}>
+              {renderVerlies('gist_dump')}
+            </FlowStap>
+            <FlowStap title={t('flow_sectie_tankmove')} optional done={false} {...so('tankmove', true)}>
+              {renderTankMove()}
+            </FlowStap>
           </>
         )}
 
         {/* ── Afvullen ─────────────────────────────────────────────────────── */}
         {faseStatus === 'Afgevuld' && (
           <>
-            {renderTaken('Afgevuld')}
-            {renderAfvullen()}
-            {renderVerlies('tankrest')}
+            {takenVoorFase('Afgevuld').length > 0 && (
+              <FlowStap title={t('flow_chk_hygiene')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                {renderTaken('Afgevuld')}
+              </FlowStap>
+            )}
+            <FlowStap title={t('flow_sectie_afvullen')} done={!!clMap.afvulling?.done} detail={clMap.afvulling?.detail} {...so('afvullen', !!clMap.afvulling?.done)}>
+              {renderAfvullen()}
+            </FlowStap>
+            <FlowStap title={t('flow_sectie_verlies')} optional done={!!clMap.restvolume?.done}
+              detail={clMap.restvolume?.detail} {...so('verlies', true)}>
+              {renderVerlies('tankrest')}
+            </FlowStap>
           </>
         )}
 
