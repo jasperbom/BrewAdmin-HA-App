@@ -2537,6 +2537,8 @@
   "pos_bon_leeg": "Nada registrado aún — toca un producto",
   "pos_vrije_regel": "Línea libre",
   "pos_korting": "Descuento",
+  "pos_prijs_excl": "sin IVA",
+  "pos_prijs_incl": "con IVA",
   "pos_korting_soort": "Tipo de descuento",
   "pos_korting_soort_bedrag": "Importe (€, IVA incluido)",
   "pos_korting_soort_pct": "Porcentaje (%)",

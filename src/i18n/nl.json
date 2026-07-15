@@ -2537,6 +2537,8 @@
   "pos_bon_leeg": "Nog niets aangeslagen — tik op een product",
   "pos_vrije_regel": "Vrije regel",
   "pos_korting": "Korting",
+  "pos_prijs_excl": "excl. BTW",
+  "pos_prijs_incl": "incl. BTW",
   "pos_korting_soort": "Soort korting",
   "pos_korting_soort_bedrag": "Bedrag (€, incl. BTW)",
   "pos_korting_soort_pct": "Percentage (%)",

@@ -2537,6 +2537,8 @@
   "pos_bon_leeg": "Nothing rung up yet — tap a product",
   "pos_vrije_regel": "Custom line",
   "pos_korting": "Discount",
+  "pos_prijs_excl": "excl. VAT",
+  "pos_prijs_incl": "incl. VAT",
   "pos_korting_soort": "Discount type",
   "pos_korting_soort_bedrag": "Amount (€, incl. VAT)",
   "pos_korting_soort_pct": "Percentage (%)",

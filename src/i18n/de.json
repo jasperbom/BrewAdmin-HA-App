@@ -2537,6 +2537,8 @@
   "pos_bon_leeg": "Noch nichts erfasst — tippen Sie auf ein Produkt",
   "pos_vrije_regel": "Freie Position",
   "pos_korting": "Rabatt",
+  "pos_prijs_excl": "exkl. MwSt.",
+  "pos_prijs_incl": "inkl. MwSt.",
   "pos_korting_soort": "Rabattart",
   "pos_korting_soort_bedrag": "Betrag (€, inkl. MwSt.)",
   "pos_korting_soort_pct": "Prozentsatz (%)",
