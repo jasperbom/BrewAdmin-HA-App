@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.86 · fase 0 afgerond, fase 1 loopt
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.87 · fase 0 afgerond, fase 1 loopt
 
 ---
 
@@ -49,8 +49,11 @@
       keys atomair; saves uit dezelfde event-tick worden client-side
       automatisch gebundeld (picken/afronden/kassa = één commit)
       *(v1.10.86, 2026-07-15)*
-- [ ] **1.2 UUID's voor nieuwe records** — `crypto.randomUUID()` i.p.v.
-      `max(id)+1`; bestaande integer-id's blijven geldig
+- [x] **1.2 Botsingsvrije id's voor nieuwe records** — tijdgebaseerde monotone
+      numerieke id's i.p.v. `max(id)+1`; geen hergebruik na verwijderen, geen
+      concurrency-duplicaten. *(v1.10.87, 2026-07-15 — bewuste afwijking van
+      "UUID-strings": numeriek gehouden zodat bestaande Number()-vergelijkingen
+      en sorteringen blijven werken; zelfde doel bereikt)*
 - [ ] **1.3 Referentiële-integriteitscheck** — `checkIntegriteit()` +
       Gezondheid-tab + guards bij verwijderen
 - [ ] **1.4 Server-side schemavalidatie (licht)** — per key minimaal contract,
@@ -107,3 +110,4 @@
 | 2026-07-15 | 1.10.84 | 0.7 | saveLot → voorraad_log; inventarisatie-bierverschillen → afboekingen (vermis/overig); tankvolume-guard bij afvullen (2 pagina's) |
 | 2026-07-15 | 1.10.85 | 0.8 | Excel-cel-chunking (veld~n) + import-diagnostiek; round-trip getest met 177KB geneste JSON — **fase 0 compleet** |
 | 2026-07-15 | 1.10.86 | 1.1 | /api/commit (alles-of-niets, temp+rename in 2 fasen) + client-side auto-batching per event-tick; getest: 409 laat niets achter, 404-fallback |
+| 2026-07-15 | 1.10.87 | 1.2 | newId: tijdgebaseerd + monotoon + boven bestaand max; getest: 5000 snelle uitgiftes uniek/monotoon/safe-integer |

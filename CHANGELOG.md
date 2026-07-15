@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.87] — 2026-07-15
+
+### Gewijzigd — Botsingsvrije record-id's (ERP-plan 1.2)
+
+- Nieuwe records krijgen voortaan een tijdgebaseerde, monotone id in plaats
+  van `hoogste+1`. Daarmee kan een verwijderd record zijn id niet meer
+  "doorgeven" aan een later aangemaakt record (verwijzingen vanuit accijns,
+  picks e.d. wezen dan stil naar het verkeerde record) en kunnen twee
+  gelijktijdige apparaten geen dubbele id's meer uitdelen.
+- Id's blijven bewust numeriek zodat alle bestaande data, vergelijkingen en
+  sorteringen ongewijzigd blijven werken. (Afwijking van het oorspronkelijke
+  plan-idee "UUID-strings": zelfde doel, zonder risico voor de 95 bestaande
+  aanroepplekken die numerieke id's aannemen.)
+
+---
+
 ## [1.10.86] — 2026-07-15
 
 ### Toegevoegd — Atomaire multi-key opslag (ERP-plan 1.1)

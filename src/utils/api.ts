@@ -419,8 +419,21 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   return [data, save, refresh]
 }
 
-export const newId = (arr: any[]): number =>
-  arr.length ? Math.max(0, ...arr.map((x: any) => x.id)) + 1 : 1
+// Botsingsvrije, monotone id's (ERP-plan 1.2). Het oude `max(id)+1` had twee
+// gebreken: na het verwijderen van het hoogste record werd diens id hergebruikt
+// (verwijzingen uit accijns/picks gingen dan stil naar een ánder record wijzen),
+// en twee gelijktijdige clients konden dezelfde id uitdelen. Nieuwe id's zijn
+// tijdgebaseerd (ms × 1000 + random), altijd groter dan alle bestaande id's én
+// dan de vorige uitgifte in deze tab. Bewust numeriek gehouden (< 2^53) zodat
+// alle bestaande Number()-vergelijkingen en sorteringen blijven werken; het
+// `basis++`-patroon voor reeksen binnen één handeling blijft ook geldig.
+let _lastId = 0
+export const newId = (arr: any[]): number => {
+  const bestaandMax = arr.length ? Math.max(0, ...arr.map((x: any) => Number(x?.id) || 0)) : 0
+  const kandidaat = Date.now() * 1000 + Math.floor(Math.random() * 1000)
+  _lastId = Math.max(_lastId + 1, kandidaat, bestaandMax + 1)
+  return _lastId
+}
 
 // ── Factuurnummering (ERP-plan 0.2) ─────────────────────────────────────────
 // Nummers worden server-side atomair uitgegeven (POST /api/nextnr) zodat twee
