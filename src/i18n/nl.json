@@ -2582,5 +2582,6 @@
   "err_accijns_maand_gesloten": "Dit record telt mee in een accijnsmaand waarvan de aangifte al is ingediend of betaald. Wijzigen of verwijderen is geblokkeerd.",
   "warn_afvullen_tankvolume": "Let op: je vult {liters} L af, maar volgens de volumebalans zit er nog maar {rest} L in de tank. Controleer de invoer (aantal × inhoud) en de verliesregistraties. Toch doorgaan?",
   "lot_bewerk_correctie_ref": "Correctie via lot bewerken",
-  "inv_bier_afboek_oms": "Inventarisatie #{id}: telling {van} → {naar}"
+  "inv_bier_afboek_oms": "Inventarisatie #{id}: telling {van} → {naar}",
+  "err_bestand_lezen": "Het bestand kon niet worden gelezen."
 }

@@ -1049,7 +1049,7 @@ function App() {
       if (d.factuur_logo !== undefined) setFactuurLogo(d.factuur_logo);
       if (d.app_name !== undefined) setAppName(d.app_name);
       if (d.nav_theme) setNavTheme(d.nav_theme);
-    }, () => alert(t('err_invalid_backup')));
+    }, (msg?: string) => alert(t('err_invalid_backup') + (msg ? `\n\n${msg}` : '')));
     e.target.value = '';
   };
 

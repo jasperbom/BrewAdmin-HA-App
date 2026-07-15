@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.85] — 2026-07-15
+
+### Gewijzigd — Excel-backup beschermd tegen stille afkapping (ERP-plan 0.8)
+
+- Excel kapt celwaarden boven ~32.767 tekens stil af, wat bij herstel tot
+  onherstelbaar kapotte records leidde. Elke cel die daar in de buurt komt
+  (grote geneste JSON, base64) wordt nu automatisch opgesplitst in
+  chunk-kolommen (`veld~0`, `veld~1`, …) die bij import weer worden
+  samengevoegd — zelfde principe als de bestaande logo-chunking, nu voor
+  álle data. Oude backups blijven gewoon leesbaar.
+- Een mislukte import toont nu de foutdetails in de melding (en console)
+  in plaats van alleen een generiek "ongeldige backup".
+
+---
+
 ## [1.10.84] — 2026-07-15
 
 ### Gewijzigd — Voorraad-lekken gedicht (ERP-plan 0.7)

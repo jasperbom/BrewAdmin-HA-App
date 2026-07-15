@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.84
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.85 · **fase 0 volledig afgerond**
 
 ---
 
@@ -39,8 +39,9 @@
       bier-telverschillen inventarisatie teruggeboekt (afboeking
       vermis/overig); tankvolume-guard bij afvullen in Batches én Batchflow
       *(v1.10.84, 2026-07-15)*
-- [ ] **0.8 Excel-backup hardening** — generieke cel-chunking >30k tekens,
-      import-diagnostiek i.p.v. stille catch
+- [x] **0.8 Excel-backup hardening** — generieke cel-chunking >30k tekens
+      (`veld~n`-kolommen), import-diagnostiek met foutdetails
+      *(v1.10.85, 2026-07-15; round-trip getest met 177KB-record)*
 
 ## Fase 1 — Transactionele integriteit
 
@@ -102,3 +103,4 @@
 | 2026-07-15 | 1.10.82 | 0.5 | Backup incl. upload-bijlagen + off-volume ZIP naar /backup/brewadmin (getest: lokaal, offsite en download-ZIP bevatten bijlagen) |
 | 2026-07-15 | 1.10.83 | 0.6 | Secrets gemaskeerd via GET, sentinel-merge bij POST, chmod 0600; round-trip getest met curl (geheim blijft op disk, URL-wijziging werkt) |
 | 2026-07-15 | 1.10.84 | 0.7 | saveLot → voorraad_log; inventarisatie-bierverschillen → afboekingen (vermis/overig); tankvolume-guard bij afvullen (2 pagina's) |
+| 2026-07-15 | 1.10.85 | 0.8 | Excel-cel-chunking (veld~n) + import-diagnostiek; round-trip getest met 177KB geneste JSON — **fase 0 compleet** |

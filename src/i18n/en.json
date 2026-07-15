@@ -2582,5 +2582,6 @@
   "err_accijns_maand_gesloten": "This record is part of an excise month whose return has already been filed or paid. Editing or deleting is blocked.",
   "warn_afvullen_tankvolume": "Warning: you are packaging {liters} L, but according to the volume balance only {rest} L remains in the tank. Check the input (quantity × volume) and the loss records. Continue anyway?",
   "lot_bewerk_correctie_ref": "Correction via lot edit",
-  "inv_bier_afboek_oms": "Stock count #{id}: count {van} → {naar}"
+  "inv_bier_afboek_oms": "Stock count #{id}: count {van} → {naar}",
+  "err_bestand_lezen": "The file could not be read."
 }

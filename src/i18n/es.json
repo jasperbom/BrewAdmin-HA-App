@@ -2582,5 +2582,6 @@
   "err_accijns_maand_gesloten": "Este registro forma parte de un mes de impuestos especiales cuya declaración ya se ha presentado o pagado. Modificar o eliminar está bloqueado.",
   "warn_afvullen_tankvolume": "Atención: vas a envasar {liters} L, pero según el balance de volumen solo quedan {rest} L en el tanque. Comprueba la entrada (cantidad × contenido) y las pérdidas registradas. ¿Continuar de todos modos?",
   "lot_bewerk_correctie_ref": "Corrección al editar el lote",
-  "inv_bier_afboek_oms": "Inventario n.º {id}: recuento {van} → {naar}"
+  "inv_bier_afboek_oms": "Inventario n.º {id}: recuento {van} → {naar}",
+  "err_bestand_lezen": "No se ha podido leer el archivo."
 }

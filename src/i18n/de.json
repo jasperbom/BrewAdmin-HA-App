@@ -2582,5 +2582,6 @@
   "err_accijns_maand_gesloten": "Dieser Eintrag zählt zu einem Verbrauchsteuermonat, dessen Erklärung bereits eingereicht oder bezahlt wurde. Ändern oder Löschen ist gesperrt.",
   "warn_afvullen_tankvolume": "Achtung: Sie füllen {liters} L ab, aber laut Volumenbilanz sind nur noch {rest} L im Tank. Prüfen Sie die Eingabe (Anzahl × Inhalt) und die Verlustbuchungen. Trotzdem fortfahren?",
   "lot_bewerk_correctie_ref": "Korrektur über Charge bearbeiten",
-  "inv_bier_afboek_oms": "Inventur #{id}: Zählung {van} → {naar}"
+  "inv_bier_afboek_oms": "Inventur #{id}: Zählung {van} → {naar}",
+  "err_bestand_lezen": "Die Datei konnte nicht gelesen werden."
 }
