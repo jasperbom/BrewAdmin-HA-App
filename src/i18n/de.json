@@ -2575,5 +2575,6 @@
   "err_pos_bon_leeg": "Der Bon ist leer — fügen Sie zuerst Produkte hinzu.",
   "err_pos_rekening_klant": "Wählen Sie zuerst einen Kunden aus, um auf Rechnung zu verkaufen.",
   "err_pos_voorraad": "Unzureichender Bestand für {product}: {beschikbaar} verfügbar.",
-  "err_pos_klant_naam": "Geben Sie einen Namen für den Kunden ein."
+  "err_pos_klant_naam": "Geben Sie einen Namen für den Kunden ein.",
+  "sync_conflict_melding": "Achtung: Diese Daten wurden gleichzeitig in einem anderen Fenster oder auf einem anderen Gerät geändert. Ihre letzte Änderung wurde NICHT gespeichert; die aktuellen Daten wurden neu geladen. Bitte geben Sie Ihre Änderung erneut ein."
 }

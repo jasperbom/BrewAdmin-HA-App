@@ -2575,5 +2575,6 @@
   "err_pos_bon_leeg": "Le ticket est vide — ajoutez d'abord des produits.",
   "err_pos_rekening_klant": "Sélectionnez d'abord un client pour vendre sur compte.",
   "err_pos_voorraad": "Stock insuffisant pour {product} : {beschikbaar} disponible.",
-  "err_pos_klant_naam": "Saisissez un nom pour le client."
+  "err_pos_klant_naam": "Saisissez un nom pour le client.",
+  "sync_conflict_melding": "Attention : ces données ont été modifiées simultanément dans une autre fenêtre ou sur un autre appareil. Votre dernière modification n'a PAS été enregistrée ; les données actuelles ont été rechargées. Veuillez saisir à nouveau votre modification."
 }

@@ -11,6 +11,7 @@ import base64
 import datetime
 import email.message
 import email.utils
+import hashlib
 import http.server
 import io
 import ipaddress
@@ -624,6 +625,20 @@ def _read_json(key: str, default=None):
         return default
 
 
+def _data_version(filepath: Path) -> str:
+    """Versie-hash van een databestand voor optimistic locking (ERP-plan 0.1).
+    De client krijgt deze hash bij GET mee (X-Data-Version) en stuurt hem bij
+    POST terug; komt hij niet overeen met de actuele bestandsinhoud, dan heeft
+    een andere client/thread tussentijds geschreven en volgt een 409.
+    '0' = bestand bestaat (nog) niet."""
+    if not filepath.exists():
+        return '0'
+    try:
+        return hashlib.sha256(filepath.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return '0'
+
+
 def _atomic_write_bytes(filepath: Path, data: bytes) -> None:
     """Schrijf atomair: eerst naar een tempbestand in dezelfde map, dan
     os.replace. Een crash mid-write kan zo nooit een half/corrupt JSON-bestand
@@ -1080,6 +1095,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         allowed = _trusted_origin(origin)
         if allowed:
             self.send_header('Access-Control-Allow-Origin', allowed)
+            self.send_header('Access-Control-Expose-Headers', 'X-Data-Version, Retry-After')
             self.send_header('Vary', 'Origin')
 
     def _rate_check(self) -> bool:
@@ -1124,7 +1140,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if allowed:
             self.send_header('Access-Control-Allow-Origin', allowed)
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Data-Version')
             self.send_header('Vary', 'Origin')
         for name, value in _SEC_HEADERS:
             self.send_header(name, value)
@@ -1172,11 +1188,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', len(body))
                 self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Data-Version', hashlib.sha256(body).hexdigest()[:16])
                 self._add_security_headers()
                 self.end_headers()
                 self.wfile.write(body)
             else:
-                self._json(404, None)
+                self._json(404, None, extra_headers=[('X-Data-Version', '0')])
             return
 
         # Serve the SPA for all other GET requests
@@ -1258,9 +1275,19 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             # Onder _data_lock zodat de achtergrondthreads (cold-crash,
             # auto-metingen) die read-modify-write doen op dezelfde bestanden
             # geen halve merge overschrijven; atomair tegen corruptie.
+            # Optimistic locking: stuurt de client een X-Data-Version mee die
+            # niet overeenkomt met de actuele bestandsinhoud, dan heeft een
+            # andere client tussentijds geschreven → 409, niets overschrijven.
+            # Zonder header (oude frontend) blijft het gedrag last-write-wins.
+            expected = self.headers.get('X-Data-Version')
             with _data_lock:
+                if expected is not None:
+                    current = _data_version(filepath)
+                    if expected != current:
+                        self._json(409, {'error': 'conflict', 'version': current})
+                        return
                 _atomic_write_bytes(filepath, body)
-            self._json(200, {'ok': True})
+            self._json(200, {'ok': True, 'version': hashlib.sha256(body).hexdigest()[:16]})
             return
 
         self._json(404, {'error': 'not found'})

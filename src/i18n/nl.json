@@ -2575,5 +2575,6 @@
   "err_pos_bon_leeg": "De bon is leeg — voeg eerst producten toe.",
   "err_pos_rekening_klant": "Selecteer eerst een klant om op rekening te verkopen.",
   "err_pos_voorraad": "Onvoldoende voorraad voor {product}: {beschikbaar} beschikbaar.",
-  "err_pos_klant_naam": "Vul een naam in voor de klant."
+  "err_pos_klant_naam": "Vul een naam in voor de klant.",
+  "sync_conflict_melding": "Let op: deze gegevens zijn tegelijk in een ander venster of op een ander apparaat gewijzigd. Je laatste wijziging is NIET opgeslagen; de actuele gegevens zijn opnieuw geladen. Voer je wijziging opnieuw in."
 }

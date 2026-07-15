@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { lsSet } from '../i18n'
+import { lsSet, t } from '../i18n'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit
 const p = window.location.pathname
@@ -136,25 +136,61 @@ export const _fetchWithRetry = async (input: RequestInfo, init?: RequestInit, re
   return r
 }
 
-export const _postToServer = (key: string, data: any): Promise<boolean> => {
+// ── Optimistic locking (ERP-plan 0.1) ──────────────────────────────────────
+// De server geeft bij GET/POST een X-Data-Version (hash van de bestandsinhoud)
+// terug; bij POST sturen we de laatst bekende versie mee. Antwoordt de server
+// met 409, dan heeft een andere client/tab deze key tussentijds gewijzigd:
+// we overschrijven diens werk NIET, maar verversen en melden het conflict.
+const _versions = new Map<string, string>()
+
+export const _updateVersion = (key: string, r: Response): void => {
+  const v = r.headers.get('X-Data-Version')
+  if (v) _versions.set(key, v)
+}
+
+export type SaveResult = 'ok' | 'fail' | 'conflict'
+
+// POSTs per key serialiseren: een tweede save wacht op de versie-update van
+// de eerste, anders zou die met een verouderde versie een vals conflict geven.
+const _postChains = new Map<string, Promise<unknown>>()
+
+export const _postToServer = (key: string, data: any): Promise<SaveResult> => {
+  const prev = _postChains.get(key) || Promise.resolve()
+  const run = prev.then(() => _doPost(key, data))
+  _postChains.set(key, run.catch(() => {}))
+  return run
+}
+
+const _doPost = (key: string, data: any): Promise<SaveResult> => {
   _syncPending++
+  const headers: Record<string, string> = {'Content-Type': 'application/json'}
+  const ver = _versions.get(key)
+  if (ver !== undefined) headers['X-Data-Version'] = ver
   return _fetchWithRetry(API_BASE + key, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers,
     body: JSON.stringify(data)
   }, 2)
-  .then(r => {
+  .then(async r => {
     _syncPending = Math.max(0, _syncPending - 1)
     _serverReachable = true
-    if (r.ok) _syncErrors = 0
-    else if (r.status !== 429) _syncErrors++
-    return r.ok
+    if (r.ok) {
+      _syncErrors = 0
+      try {
+        const d = await r.json()
+        if (d && typeof d.version === 'string') _versions.set(key, d.version)
+      } catch (e) { /* oudere server zonder version-veld */ }
+      return 'ok' as SaveResult
+    }
+    if (r.status === 409) return 'conflict' as SaveResult
+    if (r.status !== 429) _syncErrors++
+    return 'fail' as SaveResult
   })
   .catch(() => {
     _syncPending = Math.max(0, _syncPending - 1)
     _serverReachable = false
     _syncErrors++
-    return false
+    return 'fail' as SaveResult
   })
 }
 
@@ -170,7 +206,7 @@ const lsGet = (k: string, d: any = []) => {
 // Een sequence-nummer per key voorkomt dat een oude (tragere) response of
 // retry een nieuwere save overschrijft.
 const _saveSeq = new Map<string, number>()
-const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void}>()
+const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void, onConflict: () => void}>()
 let _retryTimer: ReturnType<typeof setInterval> | null = null
 
 const _flushPendingSaves = () => {
@@ -179,11 +215,14 @@ const _flushPendingSaves = () => {
     return
   }
   for (const [key, entry] of [..._pendingSaves.entries()]) {
-    _postToServer(key, entry.data).then(ok => {
+    _postToServer(key, entry.data).then(res => {
       if (_saveSeq.get(key) !== entry.seq) return // nieuwere save gedaan
-      if (ok) {
+      if (res === 'ok') {
         _pendingSaves.delete(key)
         entry.onOk()
+      } else if (res === 'conflict') {
+        _pendingSaves.delete(key)
+        entry.onConflict()
       }
     })
   }
@@ -203,6 +242,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
       .then(r => {
         _serverReachable = true
+        _updateVersion(key, r)
         if (r.ok) {
           _syncErrors = 0
           if (secure) localStorage.removeItem('craftery_' + key)
@@ -229,6 +269,24 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       })
   }, [key])
 
+  // Conflict (409): een andere client/tab heeft deze key tussentijds
+  // gewijzigd. Serverdata is leidend — de lokale wijziging vervalt bewust
+  // (nooit andermans werk stil overschrijven) en de gebruiker krijgt een
+  // melding om de eigen wijziging opnieuw in te voeren.
+  const onConflict = () => {
+    modified.current = false
+    _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
+      .then(r => { _updateVersion(key, r); return r.ok ? r.json() : null })
+      .then(d => {
+        if (d !== null && d !== undefined) {
+          setData(d)
+          if (!secure) lsSet(key, d)
+        }
+        alert(t('sync_conflict_melding'))
+      })
+      .catch(() => { alert(t('sync_conflict_melding')) })
+  }
+
   const save = (val: any) => {
     modified.current = true
     setData((prev: any) => {
@@ -237,12 +295,14 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       const seq = (_saveSeq.get(key) || 0) + 1
       _saveSeq.set(key, seq)
       _pendingSaves.delete(key) // nieuwe save vervangt elke oudere retry
-      _postToServer(key, next).then(ok => {
+      _postToServer(key, next).then(res => {
         if (_saveSeq.get(key) !== seq) return // er is al een nieuwere save
-        if (ok) {
+        if (res === 'ok') {
           modified.current = false
+        } else if (res === 'conflict') {
+          onConflict()
         } else {
-          _pendingSaves.set(key, {seq, data: next, onOk: () => { modified.current = false }})
+          _pendingSaves.set(key, {seq, data: next, onOk: () => { modified.current = false }, onConflict})
           _scheduleRetry()
         }
       })
@@ -252,7 +312,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
 
   const refresh = () => {
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-      .then(r => { _serverReachable = true; return r.ok ? r.json() : null })
+      .then(r => { _serverReachable = true; _updateVersion(key, r); return r.ok ? r.json() : null })
       .then(d => {
         if (d !== null && d !== undefined) {
           setData(d)

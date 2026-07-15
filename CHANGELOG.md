@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.79] — 2026-07-15
+
+### Toegevoegd — Conflictdetectie bij gelijktijdig gebruik (ERP-plan 0.1)
+
+- De server geeft bij elke data-GET een versie-hash mee (`X-Data-Version`) en
+  controleert die bij opslaan. Slaan twee vensters/apparaten dezelfde
+  gegevens tegelijk op, dan wordt de tweede opslag geweigerd (409) in plaats
+  van dat die de eerste stilletjes overschrijft (voorheen last-write-wins).
+- De app laadt bij zo'n conflict automatisch de actuele gegevens opnieuw en
+  toont een duidelijke melding dat de laatste wijziging opnieuw ingevoerd
+  moet worden (nieuwe vertaalsleutel in alle 5 talen).
+- Opslagverzoeken per gegevenssoort worden nu geserialiseerd zodat snelle
+  opeenvolgende wijzigingen geen vals conflict veroorzaken. Oudere frontends
+  zonder versie-header blijven werken (geen versiecontrole).
+
+---
+
 ## [1.10.78] — 2026-07-15
 
 ### Toegevoegd — ERP-verbeterplan: voortgangsstatus
