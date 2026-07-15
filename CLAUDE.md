@@ -417,6 +417,13 @@ Het `bankKoppelingen` object (sleutel: `txKey(tx)`) ondersteunt drie soorten kop
 
 // BTW-afdracht (koppelt een debettransactie aan een BTW-periode)
 { soort: 'btw', periodeKey: string }  // bijv. '2026-Q1' of '2026-M04'
+
+// PSP-uitbetaling (Mollie e.d.): één credittransactie dekt meerdere
+// verkoopfacturen; het verschil (transactiekosten) wordt automatisch als
+// betaalde inkoopfactuur geboekt (kostenFactuurId). gemarkeerdBetaald bevat
+// de factuur-ids die door de koppeling op betaald zijn gezet, zodat
+// ontkoppelen ze kan terugzetten.
+{ soort: 'psp', factuurIds: number[], kostenFactuurId?: number, gemarkeerdBetaald: number[] }
 ```
 
 De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort: 'btw'`-entries en bouwt een `Set<string>` van betaalde periodeKeys. Bij MT940-herimport worden BTW-koppelingen automatisch hersteld via `gekoppeldBtwPeriode` op de transactie.

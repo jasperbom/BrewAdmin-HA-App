@@ -67,6 +67,48 @@ function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
+// ─── PSP-uitbetalingen (gebundelde betalingen) ────────────────────────────────
+// Payment service providers betalen meerdere factuurbetalingen gebundeld uit,
+// minus transactiekosten. Herkenning op tegenpartij/omschrijving/referentie.
+const PSP_PATROON = /mollie|stripe|adyen|sumup|zettle|paypal|pay\.nl|buckaroo|multisafepay|online betaalplatform|cm\.com/i
+const isPspTransactie = (tx: any): boolean =>
+  tx.type === 'C' && PSP_PATROON.test(`${tx.tegenpartij||''} ${tx.omschrijving||''} ${tx.referentie||''}`)
+
+// Zoekt een combinatie open verkoopfacturen waarvan de som overeenkomt met het
+// uitbetaalde bedrag plus aannemelijke PSP-kosten (max ~5% + €0,40 per factuur).
+// Geeft de combinatie met de laagste kosten terug, of null als niets past.
+function zoekPspCombinatie(bedrag: number, facturen: any[]): number[] | null {
+  const kandidaten = facturen
+    .filter((f: any) => (f.bruto||0) > 0)
+    .sort((a: any, b: any) => (b.bruto||0) - (a.bruto||0))
+    .slice(0, 24)
+  let best: number[] | null = null
+  let bestKosten = Infinity
+  let iteraties = 0
+  const maxKosten = (som: number, aantal: number) => som * 0.05 + aantal * 0.40 + 0.01
+  const dfs = (idx: number, som: number, gekozen: number[]) => {
+    if (iteraties++ > 20000) return
+    if (gekozen.length > 0) {
+      const kosten = som - bedrag
+      if (kosten >= -0.005 && kosten <= maxKosten(som, gekozen.length) && kosten < bestKosten) {
+        bestKosten = kosten
+        best = [...gekozen]
+      }
+    }
+    for (let i = idx; i < kandidaten.length; i++) {
+      const nieuw = som + (kandidaten[i].bruto||0)
+      // Kandidaten staan aflopend gesorteerd: als deze te groot is, kan een
+      // kleinere verderop nog wel passen — daarom continue i.p.v. break.
+      if (nieuw - bedrag > maxKosten(nieuw, gekozen.length + 1)) continue
+      gekozen.push(kandidaten[i].id)
+      dfs(i + 1, nieuw, gekozen)
+      gekozen.pop()
+    }
+  }
+  dfs(0, 0, [])
+  return best
+}
+
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
@@ -110,6 +152,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const bankFileRef = React.useRef<any>(null)
   const [bankAfschrift, setBankAfschrift] = React.useState<any>(null)
   const [bankTransacties, setBankTransacties] = React.useState<any[]>([])
+
+  // PSP-uitsplitsing modal state (één credittransactie → meerdere facturen)
+  const [pspTxIndex, setPspTxIndex] = React.useState<number|null>(null)
+  const [pspSelectie, setPspSelectie] = React.useState<number[]>([])
+  const [pspBtwPct, setPspBtwPct] = React.useState('21')
+  const [pspToonBetaald, setPspToonBetaald] = React.useState(false)
 
   // Nieuwe boeking modal state
   const [boekingTxIndex, setBoekingTxIndex] = React.useState<number|null>(null)
@@ -1127,6 +1175,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             gekoppeldBtwPeriode: opgeslagen.soort === 'btw' ? opgeslagen.periodeKey : undefined,
             gekoppeldAccijnsMaand: opgeslagen.soort === 'accijns' ? opgeslagen.maandKey : undefined,
             gekoppeldAflossingAltId: opgeslagen.soort === 'aflossing' ? opgeslagen.altRekeningId : undefined,
+            gekoppeldPspFactuurIds: opgeslagen.soort === 'psp' ? opgeslagen.factuurIds : undefined,
             autoGematcht: true,
             herinneringsGematcht: true,
           }
@@ -1161,6 +1210,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           if (teruggaveAangifte) {
             nieuweKoppelingen[key] = {soort: 'btw', periodeKey: teruggaveAangifte.periodeKey}
             return {...tx, gekoppeldBtwPeriode: teruggaveAangifte.periodeKey, autoGematcht: true}
+          }
+          // PSP-uitbetaling (Mollie e.d.): gebundelde betalingen minus kosten.
+          // Geen automatische koppeling — wel herkennen en een combinatie van
+          // open facturen voorstellen; de gebruiker bevestigt in de modal.
+          if (isPspTransactie(tx)) {
+            const voorstel = zoekPspCombinatie(tx.bedrag, openVerkoop)
+            return {...tx, pspHerkend: true, pspVoorstelIds: voorstel || undefined}
           }
         } else {
           const match = openInkoop.find((f: any) => Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
@@ -1234,6 +1290,89 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         } : t
       )
     })
+  }
+
+  // ── PSP-uitbetaling: één credittransactie dekt meerdere verkoopfacturen ────
+  const openPspModal = (txIndex: number) => {
+    const tx = bankTransacties[txIndex]
+    setPspSelectie(tx?.pspVoorstelIds ? [...tx.pspVoorstelIds] : [])
+    setPspBtwPct('21')
+    setPspToonBetaald(false)
+    setPspTxIndex(txIndex)
+  }
+
+  const savePspKoppeling = () => {
+    const txIdx = pspTxIndex
+    if (txIdx === null) return
+    const tx = bankTransacties[txIdx]
+    if (!tx) return
+    const facturen = (verkoopFacturen||[]).filter((f: any) => pspSelectie.includes(f.id))
+    if (!facturen.length) return
+    const som = r2(facturen.reduce((s: number, f: any) => s + (f.bruto||0), 0))
+    const kosten = r2(som - tx.bedrag)
+    if (kosten < -0.005) return
+    const key = txKey(tx)
+    // Nog niet betaalde facturen markeren als betaald met de transactiedatum.
+    // De ids onthouden we in de koppeling zodat ontkoppelen ze kan terugzetten.
+    const gemarkeerdBetaald = facturen.filter((f: any) => f.status !== 'betaald').map((f: any) => f.id)
+    if (gemarkeerdBetaald.length) {
+      setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
+        gemarkeerdBetaald.includes(f.id) ? {...f, status: 'betaald', betaald_datum: f.betaald_datum || tx.datum} : f))
+    }
+    // Verschil tussen som facturen en uitbetaling → betaalde kostenpost
+    let kostenFactuurId: number | undefined
+    if (kosten > 0.005) {
+      const btw = Number(pspBtwPct||0)
+      const netto = btw > 0 ? r2(kosten / (1 + btw/100)) : kosten
+      const btwBedrag = r2(kosten - netto)
+      const rollover = getRolloverInfo(tx.datum)
+      const naam = t('lbl_psp_kosten_regel').replace('{psp}', tx.tegenpartij || 'PSP')
+      const kostenFactuur: any = {
+        id: newId(inkoopFacturen||[]),
+        leverancier: tx.tegenpartij || 'PSP',
+        factuurnummer: '',
+        datum: tx.datum,
+        regels: [{type: 'overig', naam, netto, btw_tarief: btw, btw_bedrag: btwBedrag, btw_soort: 'binnenlands', kostensoort: 'Administratie'}],
+        totaal_netto: netto,
+        totaal_btw: btwBedrag,
+        totaal_bruto: kosten,
+        status: 'betaald',
+        betaald_datum: tx.datum,
+        ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
+      }
+      kostenFactuurId = kostenFactuur.id
+      setInkoopFacturen((prev: any[]) => [...(prev||[]), kostenFactuur])
+      logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:kostenFactuur.id, actie:'aangemaakt', omschrijving:`PSP-kosten — ${kostenFactuur.leverancier} (${fmt(kosten)})`})
+    }
+    setBankKoppelingen((k: any) => ({...k, [key]: {soort: 'psp', factuurIds: [...pspSelectie], kostenFactuurId, gemarkeerdBetaald}}))
+    setBankTransacties((prev: any[]) => prev.map((t2: any, i: number) =>
+      i === txIdx ? {...t2, gekoppeldPspFactuurIds: [...pspSelectie], pspHerkend: false, pspVoorstelIds: undefined, autoGematcht: false, herinneringsGematcht: false} : t2))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt', omschrijving:`PSP-uitbetaling gekoppeld aan ${pspSelectie.length} facturen (kosten ${fmt(Math.max(kosten,0))})`})
+    setPspTxIndex(null)
+    setPspSelectie([])
+  }
+
+  const ontkoppelPsp = (txIndex: number) => {
+    const tx = bankTransacties[txIndex]
+    if (!tx) return
+    const key = txKey(tx)
+    const opgeslagen = (bankKoppelingen as any)[key]
+    if (opgeslagen?.soort === 'psp') {
+      // Automatisch aangemaakte kostenpost weer verwijderen
+      if (opgeslagen.kostenFactuurId) {
+        setInkoopFacturen((prev: any[]) => (prev||[]).filter((f: any) => f.id !== opgeslagen.kostenFactuurId))
+      }
+      // Facturen die door deze koppeling betaald zijn gemarkeerd terugzetten
+      const terug = opgeslagen.gemarkeerdBetaald || []
+      if (terug.length) {
+        setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
+          terug.includes(f.id) ? {...f, status: 'open', betaald_datum: undefined} : f))
+      }
+    }
+    setBankKoppelingen((k: any) => { const c = {...k}; delete c[key]; return c })
+    setBankTransacties((prev: any[]) => prev.map((t2: any, i: number) =>
+      i === txIndex ? {...t2, gekoppeldPspFactuurIds: undefined, pspHerkend: isPspTransactie(t2), autoGematcht: false, herinneringsGematcht: false} : t2))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'verwijderd', omschrijving:'PSP-koppeling ongedaan gemaakt'})
   }
 
   const koppelBtwBetaling = (txIndex: number, periodeKey: string) => {
@@ -2378,6 +2517,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         <td className="py-2" onClick={(e:any)=>e.stopPropagation()}>
                           {tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-blue-600 mr-2">↩ {t('lbl_onthouden_koppeling')}
                             <button onClick={()=>{
+                              // PSP-koppeling: ook kostenpost en factuurstatus terugdraaien
+                              if (tx.gekoppeldPspFactuurIds) { ontkoppelPsp(i); return }
                               const key = txKey(tx)
                               // Accijnskoppeling: ook aangifte- en recordstatus terugdraaien
                               if (tx.gekoppeldAccijnsMaand) { ontkoppelAccijnsBetaling(tx.gekoppeldAccijnsMaand) }
@@ -2387,7 +2528,17 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           </span>}
                           {tx.retroGematcht && <span className="text-xs text-gray-500 mr-2">✓ {t('lbl_retro_gematcht')}</span>}
                           {tx.autoGematcht && !tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
-                          {tx.type==='C' ? (
+                          {tx.type==='C' ? tx.gekoppeldPspFactuurIds ? (
+                            <span className="text-xs text-blue-600 font-medium">
+                              ✓ {t('lbl_psp_badge').replace('{n}', String(tx.gekoppeldPspFactuurIds.length))}
+                              {(() => {
+                                const k = (bankKoppelingen as any)[txKey(tx)]
+                                const kf = k?.kostenFactuurId ? (inkoopFacturen||[]).find((f: any) => f.id === k.kostenFactuurId) : null
+                                return kf ? <span className="text-gray-500 font-normal"> · {t('lbl_psp_kosten_kort')} {fmt(kf.totaal_bruto||0)}</span> : null
+                              })()}
+                              <button onClick={()=>ontkoppelPsp(i)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors">×</button>
+                            </span>
+                          ) : (
                             <div className="flex items-center gap-2 flex-wrap">
                               <select value={tx.gekoppeldFactuurId||''} onChange={(e:any)=>koppelBankTransactie(i, e.target.value?Number(e.target.value):null, 'verkoop')}
                                 className="border border-gray-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[200px]">
@@ -2438,6 +2589,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 </span>
                               ) : !tx.gekoppeldFactuurId && !tx.herinneringsGematcht && (
                                 <>
+                                  {tx.pspHerkend && (
+                                    <span className="text-xs text-blue-600 font-medium whitespace-nowrap">⚡ {t('lbl_psp_herkend')}</span>
+                                  )}
+                                  <button onClick={()=>openPspModal(i)}
+                                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap border ${tx.pspHerkend ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'}`}>
+                                    {t('btn_psp_uitsplitsen')}{tx.pspVoorstelIds ? ` (${tx.pspVoorstelIds.length})` : ''}
+                                  </button>
                                   <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                     className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                     + {t('btn_nieuwe_boeking')}
@@ -2506,6 +2664,88 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           )}
         </div>
+
+        {/* PSP-uitbetaling uitsplitsen modal */}
+        {pspTxIndex !== null && bankTransacties[pspTxIndex] && (() => {
+          const tx = bankTransacties[pspTxIndex]
+          const kandidaten = (verkoopFacturen||[])
+            .filter((f: any) => (f.bruto||0) > 0 && f.status !== 'credit' && (pspToonBetaald || f.status !== 'betaald' || pspSelectie.includes(f.id)))
+            .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
+          const som = r2((verkoopFacturen||[]).filter((f: any) => pspSelectie.includes(f.id)).reduce((s: number, f: any) => s + (f.bruto||0), 0))
+          const kosten = r2(som - tx.bedrag)
+          const somTeLaag = pspSelectie.length > 0 && kosten < -0.005
+          const toggleFactuur = (id: number) => setPspSelectie((prev: number[]) =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+          return (
+            <Modal title={t('title_psp_koppeling')} onClose={()=>{ setPspTxIndex(null); setPspSelectie([]) }}>
+              <div className="space-y-3">
+                <div className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="whitespace-nowrap">{tx.datum}</span>
+                  {tx.tegenpartij && <span className="font-medium text-gray-800 truncate max-w-[220px]" title={tx.tegenpartij}>{tx.tegenpartij}</span>}
+                  <span className="font-semibold text-green-600 whitespace-nowrap">+{fmt(tx.bedrag)}</span>
+                </div>
+                <p className="text-xs text-gray-500">{t('msg_psp_uitleg')}</p>
+                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-50">
+                  {kandidaten.length === 0 && (
+                    <div className="text-center text-sm text-gray-400 py-4">{t('msg_no_verkoopfacturen')}</div>
+                  )}
+                  {kandidaten.map((f: any) => (
+                    <label key={f.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+                      <input type="checkbox" className="t-checkbox" checked={pspSelectie.includes(f.id)} onChange={()=>toggleFactuur(f.id)} />
+                      <span className="text-gray-500 whitespace-nowrap">{f.datum||'—'}</span>
+                      <span className="flex-1 truncate text-gray-800">{f.factuurnummer ? `${f.factuurnummer} · ` : ''}{klantNaamVoor(f) || t('lbl_onbekend')}</span>
+                      {f.status === 'betaald' && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 whitespace-nowrap">{t('factuur_paid')}</span>}
+                      <span className="font-medium text-gray-700 whitespace-nowrap">{fmt(f.bruto||0)}</span>
+                    </label>
+                  ))}
+                </div>
+                <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+                  <input type="checkbox" className="t-checkbox" checked={pspToonBetaald} onChange={()=>setPspToonBetaald((v: boolean)=>!v)} />
+                  {t('btn_psp_toon_betaald')}
+                </label>
+                <div className="border-t border-gray-100 pt-2 space-y-1 text-sm">
+                  <div className="flex justify-between text-gray-600">
+                    <span>{t('lbl_psp_som')} ({pspSelectie.length})</span>
+                    <span className="font-medium">{fmt(som)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>{t('lbl_psp_uitbetaald')}</span>
+                    <span className="font-medium">{fmt(tx.bedrag)}</span>
+                  </div>
+                  <div className={`flex justify-between font-semibold ${somTeLaag ? 'text-red-600' : 'text-gray-800'}`}>
+                    <span>{t('lbl_psp_kosten')}</span>
+                    <span>{fmt(Math.max(kosten, 0))}</span>
+                  </div>
+                  {somTeLaag && <p className="text-xs text-red-600">{t('msg_psp_som_te_laag')}</p>}
+                </div>
+                {kosten > 0.005 && !somTeLaag && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-gray-500">{t('msg_psp_kosten_hint')}</span>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+                      {t('lbl_psp_kosten_btw')}
+                      <select value={pspBtwPct} onChange={(e: any)=>setPspBtwPct(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-0.5 text-xs t-input focus:outline-none">
+                        <option value="0">0%</option>
+                        <option value="9">9%</option>
+                        <option value="21">21%</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 pt-1">
+                  <button onClick={()=>{ setPspTxIndex(null); setPspSelectie([]) }}
+                    className="px-4 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                    {t('btn_cancel')}
+                  </button>
+                  <button onClick={savePspKoppeling} disabled={!pspSelectie.length || somTeLaag}
+                    className="px-4 py-1.5 tbtn rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
+                    {t('btn_psp_koppel')}
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )
+        })()}
 
         {/* Kapitaalstorting modal */}
         {showKapitaalModal && (
@@ -3210,7 +3450,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     const isTeruggave = Number(aangifte?.bedrag || 0) < 0;
                     const aangifteBedrag = Math.abs(Number(aangifte?.bedrag || 0));
                     const kandidaten = bankTransacties.filter((tx: any) => isTeruggave
-                      ? tx.type === 'C' && !tx.gekoppeldFactuurId && !tx.gekoppeldInkoopId && !tx.gekoppeldKapitaalId && !tx.gekoppeldBtwPeriode
+                      ? tx.type === 'C' && !tx.gekoppeldFactuurId && !tx.gekoppeldInkoopId && !tx.gekoppeldKapitaalId && !tx.gekoppeldBtwPeriode && !tx.gekoppeldPspFactuurIds
                       : tx.type === 'D' && !tx.gekoppeldInkoopId && !tx.gekoppeldBtwPeriode
                     );
                     const nearMatches = kandidaten.filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00);
