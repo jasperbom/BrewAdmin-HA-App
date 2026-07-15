@@ -287,6 +287,14 @@ export interface Afvulling {
   voorcalc_accijns_per_eenheid?: number
   voorcalc_accijns_totaal?: number
   voorcalc_tarief_snapshot?: { r1?: number; r2?: number; r3?: number; abv?: number; plato?: number }
+  // Rebrand: (deel van) een afvulling is naar een ander product verplaatst.
+  // De batch en de bevroren accijnsgegevens blijven ongewijzigd; alleen het
+  // product (en daarmee de SKU) verandert. Bij een deelrebrand wordt de
+  // afvulling gesplitst en verwijst de nieuwe rij naar haar oorsprong.
+  rebrand_van_afvulling_id?: number
+  rebrand_van_product_id?: number
+  rebrand_datum?: string
+  rebrand_opmerking?: string
 }
 
 export interface VoorraadLog {

@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.92] — 2026-07-15
+
+### Toegevoegd — Rebranden van afgevulde biervoorraad
+
+- Op de Productenpagina kan (een deel van) de beschikbare voorraad van een
+  afvulling naar een ander product worden verplaatst via de nieuwe
+  **↪ Rebranden**-knop naast de afboek-knop. De batch en de bevroren
+  accijnsgegevens (voorcalc per eenheid + tariefsnapshot) blijven
+  ongewijzigd; alleen het product en de bijbehorende artikel-SKU veranderen.
+- Bij een deel wordt de afvulling gesplitst in twee rijen; het rebrand-aantal
+  is begrensd op de nog beschikbare voorraad, zodat al gepickte, uitgeleverde
+  of afgeboekte stuks bij het oorspronkelijke product blijven. Bij de
+  volledige (onaangeroerde) afvulling wordt de rij in-place omgehangen zodat
+  alle bestaande verwijzingen intact blijven.
+- In de modal kan direct een nieuw product worden aangemaakt (zelfde patroon
+  als bij het afvullen). Gerebrande rijen tonen een herkomst-badge
+  ("Rebrand van …"); elke rebrand wordt vastgelegd in het voorraadlogboek
+  (nieuw logtype) en het auditlog.
+
+---
+
 ## [1.10.91] — 2026-07-15
 
 ### Opgelost — Off-volume backup: Permission denied op /backup/brewadmin

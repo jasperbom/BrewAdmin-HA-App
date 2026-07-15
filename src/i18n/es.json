@@ -2594,5 +2594,20 @@
   "gezondheid_col_veld": "Campo",
   "gezondheid_col_doel": "Apunta a (falta)",
   "err_batch_delete_fiscaal": "Este lote tiene entregas y/o registros de impuestos especiales y, por tanto, está registrado fiscalmente. La eliminación está bloqueada para evitar registros huérfanos.",
-  "err_save_geweigerd": "El servidor ha rechazado este cambio (formato de datos no válido). Se han vuelto a cargar los datos actuales; el último cambio no se ha guardado."
+  "err_save_geweigerd": "El servidor ha rechazado este cambio (formato de datos no válido). Se han vuelto a cargar los datos actuales; el último cambio no se ha guardado.",
+  "btn_rebrand": "Rebrandear",
+  "btn_rebrand_bevestigen": "Confirmar rebranding",
+  "title_rebrand_modal": "Rebranding — {verpakking}",
+  "info_rebrand": "Mueve (una parte de) el stock disponible de este envasado a otro producto. El lote y los datos de impuestos especiales congelados no cambian; solo cambia el producto (y su SKU).",
+  "info_rebrand_splitsing": "El envasado se dividirá: {n} unidades pasan al nuevo producto, {rest} unidades permanecen en el producto actual.",
+  "info_rebrand_volledig": "Todo el envasado se trasladará al nuevo producto.",
+  "lbl_rebrand": "Rebranding",
+  "lbl_rebrand_van": "Rebranding desde {product}",
+  "lbl_rebrand_huidig_product": "Producto actual",
+  "lbl_rebrand_doelproduct": "Nuevo producto",
+  "err_rebrand_product_required": "Selecciona el nuevo producto.",
+  "err_rebrand_zelfde_product": "Elige un producto distinto del actual.",
+  "ph_rebrand_opmerking": "Motivo del rebranding (opcional)...",
+  "log_type_rebrand": "Rebranding",
+  "log_rebrand_omschrijving": "Rebranding: {van} → {naar}"
 }
