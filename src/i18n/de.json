@@ -2593,5 +2593,6 @@
   "gezondheid_col_record": "Datensatz",
   "gezondheid_col_veld": "Feld",
   "gezondheid_col_doel": "Verweist auf (fehlt)",
-  "err_batch_delete_fiscaal": "Dieser Sud hat Auslieferungen und/oder Verbrauchsteuereinträge und ist damit steuerlich erfasst. Löschen ist gesperrt, um verwaiste Datensätze zu vermeiden."
+  "err_batch_delete_fiscaal": "Dieser Sud hat Auslieferungen und/oder Verbrauchsteuereinträge und ist damit steuerlich erfasst. Löschen ist gesperrt, um verwaiste Datensätze zu vermeiden.",
+  "err_save_geweigerd": "Der Server hat diese Änderung abgelehnt (ungültiges Datenformat). Die aktuellen Daten wurden neu geladen; die letzte Änderung wurde nicht gespeichert."
 }

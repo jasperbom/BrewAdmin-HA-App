@@ -2593,5 +2593,6 @@
   "gezondheid_col_record": "Enregistrement",
   "gezondheid_col_veld": "Champ",
   "gezondheid_col_doel": "Pointe vers (manquant)",
-  "err_batch_delete_fiscaal": "Ce brassin a des livraisons et/ou des enregistrements d'accises et est donc fiscalement enregistré. La suppression est bloquée pour éviter les enregistrements orphelins."
+  "err_batch_delete_fiscaal": "Ce brassin a des livraisons et/ou des enregistrements d'accises et est donc fiscalement enregistré. La suppression est bloquée pour éviter les enregistrements orphelins.",
+  "err_save_geweigerd": "Le serveur a rejeté cette modification (format de données invalide). Les données actuelles ont été rechargées ; la dernière modification n'a pas été enregistrée."
 }

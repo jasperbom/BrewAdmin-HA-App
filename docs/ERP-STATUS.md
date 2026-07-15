@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.88 · fase 0 afgerond, fase 1 loopt
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.89 · fase 0 afgerond, fase 1 loopt
 
 ---
 
@@ -58,8 +58,9 @@
       (utils/integriteit.ts, 20 relaties) + Gezondheid-kaart in
       Instellingen→App + delete-guard op batches met fiscale records
       *(v1.10.88, 2026-07-15)*
-- [ ] **1.4 Server-side schemavalidatie (licht)** — per key minimaal contract,
-      422 bij afwijzing
+- [x] **1.4 Server-side schemavalidatie (licht)** — containertype per bekende
+      key (85 keys) op /api/data én /api/commit, 422 bij afwijzing; client
+      herlaadt + meldt i.p.v. eindeloos retryen *(v1.10.89, 2026-07-15)*
 - [ ] **1.5 Append-only audit server-side** — server logt elke data-POST
       buiten de data-API om
 
@@ -114,3 +115,4 @@
 | 2026-07-15 | 1.10.86 | 1.1 | /api/commit (alles-of-niets, temp+rename in 2 fasen) + client-side auto-batching per event-tick; getest: 409 laat niets achter, 404-fallback |
 | 2026-07-15 | 1.10.87 | 1.2 | newId: tijdgebaseerd + monotoon + boven bestaand max; getest: 5000 snelle uitgiftes uniek/monotoon/safe-integer |
 | 2026-07-15 | 1.10.88 | 1.3 | checkIntegriteit (20 relaties) + Gezondheid-kaart + batch-delete-guard; unit-getest (3 ingebouwde fouten gevonden, string/number-match) |
+| 2026-07-15 | 1.10.89 | 1.4 | Containertype-validatie (85 keys) op data-POST en commit; 422 met verwachte vorm; client: reject → herladen + melding, geen retry-loop |

@@ -2593,5 +2593,6 @@
   "gezondheid_col_record": "Record",
   "gezondheid_col_veld": "Field",
   "gezondheid_col_doel": "Points to (missing)",
-  "err_batch_delete_fiscaal": "This batch has deliveries and/or excise records and is therefore fiscally recorded. Deleting is blocked to prevent orphaned records."
+  "err_batch_delete_fiscaal": "This batch has deliveries and/or excise records and is therefore fiscally recorded. Deleting is blocked to prevent orphaned records.",
+  "err_save_geweigerd": "The server rejected this change (invalid data format). The current data has been reloaded; the last change was not saved."
 }

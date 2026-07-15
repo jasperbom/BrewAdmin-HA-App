@@ -148,7 +148,9 @@ export const _updateVersion = (key: string, r: Response): void => {
   if (v) _versions.set(key, v)
 }
 
-export type SaveResult = 'ok' | 'fail' | 'conflict'
+// 'reject' = de server wees de payload definitief af (400/413/422,
+// bijv. schemavalidatie) — nooit herproberen, wél de gebruiker melden.
+export type SaveResult = 'ok' | 'fail' | 'conflict' | 'reject'
 
 // Alle verzendingen serialiseren via één globale keten: een volgende POST of
 // commit wacht op de versie-updates van de vorige, anders zou die met een
@@ -183,6 +185,10 @@ const _doPost = (key: string, data: any): Promise<SaveResult> => {
       return 'ok' as SaveResult
     }
     if (r.status === 409) return 'conflict' as SaveResult
+    if (r.status === 400 || r.status === 413 || r.status === 422) {
+      _syncErrors++
+      return 'reject' as SaveResult
+    }
     if (r.status !== 429) _syncErrors++
     return 'fail' as SaveResult
   })
@@ -206,7 +212,7 @@ const lsGet = (k: string, d: any = []) => {
 // Een sequence-nummer per key voorkomt dat een oude (tragere) response of
 // retry een nieuwere save overschrijft.
 const _saveSeq = new Map<string, number>()
-const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void, onConflict: () => void}>()
+const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void, onConflict: () => void, onReject: () => void}>()
 let _retryTimer: ReturnType<typeof setInterval> | null = null
 
 const _flushPendingSaves = () => {
@@ -223,6 +229,9 @@ const _flushPendingSaves = () => {
       } else if (res === 'conflict') {
         _pendingSaves.delete(key)
         entry.onConflict()
+      } else if (res === 'reject') {
+        _pendingSaves.delete(key)
+        entry.onReject()
       }
     })
   }
@@ -238,7 +247,7 @@ const _scheduleRetry = () => {
 // dat losse POSTs die half konden slagen. Saves die in dezelfde event-tick
 // gebeuren worden nu gebufferd en als één POST /api/commit atomair
 // weggeschreven — zonder dat de aanroepende pagina's iets hoeven te weten.
-type _BufEntry = {data: any, seq: number, onOk: () => void, onConflict: () => void}
+type _BufEntry = {data: any, seq: number, onOk: () => void, onConflict: () => void, onReject: () => void}
 const _commitBuffer = new Map<string, _BufEntry>()
 let _flushScheduled = false
 
@@ -254,8 +263,9 @@ const _handleSaveResult = (key: string, e: _BufEntry, res: SaveResult) => {
   if (_saveSeq.get(key) !== e.seq) return // er is al een nieuwere save
   if (res === 'ok') e.onOk()
   else if (res === 'conflict') e.onConflict()
+  else if (res === 'reject') e.onReject()
   else {
-    _pendingSaves.set(key, {seq: e.seq, data: e.data, onOk: e.onOk, onConflict: e.onConflict})
+    _pendingSaves.set(key, {seq: e.seq, data: e.data, onOk: e.onOk, onConflict: e.onConflict, onReject: e.onReject})
     _scheduleRetry()
   }
 }
@@ -279,6 +289,12 @@ const _flushCommitBuffer = () => {
         if (res.conflicts.includes(k)) _handleSaveResult(k, e, 'conflict')
         else _handleSaveResult(k, e, await _doPost(k, e.data))
       }
+    } else if (res.status === 'reject') {
+      // Eén key is door schemavalidatie afgewezen; de rest alsnog los proberen.
+      for (const [k, e] of entries) {
+        if (k === res.key || !res.key) _handleSaveResult(k, e, 'reject')
+        else _handleSaveResult(k, e, await _doPost(k, e.data))
+      }
     } else if (res.status === 'notfound') {
       // Oudere server zonder /api/commit → terugvallen op losse POSTs.
       for (const [k, e] of entries) _handleSaveResult(k, e, await _doPost(k, e.data))
@@ -292,7 +308,7 @@ const _flushCommitBuffer = () => {
 
 const _doCommit = async (
   entries: Array<[string, _BufEntry]>,
-): Promise<{status: 'ok' | 'fail' | 'notfound'} | {status: 'conflict', conflicts: string[]}> => {
+): Promise<{status: 'ok' | 'fail' | 'notfound'} | {status: 'conflict', conflicts: string[]} | {status: 'reject', key?: string}> => {
   _syncPending++
   const data: Record<string, any> = {}
   const versions: Record<string, string> = {}
@@ -322,6 +338,11 @@ const _doCommit = async (
     if (r.status === 409) {
       const d = await r.json().catch(() => ({} as any))
       return {status: 'conflict', conflicts: Object.keys(d?.conflicts || {})}
+    }
+    if (r.status === 400 || r.status === 413 || r.status === 422) {
+      _syncErrors++
+      const d = await r.json().catch(() => ({} as any))
+      return {status: 'reject', key: typeof d?.key === 'string' ? d.key : undefined}
     }
     if (r.status === 404) return {status: 'notfound'}
     if (r.status !== 429) _syncErrors++
@@ -371,11 +392,11 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       })
   }, [key])
 
-  // Conflict (409): een andere client/tab heeft deze key tussentijds
-  // gewijzigd. Serverdata is leidend — de lokale wijziging vervalt bewust
-  // (nooit andermans werk stil overschrijven) en de gebruiker krijgt een
-  // melding om de eigen wijziging opnieuw in te voeren.
-  const onConflict = () => {
+  // Serverdata terugladen + gebruiker melden. Gebruikt bij een conflict
+  // (409: andere client/tab schreef tussendoor) en bij een afwijzing
+  // (422: schemavalidatie) — in beide gevallen is de serverstand leidend en
+  // vervalt de lokale wijziging bewust, met een duidelijke melding.
+  const herstelVanServer = (meldingKey: string) => {
     modified.current = false
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
       .then(r => { _updateVersion(key, r); return r.ok ? r.json() : null })
@@ -384,10 +405,12 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
           setData(d)
           if (!secure) lsSet(key, d)
         }
-        alert(t('sync_conflict_melding'))
+        alert(t(meldingKey))
       })
-      .catch(() => { alert(t('sync_conflict_melding')) })
+      .catch(() => { alert(t(meldingKey)) })
   }
+  const onConflict = () => herstelVanServer('sync_conflict_melding')
+  const onReject = () => herstelVanServer('err_save_geweigerd')
 
   const save = (val: any) => {
     modified.current = true
@@ -399,7 +422,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       _pendingSaves.delete(key) // nieuwe save vervangt elke oudere retry
       // Via de commit-buffer: saves uit dezelfde event-tick worden gebundeld
       // tot één atomaire /api/commit (ERP-plan 1.1).
-      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict})
+      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict, onReject})
       return next
     })
   }

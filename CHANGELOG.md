@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.89] — 2026-07-15
+
+### Toegevoegd — Server-side schemavalidatie (ERP-plan 1.4)
+
+- De server dwingt per bekende gegevenssoort het containertype af (array,
+  object of tekst) op zowel `POST /api/data/<key>` als `POST /api/commit`.
+  Eén verkeerd verzoek (bijv. een object waar een array hoort) kan de
+  app-data dus niet meer vervangen; het antwoord is een 422 met de
+  verwachte vorm. Onbekende keys blijven vrij (voorwaartse compatibiliteit).
+- De app behandelt zo'n definitieve afwijzing (400/413/422) nu correct:
+  geen eindeloze herhaalpogingen meer, maar de actuele serverdata herladen
+  en een duidelijke melding (5 talen). Voorheen bleef een afgewezen opslag
+  elke 15 seconden opnieuw proberen.
+
+---
+
 ## [1.10.88] — 2026-07-15
 
 ### Toegevoegd — Data-gezondheid: referentiële integriteit (ERP-plan 1.3)

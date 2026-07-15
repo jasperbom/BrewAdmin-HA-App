@@ -2593,5 +2593,6 @@
   "gezondheid_col_record": "Registro",
   "gezondheid_col_veld": "Campo",
   "gezondheid_col_doel": "Apunta a (falta)",
-  "err_batch_delete_fiscaal": "Este lote tiene entregas y/o registros de impuestos especiales y, por tanto, está registrado fiscalmente. La eliminación está bloqueada para evitar registros huérfanos."
+  "err_batch_delete_fiscaal": "Este lote tiene entregas y/o registros de impuestos especiales y, por tanto, está registrado fiscalmente. La eliminación está bloqueada para evitar registros huérfanos.",
+  "err_save_geweigerd": "El servidor ha rechazado este cambio (formato de datos no válido). Se han vuelto a cargar los datos actuales; el último cambio no se ha guardado."
 }

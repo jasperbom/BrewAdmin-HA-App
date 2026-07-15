@@ -679,6 +679,69 @@ def _read_json(key: str, default=None):
         return default
 
 
+# ── Lichte schemavalidatie (ERP-plan 1.4) ────────────────────────────────
+# De server accepteerde elke geldige JSON onder elke key; één verkeerd
+# POST-je (bv. een object waar een array hoort) maakte de app-data kapot.
+# Per bekende key wordt nu minimaal het containertype afgedwongen (422 bij
+# afwijking). Onbekende keys blijven vrij (voorwaartse compatibiliteit).
+
+_KEY_TYPES = {
+    # arrays (records)
+    **{k: 'array' for k in (
+        'ingredienten', 'lots', 'batches', 'batch_ingredienten', 'afvullingen',
+        'uitslagen', 'uitleveringen', 'accijns', 'verpakkingen', 'onderdelen',
+        'voorraad_log', 'voorraad_archief', 'voorraad_gesloten_bieren',
+        'recepten', 'recepten_verborgen', 'recepten_gearchiveerde_tags',
+        'recepten_tag_volgorde', 'recepten_gesloten_groepen', 'tanks',
+        'tank_reinigingslog', 'artikelen', 'hygiene_items', 'hygiene_groups',
+        'brouwdag_checklist', 'botteldag_checklist', 'batch_taken_items',
+        'batch_taken_groepen', 'inkoop_facturen', 'scan_correcties',
+        'verkoop_facturen', 'bestellingen', 'bestelling_picks', 'afboekingen',
+        'klanten', 'gist_metingen', 'carbonatie_sessies', 'verlies_registraties',
+        'brouwdag_stappen', 'water_addities', 'water_profielen',
+        'water_doelprofielen', 'hop_addities', 'dry_hops', 'koel_logs',
+        'batch_notities', 'kapitaal_boekingen', 'alt_rekeningen',
+        'inventarisaties', 'audit_log', 'accijns_aangiftes', 'btw_aangiftes',
+        'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
+        'haccp_schoonmaak_log', 'haccp_ccp_definities', 'haccp_ccp_metingen',
+        'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
+        'haccp_opleidingen', 'locaties', 'verplaatsingen', 'btw_tarieven',
+        'ing_types', 'kosten_soorten', 'gn_codes',
+    )},
+    # objecten (instellingen/koppeltabellen)
+    **{k: 'object' for k in (
+        'accijns_instellingen', 'btw_instellingen', 'ing_type_btw',
+        'brewery_details', 'mail_templates', 'factuur_counter',
+        'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
+        'coldcrash_instellingen', 'planning_instellingen',
+        'brouwproces_instellingen', 'bank_koppelingen', 'tank_statussen',
+        'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
+    )},
+    # scalars
+    'app_name':     'string',
+    'nav_theme':    'string',
+    'app_logo':     'string_or_null',
+    'factuur_logo': 'string_or_null',
+}
+
+
+def _payload_geldig(key: str, parsed) -> bool:
+    """True wanneer de payload het verwachte containertype heeft (of de key
+    onbekend is)."""
+    verwacht = _KEY_TYPES.get(key)
+    if verwacht is None:
+        return True
+    if verwacht == 'array':
+        return isinstance(parsed, list)
+    if verwacht == 'object':
+        return isinstance(parsed, dict)
+    if verwacht == 'string':
+        return isinstance(parsed, str)
+    if verwacht == 'string_or_null':
+        return parsed is None or isinstance(parsed, str)
+    return True
+
+
 # ── Secrets afschermen (ERP-plan 0.6) ────────────────────────────────────
 # Credentials staan als JSON in /data, maar de gevoelige velden mogen nooit
 # plaintext terug naar de browser. GET maskeert ze met een sentinel; POST
@@ -1463,6 +1526,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self._json(400, {'error': 'invalid json'})
                 return
+            if not _payload_geldig(key, parsed):
+                self._json(422, {'error': 'invalid payload', 'key': key,
+                                 'expected': _KEY_TYPES.get(key)})
+                return
             filepath = DATA_DIR / f'{key}.json'
             # Onder _data_lock zodat de achtergrondthreads (cold-crash,
             # auto-metingen) die read-modify-write doen op dezelfde bestanden
@@ -2165,9 +2232,13 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if len(data) > COMMIT_MAX_KEYS:
             self._json(400, {'error': f'too many keys (max {COMMIT_MAX_KEYS})'})
             return
-        for key in data:
+        for key, value in data.items():
             if not _valid_key(key):
                 self._json(400, {'error': f'invalid key: {key}'})
+                return
+            if not _payload_geldig(key, value):
+                self._json(422, {'error': 'invalid payload', 'key': key,
+                                 'expected': _KEY_TYPES.get(key)})
                 return
         with _data_lock:
             conflicts = {}
