@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.76] — 2026-07-15
+
+### Toegevoegd — Batchflow: ingrediënt koppelen aan alternatief + kosten
+
+- In de afboek-tabel van de Batchflow-pagina (fase **Brouwen**, en de
+  dry-hop-afboeking bij **Vergisten**) kan een ingrediëntregel nu — net als op
+  de Batches-pagina — via de 🔗-pill gekoppeld worden aan een (alternatief)
+  ingrediënt uit de catalogus. Handig wanneer het receptingrediënt niet op
+  voorraad is: na koppelen volgen de voorraadcheck en lot-keuze het gekozen
+  alternatief.
+- Niet-gematchte regels tonen een oranje **Koppelen**-knop; reeds afgeboekte
+  regels tonen alleen nog de vastgelegde koppeling (niet meer wijzigbaar).
+- De afboek-tabel toont nu ook een **Kosten**-kolom per regel (vastgelegde
+  kosten of lotprijs × hoeveelheid) plus een totaalregel — zelfde berekening
+  als op de Batches-pagina.
+
+---
+
 ## [1.10.75] — 2026-07-15
 
 ### Toegevoegd — Bank: gebundelde PSP-uitbetalingen uitsplitsen

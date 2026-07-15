@@ -296,6 +296,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [toonNieuwProduct, setToonNieuwProduct] = useState(false)
   // Tankverplaatsing
   const [moveTankTarget, setMoveTankTarget] = useState('')
+  // Rij-id van de batch-ingredient waarvan de koppel-picker openstaat (afboek-tabel).
+  const [koppelRow, setKoppelRow] = useState<number | null>(null)
   // Nieuwe batch plannen vanaf het overzicht (plus-kaart)
   const [nieuwOpen, setNieuwOpen] = useState(false)
   const [nieuwForm, setNieuwForm] = useState<any>({recept_id: '', naam: '', datum: tod(), tank: ''})
@@ -517,6 +519,29 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return (lots || [])
       .filter((l: any) => l.ingredient_id === row.ingredient_id && l.beschikbaar !== false && Number(l.hoeveelheid || 0) > 0)
       .reduce((s: number, l: any) => s + (convertEenheid(Number(l.hoeveelheid || 0), l.eenheid, row.eenheid) ?? 0), 0)
+  }
+
+  // Koppel alle nog niet afgeboekte batch-ingredient-regels in dezelfde groep
+  // (binnen deze batch) aan een alternatief ingredient uit de catalogus — zelfde
+  // gedrag als op de Batches-pagina. Match op groep via ingredient_id (als die
+  // al gezet is) of op naam (lowercase). newIngId = null ontkoppelt (terug naar
+  // automatische naam-match). Het gekozen lot wordt gewist omdat lots aan een
+  // specifiek ingredient hangen.
+  const koppelBatchIngGroep = (biRow: any, newIngId: number | null) => {
+    setBi((prev: any[]) => prev.map((x: any) => {
+      if (x.batch_id !== biRow.batch_id || x.afgeboekt) return x
+      const sameGroep = biRow.ingredient_id
+        ? x.ingredient_id === biRow.ingredient_id
+        : (!x.ingredient_id && String(x.ingredient_naam || '').toLowerCase() === String(biRow.ingredient_naam || '').toLowerCase())
+      return sameGroep ? {...x, ingredient_id: newIngId, lot_id: null} : x
+    }))
+  }
+
+  // Lijst van ingredienten voor de koppel-dropdown, gefilterd op type.
+  const batchIngOptions = (ingType: string): any[] => {
+    const type = ingType || 'Overig'
+    return [...(ing || []).filter((i: any) => i.type === type)]
+      .sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam), 'nl'))
   }
 
   const isDryHopRij = (row: any) => {
@@ -1232,6 +1257,64 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">{t('flow_voorraad_geen')}</span>
   }
 
+  // Koppel-pill achter de ingredientnaam in de afboek-tabel — afgekeken van de
+  // Batches-pagina: koppel een receptregel aan een (alternatief) ingredient uit
+  // de catalogus, zodat de voorraadcheck en lot-keuze dat ingredient volgen.
+  const renderKoppelPill = (row: any) => {
+    const ingById = row.ingredient_id ? (ing || []).find((i: any) => i.id === row.ingredient_id) : null
+    const ingByName = !ingById
+      ? (ing || []).find((i: any) => String(i.naam).toLowerCase() === String(row.ingredient_naam || '').toLowerCase())
+      : null
+    const match = ingById || ingByName
+    const explicit = !!ingById
+    if (row.afgeboekt) {
+      // Historische regel: alleen tonen wat gekoppeld was, niet meer wijzigen.
+      return explicit && match ? (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 ml-2 align-middle">🔗 {match.naam}</span>
+      ) : null
+    }
+    if (koppelRow === row.id) {
+      return (
+        <select autoFocus value={row.ingredient_id ?? ''}
+          onClick={(e: any) => e.stopPropagation()}
+          onBlur={() => setKoppelRow(null)}
+          onChange={(e: any) => {
+            const v = e.target.value
+            koppelBatchIngGroep(row, v === '' ? null : Number(v))
+            setKoppelRow(null)
+          }}
+          className="text-xs border rounded px-1 py-0.5 bg-white ml-2 align-middle">
+          <option value="">{t('recipe_link_auto')}</option>
+          {batchIngOptions(row.ingredient_type).map((i: any) => (
+            <option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>
+          ))}
+        </select>
+      )
+    }
+    if (match && explicit) {
+      return (
+        <span onClick={(e: any) => { e.stopPropagation(); setKoppelRow(row.id) }}
+          className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 cursor-pointer hover:bg-blue-100 ml-2 align-middle"
+          title={t('recipe_link_edit')}>
+          🔗 {match.naam}
+        </span>
+      )
+    }
+    if (!match) {
+      return (
+        <button onClick={(e: any) => { e.stopPropagation(); setKoppelRow(row.id) }}
+          className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 ml-2 align-middle">
+          {t('recipe_link_none')}
+        </button>
+      )
+    }
+    return (
+      <button onClick={(e: any) => { e.stopPropagation(); setKoppelRow(row.id) }}
+        className="text-xs px-1 py-0.5 rounded text-gray-400 hover:bg-gray-100 ml-2 align-middle"
+        title={t('recipe_link_edit')}>🔗</button>
+    )
+  }
+
   // Afweeg/afboek-tabel: lot kiezen + per regel afboeken van de voorraad.
   const renderAfboekTabel = (rows: any[]) => (
     <div>
@@ -1246,6 +1329,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 <th className="px-2 py-1.5 text-right">{t('lbl_quantity')}</th>
                 <th className="px-2 py-1.5 text-left">{t('hop_schema_lot')}</th>
                 <th className="px-2 py-1.5 text-left">{t('lbl_status')}</th>
+                <th className="px-2 py-1.5 text-right">{t('lbl_costs')}</th>
                 <th className="px-2 py-1.5 text-right"></th>
               </tr>
             </thead>
@@ -1254,11 +1338,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 const rowLots = row.ingredient_id
                   ? (lots || []).filter((l: any) => l.ingredient_id === row.ingredient_id && (Number(l.hoeveelheid || 0) > 0 || l.id === row.lot_id))
                   : []
+                // Kosten: vastgelegde kosten van de regel, of anders de lotprijs ×
+                // hoeveelheid van het gekozen lot — zelfde als op de Batches-pagina.
+                const rowLot = (lots || []).find((l: any) => l.id === row.lot_id)
+                const kosten = row.kosten
+                  ? Number(row.kosten)
+                  : (rowLot?.prijs_per_eenheid ? rowLot.prijs_per_eenheid * Number(row.hoeveelheid || 0) : null)
                 return (
                   <tr key={row.id} className={row.afgeboekt ? 'bg-green-50/50' : ''}>
                     <td className="px-2 py-1.5">
-                      {row.ingredient_naam}
+                      <span className="align-middle">{row.ingredient_naam}</span>
                       {row.gebruik && <span className="ml-1 text-xs text-gray-400">({row.gebruik})</span>}
+                      {renderKoppelPill(row)}
                     </td>
                     <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</td>
                     <td className="px-2 py-1.5">
@@ -1280,6 +1371,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                       )}
                     </td>
                     <td className="px-2 py-1.5"><VoorraadChip row={row} /></td>
+                    <td className="px-2 py-1.5 text-right text-xs text-gray-600 whitespace-nowrap">{kosten !== null ? fmt(kosten) : '—'}</td>
                     <td className="px-2 py-1.5 text-right">
                       {!row.afgeboekt && (
                         <Btn s="sm" v="secondary" disabled={!row.lot_id} onClick={() => haalVanVoorraad(row)}>
@@ -1291,6 +1383,23 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 )
               })}
             </tbody>
+            {(() => {
+              // Totaalregel: som van bekende kosten over de getoonde regels.
+              const totaal = rows.reduce((s: number, r: any) => {
+                if (r.kosten) return s + Number(r.kosten)
+                const l = (lots || []).find((ll: any) => ll.id === r.lot_id)
+                return s + (l?.prijs_per_eenheid ? l.prijs_per_eenheid * Number(r.hoeveelheid || 0) : 0)
+              }, 0)
+              return totaal > 0 ? (
+                <tfoot>
+                  <tr className="border-t border-gray-200">
+                    <td colSpan={4} className="px-2 py-1.5 text-right text-xs font-semibold text-gray-500">{t('lbl_total')}</td>
+                    <td className="px-2 py-1.5 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">{fmt(totaal)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              ) : null
+            })()}
           </table>
         </div>
       )}
