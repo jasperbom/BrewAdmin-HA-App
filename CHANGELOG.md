@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.71] — 2026-07-15
+
+### Verbeterd — Bestellingen koppelen nu overal automatisch aan de klantkaart
+
+- Bestellingen zonder klantkoppeling die op **e-mail** (of, als de naam
+  uniek is, op **exact dezelfde klantnaam**) bij een bestaande klant horen,
+  worden nu automatisch gekoppeld — ongeacht waar ze vandaan komen (oude
+  WooCommerce-imports, handmatige orders, backup-import). Voorheen gebeurde
+  dit alleen bij het opslaan van een klantkaart of via de koppel-knop op de
+  klantdetailpagina, waardoor orders van al bestaande klanten ongekoppeld
+  bleven.
+- Bij de **WooCommerce-import** worden nieuwe orders direct aan de juiste
+  klantkaart gekoppeld in plaats van eerst als "ongekoppeld" binnen te komen.
+- Bij naamgenoten (twee klanten met exact dezelfde naam) wordt bewust níét
+  automatisch gekoppeld; die orders blijven handmatig te koppelen via de
+  klantkaart.
+
 ## [1.10.70] — 2026-07-14
 
 ### Verbeterd — Kassa via het dashboard + lot-voorraad in het Hop-schema

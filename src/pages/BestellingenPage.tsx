@@ -12,7 +12,7 @@ import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '..
 import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
-import { resolveKlantSnapshot } from '../utils/klant'
+import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -418,6 +418,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           wc_order_id: o.id,
           wc_order_nummer: String(o.number||o.id),
         }
+        // Koppel direct aan een bestaande klantkaart (e-mail, of uniek op
+        // naam) zodat de order niet eerst als "ongekoppeld" binnenkomt.
+        const bestaandeKlant = findKlantVoorOrder(nb, klanten)
+        if (bestaandeKlant) nb.klant_id = bestaandeKlant.id
         nieuw.push(nb)
         imported++
       }

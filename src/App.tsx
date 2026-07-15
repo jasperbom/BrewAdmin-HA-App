@@ -4,6 +4,7 @@ import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _f
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
+import { findKlantVoorOrder } from './utils/klant'
 import { accijnsCalc, tariefVoorDatum } from './utils/calculations'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
@@ -289,6 +290,39 @@ function App() {
     });
     if (dirty) setBat(patched);
   }, [bat, recepten]);
+
+  // Auto-koppel bestellingen aan klantkaarten. Bestellingen zonder `klant_id`
+  // die op e-mail (of uniek op naam) bij een bestaande klant horen, krijgen
+  // die koppeling hier automatisch — waar de order ook vandaan komt (oude
+  // WC-imports, handmatige invoer, backup-import) en op welke pagina de
+  // gebruiker ook kijkt. Voorheen gebeurde dit alleen bij het opslaan van
+  // een klantkaart of via de koppel-knop op de klantdetailpagina, waardoor
+  // orders van al bestaande klanten ongekoppeld bleven liggen.
+  //
+  // Alleen `klant_id` wordt gezet; de klant-snapshot op de order blijft
+  // ongemoeid (zelfde gedrag als de koppel-knop in KlantenPage). Het effect
+  // convergeert: gekoppelde orders worden overgeslagen, dus na één schrijf-
+  // ronde valt er niets meer te doen tot er nieuwe orders of klanten komen.
+  // Wacht op de server-fetch van beide stores (`_fetchedKeys`) — anders zou
+  // een write op basis van de localStorage-cache de echte server-data
+  // verwerpen (zie recept-backfill hierboven voor het data-loss risico).
+  React.useEffect(() => {
+    if (!_fetchedKeys.has('bestellingen') || !_fetchedKeys.has('klanten')) return;
+    if (!Array.isArray(bestellingen) || !Array.isArray(klanten) || klanten.length === 0) return;
+    let gekoppeld = 0;
+    const patched = bestellingen.map((b: any) => {
+      if (!b || b.klant_id != null) return b;
+      const k = findKlantVoorOrder(b, klanten);
+      if (!k) return b;
+      gekoppeld++;
+      return {...b, klant_id: k.id};
+    });
+    if (gekoppeld > 0) {
+      setBestellingen(patched);
+      logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:0, actie:'gewijzigd',
+        omschrijving:`${gekoppeld} bestelling(en) automatisch aan klantkaart gekoppeld`});
+    }
+  }, [bestellingen, klanten]);
 
   // Eénmalige migratie: oude hygiëne/brouwdag/botteldag-checklists en CCP-
   // definities samenvoegen tot het unified `batch_taken_items` + `batch_taken_groepen`
