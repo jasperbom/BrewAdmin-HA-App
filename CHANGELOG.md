@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.88] — 2026-07-15
+
+### Toegevoegd — Data-gezondheid: referentiële integriteit (ERP-plan 1.3)
+
+- Nieuwe sectie **Instellingen → App → Data-gezondheid**: controleert met
+  één klik alle onderlinge verwijzingen (20 relaties over 12
+  gegevenssoorten) op verweesde records en toont precies welk record met
+  welk veld nergens meer naartoe wijst.
+- Nieuwe herbruikbare functie `checkIntegriteit` (`src/utils/integriteit.ts`),
+  puur en unit-testbaar.
+- **Guard bij batch verwijderen:** een batch met uitleveringen of
+  accijnsrecords (fiscaal vastgelegd) kan niet meer verwijderd worden —
+  voorheen bleven die records verweesd achter.
+
+---
+
 ## [1.10.87] — 2026-07-15
 
 ### Gewijzigd — Botsingsvrije record-id's (ERP-plan 1.2)

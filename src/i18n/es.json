@@ -2583,5 +2583,15 @@
   "warn_afvullen_tankvolume": "Atención: vas a envasar {liters} L, pero según el balance de volumen solo quedan {rest} L en el tanque. Comprueba la entrada (cantidad × contenido) y las pérdidas registradas. ¿Continuar de todos modos?",
   "lot_bewerk_correctie_ref": "Corrección al editar el lote",
   "inv_bier_afboek_oms": "Inventario n.º {id}: recuento {van} → {naar}",
-  "err_bestand_lezen": "No se ha podido leer el archivo."
+  "err_bestand_lezen": "No se ha podido leer el archivo.",
+  "settings_gezondheid_title": "Salud de los datos",
+  "settings_gezondheid_desc": "Comprueba todas las referencias cruzadas (lotes de elaboración, lotes, envasados, entregas, impuestos especiales, pedidos, facturas) en busca de registros huérfanos: referencias que ya no apuntan a nada.",
+  "settings_gezondheid_check": "Comprobar ahora",
+  "settings_gezondheid_ok": "✓ No se han encontrado problemas: todas las referencias son válidas.",
+  "settings_gezondheid_problemen": "Se han encontrado {n} referencia(s) rota(s):",
+  "settings_gezondheid_meer": "… y {n} más.",
+  "gezondheid_col_record": "Registro",
+  "gezondheid_col_veld": "Campo",
+  "gezondheid_col_doel": "Apunta a (falta)",
+  "err_batch_delete_fiscaal": "Este lote tiene entregas y/o registros de impuestos especiales y, por tanto, está registrado fiscalmente. La eliminación está bloqueada para evitar registros huérfanos."
 }

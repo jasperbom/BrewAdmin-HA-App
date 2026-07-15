@@ -2583,5 +2583,15 @@
   "warn_afvullen_tankvolume": "Warning: you are packaging {liters} L, but according to the volume balance only {rest} L remains in the tank. Check the input (quantity × volume) and the loss records. Continue anyway?",
   "lot_bewerk_correctie_ref": "Correction via lot edit",
   "inv_bier_afboek_oms": "Stock count #{id}: count {van} → {naar}",
-  "err_bestand_lezen": "The file could not be read."
+  "err_bestand_lezen": "The file could not be read.",
+  "settings_gezondheid_title": "Data health",
+  "settings_gezondheid_desc": "Checks all cross-references (batches, lots, packagings, deliveries, excise, orders, invoices) for orphaned records — references that no longer point anywhere.",
+  "settings_gezondheid_check": "Check now",
+  "settings_gezondheid_ok": "✓ No issues found — all references are valid.",
+  "settings_gezondheid_problemen": "{n} broken reference(s) found:",
+  "settings_gezondheid_meer": "… and {n} more.",
+  "gezondheid_col_record": "Record",
+  "gezondheid_col_veld": "Field",
+  "gezondheid_col_doel": "Points to (missing)",
+  "err_batch_delete_fiscaal": "This batch has deliveries and/or excise records and is therefore fiscally recorded. Deleting is blocked to prevent orphaned records."
 }

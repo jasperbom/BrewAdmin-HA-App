@@ -1053,6 +1053,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   }
 
   const removeBatch = (id: number) => {
+    // Integriteitsguard (ERP-plan 1.3): een batch met uitleveringen of
+    // accijnsrecords is fiscaal vastgelegd. Verwijderen zou verweesde
+    // records achterlaten die stil aan een andere batch kunnen gaan
+    // plakken — blokkeren dus, net als delAv bij uitleveringen.
+    if ((uit||[]).some((u: any) => u.batch_id === id) || (acc||[]).some((a: any) => a.batch_id === id)) {
+      alert(t('err_batch_delete_fiscaal'))
+      return
+    }
     if (confirm(t('error_confirm_delete_batch'))) {
       const naam = bat.find((b: any) => b.id === id)?.naam || ''
       logAudit(auditLog, setAuditLog, {entiteit:'Batch', entiteit_id:id, actie:'verwijderd', omschrijving:naam})

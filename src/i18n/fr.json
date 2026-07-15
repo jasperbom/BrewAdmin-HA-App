@@ -2583,5 +2583,15 @@
   "warn_afvullen_tankvolume": "Attention : vous conditionnez {liters} L, mais selon le bilan volumique il ne reste que {rest} L dans la cuve. Vérifiez la saisie (quantité × contenance) et les pertes enregistrées. Continuer quand même ?",
   "lot_bewerk_correctie_ref": "Correction via modification du lot",
   "inv_bier_afboek_oms": "Inventaire n°{id} : comptage {van} → {naar}",
-  "err_bestand_lezen": "Le fichier n'a pas pu être lu."
+  "err_bestand_lezen": "Le fichier n'a pas pu être lu.",
+  "settings_gezondheid_title": "Santé des données",
+  "settings_gezondheid_desc": "Vérifie toutes les références croisées (brassins, lots, conditionnements, livraisons, accises, commandes, factures) à la recherche d'enregistrements orphelins — des références qui ne pointent plus nulle part.",
+  "settings_gezondheid_check": "Vérifier maintenant",
+  "settings_gezondheid_ok": "✓ Aucun problème détecté — toutes les références sont valides.",
+  "settings_gezondheid_problemen": "{n} référence(s) cassée(s) trouvée(s) :",
+  "settings_gezondheid_meer": "… et {n} de plus.",
+  "gezondheid_col_record": "Enregistrement",
+  "gezondheid_col_veld": "Champ",
+  "gezondheid_col_doel": "Pointe vers (manquant)",
+  "err_batch_delete_fiscaal": "Ce brassin a des livraisons et/ou des enregistrements d'accises et est donc fiscalement enregistré. La suppression est bloquée pour éviter les enregistrements orphelins."
 }

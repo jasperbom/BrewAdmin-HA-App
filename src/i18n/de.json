@@ -2583,5 +2583,15 @@
   "warn_afvullen_tankvolume": "Achtung: Sie füllen {liters} L ab, aber laut Volumenbilanz sind nur noch {rest} L im Tank. Prüfen Sie die Eingabe (Anzahl × Inhalt) und die Verlustbuchungen. Trotzdem fortfahren?",
   "lot_bewerk_correctie_ref": "Korrektur über Charge bearbeiten",
   "inv_bier_afboek_oms": "Inventur #{id}: Zählung {van} → {naar}",
-  "err_bestand_lezen": "Die Datei konnte nicht gelesen werden."
+  "err_bestand_lezen": "Die Datei konnte nicht gelesen werden.",
+  "settings_gezondheid_title": "Datenintegrität",
+  "settings_gezondheid_desc": "Prüft alle Querverweise (Sude, Chargen, Abfüllungen, Auslieferungen, Verbrauchsteuer, Bestellungen, Rechnungen) auf verwaiste Datensätze — Verweise, die ins Leere zeigen.",
+  "settings_gezondheid_check": "Jetzt prüfen",
+  "settings_gezondheid_ok": "✓ Keine Probleme gefunden — alle Verweise sind gültig.",
+  "settings_gezondheid_problemen": "{n} defekte Verweise gefunden:",
+  "settings_gezondheid_meer": "… und {n} weitere.",
+  "gezondheid_col_record": "Datensatz",
+  "gezondheid_col_veld": "Feld",
+  "gezondheid_col_doel": "Verweist auf (fehlt)",
+  "err_batch_delete_fiscaal": "Dieser Sud hat Auslieferungen und/oder Verbrauchsteuereinträge und ist damit steuerlich erfasst. Löschen ist gesperrt, um verwaiste Datensätze zu vermeiden."
 }
