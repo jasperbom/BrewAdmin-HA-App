@@ -324,6 +324,33 @@ function App() {
     }
   }, [bestellingen, klanten]);
 
+  // Zelfde auto-koppeling voor verkoopfacturen. Facturen erven bij aanmaak de
+  // `klant_id` van hun bestelling, maar facturen van vóór de order-koppeling
+  // staan nog op null — en dan missen kassa en klantenpagina die aankopen in
+  // de klantstatistieken (aantal aankopen, laatste aankoop, openstaand).
+  // Koppeling: eerst via de eigen bestelling (`bestelling_id`, betrouwbaarste
+  // bron — de order is hierboven al gekoppeld), anders op e-mail/unieke naam
+  // van de factuur-snapshot zelf.
+  React.useEffect(() => {
+    if (!_fetchedKeys.has('verkoop_facturen') || !_fetchedKeys.has('bestellingen') || !_fetchedKeys.has('klanten')) return;
+    if (!Array.isArray(verkoopFacturen) || !Array.isArray(klanten) || klanten.length === 0) return;
+    let gekoppeld = 0;
+    const patched = verkoopFacturen.map((f: any) => {
+      if (!f || f.klant_id != null) return f;
+      const best = f.bestelling_id != null
+        ? (bestellingen || []).find((b: any) => b.id === f.bestelling_id) : null;
+      const klantId = best?.klant_id ?? findKlantVoorOrder(f, klanten)?.id ?? null;
+      if (klantId == null) return f;
+      gekoppeld++;
+      return {...f, klant_id: klantId};
+    });
+    if (gekoppeld > 0) {
+      setVerkoopFacturen(patched);
+      logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:0, actie:'gewijzigd',
+        omschrijving:`${gekoppeld} verkoopfactu(u)r(en) automatisch aan klantkaart gekoppeld`});
+    }
+  }, [verkoopFacturen, bestellingen, klanten]);
+
   // Eénmalige migratie: oude hygiëne/brouwdag/botteldag-checklists en CCP-
   // definities samenvoegen tot het unified `batch_taken_items` + `batch_taken_groepen`
   // systeem. Loopt pas zodra alle relevante server-stores geladen zijn, zodat
