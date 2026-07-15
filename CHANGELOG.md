@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.73] — 2026-07-15
+
+### Gewijzigd — Kassa: vaste productprijzen met aparte kortingsregel
+
+- De prijs per bonregel is in de kassa **niet meer handmatig aan te passen**;
+  de prijs komt altijd uit het artikel (normaal of B2B-prijs).
+- Nieuw: **kortingsregel** op de bon — als vast bedrag (€, incl. BTW) of als
+  percentage. De korting wordt per BTW-tarief verdeeld en komt als aparte
+  kortingsregel op de bestelling en factuur, net als de vaste klantkorting.
+  Statiegeld valt buiten de korting.
+
 ## [1.10.72] — 2026-07-15
 
 ### Opgelost — Klantstatistieken in de kassa tellen nu alle aankopen mee

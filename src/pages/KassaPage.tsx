@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { t } from '../i18n'
 import { newId } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
@@ -47,8 +47,8 @@ interface KassaPageProps {
   setAuditLog?: any
 }
 
-// Eén regel op de kassabon. `manualPrijs` markeert dat de prijs handmatig
-// aangepast is zodat een klantwissel (normaal ↔ B2B) hem niet overschrijft.
+// Eén regel op de kassabon. De prijs komt altijd uit het artikel (normaal of
+// B2B) en is niet handmatig aan te passen; korting gaat via de kortingsregel.
 interface BonRegel {
   key: string
   type: 'bier' | 'vrij'
@@ -62,7 +62,12 @@ interface BonRegel {
   artikel_key?: string | null
   sku?: string | null
   prijsType?: 'normaal' | 'b2b'
-  manualPrijs?: boolean
+}
+
+// Handmatige korting op de hele bon: vast bedrag (incl. BTW) of percentage.
+interface BonKorting {
+  soort: 'bedrag' | 'pct'
+  waarde: number
 }
 
 type Betaalwijze = 'contant' | 'pin' | 'rekening'
@@ -92,6 +97,9 @@ const KassaPage: React.FC<KassaPageProps> = ({
   const [nieuweKlantForm, setNieuweKlantForm] = useState({naam: '', klant_type: 'prive', email: '', telefoon: ''})
   const [showVrijeRegel, setShowVrijeRegel] = useState(false)
   const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
+  const [bonKorting, setBonKorting] = useState<BonKorting | null>(null)
+  const [showKorting, setShowKorting] = useState(false)
+  const [kortingForm, setKortingForm] = useState({soort: 'bedrag', waarde: ''})
   // Laatste afgeronde verkoop voor het succes-scherm (factuur printen)
   const [laatsteVerkoop, setLaatsteVerkoop] = useState<{bestelling: any, factuur: any} | null>(null)
 
@@ -376,12 +384,13 @@ const KassaPage: React.FC<KassaPageProps> = ({
     })
   }
 
-  const wijzigPrijs = (idx: number, v: string) => {
-    setCart(prev => prev.map((x, i) => i === idx ? {...x, prijs_per_stuk: Number(v) || 0, manualPrijs: true} : x))
-  }
+  // Lege bon: eventuele bonkorting hoort niet stilletjes mee te gaan naar de
+  // volgende verkoop.
+  useEffect(() => {
+    if (cart.length === 0) setBonKorting(null)
+  }, [cart.length])
 
-  // Klantwissel: herprijs bierregels (normaal ↔ B2B), behalve handmatig
-  // aangepaste prijzen.
+  // Klantwissel: herprijs bierregels (normaal ↔ B2B).
   const selectKlant = (id: number | null) => {
     setSelectedKlantId(id)
     setKlantZoek('')
@@ -389,7 +398,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
     const k = id != null ? (klanten || []).find((x: any) => x.id === id) : null
     const zakelijk = !!k && (k.klant_type === 'zakelijk' || (!k.klant_type && String(k.bedrijf || '').trim() !== ''))
     setCart(prev => prev.map(r => {
-      if (r.type !== 'bier' || r.manualPrijs) return r
+      if (r.type !== 'bier') return r
       const item = catalogus.find((c: any) => c.key === r.key)
       if (!item) return r
       const b2b = zakelijk && item.b2bPrijs != null
@@ -414,6 +423,17 @@ const KassaPage: React.FC<KassaPageProps> = ({
     setShowVrijeRegel(false)
   }
 
+  const addKorting = () => {
+    const waarde = Number(kortingForm.waarde)
+    if (!(waarde > 0) || (kortingForm.soort === 'pct' && waarde > 100)) {
+      alert(t('err_pos_korting_waarde'))
+      return
+    }
+    setBonKorting({soort: kortingForm.soort as 'bedrag' | 'pct', waarde})
+    setKortingForm({soort: 'bedrag', waarde: ''})
+    setShowKorting(false)
+  }
+
   // ── Totalen (incl. klantkorting en statiegeld, zoals de orderflow) ──────────
 
   const kortingPct = Number(selectedKlant?.korting_pct || 0)
@@ -433,6 +453,46 @@ const KassaPage: React.FC<KassaPageProps> = ({
       .map(([btwPct, som]) => ({btw_pct: Number(btwPct), bedrag: Math.round(som * kortingPct) / 100}))
       .filter(k => k.bedrag > 0)
 
+    // Handmatige bonkorting: basis = alle bonregels minus klantkorting, per
+    // BTW-tarief (statiegeld valt buiten de korting).
+    const basisPerBtw: Record<string, number> = {}
+    for (const r of cart) {
+      const netto = r.aantal * r.prijs_per_stuk
+      if (netto <= 0) continue
+      const k = String(Number(r.btw_pct || 0))
+      basisPerBtw[k] = (basisPerBtw[k] || 0) + netto
+    }
+    for (const k of kortingRegels) {
+      const key = String(k.btw_pct)
+      basisPerBtw[key] = Math.max(0, (basisPerBtw[key] || 0) - k.bedrag)
+    }
+
+    let bonKortingRegels: Array<{btw_pct: number, bedrag: number}> = []
+    if (bonKorting && bonKorting.waarde > 0) {
+      const groepen = Object.entries(basisPerBtw).filter(([, som]) => som > 0)
+      if (bonKorting.soort === 'pct') {
+        const pct = Math.min(bonKorting.waarde, 100)
+        bonKortingRegels = groepen
+          .map(([btwPct, som]) => ({btw_pct: Number(btwPct), bedrag: rnd2(som * pct / 100)}))
+          .filter(x => x.bedrag > 0)
+      } else {
+        // Bedrag is incl. BTW (wat de klant minder betaalt): proportioneel
+        // verdelen over de BTW-groepen en per groep terugrekenen naar netto.
+        const brutoPerGroep = groepen.map(([btwPct, som]) =>
+          ({btw_pct: Number(btwPct), bruto: som * (1 + Number(btwPct) / 100)}))
+        const brutoTotaal = brutoPerGroep.reduce((s, g) => s + g.bruto, 0)
+        if (brutoTotaal > 0) {
+          const doel = Math.min(bonKorting.waarde, rnd2(brutoTotaal))
+          let rest = doel
+          bonKortingRegels = brutoPerGroep.map((g, i) => {
+            const deel = i === brutoPerGroep.length - 1 ? rest : rnd2(doel * g.bruto / brutoTotaal)
+            rest = rnd2(rest - deel)
+            return {btw_pct: g.btw_pct, bedrag: rnd2(deel / (1 + g.btw_pct / 100))}
+          }).filter(x => x.bedrag > 0)
+        }
+      }
+    }
+
     const statiegeldRegels: Array<{vp: any, aantal: number, bedrag: number, soort: string}> = []
     for (const r of cart) {
       if (r.type !== 'bier') continue
@@ -448,14 +508,16 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
     const nettoRegels = rnd2(cart.reduce((s, r) => s + r.aantal * r.prijs_per_stuk, 0))
     const kortingTotaal = rnd2(kortingRegels.reduce((s, k) => s + k.bedrag, 0))
+    const bonKortingTotaal = rnd2(bonKortingRegels.reduce((s, k) => s + k.bedrag, 0))
     const statiegeldTotaal = rnd2(statiegeldRegels.reduce((s, x) => s + x.bedrag, 0))
     const btwTotaal = rnd2(
       cart.reduce((s, r) => s + rnd2(r.aantal * r.prijs_per_stuk) * Number(r.btw_pct || 0) / 100, 0)
       - kortingRegels.reduce((s, k) => s + k.bedrag * k.btw_pct / 100, 0)
+      - bonKortingRegels.reduce((s, k) => s + k.bedrag * k.btw_pct / 100, 0)
     )
-    const netto = rnd2(nettoRegels - kortingTotaal + statiegeldTotaal)
-    return {kortingRegels, statiegeldRegels, nettoRegels, kortingTotaal, statiegeldTotaal, btwTotaal, netto, bruto: rnd2(netto + btwTotaal)}
-  }, [cart, kortingPct, verpakkingen])
+    const netto = rnd2(nettoRegels - kortingTotaal - bonKortingTotaal + statiegeldTotaal)
+    return {kortingRegels, bonKortingRegels, statiegeldRegels, nettoRegels, kortingTotaal, bonKortingTotaal, statiegeldTotaal, btwTotaal, netto, bruto: rnd2(netto + btwTotaal)}
+  }, [cart, kortingPct, bonKorting, verpakkingen])
 
   // ── Factuurnummering (zelfde teller als de orderflow) ───────────────────────
 
@@ -643,6 +705,21 @@ const KassaPage: React.FC<KassaPageProps> = ({
         omschrijving: oms,
       })
     }
+    for (const k of bonTotalen.bonKortingRegels) {
+      const oms = bonKorting?.soort === 'pct'
+        ? t('lbl_korting_pct').replace('{pct}', String(bonKorting.waarde))
+        : t('pos_korting')
+      regels.push({
+        id: ++regelId,
+        type: 'korting',
+        bier_naam: oms,
+        verpakking_type: '',
+        aantal: 1,
+        prijs_per_stuk: -k.bedrag,
+        btw_pct: k.btw_pct,
+        omschrijving: oms,
+      })
+    }
 
     // 3. Picks koppelen aan de zojuist toegewezen afvullingen
     const bestellingId = newId(bestellingen || [])
@@ -801,6 +878,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
     setShowAfrekenen(false)
     setCart([])
+    setBonKorting(null)
     setLaatsteVerkoop({bestelling, factuur})
   }
 
@@ -977,7 +1055,10 @@ const KassaPage: React.FC<KassaPageProps> = ({
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3 lg:sticky lg:top-20">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('pos_bon')}</div>
-            <Btn v="ghost" s="sm" onClick={() => setShowVrijeRegel(true)}>+ {t('pos_vrije_regel')}</Btn>
+            <div className="flex gap-1">
+              <Btn v="ghost" s="sm" onClick={() => setShowKorting(true)} disabled={cart.length === 0}>+ {t('pos_korting')}</Btn>
+              <Btn v="ghost" s="sm" onClick={() => setShowVrijeRegel(true)}>+ {t('pos_vrije_regel')}</Btn>
+            </div>
           </div>
 
           {laatsteVerkoop && (
@@ -1017,9 +1098,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                       <button onClick={() => wijzigAantal(idx, +1)} className="px-2 py-1 text-sm text-gray-500 hover:bg-gray-100">+</button>
                     </div>
                     <span className="text-xs text-gray-400">×</span>
-                    <input type="number" step="0.01" value={r.prijs_per_stuk}
-                      onChange={e => wijzigPrijs(idx, e.target.value)}
-                      className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm text-right t-input outline-none" />
+                    <span className="text-sm text-gray-600">{fmt(r.prijs_per_stuk)}</span>
                     <span className="text-[10px] text-gray-400">{r.btw_pct}%</span>
                     <span className="ml-auto text-sm font-semibold text-gray-700">{fmt(r.aantal * r.prijs_per_stuk)}</span>
                   </div>
@@ -1038,6 +1117,18 @@ const KassaPage: React.FC<KassaPageProps> = ({
                   <div className="flex justify-between text-green-600">
                     <span>{t('lbl_korting_pct').replace('{pct}', String(kortingPct))}</span>
                     <span>−{fmt(bonTotalen.kortingTotaal)}</span>
+                  </div>
+                )}
+                {bonKorting && bonTotalen.bonKortingTotaal > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1.5">
+                      {bonKorting.soort === 'pct'
+                        ? t('lbl_korting_pct').replace('{pct}', String(bonKorting.waarde))
+                        : t('pos_korting')}
+                      <button onClick={() => setBonKorting(null)}
+                        className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                    </span>
+                    <span>−{fmt(bonTotalen.bonKortingTotaal)}</span>
                   </div>
                 )}
                 {bonTotalen.statiegeldTotaal > 0 && (
@@ -1113,6 +1204,24 @@ const KassaPage: React.FC<KassaPageProps> = ({
             <div className="flex justify-end gap-2 pt-3 border-t">
               <Btn v="secondary" onClick={() => setShowNieuweKlant(false)}>{t('btn_cancel')}</Btn>
               <Btn onClick={saveNieuweKlant}>{t('btn_save')}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Korting ── */}
+      {showKorting && (
+        <Modal title={t('pos_korting')} onClose={() => setShowKorting(false)}>
+          <div className="space-y-3">
+            <Sel label={t('pos_korting_soort')} value={kortingForm.soort}
+              onChange={(v: string) => setKortingForm(f => ({...f, soort: v || 'bedrag'}))}
+              opts={[{v: 'bedrag', l: t('pos_korting_soort_bedrag')}, {v: 'pct', l: t('pos_korting_soort_pct')}]} />
+            <Inp label={kortingForm.soort === 'pct' ? t('pos_korting_soort_pct') : t('pos_korting_soort_bedrag')}
+              type="number" step="0.01" value={kortingForm.waarde} req
+              onChange={(v: string) => setKortingForm(f => ({...f, waarde: v}))} />
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Btn v="secondary" onClick={() => setShowKorting(false)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={addKorting}>{t('btn_save')}</Btn>
             </div>
           </div>
         </Modal>
