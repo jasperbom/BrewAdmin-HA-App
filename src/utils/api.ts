@@ -150,14 +150,14 @@ export const _updateVersion = (key: string, r: Response): void => {
 
 export type SaveResult = 'ok' | 'fail' | 'conflict'
 
-// POSTs per key serialiseren: een tweede save wacht op de versie-update van
-// de eerste, anders zou die met een verouderde versie een vals conflict geven.
-const _postChains = new Map<string, Promise<unknown>>()
+// Alle verzendingen serialiseren via één globale keten: een volgende POST of
+// commit wacht op de versie-updates van de vorige, anders zou die met een
+// verouderde versie een vals conflict veroorzaken.
+let _sendChain: Promise<unknown> = Promise.resolve()
 
 export const _postToServer = (key: string, data: any): Promise<SaveResult> => {
-  const prev = _postChains.get(key) || Promise.resolve()
-  const run = prev.then(() => _doPost(key, data))
-  _postChains.set(key, run.catch(() => {}))
+  const run = _sendChain.then(() => _doPost(key, data))
+  _sendChain = run.catch(() => {})
   return run
 }
 
@@ -232,6 +232,108 @@ const _scheduleRetry = () => {
   if (!_retryTimer) _retryTimer = setInterval(_flushPendingSaves, 15_000)
 }
 
+// ── Atomaire multi-key commit (ERP-plan 1.1) ────────────────────────────────
+// Eén gebruikershandeling raakt vaak meerdere stores tegelijk (order afronden:
+// picks + uitleveringen + accijns + factuur + bestelling + log). Voorheen waren
+// dat losse POSTs die half konden slagen. Saves die in dezelfde event-tick
+// gebeuren worden nu gebufferd en als één POST /api/commit atomair
+// weggeschreven — zonder dat de aanroepende pagina's iets hoeven te weten.
+type _BufEntry = {data: any, seq: number, onOk: () => void, onConflict: () => void}
+const _commitBuffer = new Map<string, _BufEntry>()
+let _flushScheduled = false
+
+const _enqueueSave = (key: string, entry: _BufEntry) => {
+  _commitBuffer.set(key, entry) // nieuwere save voor dezelfde key vervangt de oudere
+  if (!_flushScheduled) {
+    _flushScheduled = true
+    setTimeout(() => { _flushScheduled = false; _flushCommitBuffer() }, 0)
+  }
+}
+
+const _handleSaveResult = (key: string, e: _BufEntry, res: SaveResult) => {
+  if (_saveSeq.get(key) !== e.seq) return // er is al een nieuwere save
+  if (res === 'ok') e.onOk()
+  else if (res === 'conflict') e.onConflict()
+  else {
+    _pendingSaves.set(key, {seq: e.seq, data: e.data, onOk: e.onOk, onConflict: e.onConflict})
+    _scheduleRetry()
+  }
+}
+
+const _flushCommitBuffer = () => {
+  const entries = [..._commitBuffer.entries()]
+  _commitBuffer.clear()
+  if (!entries.length) return
+  const run = _sendChain.then(async () => {
+    if (entries.length === 1) {
+      const [key, e] = entries[0]
+      _handleSaveResult(key, e, await _doPost(key, e.data))
+      return
+    }
+    const res = await _doCommit(entries)
+    if (res.status === 'ok') {
+      entries.forEach(([k, e]) => _handleSaveResult(k, e, 'ok'))
+    } else if (res.status === 'conflict') {
+      // Alleen de conflicterende keys vervallen; de rest alsnog los proberen.
+      for (const [k, e] of entries) {
+        if (res.conflicts.includes(k)) _handleSaveResult(k, e, 'conflict')
+        else _handleSaveResult(k, e, await _doPost(k, e.data))
+      }
+    } else if (res.status === 'notfound') {
+      // Oudere server zonder /api/commit → terugvallen op losse POSTs.
+      for (const [k, e] of entries) _handleSaveResult(k, e, await _doPost(k, e.data))
+    } else {
+      // Netwerk-/serverfout: niets is geschreven; per key in de retry-queue.
+      entries.forEach(([k, e]) => _handleSaveResult(k, e, 'fail'))
+    }
+  })
+  _sendChain = run.catch(() => {})
+}
+
+const _doCommit = async (
+  entries: Array<[string, _BufEntry]>,
+): Promise<{status: 'ok' | 'fail' | 'notfound'} | {status: 'conflict', conflicts: string[]}> => {
+  _syncPending++
+  const data: Record<string, any> = {}
+  const versions: Record<string, string> = {}
+  for (const [k, e] of entries) {
+    data[k] = e.data
+    const v = _versions.get(k)
+    if (v !== undefined) versions[k] = v
+  }
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/commit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data, versions}),
+    }, 2)
+    _syncPending = Math.max(0, _syncPending - 1)
+    _serverReachable = true
+    if (r.ok) {
+      _syncErrors = 0
+      try {
+        const d = await r.json()
+        Object.entries(d?.versions || {}).forEach(([k, v]) => {
+          if (typeof v === 'string') _versions.set(k, v)
+        })
+      } catch (e) { /* geen versions in respons */ }
+      return {status: 'ok'}
+    }
+    if (r.status === 409) {
+      const d = await r.json().catch(() => ({} as any))
+      return {status: 'conflict', conflicts: Object.keys(d?.conflicts || {})}
+    }
+    if (r.status === 404) return {status: 'notfound'}
+    if (r.status !== 429) _syncErrors++
+    return {status: 'fail'}
+  } catch (e) {
+    _syncPending = Math.max(0, _syncPending - 1)
+    _serverReachable = false
+    _syncErrors++
+    return {status: 'fail'}
+  }
+}
+
 export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void, () => void] => {
   const { secure = false } = opts
   _allKeys.add(key)
@@ -295,17 +397,9 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       const seq = (_saveSeq.get(key) || 0) + 1
       _saveSeq.set(key, seq)
       _pendingSaves.delete(key) // nieuwe save vervangt elke oudere retry
-      _postToServer(key, next).then(res => {
-        if (_saveSeq.get(key) !== seq) return // er is al een nieuwere save
-        if (res === 'ok') {
-          modified.current = false
-        } else if (res === 'conflict') {
-          onConflict()
-        } else {
-          _pendingSaves.set(key, {seq, data: next, onOk: () => { modified.current = false }, onConflict})
-          _scheduleRetry()
-        }
-      })
+      // Via de commit-buffer: saves uit dezelfde event-tick worden gebundeld
+      // tot één atomaire /api/commit (ERP-plan 1.1).
+      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict})
       return next
     })
   }

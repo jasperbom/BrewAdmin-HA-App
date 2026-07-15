@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.86] — 2026-07-15
+
+### Toegevoegd — Atomaire multi-key opslag (ERP-plan 1.1)
+
+- Nieuw endpoint `POST /api/commit`: schrijft meerdere gegevenssoorten in
+  één atomaire transactie (eerst alle tempbestanden, dan alle renames),
+  met dezelfde optimistic-locking-controle als losse opslag — bij één
+  conflict wordt niets geschreven (409 met de conflicterende keys).
+- De app bundelt opslagen die bij één handeling horen (bijv. order
+  afronden: picks + uitleveringen + accijns + factuur + bestelling + log)
+  nu automatisch tot zo'n commit. Voorheen waren dat 5–6 losse verzoeken
+  die half konden slagen bij een fout halverwege.
+- Werkt transparant: pagina's hoefden niet aangepast; tegen een oudere
+  server valt de app terug op losse opslagen.
+
+---
+
 ## [1.10.85] — 2026-07-15
 
 ### Gewijzigd — Excel-backup beschermd tegen stille afkapping (ERP-plan 0.8)

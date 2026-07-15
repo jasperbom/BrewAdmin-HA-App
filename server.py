@@ -70,6 +70,8 @@ HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
 MAIL_SEND_PATH           = '/api/mail/send'
 MAIL_TEST_PATH           = '/api/mail/test'
 NEXTNR_PATH              = '/api/nextnr'
+COMMIT_PATH              = '/api/commit'
+COMMIT_MAX_KEYS          = 50
 MAIL_MAX_CONTENT         = 20 * 1024 * 1024  # 20 MB — mail + attachments
 MAIL_SECURITY_VALUES     = {'none', 'starttls', 'ssl'}
 MAIL_EMAIL_RE            = re.compile(r'^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$')
@@ -1431,6 +1433,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._handle_nextnr()
             return
 
+        if COMMIT_PATH in path:
+            self._handle_commit()
+            return
+
         if HA_PROXY_PREFIX in path:
             self._ha_proxy(path)
             return
@@ -2133,6 +2139,78 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, _volgend_nummer(reeks, jaar))
         except OSError:
             self._json(500, {'error': 'could not persist counter'})
+
+    def _handle_commit(self):
+        """POST /api/commit — schrijf meerdere data-keys atomair (ERP-plan 1.1).
+        Body: {"data": {key: waarde, ...}, "versions": {key: versie, ...}}.
+        Alle meegegeven versies moeten kloppen (optimistic locking), anders
+        409 met de conflicterende keys en niets geschreven. Het schrijven
+        gebeurt eerst volledig naar tempbestanden en daarna pas via renames,
+        zodat een fout halverwege nooit een half-toegepaste commit achterlaat."""
+        body = self._read_body()
+        if body is None:
+            return
+        try:
+            req = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        data = req.get('data') if isinstance(req, dict) else None
+        versions = req.get('versions') if isinstance(req, dict) else None
+        if not isinstance(data, dict) or not data:
+            self._json(400, {'error': 'invalid commit: data ontbreekt'})
+            return
+        if not isinstance(versions, dict):
+            versions = {}
+        if len(data) > COMMIT_MAX_KEYS:
+            self._json(400, {'error': f'too many keys (max {COMMIT_MAX_KEYS})'})
+            return
+        for key in data:
+            if not _valid_key(key):
+                self._json(400, {'error': f'invalid key: {key}'})
+                return
+        with _data_lock:
+            conflicts = {}
+            for key in data:
+                expected = versions.get(key)
+                if expected is not None:
+                    current = _data_version(DATA_DIR / f'{key}.json')
+                    if expected != current:
+                        conflicts[key] = current
+            if conflicts:
+                self._json(409, {'error': 'conflict', 'conflicts': conflicts})
+                return
+            # Fase 1: alle payloads naar tempbestanden.
+            writes = []
+            try:
+                for key, value in data.items():
+                    if key in _SECURE_FIELDS:
+                        value = _unmask_secrets(key, value)
+                    payload = json.dumps(value, ensure_ascii=False).encode('utf-8')
+                    filepath = DATA_DIR / f'{key}.json'
+                    tmp = filepath.with_name(f'.{filepath.name}.commit.tmp')
+                    tmp.write_bytes(payload)
+                    writes.append((key, tmp, filepath, payload))
+            except OSError:
+                for _key, tmp, _fp, _pl in writes:
+                    try:
+                        tmp.unlink()
+                    except OSError:
+                        pass
+                self._json(500, {'error': 'commit failed'})
+                return
+            # Fase 2: alle renames (elk atomair; het venster tussen renames
+            # is verwaarloosbaar en een crash laat nooit corrupte JSON achter).
+            new_versions = {}
+            for key, tmp, filepath, payload in writes:
+                os.replace(tmp, filepath)
+                if key in _SECURE_FIELDS:
+                    try:
+                        os.chmod(filepath, 0o600)
+                    except OSError:
+                        pass
+                new_versions[key] = hashlib.sha256(payload).hexdigest()[:16]
+        self._json(200, {'ok': True, 'versions': new_versions})
 
     def _handle_backup_trigger(self):
         """POST /api/backups/trigger — run an immediate manual backup."""
