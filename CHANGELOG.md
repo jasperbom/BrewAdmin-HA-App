@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.90] — 2026-07-15
+
+### Toegevoegd — Append-only server-audit (ERP-plan 1.5)
+
+- De server logt voortaan élke gegevensmutatie (losse opslag, atomaire
+  commit, factuurnummer-uitgifte) naar maandelijkse JSONL-bestanden in
+  `/data/server_audit/`: tijdstip, IP, HA-gebruiker (indien door ingress
+  meegegeven), omvang en de versie-hash vóór en ná de wijziging.
+  Samenhangende commit-writes delen een commit-id.
+- Dit logboek is bewust **niet** bereikbaar of wijzigbaar via de app-API
+  (in tegenstelling tot het bestaande client-side auditlog) en is daarmee
+  het eerste bewijskrachtige mutatiespoor.
+- De audit-map wordt meegenomen in de dagelijkse backup en volgt dezelfde
+  7-jaarshorizon (maandbestanden ouder dan 7 jaar worden opgeruimd).
+
+---
+
 ## [1.10.89] — 2026-07-15
 
 ### Toegevoegd — Server-side schemavalidatie (ERP-plan 1.4)

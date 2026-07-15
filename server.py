@@ -37,10 +37,12 @@ MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — bescherming tegen DoS via gro
 UPLOAD_DIR = DATA_DIR / 'inkoop_facturen'
 
 BACKUP_DIR = DATA_DIR / 'backups'
+AUDIT_DIR = DATA_DIR / 'server_audit'
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 
 API_DATA_PREFIX = '/api/data/'
 BF_API_BASE = 'https://api.brewfather.app/v2'
@@ -577,6 +579,9 @@ def _run_backup() -> str:
     # en vallen onder dezelfde bewaarplicht — meenemen in de backup.
     if UPLOAD_DIR.is_dir():
         shutil.copytree(UPLOAD_DIR, dest / UPLOAD_DIR.name, dirs_exist_ok=True)
+    # Server-audit (ERP-plan 1.5) hoort óók bij de administratie.
+    if AUDIT_DIR.is_dir():
+        shutil.copytree(AUDIT_DIR, dest / AUDIT_DIR.name, dirs_exist_ok=True)
     _offsite_backup(dest, today)
     return today
 
@@ -658,6 +663,7 @@ def _backup_loop(interval: float = 86400.0) -> None:
             _run_backup()
             _cleanup_backups()
             _cleanup_offsite_backups()
+            _cleanup_audit()
         except Exception as exc:
             print(f'[backup] error: {exc}', flush=True)
         time.sleep(interval)
@@ -677,6 +683,48 @@ def _read_json(key: str, default=None):
         return json.loads(filepath.read_text(encoding='utf-8'))
     except (json.JSONDecodeError, OSError):
         return default
+
+
+# ── Append-only server-audit (ERP-plan 1.5) ──────────────────────────────
+# De client-side audit_log is via de gewone data-API herschrijfbaar en dus
+# niet bewijskrachtig. De server logt daarom élke mutatie (data-POST,
+# commit, nummeruitgifte) naar maandelijkse JSONL-bestanden in
+# /data/server_audit/. Die map is bewust NIET bereikbaar via de data-API
+# (keys kennen geen pad-scheidingstekens) — alleen te lezen op de host en
+# via de backup. Audit-schrijffouten blokkeren nooit de eigenlijke write.
+
+_audit_lock = threading.Lock()
+
+
+def _audit_write(actie: str, key: str, **velden) -> None:
+    entry = {
+        'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+        'actie': actie,
+        'key': key,
+        **velden,
+    }
+    bestand = AUDIT_DIR / f'audit_{datetime.date.today().strftime("%Y-%m")}.jsonl'
+    try:
+        with _audit_lock, open(bestand, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except OSError:
+        pass
+
+
+def _cleanup_audit() -> None:
+    """Verwijder audit-maandbestanden ouder dan 7 jaar (zelfde AGP-horizon
+    als de backups)."""
+    grens = datetime.date.today() - datetime.timedelta(days=7 * 365)
+    for f in AUDIT_DIR.glob('audit_*.jsonl'):
+        try:
+            maand = datetime.datetime.strptime(f.name[len('audit_'):-len('.jsonl')], '%Y-%m').date()
+        except ValueError:
+            continue
+        if maand < grens.replace(day=1):
+            try:
+                f.unlink()
+            except OSError:
+                pass
 
 
 # ── Lichte schemavalidatie (ERP-plan 1.4) ────────────────────────────────
@@ -1335,6 +1383,13 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Expose-Headers', 'X-Data-Version, Retry-After')
             self.send_header('Vary', 'Origin')
 
+    def _ingress_user(self) -> str:
+        """Gebruikersnaam/-id zoals door de HA-ingress-proxy meegegeven;
+        leeg buiten HA of wanneer de headers ontbreken."""
+        return (self.headers.get('X-Remote-User-Name')
+                or self.headers.get('X-Remote-User-Id')
+                or '')
+
     def _rate_check(self) -> bool:
         ip = self.client_address[0]
         if not _client_allowed(ip):
@@ -1540,11 +1595,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             # Zonder header (oude frontend) blijft het gedrag last-write-wins.
             expected = self.headers.get('X-Data-Version')
             with _data_lock:
-                if expected is not None:
-                    current = _data_version(filepath)
-                    if expected != current:
-                        self._json(409, {'error': 'conflict', 'version': current})
-                        return
+                vorige = _data_version(filepath)
+                if expected is not None and expected != vorige:
+                    self._json(409, {'error': 'conflict', 'version': vorige})
+                    return
                 if key in _SECURE_FIELDS:
                     # Sentinel-waarden terugvervangen door de opgeslagen
                     # geheimen (de client kent die bewust niet).
@@ -1556,7 +1610,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                         os.chmod(filepath, 0o600)
                     except OSError:
                         pass
-            self._json(200, {'ok': True, 'version': hashlib.sha256(body).hexdigest()[:16]})
+            nieuwe_versie = hashlib.sha256(body).hexdigest()[:16]
+            _audit_write('data_post', key, ip=self.client_address[0],
+                         bytes=len(body), versie_van=vorige,
+                         versie_naar=nieuwe_versie, gebruiker=self._ingress_user())
+            self._json(200, {'ok': True, 'version': nieuwe_versie})
             return
 
         self._json(404, {'error': 'not found'})
@@ -2203,7 +2261,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(400, {'error': 'invalid reeks/jaar'})
             return
         try:
-            self._json(200, _volgend_nummer(reeks, jaar))
+            resultaat = _volgend_nummer(reeks, jaar)
+            _audit_write('nextnr', 'nummer_reeksen', ip=self.client_address[0],
+                         reeks=reeks, nummer=resultaat['nummer'],
+                         gebruiker=self._ingress_user())
+            self._json(200, resultaat)
         except OSError:
             self._json(500, {'error': 'could not persist counter'})
 
@@ -2242,12 +2304,13 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 return
         with _data_lock:
             conflicts = {}
+            vorige_versies = {}
             for key in data:
+                current = _data_version(DATA_DIR / f'{key}.json')
+                vorige_versies[key] = current
                 expected = versions.get(key)
-                if expected is not None:
-                    current = _data_version(DATA_DIR / f'{key}.json')
-                    if expected != current:
-                        conflicts[key] = current
+                if expected is not None and expected != current:
+                    conflicts[key] = current
             if conflicts:
                 self._json(409, {'error': 'conflict', 'conflicts': conflicts})
                 return
@@ -2281,6 +2344,13 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                     except OSError:
                         pass
                 new_versions[key] = hashlib.sha256(payload).hexdigest()[:16]
+        commit_id = hashlib.sha256(repr(sorted(new_versions.items())).encode()).hexdigest()[:12]
+        for key, tmp, filepath, payload in writes:
+            _audit_write('commit', key, ip=self.client_address[0],
+                         commit=commit_id, bytes=len(payload),
+                         versie_van=vorige_versies.get(key),
+                         versie_naar=new_versions[key],
+                         gebruiker=self._ingress_user())
         self._json(200, {'ok': True, 'versions': new_versions})
 
     def _handle_backup_trigger(self):

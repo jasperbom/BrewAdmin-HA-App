@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.89 · fase 0 afgerond, fase 1 loopt
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.90 · **fase 0 én fase 1 volledig afgerond**
 
 ---
 
@@ -61,8 +61,10 @@
 - [x] **1.4 Server-side schemavalidatie (licht)** — containertype per bekende
       key (85 keys) op /api/data én /api/commit, 422 bij afwijzing; client
       herlaadt + meldt i.p.v. eindeloos retryen *(v1.10.89, 2026-07-15)*
-- [ ] **1.5 Append-only audit server-side** — server logt elke data-POST
-      buiten de data-API om
+- [x] **1.5 Append-only audit server-side** — elke data-POST/commit/nextnr
+      naar maandelijkse JSONL in /data/server_audit/ (ip, gebruiker,
+      versie-van/naar, commit-id); in backup, 7-jaars retentie, niet via
+      data-API bereikbaar *(v1.10.90, 2026-07-15 — fase 1 compleet)*
 
 ## Fase 2 — Financieel professionaliseren
 
@@ -116,3 +118,4 @@
 | 2026-07-15 | 1.10.87 | 1.2 | newId: tijdgebaseerd + monotoon + boven bestaand max; getest: 5000 snelle uitgiftes uniek/monotoon/safe-integer |
 | 2026-07-15 | 1.10.88 | 1.3 | checkIntegriteit (20 relaties) + Gezondheid-kaart + batch-delete-guard; unit-getest (3 ingebouwde fouten gevonden, string/number-match) |
 | 2026-07-15 | 1.10.89 | 1.4 | Containertype-validatie (85 keys) op data-POST en commit; 422 met verwachte vorm; client: reject → herladen + melding, geen retry-loop |
+| 2026-07-15 | 1.10.90 | 1.5 | Append-only server-audit (JSONL per maand, versie-van/naar, commit-id, ingress-user); getest incl. backup-opname en data-API-onbereikbaarheid — **fase 1 compleet** |

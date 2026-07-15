@@ -444,6 +444,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
 | POST | `/api/nextnr` | Volgend factuur-/creditnotanummer, atomair per reeks/jaar (`{reeks, jaar}` → `{jaar, nr, nummer}`) |
+| POST | `/api/commit` | Meerdere data-keys atomair opslaan (`{data:{key:waarde}, versions:{key:versie}}`), 409 bij versieconflict |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
@@ -456,6 +457,9 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - File upload: only `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp` allowed
 - Key validation: `^[a-zA-Z0-9_]+$` — prevents path traversal
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
+- Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
+- Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
+- Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only
 
