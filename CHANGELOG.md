@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.77] — 2026-07-15
+
+### Toegevoegd — ERP-review & verbeterplan
+
+- Nieuw document `docs/ERP-VERBETERPLAN.md`: volledige review van de app
+  vanuit ERP-perspectief (data-integriteit, fiscaal/financieel, voorraad &
+  traceability, security, kwaliteit) plus een gefaseerd verbeterplan
+  (fase 0 t/m 4) met top-10-risicolijst en sprintvolgorde. Documentatie-only;
+  geen functionele wijzigingen.
+
+---
+
 ## [1.10.76] — 2026-07-15
 
 ### Toegevoegd — Batchflow: ingrediënt koppelen aan alternatief + kosten
