@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.90 · **fase 0 én fase 1 volledig afgerond**
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.91 · **fase 0 én fase 1 volledig afgerond**
 
 ---
 
@@ -119,3 +119,4 @@
 | 2026-07-15 | 1.10.88 | 1.3 | checkIntegriteit (20 relaties) + Gezondheid-kaart + batch-delete-guard; unit-getest (3 ingebouwde fouten gevonden, string/number-match) |
 | 2026-07-15 | 1.10.89 | 1.4 | Containertype-validatie (85 keys) op data-POST en commit; 422 met verwachte vorm; client: reject → herladen + melding, geen retry-loop |
 | 2026-07-15 | 1.10.90 | 1.5 | Append-only server-audit (JSONL per maand, versie-van/naar, commit-id, ingress-user); getest incl. backup-opname en data-API-onbereikbaarheid — **fase 1 compleet** |
+| 2026-07-15 | 1.10.91 | 0.5-fix | Permission denied op /backup/brewadmin verholpen: entrypoint.sh maakt de submap als root aan en chowned naar appuser |
