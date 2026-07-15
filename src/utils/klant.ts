@@ -36,6 +36,26 @@ export const findLiveKlant = (snapshot: any, klanten: any[] = []): any | null =>
   return null
 }
 
+/** Zoek de klantkaart die bij een (nog ongekoppelde) bestelling hoort.
+ * Matcht eerst op e-mail (getrimd, case-insensitief); valt terug op exact
+ * dezelfde klantnaam, maar alléén als precies één klant die naam heeft —
+ * bij naamgenoten is automatisch koppelen niet veilig en blijft de order
+ * ongekoppeld (handmatig te koppelen via de klantkaart). */
+export const findKlantVoorOrder = (order: any, klanten: any[] = []): any | null => {
+  if (!order) return null
+  const email = (order.klant_email || '').toString().trim().toLowerCase()
+  if (email) {
+    const k = (klanten || []).find((k: any) => (k.email || '').toString().trim().toLowerCase() === email)
+    if (k) return k
+  }
+  const naam = (order.klant_naam || '').toString().trim().toLowerCase()
+  if (naam) {
+    const matches = (klanten || []).filter((k: any) => (k.naam || '').toString().trim().toLowerCase() === naam)
+    if (matches.length === 1) return matches[0]
+  }
+  return null
+}
+
 /** Geeft een nieuwe snapshot waarin alle `klant_*`-velden zijn overschreven
  * met de actuele waarden van de gekoppelde klantkaart (gevonden via
  * `findLiveKlant`). Alleen niet-lege live waarden winnen; ontbrekende
