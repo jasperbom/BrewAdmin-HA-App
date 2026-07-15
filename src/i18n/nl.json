@@ -2579,5 +2579,8 @@
   "sync_conflict_melding": "Let op: deze gegevens zijn tegelijk in een ander venster of op een ander apparaat gewijzigd. Je laatste wijziging is NIET opgeslagen; de actuele gegevens zijn opnieuw geladen. Voer je wijziging opnieuw in.",
   "err_factuurnummer_ophalen": "Kan geen factuurnummer ophalen van de server. Controleer de verbinding en probeer opnieuw.",
   "err_periode_gesloten_mutatie": "Deze factuur telt mee in een BTW-periode waarvan de aangifte al is ingediend of betaald. Wijzigen of verwijderen is geblokkeerd — boek een correctie of creditnota in de huidige periode.",
-  "err_accijns_maand_gesloten": "Dit record telt mee in een accijnsmaand waarvan de aangifte al is ingediend of betaald. Wijzigen of verwijderen is geblokkeerd."
+  "err_accijns_maand_gesloten": "Dit record telt mee in een accijnsmaand waarvan de aangifte al is ingediend of betaald. Wijzigen of verwijderen is geblokkeerd.",
+  "warn_afvullen_tankvolume": "Let op: je vult {liters} L af, maar volgens de volumebalans zit er nog maar {rest} L in de tank. Controleer de invoer (aantal × inhoud) en de verliesregistraties. Toch doorgaan?",
+  "lot_bewerk_correctie_ref": "Correctie via lot bewerken",
+  "inv_bier_afboek_oms": "Inventarisatie #{id}: telling {van} → {naar}"
 }

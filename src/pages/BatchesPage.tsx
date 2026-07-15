@@ -1212,6 +1212,22 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     if (!vp) { alert(t('err_invalid_packaging')); return }
     const avail = vpVoorraadB(vp)
     if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}',String(avail))); return }
+    // Tankvolume-guard (ERP-plan 0.7): meer liters afvullen dan er volgens de
+    // volumebalans nog in de tank zit wijst op een invoerfout en verstoort de
+    // accijns-relevante balans. Expliciet bevestigen i.p.v. stil doorclampen.
+    const tankLiter = Number(selB?.liter_vergist || 0)
+    if (tankLiter > 0) {
+      const batchAv = (av||[]).filter((a: any) => a.batch_id === sel)
+      const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
+      const totVerlies = (verliesRegistraties||[]).filter((r: any) => r.batch_id === sel).reduce((s: number, r: any) => s + Number(r.liter||0), 0)
+      const rest = tankLiter - totVerlies - totLiterVerpakt
+      const nieuwLiter = n * Number(avF.inhoud_per_eenheid || 0)
+      if (nieuwLiter > rest + 0.001) {
+        if (!confirm(t('warn_afvullen_tankvolume')
+          .replace('{liters}', nieuwLiter.toFixed(1))
+          .replace('{rest}', Math.max(0, rest).toFixed(1)))) return
+      }
+    }
     // Voorcalc-accijns wordt direct bevroren op de afvulling. Waarschuw als de
     // batch-ABV vermoedelijk nog de receptschatting is in plaats van het gerede
     // product, want dat beïnvloedt het bevroren accijnsbedrag onherroepelijk.

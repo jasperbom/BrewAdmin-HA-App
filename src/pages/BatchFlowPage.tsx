@@ -982,6 +982,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (!vp) { alert(t('err_invalid_packaging')); return }
     const avail = vpVoorraad(vp)
     if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}', String(avail))); return }
+    // Tankvolume-guard (ERP-plan 0.7) — zelfde controle als BatchesPage.doAfvullen.
+    const tankLiter = Number(selB?.liter_vergist || 0)
+    if (tankLiter > 0) {
+      const batchAv = (av||[]).filter((a: any) => a.batch_id === selB.id)
+      const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
+      const totVerlies = (verliesRegistraties||[]).filter((r: any) => r.batch_id === selB.id).reduce((s: number, r: any) => s + Number(r.liter||0), 0)
+      const rest = tankLiter - totVerlies - totLiterVerpakt
+      const nieuwLiter = n * Number(avF.inhoud_per_eenheid || 0)
+      if (nieuwLiter > rest + 0.001) {
+        if (!confirm(t('warn_afvullen_tankvolume')
+          .replace('{liters}', nieuwLiter.toFixed(1))
+          .replace('{rest}', Math.max(0, rest).toFixed(1)))) return
+      }
+    }
     const abvVal = Number(selB?.ABV || 0)
     if (abvVal <= 0) {
       if (!confirm(t('warn_afvullen_no_abv'))) return

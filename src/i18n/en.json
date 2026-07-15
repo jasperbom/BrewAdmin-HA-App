@@ -2579,5 +2579,8 @@
   "sync_conflict_melding": "Warning: this data was changed simultaneously in another window or on another device. Your last change was NOT saved; the current data has been reloaded. Please re-enter your change.",
   "err_factuurnummer_ophalen": "Could not retrieve an invoice number from the server. Check the connection and try again.",
   "err_periode_gesloten_mutatie": "This invoice is part of a VAT period whose return has already been filed or paid. Editing or deleting is blocked — post a correction or credit note in the current period.",
-  "err_accijns_maand_gesloten": "This record is part of an excise month whose return has already been filed or paid. Editing or deleting is blocked."
+  "err_accijns_maand_gesloten": "This record is part of an excise month whose return has already been filed or paid. Editing or deleting is blocked.",
+  "warn_afvullen_tankvolume": "Warning: you are packaging {liters} L, but according to the volume balance only {rest} L remains in the tank. Check the input (quantity × volume) and the loss records. Continue anyway?",
+  "lot_bewerk_correctie_ref": "Correction via lot edit",
+  "inv_bier_afboek_oms": "Stock count #{id}: count {van} → {naar}"
 }

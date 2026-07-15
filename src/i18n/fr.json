@@ -2579,5 +2579,8 @@
   "sync_conflict_melding": "Attention : ces données ont été modifiées simultanément dans une autre fenêtre ou sur un autre appareil. Votre dernière modification n'a PAS été enregistrée ; les données actuelles ont été rechargées. Veuillez saisir à nouveau votre modification.",
   "err_factuurnummer_ophalen": "Impossible de récupérer un numéro de facture auprès du serveur. Vérifiez la connexion et réessayez.",
   "err_periode_gesloten_mutatie": "Cette facture fait partie d'une période de TVA dont la déclaration a déjà été déposée ou payée. La modification ou la suppression est bloquée — enregistrez une correction ou un avoir dans la période en cours.",
-  "err_accijns_maand_gesloten": "Cet enregistrement fait partie d'un mois d'accises dont la déclaration a déjà été déposée ou payée. La modification ou la suppression est bloquée."
+  "err_accijns_maand_gesloten": "Cet enregistrement fait partie d'un mois d'accises dont la déclaration a déjà été déposée ou payée. La modification ou la suppression est bloquée.",
+  "warn_afvullen_tankvolume": "Attention : vous conditionnez {liters} L, mais selon le bilan volumique il ne reste que {rest} L dans la cuve. Vérifiez la saisie (quantité × contenance) et les pertes enregistrées. Continuer quand même ?",
+  "lot_bewerk_correctie_ref": "Correction via modification du lot",
+  "inv_bier_afboek_oms": "Inventaire n°{id} : comptage {van} → {naar}"
 }

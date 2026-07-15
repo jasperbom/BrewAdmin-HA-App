@@ -2579,5 +2579,8 @@
   "sync_conflict_melding": "Atención: estos datos se han modificado simultáneamente en otra ventana o en otro dispositivo. Tu último cambio NO se ha guardado; se han vuelto a cargar los datos actuales. Vuelve a introducir tu cambio.",
   "err_factuurnummer_ophalen": "No se ha podido obtener un número de factura del servidor. Comprueba la conexión e inténtalo de nuevo.",
   "err_periode_gesloten_mutatie": "Esta factura forma parte de un período de IVA cuya declaración ya se ha presentado o pagado. Modificar o eliminar está bloqueado: registra una corrección o nota de crédito en el período actual.",
-  "err_accijns_maand_gesloten": "Este registro forma parte de un mes de impuestos especiales cuya declaración ya se ha presentado o pagado. Modificar o eliminar está bloqueado."
+  "err_accijns_maand_gesloten": "Este registro forma parte de un mes de impuestos especiales cuya declaración ya se ha presentado o pagado. Modificar o eliminar está bloqueado.",
+  "warn_afvullen_tankvolume": "Atención: vas a envasar {liters} L, pero según el balance de volumen solo quedan {rest} L en el tanque. Comprueba la entrada (cantidad × contenido) y las pérdidas registradas. ¿Continuar de todos modos?",
+  "lot_bewerk_correctie_ref": "Corrección al editar el lote",
+  "inv_bier_afboek_oms": "Inventario n.º {id}: recuento {van} → {naar}"
 }

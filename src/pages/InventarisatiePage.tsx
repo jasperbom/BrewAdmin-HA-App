@@ -39,6 +39,7 @@ interface InventarisatiePageProps {
   bat: any[]
   uit: any[]
   afboekingen: any[]
+  setAfboekingen?: any
   bestellingPicks: any[]
   bestellingen: any[]
   inventarisaties: Inventarisatie[]
@@ -52,7 +53,7 @@ interface InventarisatiePageProps {
 }
 
 const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
-  lots, ing, av, bat, uit, afboekingen, bestellingPicks, bestellingen,
+  lots, ing, av, bat, uit, afboekingen, setAfboekingen = (() => {}), bestellingPicks, bestellingen,
   inventarisaties, setInventarisaties, setLots, log, setLog, accijnsInst,
   auditLog = [], setAuditLog = (() => {})
 }) => {
@@ -196,6 +197,8 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
 
     // Apply corrections for lots if checked
     if (correcties) {
+      const nieuweAfboekingen: any[] = []
+      let abId = newId(afboekingen || [])
       for (const tel of selected.tellingen) {
         if (tel.verschil !== 0 && tel.ref_type === 'lot') {
           setLots((prev: any[]) => prev.map((l: any) =>
@@ -209,6 +212,39 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
             referentie: `Inventarisatie #${selected.id}`,
           })
         }
+        // Bier-telverschillen ook echt terugboeken (ERP-plan 0.7): voorheen
+        // werd alleen de accijnsimpact getoond en bleef het administratieve
+        // aantal ongewijzigd staan. Een tekort wordt een afboeking (vermis),
+        // een overschot een negatieve afboeking (bijboeking, reden overig).
+        if (tel.verschil !== 0 && tel.ref_type === 'afvulling') {
+          const a = (av || []).find((x: any) => x.id === tel.ref_id)
+          nieuweAfboekingen.push({
+            id: abId++,
+            afvulling_id: tel.ref_id,
+            batch_id: a?.batch_id ?? null,
+            datum: tod(),
+            aantal: -tel.verschil,
+            reden: tel.verschil < 0 ? 'vermis' : 'overig',
+            opmerking: t('inv_bier_afboek_oms')
+              .replace('{id}', String(selected.id))
+              .replace('{van}', String(tel.administratief))
+              .replace('{naar}', String(tel.geteld))
+              + (tel.verklaring ? ` — ${tel.verklaring}` : ''),
+            created_at: new Date().toISOString(),
+            voorcalc_accijns_per_eenheid: tel.voorcalc_accijns_per_eenheid || 0,
+            voorcalc_accijns_totaal: Math.round(Math.abs(tel.verschil) * (tel.voorcalc_accijns_per_eenheid || 0) * 100) / 100,
+          })
+          addLog({
+            type: 'inventarisatie',
+            omschrijving: `${tel.naam}: ${tel.administratief} → ${tel.geteld} stuks`,
+            hoeveelheid: tel.verschil,
+            eenheid: 'stuks',
+            referentie: `Inventarisatie #${selected.id}`,
+          })
+        }
+      }
+      if (nieuweAfboekingen.length > 0) {
+        setAfboekingen((prev: any[]) => [...(prev || []), ...nieuweAfboekingen])
       }
     }
 

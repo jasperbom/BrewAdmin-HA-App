@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.84] — 2026-07-15
+
+### Gewijzigd — Voorraad-lekken gedicht (ERP-plan 0.7)
+
+- **Lot bewerken logt nu in het voorraadverloop:** een wijziging van de
+  lothoeveelheid via het bewerkformulier schrijft voortaan — net als de
+  correctieknop — een `correctie`-regel in het mutatielog, zodat het
+  voorraadverloop sluitend blijft.
+- **Bier-telverschillen bij inventarisatie worden echt teruggeboekt:** bij
+  het afronden met correcties wordt een tekort als afboeking (vermis) en een
+  overschot als bijboeking geregistreerd, inclusief accijns-voorcalc en
+  verwijzing naar de inventarisatie. Voorheen werd alleen de accijnsimpact
+  getoond en bleef de administratieve voorraad ongewijzigd.
+- **Tankvolume-controle bij afvullen** (Batches én Batchflow): wie meer
+  liters afvult dan er volgens de volumebalans nog in de tank zit, krijgt
+  een expliciete waarschuwing met de resterende liters in plaats van dat de
+  overschrijding stil werd weggeclampt (accijns-relevant).
+
+---
+
 ## [1.10.83] — 2026-07-15
 
 ### Beveiliging — API-geheimen niet meer uitleesbaar via de browser (ERP-plan 0.6)
