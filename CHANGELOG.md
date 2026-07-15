@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.72] — 2026-07-15
+
+### Opgelost — Klantstatistieken in de kassa tellen nu alle aankopen mee
+
+- **Verkoopfacturen** zonder klantkoppeling worden nu ook automatisch aan de
+  klantkaart gekoppeld: eerst via de bijbehorende bestelling (betrouwbaarste
+  bron), anders op e-mail of unieke klantnaam. Facturen van vóór de
+  order-koppeling telden niet mee in de klantstatistieken, waardoor de kassa
+  (en de klantenpagina) te weinig aankopen, een verkeerde laatste
+  aankoopdatum en geen openstaand saldo toonden.
+
 ## [1.10.71] — 2026-07-15
 
 ### Verbeterd — Bestellingen koppelen nu overal automatisch aan de klantkaart
