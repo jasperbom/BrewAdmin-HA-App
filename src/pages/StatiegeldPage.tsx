@@ -201,6 +201,7 @@ const StatiegeldPage: React.FC<Props> = ({
       btw: 0,
       bruto: totaalNetto,
       status: 'credit',
+      definitief: true,
       credit_van_factuur_id: refFact?.id || null,
     }
 

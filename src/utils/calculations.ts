@@ -230,6 +230,16 @@ export const accijnsCalcBatch = (batch: any, accijnsInst: AccijnsInst | null = n
   return accijnsCalc(liter, abv, r1, r2, eff, plato)
 }
 
+// Harde periode-lock accijns (ERP-plan 0.4): een record dat meetelt in een
+// maand waarvan de aangifte al is ingediend of betaald mag niet meer
+// gewijzigd/verwijderd worden — de aangiftecijfers zouden stil veranderen.
+export const accijnsMaandGesloten = (datum: string, accijnsAangiftes: any[]): boolean => {
+  if (!datum || datum.length < 7) return false
+  const maand = datum.slice(0, 7)
+  const a = (accijnsAangiftes || []).find((x: any) => x?.maand === maand)
+  return !!a && (a.status === 'ingediend' || a.status === 'betaald')
+}
+
 // Impact-rapport voor een tariefwijziging in een specifiek jaar: rekent elke
 // batch van dat jaar dubbel door (oud tarief vs. nieuw tarief) en geeft het
 // verschil per batch + totaal. `nieuwTarief` hoeft niet in `tarieven_historie`

@@ -8,9 +8,9 @@ import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
-import { agpOverzicht, getAgpLocatie, accijnsCalc, tariefVoorDatum, voorraadPerLocatie, gemAgpInPeriode } from '../utils/calculations'
+import { agpOverzicht, getAgpLocatie, accijnsCalc, tariefVoorDatum, voorraadPerLocatie, gemAgpInPeriode, accijnsMaandGesloten } from '../utils/calculations'
 
-function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog}: any) {
+function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog, accijnsAangiftes=[]}: any) {
   const {useState, useMemo} = React;
 
   const ovz = useMemo(() => agpOverzicht(bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst),
@@ -214,6 +214,11 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
     if (heeftAcc) {
       const accRec = (acc||[]).find((a: any) => a.id === v.accijns_record_id);
       if (accRec?.betaald) { alert(t('agp_err_verplaats_acc_betaald')); return; }
+      // Periode-lock (ERP-plan 0.4): ook een nog-niet-betaald record in een
+      // maand waarvan de aangifte al is ingediend, is bevroren.
+      if (accRec && accijnsMaandGesloten(accRec.datum || '', accijnsAangiftes)) {
+        alert(t('err_accijns_maand_gesloten')); return;
+      }
     }
     const van = locById(v.van_locatie_id).naam;
     const naar = locById(v.naar_locatie_id).naam;

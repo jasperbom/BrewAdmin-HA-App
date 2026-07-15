@@ -6,7 +6,7 @@ import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/k
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
-import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel } from '../utils/btw'
+import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren } from '../utils/btw'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
@@ -631,8 +631,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   const deleteFactuur = (id: any) => {
-    if (!confirm(t('err_confirm_delete_inkoop'))) return;
     const f = inkoopFacturen.find((x: any)=>x.id===id);
+    // Periode-lock (ERP-plan 0.4): facturen in een ingediende/betaalde
+    // BTW-periode mogen niet meer verdwijnen — de aangiftecijfers zouden
+    // stil veranderen.
+    if (f && !magFactuurMuteren(f, btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden)) {
+      alert(t('err_periode_gesloten_mutatie')); return;
+    }
+    if (!confirm(t('err_confirm_delete_inkoop'))) return;
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'verwijderd', omschrijving:`${f?.leverancier||''} — ${f?.factuurnummer||''}`});
     if (f?.bijlage?.bestand) {
       fetch(`${ADDON_BASE}api/delete_upload/${f.bijlage.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
@@ -663,6 +669,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       klant_stad: losseFactuurForm.klant_stad?.trim() || '',
       klant_btw_nummer: losseFactuurForm.klant_btw_nummer?.trim() || '',
       status: 'open',
+      definitief: true,
       regels,
       netto: totaalNetto,
       btw: totaalBtw,
@@ -784,6 +791,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   const updateFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}: any) => {
     if (!editingFactuur) return;
+    // Periode-lock (ERP-plan 0.4): een factuur die al in een ingediende of
+    // betaalde BTW-periode meetelt is bevroren — wijzigen zou de cijfers van
+    // die aangifte achteraf veranderen.
+    if (!magFactuurMuteren(editingFactuur as any, btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden)) {
+      alert(t('err_periode_gesloten_mutatie'));
+      setEditingFactuur(null);
+      return;
+    }
     const btwSoort = factuurForm.btw_soort || 'binnenlands';
     const verlegd = btwSoort !== 'binnenlands';
     const regels: any[] = [];
@@ -1533,6 +1548,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         btw: btwBedrag,
         bruto,
         status: 'betaald',
+        definitief: true,
       }
       setVerkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
       logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boeking credit — ${nieuw.klant_naam}`});

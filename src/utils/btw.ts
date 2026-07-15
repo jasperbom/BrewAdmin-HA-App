@@ -52,6 +52,36 @@ export function effectievePeriodeKey(
   return factuur.btw_periode || datumToPeriodeKey(factuur.datum || '', periode)
 }
 
+// Bouw de sets van ingediende en betaalde periodeKeys uit de ruwe stores,
+// zodat elke pagina (Boekhouding, Bestellingen, …) dezelfde periode-lock
+// kan afleiden zonder eigen memo-logica te dupliceren.
+export function geslotenPeriodeSets(
+  btwAangiftes: any[],
+  bankKoppelingen: Record<string, any>,
+): { ingediend: Set<string>; betaald: Set<string> } {
+  const ingediend = new Set<string>()
+  ;(btwAangiftes || []).forEach((a: any) => { if (a?.periodeKey) ingediend.add(a.periodeKey) })
+  const betaald = new Set<string>()
+  Object.values(bankKoppelingen || {}).forEach((k: any) => {
+    if (k?.soort === 'btw' && k.periodeKey) betaald.add(k.periodeKey)
+  })
+  return { ingediend, betaald }
+}
+
+// Harde periode-lock (ERP-plan 0.4): mag deze factuur nog inhoudelijk
+// gewijzigd of verwijderd worden? Nee zodra de BTW-periode waarin de factuur
+// meetelt (effectievePeriodeKey, dus incl. rollover) is ingediend of betaald.
+// Correcties horen daarna via een nieuwe boeking/creditnota in de huidige
+// periode te lopen — nooit door de ingediende cijfers te veranderen.
+export function magFactuurMuteren(
+  factuur: Pick<InkoopFactuur, 'datum' | 'btw_periode'>,
+  periode: BtwPeriodeType,
+  ingediendeKeys: Set<string>,
+  betaaldeKeys: Set<string>,
+): boolean {
+  return !isPeriodeGesloten(effectievePeriodeKey(factuur, periode), ingediendeKeys, betaaldeKeys)
+}
+
 // Bepaalt of een factuur met deze datum naar de huidige periode moet rollen,
 // en zo ja: naar welke periodeKey. Geeft `null` terug wanneer geen rollover
 // nodig is (datum valt in een open of toekomstige periode).

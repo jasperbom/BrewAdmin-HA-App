@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, volgendFactuurNummer } from '../utils/api'
+import { geslotenPeriodeSets, magFactuurMuteren } from '../utils/btw'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
@@ -53,6 +54,9 @@ interface BestellingenPageProps {
   smtpCreds?: any
   mailTemplates?: any
   btwTarieven?: (number | string)[]
+  btwInst?: any
+  btwAangiftes?: any[]
+  bankKoppelingen?: Record<string, any>
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -82,6 +86,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   smtpCreds={enabled:false},
   mailTemplates={},
   btwTarieven=[0, 9, 21],
+  btwInst={}, btwAangiftes=[], bankKoppelingen={},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -1030,6 +1035,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       btw: totaalBtw,
       bruto: rnd2(totaalNetto + totaalBtw),
       status: 'open',
+      definitief: true,
     }
 
     // 4. State-updates. Records uit savePicks zijn al in state;
@@ -1200,6 +1206,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // want de BTW-aangifte leest uit de factuur, niet uit de order.
   const updateRegelBtw = (regelId: number, nieuwBtw: number) => {
     if (!selectedOrder) return
+    // Periode-lock (ERP-plan 0.4): zodra de gekoppelde factuur meetelt in een
+    // ingediende/betaalde BTW-periode is corrigeren geblokkeerd — dat zou de
+    // aangiftecijfers achteraf veranderen. Correctie dan via creditnota.
+    if (selectedOrder.factuur_id != null) {
+      const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
+      if (fact) {
+        const periodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
+        const {ingediend, betaald} = geslotenPeriodeSets(btwAangiftes||[], bankKoppelingen||{})
+        if (!magFactuurMuteren(fact, periodeType, ingediend, betaald)) {
+          alert(t('err_periode_gesloten_mutatie')); return
+        }
+      }
+    }
     const orderRegels = selectedOrder.regels||[]
     const regelIdx = orderRegels.findIndex((r: any) => r.id === regelId)
     const regel = orderRegels[regelIdx]

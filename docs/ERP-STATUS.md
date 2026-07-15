@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.80
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.81
 
 ---
 
@@ -21,10 +21,13 @@
 - [x] **0.2 Server-side factuurnummer-endpoint** — `POST /api/nextnr`,
       atomair onder lock, aparte reeksen factuur/creditnota; KassaPage,
       BestellingenPage en StatiegeldPage omgezet *(v1.10.80, 2026-07-15)*
-- [ ] **0.3 Facturen bevriezen** — `definitief`-vlag op uitgereikte
+- [x] **0.3 Facturen bevriezen** — `definitief`-vlag op uitgereikte
       verkoopfacturen; geen edit/delete meer, correctie via creditnota
-- [ ] **0.4 Harde periode-lock** — mutaties van facturen/accijnsrecords in een
-      ingediende BTW-/accijnsperiode geblokkeerd
+      *(v1.10.81, 2026-07-15 — n.b. verkoopfacturen hadden al geen edit/delete-UI;
+      vlag gezet op alle 5 aanmaakplekken t.b.v. fase 2-journaal)*
+- [x] **0.4 Harde periode-lock** — mutaties van facturen/accijnsrecords in een
+      ingediende BTW-/accijnsperiode geblokkeerd *(v1.10.81, 2026-07-15:
+      guards in deleteFactuur/updateFactuur/updateRegelBtw/deleteVerplaats)*
 - [ ] **0.5 Backup off-volume + uploads** — uploads-map in dagelijkse backup,
       ZIP naar HA `/backup`-map, retentie ook daar
 - [ ] **0.6 Secrets afschermen** — GET op secure keys gemaskeerd
@@ -91,3 +94,4 @@
 | 2026-07-15 | 1.10.78 | — | Statusdocument (dit bestand) aangemaakt |
 | 2026-07-15 | 1.10.79 | 0.1 | Optimistic locking: X-Data-Version + 409-conflictafhandeling; getest met curl (409-flow, data blijft intact) |
 | 2026-07-15 | 1.10.80 | 0.2 | /api/nextnr: atomaire nummerreeksen (F/CN), seed uit legacy teller + hoogste bestaande factuur; 20 parallelle calls → 0 dubbelen |
+| 2026-07-15 | 1.10.81 | 0.3+0.4 | definitief-vlag op verkoopfacturen; periode-lock op inkoopfactuur-edit/-delete, BTW-correctie orderregel en AGP-verplaatsing-delete |

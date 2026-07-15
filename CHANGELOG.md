@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.81] — 2026-07-15
+
+### Gewijzigd — Facturen bevriezen + harde periode-lock (ERP-plan 0.3/0.4)
+
+- Verkoopfacturen krijgen bij het aanmaken (kassa, order afronden, losse
+  factuur, bankboeking, statiegeld-creditnota) de vlag `definitief` —
+  uitgereikte facturen zijn onveranderlijk; correcties horen via een
+  creditnota te lopen. Statuswijzigingen (betaald, herinnering) blijven
+  gewoon mogelijk.
+- **Harde periode-lock BTW:** inkoopfacturen die meetellen in een ingediende
+  of betaalde BTW-periode kunnen niet meer gewijzigd of verwijderd worden
+  (duidelijke melding). Ook de BTW-correctieknop op een orderregel is
+  geblokkeerd zodra de gekoppelde factuur in een ingediende periode valt.
+- **Harde periode-lock accijns:** een AGP-verplaatsing waarvan het
+  accijnsrecord in een reeds ingediende (niet alleen betaalde) aangiftemaand
+  valt, kan niet meer verwijderd worden.
+- Nieuwe herbruikbare helpers: `geslotenPeriodeSets`/`magFactuurMuteren`
+  (`src/utils/btw.ts`) en `accijnsMaandGesloten`
+  (`src/utils/calculations.ts`).
+
+---
+
 ## [1.10.80] — 2026-07-15
 
 ### Gewijzigd — Factuurnummering server-side (ERP-plan 0.2)

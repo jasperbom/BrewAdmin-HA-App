@@ -826,6 +826,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
       btw: totaalBtw,
       bruto: rnd2(totaalNetto + totaalBtw),
       status: betaalwijze === 'rekening' ? 'open' : 'betaald',
+      definitief: true,
       betaalwijze,
       ...(betaalwijze !== 'rekening' ? {betaald_datum: vandaag} : {}),
     }
