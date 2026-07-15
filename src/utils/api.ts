@@ -328,6 +328,22 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
 export const newId = (arr: any[]): number =>
   arr.length ? Math.max(0, ...arr.map((x: any) => x.id)) + 1 : 1
 
+// ── Factuurnummering (ERP-plan 0.2) ─────────────────────────────────────────
+// Nummers worden server-side atomair uitgegeven (POST /api/nextnr) zodat twee
+// tabs/kassa's nooit hetzelfde nummer krijgen en verwijderde facturen geen
+// nummer-hergebruik veroorzaken. De client mag nooit zelf nummeren.
+export const volgendFactuurNummer = async (reeks: 'factuur' | 'creditnota'): Promise<string> => {
+  const r = await _fetchWithRetry(ADDON_BASE + 'api/nextnr', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reeks, jaar: new Date().getFullYear()}),
+  }, 2)
+  if (!r.ok) throw new Error(`nextnr ${r.status}`)
+  const d = await r.json()
+  if (!d || typeof d.nummer !== 'string') throw new Error('nextnr: invalid response')
+  return d.nummer
+}
+
 // WooCommerce helpers
 export const wcGet = async (subpath: string) => {
   const r = await _fetchWithRetry(_WC_PROXY + subpath.replace(/^\//, ''), undefined, 1)

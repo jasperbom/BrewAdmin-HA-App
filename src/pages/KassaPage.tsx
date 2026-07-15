@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { t } from '../i18n'
-import { newId } from '../utils/api'
+import { newId, volgendFactuurNummer } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
@@ -521,23 +521,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
     return {kortingRegels, bonKortingRegels, statiegeldRegels, nettoRegels, kortingTotaal, bonKortingTotaal, statiegeldTotaal, btwTotaal, netto, bruto: rnd2(netto + btwTotaal)}
   }, [cart, kortingPct, bonKorting, verpakkingen])
 
-  // ── Factuurnummering (zelfde teller als de orderflow) ───────────────────────
-
-  const genFactuurNummer = (): string => {
-    const year = new Date().getFullYear()
-    const prefix = `F${year}-`
-    if (factuurCounter && typeof setFactuurCounter === 'function') {
-      const nextNr = (factuurCounter.jaar === year ? factuurCounter.nr : 0) + 1
-      setFactuurCounter({jaar: year, nr: nextNr})
-      return `${prefix}${String(nextNr).padStart(4, '0')}`
-    }
-    const existing = (verkoopFacturen || [])
-      .filter((f: any) => f.factuurnummer?.startsWith(prefix))
-      .map((f: any) => parseInt(f.factuurnummer.replace(prefix, ''), 10))
-      .filter((n: number) => !isNaN(n))
-    const nextNum = existing.length ? Math.max(...existing) + 1 : 1
-    return `${prefix}${String(nextNum).padStart(4, '0')}`
-  }
+  // Factuurnummering: server-side via volgendFactuurNummer() (ERP-plan 0.2) —
+  // de client nummert nooit zelf (races/hergebruik).
 
   // ── Uitslagrecords (kopie van BestellingenPage.bouwUitslagRecords) ──────────
   // Belastbaar feit: bier verlaat de voorraad. Buiten-AGP-voorraad eerst
@@ -643,7 +628,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
   // ── Afrekenen: bestelling + picks + uitslag + accijns + factuur in één keer ─
 
-  const verwerkVerkoop = () => {
+  const verwerkVerkoop = async () => {
     if (!cart.length) { alert(t('err_pos_bon_leeg')); return }
     if (betaalwijze === 'rekening' && !selectedKlant) { alert(t('err_pos_rekening_klant')); return }
     const vandaag = tod()
@@ -751,8 +736,12 @@ const KassaPage: React.FC<KassaPageProps> = ({
       }
     })
 
-    // 5. Factuurregels (incl. automatisch statiegeld) + BTW-overzicht
-    const factuurNummer = genFactuurNummer()
+    // 5. Factuurregels (incl. automatisch statiegeld) + BTW-overzicht.
+    //    Nummer pas ná alle validaties ophalen zodat een afgebroken verkoop
+    //    geen nummer verbruikt (gat in de reeks).
+    let factuurNummer: string
+    try { factuurNummer = await volgendFactuurNummer('factuur') }
+    catch (e) { alert(t('err_factuurnummer_ophalen')); return }
     const regelsList: any[] = regels.map((r: any) => {
       const netto = rnd2(Number(r.aantal || 0) * Number(r.prijs_per_stuk || 0))
       const btw_bedrag = rnd2(netto * Number(r.btw_pct || 0) / 100)

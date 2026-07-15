@@ -2576,5 +2576,6 @@
   "err_pos_rekening_klant": "Selecciona primero un cliente para vender a cuenta.",
   "err_pos_voorraad": "Stock insuficiente para {product}: {beschikbaar} disponible.",
   "err_pos_klant_naam": "Introduce un nombre para el cliente.",
-  "sync_conflict_melding": "Atención: estos datos se han modificado simultáneamente en otra ventana o en otro dispositivo. Tu último cambio NO se ha guardado; se han vuelto a cargar los datos actuales. Vuelve a introducir tu cambio."
+  "sync_conflict_melding": "Atención: estos datos se han modificado simultáneamente en otra ventana o en otro dispositivo. Tu último cambio NO se ha guardado; se han vuelto a cargar los datos actuales. Vuelve a introducir tu cambio.",
+  "err_factuurnummer_ophalen": "No se ha podido obtener un número de factura del servidor. Comprueba la conexión e inténtalo de nuevo."
 }

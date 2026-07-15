@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
-import { newId } from '../utils/api'
+import { newId, volgendFactuurNummer } from '../utils/api'
 import { fmt, fmtD, fmtQty, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
@@ -145,7 +145,7 @@ const StatiegeldPage: React.FC<Props> = ({
     setRetourFor(klant)
   }
 
-  const saveRetour = () => {
+  const saveRetour = async () => {
     if (!retourFor) return
     const items = Object.entries(retourQty)
       .map(([vpId, qStr]) => ({ vpId: Number(vpId), aantal: Number(qStr || 0) }))
@@ -178,11 +178,11 @@ const StatiegeldPage: React.FC<Props> = ({
     if (regels.length === 0) return
 
     const totaalNetto = rnd2(regels.reduce((s, r) => s + r.netto, 0))
-    const jaar = new Date().getFullYear()
-    const teller = (factuurCounter && factuurCounter[jaar]) || 0
-    const nieuweTeller = teller + 1
-    const nummer = `CN-${jaar}-${String(nieuweTeller).padStart(4, '0')}`
-    setFactuurCounter({ ...(factuurCounter || {}), [jaar]: nieuweTeller })
+    // Creditnotanummer server-side ophalen (atomair, eigen CN-reeks —
+    // ERP-plan 0.2); de client nummert nooit zelf.
+    let nummer: string
+    try { nummer = await volgendFactuurNummer('creditnota') }
+    catch (e) { alert(t('err_factuurnummer_ophalen')); return }
 
     const nieuw: any = {
       id: newId(verkoopFacturen || []),

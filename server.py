@@ -69,6 +69,7 @@ HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
 
 MAIL_SEND_PATH           = '/api/mail/send'
 MAIL_TEST_PATH           = '/api/mail/test'
+NEXTNR_PATH              = '/api/nextnr'
 MAIL_MAX_CONTENT         = 20 * 1024 * 1024  # 20 MB — mail + attachments
 MAIL_SECURITY_VALUES     = {'none', 'starttls', 'ssl'}
 MAIL_EMAIL_RE            = re.compile(r'^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$')
@@ -623,6 +624,69 @@ def _read_json(key: str, default=None):
         return json.loads(filepath.read_text(encoding='utf-8'))
     except (json.JSONDecodeError, OSError):
         return default
+
+
+# ── Factuurnummering (ERP-plan 0.2) ──────────────────────────────────────
+# Doorlopende, unieke nummers per reeks/jaar worden server-side uitgegeven
+# onder _data_lock — de client mag nooit zelf nummeren (race tussen twee
+# kassa's/tabs gaf voorheen dubbele nummers; verwijderen gaf hergebruik).
+
+_NUMMER_REEKSEN = {
+    'factuur':    'F{jaar}-',
+    'creditnota': 'CN-{jaar}-',
+}
+
+
+def _max_bestaand_nummer(prefix: str) -> int:
+    """Hoogste al uitgegeven nummer met dit prefix in verkoop_facturen.json.
+    Vangnet tegen dubbele nummers na een backup-restore of handmatige edit
+    waarbij de tellerstand achterloopt op de werkelijk bestaande facturen."""
+    facturen = _read_json('verkoop_facturen', [])
+    hoogste = 0
+    if isinstance(facturen, list):
+        for f in facturen:
+            nummer = f.get('factuurnummer') if isinstance(f, dict) else None
+            if isinstance(nummer, str) and nummer.startswith(prefix):
+                try:
+                    hoogste = max(hoogste, int(nummer[len(prefix):]))
+                except ValueError:
+                    pass
+    return hoogste
+
+
+def _legacy_counter(reeks: str, jaar: int) -> int:
+    """Tellerstand uit het oude client-side factuur_counter.json.
+    Facturen: {jaar, nr}; creditnota's (statiegeld) sloegen per jaar op
+    onder de jaar-key zelf."""
+    legacy = _read_json('factuur_counter', {})
+    if not isinstance(legacy, dict):
+        return 0
+    try:
+        if reeks == 'factuur':
+            return int(legacy.get('nr') or 0) if legacy.get('jaar') == jaar else 0
+        return int(legacy.get(str(jaar)) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _volgend_nummer(reeks: str, jaar: int) -> dict:
+    """Geef atomair het volgende nummer in de reeks uit (aanroepen ZONDER
+    _data_lock; deze functie pakt de lock zelf)."""
+    prefix = _NUMMER_REEKSEN[reeks].format(jaar=jaar)
+    with _data_lock:
+        reeksen = _read_json('nummer_reeksen', {})
+        if not isinstance(reeksen, dict):
+            reeksen = {}
+        entry = reeksen.get(reeks) or {}
+        try:
+            opgeslagen = int(entry.get('nr') or 0) if entry.get('jaar') == jaar else 0
+        except (TypeError, ValueError):
+            opgeslagen = 0
+        basis = max(opgeslagen, _legacy_counter(reeks, jaar), _max_bestaand_nummer(prefix))
+        nr = basis + 1
+        reeksen[reeks] = {'jaar': jaar, 'nr': nr}
+        _write_json('nummer_reeksen', reeksen)
+    return {'jaar': jaar, 'nr': nr, 'nummer': f'{prefix}{nr:04d}'}
 
 
 def _data_version(filepath: Path) -> str:
@@ -1243,6 +1307,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if MAIL_SEND_PATH in path:
             self._mail_send()
+            return
+
+        if NEXTNR_PATH in path:
+            self._handle_nextnr()
             return
 
         if HA_PROXY_PREFIX in path:
@@ -1915,6 +1983,28 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self._add_security_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    def _handle_nextnr(self):
+        """POST /api/nextnr — geef atomair het volgende factuur-/creditnota-
+        nummer uit. Body: {"reeks": "factuur"|"creditnota", "jaar": 2026}.
+        Antwoord: {"jaar", "nr", "nummer"} (bv. "F2026-0012")."""
+        body = self._read_body(max_len=1024)
+        if body is None:
+            return
+        try:
+            req = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        reeks = req.get('reeks') if isinstance(req, dict) else None
+        jaar = req.get('jaar') if isinstance(req, dict) else None
+        if reeks not in _NUMMER_REEKSEN or not isinstance(jaar, int) or not 2000 <= jaar <= 2200:
+            self._json(400, {'error': 'invalid reeks/jaar'})
+            return
+        try:
+            self._json(200, _volgend_nummer(reeks, jaar))
+        except OSError:
+            self._json(500, {'error': 'could not persist counter'})
 
     def _handle_backup_trigger(self):
         """POST /api/backups/trigger — run an immediate manual backup."""

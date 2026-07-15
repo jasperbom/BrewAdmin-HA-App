@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.80] — 2026-07-15
+
+### Gewijzigd — Factuurnummering server-side (ERP-plan 0.2)
+
+- Factuur- en creditnotanummers worden nu atomair door de server uitgegeven
+  via `POST /api/nextnr` in plaats van door de browser berekend. Twee
+  kassa's/vensters kunnen daardoor nooit meer hetzelfde nummer krijgen en
+  verwijderde facturen leiden niet meer tot nummer-hergebruik.
+- De teller start automatisch vanaf het maximum van de oude tellerstand
+  (`factuur_counter`) én het hoogste bestaande factuurnummer — ook veilig na
+  een backup-restore.
+- Creditnota's (statiegeldretour) hebben nu een eigen nette reeks
+  (`CN-jjjj-0001`) los van de factuurreeks; de oude vermenging van twee
+  tellerformaten in één object is daarmee opgelost.
+- Het nummer wordt pas ná alle validaties opgehaald zodat een afgebroken
+  verkoop/afronding geen gat in de reeks veroorzaakt. Bij een
+  verbindingsfout stopt de flow met een duidelijke melding (5 talen).
+
+---
+
 ## [1.10.79] — 2026-07-15
 
 ### Toegevoegd — Conflictdetectie bij gelijktijdig gebruik (ERP-plan 0.1)
