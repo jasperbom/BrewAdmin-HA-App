@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.83] — 2026-07-15
+
+### Beveiliging — API-geheimen niet meer uitleesbaar via de browser (ERP-plan 0.6)
+
+- `GET /api/data/<creds-key>` maskeert voortaan de gevoelige velden
+  (Brewfather-apiKey, WooCommerce-key/secret, Anthropic-apiKey,
+  SMTP-wachtwoord) met een `__SECRET__`-sentinel. De browser krijgt de echte
+  geheimen dus nooit meer te zien; alleen de server-proxies gebruiken ze.
+- Opslaan vanuit de instellingen blijft gewoon werken: stuurt de client de
+  sentinel terug, dan vult de server de opgeslagen waarde weer in. Ook de
+  test-knoppen (Brewfather/WooCommerce/SMTP) werken met de sentinel.
+- Credentials-bestanden in `/data` krijgen bestandsrechten `0600`
+  (bij opslaan én eenmalig bij het opstarten van de addon).
+
+---
+
 ## [1.10.82] — 2026-07-15
 
 ### Gewijzigd — Backup off-volume + bijlagen meegenomen (ERP-plan 0.5)

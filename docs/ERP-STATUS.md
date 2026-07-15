@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.82
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.83
 
 ---
 
@@ -31,8 +31,10 @@
 - [x] **0.5 Backup off-volume + uploads** — uploads-map in dagelijkse backup,
       ZIP naar HA `/backup`-map, retentie ook daar *(v1.10.82, 2026-07-15;
       config.yaml kreeg `backup:rw`-mapping)*
-- [ ] **0.6 Secrets afschermen** — GET op secure keys gemaskeerd
-      (`__SECRET__`-sentinel), POST merget sentinel terug; chmod 0600
+- [x] **0.6 Secrets afschermen** — GET op secure keys gemaskeerd
+      (`__SECRET__`-sentinel), POST merget sentinel terug; chmod 0600;
+      test-endpoints (BF/WC/SMTP) accepteren de sentinel ook
+      *(v1.10.83, 2026-07-15)*
 - [ ] **0.7 Voorraad-lekken dichten** — `saveLot` via `voorraad_log`;
       bier-telverschillen inventarisatie teruggeboekt; tankvolume-guard bij
       afvullen
@@ -97,3 +99,4 @@
 | 2026-07-15 | 1.10.80 | 0.2 | /api/nextnr: atomaire nummerreeksen (F/CN), seed uit legacy teller + hoogste bestaande factuur; 20 parallelle calls → 0 dubbelen |
 | 2026-07-15 | 1.10.81 | 0.3+0.4 | definitief-vlag op verkoopfacturen; periode-lock op inkoopfactuur-edit/-delete, BTW-correctie orderregel en AGP-verplaatsing-delete |
 | 2026-07-15 | 1.10.82 | 0.5 | Backup incl. upload-bijlagen + off-volume ZIP naar /backup/brewadmin (getest: lokaal, offsite en download-ZIP bevatten bijlagen) |
+| 2026-07-15 | 1.10.83 | 0.6 | Secrets gemaskeerd via GET, sentinel-merge bij POST, chmod 0600; round-trip getest met curl (geheim blijft op disk, URL-wijziging werkt) |

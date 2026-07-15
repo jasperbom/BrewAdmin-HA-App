@@ -455,6 +455,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Request body size: 10 MB general, 20 MB for Claude proxy
 - File upload: only `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp` allowed
 - Key validation: `^[a-zA-Z0-9_]+$` — prevents path traversal
+- Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only
 

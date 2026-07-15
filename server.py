@@ -677,6 +677,61 @@ def _read_json(key: str, default=None):
         return default
 
 
+# ── Secrets afschermen (ERP-plan 0.6) ────────────────────────────────────
+# Credentials staan als JSON in /data, maar de gevoelige velden mogen nooit
+# plaintext terug naar de browser. GET maskeert ze met een sentinel; POST
+# vervangt de sentinel weer door de opgeslagen waarde (zodat de UI kan
+# opslaan zonder het geheim ooit te kennen). Bestanden krijgen mode 0600.
+
+_SECRET_SENTINEL = '__SECRET__'
+_SECURE_FIELDS = {
+    'brewfather_creds':  ('apiKey',),
+    'woocommerce_creds': ('consumerKey', 'consumerSecret'),
+    'claude_creds':      ('apiKey',),
+    'smtp_creds':        ('password',),
+}
+
+
+def _mask_secrets(key: str, data):
+    """Vervang gevoelige velden door de sentinel vóór verzending naar de client."""
+    velden = _SECURE_FIELDS.get(key)
+    if not velden or not isinstance(data, dict):
+        return data
+    masked = dict(data)
+    for veld in velden:
+        if masked.get(veld):
+            masked[veld] = _SECRET_SENTINEL
+    return masked
+
+
+def _unmask_secrets(key: str, data):
+    """Vervang sentinel-waarden door de eerder opgeslagen geheimen (bij POST)."""
+    velden = _SECURE_FIELDS.get(key)
+    if not velden or not isinstance(data, dict):
+        return data
+    if not any(data.get(v) == _SECRET_SENTINEL for v in velden):
+        return data
+    stored = _read_json(key, {})
+    if not isinstance(stored, dict):
+        stored = {}
+    result = dict(data)
+    for veld in velden:
+        if result.get(veld) == _SECRET_SENTINEL:
+            result[veld] = stored.get(veld, '')
+    return result
+
+
+def _harden_secure_files() -> None:
+    """Zet bestandsrechten 0600 op bestaande creds-bestanden (eenmalig bij start)."""
+    for key in _SECURE_FIELDS:
+        f = DATA_DIR / f'{key}.json'
+        if f.exists():
+            try:
+                os.chmod(f, 0o600)
+            except OSError:
+                pass
+
+
 # ── Factuurnummering (ERP-plan 0.2) ──────────────────────────────────────
 # Doorlopende, unieke nummers per reeks/jaar worden server-side uitgegeven
 # onder _data_lock — de client mag nooit zelf nummeren (race tussen twee
@@ -1301,11 +1356,21 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             filepath = DATA_DIR / f'{key}.json'
             if filepath.exists():
                 body = filepath.read_bytes()
+                # Versie-hash altijd over de RUWE bestandsinhoud, ook wanneer
+                # gemaskeerd wordt geserveerd — de POST-conflictcheck vergelijkt
+                # met dezelfde ruwe inhoud.
+                version = hashlib.sha256(body).hexdigest()[:16]
+                if key in _SECURE_FIELDS:
+                    try:
+                        masked = _mask_secrets(key, json.loads(body))
+                        body = json.dumps(masked, ensure_ascii=False).encode('utf-8')
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        pass
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', len(body))
                 self.send_header('Cache-Control', 'no-store')
-                self.send_header('X-Data-Version', hashlib.sha256(body).hexdigest()[:16])
+                self.send_header('X-Data-Version', version)
                 self._add_security_headers()
                 self.end_headers()
                 self.wfile.write(body)
@@ -1388,7 +1453,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             if body is None:
                 return
             try:
-                json.loads(body)  # validate JSON
+                parsed = json.loads(body)  # validate JSON
             except json.JSONDecodeError:
                 self._json(400, {'error': 'invalid json'})
                 return
@@ -1407,7 +1472,17 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                     if expected != current:
                         self._json(409, {'error': 'conflict', 'version': current})
                         return
+                if key in _SECURE_FIELDS:
+                    # Sentinel-waarden terugvervangen door de opgeslagen
+                    # geheimen (de client kent die bewust niet).
+                    parsed = _unmask_secrets(key, parsed)
+                    body = json.dumps(parsed, ensure_ascii=False).encode('utf-8')
                 _atomic_write_bytes(filepath, body)
+                if key in _SECURE_FIELDS:
+                    try:
+                        os.chmod(filepath, 0o600)
+                    except OSError:
+                        pass
             self._json(200, {'ok': True, 'version': hashlib.sha256(body).hexdigest()[:16]})
             return
 
@@ -1478,7 +1553,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if raw is None:
             return
         try:
-            body = json.loads(raw)
+            body = _unmask_secrets('brewfather_creds', json.loads(raw))
             uid = str(body.get('userId', '')).strip()
             key = str(body.get('apiKey', '')).strip()
         except Exception:
@@ -1553,7 +1628,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if raw is None:
             return
         try:
-            body   = json.loads(raw)
+            body   = _unmask_secrets('woocommerce_creds', json.loads(raw))
             url    = str(body.get('storeUrl', '')).strip().rstrip('/')
             key    = str(body.get('consumerKey', '')).strip()
             secret = str(body.get('consumerSecret', '')).strip()
@@ -1933,7 +2008,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if raw is None:
             return
         try:
-            body = json.loads(raw)
+            body = _unmask_secrets('smtp_creds', json.loads(raw))
         except Exception:
             self._json(400, {'error': 'invalid json'})
             return
@@ -2138,6 +2213,8 @@ if __name__ == '__main__':
     print(f'Data opgeslagen in {DATA_DIR}', flush=True)
 
     # Start background backup thread (AGP 7-year retention)
+    _harden_secure_files()
+
     _backup_thread = threading.Thread(target=_backup_loop, daemon=True)
     _backup_thread.start()
     print(f'Backup thread gestart (dagelijks naar {BACKUP_DIR})', flush=True)
