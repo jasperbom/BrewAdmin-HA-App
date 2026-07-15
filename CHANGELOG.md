@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.78] — 2026-07-15
+
+### Toegevoegd — ERP-verbeterplan: voortgangsstatus
+
+- Nieuw document `docs/ERP-STATUS.md`: afvinkbare checklist van alle punten
+  uit het ERP-verbeterplan (fase 0 t/m 4) met logboek. Dient als startpunt
+  voor vervolgsessies. Documentatie-only.
+
+---
+
 ## [1.10.77] — 2026-07-15
 
 ### Toegevoegd — ERP-review & verbeterplan
