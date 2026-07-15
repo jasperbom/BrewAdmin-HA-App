@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.93] — 2026-07-15
+
+### Ontwikkeling — verificatie-skill
+
+- Nieuwe `.claude/skills/verify/SKILL.md` met het recept om de app headless
+  te bouwen, te starten en met Playwright end-to-end te verifiëren
+  (SPA-pad `/app/static`, testdata-seeding, rate-limiter- en taal-gotcha's).
+  Geen functionele wijzigingen in de app zelf.
+
+---
+
 ## [1.10.92] — 2026-07-15
 
 ### Toegevoegd — Rebranden van afgevulde biervoorraad
