@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.91] — 2026-07-15
+
+### Opgelost — Off-volume backup: Permission denied op /backup/brewadmin
+
+- De addon draait als niet-root (`appuser`), maar Home Assistant mount de
+  `/backup`-map als root — de dagelijkse offsite-ZIP faalde daardoor met
+  `[Errno 13] Permission denied`. `entrypoint.sh` maakt de submap
+  `/backup/brewadmin` nu bij het opstarten (als root) aan en geeft
+  `appuser` er schrijfrechten, net zoals dat al voor `/data` gebeurde.
+  Alleen de eigen submap wordt aangepast, nooit heel `/backup`.
+
+---
+
 ## [1.10.90] — 2026-07-15
 
 ### Toegevoegd — Append-only server-audit (ERP-plan 1.5)
