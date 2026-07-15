@@ -4,6 +4,238 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.90] — 2026-07-15
+
+### Toegevoegd — Append-only server-audit (ERP-plan 1.5)
+
+- De server logt voortaan élke gegevensmutatie (losse opslag, atomaire
+  commit, factuurnummer-uitgifte) naar maandelijkse JSONL-bestanden in
+  `/data/server_audit/`: tijdstip, IP, HA-gebruiker (indien door ingress
+  meegegeven), omvang en de versie-hash vóór en ná de wijziging.
+  Samenhangende commit-writes delen een commit-id.
+- Dit logboek is bewust **niet** bereikbaar of wijzigbaar via de app-API
+  (in tegenstelling tot het bestaande client-side auditlog) en is daarmee
+  het eerste bewijskrachtige mutatiespoor.
+- De audit-map wordt meegenomen in de dagelijkse backup en volgt dezelfde
+  7-jaarshorizon (maandbestanden ouder dan 7 jaar worden opgeruimd).
+
+---
+
+## [1.10.89] — 2026-07-15
+
+### Toegevoegd — Server-side schemavalidatie (ERP-plan 1.4)
+
+- De server dwingt per bekende gegevenssoort het containertype af (array,
+  object of tekst) op zowel `POST /api/data/<key>` als `POST /api/commit`.
+  Eén verkeerd verzoek (bijv. een object waar een array hoort) kan de
+  app-data dus niet meer vervangen; het antwoord is een 422 met de
+  verwachte vorm. Onbekende keys blijven vrij (voorwaartse compatibiliteit).
+- De app behandelt zo'n definitieve afwijzing (400/413/422) nu correct:
+  geen eindeloze herhaalpogingen meer, maar de actuele serverdata herladen
+  en een duidelijke melding (5 talen). Voorheen bleef een afgewezen opslag
+  elke 15 seconden opnieuw proberen.
+
+---
+
+## [1.10.88] — 2026-07-15
+
+### Toegevoegd — Data-gezondheid: referentiële integriteit (ERP-plan 1.3)
+
+- Nieuwe sectie **Instellingen → App → Data-gezondheid**: controleert met
+  één klik alle onderlinge verwijzingen (20 relaties over 12
+  gegevenssoorten) op verweesde records en toont precies welk record met
+  welk veld nergens meer naartoe wijst.
+- Nieuwe herbruikbare functie `checkIntegriteit` (`src/utils/integriteit.ts`),
+  puur en unit-testbaar.
+- **Guard bij batch verwijderen:** een batch met uitleveringen of
+  accijnsrecords (fiscaal vastgelegd) kan niet meer verwijderd worden —
+  voorheen bleven die records verweesd achter.
+
+---
+
+## [1.10.87] — 2026-07-15
+
+### Gewijzigd — Botsingsvrije record-id's (ERP-plan 1.2)
+
+- Nieuwe records krijgen voortaan een tijdgebaseerde, monotone id in plaats
+  van `hoogste+1`. Daarmee kan een verwijderd record zijn id niet meer
+  "doorgeven" aan een later aangemaakt record (verwijzingen vanuit accijns,
+  picks e.d. wezen dan stil naar het verkeerde record) en kunnen twee
+  gelijktijdige apparaten geen dubbele id's meer uitdelen.
+- Id's blijven bewust numeriek zodat alle bestaande data, vergelijkingen en
+  sorteringen ongewijzigd blijven werken. (Afwijking van het oorspronkelijke
+  plan-idee "UUID-strings": zelfde doel, zonder risico voor de 95 bestaande
+  aanroepplekken die numerieke id's aannemen.)
+
+---
+
+## [1.10.86] — 2026-07-15
+
+### Toegevoegd — Atomaire multi-key opslag (ERP-plan 1.1)
+
+- Nieuw endpoint `POST /api/commit`: schrijft meerdere gegevenssoorten in
+  één atomaire transactie (eerst alle tempbestanden, dan alle renames),
+  met dezelfde optimistic-locking-controle als losse opslag — bij één
+  conflict wordt niets geschreven (409 met de conflicterende keys).
+- De app bundelt opslagen die bij één handeling horen (bijv. order
+  afronden: picks + uitleveringen + accijns + factuur + bestelling + log)
+  nu automatisch tot zo'n commit. Voorheen waren dat 5–6 losse verzoeken
+  die half konden slagen bij een fout halverwege.
+- Werkt transparant: pagina's hoefden niet aangepast; tegen een oudere
+  server valt de app terug op losse opslagen.
+
+---
+
+## [1.10.85] — 2026-07-15
+
+### Gewijzigd — Excel-backup beschermd tegen stille afkapping (ERP-plan 0.8)
+
+- Excel kapt celwaarden boven ~32.767 tekens stil af, wat bij herstel tot
+  onherstelbaar kapotte records leidde. Elke cel die daar in de buurt komt
+  (grote geneste JSON, base64) wordt nu automatisch opgesplitst in
+  chunk-kolommen (`veld~0`, `veld~1`, …) die bij import weer worden
+  samengevoegd — zelfde principe als de bestaande logo-chunking, nu voor
+  álle data. Oude backups blijven gewoon leesbaar.
+- Een mislukte import toont nu de foutdetails in de melding (en console)
+  in plaats van alleen een generiek "ongeldige backup".
+
+---
+
+## [1.10.84] — 2026-07-15
+
+### Gewijzigd — Voorraad-lekken gedicht (ERP-plan 0.7)
+
+- **Lot bewerken logt nu in het voorraadverloop:** een wijziging van de
+  lothoeveelheid via het bewerkformulier schrijft voortaan — net als de
+  correctieknop — een `correctie`-regel in het mutatielog, zodat het
+  voorraadverloop sluitend blijft.
+- **Bier-telverschillen bij inventarisatie worden echt teruggeboekt:** bij
+  het afronden met correcties wordt een tekort als afboeking (vermis) en een
+  overschot als bijboeking geregistreerd, inclusief accijns-voorcalc en
+  verwijzing naar de inventarisatie. Voorheen werd alleen de accijnsimpact
+  getoond en bleef de administratieve voorraad ongewijzigd.
+- **Tankvolume-controle bij afvullen** (Batches én Batchflow): wie meer
+  liters afvult dan er volgens de volumebalans nog in de tank zit, krijgt
+  een expliciete waarschuwing met de resterende liters in plaats van dat de
+  overschrijding stil werd weggeclampt (accijns-relevant).
+
+---
+
+## [1.10.83] — 2026-07-15
+
+### Beveiliging — API-geheimen niet meer uitleesbaar via de browser (ERP-plan 0.6)
+
+- `GET /api/data/<creds-key>` maskeert voortaan de gevoelige velden
+  (Brewfather-apiKey, WooCommerce-key/secret, Anthropic-apiKey,
+  SMTP-wachtwoord) met een `__SECRET__`-sentinel. De browser krijgt de echte
+  geheimen dus nooit meer te zien; alleen de server-proxies gebruiken ze.
+- Opslaan vanuit de instellingen blijft gewoon werken: stuurt de client de
+  sentinel terug, dan vult de server de opgeslagen waarde weer in. Ook de
+  test-knoppen (Brewfather/WooCommerce/SMTP) werken met de sentinel.
+- Credentials-bestanden in `/data` krijgen bestandsrechten `0600`
+  (bij opslaan én eenmalig bij het opstarten van de addon).
+
+---
+
+## [1.10.82] — 2026-07-15
+
+### Gewijzigd — Backup off-volume + bijlagen meegenomen (ERP-plan 0.5)
+
+- De dagelijkse backup neemt nu ook de map met geüploade factuurbijlagen
+  (PDF's/afbeeldingen) mee — die vielen voorheen buiten élke backup terwijl
+  ze onder de fiscale bewaarplicht vallen.
+- Elke backup wordt daarnaast als ZIP weggeschreven naar de Home
+  Assistant-backupmap (`/backup/brewadmin/`), een **ander volume** dan
+  `/data`. Gaat het datavolume verloren, dan zijn de snapshots daar nog.
+  Zelfde retentiebeleid (30 dagen dagelijks / 1 jaar wekelijks / 7 jaar
+  maandelijks). Vereist de nieuwe `backup:rw`-mapping in `config.yaml`
+  (addon herstart na update volstaat); zonder die map wordt de off-volume
+  stap stil overgeslagen.
+- De backup-download (`GET /api/backups/<datum>`) bevat nu ook de bijlagen.
+
+---
+
+## [1.10.81] — 2026-07-15
+
+### Gewijzigd — Facturen bevriezen + harde periode-lock (ERP-plan 0.3/0.4)
+
+- Verkoopfacturen krijgen bij het aanmaken (kassa, order afronden, losse
+  factuur, bankboeking, statiegeld-creditnota) de vlag `definitief` —
+  uitgereikte facturen zijn onveranderlijk; correcties horen via een
+  creditnota te lopen. Statuswijzigingen (betaald, herinnering) blijven
+  gewoon mogelijk.
+- **Harde periode-lock BTW:** inkoopfacturen die meetellen in een ingediende
+  of betaalde BTW-periode kunnen niet meer gewijzigd of verwijderd worden
+  (duidelijke melding). Ook de BTW-correctieknop op een orderregel is
+  geblokkeerd zodra de gekoppelde factuur in een ingediende periode valt.
+- **Harde periode-lock accijns:** een AGP-verplaatsing waarvan het
+  accijnsrecord in een reeds ingediende (niet alleen betaalde) aangiftemaand
+  valt, kan niet meer verwijderd worden.
+- Nieuwe herbruikbare helpers: `geslotenPeriodeSets`/`magFactuurMuteren`
+  (`src/utils/btw.ts`) en `accijnsMaandGesloten`
+  (`src/utils/calculations.ts`).
+
+---
+
+## [1.10.80] — 2026-07-15
+
+### Gewijzigd — Factuurnummering server-side (ERP-plan 0.2)
+
+- Factuur- en creditnotanummers worden nu atomair door de server uitgegeven
+  via `POST /api/nextnr` in plaats van door de browser berekend. Twee
+  kassa's/vensters kunnen daardoor nooit meer hetzelfde nummer krijgen en
+  verwijderde facturen leiden niet meer tot nummer-hergebruik.
+- De teller start automatisch vanaf het maximum van de oude tellerstand
+  (`factuur_counter`) én het hoogste bestaande factuurnummer — ook veilig na
+  een backup-restore.
+- Creditnota's (statiegeldretour) hebben nu een eigen nette reeks
+  (`CN-jjjj-0001`) los van de factuurreeks; de oude vermenging van twee
+  tellerformaten in één object is daarmee opgelost.
+- Het nummer wordt pas ná alle validaties opgehaald zodat een afgebroken
+  verkoop/afronding geen gat in de reeks veroorzaakt. Bij een
+  verbindingsfout stopt de flow met een duidelijke melding (5 talen).
+
+---
+
+## [1.10.79] — 2026-07-15
+
+### Toegevoegd — Conflictdetectie bij gelijktijdig gebruik (ERP-plan 0.1)
+
+- De server geeft bij elke data-GET een versie-hash mee (`X-Data-Version`) en
+  controleert die bij opslaan. Slaan twee vensters/apparaten dezelfde
+  gegevens tegelijk op, dan wordt de tweede opslag geweigerd (409) in plaats
+  van dat die de eerste stilletjes overschrijft (voorheen last-write-wins).
+- De app laadt bij zo'n conflict automatisch de actuele gegevens opnieuw en
+  toont een duidelijke melding dat de laatste wijziging opnieuw ingevoerd
+  moet worden (nieuwe vertaalsleutel in alle 5 talen).
+- Opslagverzoeken per gegevenssoort worden nu geserialiseerd zodat snelle
+  opeenvolgende wijzigingen geen vals conflict veroorzaken. Oudere frontends
+  zonder versie-header blijven werken (geen versiecontrole).
+
+---
+
+## [1.10.78] — 2026-07-15
+
+### Toegevoegd — ERP-verbeterplan: voortgangsstatus
+
+- Nieuw document `docs/ERP-STATUS.md`: afvinkbare checklist van alle punten
+  uit het ERP-verbeterplan (fase 0 t/m 4) met logboek. Dient als startpunt
+  voor vervolgsessies. Documentatie-only.
+
+---
+
+## [1.10.77] — 2026-07-15
+
+### Toegevoegd — ERP-review & verbeterplan
+
+- Nieuw document `docs/ERP-VERBETERPLAN.md`: volledige review van de app
+  vanuit ERP-perspectief (data-integriteit, fiscaal/financieel, voorraad &
+  traceability, security, kwaliteit) plus een gefaseerd verbeterplan
+  (fase 0 t/m 4) met top-10-risicolijst en sprintvolgorde. Documentatie-only;
+  geen functionele wijzigingen.
+
+---
+
 ## [1.10.76] — 2026-07-15
 
 ### Toegevoegd — Batchflow: ingrediënt koppelen aan alternatief + kosten

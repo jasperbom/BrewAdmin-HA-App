@@ -8,6 +8,7 @@ import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, AP
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
+import { checkIntegriteit } from '../utils/integriteit'
 import { fmt, fmtD, tod } from '../utils/format'
 
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
@@ -238,7 +239,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, resetApp=()=>{}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -397,6 +398,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setTanks((prev: any)=>prev.map((x: any)=>x.id===id ? {...x, soort} : x));
     logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'gewijzigd', omschrijving:`Tank ${id} soort → ${soort}`});
   };
+
+  // Resultaat van de laatste integriteitscheck (null = nog niet uitgevoerd)
+  const [integriteitResultaat, setIntegriteitResultaat] = React.useState<any[]|null>(null);
 
   const [bfForm, setBfForm]   = React.useState({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false});
   const [bfTesting, setBfTesting] = React.useState(false);
@@ -3032,6 +3036,53 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* APP — automatische back-ups */}
       {activeSection==='app' && <BackupCard />}
+
+      {/* APP — data-gezondheid: referentiële integriteit (ERP-plan 1.3) */}
+      {activeSection==='app' && (
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_gezondheid_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_gezondheid_desc')}</p>
+        <Btn onClick={() => setIntegriteitResultaat(checkIntegriteit(integriteitData || {}))}>
+          {t('settings_gezondheid_check')}
+        </Btn>
+        {integriteitResultaat !== null && (
+          integriteitResultaat.length === 0 ? (
+            <p className="text-sm text-green-700 mt-3 font-medium">{t('settings_gezondheid_ok')}</p>
+          ) : (
+            <div className="mt-3">
+              <p className="text-sm text-red-600 font-medium mb-2">
+                {t('settings_gezondheid_problemen').replace('{n}', String(integriteitResultaat.length))}
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-gray-500 uppercase tracking-wide text-left">
+                      <th className="py-1 pr-3">{t('gezondheid_col_record')}</th>
+                      <th className="py-1 pr-3">{t('gezondheid_col_veld')}</th>
+                      <th className="py-1 pr-3">{t('gezondheid_col_doel')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {integriteitResultaat.slice(0, 100).map((p: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-100">
+                        <td className="py-1 pr-3 font-mono">{p.entiteit} #{String(p.id)}</td>
+                        <td className="py-1 pr-3 font-mono">{p.veld}</td>
+                        <td className="py-1 pr-3 font-mono">{p.doel} #{String(p.doel_id)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {integriteitResultaat.length > 100 && (
+                <p className="text-xs text-gray-400 mt-2">
+                  {t('settings_gezondheid_meer').replace('{n}', String(integriteitResultaat.length - 100))}
+                </p>
+              )}
+            </div>
+          )
+        )}
+      </div>
+      )}
 
       {/* FINANCIEEL — inkoop bijlagen downloaden (accounting bewaarplicht) */}
       {activeSection==='financieel' && (

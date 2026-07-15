@@ -215,6 +215,23 @@ const IngredientenPage: React.FC<Props> = ({
       else delete next.bf_props
       return next
     }))
+    // Mutatielog sluitend houden (ERP-plan 0.7): een voorraadwijziging via het
+    // bewerkformulier is een correctie en hoort — net als doCorrectie — in
+    // voorraad_log, anders ontstaat een niet-verklaard verschil in het verloop.
+    const oudeQty = Number(showLot.hoeveelheid) || 0
+    const nieuweQty = Number(lotEdit.hoeveelheid) || 0
+    if (nieuweQty !== oudeQty) {
+      addLog({
+        ingredient_id: showLot.ingredient_id,
+        ingredient_naam: ing.find((i: any) => i.id === showLot.ingredient_id)?.naam || '',
+        lot_id: showLot.id,
+        lotnummer: lotEdit.lotnummer || showLot.lotnummer || '',
+        type: 'correctie',
+        hoeveelheid: r3(nieuweQty - oudeQty),
+        eenheid: lotEdit.eenheid || showLot.eenheid || '',
+        referentie: t('lot_bewerk_correctie_ref'),
+      })
+    }
     logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: showLot.id, actie: 'gewijzigd', omschrijving: showLot.lotnummer || `Lot #${showLot.id}` })
     setShowLot(null)
   }

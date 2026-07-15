@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { newId, wcGet } from '../utils/api'
+import { newId, wcGet, volgendFactuurNummer } from '../utils/api'
+import { geslotenPeriodeSets, magFactuurMuteren } from '../utils/btw'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
@@ -53,6 +54,9 @@ interface BestellingenPageProps {
   smtpCreds?: any
   mailTemplates?: any
   btwTarieven?: (number | string)[]
+  btwInst?: any
+  btwAangiftes?: any[]
+  bankKoppelingen?: Record<string, any>
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -82,6 +86,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   smtpCreds={enabled:false},
   mailTemplates={},
   btwTarieven=[0, 9, 21],
+  btwInst={}, btwAangiftes=[], bankKoppelingen={},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -321,23 +326,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return (artikelen||[]).find((a: any) => a.biernaam === biernaam && a.verpakking_type === verpakking);
   }
 
-  // Factuurnummering
-  const genFactuurNummer = (): string => {
-    const year = new Date().getFullYear()
-    const prefix = `F${year}-`
-    if (factuurCounter && typeof setFactuurCounter === 'function') {
-      const nextNr = (factuurCounter.jaar === year ? factuurCounter.nr : 0) + 1
-      setFactuurCounter({jaar: year, nr: nextNr})
-      return `${prefix}${String(nextNr).padStart(4, '0')}`
-    }
-    // Fallback: bereken uit bestaande facturen
-    const existing = (verkoopFacturen||[])
-      .filter((f: any) => f.factuurnummer?.startsWith(prefix))
-      .map((f: any) => parseInt(f.factuurnummer.replace(prefix, ''), 10))
-      .filter((n: number) => !isNaN(n))
-    const nextNum = existing.length ? Math.max(...existing) + 1 : 1
-    return `${prefix}${String(nextNum).padStart(4, '0')}`
-  }
+  // Factuurnummering: server-side via volgendFactuurNummer() (ERP-plan 0.2) —
+  // de client nummert nooit zelf (races/hergebruik).
 
   const genPakbonNummer = (): string => {
     const year = new Date().getFullYear()
@@ -880,7 +870,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Order afronden (factuur + pakbon, status → afgerond) ---
   // Belastbaar feit is bij savePicks afgehandeld (Douane v2.4 §10.2).
   // Hier alleen de factuur- en pakbongeneratie + status verandering.
-  const rondeAf = () => {
+  const rondeAf = async () => {
     if (!selectedOrder) return
     const picks = picksVoorOrder(selectedOrder.id)
     if (!picks.length) { alert(t('err_order_no_picks')); return }
@@ -889,7 +879,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51)
     const r2 = Number(accijnsInst?.tarief_per_hl||24.17)
     const vandaag = tod()
-    const factuurNummer = genFactuurNummer()
     const pakbonNummer = genPakbonNummer()
 
     // 1+2. Uitlevering- en AccijnsRecord-records, gesplitst per bron-locatie.
@@ -930,6 +919,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         }
       }
     }
+    // Factuurnummer pas ná alle validaties server-side ophalen (atomair,
+    // ERP-plan 0.2) zodat een afgebroken afronding geen nummer verbruikt.
+    let factuurNummer: string
+    try { factuurNummer = await volgendFactuurNummer('factuur') }
+    catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+
     let nieuweUitleveringen: any[] = []
     let nieuweAccijns: any[] = []
     let pickResult: Record<number, {uitlevering_ids: number[], accijns_ids: number[]}> = {}
@@ -1040,6 +1035,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       btw: totaalBtw,
       bruto: rnd2(totaalNetto + totaalBtw),
       status: 'open',
+      definitief: true,
     }
 
     // 4. State-updates. Records uit savePicks zijn al in state;
@@ -1210,6 +1206,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // want de BTW-aangifte leest uit de factuur, niet uit de order.
   const updateRegelBtw = (regelId: number, nieuwBtw: number) => {
     if (!selectedOrder) return
+    // Periode-lock (ERP-plan 0.4): zodra de gekoppelde factuur meetelt in een
+    // ingediende/betaalde BTW-periode is corrigeren geblokkeerd — dat zou de
+    // aangiftecijfers achteraf veranderen. Correctie dan via creditnota.
+    if (selectedOrder.factuur_id != null) {
+      const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
+      if (fact) {
+        const periodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
+        const {ingediend, betaald} = geslotenPeriodeSets(btwAangiftes||[], bankKoppelingen||{})
+        if (!magFactuurMuteren(fact, periodeType, ingediend, betaald)) {
+          alert(t('err_periode_gesloten_mutatie')); return
+        }
+      }
+    }
     const orderRegels = selectedOrder.regels||[]
     const regelIdx = orderRegels.findIndex((r: any) => r.id === regelId)
     const regel = orderRegels[regelIdx]

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { lsSet } from '../i18n'
+import { lsSet, t } from '../i18n'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit
 const p = window.location.pathname
@@ -136,25 +136,67 @@ export const _fetchWithRetry = async (input: RequestInfo, init?: RequestInit, re
   return r
 }
 
-export const _postToServer = (key: string, data: any): Promise<boolean> => {
+// ── Optimistic locking (ERP-plan 0.1) ──────────────────────────────────────
+// De server geeft bij GET/POST een X-Data-Version (hash van de bestandsinhoud)
+// terug; bij POST sturen we de laatst bekende versie mee. Antwoordt de server
+// met 409, dan heeft een andere client/tab deze key tussentijds gewijzigd:
+// we overschrijven diens werk NIET, maar verversen en melden het conflict.
+const _versions = new Map<string, string>()
+
+export const _updateVersion = (key: string, r: Response): void => {
+  const v = r.headers.get('X-Data-Version')
+  if (v) _versions.set(key, v)
+}
+
+// 'reject' = de server wees de payload definitief af (400/413/422,
+// bijv. schemavalidatie) — nooit herproberen, wél de gebruiker melden.
+export type SaveResult = 'ok' | 'fail' | 'conflict' | 'reject'
+
+// Alle verzendingen serialiseren via één globale keten: een volgende POST of
+// commit wacht op de versie-updates van de vorige, anders zou die met een
+// verouderde versie een vals conflict veroorzaken.
+let _sendChain: Promise<unknown> = Promise.resolve()
+
+export const _postToServer = (key: string, data: any): Promise<SaveResult> => {
+  const run = _sendChain.then(() => _doPost(key, data))
+  _sendChain = run.catch(() => {})
+  return run
+}
+
+const _doPost = (key: string, data: any): Promise<SaveResult> => {
   _syncPending++
+  const headers: Record<string, string> = {'Content-Type': 'application/json'}
+  const ver = _versions.get(key)
+  if (ver !== undefined) headers['X-Data-Version'] = ver
   return _fetchWithRetry(API_BASE + key, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers,
     body: JSON.stringify(data)
   }, 2)
-  .then(r => {
+  .then(async r => {
     _syncPending = Math.max(0, _syncPending - 1)
     _serverReachable = true
-    if (r.ok) _syncErrors = 0
-    else if (r.status !== 429) _syncErrors++
-    return r.ok
+    if (r.ok) {
+      _syncErrors = 0
+      try {
+        const d = await r.json()
+        if (d && typeof d.version === 'string') _versions.set(key, d.version)
+      } catch (e) { /* oudere server zonder version-veld */ }
+      return 'ok' as SaveResult
+    }
+    if (r.status === 409) return 'conflict' as SaveResult
+    if (r.status === 400 || r.status === 413 || r.status === 422) {
+      _syncErrors++
+      return 'reject' as SaveResult
+    }
+    if (r.status !== 429) _syncErrors++
+    return 'fail' as SaveResult
   })
   .catch(() => {
     _syncPending = Math.max(0, _syncPending - 1)
     _serverReachable = false
     _syncErrors++
-    return false
+    return 'fail' as SaveResult
   })
 }
 
@@ -170,7 +212,7 @@ const lsGet = (k: string, d: any = []) => {
 // Een sequence-nummer per key voorkomt dat een oude (tragere) response of
 // retry een nieuwere save overschrijft.
 const _saveSeq = new Map<string, number>()
-const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void}>()
+const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void, onConflict: () => void, onReject: () => void}>()
 let _retryTimer: ReturnType<typeof setInterval> | null = null
 
 const _flushPendingSaves = () => {
@@ -179,11 +221,17 @@ const _flushPendingSaves = () => {
     return
   }
   for (const [key, entry] of [..._pendingSaves.entries()]) {
-    _postToServer(key, entry.data).then(ok => {
+    _postToServer(key, entry.data).then(res => {
       if (_saveSeq.get(key) !== entry.seq) return // nieuwere save gedaan
-      if (ok) {
+      if (res === 'ok') {
         _pendingSaves.delete(key)
         entry.onOk()
+      } else if (res === 'conflict') {
+        _pendingSaves.delete(key)
+        entry.onConflict()
+      } else if (res === 'reject') {
+        _pendingSaves.delete(key)
+        entry.onReject()
       }
     })
   }
@@ -191,6 +239,120 @@ const _flushPendingSaves = () => {
 
 const _scheduleRetry = () => {
   if (!_retryTimer) _retryTimer = setInterval(_flushPendingSaves, 15_000)
+}
+
+// ── Atomaire multi-key commit (ERP-plan 1.1) ────────────────────────────────
+// Eén gebruikershandeling raakt vaak meerdere stores tegelijk (order afronden:
+// picks + uitleveringen + accijns + factuur + bestelling + log). Voorheen waren
+// dat losse POSTs die half konden slagen. Saves die in dezelfde event-tick
+// gebeuren worden nu gebufferd en als één POST /api/commit atomair
+// weggeschreven — zonder dat de aanroepende pagina's iets hoeven te weten.
+type _BufEntry = {data: any, seq: number, onOk: () => void, onConflict: () => void, onReject: () => void}
+const _commitBuffer = new Map<string, _BufEntry>()
+let _flushScheduled = false
+
+const _enqueueSave = (key: string, entry: _BufEntry) => {
+  _commitBuffer.set(key, entry) // nieuwere save voor dezelfde key vervangt de oudere
+  if (!_flushScheduled) {
+    _flushScheduled = true
+    setTimeout(() => { _flushScheduled = false; _flushCommitBuffer() }, 0)
+  }
+}
+
+const _handleSaveResult = (key: string, e: _BufEntry, res: SaveResult) => {
+  if (_saveSeq.get(key) !== e.seq) return // er is al een nieuwere save
+  if (res === 'ok') e.onOk()
+  else if (res === 'conflict') e.onConflict()
+  else if (res === 'reject') e.onReject()
+  else {
+    _pendingSaves.set(key, {seq: e.seq, data: e.data, onOk: e.onOk, onConflict: e.onConflict, onReject: e.onReject})
+    _scheduleRetry()
+  }
+}
+
+const _flushCommitBuffer = () => {
+  const entries = [..._commitBuffer.entries()]
+  _commitBuffer.clear()
+  if (!entries.length) return
+  const run = _sendChain.then(async () => {
+    if (entries.length === 1) {
+      const [key, e] = entries[0]
+      _handleSaveResult(key, e, await _doPost(key, e.data))
+      return
+    }
+    const res = await _doCommit(entries)
+    if (res.status === 'ok') {
+      entries.forEach(([k, e]) => _handleSaveResult(k, e, 'ok'))
+    } else if (res.status === 'conflict') {
+      // Alleen de conflicterende keys vervallen; de rest alsnog los proberen.
+      for (const [k, e] of entries) {
+        if (res.conflicts.includes(k)) _handleSaveResult(k, e, 'conflict')
+        else _handleSaveResult(k, e, await _doPost(k, e.data))
+      }
+    } else if (res.status === 'reject') {
+      // Eén key is door schemavalidatie afgewezen; de rest alsnog los proberen.
+      for (const [k, e] of entries) {
+        if (k === res.key || !res.key) _handleSaveResult(k, e, 'reject')
+        else _handleSaveResult(k, e, await _doPost(k, e.data))
+      }
+    } else if (res.status === 'notfound') {
+      // Oudere server zonder /api/commit → terugvallen op losse POSTs.
+      for (const [k, e] of entries) _handleSaveResult(k, e, await _doPost(k, e.data))
+    } else {
+      // Netwerk-/serverfout: niets is geschreven; per key in de retry-queue.
+      entries.forEach(([k, e]) => _handleSaveResult(k, e, 'fail'))
+    }
+  })
+  _sendChain = run.catch(() => {})
+}
+
+const _doCommit = async (
+  entries: Array<[string, _BufEntry]>,
+): Promise<{status: 'ok' | 'fail' | 'notfound'} | {status: 'conflict', conflicts: string[]} | {status: 'reject', key?: string}> => {
+  _syncPending++
+  const data: Record<string, any> = {}
+  const versions: Record<string, string> = {}
+  for (const [k, e] of entries) {
+    data[k] = e.data
+    const v = _versions.get(k)
+    if (v !== undefined) versions[k] = v
+  }
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/commit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data, versions}),
+    }, 2)
+    _syncPending = Math.max(0, _syncPending - 1)
+    _serverReachable = true
+    if (r.ok) {
+      _syncErrors = 0
+      try {
+        const d = await r.json()
+        Object.entries(d?.versions || {}).forEach(([k, v]) => {
+          if (typeof v === 'string') _versions.set(k, v)
+        })
+      } catch (e) { /* geen versions in respons */ }
+      return {status: 'ok'}
+    }
+    if (r.status === 409) {
+      const d = await r.json().catch(() => ({} as any))
+      return {status: 'conflict', conflicts: Object.keys(d?.conflicts || {})}
+    }
+    if (r.status === 400 || r.status === 413 || r.status === 422) {
+      _syncErrors++
+      const d = await r.json().catch(() => ({} as any))
+      return {status: 'reject', key: typeof d?.key === 'string' ? d.key : undefined}
+    }
+    if (r.status === 404) return {status: 'notfound'}
+    if (r.status !== 429) _syncErrors++
+    return {status: 'fail'}
+  } catch (e) {
+    _syncPending = Math.max(0, _syncPending - 1)
+    _serverReachable = false
+    _syncErrors++
+    return {status: 'fail'}
+  }
 }
 
 export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void, () => void] => {
@@ -203,6 +365,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
       .then(r => {
         _serverReachable = true
+        _updateVersion(key, r)
         if (r.ok) {
           _syncErrors = 0
           if (secure) localStorage.removeItem('craftery_' + key)
@@ -229,6 +392,26 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       })
   }, [key])
 
+  // Serverdata terugladen + gebruiker melden. Gebruikt bij een conflict
+  // (409: andere client/tab schreef tussendoor) en bij een afwijzing
+  // (422: schemavalidatie) — in beide gevallen is de serverstand leidend en
+  // vervalt de lokale wijziging bewust, met een duidelijke melding.
+  const herstelVanServer = (meldingKey: string) => {
+    modified.current = false
+    _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
+      .then(r => { _updateVersion(key, r); return r.ok ? r.json() : null })
+      .then(d => {
+        if (d !== null && d !== undefined) {
+          setData(d)
+          if (!secure) lsSet(key, d)
+        }
+        alert(t(meldingKey))
+      })
+      .catch(() => { alert(t(meldingKey)) })
+  }
+  const onConflict = () => herstelVanServer('sync_conflict_melding')
+  const onReject = () => herstelVanServer('err_save_geweigerd')
+
   const save = (val: any) => {
     modified.current = true
     setData((prev: any) => {
@@ -237,22 +420,16 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       const seq = (_saveSeq.get(key) || 0) + 1
       _saveSeq.set(key, seq)
       _pendingSaves.delete(key) // nieuwe save vervangt elke oudere retry
-      _postToServer(key, next).then(ok => {
-        if (_saveSeq.get(key) !== seq) return // er is al een nieuwere save
-        if (ok) {
-          modified.current = false
-        } else {
-          _pendingSaves.set(key, {seq, data: next, onOk: () => { modified.current = false }})
-          _scheduleRetry()
-        }
-      })
+      // Via de commit-buffer: saves uit dezelfde event-tick worden gebundeld
+      // tot één atomaire /api/commit (ERP-plan 1.1).
+      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict, onReject})
       return next
     })
   }
 
   const refresh = () => {
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-      .then(r => { _serverReachable = true; return r.ok ? r.json() : null })
+      .then(r => { _serverReachable = true; _updateVersion(key, r); return r.ok ? r.json() : null })
       .then(d => {
         if (d !== null && d !== undefined) {
           setData(d)
@@ -265,8 +442,37 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   return [data, save, refresh]
 }
 
-export const newId = (arr: any[]): number =>
-  arr.length ? Math.max(0, ...arr.map((x: any) => x.id)) + 1 : 1
+// Botsingsvrije, monotone id's (ERP-plan 1.2). Het oude `max(id)+1` had twee
+// gebreken: na het verwijderen van het hoogste record werd diens id hergebruikt
+// (verwijzingen uit accijns/picks gingen dan stil naar een ánder record wijzen),
+// en twee gelijktijdige clients konden dezelfde id uitdelen. Nieuwe id's zijn
+// tijdgebaseerd (ms × 1000 + random), altijd groter dan alle bestaande id's én
+// dan de vorige uitgifte in deze tab. Bewust numeriek gehouden (< 2^53) zodat
+// alle bestaande Number()-vergelijkingen en sorteringen blijven werken; het
+// `basis++`-patroon voor reeksen binnen één handeling blijft ook geldig.
+let _lastId = 0
+export const newId = (arr: any[]): number => {
+  const bestaandMax = arr.length ? Math.max(0, ...arr.map((x: any) => Number(x?.id) || 0)) : 0
+  const kandidaat = Date.now() * 1000 + Math.floor(Math.random() * 1000)
+  _lastId = Math.max(_lastId + 1, kandidaat, bestaandMax + 1)
+  return _lastId
+}
+
+// ── Factuurnummering (ERP-plan 0.2) ─────────────────────────────────────────
+// Nummers worden server-side atomair uitgegeven (POST /api/nextnr) zodat twee
+// tabs/kassa's nooit hetzelfde nummer krijgen en verwijderde facturen geen
+// nummer-hergebruik veroorzaken. De client mag nooit zelf nummeren.
+export const volgendFactuurNummer = async (reeks: 'factuur' | 'creditnota'): Promise<string> => {
+  const r = await _fetchWithRetry(ADDON_BASE + 'api/nextnr', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reeks, jaar: new Date().getFullYear()}),
+  }, 2)
+  if (!r.ok) throw new Error(`nextnr ${r.status}`)
+  const d = await r.json()
+  if (!d || typeof d.nummer !== 'string') throw new Error('nextnr: invalid response')
+  return d.nummer
+}
 
 // WooCommerce helpers
 export const wcGet = async (subpath: string) => {

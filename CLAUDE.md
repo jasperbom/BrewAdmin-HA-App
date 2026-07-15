@@ -355,7 +355,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, BTW-nr., website (klikbaar logo in mail) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |
-| `factuur_counter` | object | Doorlopend factuurnummer per jaar |
+| `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
+| `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota`), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
 | `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`) |
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties aan facturen/BTW (zie hieronder) |
@@ -442,6 +443,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
+| POST | `/api/nextnr` | Volgend factuur-/creditnotanummer, atomair per reeks/jaar (`{reeks, jaar}` → `{jaar, nr, nummer}`) |
+| POST | `/api/commit` | Meerdere data-keys atomair opslaan (`{data:{key:waarde}, versions:{key:versie}}`), 409 bij versieconflict |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
@@ -453,6 +456,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Request body size: 10 MB general, 20 MB for Claude proxy
 - File upload: only `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp` allowed
 - Key validation: `^[a-zA-Z0-9_]+$` — prevents path traversal
+- Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
+- Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
+- Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
+- Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only
 

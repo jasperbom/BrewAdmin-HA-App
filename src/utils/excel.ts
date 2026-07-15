@@ -1,19 +1,46 @@
 import * as XLSX from 'xlsx'
 import { t } from '../i18n'
 
+// Excel kapt celwaarden boven ~32.767 tekens stil af. Elke cel die daar in de
+// buurt komt (grote geneste JSON, base64) wordt daarom opgesplitst in
+// chunk-kolommen `veld~0`, `veld~1`, … die bij import weer worden samengevoegd
+// (ERP-plan 0.8). Oude backups zonder chunks blijven gewoon leesbaar.
+const CELL_CHUNK = 30000
+
 // Zet objectvelden om naar JSON strings zodat Excel ze kan opslaan
 const toRow = (o: any) => {
   const r: any = {}
   for (const [k, v] of Object.entries(o)) {
-    r[k] = (v !== null && typeof v === 'object') ? JSON.stringify(v) : v
+    const s = (v !== null && typeof v === 'object') ? JSON.stringify(v) : v
+    if (typeof s === 'string' && s.length > CELL_CHUNK) {
+      for (let i = 0, n = 0; i < s.length; i += CELL_CHUNK, n++) {
+        r[`${k}~${n}`] = s.slice(i, i + CELL_CHUNK)
+      }
+    } else {
+      r[k] = s
+    }
   }
   return r
 }
 
-// Herstel JSON strings terug naar objecten/arrays
+// Herstel JSON strings terug naar objecten/arrays; chunk-kolommen eerst samenvoegen
 const fromRow = (o: any) => {
-  const r: any = {}
+  const merged: any = {}
+  const chunks: Record<string, string[]> = {}
   for (const [k, v] of Object.entries(o)) {
+    const m = /^(.+)~(\d+)$/.exec(k)
+    if (m) {
+      if (!chunks[m[1]]) chunks[m[1]] = []
+      chunks[m[1]][Number(m[2])] = v == null ? '' : String(v)
+    } else {
+      merged[k] = v
+    }
+  }
+  for (const [k, parts] of Object.entries(chunks)) {
+    merged[k] = parts.join('')
+  }
+  const r: any = {}
+  for (const [k, v] of Object.entries(merged)) {
     if (typeof v === 'string' && (v.startsWith('[') || v.startsWith('{'))) {
       try { r[k] = JSON.parse(v) } catch { r[k] = v }
     } else { r[k] = v }
@@ -176,7 +203,7 @@ export const excelExport = (data: any) => {
 
 // ── Import ────────────────────────────────────────────────────────────────────
 // Leest een xlsx-bestand en roept cb aan met hetzelfde object als de JSON-backup.
-export const excelImport = (file: File, cb: (data: any) => void, onError?: () => void) => {
+export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?: string) => void) => {
   const r = new FileReader()
   r.onload = e => {
     try {
@@ -318,9 +345,14 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: () =>
         app_logo:             readLogo('app_logo'),
         factuur_logo:         readLogo('factuur_logo'),
       })
-    } catch {
-      if (onError) onError()
+    } catch (err) {
+      // Diagnostiek i.p.v. stil falen (ERP-plan 0.8): de foutdetails gaan
+      // naar de console én naar de melding, zodat een kapotte backup te
+      // herleiden is in plaats van alleen "import mislukt".
+      console.error('Excel import fout:', err)
+      if (onError) onError(err instanceof Error ? err.message : String(err))
     }
   }
+  r.onerror = () => { if (onError) onError(t('err_bestand_lezen')) }
   r.readAsArrayBuffer(file)
 }

@@ -11,6 +11,7 @@ import base64
 import datetime
 import email.message
 import email.utils
+import hashlib
 import http.server
 import io
 import ipaddress
@@ -36,10 +37,12 @@ MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — bescherming tegen DoS via gro
 UPLOAD_DIR = DATA_DIR / 'inkoop_facturen'
 
 BACKUP_DIR = DATA_DIR / 'backups'
+AUDIT_DIR = DATA_DIR / 'server_audit'
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 
 API_DATA_PREFIX = '/api/data/'
 BF_API_BASE = 'https://api.brewfather.app/v2'
@@ -68,6 +71,9 @@ HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
 
 MAIL_SEND_PATH           = '/api/mail/send'
 MAIL_TEST_PATH           = '/api/mail/test'
+NEXTNR_PATH              = '/api/nextnr'
+COMMIT_PATH              = '/api/commit'
+COMMIT_MAX_KEYS          = 50
 MAIL_MAX_CONTENT         = 20 * 1024 * 1024  # 20 MB — mail + attachments
 MAIL_SECURITY_VALUES     = {'none', 'starttls', 'ssl'}
 MAIL_EMAIL_RE            = re.compile(r'^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$')
@@ -553,15 +559,68 @@ def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET', data: byt
 
 # ── Backup system (AGP 7-year retention) ──────────────────────────────────
 
+# Off-volume kopie (ERP-plan 0.5): /backup is een ándere HA-map dan /data
+# (config.yaml map: backup:rw). Gaat het data-volume verloren, dan zijn de
+# ZIP-backups daar nog. Bestaat de map niet (addon zonder mapping, lokale
+# dev), dan wordt de off-volume stap stil overgeslagen.
+OFFSITE_BACKUP_DIR = Path('/backup/brewadmin')
+
+
 def _run_backup() -> str:
-    """Copy all /data/*.json files into /data/backups/YYYY-MM-DD/.
-    Returns the backup date string."""
+    """Copy all /data/*.json files (plus de upload-map met factuurbijlagen)
+    into /data/backups/YYYY-MM-DD/ en schrijf dezelfde snapshot als ZIP naar
+    de off-volume /backup-map. Returns the backup date string."""
     today = datetime.date.today().isoformat()
     dest = BACKUP_DIR / today
     dest.mkdir(parents=True, exist_ok=True)
     for f in DATA_DIR.glob('*.json'):
         shutil.copy2(f, dest / f.name)
+    # Upload-bijlagen (factuur-PDF's/afbeeldingen) horen bij de administratie
+    # en vallen onder dezelfde bewaarplicht — meenemen in de backup.
+    if UPLOAD_DIR.is_dir():
+        shutil.copytree(UPLOAD_DIR, dest / UPLOAD_DIR.name, dirs_exist_ok=True)
+    # Server-audit (ERP-plan 1.5) hoort óók bij de administratie.
+    if AUDIT_DIR.is_dir():
+        shutil.copytree(AUDIT_DIR, dest / AUDIT_DIR.name, dirs_exist_ok=True)
+    _offsite_backup(dest, today)
     return today
+
+
+def _offsite_backup(dest: Path, today: str) -> None:
+    """Schrijf de dag-backup als ZIP naar de HA /backup-map (ander volume).
+    Atomair via tmp+rename; fouten alleen loggen zodat de lokale backup
+    nooit faalt door een ontbrekende/volle backup-map."""
+    if not OFFSITE_BACKUP_DIR.parent.is_dir():
+        return
+    try:
+        OFFSITE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = OFFSITE_BACKUP_DIR / f'.brewadmin_backup_{today}.zip.tmp'
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in sorted(dest.rglob('*')):
+                if f.is_file():
+                    zf.write(f, str(f.relative_to(dest)))
+        os.replace(tmp, OFFSITE_BACKUP_DIR / f'brewadmin_backup_{today}.zip')
+    except OSError as exc:
+        print(f'[backup] offsite backup failed: {exc}', flush=True)
+
+
+def _cleanup_offsite_backups() -> None:
+    """Zelfde retentiebeleid als de lokale backups, toegepast op de
+    off-volume ZIP's."""
+    if not OFFSITE_BACKUP_DIR.is_dir():
+        return
+    today = datetime.date.today()
+    for f in OFFSITE_BACKUP_DIR.glob('brewadmin_backup_*.zip'):
+        datum = f.name[len('brewadmin_backup_'):-len('.zip')]
+        try:
+            backup_date = datetime.date.fromisoformat(datum)
+        except ValueError:
+            continue
+        if not _should_keep_backup(backup_date, today):
+            try:
+                f.unlink()
+            except OSError:
+                pass
 
 
 def _should_keep_backup(backup_date: datetime.date, today: datetime.date) -> bool:
@@ -603,6 +662,8 @@ def _backup_loop(interval: float = 86400.0) -> None:
         try:
             _run_backup()
             _cleanup_backups()
+            _cleanup_offsite_backups()
+            _cleanup_audit()
         except Exception as exc:
             print(f'[backup] error: {exc}', flush=True)
         time.sleep(interval)
@@ -622,6 +683,243 @@ def _read_json(key: str, default=None):
         return json.loads(filepath.read_text(encoding='utf-8'))
     except (json.JSONDecodeError, OSError):
         return default
+
+
+# ── Append-only server-audit (ERP-plan 1.5) ──────────────────────────────
+# De client-side audit_log is via de gewone data-API herschrijfbaar en dus
+# niet bewijskrachtig. De server logt daarom élke mutatie (data-POST,
+# commit, nummeruitgifte) naar maandelijkse JSONL-bestanden in
+# /data/server_audit/. Die map is bewust NIET bereikbaar via de data-API
+# (keys kennen geen pad-scheidingstekens) — alleen te lezen op de host en
+# via de backup. Audit-schrijffouten blokkeren nooit de eigenlijke write.
+
+_audit_lock = threading.Lock()
+
+
+def _audit_write(actie: str, key: str, **velden) -> None:
+    entry = {
+        'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+        'actie': actie,
+        'key': key,
+        **velden,
+    }
+    bestand = AUDIT_DIR / f'audit_{datetime.date.today().strftime("%Y-%m")}.jsonl'
+    try:
+        with _audit_lock, open(bestand, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except OSError:
+        pass
+
+
+def _cleanup_audit() -> None:
+    """Verwijder audit-maandbestanden ouder dan 7 jaar (zelfde AGP-horizon
+    als de backups)."""
+    grens = datetime.date.today() - datetime.timedelta(days=7 * 365)
+    for f in AUDIT_DIR.glob('audit_*.jsonl'):
+        try:
+            maand = datetime.datetime.strptime(f.name[len('audit_'):-len('.jsonl')], '%Y-%m').date()
+        except ValueError:
+            continue
+        if maand < grens.replace(day=1):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+
+# ── Lichte schemavalidatie (ERP-plan 1.4) ────────────────────────────────
+# De server accepteerde elke geldige JSON onder elke key; één verkeerd
+# POST-je (bv. een object waar een array hoort) maakte de app-data kapot.
+# Per bekende key wordt nu minimaal het containertype afgedwongen (422 bij
+# afwijking). Onbekende keys blijven vrij (voorwaartse compatibiliteit).
+
+_KEY_TYPES = {
+    # arrays (records)
+    **{k: 'array' for k in (
+        'ingredienten', 'lots', 'batches', 'batch_ingredienten', 'afvullingen',
+        'uitslagen', 'uitleveringen', 'accijns', 'verpakkingen', 'onderdelen',
+        'voorraad_log', 'voorraad_archief', 'voorraad_gesloten_bieren',
+        'recepten', 'recepten_verborgen', 'recepten_gearchiveerde_tags',
+        'recepten_tag_volgorde', 'recepten_gesloten_groepen', 'tanks',
+        'tank_reinigingslog', 'artikelen', 'hygiene_items', 'hygiene_groups',
+        'brouwdag_checklist', 'botteldag_checklist', 'batch_taken_items',
+        'batch_taken_groepen', 'inkoop_facturen', 'scan_correcties',
+        'verkoop_facturen', 'bestellingen', 'bestelling_picks', 'afboekingen',
+        'klanten', 'gist_metingen', 'carbonatie_sessies', 'verlies_registraties',
+        'brouwdag_stappen', 'water_addities', 'water_profielen',
+        'water_doelprofielen', 'hop_addities', 'dry_hops', 'koel_logs',
+        'batch_notities', 'kapitaal_boekingen', 'alt_rekeningen',
+        'inventarisaties', 'audit_log', 'accijns_aangiftes', 'btw_aangiftes',
+        'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
+        'haccp_schoonmaak_log', 'haccp_ccp_definities', 'haccp_ccp_metingen',
+        'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
+        'haccp_opleidingen', 'locaties', 'verplaatsingen', 'btw_tarieven',
+        'ing_types', 'kosten_soorten', 'gn_codes',
+    )},
+    # objecten (instellingen/koppeltabellen)
+    **{k: 'object' for k in (
+        'accijns_instellingen', 'btw_instellingen', 'ing_type_btw',
+        'brewery_details', 'mail_templates', 'factuur_counter',
+        'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
+        'coldcrash_instellingen', 'planning_instellingen',
+        'brouwproces_instellingen', 'bank_koppelingen', 'tank_statussen',
+        'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
+    )},
+    # scalars
+    'app_name':     'string',
+    'nav_theme':    'string',
+    'app_logo':     'string_or_null',
+    'factuur_logo': 'string_or_null',
+}
+
+
+def _payload_geldig(key: str, parsed) -> bool:
+    """True wanneer de payload het verwachte containertype heeft (of de key
+    onbekend is)."""
+    verwacht = _KEY_TYPES.get(key)
+    if verwacht is None:
+        return True
+    if verwacht == 'array':
+        return isinstance(parsed, list)
+    if verwacht == 'object':
+        return isinstance(parsed, dict)
+    if verwacht == 'string':
+        return isinstance(parsed, str)
+    if verwacht == 'string_or_null':
+        return parsed is None or isinstance(parsed, str)
+    return True
+
+
+# ── Secrets afschermen (ERP-plan 0.6) ────────────────────────────────────
+# Credentials staan als JSON in /data, maar de gevoelige velden mogen nooit
+# plaintext terug naar de browser. GET maskeert ze met een sentinel; POST
+# vervangt de sentinel weer door de opgeslagen waarde (zodat de UI kan
+# opslaan zonder het geheim ooit te kennen). Bestanden krijgen mode 0600.
+
+_SECRET_SENTINEL = '__SECRET__'
+_SECURE_FIELDS = {
+    'brewfather_creds':  ('apiKey',),
+    'woocommerce_creds': ('consumerKey', 'consumerSecret'),
+    'claude_creds':      ('apiKey',),
+    'smtp_creds':        ('password',),
+}
+
+
+def _mask_secrets(key: str, data):
+    """Vervang gevoelige velden door de sentinel vóór verzending naar de client."""
+    velden = _SECURE_FIELDS.get(key)
+    if not velden or not isinstance(data, dict):
+        return data
+    masked = dict(data)
+    for veld in velden:
+        if masked.get(veld):
+            masked[veld] = _SECRET_SENTINEL
+    return masked
+
+
+def _unmask_secrets(key: str, data):
+    """Vervang sentinel-waarden door de eerder opgeslagen geheimen (bij POST)."""
+    velden = _SECURE_FIELDS.get(key)
+    if not velden or not isinstance(data, dict):
+        return data
+    if not any(data.get(v) == _SECRET_SENTINEL for v in velden):
+        return data
+    stored = _read_json(key, {})
+    if not isinstance(stored, dict):
+        stored = {}
+    result = dict(data)
+    for veld in velden:
+        if result.get(veld) == _SECRET_SENTINEL:
+            result[veld] = stored.get(veld, '')
+    return result
+
+
+def _harden_secure_files() -> None:
+    """Zet bestandsrechten 0600 op bestaande creds-bestanden (eenmalig bij start)."""
+    for key in _SECURE_FIELDS:
+        f = DATA_DIR / f'{key}.json'
+        if f.exists():
+            try:
+                os.chmod(f, 0o600)
+            except OSError:
+                pass
+
+
+# ── Factuurnummering (ERP-plan 0.2) ──────────────────────────────────────
+# Doorlopende, unieke nummers per reeks/jaar worden server-side uitgegeven
+# onder _data_lock — de client mag nooit zelf nummeren (race tussen twee
+# kassa's/tabs gaf voorheen dubbele nummers; verwijderen gaf hergebruik).
+
+_NUMMER_REEKSEN = {
+    'factuur':    'F{jaar}-',
+    'creditnota': 'CN-{jaar}-',
+}
+
+
+def _max_bestaand_nummer(prefix: str) -> int:
+    """Hoogste al uitgegeven nummer met dit prefix in verkoop_facturen.json.
+    Vangnet tegen dubbele nummers na een backup-restore of handmatige edit
+    waarbij de tellerstand achterloopt op de werkelijk bestaande facturen."""
+    facturen = _read_json('verkoop_facturen', [])
+    hoogste = 0
+    if isinstance(facturen, list):
+        for f in facturen:
+            nummer = f.get('factuurnummer') if isinstance(f, dict) else None
+            if isinstance(nummer, str) and nummer.startswith(prefix):
+                try:
+                    hoogste = max(hoogste, int(nummer[len(prefix):]))
+                except ValueError:
+                    pass
+    return hoogste
+
+
+def _legacy_counter(reeks: str, jaar: int) -> int:
+    """Tellerstand uit het oude client-side factuur_counter.json.
+    Facturen: {jaar, nr}; creditnota's (statiegeld) sloegen per jaar op
+    onder de jaar-key zelf."""
+    legacy = _read_json('factuur_counter', {})
+    if not isinstance(legacy, dict):
+        return 0
+    try:
+        if reeks == 'factuur':
+            return int(legacy.get('nr') or 0) if legacy.get('jaar') == jaar else 0
+        return int(legacy.get(str(jaar)) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _volgend_nummer(reeks: str, jaar: int) -> dict:
+    """Geef atomair het volgende nummer in de reeks uit (aanroepen ZONDER
+    _data_lock; deze functie pakt de lock zelf)."""
+    prefix = _NUMMER_REEKSEN[reeks].format(jaar=jaar)
+    with _data_lock:
+        reeksen = _read_json('nummer_reeksen', {})
+        if not isinstance(reeksen, dict):
+            reeksen = {}
+        entry = reeksen.get(reeks) or {}
+        try:
+            opgeslagen = int(entry.get('nr') or 0) if entry.get('jaar') == jaar else 0
+        except (TypeError, ValueError):
+            opgeslagen = 0
+        basis = max(opgeslagen, _legacy_counter(reeks, jaar), _max_bestaand_nummer(prefix))
+        nr = basis + 1
+        reeksen[reeks] = {'jaar': jaar, 'nr': nr}
+        _write_json('nummer_reeksen', reeksen)
+    return {'jaar': jaar, 'nr': nr, 'nummer': f'{prefix}{nr:04d}'}
+
+
+def _data_version(filepath: Path) -> str:
+    """Versie-hash van een databestand voor optimistic locking (ERP-plan 0.1).
+    De client krijgt deze hash bij GET mee (X-Data-Version) en stuurt hem bij
+    POST terug; komt hij niet overeen met de actuele bestandsinhoud, dan heeft
+    een andere client/thread tussentijds geschreven en volgt een 409.
+    '0' = bestand bestaat (nog) niet."""
+    if not filepath.exists():
+        return '0'
+    try:
+        return hashlib.sha256(filepath.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return '0'
 
 
 def _atomic_write_bytes(filepath: Path, data: bytes) -> None:
@@ -1059,9 +1357,11 @@ def _backup_to_zip(date_str: str) -> bytes | None:
         return None
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for f in sorted(backup_path.iterdir()):
+        # rglob: sinds de upload-map wordt meegeback-upt bevat de snapshot
+        # ook een submap met bijlagen — die moet mee in de download-ZIP.
+        for f in sorted(backup_path.rglob('*')):
             if f.is_file():
-                zf.write(f, f.name)
+                zf.write(f, str(f.relative_to(backup_path)))
     return buf.getvalue()
 
 
@@ -1080,7 +1380,15 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         allowed = _trusted_origin(origin)
         if allowed:
             self.send_header('Access-Control-Allow-Origin', allowed)
+            self.send_header('Access-Control-Expose-Headers', 'X-Data-Version, Retry-After')
             self.send_header('Vary', 'Origin')
+
+    def _ingress_user(self) -> str:
+        """Gebruikersnaam/-id zoals door de HA-ingress-proxy meegegeven;
+        leeg buiten HA of wanneer de headers ontbreken."""
+        return (self.headers.get('X-Remote-User-Name')
+                or self.headers.get('X-Remote-User-Id')
+                or '')
 
     def _rate_check(self) -> bool:
         ip = self.client_address[0]
@@ -1124,7 +1432,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if allowed:
             self.send_header('Access-Control-Allow-Origin', allowed)
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Data-Version')
             self.send_header('Vary', 'Origin')
         for name, value in _SEC_HEADERS:
             self.send_header(name, value)
@@ -1168,15 +1476,26 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             filepath = DATA_DIR / f'{key}.json'
             if filepath.exists():
                 body = filepath.read_bytes()
+                # Versie-hash altijd over de RUWE bestandsinhoud, ook wanneer
+                # gemaskeerd wordt geserveerd — de POST-conflictcheck vergelijkt
+                # met dezelfde ruwe inhoud.
+                version = hashlib.sha256(body).hexdigest()[:16]
+                if key in _SECURE_FIELDS:
+                    try:
+                        masked = _mask_secrets(key, json.loads(body))
+                        body = json.dumps(masked, ensure_ascii=False).encode('utf-8')
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        pass
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', len(body))
                 self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Data-Version', version)
                 self._add_security_headers()
                 self.end_headers()
                 self.wfile.write(body)
             else:
-                self._json(404, None)
+                self._json(404, None, extra_headers=[('X-Data-Version', '0')])
             return
 
         # Serve the SPA for all other GET requests
@@ -1228,6 +1547,14 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._mail_send()
             return
 
+        if NEXTNR_PATH in path:
+            self._handle_nextnr()
+            return
+
+        if COMMIT_PATH in path:
+            self._handle_commit()
+            return
+
         if HA_PROXY_PREFIX in path:
             self._ha_proxy(path)
             return
@@ -1250,17 +1577,44 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             if body is None:
                 return
             try:
-                json.loads(body)  # validate JSON
+                parsed = json.loads(body)  # validate JSON
             except json.JSONDecodeError:
                 self._json(400, {'error': 'invalid json'})
+                return
+            if not _payload_geldig(key, parsed):
+                self._json(422, {'error': 'invalid payload', 'key': key,
+                                 'expected': _KEY_TYPES.get(key)})
                 return
             filepath = DATA_DIR / f'{key}.json'
             # Onder _data_lock zodat de achtergrondthreads (cold-crash,
             # auto-metingen) die read-modify-write doen op dezelfde bestanden
             # geen halve merge overschrijven; atomair tegen corruptie.
+            # Optimistic locking: stuurt de client een X-Data-Version mee die
+            # niet overeenkomt met de actuele bestandsinhoud, dan heeft een
+            # andere client tussentijds geschreven → 409, niets overschrijven.
+            # Zonder header (oude frontend) blijft het gedrag last-write-wins.
+            expected = self.headers.get('X-Data-Version')
             with _data_lock:
+                vorige = _data_version(filepath)
+                if expected is not None and expected != vorige:
+                    self._json(409, {'error': 'conflict', 'version': vorige})
+                    return
+                if key in _SECURE_FIELDS:
+                    # Sentinel-waarden terugvervangen door de opgeslagen
+                    # geheimen (de client kent die bewust niet).
+                    parsed = _unmask_secrets(key, parsed)
+                    body = json.dumps(parsed, ensure_ascii=False).encode('utf-8')
                 _atomic_write_bytes(filepath, body)
-            self._json(200, {'ok': True})
+                if key in _SECURE_FIELDS:
+                    try:
+                        os.chmod(filepath, 0o600)
+                    except OSError:
+                        pass
+            nieuwe_versie = hashlib.sha256(body).hexdigest()[:16]
+            _audit_write('data_post', key, ip=self.client_address[0],
+                         bytes=len(body), versie_van=vorige,
+                         versie_naar=nieuwe_versie, gebruiker=self._ingress_user())
+            self._json(200, {'ok': True, 'version': nieuwe_versie})
             return
 
         self._json(404, {'error': 'not found'})
@@ -1330,7 +1684,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if raw is None:
             return
         try:
-            body = json.loads(raw)
+            body = _unmask_secrets('brewfather_creds', json.loads(raw))
             uid = str(body.get('userId', '')).strip()
             key = str(body.get('apiKey', '')).strip()
         except Exception:
@@ -1405,7 +1759,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if raw is None:
             return
         try:
-            body   = json.loads(raw)
+            body   = _unmask_secrets('woocommerce_creds', json.loads(raw))
             url    = str(body.get('storeUrl', '')).strip().rstrip('/')
             key    = str(body.get('consumerKey', '')).strip()
             secret = str(body.get('consumerSecret', '')).strip()
@@ -1785,7 +2139,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if raw is None:
             return
         try:
-            body = json.loads(raw)
+            body = _unmask_secrets('smtp_creds', json.loads(raw))
         except Exception:
             self._json(400, {'error': 'invalid json'})
             return
@@ -1889,6 +2243,116 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _handle_nextnr(self):
+        """POST /api/nextnr — geef atomair het volgende factuur-/creditnota-
+        nummer uit. Body: {"reeks": "factuur"|"creditnota", "jaar": 2026}.
+        Antwoord: {"jaar", "nr", "nummer"} (bv. "F2026-0012")."""
+        body = self._read_body(max_len=1024)
+        if body is None:
+            return
+        try:
+            req = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        reeks = req.get('reeks') if isinstance(req, dict) else None
+        jaar = req.get('jaar') if isinstance(req, dict) else None
+        if reeks not in _NUMMER_REEKSEN or not isinstance(jaar, int) or not 2000 <= jaar <= 2200:
+            self._json(400, {'error': 'invalid reeks/jaar'})
+            return
+        try:
+            resultaat = _volgend_nummer(reeks, jaar)
+            _audit_write('nextnr', 'nummer_reeksen', ip=self.client_address[0],
+                         reeks=reeks, nummer=resultaat['nummer'],
+                         gebruiker=self._ingress_user())
+            self._json(200, resultaat)
+        except OSError:
+            self._json(500, {'error': 'could not persist counter'})
+
+    def _handle_commit(self):
+        """POST /api/commit — schrijf meerdere data-keys atomair (ERP-plan 1.1).
+        Body: {"data": {key: waarde, ...}, "versions": {key: versie, ...}}.
+        Alle meegegeven versies moeten kloppen (optimistic locking), anders
+        409 met de conflicterende keys en niets geschreven. Het schrijven
+        gebeurt eerst volledig naar tempbestanden en daarna pas via renames,
+        zodat een fout halverwege nooit een half-toegepaste commit achterlaat."""
+        body = self._read_body()
+        if body is None:
+            return
+        try:
+            req = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        data = req.get('data') if isinstance(req, dict) else None
+        versions = req.get('versions') if isinstance(req, dict) else None
+        if not isinstance(data, dict) or not data:
+            self._json(400, {'error': 'invalid commit: data ontbreekt'})
+            return
+        if not isinstance(versions, dict):
+            versions = {}
+        if len(data) > COMMIT_MAX_KEYS:
+            self._json(400, {'error': f'too many keys (max {COMMIT_MAX_KEYS})'})
+            return
+        for key, value in data.items():
+            if not _valid_key(key):
+                self._json(400, {'error': f'invalid key: {key}'})
+                return
+            if not _payload_geldig(key, value):
+                self._json(422, {'error': 'invalid payload', 'key': key,
+                                 'expected': _KEY_TYPES.get(key)})
+                return
+        with _data_lock:
+            conflicts = {}
+            vorige_versies = {}
+            for key in data:
+                current = _data_version(DATA_DIR / f'{key}.json')
+                vorige_versies[key] = current
+                expected = versions.get(key)
+                if expected is not None and expected != current:
+                    conflicts[key] = current
+            if conflicts:
+                self._json(409, {'error': 'conflict', 'conflicts': conflicts})
+                return
+            # Fase 1: alle payloads naar tempbestanden.
+            writes = []
+            try:
+                for key, value in data.items():
+                    if key in _SECURE_FIELDS:
+                        value = _unmask_secrets(key, value)
+                    payload = json.dumps(value, ensure_ascii=False).encode('utf-8')
+                    filepath = DATA_DIR / f'{key}.json'
+                    tmp = filepath.with_name(f'.{filepath.name}.commit.tmp')
+                    tmp.write_bytes(payload)
+                    writes.append((key, tmp, filepath, payload))
+            except OSError:
+                for _key, tmp, _fp, _pl in writes:
+                    try:
+                        tmp.unlink()
+                    except OSError:
+                        pass
+                self._json(500, {'error': 'commit failed'})
+                return
+            # Fase 2: alle renames (elk atomair; het venster tussen renames
+            # is verwaarloosbaar en een crash laat nooit corrupte JSON achter).
+            new_versions = {}
+            for key, tmp, filepath, payload in writes:
+                os.replace(tmp, filepath)
+                if key in _SECURE_FIELDS:
+                    try:
+                        os.chmod(filepath, 0o600)
+                    except OSError:
+                        pass
+                new_versions[key] = hashlib.sha256(payload).hexdigest()[:16]
+        commit_id = hashlib.sha256(repr(sorted(new_versions.items())).encode()).hexdigest()[:12]
+        for key, tmp, filepath, payload in writes:
+            _audit_write('commit', key, ip=self.client_address[0],
+                         commit=commit_id, bytes=len(payload),
+                         versie_van=vorige_versies.get(key),
+                         versie_naar=new_versions[key],
+                         gebruiker=self._ingress_user())
+        self._json(200, {'ok': True, 'versions': new_versions})
+
     def _handle_backup_trigger(self):
         """POST /api/backups/trigger — run an immediate manual backup."""
         # Read (and discard) body if any
@@ -1968,6 +2432,8 @@ if __name__ == '__main__':
     print(f'Data opgeslagen in {DATA_DIR}', flush=True)
 
     # Start background backup thread (AGP 7-year retention)
+    _harden_secure_files()
+
     _backup_thread = threading.Thread(target=_backup_loop, daemon=True)
     _backup_thread.start()
     print(f'Backup thread gestart (dagelijks naar {BACKUP_DIR})', flush=True)

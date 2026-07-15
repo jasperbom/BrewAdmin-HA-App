@@ -802,6 +802,11 @@ export interface VerkoopFactuur {
   regels?: VerkoopFactuurRegel[]
   btw_overzicht?: BtwOvzRegel[]
   status?: 'open' | 'betaald' | 'herinnering' | 'tweede_herinnering' | 'aanmaning' | 'credit'
+  // Uitgereikte facturen zijn onveranderlijk (ERP-plan 0.3): definitief=true
+  // wordt gezet bij het aanmaken via kassa/order/creditnota/losse factuur.
+  // Inhoudelijke correctie daarna alleen via een creditnota; statuswijzigingen
+  // (betaald, herinnering) blijven wél toegestaan.
+  definitief?: boolean
   // Herinneringsdata (datum waarop herinnering/aanmaning is verzonden)
   herinnering_datum?: string
   tweede_herinnering_datum?: string
