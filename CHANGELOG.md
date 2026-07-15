@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.75] — 2026-07-15
+
+### Toegevoegd — Bank: gebundelde PSP-uitbetalingen uitsplitsen
+
+- Eén credittransactie van een PSP (Mollie, Stripe, e.d.) kan nu aan
+  **meerdere verkoopfacturen** tegelijk gekoppeld worden via de nieuwe knop
+  **PSP uitsplitsen** in de Bank-tab.
+- De MT940-import **herkent PSP-uitbetalingen** automatisch (op tegenpartij/
+  omschrijving) en stelt een passende combinatie van open facturen voor,
+  rekening houdend met transactiekosten; de gebruiker bevestigt in de modal.
+- Het verschil tussen de som van de facturen en het uitbetaalde bedrag wordt
+  automatisch als **betaalde kostenpost** (inkoopfactuur, BTW% instelbaar,
+  standaard 21%) geboekt. Gekoppelde facturen gaan op betaald met de
+  transactiedatum.
+- Ontkoppelen draait alles terug: de kostenpost wordt verwijderd en facturen
+  die door de koppeling betaald waren gemarkeerd, gaan terug naar open.
+- De koppeling wordt onthouden en bij herimport van het afschrift hersteld.
+
 ## [1.10.74] — 2026-07-15
 
 ### Toegevoegd — Kassa: prijzen incl. of excl. BTW tonen
