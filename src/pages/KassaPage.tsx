@@ -91,6 +91,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
   const [selectedKlantId, setSelectedKlantId] = useState<number | null>(null)
   const [klantZoek, setKlantZoek] = useState('')
   const [productZoek, setProductZoek] = useState('')
+  // Prijsweergave in de productkaarten: excl. (opgeslagen prijs) of incl. BTW
+  const [toonInclBtw, setToonInclBtw] = useState(false)
   const [showAfrekenen, setShowAfrekenen] = useState(false)
   const [betaalwijze, setBetaalwijze] = useState<Betaalwijze>('pin')
   const [showNieuweKlant, setShowNieuweKlant] = useState(false)
@@ -1013,6 +1015,17 @@ const KassaPage: React.FC<KassaPageProps> = ({
             <div className="flex items-center gap-3">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex-shrink-0">{t('nav_producten')}</div>
               <SearchInput value={productZoek} onChange={setProductZoek} placeholder={t('pos_zoek_product_ph')} />
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden flex-shrink-0 text-xs">
+                {([[false, t('pos_prijs_excl')], [true, t('pos_prijs_incl')]] as Array<[boolean, string]>).map(([incl, l]) => (
+                  <button key={String(incl)} onClick={() => setToonInclBtw(incl)}
+                    className={`px-2 py-1 transition-colors ${toonInclBtw === incl
+                      ? 't-panel font-semibold'
+                      : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                    style={toonInclBtw === incl ? {color: 'var(--t-accent)'} : undefined}>
+                    {l}
+                  </button>
+                ))}
+              </div>
             </div>
             {catalogusGefilterd.length === 0 ? (
               <div className="text-sm text-gray-400 py-6 text-center">{t('pos_geen_producten')}</div>
@@ -1023,6 +1036,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                   const inCart = cart.find(r => r.key === item.key && r.type === 'bier')?.aantal || 0
                   const uitverkocht = max <= 0
                   const {prijs, prijsType} = prijsVoorItem(item)
+                  const prijsToon = toonInclBtw ? rnd2(prijs * (1 + Number(item.btw_pct || 0) / 100)) : prijs
                   return (
                     <button key={item.key} onClick={() => addToCart(item)} disabled={uitverkocht}
                       className={`relative text-left rounded-xl border p-3 transition-all duration-150 ${uitverkocht
@@ -1036,7 +1050,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                       <div className="text-xs text-gray-400 mb-1.5">{item.verpakking_type}</div>
                       <div className="flex items-baseline justify-between gap-1">
                         <span className="font-bold text-sm" style={{color: 'var(--t-accent)'}}>
-                          {item.prijs != null || (isZakelijk && item.b2bPrijs != null) ? fmt(prijs) : '—'}
+                          {item.prijs != null || (isZakelijk && item.b2bPrijs != null) ? fmt(prijsToon) : '—'}
                           {prijsType === 'b2b' && <span className="ml-1 text-[9px] font-semibold bg-blue-100 text-blue-700 px-1 py-0.5 rounded align-middle">B2B</span>}
                         </span>
                         <span className={`text-[10px] ${uitverkocht ? 'text-red-500 font-medium' : 'text-gray-400'}`}>

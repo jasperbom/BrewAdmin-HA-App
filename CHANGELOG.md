@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.74] — 2026-07-15
+
+### Toegevoegd — Kassa: prijzen incl. of excl. BTW tonen
+
+- Nieuwe toggle bij de producten in de kassa om de prijzen op de
+  productkaarten **incl. of excl. BTW** weer te geven. Standaard excl. BTW
+  (de opgeslagen verkoopprijs); de weergave heeft geen invloed op de
+  bon of factuur.
+
 ## [1.10.73] — 2026-07-15
 
 ### Gewijzigd — Kassa: vaste productprijzen met aparte kortingsregel

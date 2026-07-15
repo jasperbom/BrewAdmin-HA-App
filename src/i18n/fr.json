@@ -2537,6 +2537,8 @@
   "pos_bon_leeg": "Rien encore enregistré — appuyez sur un produit",
   "pos_vrije_regel": "Ligne libre",
   "pos_korting": "Remise",
+  "pos_prijs_excl": "HT",
+  "pos_prijs_incl": "TTC",
   "pos_korting_soort": "Type de remise",
   "pos_korting_soort_bedrag": "Montant (€, TVA incluse)",
   "pos_korting_soort_pct": "Pourcentage (%)",
