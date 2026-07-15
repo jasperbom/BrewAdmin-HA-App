@@ -2594,5 +2594,20 @@
   "gezondheid_col_veld": "Champ",
   "gezondheid_col_doel": "Pointe vers (manquant)",
   "err_batch_delete_fiscaal": "Ce brassin a des livraisons et/ou des enregistrements d'accises et est donc fiscalement enregistré. La suppression est bloquée pour éviter les enregistrements orphelins.",
-  "err_save_geweigerd": "Le serveur a rejeté cette modification (format de données invalide). Les données actuelles ont été rechargées ; la dernière modification n'a pas été enregistrée."
+  "err_save_geweigerd": "Le serveur a rejeté cette modification (format de données invalide). Les données actuelles ont été rechargées ; la dernière modification n'a pas été enregistrée.",
+  "btn_rebrand": "Rebrander",
+  "btn_rebrand_bevestigen": "Confirmer le rebranding",
+  "title_rebrand_modal": "Rebranding — {verpakking}",
+  "info_rebrand": "Déplacez (une partie de) le stock disponible de ce conditionnement vers un autre produit. Le lot et les données d'accises figées restent inchangés ; seul le produit (et son SKU) change.",
+  "info_rebrand_splitsing": "Le conditionnement sera scindé : {n} unités vont vers le nouveau produit, {rest} unités restent sur le produit actuel.",
+  "info_rebrand_volledig": "Le conditionnement entier sera transféré vers le nouveau produit.",
+  "lbl_rebrand": "Rebranding",
+  "lbl_rebrand_van": "Rebrandé depuis {product}",
+  "lbl_rebrand_huidig_product": "Produit actuel",
+  "lbl_rebrand_doelproduct": "Nouveau produit",
+  "err_rebrand_product_required": "Sélectionnez le nouveau produit.",
+  "err_rebrand_zelfde_product": "Choisissez un produit différent du produit actuel.",
+  "ph_rebrand_opmerking": "Raison du rebranding (optionnel)...",
+  "log_type_rebrand": "Rebranding",
+  "log_rebrand_omschrijving": "Rebranding : {van} → {naar}"
 }

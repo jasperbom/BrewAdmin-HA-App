@@ -2594,5 +2594,20 @@
   "gezondheid_col_veld": "Field",
   "gezondheid_col_doel": "Points to (missing)",
   "err_batch_delete_fiscaal": "This batch has deliveries and/or excise records and is therefore fiscally recorded. Deleting is blocked to prevent orphaned records.",
-  "err_save_geweigerd": "The server rejected this change (invalid data format). The current data has been reloaded; the last change was not saved."
+  "err_save_geweigerd": "The server rejected this change (invalid data format). The current data has been reloaded; the last change was not saved.",
+  "btn_rebrand": "Rebrand",
+  "btn_rebrand_bevestigen": "Confirm rebrand",
+  "title_rebrand_modal": "Rebrand — {verpakking}",
+  "info_rebrand": "Move (part of) this filling's available stock to a different product. The batch and the frozen excise data remain unchanged; only the product (and its SKU) changes.",
+  "info_rebrand_splitsing": "The filling will be split: {n} units go to the new product, {rest} units stay with the current product.",
+  "info_rebrand_volledig": "The entire filling will be moved to the new product.",
+  "lbl_rebrand": "Rebrand",
+  "lbl_rebrand_van": "Rebranded from {product}",
+  "lbl_rebrand_huidig_product": "Current product",
+  "lbl_rebrand_doelproduct": "New product",
+  "err_rebrand_product_required": "Select the new product.",
+  "err_rebrand_zelfde_product": "Choose a product different from the current one.",
+  "ph_rebrand_opmerking": "Reason for the rebrand (optional)...",
+  "log_type_rebrand": "Rebrand",
+  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}"
 }

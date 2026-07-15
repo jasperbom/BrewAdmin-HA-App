@@ -2594,5 +2594,20 @@
   "gezondheid_col_veld": "Feld",
   "gezondheid_col_doel": "Verweist auf (fehlt)",
   "err_batch_delete_fiscaal": "Dieser Sud hat Auslieferungen und/oder Verbrauchsteuereinträge und ist damit steuerlich erfasst. Löschen ist gesperrt, um verwaiste Datensätze zu vermeiden.",
-  "err_save_geweigerd": "Der Server hat diese Änderung abgelehnt (ungültiges Datenformat). Die aktuellen Daten wurden neu geladen; die letzte Änderung wurde nicht gespeichert."
+  "err_save_geweigerd": "Der Server hat diese Änderung abgelehnt (ungültiges Datenformat). Die aktuellen Daten wurden neu geladen; die letzte Änderung wurde nicht gespeichert.",
+  "btn_rebrand": "Rebranden",
+  "btn_rebrand_bevestigen": "Rebrand bestätigen",
+  "title_rebrand_modal": "Rebranden — {verpakking}",
+  "info_rebrand": "Verschiebe (einen Teil) des verfügbaren Bestands dieser Abfüllung zu einem anderen Produkt. Die Charge und die eingefrorenen Verbrauchsteuerdaten bleiben unverändert; nur das Produkt (und dessen SKU) ändert sich.",
+  "info_rebrand_splitsing": "Die Abfüllung wird geteilt: {n} Stück gehen zum neuen Produkt, {rest} Stück bleiben beim aktuellen Produkt.",
+  "info_rebrand_volledig": "Die gesamte Abfüllung wird dem neuen Produkt zugeordnet.",
+  "lbl_rebrand": "Rebrand",
+  "lbl_rebrand_van": "Rebrand von {product}",
+  "lbl_rebrand_huidig_product": "Aktuelles Produkt",
+  "lbl_rebrand_doelproduct": "Neues Produkt",
+  "err_rebrand_product_required": "Wähle das neue Produkt aus.",
+  "err_rebrand_zelfde_product": "Wähle ein anderes Produkt als das aktuelle.",
+  "ph_rebrand_opmerking": "Grund des Rebrands (optional)...",
+  "log_type_rebrand": "Rebrand",
+  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}"
 }

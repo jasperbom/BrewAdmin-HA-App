@@ -3608,6 +3608,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 afvullen:    {icon:'🍺', label:t('log_type_afvullen'),       cls:'text-green-700 bg-green-50'},
                 uitslaan:    {icon:'🚛', label:t('log_type_uitslaan'),       cls:'text-purple-700 bg-purple-50'},
                 afboeking:   {icon:'🗑️', label:t('log_type_afboeking'),      cls:'text-red-700 bg-red-50'},
+                rebrand:     {icon:'↪',  label:t('log_type_rebrand'),        cls:'text-blue-700 bg-blue-50'},
                 status:      {icon:'🔄', label:'Status',                      cls:'text-gray-700 bg-gray-100'},
                 aangemaakt:  {icon:'✨', label:t('batch_log_type_created'),  cls:'text-indigo-700 bg-indigo-50'},
                 gewijzigd:   {icon:'✏️', label:t('batch_log_type_changed'),  cls:'text-amber-700 bg-amber-50'},

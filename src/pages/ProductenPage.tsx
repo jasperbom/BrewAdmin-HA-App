@@ -60,7 +60,7 @@ const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null
   } catch { return null }
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -83,6 +83,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   }>({aantal: '1', reden: 'vermis', opmerking: '', toestemming_douane: false, toestemming_datum: '', kenmerk_douane: '', verklaring_ingediend_op: tod(), bijlagen: []});
   const [afboekError, setAfboekError] = useState('');
   const [afboekUploading, setAfboekUploading] = useState(false);
+  // Rebrand-modal: (deel van) een afvulling naar een ander product verplaatsen.
+  const [rebrandModal, setRebrandModal] = useState<any>(null);
+  const [rebrandForm, setRebrandForm] = useState<{
+    aantal: string; product_id: number | ''; opmerking: string;
+    toonNieuwProduct: boolean; nieuwProductNaam: string;
+  }>({aantal: '1', product_id: '', opmerking: '', toonNieuwProduct: false, nieuwProductNaam: ''});
+  const [rebrandError, setRebrandError] = useState('');
   // Vernietigingsreview-modal: voor het doorzetten van een bestaande afboeking
   // van Aangevraagd → Toegestaan → Uitgevoerd (Douane v2.4 §7.2.3).
   const [vernietigReviewModal, setVernietigReviewModal] = useState<any>(null);
@@ -438,6 +445,109 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     setAfboekModal(a);
   };
 
+  // Rebrand: (deel van) de beschikbare voorraad van een afvulling onder een
+  // ander product hangen. De batch blijft dezelfde; alleen het product (en
+  // daarmee de SKU) verandert. Volledige beschikbare voorraad zonder
+  // verplichtingen → product_id in-place wijzigen (id blijft gelijk, dus geen
+  // referentiebreuk); een deel → de afvulling splitsen in twee rijen.
+  const openRebrandModal = (a: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRebrandForm({aantal: String(beschikbaarVoorAfvulling(a)), product_id: '', opmerking: '', toonNieuwProduct: false, nieuwProductNaam: ''});
+    setRebrandError('');
+    setRebrandModal(a);
+  };
+
+  // Huidig product van een afvulling: direct via product_id, anders (legacy)
+  // via het product van de batch.
+  const productVanAfvulling = (a: any): number | undefined =>
+    a?.product_id || (bat||[]).find((b: any) => b.id === a?.batch_id)?.product_id;
+
+  const doRebrand = () => {
+    const a = rebrandModal;
+    if (!a || !setAv) return;
+    const aantal = Number(rebrandForm.aantal);
+    const doelId = Number(rebrandForm.product_id);
+    if (!doelId) { setRebrandError(t('err_rebrand_product_required')); return; }
+    const huidigId = productVanAfvulling(a);
+    if (doelId === huidigId) { setRebrandError(t('err_rebrand_zelfde_product')); return; }
+    if (!aantal || aantal < 1 || !Number.isInteger(aantal)) { setRebrandError(t('err_afboeking_aantal_min')); return; }
+    const max = beschikbaarVoorAfvulling(a);
+    if (aantal > max) { setRebrandError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
+    const totaal = Number(a.hoeveelheid||0);
+    const vanProduct = (producten||[]).find((p: any) => p.id === huidigId);
+    const doelProduct = (producten||[]).find((p: any) => p.id === doelId);
+    // SKU van het doelproduct voor deze verpakking (zelfde matching als bij
+    // afvullen in BatchesPage): eerst op verpakking_id, anders op type.
+    const pArt = (productArtikelen||[]).find((pa: any) => pa.product_id === doelId && (
+      (a.verpakking_id && pa.verpakking_id === Number(a.verpakking_id)) ||
+      (!a.verpakking_id && pa.verpakking_type && vpTypeMatch(pa.verpakking_type, a.verpakking_type))
+    ));
+    const nieuweSku = pArt?.artikelnummer || null;
+    const perEenheid = Number(a.voorcalc_accijns_per_eenheid) || 0;
+    const rebrandVelden: any = {
+      rebrand_van_afvulling_id: a.id,
+      rebrand_datum: tod(),
+    };
+    if (huidigId) rebrandVelden.rebrand_van_product_id = huidigId;
+    if (rebrandForm.opmerking.trim()) rebrandVelden.rebrand_opmerking = rebrandForm.opmerking.trim();
+    let nieuwId = a.id;
+    if (aantal === totaal && max === totaal) {
+      // Alles, en er hangen geen picks/uitleveringen/afboekingen aan: de rij
+      // in-place omhangen zodat alle bestaande referenties intact blijven.
+      setAv((prev: any[]) => (prev||[]).map((x: any) => x.id === a.id
+        ? {...x, product_id: doelId, artikel_sku: nieuweSku, ...rebrandVelden}
+        : x));
+    } else {
+      // Deelrebrand: splitsen. Origineel krimpt (nooit onder de al vastgelegde
+      // picks/uitleveringen/afboekingen dankzij de max-check hierboven); de
+      // nieuwe rij erft alle verpakkings- en accijnsgegevens van de bron.
+      nieuwId = newId(av||[]);
+      const rest = totaal - aantal;
+      setAv((prev: any[]) => [
+        ...(prev||[]).map((x: any) => x.id === a.id
+          ? {
+              ...x,
+              hoeveelheid: rest,
+              ...(x.aantal !== undefined ? {aantal: rest} : {}),
+              ...(perEenheid > 0 ? {voorcalc_accijns_totaal: perEenheid * rest} : {}),
+            }
+          : x),
+        {
+          ...a,
+          id: nieuwId,
+          product_id: doelId,
+          artikel_sku: nieuweSku,
+          hoeveelheid: aantal,
+          ...(a.aantal !== undefined ? {aantal} : {}),
+          ...(perEenheid > 0 ? {voorcalc_accijns_totaal: perEenheid * aantal} : {}),
+          ...rebrandVelden,
+        },
+      ]);
+    }
+    const vanNaam = vanProduct?.naam || t('lbl_onbekend');
+    const naarNaam = doelProduct?.naam || t('lbl_onbekend');
+    const batch = (bat||[]).find((b: any) => b.id === a.batch_id);
+    const omschrijving = t('log_rebrand_omschrijving')
+      .replace('{van}', vanNaam).replace('{naar}', naarNaam)
+      + (rebrandForm.opmerking.trim() ? ` — ${rebrandForm.opmerking.trim()}` : '');
+    logAudit(auditLog, setAuditLog, {entiteit: 'Afvulling', entiteit_id: nieuwId, actie: 'gewijzigd',
+      omschrijving: `${t('lbl_rebrand')} ${aantal}× ${a.verpakking_naam || a.verpakking_type || ''}: ${vanNaam} → ${naarNaam}`});
+    if (setLog) setLog((prev: any[]) => [...(prev||[]), {
+      id: newId(prev||[]),
+      datum: tod(),
+      type: 'rebrand',
+      batch_id: a.batch_id,
+      batch_naam: batch?.naam || '',
+      afvulling_id: nieuwId,
+      verpakking_type: a.verpakking_naam || a.verpakking_type || '',
+      hoeveelheid: aantal,
+      eenheid: 'stuks',
+      referentie: t('lbl_rebrand'),
+      omschrijving,
+    }]);
+    setRebrandModal(null);
+  };
+
   // Vernietigingsreview: doorzetten van bestaande afboeking naar volgende status.
   // Douane v2.4 §7.2.3: Aangevraagd → Toegestaan → Uitgevoerd.
   const openVernietigReview = (afb: any) => {
@@ -691,13 +801,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   // --- Logboek data ---
   const beerLogEntries = [...(log||[])]
-    .filter((l: any) => ['afvullen','uitslaan','afboeking'].includes(l.type))
+    .filter((l: any) => ['afvullen','uitslaan','afboeking','rebrand'].includes(l.type))
     .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''));
 
   const LOG_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
     afvullen:  {icon:'🍺', cls:'text-green-700 bg-green-50',  label: t('log_type_afvullen')},
     uitslaan:  {icon:'🚛', cls:'text-purple-700 bg-purple-50', label: t('log_type_uitslaan')},
     afboeking: {icon:'🗑️', cls:'text-red-700 bg-red-50',      label: t('log_type_afboeking')},
+    rebrand:   {icon:'↪', cls:'text-blue-700 bg-blue-50',     label: t('log_type_rebrand')},
   };
 
   const WC_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
@@ -1035,6 +1146,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                   : <span className="text-gray-400">{t('lbl_tht')}: —</span>
                                 }
                                 <span className="text-gray-400">{Number(a.inhoud_per_eenheid||0).toFixed(1)} {t('lbl_liter_per_stuk')}</span>
+                                {a.rebrand_van_product_id && a.rebrand_van_product_id !== a.product_id && (
+                                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-medium" title={a.rebrand_opmerking || ''}>
+                                    ↪ {t('lbl_rebrand_van').replace('{product}', (producten||[]).find((p: any) => p.id === a.rebrand_van_product_id)?.naam || t('lbl_onbekend'))}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
                                 <span className="text-gray-600">{t('voorraad_afgevuld')}: <strong className="font-semibold text-gray-800">{a.hoeveelheid}×</strong></span>
@@ -1061,10 +1177,18 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                               )}
                             </div>
                             {beschikbaar > 0 && (
-                              <button onClick={e => openAfboekModal(a, e)}
-                                className="flex-shrink-0 text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap mt-0.5">
-                                − {t('btn_afboeken')}
-                              </button>
+                              <div className="flex-shrink-0 flex gap-1.5 mt-0.5">
+                                {setAv && (
+                                  <button onClick={e => openRebrandModal(a, e)}
+                                    className="text-xs px-2.5 py-1 rounded border border-blue-200 text-blue-500 hover:bg-blue-50 hover:border-blue-400 transition-colors whitespace-nowrap">
+                                    ↪ {t('btn_rebrand')}
+                                  </button>
+                                )}
+                                <button onClick={e => openAfboekModal(a, e)}
+                                  className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap">
+                                  − {t('btn_afboeken')}
+                                </button>
+                              </div>
                             )}
                           </div>
                           {afboekLogs.length > 0 && (
@@ -1534,6 +1658,111 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             <div className="flex justify-end gap-2 pt-1 border-t">
               <Btn v="secondary" onClick={() => setAfboekModal(null)}>{t('btn_cancel')}</Btn>
               <Btn onClick={doAfboeken} v="danger" disabled={afboekUploading}>{t('btn_mutatie_bevestigen')}</Btn>
+            </div>
+          </div>
+        </Modal>
+        );
+      })()}
+
+      {/* Rebrand-modal — (deel van) afvulling naar een ander product */}
+      {rebrandModal && (() => {
+        const a = rebrandModal;
+        const beschikbaar = beschikbaarVoorAfvulling(a);
+        const totaal = Number(a.hoeveelheid||0);
+        const huidigId = productVanAfvulling(a);
+        const huidigProduct = (producten||[]).find((p: any) => p.id === huidigId);
+        const aantalNum = Number(rebrandForm.aantal);
+        const wordtSplitsing = !(aantalNum === totaal && beschikbaar === totaal);
+        const doelKandidaten = (producten||[])
+          .filter((p: any) => p.status !== 'gearchiveerd' && p.id !== huidigId)
+          .sort((x: any, y: any) => (x.naam||'').localeCompare(y.naam||''));
+        return (
+        <Modal title={t('title_rebrand_modal').replace('{verpakking}', a.verpakking_naam || a.verpakking_type || '')} onClose={() => setRebrandModal(null)}>
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-600 flex gap-4 flex-wrap">
+              <span>{t('lbl_rebrand_huidig_product')}: <strong className="text-gray-800">{huidigProduct?.naam || t('lbl_onbekend')}</strong></span>
+              <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaar}×</strong></span>
+              {a.tht && <span>{t('lbl_tht')}: <strong>{fmtD(a.tht)}</strong></span>}
+            </div>
+
+            <div className="rounded-lg p-3 text-xs bg-blue-50 border border-blue-200 text-blue-800">
+              {t('info_rebrand')}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_rebrand_doelproduct')} <span className="text-red-400">*</span></label>
+              {!rebrandForm.toonNieuwProduct ? (
+                <div className="flex gap-1">
+                  <select value={rebrandForm.product_id || ''} onChange={e => {
+                    if (e.target.value === '__new__') {
+                      setRebrandForm(f => ({...f, toonNieuwProduct: true, nieuwProductNaam: '', product_id: ''}));
+                    } else {
+                      setRebrandForm(f => ({...f, product_id: e.target.value ? Number(e.target.value) : ''}));
+                    }
+                    setRebrandError('');
+                  }} className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+                    <option value="">{t('ph_select_product')}</option>
+                    {doelKandidaten.map((p: any) => (
+                      <option key={p.id} value={p.id}>{p.naam}{p.stijl ? ` (${p.stijl})` : ''}</option>
+                    ))}
+                    <option value="__new__">{t('lbl_afvulling_nieuw_product')}</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="flex gap-1">
+                  <input type="text" value={rebrandForm.nieuwProductNaam} onChange={e => setRebrandForm(f => ({...f, nieuwProductNaam: e.target.value}))}
+                    placeholder={t('ph_nieuw_product_naam')} className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
+                  <Btn s="sm" onClick={() => {
+                    const naam = rebrandForm.nieuwProductNaam.trim();
+                    if (!naam) { setRebrandError(t('err_product_naam_leeg')); return; }
+                    const dupl = (producten||[]).find((p: any) => (p.naam||'').toLowerCase() === naam.toLowerCase());
+                    if (dupl) { setRebrandError(t('err_product_naam_duplicaat')); return; }
+                    const id = newId(producten||[]);
+                    setProducten((prev: any[]) => [...(prev||[]), {id, naam, status: 'actief', created_at: tod()}]);
+                    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: id, actie: 'aangemaakt', omschrijving: `Product "${naam}" aangemaakt`});
+                    setRebrandForm(f => ({...f, product_id: id, toonNieuwProduct: false, nieuwProductNaam: ''}));
+                    setRebrandError('');
+                  }}>{t('btn_product_toevoegen')}</Btn>
+                  <button type="button" onClick={() => setRebrandForm(f => ({...f, toonNieuwProduct: false, nieuwProductNaam: ''}))}
+                    className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
+                <input type="number" min={1} max={beschikbaar} value={rebrandForm.aantal}
+                  onChange={e => { setRebrandForm(f => ({...f, aantal: e.target.value})); setRebrandError(''); }}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
+                <p className="text-xs text-gray-400 mt-1">{t('err_afboeking_max_available').replace('{max}', String(beschikbaar)).replace('{unit}', t('unit_stuks'))}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                <input type="date" value={tod()} readOnly
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-500" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking')}</label>
+              <textarea value={rebrandForm.opmerking} onChange={e => setRebrandForm(f => ({...f, opmerking: e.target.value}))} rows={2}
+                placeholder={t('ph_rebrand_opmerking')}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm t-input resize-none" />
+            </div>
+
+            {aantalNum >= 1 && aantalNum <= beschikbaar && (
+              <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                {wordtSplitsing
+                  ? t('info_rebrand_splitsing').replace('{n}', String(aantalNum)).replace('{rest}', String(totaal - aantalNum))
+                  : t('info_rebrand_volledig')}
+              </div>
+            )}
+
+            {rebrandError && <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">{rebrandError}</div>}
+            <div className="flex justify-end gap-2 pt-1 border-t">
+              <Btn v="secondary" onClick={() => setRebrandModal(null)}>{t('btn_cancel')}</Btn>
+              <Btn onClick={doRebrand}>{t('btn_rebrand_bevestigen')}</Btn>
             </div>
           </div>
         </Modal>
