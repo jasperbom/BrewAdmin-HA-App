@@ -555,15 +555,65 @@ def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET', data: byt
 
 # ── Backup system (AGP 7-year retention) ──────────────────────────────────
 
+# Off-volume kopie (ERP-plan 0.5): /backup is een ándere HA-map dan /data
+# (config.yaml map: backup:rw). Gaat het data-volume verloren, dan zijn de
+# ZIP-backups daar nog. Bestaat de map niet (addon zonder mapping, lokale
+# dev), dan wordt de off-volume stap stil overgeslagen.
+OFFSITE_BACKUP_DIR = Path('/backup/brewadmin')
+
+
 def _run_backup() -> str:
-    """Copy all /data/*.json files into /data/backups/YYYY-MM-DD/.
-    Returns the backup date string."""
+    """Copy all /data/*.json files (plus de upload-map met factuurbijlagen)
+    into /data/backups/YYYY-MM-DD/ en schrijf dezelfde snapshot als ZIP naar
+    de off-volume /backup-map. Returns the backup date string."""
     today = datetime.date.today().isoformat()
     dest = BACKUP_DIR / today
     dest.mkdir(parents=True, exist_ok=True)
     for f in DATA_DIR.glob('*.json'):
         shutil.copy2(f, dest / f.name)
+    # Upload-bijlagen (factuur-PDF's/afbeeldingen) horen bij de administratie
+    # en vallen onder dezelfde bewaarplicht — meenemen in de backup.
+    if UPLOAD_DIR.is_dir():
+        shutil.copytree(UPLOAD_DIR, dest / UPLOAD_DIR.name, dirs_exist_ok=True)
+    _offsite_backup(dest, today)
     return today
+
+
+def _offsite_backup(dest: Path, today: str) -> None:
+    """Schrijf de dag-backup als ZIP naar de HA /backup-map (ander volume).
+    Atomair via tmp+rename; fouten alleen loggen zodat de lokale backup
+    nooit faalt door een ontbrekende/volle backup-map."""
+    if not OFFSITE_BACKUP_DIR.parent.is_dir():
+        return
+    try:
+        OFFSITE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = OFFSITE_BACKUP_DIR / f'.brewadmin_backup_{today}.zip.tmp'
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in sorted(dest.rglob('*')):
+                if f.is_file():
+                    zf.write(f, str(f.relative_to(dest)))
+        os.replace(tmp, OFFSITE_BACKUP_DIR / f'brewadmin_backup_{today}.zip')
+    except OSError as exc:
+        print(f'[backup] offsite backup failed: {exc}', flush=True)
+
+
+def _cleanup_offsite_backups() -> None:
+    """Zelfde retentiebeleid als de lokale backups, toegepast op de
+    off-volume ZIP's."""
+    if not OFFSITE_BACKUP_DIR.is_dir():
+        return
+    today = datetime.date.today()
+    for f in OFFSITE_BACKUP_DIR.glob('brewadmin_backup_*.zip'):
+        datum = f.name[len('brewadmin_backup_'):-len('.zip')]
+        try:
+            backup_date = datetime.date.fromisoformat(datum)
+        except ValueError:
+            continue
+        if not _should_keep_backup(backup_date, today):
+            try:
+                f.unlink()
+            except OSError:
+                pass
 
 
 def _should_keep_backup(backup_date: datetime.date, today: datetime.date) -> bool:
@@ -605,6 +655,7 @@ def _backup_loop(interval: float = 86400.0) -> None:
         try:
             _run_backup()
             _cleanup_backups()
+            _cleanup_offsite_backups()
         except Exception as exc:
             print(f'[backup] error: {exc}', flush=True)
         time.sleep(interval)
@@ -1138,9 +1189,11 @@ def _backup_to_zip(date_str: str) -> bytes | None:
         return None
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for f in sorted(backup_path.iterdir()):
+        # rglob: sinds de upload-map wordt meegeback-upt bevat de snapshot
+        # ook een submap met bijlagen — die moet mee in de download-ZIP.
+        for f in sorted(backup_path.rglob('*')):
             if f.is_file():
-                zf.write(f, f.name)
+                zf.write(f, str(f.relative_to(backup_path)))
     return buf.getvalue()
 
 

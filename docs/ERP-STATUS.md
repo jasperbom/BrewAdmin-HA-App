@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.81
+**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.82
 
 ---
 
@@ -28,8 +28,9 @@
 - [x] **0.4 Harde periode-lock** — mutaties van facturen/accijnsrecords in een
       ingediende BTW-/accijnsperiode geblokkeerd *(v1.10.81, 2026-07-15:
       guards in deleteFactuur/updateFactuur/updateRegelBtw/deleteVerplaats)*
-- [ ] **0.5 Backup off-volume + uploads** — uploads-map in dagelijkse backup,
-      ZIP naar HA `/backup`-map, retentie ook daar
+- [x] **0.5 Backup off-volume + uploads** — uploads-map in dagelijkse backup,
+      ZIP naar HA `/backup`-map, retentie ook daar *(v1.10.82, 2026-07-15;
+      config.yaml kreeg `backup:rw`-mapping)*
 - [ ] **0.6 Secrets afschermen** — GET op secure keys gemaskeerd
       (`__SECRET__`-sentinel), POST merget sentinel terug; chmod 0600
 - [ ] **0.7 Voorraad-lekken dichten** — `saveLot` via `voorraad_log`;
@@ -95,3 +96,4 @@
 | 2026-07-15 | 1.10.79 | 0.1 | Optimistic locking: X-Data-Version + 409-conflictafhandeling; getest met curl (409-flow, data blijft intact) |
 | 2026-07-15 | 1.10.80 | 0.2 | /api/nextnr: atomaire nummerreeksen (F/CN), seed uit legacy teller + hoogste bestaande factuur; 20 parallelle calls → 0 dubbelen |
 | 2026-07-15 | 1.10.81 | 0.3+0.4 | definitief-vlag op verkoopfacturen; periode-lock op inkoopfactuur-edit/-delete, BTW-correctie orderregel en AGP-verplaatsing-delete |
+| 2026-07-15 | 1.10.82 | 0.5 | Backup incl. upload-bijlagen + off-volume ZIP naar /backup/brewadmin (getest: lokaal, offsite en download-ZIP bevatten bijlagen) |

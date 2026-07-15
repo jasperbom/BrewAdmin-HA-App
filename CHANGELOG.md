@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.82] — 2026-07-15
+
+### Gewijzigd — Backup off-volume + bijlagen meegenomen (ERP-plan 0.5)
+
+- De dagelijkse backup neemt nu ook de map met geüploade factuurbijlagen
+  (PDF's/afbeeldingen) mee — die vielen voorheen buiten élke backup terwijl
+  ze onder de fiscale bewaarplicht vallen.
+- Elke backup wordt daarnaast als ZIP weggeschreven naar de Home
+  Assistant-backupmap (`/backup/brewadmin/`), een **ander volume** dan
+  `/data`. Gaat het datavolume verloren, dan zijn de snapshots daar nog.
+  Zelfde retentiebeleid (30 dagen dagelijks / 1 jaar wekelijks / 7 jaar
+  maandelijks). Vereist de nieuwe `backup:rw`-mapping in `config.yaml`
+  (addon herstart na update volstaat); zonder die map wordt de off-volume
+  stap stil overgeslagen.
+- De backup-download (`GET /api/backups/<datum>`) bevat nu ook de bijlagen.
+
+---
+
 ## [1.10.81] — 2026-07-15
 
 ### Gewijzigd — Facturen bevriezen + harde periode-lock (ERP-plan 0.3/0.4)

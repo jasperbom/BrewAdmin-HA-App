@@ -1,6 +1,6 @@
 name: "BrewAdmin"
 description: "Brewery administration — batches, ingredients, excise duty, stock and accounting"
-version: "1.10.81"
+version: "1.10.82"
 slug: "brouwerij_admin"
 init: false
 
@@ -15,6 +15,9 @@ arch:
 
 map:
   - data:rw
+  # Off-volume backup-doel (ERP-plan 0.5): dagelijkse ZIP-snapshots naar de
+  # HA-backupmap, gescheiden van het /data-volume.
+  - backup:rw
 
 homeassistant_api: true
 
