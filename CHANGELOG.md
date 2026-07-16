@@ -4,6 +4,80 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.12] — 2026-07-16
+
+### Toegevoegd — HTTPS met eigen domein op de directe-toegangspoort
+
+- Nieuwe addon-opties `ssl`, `certfile` en `keyfile`: met `ssl: true`
+  draait de directe-toegangspoort (8098) HTTPS met certificaten uit de
+  HA `/ssl`-map — je eigen domein via de Let's Encrypt- of DuckDNS-addon
+  (config.yaml kreeg `map: ssl:ro`). TLS ≥ 1.2.
+- **Fail-closed**: is `ssl` aangezet maar het certificaat onbruikbaar
+  (ontbrekend bestand, ongeldige naam, padcomponenten), dan start de
+  directe poort helemaal niet — er wordt nooit stil teruggevallen op
+  onversleuteld. De ingress-poort blijft altijd gewoon draaien.
+- Certificaten worden dagelijks opnieuw ingelezen zodat een
+  Let's Encrypt-verlenging zonder addon-herstart wordt opgepikt; de
+  sessiecookie krijgt de `Secure`-vlag zodra de poort HTTPS draait.
+- Bijvangst-fix: `/data/options.json` (addon-opties van de Supervisor)
+  wordt nu expliciet uitgesloten van de eenmalige JSON→SQLite-migratie.
+- pytest: 3 nieuwe tests (opties + migratie-uitzondering, certvalidatie
+  incl. fail-closed en padtraversal, echte TLS-handshake naar de
+  loginpagina) — 60 totaal; runtime-smoke: HTTPS met domein-cert,
+  hoofdpoort onaangetast, fail-closed zonder key.
+
+---
+
+## [1.11.11] — 2026-07-16
+
+### Toegevoegd — Loginpagina stylebaar vanuit Instellingen
+
+- Nieuwe kaart **"Loginpagina (directe toegang)"** bij Instellingen → App:
+  titel, ondertitel en knoptekst; accentkleur (met één klik overnemen van
+  het actieve app-thema) en achtergrondkleur; optionele
+  achtergrondafbeelding (upload, max 1 MB); toggle om het app-logo op de
+  loginpagina te tonen. i18n in alle 5 talen; nieuwe key
+  `login_instellingen` (beheer-only) zit mee in de Excel-backup.
+- De server rendert de loginpagina met deze styling (`_login_pagina`) met
+  strikte validatie omdat dit een pre-auth-pagina is: alle teksten worden
+  ge-escaped, kleuren moeten hex zijn en afbeeldingen een geldige
+  `data:image/...`-URL — ongeldige waarden vallen stil terug op de
+  defaults. Zonder configuratie blijft de pagina exact zoals hij was
+  (titel = app-naam, logo = app-logo).
+- pytest: styling-/escaping-test (XSS-poging in de titel wordt ge-escaped,
+  ongeldige kleur en externe afbeeldings-URL bereiken de pagina nooit,
+  logo-toggle) — 57 totaal; runtime-verificatie met Playwright-screenshots
+  van pagina én instellingen-kaart.
+
+---
+
+## [1.11.10] — 2026-07-16
+
+### Toegevoegd — Directe toegang met HA-login (tweede poort)
+
+- Nieuwe optionele poort **8098** voor toegang buiten de HA-ingress om
+  (bv. een tablet in de brouwerij): standaard **uit**
+  (`ports: 8098/tcp: null`) — zet hem aan door in de addon-netwerkconfig
+  een hostpoort in te vullen.
+- Inloggen gebeurt met je **echte Home Assistant-account**: de Supervisor
+  valideert gebruikersnaam/wachtwoord (`auth_api: true`,
+  `POST http://supervisor/auth`). Na login volgt een
+  HttpOnly/SameSite=Strict-sessiecookie (24 uur glijdend, in-memory —
+  addon-herstart = opnieuw inloggen). Donkere loginpagina in appstijl.
+- De sessiegebruiker telt volledig mee voor het **rollenmodel** (4.2) en de
+  audit; `X-Remote-User`-headers worden op deze poort genegeerd (daar
+  spoofbaar). Strenge login-rate-limit (5 mislukte pogingen per 5 min per
+  IP, 429) en audit van login/logout/mislukte pogingen — nooit wachtwoorden.
+- `GET /api/whoami` meldt nu ook `sessie: true|false`; de kaart
+  "Gebruikers & rollen" toont een **uitlogknop** bij sessie-toegang
+  (i18n in alle 5 talen). De ingress-route is volledig onveranderd.
+- pytest: 5 nieuwe tests (loginpagina + 401 zonder sessie, 503 zonder
+  Supervisor, volledige login/rollen/spoofing/logout-flow, login-rate-limit,
+  geen login-endpoint op de ingress-poort) — 56 totaal; runtime-smoke van
+  beide poorten.
+
+---
+
 ## [1.11.9] — 2026-07-16
 
 ### Toegevoegd — Delta-sync i.p.v. hele arrays (ERP-plan 4.3)

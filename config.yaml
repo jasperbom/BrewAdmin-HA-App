@@ -1,6 +1,6 @@
 name: "BrewAdmin"
 description: "Brewery administration — batches, ingredients, excise duty, stock and accounting"
-version: "1.11.9"
+version: "1.11.12"
 slug: "brouwerij_admin"
 init: false
 
@@ -18,13 +18,37 @@ map:
   # Off-volume backup-doel (ERP-plan 0.5): dagelijkse ZIP-snapshots naar de
   # HA-backupmap, gescheiden van het /data-volume.
   - backup:rw
+  # Certificaten voor HTTPS op de directe-toegangspoort (Let's Encrypt-/
+  # DuckDNS-addon zet ze hier neer).
+  - ssl:ro
 
 homeassistant_api: true
+
+# Directe toegang buiten ingress om (optioneel): login met je HA-account.
+# auth_api laat de Supervisor gebruikersnaam/wachtwoord valideren; de poort
+# staat standaard uit (null) — vul in de addon-netwerkconfig een hostpoort
+# in om hem aan te zetten. Let op: verkeer is HTTP; alleen op het eigen LAN
+# gebruiken of zelf achter een reverse proxy met HTTPS zetten.
+auth_api: true
+ports:
+  8098/tcp: null
+ports_description:
+  8098/tcp: "Directe toegang met HA-login (standaard uit; sessie vervalt na 24 uur inactiviteit of addon-herstart). Zet de optie ssl aan voor HTTPS met je eigen domein"
 
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:beer
 panel_title: "BrewAdmin"
 
-options: {}
-schema: {}
+# ssl: HTTPS op de directe-toegangspoort met certificaten uit /ssl
+# (bv. van de Let's Encrypt-addon voor je eigen domein). Bij een
+# onbruikbaar certificaat start de directe poort niet (fail-closed).
+# Certificaten worden dagelijks herladen (verlenging zonder herstart).
+options:
+  ssl: false
+  certfile: fullchain.pem
+  keyfile: privkey.pem
+schema:
+  ssl: bool
+  certfile: str
+  keyfile: str

@@ -404,6 +404,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `brewery_details` | object | Brouwerijnaam, adres, BTW-nr., website (klikbaar logo in mail) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
+| `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota`), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
 | `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`) |
@@ -489,7 +490,9 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | GET | `/api/data/<key>` | Load data key (JSON, uit SQLite) |
 | POST | `/api/data/<key>` | Save data key (JSON, naar SQLite) |
 | GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
-| GET | `/api/whoami` | Ingress-gebruiker + rol (ERP 4.2): `{gebruiker, rol}` |
+| GET | `/api/whoami` | Gebruiker + rol: `{gebruiker, rol, sessie}` (`sessie: true` = ingelogd via de directe poort) |
+| POST | `/api/login` | Alleen directe poort (8098): HA-login via Supervisor-auth → sessiecookie |
+| POST | `/api/logout` | Alleen directe poort: beëindig de sessie |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
@@ -520,6 +523,18 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only
+- Directe-toegangspoort (8098, `config.yaml ports: null` = standaard uit):
+  vereist HA-login via de Supervisor-auth-API (`auth_api: true`), geeft een
+  HttpOnly/SameSite=Strict sessiecookie (in-memory, 24 u glijdend; `Secure`
+  zodra de poort HTTPS draait). Addon-optie `ssl: true` = HTTPS met
+  certificaten uit `/ssl` (eigen domein via Let's Encrypt-/DuckDNS-addon),
+  dagelijks herladen; onbruikbaar certificaat → poort start NIET
+  (fail-closed, nooit stil onversleuteld). `/data/options.json` is van de
+  Supervisor — nooit migreren of via de data-API aanraken;
+  X-Remote-User-headers worden op deze poort genegeerd (spoofbaar) — de
+  sessiegebruiker telt voor rollen en audit; strenge login-rate-limit
+  (5 mislukte pogingen per 5 min per IP), logins/pogingen in de audit.
+  Nooit de sessie-check omzeilen of wachtwoorden loggen
 
 ---
 

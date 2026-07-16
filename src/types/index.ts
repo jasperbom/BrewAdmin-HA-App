@@ -1425,3 +1425,15 @@ export interface GebruikersRollen {
   // Rol voor gebruikers die niet in `gebruikers` staan (default: beheer)
   standaard_rol?: Rol
 }
+
+// Styling van de loginpagina op de directe-toegangspoort. De server rendert
+// de pagina hiermee en valideert strikt (escaping, kleur-/afbeeldingspatronen).
+export interface LoginInstellingen {
+  titel?: string                       // default: app_name of 'BrewAdmin'
+  ondertitel?: string
+  knop_tekst?: string
+  accent?: string                      // hex-kleur, bv. '#b45309'
+  achtergrond?: string                 // hex-kleur
+  achtergrond_afbeelding?: string | null // data-url (max ~1 MB)
+  logo_tonen?: boolean                 // default true (gebruikt app_logo)
+}
