@@ -42,7 +42,7 @@ def app(tmp_path_factory):
     # Ruim boven wat de suite nodig heeft; de rate-limit-test zet hem
     # tijdelijk zelf laag.
     srv._RATE_MAX = 100_000
-    httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), srv.BrouwerijHandler)
+    httpd = srv.BrouwerijServer(('127.0.0.1', 0), srv.BrouwerijHandler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield f'http://127.0.0.1:{httpd.server_address[1]}'
@@ -53,7 +53,7 @@ def app(tmp_path_factory):
 def app_direct(app):
     """Tweede listener zoals de directe-toegangspoort (HA-login + sessie);
     deelt de DATA_DIR met de gewone testserver."""
-    httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), srv.BrouwerijHandler)
+    httpd = srv.BrouwerijServer(('127.0.0.1', 0), srv.BrouwerijHandler)
     httpd.brewadmin_direct = True
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -1006,7 +1006,7 @@ class TestDirectSsl:
         try:
             ctx = srv._ssl_context('fullchain.pem', 'privkey.pem')
             assert ctx is not None
-            httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), srv.BrouwerijHandler)
+            httpd = srv.BrouwerijServer(('127.0.0.1', 0), srv.BrouwerijHandler)
             httpd.brewadmin_direct = True
             httpd.brewadmin_ssl = True
             httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
