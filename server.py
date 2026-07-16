@@ -1533,8 +1533,11 @@ def _login_pagina() -> bytes:
     if inst.get('logo_tonen', True) and logo_geldig:
         logo_html = f'<img src="{logo}" alt="" class="logo">'
     # Tab-icoon volgt het app-logo (ongeacht logo_tonen — dat gaat alleen
-    # over het grote logo op het formulier).
-    favicon_html = f'<link rel="icon" href="{logo}">' if logo_geldig else ''
+    # over het grote logo op het formulier). De apple-touch-icon-link gaat
+    # altijd mee zodat "Zet op beginscherm" óók vanaf de loginpagina het
+    # juiste icoon krijgt (zonder logo geeft het endpoint een onschadelijke 404).
+    favicon_html = (f'<link rel="icon" href="{logo}">' if logo_geldig else '') + \
+        '\n<link rel="apple-touch-icon" sizes="180x180" href="api/app_icoon">'
 
     pagina = (_LOGIN_PAGE
               .replace('__TITEL__', titel)
@@ -2440,6 +2443,18 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
     # ── request routing ────────────────────────────────────────────────────
 
+    def do_HEAD(self):
+        """Alleen voor het app-icoon: sommige clients (icoon-fetchers)
+        checken eerst met HEAD; zonder handler gaf dat een 501."""
+        if not self._rate_check():
+            return
+        if APP_ICOON_PATH in self.path.split('?')[0]:
+            self._handle_app_icoon()
+            return
+        self.send_response(405)
+        self._add_security_headers()
+        self.end_headers()
+
     def do_OPTIONS(self):
         if not self._is_direct() and not _client_allowed(self.client_address[0]):
             self._json(403, {'error': 'forbidden'})
@@ -3179,17 +3194,24 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         bron_key = 'app_logo_icoon'
         if not (isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX
                 and _DATA_IMG_RE.match(logo)):
+            # Ruwe-logo-fallback met een ruimere limiet dan de loginpagina
+            # (grote PNG-uploads komen voor; het icoon-endpoint hoeft ze
+            # alleen te serveren, niet inline in HTML te embedden).
             logo = _read_json('app_logo')
             bron_key = 'app_logo'
-        if not (isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX
-                and _DATA_IMG_RE.match(logo)):
-            self._json(404, {'error': 'no logo'})
-            return
+            if not (isinstance(logo, str) and len(logo) <= 8_000_000
+                    and _DATA_IMG_RE.match(logo)):
+                self.send_response(404)
+                self._add_security_headers()
+                self.end_headers()
+                return
         kop, _, b64 = logo.partition(';base64,')
         try:
             inhoud = base64.b64decode(b64)
         except (ValueError, TypeError):
-            self._json(404, {'error': 'invalid logo'})
+            self.send_response(404)
+            self._add_security_headers()
+            self.end_headers()
             return
         etag = f'"{_data_version(bron_key)}"'
         if self.headers.get('If-None-Match') == etag:
@@ -3205,7 +3227,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('ETag', etag)
         self._add_security_headers()
         self.end_headers()
-        self.wfile.write(inhoud)
+        if self.command != 'HEAD':
+            self.wfile.write(inhoud)
 
     def _handle_bulk(self):
         """GET /api/bulk — alle data-keys + versies in één antwoord.

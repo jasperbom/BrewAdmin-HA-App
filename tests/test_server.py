@@ -281,6 +281,37 @@ class TestAppIcoon:
             req(app, 'POST', '/api/data/app_logo', body=b'null')
             req(app, 'POST', '/api/data/app_logo_icoon', body={})
 
+    def test_groot_raw_logo_wordt_toch_geserveerd(self, app):
+        # Ruwe-logo-fallback accepteert grote uploads (>1,5 MB) — de
+        # loginpagina-limiet geldt alleen voor inline embedden.
+        groot = 'data:image/png;base64,' + base64.b64encode(b'\x89PNG' + b'x' * 2_000_000).decode()
+        assert req(app, 'POST', '/api/data/app_logo', body=groot)[0] == 200
+        try:
+            with urllib.request.urlopen(app + '/api/app_icoon') as r:
+                assert r.status == 200
+                assert len(r.read()) == 2_000_004
+        finally:
+            req(app, 'POST', '/api/data/app_logo', body=b'null')
+
+    def test_head_op_icoon_endpoint(self, app):
+        assert req(app, 'POST', '/api/data/app_logo', body=self.PNG)[0] == 200
+        try:
+            host, poort = app.replace('http://', '').split(':')
+            conn = http.client.HTTPConnection(host, int(poort), timeout=10)
+            conn.request('HEAD', '/api/app_icoon')
+            resp = conn.getresponse()
+            assert resp.status == 200
+            assert resp.getheader('Content-Type') == 'image/png'
+            assert resp.read() == b''  # HEAD: headers zonder body
+            conn.close()
+            # HEAD op andere paden blijft geweigerd
+            conn = http.client.HTTPConnection(host, int(poort), timeout=10)
+            conn.request('HEAD', '/api/health')
+            assert conn.getresponse().status == 405
+            conn.close()
+        finally:
+            req(app, 'POST', '/api/data/app_logo', body=b'null')
+
     def test_pre_auth_op_directe_poort(self, app, app_direct):
         assert req(app, 'POST', '/api/data/app_logo', body=self.PNG)[0] == 200
         try:
