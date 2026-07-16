@@ -1553,8 +1553,11 @@ def _login_pagina() -> bytes:
 
 _LOGIN_PAGE = """<!doctype html>
 <html lang="nl"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="__ACHTERGROND__">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 __FAVICON__
 <title>__TITEL__ — inloggen</title>
 <style>
