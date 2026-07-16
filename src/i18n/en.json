@@ -2639,5 +2639,17 @@
   "confirm_jaar_afsluiten": "Close financial year {jaar}? The current balance sheet items will be recorded as the closing balance and serve as the opening balance for the next year.",
   "confirm_jaar_opnieuw_afsluiten": "Financial year {jaar} has already been closed. Close again and replace the recorded closing balance?",
   "msg_geen_afsluiting": "No year-end closing for {jaar} yet — close the year to record the opening balance.",
-  "msg_afsluiting_hint": "Close a financial year right after it ends, so the recorded balance reflects year-end."
+  "msg_afsluiting_hint": "Close a financial year right after it ends, so the recorded balance reflects year-end.",
+  "lbl_mutatie_afschrift": "Statement movement",
+  "lbl_som_transacties": "Sum of transactions",
+  "lbl_aansluiting_vorig": "Previous closing balance",
+  "lbl_sluit_aan": "reconciles",
+  "lbl_eerste_import": "first import",
+  "lbl_verschil_kort": "difference {bedrag}",
+  "lbl_gekoppeld_bedrag": "Linked",
+  "lbl_ongekoppeld_kort": "open {bedrag}",
+  "warn_saldo_gat": "The opening balance does not match the last known closing balance — a statement may be missing.",
+  "warn_afschrift_intern": "The sum of transactions does not match the statement's balance movement — the file may be incomplete.",
+  "lbl_match_ambigu": "Multiple candidates",
+  "lbl_match_ambigu_hint": "Multiple invoices with this amount and equal score — link manually."
 }

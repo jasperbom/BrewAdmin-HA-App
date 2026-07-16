@@ -2639,5 +2639,17 @@
   "confirm_jaar_afsluiten": "Boekjaar {jaar} afsluiten? De huidige balansposten worden vastgelegd als eindbalans en dienen als beginbalans voor het volgende boekjaar.",
   "confirm_jaar_opnieuw_afsluiten": "Boekjaar {jaar} is al afgesloten. Opnieuw afsluiten en de vastgelegde eindbalans vervangen?",
   "msg_geen_afsluiting": "Nog geen jaarafsluiting van {jaar} — sluit het boekjaar af om de beginbalans vast te leggen.",
-  "msg_afsluiting_hint": "Sluit een boekjaar af direct na afloop, zodat de vastgelegde balans het jaareinde weerspiegelt."
+  "msg_afsluiting_hint": "Sluit een boekjaar af direct na afloop, zodat de vastgelegde balans het jaareinde weerspiegelt.",
+  "lbl_mutatie_afschrift": "Mutatie afschrift",
+  "lbl_som_transacties": "Som transacties",
+  "lbl_aansluiting_vorig": "Vorig eindsaldo",
+  "lbl_sluit_aan": "sluit aan",
+  "lbl_eerste_import": "eerste import",
+  "lbl_verschil_kort": "verschil {bedrag}",
+  "lbl_gekoppeld_bedrag": "Gekoppeld",
+  "lbl_ongekoppeld_kort": "open {bedrag}",
+  "warn_saldo_gat": "Het beginsaldo sluit niet aan op het laatst bekende eindsaldo — er ontbreekt mogelijk een afschrift.",
+  "warn_afschrift_intern": "De som van de transacties komt niet overeen met de saldomutatie van het afschrift — het bestand is mogelijk incompleet.",
+  "lbl_match_ambigu": "Meerdere kandidaten",
+  "lbl_match_ambigu_hint": "Meerdere facturen met dit bedrag en gelijke score — koppel handmatig."
 }

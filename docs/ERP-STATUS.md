@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.96 · fase 0 en 1 afgerond, fase 2 gestart (2.1 t/m 2.3 klaar)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.97 · fase 0 en 1 afgerond, fase 2 gestart (2.1 t/m 2.4 klaar)
 
 ---
 
@@ -88,8 +88,14 @@
       MT940-import (eindsaldo per IBAN, ouder afschrift overschrijft nooit);
       `jaarafsluitingen`-store + afsluitknop op de balans; EV-verloopkaart
       begin + resultaat (journaal) = berekend EV met aansluitverschil)*
-- [ ] **2.4 Bankreconciliatie versterken** — match op bedrag + tegenrekening +
-      kenmerk; saldo-aansluitcontrole per import
+- [x] **2.4 Bankreconciliatie versterken** — match op bedrag + tegenrekening +
+      kenmerk; saldo-aansluitcontrole per import *(v1.10.97, 2026-07-16 —
+      `scoreMatch`/`besteMatch` in utils/bank.ts: bedrag als toegangseis,
+      factuurnummer-kenmerk +2, tegenpartijnaam +1, gelijkspel → ambigu en
+      niet auto-koppelen; controlebalk op Bank-tab: afschrift intern,
+      aansluiting op vorig eindsaldo (bank_saldi, 2.3) en gekoppeld/open —
+      live bij (ont)koppelen. N.b. facturen dragen geen tegenrekening-IBAN,
+      dus "tegenrekening" is ingevuld als tegenpartijnaam-match)*
 - [ ] **2.5 Debiteuren/crediteuren-ouderdom** in buckets (0-30/31-60/61-90/90+)
 - [ ] **2.6 COGS-optie** — kostprijs per batch gekoppeld aan uitleveringen,
       marge-weergave in W&V
@@ -137,3 +143,4 @@
 | 2026-07-16 | 1.10.94 | 2.1 | Journaal: append-only key + server-guard (curl-getest: weglaten/muteren → 422, aanvullen → 200), boekingen op alle definitief-momenten, storno-flow, W&V + Journaal-rapport uit journaal, eenmalige opbouw; bedragen in centen (voorschot 2.2). Versies 1.10.92/93 waren losse features buiten het plan |
 | 2026-07-16 | 1.10.95 | 2.2 | Centen: `totaliseerRegels`/`totaliseerInkoop` (cent-exact, `*_cent`-velden op alle 12 factuur-aanmaakplekken) + `omzetBtwOpGrondslag` (rubriek 1a/1b en te-betalen op grondslag per tarief). Unit-getest via esbuild-bundle (drift-case 3×€1,03: €0,65 i.p.v. €0,66) en runtime in de aangiftetab |
 | 2026-07-16 | 1.10.96 | 2.3 | Balans: crediteuren + liquide middelen (`bank_saldi` bij MT940-import) + `jaarafsluitingen` met EV-verloop/aansluitverschil; Playwright-getest (import fixture-afschrift → saldo op balans, afsluitknop → snapshot op disk) |
+| 2026-07-16 | 1.10.97 | 2.4 | Bankmatch-score (kenmerk/naam, ambigu → handmatig) + saldo-aansluitcontrolebalk per import; 7 unit-checks (esbuild) + Playwright-fixture (kenmerk wint van gelijk bedrag, ambigu-badge, controlebalk) |

@@ -2639,5 +2639,17 @@
   "confirm_jaar_afsluiten": "Geschäftsjahr {jaar} abschließen? Die aktuellen Bilanzposten werden als Schlussbilanz festgehalten und dienen als Eröffnungsbilanz des Folgejahres.",
   "confirm_jaar_opnieuw_afsluiten": "Geschäftsjahr {jaar} ist bereits abgeschlossen. Erneut abschließen und die festgehaltene Schlussbilanz ersetzen?",
   "msg_geen_afsluiting": "Noch kein Jahresabschluss für {jaar} — schließen Sie das Jahr ab, um die Eröffnungsbilanz festzulegen.",
-  "msg_afsluiting_hint": "Schließen Sie ein Geschäftsjahr direkt nach Ablauf ab, damit die festgehaltene Bilanz das Jahresende widerspiegelt."
+  "msg_afsluiting_hint": "Schließen Sie ein Geschäftsjahr direkt nach Ablauf ab, damit die festgehaltene Bilanz das Jahresende widerspiegelt.",
+  "lbl_mutatie_afschrift": "Saldoveränderung Auszug",
+  "lbl_som_transacties": "Summe Transaktionen",
+  "lbl_aansluiting_vorig": "Voriger Schlusssaldo",
+  "lbl_sluit_aan": "stimmt überein",
+  "lbl_eerste_import": "erster Import",
+  "lbl_verschil_kort": "Differenz {bedrag}",
+  "lbl_gekoppeld_bedrag": "Verknüpft",
+  "lbl_ongekoppeld_kort": "offen {bedrag}",
+  "warn_saldo_gat": "Der Anfangssaldo schließt nicht an den zuletzt bekannten Schlusssaldo an — möglicherweise fehlt ein Auszug.",
+  "warn_afschrift_intern": "Die Summe der Transaktionen entspricht nicht der Saldoveränderung des Auszugs — die Datei ist möglicherweise unvollständig.",
+  "lbl_match_ambigu": "Mehrere Kandidaten",
+  "lbl_match_ambigu_hint": "Mehrere Rechnungen mit diesem Betrag und gleicher Bewertung — manuell verknüpfen."
 }

@@ -9,6 +9,7 @@ import { logAudit } from '../utils/audit'
 import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren, omzetBtwOpGrondslag } from '../utils/btw'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
 import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
+import { besteMatch, saldoControle } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
@@ -154,6 +155,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const bankFileRef = React.useRef<any>(null)
   const [bankAfschrift, setBankAfschrift] = React.useState<any>(null)
   const [bankTransacties, setBankTransacties] = React.useState<any[]>([])
+  // Laatst bekende eindsaldo vóór de huidige import (ERP-plan 2.4): basis
+  // voor de aansluitcontrole "sluit dit afschrift aan op het vorige?".
+  const [vorigEindsaldoBijImport, setVorigEindsaldoBijImport] = React.useState<number | null>(null)
 
   // PSP-uitsplitsing modal state (één credittransactie → meerdere facturen)
   const [pspTxIndex, setPspTxIndex] = React.useState<number|null>(null)
@@ -1191,25 +1195,33 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             herinneringsGematcht: true,
           }
         }
-        // Automatisch koppelen op basis van bedrag (open facturen)
+        // Automatisch koppelen op match-score (ERP-plan 2.4): bedrag is de
+        // toegangseis, kenmerk (factuurnummer) en tegenpartijnaam tellen mee.
+        // Meerdere kandidaten met gelijke score → bewust niet koppelen (ambigu).
         if (tx.type === 'C') {
-          const match = openVerkoop.find((f: any) => Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
-          if (match) {
-            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: match.id}
-            return {...tx, gekoppeldFactuurId:match.id, autoGematcht:true}
+          const verkoopKandidaat = (fs: any[]) => fs.map((f: any) => ({id: f.id, bedrag: f.bruto||0, nummer: f.factuurnummer, naam: f.klant_naam, f}))
+          const open = besteMatch(tx, verkoopKandidaat(openVerkoop))
+          if (open.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: open.kandidaat.id}
+            return {...tx, gekoppeldFactuurId: open.kandidaat.id, autoGematcht: true}
           }
+          if (open.ambigu) return {...tx, matchAmbigu: true}
           // Fallback: zoek in betaalde facturen (retroactieve herkenning)
-          const retro = (verkoopFacturen||[]).find((f: any) => f.status === 'betaald' && Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
-          if (retro) {
-            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: retro.id}
-            return {...tx, gekoppeldFactuurId:retro.id, autoGematcht:true, retroGematcht:true}
+          const retro = besteMatch(tx, verkoopKandidaat((verkoopFacturen||[]).filter((f: any) => f.status === 'betaald')))
+          if (retro.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: retro.kandidaat.id}
+            return {...tx, gekoppeldFactuurId: retro.kandidaat.id, autoGematcht: true, retroGematcht: true}
           }
+          if (retro.ambigu) return {...tx, matchAmbigu: true}
           // Negatieve inkoopfactuur (creditnota): bedrag komt overeen met abs(totaal_bruto)
-          const inkoopCredit = (inkoopFacturen||[]).find((f: any) => f.status !== 'betaald' && (f.totaal_bruto||0) < 0 && Math.abs((f.totaal_bruto||0) + tx.bedrag) <= 0.01)
-          if (inkoopCredit) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: inkoopCredit.id}
-            return {...tx, gekoppeldInkoopId: inkoopCredit.id, autoGematcht: true}
+          const credit = besteMatch(tx, (inkoopFacturen||[])
+            .filter((f: any) => f.status !== 'betaald' && (f.totaal_bruto||0) < 0)
+            .map((f: any) => ({id: f.id, bedrag: Math.abs(f.totaal_bruto||0), nummer: f.factuurnummer, naam: f.leverancier})))
+          if (credit.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: credit.kandidaat.id}
+            return {...tx, gekoppeldInkoopId: credit.kandidaat.id, autoGematcht: true}
           }
+          if (credit.ambigu) return {...tx, matchAmbigu: true}
           // BTW-teruggave: een ingediende aangifte met negatief bedrag wordt
           // door de Belastingdienst uitbetaald en komt dus als CREDIT binnen.
           const teruggaveAangifte = (btwAangiftes||[]).find((a: any) => {
@@ -1230,17 +1242,20 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             return {...tx, pspHerkend: true, pspVoorstelIds: voorstel || undefined}
           }
         } else {
-          const match = openInkoop.find((f: any) => Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
-          if (match) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: match.id}
-            return {...tx, gekoppeldInkoopId:match.id, autoGematcht:true}
+          const inkoopKandidaat = (fs: any[]) => fs.map((f: any) => ({id: f.id, bedrag: f.totaal_bruto||0, nummer: f.factuurnummer, naam: f.leverancier, f}))
+          const open = besteMatch(tx, inkoopKandidaat(openInkoop))
+          if (open.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: open.kandidaat.id}
+            return {...tx, gekoppeldInkoopId: open.kandidaat.id, autoGematcht: true}
           }
+          if (open.ambigu) return {...tx, matchAmbigu: true}
           // Fallback: zoek in betaalde facturen (retroactieve herkenning)
-          const retro = (inkoopFacturen||[]).find((f: any) => f.status === 'betaald' && Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
-          if (retro) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: retro.id}
-            return {...tx, gekoppeldInkoopId:retro.id, autoGematcht:true, retroGematcht:true}
+          const retro = besteMatch(tx, inkoopKandidaat((inkoopFacturen||[]).filter((f: any) => f.status === 'betaald')))
+          if (retro.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: retro.kandidaat.id}
+            return {...tx, gekoppeldInkoopId: retro.kandidaat.id, autoGematcht: true, retroGematcht: true}
           }
+          if (retro.ambigu) return {...tx, matchAmbigu: true}
           // BTW-aangifte match op ingediende periode (±1 EUR tolerantie voor
           // euro-afronding). Alleen aangiftes met een POSITIEF bedrag (te
           // betalen) — een teruggave (negatief) komt als credit binnen en
@@ -1283,6 +1298,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const saldoDatum = afschrift.transacties.reduce(
         (max: string, tx: any) => (tx.datum && tx.datum > max ? tx.datum : max), '') || tod()
       const ibanKey = (afschrift.iban || '').trim() || 'onbekend'
+      // Aansluitcontrole (ERP-plan 2.4): het eindsaldo dat vóór deze import
+      // bekend was, is het referentiepunt voor "sluit dit afschrift aan?".
+      setVorigEindsaldoBijImport((bankSaldi || {})[ibanKey]?.eindsaldo ?? null)
       setBankSaldi((prev: any) => {
         const huidig = (prev || {})[ibanKey]
         if (huidig?.datum && huidig.datum > saldoDatum) return prev || {}
@@ -2524,6 +2542,52 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           </div>
 
+          {/* Saldo-aansluitcontrole per import (ERP-plan 2.4) — rekent live
+              mee met handmatig (ont)koppelen. */}
+          {bankAfschrift && bankTransacties.length > 0 && (() => {
+            const c = saldoControle(bankAfschrift, bankTransacties, vorigEindsaldoBijImport)
+            const internOk = Math.abs(c.verschilIntern) <= 0.005
+            const aansluitOk = c.aansluitVerschil == null || Math.abs(c.aansluitVerschil) <= 0.005
+            return (
+              <div className="mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  <div className="bg-gray-50 rounded-xl p-2">
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_mutatie_afschrift')}</div>
+                    <div className="text-sm font-bold text-gray-800">{fmt(c.mutatie)}</div>
+                    <div className="text-xs text-gray-400">{fmt(c.beginsaldo)} → {fmt(c.eindsaldo)}</div>
+                  </div>
+                  <div className={`rounded-xl p-2 ${internOk ? 'bg-gray-50' : 'bg-orange-50'}`}>
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_som_transacties')}</div>
+                    <div className={`text-sm font-bold ${internOk ? 'text-gray-800' : 'text-orange-600'}`}>{fmt(c.somTransacties)}</div>
+                    <div className={`text-xs font-medium ${internOk ? 'text-green-600' : 'text-orange-600'}`}>
+                      {internOk ? `✓ ${t('lbl_sluit_aan')}` : t('lbl_verschil_kort').replace('{bedrag}', fmt(c.verschilIntern))}
+                    </div>
+                  </div>
+                  <div className={`rounded-xl p-2 ${aansluitOk ? 'bg-gray-50' : 'bg-orange-50'}`}>
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_aansluiting_vorig')}</div>
+                    <div className={`text-sm font-bold ${aansluitOk ? 'text-gray-800' : 'text-orange-600'}`}>
+                      {c.vorigEindsaldo == null ? '—' : fmt(c.vorigEindsaldo)}
+                    </div>
+                    <div className={`text-xs font-medium ${aansluitOk ? 'text-green-600' : 'text-orange-600'}`}>
+                      {c.vorigEindsaldo == null ? t('lbl_eerste_import')
+                        : aansluitOk ? `✓ ${t('lbl_sluit_aan')}`
+                        : t('lbl_verschil_kort').replace('{bedrag}', fmt(c.aansluitVerschil ?? 0))}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-2">
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_gekoppeld_bedrag')}</div>
+                    <div className="text-sm font-bold text-gray-800">{fmt(c.gekoppeldBedrag)}</div>
+                    <div className="text-xs text-gray-400">
+                      {c.aantalGekoppeld}/{c.aantalTransacties} · {t('lbl_ongekoppeld_kort').replace('{bedrag}', fmt(c.ongekoppeldBedrag))}
+                    </div>
+                  </div>
+                </div>
+                {!aansluitOk && <p className="text-xs text-orange-600 mt-1">⚠ {t('warn_saldo_gat')}</p>}
+                {!internOk && <p className="text-xs text-orange-600 mt-1">⚠ {t('warn_afschrift_intern')}</p>}
+              </div>
+            )
+          })()}
+
           {!bankAfschrift ? (
             <div className="text-center py-10 text-gray-400 text-sm">
               <div className="text-3xl mb-2">🏦</div>
@@ -2583,6 +2647,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           </span>}
                           {tx.retroGematcht && <span className="text-xs text-gray-500 mr-2">✓ {t('lbl_retro_gematcht')}</span>}
                           {tx.autoGematcht && !tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
+                          {tx.matchAmbigu && !tx.gekoppeldFactuurId && !tx.gekoppeldInkoopId && <span className="text-xs text-orange-600 mr-2" title={t('lbl_match_ambigu_hint')}>⚠ {t('lbl_match_ambigu')}</span>}
                           {tx.type==='C' ? tx.gekoppeldPspFactuurIds ? (
                             <span className="text-xs text-blue-600 font-medium">
                               ✓ {t('lbl_psp_badge').replace('{n}', String(tx.gekoppeldPspFactuurIds.length))}

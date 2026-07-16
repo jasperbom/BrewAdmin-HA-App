@@ -2639,5 +2639,17 @@
   "confirm_jaar_afsluiten": "Clôturer l'exercice {jaar} ? Les postes actuels du bilan seront enregistrés comme bilan de clôture et serviront de bilan d'ouverture pour l'exercice suivant.",
   "confirm_jaar_opnieuw_afsluiten": "L'exercice {jaar} est déjà clôturé. Clôturer à nouveau et remplacer le bilan de clôture enregistré ?",
   "msg_geen_afsluiting": "Pas encore de clôture pour {jaar} — clôturez l'exercice pour enregistrer le bilan d'ouverture.",
-  "msg_afsluiting_hint": "Clôturez un exercice juste après sa fin, afin que le bilan enregistré reflète la fin d'année."
+  "msg_afsluiting_hint": "Clôturez un exercice juste après sa fin, afin que le bilan enregistré reflète la fin d'année.",
+  "lbl_mutatie_afschrift": "Mouvement du relevé",
+  "lbl_som_transacties": "Somme des transactions",
+  "lbl_aansluiting_vorig": "Solde final précédent",
+  "lbl_sluit_aan": "concorde",
+  "lbl_eerste_import": "première importation",
+  "lbl_verschil_kort": "écart {bedrag}",
+  "lbl_gekoppeld_bedrag": "Rapproché",
+  "lbl_ongekoppeld_kort": "ouvert {bedrag}",
+  "warn_saldo_gat": "Le solde initial ne correspond pas au dernier solde final connu — un relevé manque peut-être.",
+  "warn_afschrift_intern": "La somme des transactions ne correspond pas au mouvement de solde du relevé — le fichier est peut-être incomplet.",
+  "lbl_match_ambigu": "Plusieurs candidats",
+  "lbl_match_ambigu_hint": "Plusieurs factures avec ce montant et un score égal — rapprochez manuellement."
 }

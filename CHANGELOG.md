@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.97] — 2026-07-16
+
+### Toegevoegd — Bankreconciliatie versterkt (ERP-plan 2.4)
+
+- **Match-score i.p.v. eerste-bedrag-match**: automatische koppeling van
+  banktransacties weegt naast het bedrag (toegangseis, ±€0,01) nu ook het
+  kenmerk (factuurnummer in omschrijving/referentie, zwaarst) en de
+  tegenpartijnaam mee (`scoreMatch`/`besteMatch` in `src/utils/bank.ts`).
+  Bij meerdere kandidaten met gelijke score wordt bewust níet gekoppeld:
+  de transactie krijgt een "meerdere kandidaten"-markering en wordt
+  handmatig gekoppeld — twee gelijke bedragen kunnen niet meer stil aan de
+  verkeerde factuur worden gehangen.
+- **Saldo-aansluitcontrole per import**: het Bank-tabblad toont na import een
+  controlebalk met (1) de saldomutatie van het afschrift vs. de som van de
+  transacties (bestand incompleet?), (2) de aansluiting van het beginsaldo op
+  het laatst bekende eindsaldo uit `bank_saldi` (ontbreekt er een afschrift?)
+  en (3) het gekoppelde vs. ongekoppelde bedrag — dit rekent live mee met
+  handmatig (ont)koppelen.
+
+---
+
 ## [1.10.96] — 2026-07-16
 
 ### Toegevoegd — Balans compleet (ERP-plan 2.3)
