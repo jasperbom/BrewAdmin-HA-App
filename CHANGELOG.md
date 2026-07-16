@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.98] — 2026-07-16
+
+### Toegevoegd — Ouderdomsanalyse debiteuren/crediteuren (ERP-plan 2.5)
+
+- Nieuw rapport "Ouderdom" (Boekhouding → Rapporten): openstaande verkoop-
+  en inkoopfacturen per relatie in buckets 0-30 / 31-60 / 61-90 / > 90 dagen
+  (sinds factuurdatum), met totalenregel en CSV-export. Creditnota's tellen
+  negatief mee zodat de totalen exact aansluiten op de balansposten
+  debiteuren/crediteuren. Buckets 61-90 en > 90 kleuren oranje/rood.
+- Pure functie `ouderdomsAnalyse` in `utils/calculations.ts` (cent-exact,
+  relatie-groepering hoofdletterongevoelig) — direct unit-testbaar.
+
+---
+
 ## [1.10.97] — 2026-07-16
 
 ### Toegevoegd — Bankreconciliatie versterkt (ERP-plan 2.4)

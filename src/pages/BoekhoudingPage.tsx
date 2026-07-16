@@ -4,7 +4,7 @@ import { tod, ymd, r2, r3, fmtD } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
-import { berekenWinstVerlies } from '../utils/calculations'
+import { berekenWinstVerlies, ouderdomsAnalyse } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren, omzetBtwOpGrondslag } from '../utils/btw'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
@@ -3102,10 +3102,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           </div>
           <div className="flex gap-1 border-b border-gray-100 flex-wrap">
-            {(['wv','balans','omzet_cat','transacties','journaal'] as const).map(tab => (
+            {(['wv','balans','ouderdom','omzet_cat','transacties','journaal'] as const).map(tab => (
               <button key={tab} onClick={()=>setRapportTab(tab)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${rapportTab===tab?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':tab==='omzet_cat'?'tab_omzet_cat':tab==='transacties'?'tab_transacties':'tab_journaal')}
+                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':tab==='ouderdom'?'tab_ouderdom':tab==='omzet_cat'?'tab_omzet_cat':tab==='transacties'?'tab_transacties':'tab_journaal')}
               </button>
             ))}
           </div>
@@ -3289,6 +3289,85 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   )}
                 <p className="text-xs text-gray-400 mt-2 italic">{t('msg_afsluiting_hint')}</p>
               </div>
+            </div>
+          </>)
+        })()}
+
+        {/* Ouderdomsanalyse debiteuren/crediteuren (ERP-plan 2.5) */}
+        {rapportTab==='ouderdom' && (()=>{
+          const vandaag = tod()
+          const debiteuren = ouderdomsAnalyse(
+            (verkoopFacturen||[])
+              .filter((f:any)=>f.status!=='betaald')
+              .map((f:any)=>({relatie: klantNaamVoor(f) || t('lbl_onbekend'), bedrag: f.bruto||0, datum: f.datum})),
+            vandaag)
+          const crediteuren = ouderdomsAnalyse(
+            (inkoopFacturen||[])
+              .filter((f:any)=>f.status!=='betaald')
+              .map((f:any)=>({relatie: f.leverancier || t('lbl_onbekend'), bedrag: f.totaal_bruto||0, datum: f.datum})),
+            vandaag)
+          const buckets = ['b0_30','b31_60','b61_90','b90plus'] as const
+          const bucketLabels = [t('lbl_b0_30'), t('lbl_b31_60'), t('lbl_b61_90'), t('lbl_b90plus')]
+          const exportOuderdomCSV = () => {
+            const hdr = ['', ...bucketLabels, t('lbl_total')]
+            const rij = (r: any) => [r.relatie, ...buckets.map(b=>Number(r[b]).toFixed(2).replace('.',',')), Number(r.totaal).toFixed(2).replace('.',',')]
+            const rows: any[] = [[t('lbl_debiteuren')], hdr, ...debiteuren.rijen.map(rij), rij({...debiteuren.totalen, relatie: t('lbl_total')}),
+              [], [t('lbl_crediteuren')], hdr, ...crediteuren.rijen.map(rij), rij({...crediteuren.totalen, relatie: t('lbl_total')})]
+            const csv = rows.map((r: any[])=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
+            const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`ouderdom_${vandaag}.csv`})
+            a.click()
+          }
+          const tabel = (titel: string, analyse: any) => (
+            <div className={card}>
+              <h3 className="font-semibold text-gray-700 mb-3">{titel}</h3>
+              {analyse.rijen.length === 0
+                ? <p className="text-sm text-gray-400 py-4">{t('msg_geen_open_posten')}</p>
+                : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[480px]">
+                      <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_relatie')}</th>
+                        {bucketLabels.map((l,i)=><th key={i} className="py-1.5 pr-3 text-right font-medium">{l}</th>)}
+                        <th className="py-1.5 text-right font-medium">{t('lbl_total')}</th>
+                      </tr></thead>
+                      <tbody>
+                        {analyse.rijen.map((r: any, i: number)=>(
+                          <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-1.5 pr-3 text-gray-700">{r.relatie || t('lbl_onbekend')}</td>
+                            {buckets.map(b=>(
+                              <td key={b} className={`py-1.5 pr-3 text-right ${!r[b] ? 'text-gray-300' : b==='b90plus' ? 'text-red-600 font-medium' : b==='b61_90' ? 'text-orange-600' : 'text-gray-700'}`}>
+                                {r[b] ? fmt(r[b]) : '—'}
+                              </td>
+                            ))}
+                            <td className="py-1.5 text-right font-semibold text-gray-900">{fmt(r.totaal)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                        <td className="py-2 pr-3 text-gray-700">{t('lbl_total')}</td>
+                        {buckets.map(b=>(
+                          <td key={b} className={`py-2 pr-3 text-right ${b==='b90plus' && analyse.totalen[b] ? 'text-red-600' : ''}`}>{fmt(analyse.totalen[b])}</td>
+                        ))}
+                        <td className="py-2 text-right">{fmt(analyse.totalen.totaal)}</td>
+                      </tr></tfoot>
+                    </table>
+                  </div>
+                )}
+            </div>
+          )
+          return (<>
+            <div className={card}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-gray-800">{t('tab_ouderdom')}</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('ouderdom_uitleg')}</p>
+                </div>
+                <button onClick={exportOuderdomCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+              {tabel(t('lbl_debiteuren'), debiteuren)}
+              {tabel(t('lbl_crediteuren'), crediteuren)}
             </div>
           </>)
         })()}

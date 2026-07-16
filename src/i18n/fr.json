@@ -2651,5 +2651,14 @@
   "warn_saldo_gat": "Le solde initial ne correspond pas au dernier solde final connu — un relevé manque peut-être.",
   "warn_afschrift_intern": "La somme des transactions ne correspond pas au mouvement de solde du relevé — le fichier est peut-être incomplet.",
   "lbl_match_ambigu": "Plusieurs candidats",
-  "lbl_match_ambigu_hint": "Plusieurs factures avec ce montant et un score égal — rapprochez manuellement."
+  "lbl_match_ambigu_hint": "Plusieurs factures avec ce montant et un score égal — rapprochez manuellement.",
+  "tab_ouderdom": "Antériorité",
+  "lbl_debiteuren": "Débiteurs",
+  "lbl_crediteuren": "Créanciers",
+  "lbl_b0_30": "0-30 j",
+  "lbl_b31_60": "31-60 j",
+  "lbl_b61_90": "61-90 j",
+  "lbl_b90plus": "> 90 j",
+  "ouderdom_uitleg": "Montants ouverts par relation selon l'ancienneté (jours depuis la date de facture) ; les avoirs comptent en négatif, les totaux concordent avec les postes du bilan.",
+  "msg_geen_open_posten": "Aucun poste ouvert."
 }

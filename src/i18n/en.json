@@ -2651,5 +2651,14 @@
   "warn_saldo_gat": "The opening balance does not match the last known closing balance — a statement may be missing.",
   "warn_afschrift_intern": "The sum of transactions does not match the statement's balance movement — the file may be incomplete.",
   "lbl_match_ambigu": "Multiple candidates",
-  "lbl_match_ambigu_hint": "Multiple invoices with this amount and equal score — link manually."
+  "lbl_match_ambigu_hint": "Multiple invoices with this amount and equal score — link manually.",
+  "tab_ouderdom": "Ageing",
+  "lbl_debiteuren": "Debtors",
+  "lbl_crediteuren": "Creditors",
+  "lbl_b0_30": "0-30 days",
+  "lbl_b31_60": "31-60 days",
+  "lbl_b61_90": "61-90 days",
+  "lbl_b90plus": "> 90 days",
+  "ouderdom_uitleg": "Outstanding amounts per relation by age (days since invoice date); credit notes count negatively, totals reconcile with the balance sheet items.",
+  "msg_geen_open_posten": "No outstanding items."
 }

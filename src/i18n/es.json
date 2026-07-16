@@ -2651,5 +2651,14 @@
   "warn_saldo_gat": "El saldo inicial no cuadra con el último saldo final conocido — puede faltar un extracto.",
   "warn_afschrift_intern": "La suma de las transacciones no coincide con el movimiento de saldo del extracto — el archivo puede estar incompleto.",
   "lbl_match_ambigu": "Varios candidatos",
-  "lbl_match_ambigu_hint": "Varias facturas con este importe y la misma puntuación — concilie manualmente."
+  "lbl_match_ambigu_hint": "Varias facturas con este importe y la misma puntuación — concilie manualmente.",
+  "tab_ouderdom": "Antigüedad",
+  "lbl_debiteuren": "Deudores",
+  "lbl_crediteuren": "Acreedores",
+  "lbl_b0_30": "0-30 días",
+  "lbl_b31_60": "31-60 días",
+  "lbl_b61_90": "61-90 días",
+  "lbl_b90plus": "> 90 días",
+  "ouderdom_uitleg": "Importes pendientes por relación según antigüedad (días desde la fecha de factura); los abonos cuentan en negativo, los totales cuadran con las partidas del balance.",
+  "msg_geen_open_posten": "Sin partidas pendientes."
 }

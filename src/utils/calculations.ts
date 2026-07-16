@@ -380,6 +380,56 @@ export const berekenWinstVerlies = (
   return { omzet, inkoopPerKostensoort, inkoopTotaal, accijnsKosten, brutowinst, nettowinst }
 }
 
+// ── Ouderdomsanalyse debiteuren/crediteuren (ERP-plan 2.5) ──────────────────
+// Openstaande bedragen per relatie in ouderdomsbuckets (dagen sinds
+// factuurdatum): 0-30 / 31-60 / 61-90 / 90+. Creditnota's tellen negatief
+// mee zodat het totaal exact aansluit op de balanspost. Cent-exact gesommeerd.
+
+export interface OuderdomsRij {
+  relatie: string
+  b0_30: number
+  b31_60: number
+  b61_90: number
+  b90plus: number
+  totaal: number
+}
+
+export interface OuderdomsAnalyse {
+  rijen: OuderdomsRij[]
+  totalen: OuderdomsRij
+}
+
+export const ouderdomsAnalyse = (
+  posten: { relatie?: string; bedrag: number; datum?: string }[],
+  vandaag: string,
+): OuderdomsAnalyse => {
+  const toCent = (x: any) => Math.round((Number(x) || 0) * 100)
+  const nieuweRij = (relatie: string) => ({ relatie, b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0, totaal: 0 })
+  const nu = new Date(vandaag).getTime()
+  const per: Record<string, ReturnType<typeof nieuweRij>> = {}
+  const totalen = nieuweRij('')
+  for (const p of posten || []) {
+    const cent = toCent(p?.bedrag)
+    if (!cent) continue
+    const dagen = p?.datum ? Math.floor((nu - new Date(p.datum).getTime()) / 86400000) : 0
+    const veld = dagen <= 30 ? 'b0_30' : dagen <= 60 ? 'b31_60' : dagen <= 90 ? 'b61_90' : 'b90plus'
+    const relatie = (p?.relatie || '').trim()
+    const rij = per[relatie.toLowerCase()] || (per[relatie.toLowerCase()] = nieuweRij(relatie))
+    ;(rij as any)[veld] += cent
+    rij.totaal += cent
+    ;(totalen as any)[veld] += cent
+    totalen.totaal += cent
+  }
+  const naarEuro = (r: any): OuderdomsRij => ({
+    relatie: r.relatie, b0_30: r.b0_30 / 100, b31_60: r.b31_60 / 100,
+    b61_90: r.b61_90 / 100, b90plus: r.b90plus / 100, totaal: r.totaal / 100,
+  })
+  const rijen = Object.values(per)
+    .sort((a, b) => b.totaal - a.totaal || a.relatie.localeCompare(b.relatie, 'nl'))
+    .map(naarEuro)
+  return { rijen, totalen: naarEuro(totalen) }
+}
+
 export interface ProductKostprijsResult {
   kostprijs_per_liter: number
   totaal_kosten: number

@@ -2651,5 +2651,14 @@
   "warn_saldo_gat": "Het beginsaldo sluit niet aan op het laatst bekende eindsaldo — er ontbreekt mogelijk een afschrift.",
   "warn_afschrift_intern": "De som van de transacties komt niet overeen met de saldomutatie van het afschrift — het bestand is mogelijk incompleet.",
   "lbl_match_ambigu": "Meerdere kandidaten",
-  "lbl_match_ambigu_hint": "Meerdere facturen met dit bedrag en gelijke score — koppel handmatig."
+  "lbl_match_ambigu_hint": "Meerdere facturen met dit bedrag en gelijke score — koppel handmatig.",
+  "tab_ouderdom": "Ouderdom",
+  "lbl_debiteuren": "Debiteuren",
+  "lbl_crediteuren": "Crediteuren",
+  "lbl_b0_30": "0-30 dgn",
+  "lbl_b31_60": "31-60 dgn",
+  "lbl_b61_90": "61-90 dgn",
+  "lbl_b90plus": "> 90 dgn",
+  "ouderdom_uitleg": "Openstaande bedragen per relatie naar ouderdom (dagen sinds factuurdatum); creditnota's tellen negatief mee, de totalen sluiten aan op de balansposten.",
+  "msg_geen_open_posten": "Geen openstaande posten."
 }

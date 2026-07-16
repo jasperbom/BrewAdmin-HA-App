@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.97 · fase 0 en 1 afgerond, fase 2 gestart (2.1 t/m 2.4 klaar)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.98 · fase 0 en 1 afgerond, fase 2 bijna klaar (2.1 t/m 2.5)
 
 ---
 
@@ -96,7 +96,10 @@
       aansluiting op vorig eindsaldo (bank_saldi, 2.3) en gekoppeld/open —
       live bij (ont)koppelen. N.b. facturen dragen geen tegenrekening-IBAN,
       dus "tegenrekening" is ingevuld als tegenpartijnaam-match)*
-- [ ] **2.5 Debiteuren/crediteuren-ouderdom** in buckets (0-30/31-60/61-90/90+)
+- [x] **2.5 Debiteuren/crediteuren-ouderdom** in buckets (0-30/31-60/61-90/90+)
+      *(v1.10.98, 2026-07-16 — rapport-subtab "Ouderdom" met per-relatie-
+      buckets op dagen sinds factuurdatum, totalen sluiten aan op de
+      balansposten, CSV-export; pure `ouderdomsAnalyse` in calculations.ts)*
 - [ ] **2.6 COGS-optie** — kostprijs per batch gekoppeld aan uitleveringen,
       marge-weergave in W&V
 
@@ -144,3 +147,4 @@
 | 2026-07-16 | 1.10.95 | 2.2 | Centen: `totaliseerRegels`/`totaliseerInkoop` (cent-exact, `*_cent`-velden op alle 12 factuur-aanmaakplekken) + `omzetBtwOpGrondslag` (rubriek 1a/1b en te-betalen op grondslag per tarief). Unit-getest via esbuild-bundle (drift-case 3×€1,03: €0,65 i.p.v. €0,66) en runtime in de aangiftetab |
 | 2026-07-16 | 1.10.96 | 2.3 | Balans: crediteuren + liquide middelen (`bank_saldi` bij MT940-import) + `jaarafsluitingen` met EV-verloop/aansluitverschil; Playwright-getest (import fixture-afschrift → saldo op balans, afsluitknop → snapshot op disk) |
 | 2026-07-16 | 1.10.97 | 2.4 | Bankmatch-score (kenmerk/naam, ambigu → handmatig) + saldo-aansluitcontrolebalk per import; 7 unit-checks (esbuild) + Playwright-fixture (kenmerk wint van gelijk bedrag, ambigu-badge, controlebalk) |
+| 2026-07-16 | 1.10.98 | 2.5 | Ouderdomsrapport debiteuren/crediteuren (buckets per relatie, aansluitend op balans, CSV); 7 unit-checks op `ouderdomsAnalyse` (grensgevallen 30/31, creditnota's, case-insensitive groepering) + Playwright |

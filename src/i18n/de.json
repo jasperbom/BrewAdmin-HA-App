@@ -2651,5 +2651,14 @@
   "warn_saldo_gat": "Der Anfangssaldo schließt nicht an den zuletzt bekannten Schlusssaldo an — möglicherweise fehlt ein Auszug.",
   "warn_afschrift_intern": "Die Summe der Transaktionen entspricht nicht der Saldoveränderung des Auszugs — die Datei ist möglicherweise unvollständig.",
   "lbl_match_ambigu": "Mehrere Kandidaten",
-  "lbl_match_ambigu_hint": "Mehrere Rechnungen mit diesem Betrag und gleicher Bewertung — manuell verknüpfen."
+  "lbl_match_ambigu_hint": "Mehrere Rechnungen mit diesem Betrag und gleicher Bewertung — manuell verknüpfen.",
+  "tab_ouderdom": "Fälligkeit",
+  "lbl_debiteuren": "Debitoren",
+  "lbl_crediteuren": "Kreditoren",
+  "lbl_b0_30": "0-30 Tage",
+  "lbl_b31_60": "31-60 Tage",
+  "lbl_b61_90": "61-90 Tage",
+  "lbl_b90plus": "> 90 Tage",
+  "ouderdom_uitleg": "Offene Beträge je Geschäftspartner nach Alter (Tage seit Rechnungsdatum); Gutschriften zählen negativ, die Summen stimmen mit den Bilanzposten überein.",
+  "msg_geen_open_posten": "Keine offenen Posten."
 }
