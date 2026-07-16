@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.22] — 2026-07-16
+
+### Opgelost — Safari-cache blokkeerde het home-screen-icoon
+
+- Safari cachet home-screen-iconen per URL hardnekkig, inclusief eerdere
+  mislukte pogingen van vóór de icoon-feature. De app geeft de
+  `apple-touch-icon`-link nu een versie-pad (`api/app_icoon/v…`) zodra
+  logo en gegenereerd icoon bekend zijn — een nieuwe URL dwingt een verse
+  ophaling af bij "Zet op beginscherm". De server matcht het pad op
+  prefix, dus alle versie-URL's komen bij hetzelfde endpoint uit.
+- pytest: versie-pad-routetest — 75 totaal.
+
+---
+
+## [1.11.21] — 2026-07-16
+
+### Opgelost — Laatste iOS-icoon-randgevallen
+
+- Grote logo-uploads (>1,5 MB, bv. een fors PNG-bestand) werden door het
+  icoon-endpoint geweigerd als het gegenereerde icoon er (nog) niet was —
+  de ruwe-logo-fallback accepteert nu tot 8 MB (de strakke limiet geldt
+  alleen voor inline embedden op de loginpagina).
+- `HEAD`-requests op `api/app_icoon` gaven een 501; sommige
+  icoon-fetchers checken eerst met HEAD. Nu correct beantwoord (headers
+  zonder body).
+- De loginpagina stuurt nu ook de `apple-touch-icon`-link mee, zodat
+  "Zet op beginscherm" vanaf de loginpagina eveneens het juiste icoon
+  krijgt.
+- pytest: 2 nieuwe tests (grote-logo-fallback, HEAD-gedrag) — 74 totaal.
+
+---
+
 ## [1.11.20] — 2026-07-16
 
 ### Opgelost — iOS-icoon pakte het logo nog steeds niet

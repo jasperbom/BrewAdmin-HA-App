@@ -1263,6 +1263,19 @@ function App() {
     return () => { actief = false; };
   }, [logo, logoIcoon]);
 
+  // Safari cachet home-screen-iconen per URL hardnekkig — óók mislukte
+  // pogingen van vóór deze feature. Geef de apple-touch-icon-link daarom een
+  // versie-pad zodra logo/icoon bekend zijn: een nieuwe URL dwingt een verse
+  // ophaling af. (De server matcht het pad op prefix, dus /api/app_icoon/v…
+  // komt bij hetzelfde endpoint uit.)
+  React.useEffect(() => {
+    const link = document.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null;
+    if (!link) return;
+    if (!logo) { link.href = 'api/app_icoon'; return; }
+    const versie = `v${String(logo).length}${logoIcoon && logoIcoon.icoon ? 'g' : 'r'}`;
+    link.href = `api/app_icoon/${versie}`;
+  }, [logo, logoIcoon]);
+
   // Browsertab-icoon (favicon) volgt het ingestelde logo. Het
   // startscherm-icoon (apple-touch-icon) staat als statische link in
   // index.html naar api/app_icoon — iOS accepteert géén data-URL daarvoor,
