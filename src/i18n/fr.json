@@ -2609,5 +2609,18 @@
   "err_rebrand_zelfde_product": "Choisissez un produit différent du produit actuel.",
   "ph_rebrand_opmerking": "Raison du rebranding (optionnel)...",
   "log_type_rebrand": "Rebranding",
-  "log_rebrand_omschrijving": "Rebranding : {van} → {naar}"
+  "log_rebrand_omschrijving": "Rebranding : {van} → {naar}",
+  "tab_journaal": "Journal",
+  "journaal_leeg": "Aucune écriture de journal sur cette période",
+  "journaal_uitleg": "Écritures immuables, enregistrées lorsque les factures et déclarations deviennent définitives. Les corrections sont des contre-passations (extourne).",
+  "wv_bron_journaal": "Basé sur le journal (écritures immuables) ; accises issues des sorties figées.",
+  "lbl_accijns_aangifte": "Déclaration d'accises",
+  "lbl_btw_aangifte": "Déclaration de TVA",
+  "jr_verkoop": "Ventes",
+  "jr_inkoop": "Achats",
+  "jr_accijns": "Accises",
+  "jr_btw": "TVA",
+  "jr_memoriaal": "OD",
+  "jr_storno": "Extourne",
+  "jr_migratie": "Reprise"
 }

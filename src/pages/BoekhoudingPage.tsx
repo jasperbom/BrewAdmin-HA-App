@@ -7,6 +7,7 @@ import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren } from '../utils/btw'
+import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
@@ -109,7 +110,7 @@ function zoekPspCombinatie(bedrag: number, facturen: any[]): number[] | null {
   return best
 }
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -477,17 +478,32 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     [btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden]
   )
 
+  // W&V op journaalbasis (ERP-plan 2.1): het rapport leest uit de
+  // onveranderlijke journaalregels. Fallback op de live berekening zolang het
+  // journaal nog leeg is (verse installatie vóór de eenmalige opbouw).
+  const berekenWv = (van: string, tot: string) => (journaal || []).length
+    ? berekenWinstVerliesUitJournaal(journaal || [], acc || [], van, tot)
+    : berekenWinstVerlies(verkoopFacturen || [], inkoopFacturen || [], acc || [], van, tot)
+
   const markeerAangifteIngediend = (periodeKey: string, bedrag: number) => {
     const today = tod();
     setBtwAangiftes((prev: any[]) => {
       const zonder = (prev||[]).filter((a: any) => a.periodeKey !== periodeKey);
       return [...zonder, {id: newId(zonder), periodeKey, ingediend_datum: today, bedrag: Math.round(bedrag)}];
     });
+    // Journaal (ERP-plan 2.1): het ingediende aangiftebedrag vastleggen als
+    // onveranderlijke boeking (na storno van een eventuele eerdere indiening
+    // van dezelfde periode).
+    setJournaal((prev: any[]) => voegBoekingToe(
+      voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'btw_aangifte', periodeKey)),
+      btwAangifteBoeking(periodeKey, Math.round(bedrag), `${t('lbl_btw_aangifte')} ${periodeKeyLabel(periodeKey)}`)));
     logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'aangemaakt', omschrijving:`Aangifte ${periodeKey} ingediend (€ ${Math.round(bedrag)})`});
   };
 
   const ontkoppelAangifteIngediend = (periodeKey: string) => {
     setBtwAangiftes((prev: any[]) => (prev||[]).filter((a: any) => a.periodeKey !== periodeKey));
+    // Journaal (ERP-plan 2.1): terugzetten = tegenboeking van de aangifte.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'btw_aangifte', periodeKey)));
     logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'verwijderd', omschrijving:`Aangifte ${periodeKey} teruggezet naar openstaand`});
   };
 
@@ -571,7 +587,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     files.push({name:'csv/transactieoverzicht.csv', data: enc.encode('\uFEFF' + [txHdr,...txRows].map(csvRow).join('\n'))})
 
     // 4. Winst & Verlies CSV
-    const wv = berekenWinstVerlies(verkoopFacturen||[], inkoopFacturen||[], acc||[], rapportVan, rapportTot)
+    const wv = berekenWv(rapportVan, rapportTot)
     const wvData = [
       [t('lbl_omzet'), wv.omzet.toFixed(2)],
       [t('lbl_inkoopkosten'), (-wv.inkoopTotaal).toFixed(2)],
@@ -644,6 +660,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       fetch(`${ADDON_BASE}api/delete_upload/${f.bijlage.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
     }
     setInkoopFacturen((prev: any) => prev.filter((f: any)=>f.id!==id));
+    // Journaal (ERP-plan 2.1): regels verdwijnen nooit — verwijderen van een
+    // (nog muteerbare) factuur wordt een tegenboeking.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', id)));
     if (expandedFactuur===id) setExpandedFactuur(null);
   };
 
@@ -676,6 +695,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       bruto: totaalNetto + totaalBtw,
     }
     setVerkoopFacturen((prev: any) => [...(prev||[]), nieuw])
+    // Journaal (ERP-plan 2.1): losse verkoopfactuur is direct definitief → boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(nieuw)))
     logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`${nieuw.klant_naam||''} — ${nieuw.factuurnummer||''}`});
     setShowLosseFactuur(false)
     setLosseFactuurForm(emptyLosseFactuur())
@@ -773,7 +794,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     const nieuwFactuurId = newId(inkoopFacturen||[]);
     const factuurDatum = factuurForm.datum || ymd(now)
     const rollover = getRolloverInfo(factuurDatum)
-    setInkoopFacturen((prev: any) => [...prev, {
+    const nieuweFactuur = {
       id: nieuwFactuurId,
       datum: factuurDatum,
       factuurnummer: factuurForm.factuur || '',
@@ -784,7 +805,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       totaal_bruto,
       bijlage,
       ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
-    }]);
+    };
+    setInkoopFacturen((prev: any) => [...prev, nieuweFactuur]);
+    // Journaal (ERP-plan 2.1): inkoopfactuur boeken bij vastleggen.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)));
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuwFactuurId, actie:'aangemaakt', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
     setShowVrijeFactuur(false);
   };
@@ -844,20 +868,24 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       // Datum valt in een open periode → geen rollover meer nodig; veld droppen.
       nieuweBtwPeriode = undefined
     }
-    setInkoopFacturen((prev: any) => prev.map((f: any) => {
-      if (f.id !== (editingFactuur as any).id) return f
-      const {btw_periode: _oud, ...rest} = f
-      return {
-        ...rest,
-        datum: nieuweDatum,
-        factuurnummer: factuurForm.factuur ?? f.factuurnummer,
-        leverancier: factuurForm.leverancier || f.leverancier,
-        regels,
-        totaal_netto, totaal_btw, totaal_bruto,
-        bijlage: bijlage || f.bijlage,
-        ...(nieuweBtwPeriode ? {btw_periode: nieuweBtwPeriode} : {}),
-      }
-    }));
+    const huidigeFactuur = (inkoopFacturen||[]).find((f: any) => f.id === (editingFactuur as any).id) || (editingFactuur as any)
+    const {btw_periode: _oud, ...rest} = huidigeFactuur
+    const bijgewerkteFactuur = {
+      ...rest,
+      datum: nieuweDatum,
+      factuurnummer: factuurForm.factuur ?? huidigeFactuur.factuurnummer,
+      leverancier: factuurForm.leverancier || huidigeFactuur.leverancier,
+      regels,
+      totaal_netto, totaal_btw, totaal_bruto,
+      bijlage: bijlage || huidigeFactuur.bijlage,
+      ...(nieuweBtwPeriode ? {btw_periode: nieuweBtwPeriode} : {}),
+    }
+    setInkoopFacturen((prev: any) => prev.map((f: any) => f.id === (editingFactuur as any).id ? bijgewerkteFactuur : f));
+    // Journaal (ERP-plan 2.1): wijzigen van een al geboekte factuur = storno
+    // van de oude regels + herboeking met de nieuwe cijfers (append-only).
+    setJournaal((prev: any[]) => voegBoekingToe(
+      voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', (editingFactuur as any).id)),
+      inkoopFactuurBoeking(bijgewerkteFactuur, btwPeriodeType)))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:(editingFactuur as any).id, actie:'gewijzigd', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${nieuweBtwPeriode ? ` (BTW → ${nieuweBtwPeriode})` : ''}`});
     setEditingFactuur(null);
   };
@@ -1357,6 +1385,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       }
       kostenFactuurId = kostenFactuur.id
       setInkoopFacturen((prev: any[]) => [...(prev||[]), kostenFactuur])
+      // Journaal (ERP-plan 2.1): automatische PSP-kostenpost boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(kostenFactuur, btwPeriodeType)))
       logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:kostenFactuur.id, actie:'aangemaakt', omschrijving:`PSP-kosten — ${kostenFactuur.leverancier} (${fmt(kosten)})`})
     }
     setBankKoppelingen((k: any) => ({...k, [key]: {soort: 'psp', factuurIds: [...pspSelectie], kostenFactuurId, gemarkeerdBetaald}}))
@@ -1376,6 +1406,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       // Automatisch aangemaakte kostenpost weer verwijderen
       if (opgeslagen.kostenFactuurId) {
         setInkoopFacturen((prev: any[]) => (prev||[]).filter((f: any) => f.id !== opgeslagen.kostenFactuurId))
+        // Journaal (ERP-plan 2.1): verwijderen = tegenboeking.
+        setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', opgeslagen.kostenFactuurId)))
       }
       // Facturen die door deze koppeling betaald zijn gemarkeerd terugzetten
       const terug = opgeslagen.gemarkeerdBetaald || []
@@ -1534,6 +1566,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         status: 'betaald',
       }
       setInkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
+      // Journaal (ERP-plan 2.1): bankboeking (debet) als inkoop boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuw, btwPeriodeType)))
       logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boeking debet — ${nieuw.leverancier}`});
       koppelBankTransactie(txIdx, nieuw.id, 'inkoop')
     } else {
@@ -1551,6 +1585,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         definitief: true,
       }
       setVerkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
+      // Journaal (ERP-plan 2.1): bankboeking (credit) als omzet boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(nieuw)))
       logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boeking credit — ${nieuw.klant_naam}`});
       koppelBankTransactie(txIdx, nieuw.id, 'verkoop')
     }
@@ -1590,6 +1626,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
     }
     setInkoopFacturen((prev: any[]) => [...(prev||[]), factuur])
+    // Journaal (ERP-plan 2.1): boekingfactuur (bank) als inkoop boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(factuur, btwPeriodeType)))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuur.id, actie:'aangemaakt', omschrijving:`Boekingfactuur — ${factuur.leverancier}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
     koppelBankTransactie(txIdx, factuur.id, 'inkoop')
     setBoekingTxIndex(null)
@@ -2998,10 +3036,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           </div>
           <div className="flex gap-1 border-b border-gray-100 flex-wrap">
-            {(['wv','balans','omzet_cat','transacties'] as const).map(tab => (
+            {(['wv','balans','omzet_cat','transacties','journaal'] as const).map(tab => (
               <button key={tab} onClick={()=>setRapportTab(tab)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${rapportTab===tab?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':tab==='omzet_cat'?'tab_omzet_cat':'tab_transacties')}
+                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':tab==='omzet_cat'?'tab_omzet_cat':tab==='transacties'?'tab_transacties':'tab_journaal')}
               </button>
             ))}
           </div>
@@ -3009,7 +3047,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
         {/* Winst & Verlies */}
         {rapportTab==='wv' && (()=>{
-          const wv = berekenWinstVerlies(verkoopFacturen||[], inkoopFacturen||[], acc||[], rapportVan, rapportTot)
+          const wv = berekenWv(rapportVan, rapportTot)
           const ksRows = Object.entries(wv.inkoopPerKostensoort)
             .sort(([a],[b]) => a.localeCompare(b,'nl'))
             .map(([ks, val]) => ({
@@ -3031,10 +3069,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           }
           return (
             <div className={card}>
-              <div className="flex items-center justify-between mb-4">
+              <div className={`flex items-center justify-between ${(journaal||[]).length ? 'mb-1' : 'mb-4'}`}>
                 <h3 className="font-semibold text-gray-800">{t('tab_wv')} — {rapportVan} {t('lbl_t_m')} {rapportTot}</h3>
                 <button onClick={exportWvCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
               </div>
+              {(journaal||[]).length > 0 && <div className="text-xs text-gray-400 mb-4">{t('wv_bron_journaal')}</div>}
               <table className="w-full text-sm">
                 <tbody>
                   {rows.map((r,i) => (
@@ -3214,10 +3253,79 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           )
         })()}
+
+        {/* Journaal (ERP-plan 2.1): onveranderlijke boekingen, append-only */}
+        {rapportTab==='journaal' && (()=>{
+          const regels = (journaal||[])
+            .filter((r: any) => r.datum >= rapportVan && r.datum <= rapportTot)
+            .sort((a: any, b: any) => b.datum.localeCompare(a.datum) || (b.id - a.id))
+          const dagboekLabel = (d: string) => t(`jr_${d}`) !== `jr_${d}` ? t(`jr_${d}`) : d
+          const dagboekCls: Record<string,string> = {
+            verkoop:'bg-green-100 text-green-700', inkoop:'bg-blue-100 text-blue-700',
+            accijns:'bg-purple-100 text-purple-700', btw:'bg-orange-100 text-orange-700',
+            memoriaal:'bg-gray-100 text-gray-600',
+          }
+          const totNetto = regels.reduce((s: number, r: any)=>s+(r.netto_cent||0),0)
+          const totBtw = regels.reduce((s: number, r: any)=>s+(r.btw_cent||0),0)
+          const totBruto = regels.reduce((s: number, r: any)=>s+(r.bruto_cent||0),0)
+          const exportJournaalCSV = () => {
+            const hdr = `"${t('lbl_date')}","${t('lbl_dagboek')}","${t('lbl_invoice')}","${t('lbl_relatie')}","${t('lbl_omschrijving')}","${t('lbl_netto')}","${t('lbl_btw')}","${t('lbl_total')}"`
+            const rows = regels.map((r: any)=>`"${r.datum}","${dagboekLabel(r.dagboek)}","${r.nummer||''}","${(r.relatie||'').replace(/"/g,'""')}","${(r.omschrijving||'').replace(/"/g,'""')}","${centNaarEuro(r.netto_cent).toFixed(2).replace('.',',')}","${centNaarEuro(r.btw_cent).toFixed(2).replace('.',',')}","${centNaarEuro(r.bruto_cent).toFixed(2).replace('.',',')}"`)
+            const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+[hdr,...rows].join('\n')],{type:'text/csv;charset=utf-8'})),download:`journaal_${rapportVan}_${rapportTot}.csv`})
+            a.click()
+          }
+          if (!regels.length) return <div className={card+' text-center py-10 text-gray-400 text-sm'}>{t('journaal_leeg')}</div>
+          return (
+            <div className={card}>
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-gray-800">{t('tab_journaal')} — {rapportVan} {t('lbl_t_m')} {rapportTot}</h3>
+                <button onClick={exportJournaalCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
+              </div>
+              <div className="text-xs text-gray-400 mb-4">{t('journaal_uitleg')}</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[700px]">
+                  <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_date')}</th>
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_dagboek')}</th>
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_omschrijving')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_netto')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_btw')}</th>
+                    <th className="py-1.5 text-right font-medium">{t('lbl_total')}</th>
+                  </tr></thead>
+                  <tbody>
+                    {regels.map((r: any)=>(
+                      <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-1.5 pr-3 text-gray-600 whitespace-nowrap">{r.datum}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${dagboekCls[r.dagboek]||'bg-gray-100 text-gray-600'}`}>{dagboekLabel(r.dagboek)}</span>
+                          {r.storno_van != null && <span className="ml-1 text-xs font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">{t('jr_storno')}</span>}
+                          {r.migratie && <span className="ml-1 text-xs font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{t('jr_migratie')}</span>}
+                        </td>
+                        <td className="py-1.5 pr-3 text-gray-700">
+                          {r.omschrijving}
+                          {(r.kostensoort || r.btw_tarief != null) && <span className="text-xs text-gray-400"> · {[r.kostensoort, r.btw_tarief != null ? `${r.btw_tarief}%` : null].filter(Boolean).join(' · ')}</span>}
+                        </td>
+                        <td className={`py-1.5 pr-3 text-right ${r.netto_cent<0?'text-red-600':'text-gray-700'}`}>{fmt(centNaarEuro(r.netto_cent))}</td>
+                        <td className="py-1.5 pr-3 text-right text-blue-600">{fmt(centNaarEuro(r.btw_cent))}</td>
+                        <td className={`py-1.5 text-right font-semibold ${r.bruto_cent<0?'text-red-600':'text-gray-900'}`}>{fmt(centNaarEuro(r.bruto_cent))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                    <td className="py-2 pr-3 text-gray-700" colSpan={3}>{t('lbl_total')}</td>
+                    <td className="py-2 pr-3 text-right">{fmt(centNaarEuro(totNetto))}</td>
+                    <td className="py-2 pr-3 text-right text-blue-600">{fmt(centNaarEuro(totBtw))}</td>
+                    <td className="py-2 text-right">{fmt(centNaarEuro(totBruto))}</td>
+                  </tr></tfoot>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
       </>)}
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
-      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} bankDebets={bankDebetsVoorKoppeling} koppelAccijnsBetaling={koppelAccijnsBetaling} ontkoppelAccijnsBetaling={ontkoppelAccijnsBetaling} accijnsKoppelingInfo={accijnsKoppelingInfo} />}
+      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} bankDebets={bankDebetsVoorKoppeling} koppelAccijnsBetaling={koppelAccijnsBetaling} ontkoppelAccijnsBetaling={ontkoppelAccijnsBetaling} accijnsKoppelingInfo={accijnsKoppelingInfo} setJournaal={setJournaal} />}
 
       {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
       {mainTab==='btw_aangifte' && (()=>{

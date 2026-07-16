@@ -2609,5 +2609,18 @@
   "err_rebrand_zelfde_product": "Elige un producto distinto del actual.",
   "ph_rebrand_opmerking": "Motivo del rebranding (opcional)...",
   "log_type_rebrand": "Rebranding",
-  "log_rebrand_omschrijving": "Rebranding: {van} → {naar}"
+  "log_rebrand_omschrijving": "Rebranding: {van} → {naar}",
+  "tab_journaal": "Diario",
+  "journaal_leeg": "Sin asientos de diario en este periodo",
+  "journaal_uitleg": "Asientos inmutables, registrados al hacer definitivas facturas y declaraciones. Las correcciones son contraasientos (extorno).",
+  "wv_bron_journaal": "Basado en el diario (asientos inmutables); impuestos especiales de las salidas congeladas.",
+  "lbl_accijns_aangifte": "Declaración de impuestos especiales",
+  "lbl_btw_aangifte": "Declaración de IVA",
+  "jr_verkoop": "Ventas",
+  "jr_inkoop": "Compras",
+  "jr_accijns": "II. EE.",
+  "jr_btw": "IVA",
+  "jr_memoriaal": "Diario general",
+  "jr_storno": "Extorno",
+  "jr_migratie": "Carga inicial"
 }

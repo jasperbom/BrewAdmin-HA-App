@@ -14,6 +14,7 @@ import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
+import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -57,6 +58,7 @@ interface BestellingenPageProps {
   btwInst?: any
   btwAangiftes?: any[]
   bankKoppelingen?: Record<string, any>
+  setJournaal?: any
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -87,6 +89,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   mailTemplates={},
   btwTarieven=[0, 9, 21],
   btwInst={}, btwAangiftes=[], bankKoppelingen={},
+  setJournaal=()=>{},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -1061,6 +1064,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
     }
     setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
+    // Journaal (ERP-plan 2.1): orderfactuur is bij uitreiken definitief → boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(verkoopFact)))
     setBestellingen((prev: any[]) => prev.map((b: any) => b.id === selectedOrder.id ? {
       ...b,
       status: 'afgerond',
@@ -1231,11 +1236,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // dezelfde volgorde uit de orderregels opgebouwd (statiegeldregels komen
     // erná), dus factuurregel op positie `regelIdx` hoort bij deze orderregel.
     if (selectedOrder.factuur_id != null && regelIdx >= 0) {
-      setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => {
-        if (f.id !== selectedOrder.factuur_id) return f
-        const regels = (f.regels||[]).map((fr: any, i: number) => i === regelIdx ? {...fr, btw_pct: nieuwBtw} : fr)
-        return herberekenFactuur({...f, regels})
-      }))
+      const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
+      if (fact) {
+        const regels = (fact.regels||[]).map((fr: any, i: number) => i === regelIdx ? {...fr, btw_pct: nieuwBtw} : fr)
+        const nieuweFactuur = herberekenFactuur({...fact, regels})
+        setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => f.id === fact.id ? nieuweFactuur : f))
+        // Journaal (ERP-plan 2.1): correctie op een al geboekte factuur =
+        // storno van de oude regels + herboeking van de gecorrigeerde factuur.
+        setJournaal((prev: any[]) => voegBoekingToe(
+          voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'verkoop_factuur', fact.id)),
+          verkoopFactuurBoeking(nieuweFactuur)))
+      }
     }
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%${selectedOrder.factuur_id != null ? ` (factuur ${selectedOrder.factuur_nummer||selectedOrder.factuur_id} bijgewerkt)` : ''}`})
   }

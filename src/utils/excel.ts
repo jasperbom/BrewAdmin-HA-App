@@ -127,6 +127,7 @@ export const excelExport = (data: any) => {
     addSheet('AuditLog',             data.audit_log)
     addSheet('AccijnsAangiftes',     data.accijns_aangiftes)
     addSheet('BtwAangiftes',         data.btw_aangiftes)
+    addSheet('Journaal',             data.journaal)
     addSheet('Producten',            data.producten)
     addSheet('ProductArtikelen',     data.product_artikelen)
     addSheet('HACCPSchoonmaakTaken', data.haccp_schoonmaak_taken)
@@ -308,6 +309,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?
         audit_log:                    parse('AuditLog'),
         accijns_aangiftes:            parse('AccijnsAangiftes'),
         btw_aangiftes:                parse('BtwAangiftes'),
+        journaal:                     parse('Journaal'),
         producten:                    parse('Producten'),
         product_artikelen:            parse('ProductArtikelen'),
         haccp_schoonmaak_taken:       parse('HACCPSchoonmaakTaken'),

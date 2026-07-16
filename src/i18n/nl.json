@@ -2609,5 +2609,18 @@
   "err_rebrand_zelfde_product": "Kies een ander product dan het huidige product.",
   "ph_rebrand_opmerking": "Reden van de rebrand (optioneel)...",
   "log_type_rebrand": "Rebrand",
-  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}"
+  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}",
+  "tab_journaal": "Journaal",
+  "journaal_leeg": "Nog geen journaalregels in deze periode",
+  "journaal_uitleg": "Onveranderlijke boekingen, vastgelegd bij het definitief maken van facturen en aangiftes. Correcties zijn tegenboekingen (storno).",
+  "wv_bron_journaal": "Op basis van het journaal (onveranderlijke boekingen); accijns uit de bevroren uitslagregels.",
+  "lbl_accijns_aangifte": "Accijnsaangifte",
+  "lbl_btw_aangifte": "BTW-aangifte",
+  "jr_verkoop": "Verkoop",
+  "jr_inkoop": "Inkoop",
+  "jr_accijns": "Accijns",
+  "jr_btw": "BTW",
+  "jr_memoriaal": "Memoriaal",
+  "jr_storno": "Storno",
+  "jr_migratie": "Opbouw"
 }

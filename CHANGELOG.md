@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.94] — 2026-07-16
+
+### Toegevoegd — Licht journaalmodel (ERP-plan 2.1)
+
+- Nieuwe append-only datasleutel `journaal`: onveranderlijke journaalregels
+  in hele centen, geboekt op het moment dat een financieel feit definitief
+  wordt — verkoopfactuur uitgereikt (kassa, order, creditnota, losse factuur,
+  bankboeking), inkoopfactuur vastgelegd (incl. bankboekingen en automatische
+  PSP-kostenpost), accijnsaangifte ingediend en BTW-aangifte ingediend.
+- Correcties zijn altijd tegenboekingen (storno): wijzigen/verwijderen van
+  een nog muteerbare inkoopfactuur, BTW-correctie op een orderfactuur en het
+  terugzetten van een BTW-aangifte boeken de oude regels exact tegen.
+- De server dwingt append-only af: een POST/commit die bestaande
+  journaalregels wijzigt of laat verdwijnen wordt met 422 geweigerd.
+- Winst & Verlies (rapport + CSV + ZIP-export) leest nu uit het journaal;
+  accijnskosten blijven bewust uit de per maand bevroren accijnsrecords komen.
+- Nieuw rapport "Journaal" (Boekhouding → Rapporten) met dagboek-badges,
+  storno-markering en CSV-export.
+- Eenmalige opbouw: bestaande verkoop-/inkoopfacturen en ingediende
+  accijns-/BTW-aangiftes worden bij de eerste start als journaalregels
+  (gemarkeerd `migratie`) ingeboekt, zodat rapporten direct aansluiten.
+- Excel-backup bevat het journaal als eigen sheet; import voegt alleen
+  ontbrekende regels toe (union op id) en respecteert append-only.
+
+---
+
 ## [1.10.93] — 2026-07-15
 
 ### Ontwikkeling — verificatie-skill

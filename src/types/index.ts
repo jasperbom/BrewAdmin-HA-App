@@ -1314,3 +1314,52 @@ export interface WaterDoelprofielEigen {
   so4: number | null
   hco3: number | null
 }
+
+// ── Journaal (ERP-plan 2.1) ─────────────────────────────────────────────────
+// Onveranderlijke journaalregels, weggeschreven op het moment dat een
+// financieel feit definitief wordt: verkoopfactuur uitgereikt, inkoopfactuur
+// geboekt, accijns-/BTW-aangifte ingediend. De server dwingt append-only af
+// (bestaande regels mogen nooit wijzigen of verdwijnen); correcties gaan
+// altijd via een tegenboeking (storno). Rapporten lezen uit het journaal
+// i.p.v. live uit de muteerbare factuurlijsten.
+
+export type JournaalDagboek = 'verkoop' | 'inkoop' | 'accijns' | 'btw' | 'memoriaal'
+
+export type JournaalBron =
+  | 'verkoop_factuur'
+  | 'inkoop_factuur'
+  | 'accijns_aangifte'
+  | 'btw_aangifte'
+
+export interface JournaalRegel {
+  id: number
+  // Alle regels van één boeking (één brondocument, één moment) delen een
+  // boekstuknummer; een storno krijgt een eigen boekstuk.
+  boekstuk: number
+  geboekt_op: string        // ISO-timestamp van vastlegging (nooit wijzigen)
+  datum: string             // documentdatum YYYY-MM-DD (rapportagedatum)
+  dagboek: JournaalDagboek
+  bron: JournaalBron
+  bron_id: number | string  // factuur-id, accijnsmaand ('YYYY-MM') of BTW-periodeKey
+  nummer?: string           // factuurnummer van het brondocument
+  relatie?: string          // klantnaam / leverancier
+  omschrijving: string
+  // Uitsplitsing: één regel per BTW-tarief (verkoop) of per
+  // kostensoort+tarief+btw_soort (inkoop). Aangifteboekingen hebben één regel.
+  btw_tarief?: number
+  btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'
+  kostensoort?: string
+  btw_periode?: string      // effectieve BTW-periodeKey (incl. rollover)
+  // Bedragen in hele centen (integers) — bewust vooruitlopend op ERP-plan 2.2
+  // zodat het journaal nooit een float-migratie nodig heeft. Verkoop positief =
+  // omzet, inkoop positief = kosten; creditnota's en storno's zijn negatief.
+  netto_cent: number
+  btw_cent: number
+  bruto_cent: number
+  // Boekstuknummer van de boeking die deze regels tegenboekt (alleen op de
+  // storno-regels zelf gezet).
+  storno_van?: number
+  // True op regels die door de eenmalige journaal-opbouw uit bestaande
+  // historische data zijn aangemaakt (i.p.v. op het definitief-moment zelf).
+  migratie?: boolean
+}

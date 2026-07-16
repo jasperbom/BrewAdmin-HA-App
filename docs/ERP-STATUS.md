@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.91 · **fase 0 én fase 1 volledig afgerond**
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.94 · fase 0 en 1 afgerond, fase 2 gestart (2.1 klaar)
 
 ---
 
@@ -68,8 +68,14 @@
 
 ## Fase 2 — Financieel professionaliseren
 
-- [ ] **2.1 Licht journaalmodel** — onveranderlijke journaalregels bij
-      definitief maken; rapporten lezen uit journaal
+- [x] **2.1 Licht journaalmodel** — onveranderlijke journaalregels bij
+      definitief maken; rapporten lezen uit journaal *(v1.10.94, 2026-07-16 —
+      `journaal`-key server-side append-only afgedwongen (422); boekingen bij
+      alle 5 verkoopfactuur-plekken, inkoopfactuur-CRUD (wijzig/verwijder =
+      storno), accijns-/BTW-aangifte indienen; W&V leest uit journaal met
+      accijns bewust uit de al per maand bevroren accijnsrecords; nieuw
+      Journaal-rapport; eenmalige opbouw uit bestaande data; bedragen alvast
+      in centen — voorschot op 2.2)*
 - [ ] **2.2 Bedragen in centen** in journaal + factuurtotalen; BTW-afronding
       op grondslag per tarief
 - [ ] **2.3 Balans compleet** — crediteuren, liquide middelen uit MT940-saldi,
@@ -120,3 +126,4 @@
 | 2026-07-15 | 1.10.89 | 1.4 | Containertype-validatie (85 keys) op data-POST en commit; 422 met verwachte vorm; client: reject → herladen + melding, geen retry-loop |
 | 2026-07-15 | 1.10.90 | 1.5 | Append-only server-audit (JSONL per maand, versie-van/naar, commit-id, ingress-user); getest incl. backup-opname en data-API-onbereikbaarheid — **fase 1 compleet** |
 | 2026-07-15 | 1.10.91 | 0.5-fix | Permission denied op /backup/brewadmin verholpen: entrypoint.sh maakt de submap als root aan en chowned naar appuser |
+| 2026-07-16 | 1.10.94 | 2.1 | Journaal: append-only key + server-guard (curl-getest: weglaten/muteren → 422, aanvullen → 200), boekingen op alle definitief-momenten, storno-flow, W&V + Journaal-rapport uit journaal, eenmalige opbouw; bedragen in centen (voorschot 2.2). Versies 1.10.92/93 waren losse features buiten het plan |

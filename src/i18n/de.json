@@ -2609,5 +2609,18 @@
   "err_rebrand_zelfde_product": "Wähle ein anderes Produkt als das aktuelle.",
   "ph_rebrand_opmerking": "Grund des Rebrands (optional)...",
   "log_type_rebrand": "Rebrand",
-  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}"
+  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}",
+  "tab_journaal": "Journal",
+  "journaal_leeg": "Keine Journalbuchungen in diesem Zeitraum",
+  "journaal_uitleg": "Unveränderliche Buchungen, festgehalten beim Festschreiben von Rechnungen und Anmeldungen. Korrekturen erfolgen als Stornobuchungen.",
+  "wv_bron_journaal": "Auf Basis des Journals (unveränderliche Buchungen); Verbrauchsteuer aus den eingefrorenen Auslagerungen.",
+  "lbl_accijns_aangifte": "Verbrauchsteueranmeldung",
+  "lbl_btw_aangifte": "USt-Voranmeldung",
+  "jr_verkoop": "Verkauf",
+  "jr_inkoop": "Einkauf",
+  "jr_accijns": "Verbrauchsteuer",
+  "jr_btw": "USt",
+  "jr_memoriaal": "Memorial",
+  "jr_storno": "Storno",
+  "jr_migratie": "Aufbau"
 }

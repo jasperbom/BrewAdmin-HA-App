@@ -2609,5 +2609,18 @@
   "err_rebrand_zelfde_product": "Choose a product different from the current one.",
   "ph_rebrand_opmerking": "Reason for the rebrand (optional)...",
   "log_type_rebrand": "Rebrand",
-  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}"
+  "log_rebrand_omschrijving": "Rebrand: {van} → {naar}",
+  "tab_journaal": "Journal",
+  "journaal_leeg": "No journal entries in this period",
+  "journaal_uitleg": "Immutable entries, recorded when invoices and returns become final. Corrections are reversal entries.",
+  "wv_bron_journaal": "Based on the journal (immutable entries); excise from the frozen release records.",
+  "lbl_accijns_aangifte": "Excise return",
+  "lbl_btw_aangifte": "VAT return",
+  "jr_verkoop": "Sales",
+  "jr_inkoop": "Purchases",
+  "jr_accijns": "Excise",
+  "jr_btw": "VAT",
+  "jr_memoriaal": "General",
+  "jr_storno": "Reversal",
+  "jr_migratie": "Backfill"
 }

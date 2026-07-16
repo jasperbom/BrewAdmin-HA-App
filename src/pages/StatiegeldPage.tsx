@@ -7,6 +7,7 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
+import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 
 interface Props {
   verpakkingen: any[]
@@ -18,6 +19,7 @@ interface Props {
   bankKoppelingen?: any
   auditLog?: any[]
   setAuditLog?: any
+  setJournaal?: any
 }
 
 type Tab = 'config' | 'snd' | 'fust' | 'mutaties'
@@ -34,7 +36,7 @@ const klantLabel = (f: any) => f?.klant_naam || t('lbl_onbekend')
 const StatiegeldPage: React.FC<Props> = ({
   verpakkingen, setVerpakkingen, verkoopFacturen, setVerkoopFacturen,
   factuurCounter, setFactuurCounter = () => {}, bankKoppelingen = {},
-  auditLog = [], setAuditLog = (() => {})
+  auditLog = [], setAuditLog = (() => {}), setJournaal = () => {}
 }) => {
   const [tab, setTab] = useState<Tab>('config')
   const [aangifteYear, setAangifteYear] = useState(new Date().getFullYear())
@@ -206,6 +208,9 @@ const StatiegeldPage: React.FC<Props> = ({
     }
 
     setVerkoopFacturen((prev: any[]) => [...(prev || []), nieuw])
+    // Journaal (ERP-plan 2.1): creditnota is direct definitief → boeken
+    // (bedragen zijn al negatief).
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(nieuw)))
     logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Creditnota statiegeld`})
     setRetourFor(null)
     setRetourQty({})

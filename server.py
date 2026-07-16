@@ -750,6 +750,7 @@ _KEY_TYPES = {
         'water_doelprofielen', 'hop_addities', 'dry_hops', 'koel_logs',
         'batch_notities', 'kapitaal_boekingen', 'alt_rekeningen',
         'inventarisaties', 'audit_log', 'accijns_aangiftes', 'btw_aangiftes',
+        'journaal',
         'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
         'haccp_schoonmaak_log', 'haccp_ccp_definities', 'haccp_ccp_metingen',
         'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
@@ -787,6 +788,42 @@ def _payload_geldig(key: str, parsed) -> bool:
         return isinstance(parsed, str)
     if verwacht == 'string_or_null':
         return parsed is None or isinstance(parsed, str)
+    return True
+
+
+# ── Append-only keys (ERP-plan 2.1) ──────────────────────────────────────
+# Het journaal is de onveranderlijke financiële vastlegging: bestaande regels
+# mogen nooit gewijzigd of verwijderd worden, alleen aangevuld (correcties
+# gaan via storno-regels). De server dwingt dat af: een POST/commit die een
+# bestaande regel mist of wijzigt wordt met 422 geweigerd. Aanroepen onder
+# _data_lock (leest het huidige bestand).
+
+_APPEND_ONLY = ('journaal',)
+
+
+def _append_only_ok(key: str, parsed) -> bool:
+    """True wanneer de nieuwe payload alle bestaande regels ongewijzigd bevat
+    (vergelijking per id). Alleen relevant voor keys in _APPEND_ONLY."""
+    if key not in _APPEND_ONLY or not isinstance(parsed, list):
+        return True
+    filepath = DATA_DIR / f'{key}.json'
+    if not filepath.exists():
+        return True
+    try:
+        huidig = json.loads(filepath.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return True  # onleesbaar bestand nooit een reden om een write te blokkeren
+    if not isinstance(huidig, list):
+        return True
+    nieuw_per_id = {r.get('id'): r for r in parsed if isinstance(r, dict)}
+    for regel in huidig:
+        if not isinstance(regel, dict):
+            continue
+        nieuw = nieuw_per_id.get(regel.get('id'))
+        if nieuw is None:
+            return False
+        if json.dumps(nieuw, sort_keys=True) != json.dumps(regel, sort_keys=True):
+            return False
     return True
 
 
@@ -1599,6 +1636,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 if expected is not None and expected != vorige:
                     self._json(409, {'error': 'conflict', 'version': vorige})
                     return
+                if not _append_only_ok(key, parsed):
+                    self._json(422, {'error': 'append-only', 'key': key})
+                    return
                 if key in _SECURE_FIELDS:
                     # Sentinel-waarden terugvervangen door de opgeslagen
                     # geheimen (de client kent die bewust niet).
@@ -2314,6 +2354,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             if conflicts:
                 self._json(409, {'error': 'conflict', 'conflicts': conflicts})
                 return
+            for key, value in data.items():
+                if not _append_only_ok(key, value):
+                    self._json(422, {'error': 'append-only', 'key': key})
+                    return
             # Fase 1: alle payloads naar tempbestanden.
             writes = []
             try:

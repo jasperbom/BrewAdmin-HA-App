@@ -348,6 +348,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `water_profielen` | array | Waterprofielen bronwater (gereedschap Waterprofiel): ionen in mg/L uit een gescand waterkwaliteitsrapport of handmatige invoer |
 | `water_doelprofielen` | array | Eigen doelprofielen brouwwater (gereedschap Waterprofiel), naast de ingebouwde stijlprofielen |
 | `kapitaal_boekingen` | array | Kapitaalstortingen / -onttrekkingen |
+| `journaal` | array | Onveranderlijke journaalregels (ERP 2.1): geboekt bij definitief maken van facturen/aangiftes, bedragen in centen, correcties via storno — server-side append-only (422 bij wijzigen/verwijderen van bestaande regels) |
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
 | `accijns_instellingen` | object | Accijnstarieven |
@@ -459,6 +460,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
+- Append-only keys: `_APPEND_ONLY` (o.a. `journaal`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno-regels. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only

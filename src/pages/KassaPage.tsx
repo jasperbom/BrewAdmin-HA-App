@@ -12,6 +12,7 @@ import SearchInput from '../components/ui/SearchInput'
 import { printFactuur } from '../components/PakbonExport'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
+import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 
 interface KassaPageProps {
   bat: any[]
@@ -45,6 +46,7 @@ interface KassaPageProps {
   afboekingen?: any[]
   auditLog?: any[]
   setAuditLog?: any
+  setJournaal?: any
 }
 
 // Eén regel op de kassabon. De prijs komt altijd uit het artikel (normaal of
@@ -86,6 +88,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
   klanten = [], setKlanten = () => {},
   locaties = [], verplaatsingen = [], afboekingen = [],
   auditLog = [], setAuditLog = () => {},
+  setJournaal = () => {},
 }) => {
   const [cart, setCart] = useState<BonRegel[]>([])
   const [selectedKlantId, setSelectedKlantId] = useState<number | null>(null)
@@ -838,6 +841,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
     if (nieuweUitleveringen.length > 0) setUit((prev: any[]) => [...(prev || []), ...nieuweUitleveringen])
     if (nieuweAccijns.length > 0) setAcc((prev: any[]) => [...(prev || []), ...nieuweAccijns])
     setVerkoopFacturen((prev: any[]) => [...(prev || []), factuur])
+    // Journaal (ERP-plan 2.1): kassafactuur is direct definitief → boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(factuur)))
     setLog((prev: any[]) => {
       let logId = newId(prev || [])
       const entries = nieuweUitleveringen.map((u: any) => ({
