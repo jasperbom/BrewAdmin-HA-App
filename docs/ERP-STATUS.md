@@ -12,7 +12,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.5 · **fase 0 t/m 3 volledig afgerond** — alleen fase 4 (structurele fundering, pas bij multi-user/schaal) staat nog open
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.6 · **fase 0 t/m 3 volledig afgerond** — alleen fase 4 (structurele fundering, pas bij multi-user/schaal) staat nog open
 
 ---
 
@@ -195,3 +195,4 @@
 | 2026-07-16 | 1.11.3 | 3.4 | Strict-ratchet op utils/types/i18n (`tsconfig.strict.json`, npm run typecheck, in CI; geverifieerd met opzettelijke-fout-probe), AccijnsPage-props getypt + AccijnsRecord-runtime-velden; CLAUDE.md-conventies en werkwijze-blok geactualiseerd |
 | 2026-07-16 | 1.11.4 | 3.5 | Extracties: makeZip/crc32 → utils/zip.ts, gedeeld getPeriodes → utils/btw.ts (dupliaat uit 2 pagina's weg); +6 tests (73 totaal); boy-scout-regel in CLAUDE.md |
 | 2026-07-16 | 1.11.5 | 3.6 | JSON-serverlogging (stdlib logging, bron-veld per subsysteem) + GET /api/health (threads/backup/uptime) + dashboard-healthregel; pytest 35 totaal; runtime-smoke: health 4/4 threads, JSON-logregels, dashboardregel zichtbaar — **fase 3 compleet** |
+| 2026-07-16 | 1.11.6 | 3.3-fix | pytest-CI-job faalde op PermissionError /data (runner zonder root): DATA_DIR overridebaar via BREWADMIN_DATA_DIR + tests/conftest.py zet een tmp-map vóór de server-import |

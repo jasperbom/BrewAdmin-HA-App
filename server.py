@@ -33,7 +33,10 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
-DATA_DIR = Path('/data')
+# Overridebaar via env voor tests/dev zonder schrijfrechten op /data
+# (bv. GitHub Actions-runners draaien niet als root). In de addon blijft
+# dit gewoon /data.
+DATA_DIR = Path(os.environ.get('BREWADMIN_DATA_DIR', '/data'))
 STATIC_FILE = Path('/app/static/index.html')
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — bescherming tegen DoS via grote requests
 UPLOAD_DIR = DATA_DIR / 'inkoop_facturen'

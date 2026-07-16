@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.6] — 2026-07-16
+
+### Opgelost — pytest-CI-job faalde op runnerrechten (ERP-plan 3.3-fix)
+
+- `server.py` maakt bij import zijn datamappen aan onder `/data`; op
+  GitHub Actions-runners (geen root) gaf dat `PermissionError` tijdens de
+  testcollectie. `DATA_DIR` is nu overridebaar via de omgevingsvariabele
+  `BREWADMIN_DATA_DIR` en `tests/conftest.py` zet die vóór de import naar
+  een tijdelijke map — pytest draait daarmee ook zonder root. In de addon
+  blijft het pad gewoon `/data`.
+
+---
+
 ## [1.11.5] — 2026-07-16
 
 ### Toegevoegd — Gestructureerde serverlogging + /api/health (ERP-plan 3.6)
