@@ -106,6 +106,7 @@ def _laatste_backup_datum():
         return None
 
 API_DATA_PREFIX = '/api/data/'
+BULK_PATH = '/api/bulk'
 HEALTH_PATH = '/api/health'
 WHOAMI_PATH = '/api/whoami'
 HA_GEBRUIKERS_PATH = '/api/ha_gebruikers'
@@ -179,9 +180,14 @@ _CONTENT_TYPES = {
     'heif': 'image/heif',
 }
 
-# Rate limiting: max requests per window per IP
+# Rate limiting: max requests per window per IP. Let op: via HA-ingress
+# delen álle apparaten hetzelfde gateway-IP (172.30.32.2) — de limiet moet
+# dus ruim genoeg zijn voor meerdere gelijktijdige gebruikers. Sinds
+# /api/bulk kost een app-start ~5 requests i.p.v. ~100; 600/min is ruim
+# voor normaal gebruik en nog steeds een rem op echt misbruik. De login op
+# de directe poort heeft zijn eigen, veel strengere limiet.
 _RATE_WINDOW = 60   # seconds
-_RATE_MAX    = 120  # requests per window
+_RATE_MAX    = 600  # requests per window
 _rate_buckets: dict = defaultdict(list)
 
 
@@ -1518,25 +1524,33 @@ def _login_pagina() -> bytes:
     if isinstance(afb, str) and len(afb) <= _LOGIN_AFB_MAX and _DATA_IMG_RE.match(afb):
         body_bg = f'url("{afb}") center/cover no-repeat fixed {achtergrond}'
 
+    logo = _read_json('app_logo')
+    logo_geldig = (isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX
+                   and _DATA_IMG_RE.match(logo))
     logo_html = ''
-    if inst.get('logo_tonen', True):
-        logo = _read_json('app_logo')
-        if isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX and _DATA_IMG_RE.match(logo):
-            logo_html = f'<img src="{logo}" alt="" class="logo">'
+    if inst.get('logo_tonen', True) and logo_geldig:
+        logo_html = f'<img src="{logo}" alt="" class="logo">'
+    # Tab-icoon volgt het app-logo (ongeacht logo_tonen — dat gaat alleen
+    # over het grote logo op het formulier).
+    favicon_html = f'<link rel="icon" href="{logo}">' if logo_geldig else ''
 
     pagina = (_LOGIN_PAGE
               .replace('__TITEL__', titel)
               .replace('__ONDERTITEL__', ondertitel)
               .replace('__KNOP__', knop)
               .replace('__ACCENT__', accent)
+              .replace('__ACHTERGROND__', achtergrond)
               .replace('__BODY_BG__', body_bg)
-              .replace('__LOGO__', logo_html))
+              .replace('__LOGO__', logo_html)
+              .replace('__FAVICON__', favicon_html))
     return pagina.encode('utf-8')
 
 
 _LOGIN_PAGE = """<!doctype html>
 <html lang="nl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="__ACHTERGROND__">
+__FAVICON__
 <title>__TITEL__ — inloggen</title>
 <style>
 body{font-family:system-ui,sans-serif;background:__BODY_BG__;color:#e7e5e4;
@@ -2436,6 +2450,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._handle_health()
             return
 
+        if BULK_PATH in path:
+            self._handle_bulk()
+            return
+
         if WHOAMI_PATH in path:
             gebruiker = self._ingress_user()
             # `sessie: true` = ingelogd via de directe poort (HA-login met
@@ -3124,6 +3142,33 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'ok': True})
         else:
             self._json(502, {'error': 'notify failed'})
+
+    def _handle_bulk(self):
+        """GET /api/bulk — alle data-keys + versies in één antwoord.
+        De app laadt bij het opstarten ~100 keys; door de ingress-keten
+        (core → supervisor → addon) en de gedeelde rate-limit maakte dat de
+        eerste synchronisatie traag. Deze bulk vervangt al die losse GETs
+        door één request. Zelfde regels als de losse GET: secrets
+        gemaskeerd, versies identiek aan de X-Data-Version-headers."""
+        with _data_lock:
+            conn = _db()
+            keys = [r[0] for r in conn.execute('SELECT key FROM versies ORDER BY key')]
+            data: dict = {}
+            versions: dict = {}
+            for key in keys:
+                gelezen = _lees_key_bytes(key)
+                if gelezen is None:
+                    continue
+                raw, versie = gelezen
+                try:
+                    waarde = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if key in _SECURE_FIELDS:
+                    waarde = _mask_secrets(key, waarde)
+                data[key] = waarde
+                versions[key] = versie
+        self._json(200, {'data': data, 'versions': versions})
 
     def _handle_health(self):
         """GET /api/health — status van server, achtergrondthreads en backup

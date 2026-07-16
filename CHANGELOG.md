@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.16] — 2026-07-16
+
+### Verbeterd — Snellere synchronisatie, meekleurende browserbalk, logo als app-icoon
+
+- **App-start ~30× minder requests**: nieuw endpoint `GET /api/bulk`
+  levert alle data-keys + versies in één antwoord; `useStore` laadt daar
+  nu uit (met stille terugval op losse GETs voor oudere servers).
+  Gemeten: van ~100 requests per app-start naar 3. Dit scheelt vooral
+  via HA-ingress (elke request loopt door de core→supervisor→addon-keten)
+  en met meerdere apparaten.
+- Rate-limit verruimd van 120 naar 600 requests/minuut: via ingress delen
+  álle apparaten hetzelfde gateway-IP, waardoor de oude limiet bij
+  meerdere gebruikers/reloads 429's en trage sync veroorzaakte. De
+  strenge login-limiet op de directe poort blijft ongewijzigd.
+- De browser-/statusbalk (mobiel, tablet, PWA) kleurt nu mee met het
+  gekozen thema (`theme-color`-meta, dynamisch bijgewerkt bij
+  themawissel; ook op de loginpagina op basis van de achtergrondkleur).
+- Het **app-icoon volgt nu het ingestelde logo**: browsertab (favicon) en
+  startscherm (apple-touch-icon), ook op de loginpagina van de directe
+  poort. Zonder logo blijft het standaardicoon.
+- pytest: 2 nieuwe tests (bulk = data + versies identiek aan losse GET,
+  secrets gemaskeerd in bulk) — 68 totaal; runtime-verificatie met
+  Playwright (request-telling, theme-color, favicon).
+
+---
+
 ## [1.11.15] — 2026-07-16
 
 ### Toegevoegd — HA-gebruikers ophalen voor het rollenbeheer

@@ -220,6 +220,24 @@ class TestDataApi:
         conn.close()
 
 
+class TestBulk:
+    """GET /api/bulk — alle keys + versies in één antwoord (snelle app-start)."""
+
+    def test_bulk_bevat_data_en_kloppende_versies(self, app):
+        req(app, 'POST', '/api/data/locaties', body=[{'id': 1, 'naam': 'Koelcel'}])
+        status, body, _ = req(app, 'GET', '/api/bulk')
+        assert status == 200
+        assert body['data']['locaties'] == [{'id': 1, 'naam': 'Koelcel'}]
+        # Versie in bulk == X-Data-Version van de losse GET
+        _, _, headers = req(app, 'GET', '/api/data/locaties')
+        assert body['versions']['locaties'] == headers['X-Data-Version']
+
+    def test_bulk_maskeert_secrets(self, app):
+        req(app, 'POST', '/api/data/claude_creds', body={'apiKey': 'sk-ant-geheim'})
+        _, body, _ = req(app, 'GET', '/api/bulk')
+        assert body['data']['claude_creds']['apiKey'] == srv._SECRET_SENTINEL
+
+
 class TestAppendOnlyHttp:
     def test_journaal_is_append_only_via_http(self, app):
         r1 = {'id': 1, 'boekstuk': 1, 'dagboek': 'verkoop', 'netto_cent': 4800}

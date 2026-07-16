@@ -508,7 +508,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 
 ### Security constraints (do not remove)
 
-- Rate limiting: 120 requests/minute per IP
+- Rate limiting: 600 requests/minute per IP (alle ingress-clients delen één gateway-IP; login op de directe poort heeft een eigen strenge limiet)
 - Request body size: 10 MB general, 20 MB for Claude proxy
 - File upload: only `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp` allowed
 - Key validation: `^[a-zA-Z0-9_]+$` — prevents path traversal
