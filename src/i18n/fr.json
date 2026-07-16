@@ -2660,5 +2660,11 @@
   "lbl_b61_90": "61-90 j",
   "lbl_b90plus": "> 90 j",
   "ouderdom_uitleg": "Montants ouverts par relation selon l'ancienneté (jours depuis la date de facture) ; les avoirs comptent en négatif, les totaux concordent avec les postes du bilan.",
-  "msg_geen_open_posten": "Aucun poste ouvert."
+  "msg_geen_open_posten": "Aucun poste ouvert.",
+  "lbl_cogs_titel": "Marge au coût réel",
+  "cogs_uitleg": "Litres livrés sur la période au coût par litre de leur brassin (ingrédients, énergie, emballage et accises). En complément du compte de résultat ci-dessus, où les achats comptent directement en charges. Les livraisons internes sont exclues.",
+  "lbl_cogs": "Coût des produits livrés (COGS)",
+  "lbl_brutomarge_werkelijk": "Marge brute (coût réel)",
+  "msg_geen_uitleveringen_periode": "Aucune livraison sur cette période.",
+  "warn_cogs_onbekend": "{liters} L livrés depuis des brassins sans coût connu — ces litres ne comptent pas dans le COGS."
 }

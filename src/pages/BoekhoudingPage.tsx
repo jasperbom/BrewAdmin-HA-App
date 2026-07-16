@@ -4,7 +4,7 @@ import { tod, ymd, r2, r3, fmtD } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
-import { berekenWinstVerlies, ouderdomsAnalyse } from '../utils/calculations'
+import { berekenWinstVerlies, ouderdomsAnalyse, berekenCogs } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren, omzetBtwOpGrondslag } from '../utils/btw'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
@@ -112,7 +112,7 @@ function zoekPspCombinatie(bedrag: number, facturen: any[]): number[] | null {
   return best
 }
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -3133,7 +3133,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`wv_${rapportVan}_${rapportTot}.csv`})
             a.click()
           }
-          return (
+          // COGS-optie (ERP-plan 2.6): marge op werkelijke kostprijs — de
+          // uitgeleverde liters in de periode tegen de batchkostprijs.
+          const cogs = berekenCogs(uit||[], bat||[], bi||[], lots, av, verpakkingen, onderdelen, acc, rapportVan, rapportTot)
+          const brutomargeWerkelijk = wv.omzet - cogs.cogs
+          const margePct = wv.omzet > 0 ? (brutomargeWerkelijk / wv.omzet) * 100 : null
+          return (<>
             <div className={card}>
               <div className={`flex items-center justify-between ${(journaal||[]).length ? 'mb-1' : 'mb-4'}`}>
                 <h3 className="font-semibold text-gray-800">{t('tab_wv')} — {rapportVan} {t('lbl_t_m')} {rapportTot}</h3>
@@ -3151,7 +3156,42 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 </tbody>
               </table>
             </div>
-          )
+
+            {/* Marge op werkelijke kostprijs (COGS, ERP-plan 2.6) */}
+            <div className={card + ' mt-4'}>
+              <h3 className="font-semibold text-gray-800 mb-1">{t('lbl_cogs_titel')}</h3>
+              <p className="text-xs text-gray-400 mb-4">{t('cogs_uitleg')}</p>
+              {cogs.aantalUitleveringen === 0 ? (
+                <p className="text-sm text-gray-400">{t('msg_geen_uitleveringen_periode')}</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    <tr>
+                      <td className="py-2 text-gray-700">{t('lbl_omzet')}</td>
+                      <td className="py-2 text-right whitespace-nowrap text-green-700 font-semibold">{fmt(wv.omzet)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 text-gray-700">
+                        {t('lbl_cogs')}
+                        <span className="text-xs text-gray-400"> · {cogs.liters.toFixed(1)} L</span>
+                      </td>
+                      <td className="py-2 text-right whitespace-nowrap text-gray-700">{fmt(-cogs.cogs)}</td>
+                    </tr>
+                    <tr className="border-t border-gray-200">
+                      <td className="py-2 font-semibold text-gray-700">
+                        {t('lbl_brutomarge_werkelijk')}
+                        {margePct != null && <span className={`ml-2 text-xs font-semibold px-1.5 py-0.5 rounded ${brutomargeWerkelijk>=0?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{margePct.toFixed(1)}%</span>}
+                      </td>
+                      <td className={`py-2 text-right whitespace-nowrap font-bold ${brutomargeWerkelijk>=0?'text-green-700':'text-red-600'}`}>{fmt(brutomargeWerkelijk)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+              {cogs.litersZonderKostprijs > 0 && (
+                <p className="text-xs text-orange-600 mt-2">⚠ {t('warn_cogs_onbekend').replace('{liters}', cogs.litersZonderKostprijs.toFixed(1))}</p>
+              )}
+            </div>
+          </>)
         })()}
 
         {/* Balans */}

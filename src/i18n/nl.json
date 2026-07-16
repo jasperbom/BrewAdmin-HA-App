@@ -2660,5 +2660,11 @@
   "lbl_b61_90": "61-90 dgn",
   "lbl_b90plus": "> 90 dgn",
   "ouderdom_uitleg": "Openstaande bedragen per relatie naar ouderdom (dagen sinds factuurdatum); creditnota's tellen negatief mee, de totalen sluiten aan op de balansposten.",
-  "msg_geen_open_posten": "Geen openstaande posten."
+  "msg_geen_open_posten": "Geen openstaande posten.",
+  "lbl_cogs_titel": "Marge op werkelijke kostprijs",
+  "cogs_uitleg": "Uitgeleverde liters in de periode tegen de kostprijs per liter van hun batch (grondstoffen, utilities, verpakking en accijns). Naast de W&V hierboven, waar inkoop direct als kosten telt. Interne uitleveringen tellen niet mee.",
+  "lbl_cogs": "Kostprijs geleverde producten (COGS)",
+  "lbl_brutomarge_werkelijk": "Brutomarge (werkelijke kostprijs)",
+  "msg_geen_uitleveringen_periode": "Geen uitleveringen in deze periode.",
+  "warn_cogs_onbekend": "{liters} L geleverd uit batches zonder bekende kostprijs — deze liters tellen niet mee in de COGS."
 }

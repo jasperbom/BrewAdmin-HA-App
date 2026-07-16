@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.99] — 2026-07-16
+
+### Toegevoegd — COGS-optie: marge op werkelijke kostprijs (ERP-plan 2.6)
+
+- De W&V (Boekhouding → Rapporten) toont naast de bestaande opstelling
+  (inkoop direct als kosten) een blok "Marge op werkelijke kostprijs":
+  de uitgeleverde liters in de periode tegen de kostprijs per liter van hun
+  batch (grondstoffen, utilities, verpakking en accijns), met brutomarge en
+  marge-%. Interne uitleveringen tellen niet mee; liters uit batches zonder
+  bekende kostprijs worden apart gemeld i.p.v. stil de marge te flatteren.
+- `berekenBatchKostprijs` uit `berekenProductKostprijs` gelicht (zelfde
+  uitkomst, nu ook per batch bruikbaar) + nieuwe pure functie `berekenCogs`
+  in `utils/calculations.ts`.
+
+---
+
 ## [1.10.98] — 2026-07-16
 
 ### Toegevoegd — Ouderdomsanalyse debiteuren/crediteuren (ERP-plan 2.5)

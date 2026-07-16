@@ -2660,5 +2660,11 @@
   "lbl_b61_90": "61-90 días",
   "lbl_b90plus": "> 90 días",
   "ouderdom_uitleg": "Importes pendientes por relación según antigüedad (días desde la fecha de factura); los abonos cuentan en negativo, los totales cuadran con las partidas del balance.",
-  "msg_geen_open_posten": "Sin partidas pendientes."
+  "msg_geen_open_posten": "Sin partidas pendientes.",
+  "lbl_cogs_titel": "Margen a coste real",
+  "cogs_uitleg": "Litros entregados en el periodo al coste por litro de su lote (ingredientes, suministros, envases e impuestos especiales). Junto a la cuenta de resultados anterior, donde las compras cuentan directamente como gastos. Las entregas internas quedan excluidas.",
+  "lbl_cogs": "Coste de los productos vendidos (COGS)",
+  "lbl_brutomarge_werkelijk": "Margen bruto (coste real)",
+  "msg_geen_uitleveringen_periode": "Sin entregas en este periodo.",
+  "warn_cogs_onbekend": "{liters} L entregados de lotes sin coste conocido — estos litros no se incluyen en el COGS."
 }

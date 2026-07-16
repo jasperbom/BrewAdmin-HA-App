@@ -2660,5 +2660,11 @@
   "lbl_b61_90": "61-90 days",
   "lbl_b90plus": "> 90 days",
   "ouderdom_uitleg": "Outstanding amounts per relation by age (days since invoice date); credit notes count negatively, totals reconcile with the balance sheet items.",
-  "msg_geen_open_posten": "No outstanding items."
+  "msg_geen_open_posten": "No outstanding items.",
+  "lbl_cogs_titel": "Margin at actual cost",
+  "cogs_uitleg": "Litres delivered in the period at their batch's cost per litre (ingredients, utilities, packaging and excise). Alongside the P&L above, where purchases count directly as costs. Internal deliveries are excluded.",
+  "lbl_cogs": "Cost of goods sold (COGS)",
+  "lbl_brutomarge_werkelijk": "Gross margin (actual cost)",
+  "msg_geen_uitleveringen_periode": "No deliveries in this period.",
+  "warn_cogs_onbekend": "{liters} L delivered from batches without a known cost price — these litres are not included in COGS."
 }

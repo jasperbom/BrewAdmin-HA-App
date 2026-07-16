@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.98 · fase 0 en 1 afgerond, fase 2 bijna klaar (2.1 t/m 2.5)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.99 · **fase 0, 1 én 2 volledig afgerond**
 
 ---
 
@@ -100,8 +100,12 @@
       *(v1.10.98, 2026-07-16 — rapport-subtab "Ouderdom" met per-relatie-
       buckets op dagen sinds factuurdatum, totalen sluiten aan op de
       balansposten, CSV-export; pure `ouderdomsAnalyse` in calculations.ts)*
-- [ ] **2.6 COGS-optie** — kostprijs per batch gekoppeld aan uitleveringen,
-      marge-weergave in W&V
+- [x] **2.6 COGS-optie** — kostprijs per batch gekoppeld aan uitleveringen,
+      marge-weergave in W&V *(v1.10.99, 2026-07-16 — `berekenBatchKostprijs`
+      (refactor uit productkostprijs, zelfde uitkomst) + `berekenCogs`:
+      uitgeleverde liters × batchkostprijs/liter; W&V-tab toont marge-blok
+      met brutomarge en %, interne uitleveringen uitgesloten, liters zonder
+      kostprijs apart gemeld — **fase 2 compleet**)*
 
 ## Fase 3 — Kwaliteit & proces
 
@@ -148,3 +152,4 @@
 | 2026-07-16 | 1.10.96 | 2.3 | Balans: crediteuren + liquide middelen (`bank_saldi` bij MT940-import) + `jaarafsluitingen` met EV-verloop/aansluitverschil; Playwright-getest (import fixture-afschrift → saldo op balans, afsluitknop → snapshot op disk) |
 | 2026-07-16 | 1.10.97 | 2.4 | Bankmatch-score (kenmerk/naam, ambigu → handmatig) + saldo-aansluitcontrolebalk per import; 7 unit-checks (esbuild) + Playwright-fixture (kenmerk wint van gelijk bedrag, ambigu-badge, controlebalk) |
 | 2026-07-16 | 1.10.98 | 2.5 | Ouderdomsrapport debiteuren/crediteuren (buckets per relatie, aansluitend op balans, CSV); 7 unit-checks op `ouderdomsAnalyse` (grensgevallen 30/31, creditnota's, case-insensitive groepering) + Playwright |
+| 2026-07-16 | 1.10.99 | 2.6 | COGS: `berekenBatchKostprijs` + `berekenCogs`, marge-blok in W&V; unit-checks (refactor-pariteit productkostprijs, periode/intern/onbekende-kostprijs-filters) + Playwright — **fase 2 compleet** |

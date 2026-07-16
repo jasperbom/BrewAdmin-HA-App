@@ -2660,5 +2660,11 @@
   "lbl_b61_90": "61-90 Tage",
   "lbl_b90plus": "> 90 Tage",
   "ouderdom_uitleg": "Offene Beträge je Geschäftspartner nach Alter (Tage seit Rechnungsdatum); Gutschriften zählen negativ, die Summen stimmen mit den Bilanzposten überein.",
-  "msg_geen_open_posten": "Keine offenen Posten."
+  "msg_geen_open_posten": "Keine offenen Posten.",
+  "lbl_cogs_titel": "Marge zu tatsächlichen Kosten",
+  "cogs_uitleg": "Ausgelieferte Liter im Zeitraum zum Selbstkostenpreis je Liter ihres Suds (Rohstoffe, Energie, Verpackung und Verbrauchsteuer). Ergänzend zur GuV oben, in der Einkäufe direkt als Kosten zählen. Interne Auslieferungen zählen nicht mit.",
+  "lbl_cogs": "Herstellkosten des Umsatzes (COGS)",
+  "lbl_brutomarge_werkelijk": "Bruttomarge (tatsächliche Kosten)",
+  "msg_geen_uitleveringen_periode": "Keine Auslieferungen in diesem Zeitraum.",
+  "warn_cogs_onbekend": "{liters} L aus Suden ohne bekannten Selbstkostenpreis geliefert — diese Liter fehlen in den COGS."
 }
