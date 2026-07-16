@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 Brouwerij Admin - backend server
-Serves the HTML app and stores all data as JSON files in /data/
+Serves the HTML app and stores all data in a SQLite database at
+/data/brewadmin.db (ERP-plan 4.1); legacy /data/<key>.json files are
+migrated into the database on first start.
 
 Supports Home Assistant Ingress: requests arrive with a path prefix like
   /api/hassio_ingress/<TOKEN>/api/data/<key>
@@ -23,6 +25,7 @@ import re
 import shutil
 import smtplib
 import socket
+import sqlite3
 import ssl
 import threading
 import time
@@ -315,11 +318,10 @@ def _valid_wc_path(path: str) -> bool:
 
 def _load_wc_creds() -> dict | None:
     """Read stored WooCommerce credentials; returns dict or None."""
-    creds_file = DATA_DIR / 'woocommerce_creds.json'
-    if not creds_file.exists():
+    creds = _read_json('woocommerce_creds')
+    if not isinstance(creds, dict):
         return None
     try:
-        creds = json.loads(creds_file.read_bytes())
         url    = str(creds.get('storeUrl', '')).strip().rstrip('/')
         key    = str(creds.get('consumerKey', '')).strip()
         secret = str(creds.get('consumerSecret', '')).strip()
@@ -365,11 +367,10 @@ def extract_key(path: str) -> str | None:
 
 def _load_claude_creds() -> str | None:
     """Read stored Claude/Anthropic API key; returns the key string or None."""
-    creds_file = DATA_DIR / 'claude_creds.json'
-    if not creds_file.exists():
+    creds = _read_json('claude_creds')
+    if not isinstance(creds, dict):
         return None
     try:
-        creds = json.loads(creds_file.read_bytes())
         key = str(creds.get('apiKey', '')).strip()
         return key if key.startswith('sk-ant-') else None
     except Exception:
@@ -378,11 +379,10 @@ def _load_claude_creds() -> str | None:
 
 def _load_bf_creds() -> tuple[str, str] | None:
     """Read stored Brewfather credentials; returns (userId, apiKey) or None."""
-    creds_file = DATA_DIR / 'brewfather_creds.json'
-    if not creds_file.exists():
+    creds = _read_json('brewfather_creds')
+    if not isinstance(creds, dict):
         return None
     try:
-        creds = json.loads(creds_file.read_bytes())
         uid = str(creds.get('userId', '')).strip()
         key = str(creds.get('apiKey', '')).strip()
         return (uid, key) if uid and key else None
@@ -397,12 +397,8 @@ def _load_smtp_creds() -> dict | None:
       {host, port, username, password, fromEmail, fromName, security, enabled}
     `security` is een van 'none', 'starttls', 'ssl'.
     """
-    creds_file = DATA_DIR / 'smtp_creds.json'
-    if not creds_file.exists():
-        return None
-    try:
-        c = json.loads(creds_file.read_bytes())
-    except Exception:
+    c = _read_json('smtp_creds')
+    if not isinstance(c, dict):
         return None
     host = str(c.get('host', '')).strip()
     try:
@@ -624,14 +620,33 @@ OFFSITE_BACKUP_DIR = Path('/backup/brewadmin')
 
 
 def _run_backup() -> str:
-    """Copy all /data/*.json files (plus de upload-map met factuurbijlagen)
-    into /data/backups/YYYY-MM-DD/ en schrijf dezelfde snapshot als ZIP naar
-    de off-volume /backup-map. Returns the backup date string."""
+    """Exporteer alle data-keys als JSON-bestanden (zelfde vorm als vóór de
+    SQLite-migratie — leesbaar en restore-baar zonder tooling) plus een
+    consistente kopie van de database zelf naar /data/backups/YYYY-MM-DD/,
+    samen met de upload-map met factuurbijlagen, en schrijf dezelfde snapshot
+    als ZIP naar de off-volume /backup-map. Returns the backup date string."""
     today = datetime.date.today().isoformat()
     dest = BACKUP_DIR / today
     dest.mkdir(parents=True, exist_ok=True)
-    for f in DATA_DIR.glob('*.json'):
-        shutil.copy2(f, dest / f.name)
+    conn = _db()
+    # Onder _data_lock: geen schrijver halverwege de export, zodat de
+    # JSON-bestanden en de db-kopie hetzelfde consistente moment vastleggen.
+    with _data_lock:
+        keys = [r[0] for r in conn.execute('SELECT key FROM versies ORDER BY key')]
+        for key in keys:
+            gelezen = _lees_key_bytes(key)
+            if gelezen is not None:
+                _atomic_write_bytes(dest / f'{key}.json', gelezen[0])
+        # sqlite-backup-API: consistente kopie, ook met een open WAL.
+        kopie = sqlite3.connect(str(dest / DB_NAAM))
+        try:
+            conn.backup(kopie)
+        finally:
+            kopie.close()
+    try:
+        os.chmod(dest / DB_NAAM, 0o600)
+    except OSError:
+        pass
     # Upload-bijlagen (factuur-PDF's/afbeeldingen) horen bij de administratie
     # en vallen onder dezelfde bewaarplicht — meenemen in de backup.
     if UPLOAD_DIR.is_dir():
@@ -731,14 +746,205 @@ def _backup_loop(interval: float = 86400.0) -> None:
 _data_lock = threading.Lock()
 
 
+# ── SQLite-opslaglaag (ERP-plan 4.1) ──────────────────────────────────────
+# Alle app-data leeft in één SQLite-database (stdlib — past binnen de
+# "stdlib only"-constraint) i.p.v. losse JSON-bestanden. De /api/data-API
+# blijft ongewijzigd: GET/POST werken nog steeds met complete JSON-payloads
+# en dezelfde X-Data-Version-headers. Wat de database toevoegt:
+#   - échte transacties: /api/commit is één BEGIN…COMMIT i.p.v. de
+#     twee-fasen tempfile+rename-aanpak van plan 1.1;
+#   - WAL-concurrency: lezers blokkeren nooit op de (enkele) schrijver;
+#   - rij-per-record voor array-keys (tabel `records`) — de fundering voor
+#     delta-sync en deelset-query's (plan 4.3).
+# Bewuste afwijkingen van het plan: één generieke `records`-tabel i.p.v.
+# ~85 losse tabellen (zelfde doel, geen dynamische DDL nodig) en geen
+# SQL-foreign-keys — records blijven generieke JSON-documenten, dus
+# referentiële integriteit blijft app-side (checkIntegriteit, plan 1.3).
+# Bestaande /data/*.json-bestanden worden bij de eerste start automatisch
+# geïmporteerd en als veiligheidskopie verplaatst naar /data/json_voor_sqlite/.
+
+DB_NAAM = 'brewadmin.db'
+JSON_MIGRATIE_DIRNAAM = 'json_voor_sqlite'
+
+_db_local = threading.local()
+_db_init_lock = threading.Lock()
+_db_geinitialiseerd: set[str] = set()
+
+
+def _db_pad() -> Path:
+    return DATA_DIR / DB_NAAM
+
+
+def _chmod_db_bestanden() -> None:
+    """0600 op de database en de WAL/SHM-sidecars — zelfde afscherming als
+    de vroegere losse creds-bestanden (ERP-plan 0.6), nu voor de hele opslag
+    omdat de credentials mee in de database zitten."""
+    basis = _db_pad()
+    for pad in (basis, Path(f'{basis}-wal'), Path(f'{basis}-shm')):
+        if pad.exists():
+            try:
+                os.chmod(pad, 0o600)
+            except OSError:
+                pass
+
+
+def _maak_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS records(
+            key       TEXT    NOT NULL,
+            seq       INTEGER NOT NULL,
+            record_id TEXT,
+            data      TEXT    NOT NULL,
+            PRIMARY KEY(key, seq)
+        );
+        CREATE INDEX IF NOT EXISTS idx_records_key_id ON records(key, record_id);
+        CREATE TABLE IF NOT EXISTS kv(
+            key  TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS versies(
+            key    TEXT PRIMARY KEY,
+            versie TEXT NOT NULL,
+            soort  TEXT NOT NULL
+        );
+    ''')
+    conn.commit()
+
+
+def _json_compact(waarde) -> str:
+    """Compacte, deterministische JSON-serialisatie (zelfde vorm als
+    JSON.stringify in de frontend)."""
+    return json.dumps(waarde, ensure_ascii=False, separators=(',', ':'))
+
+
+def _schrijf_key(conn: sqlite3.Connection, key: str, waarde) -> tuple[str, int]:
+    """Schrijf één key binnen de lopende transactie van `conn`. Arrays worden
+    rij-per-record opgeslagen (tabel `records`), al het andere als één
+    JSON-document (tabel `kv`). Retourneert (versie, payload_bytes).
+    De versie is de hash over exact de bytes die _lees_key_bytes later weer
+    samenstelt, zodat de optimistic-locking-headers blijven kloppen."""
+    payload = _json_compact(waarde).encode('utf-8')
+    versie = hashlib.sha256(payload).hexdigest()[:16]
+    conn.execute('DELETE FROM records WHERE key=?', (key,))
+    conn.execute('DELETE FROM kv WHERE key=?', (key,))
+    if isinstance(waarde, list):
+        rows = []
+        for seq, el in enumerate(waarde):
+            rid = None
+            if isinstance(el, dict) and el.get('id') is not None:
+                rid = str(el['id'])
+            rows.append((key, seq, rid, _json_compact(el)))
+        conn.executemany(
+            'INSERT INTO records(key, seq, record_id, data) VALUES(?,?,?,?)', rows)
+        soort = 'array'
+    else:
+        conn.execute('INSERT INTO kv(key, data) VALUES(?,?)',
+                     (key, payload.decode('utf-8')))
+        soort = 'kv'
+    conn.execute(
+        'INSERT INTO versies(key, versie, soort) VALUES(?,?,?) '
+        'ON CONFLICT(key) DO UPDATE SET versie=excluded.versie, soort=excluded.soort',
+        (key, versie, soort))
+    return versie, len(payload)
+
+
+def _migreer_json_bestanden(conn: sqlite3.Connection) -> None:
+    """Eenmalige migratie: importeer bestaande /data/<key>.json-bestanden in
+    de database en verplaats ze daarna als veiligheidskopie naar
+    json_voor_sqlite/ (buiten de data-API en de reguliere backups om).
+    Idempotent: een key die al in de database staat wordt niet opnieuw
+    geïmporteerd; onleesbare bestanden blijven staan en worden gelogd."""
+    bestanden = [f for f in sorted(DATA_DIR.glob('*.json'))
+                 if f.is_file() and _valid_key(f.stem)]
+    if not bestanden:
+        return
+    doel = DATA_DIR / JSON_MIGRATIE_DIRNAAM
+    geimporteerd = verplaatst = 0
+    for f in bestanden:
+        key = f.stem
+        try:
+            waarde = json.loads(f.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as exc:
+            _log('sqlite', f'migratie: {f.name} onleesbaar, blijft staan: {exc}',
+                 level=logging.ERROR)
+            continue
+        if conn.execute('SELECT 1 FROM versies WHERE key=?', (key,)).fetchone() is None:
+            with conn:
+                _schrijf_key(conn, key, waarde)
+            geimporteerd += 1
+        doel.mkdir(exist_ok=True)
+        bestemming = doel / f.name
+        if bestemming.exists():
+            bestemming = doel / f'{f.stem}.{int(time.time())}.json'
+        shutil.move(str(f), str(bestemming))
+        try:
+            # De veiligheidskopieën kunnen credentials bevatten — zelfde
+            # 0600-afscherming als de database zelf.
+            os.chmod(bestemming, 0o600)
+        except OSError:
+            pass
+        verplaatst += 1
+    _log('sqlite', f'JSON-migratie: {geimporteerd} key(s) geïmporteerd, '
+                   f'{verplaatst} bestand(en) verplaatst naar {doel.name}/')
+
+
+def _db() -> sqlite3.Connection:
+    """Thread-lokale verbinding met de database van de huidige DATA_DIR.
+    De eerste verbinding per database maakt het schema aan en draait de
+    JSON-migratie. Schrijvers serialiseren via _data_lock (zoals voorheen);
+    dankzij WAL wachten lezers daar nooit op."""
+    pad = str(_db_pad())
+    conn = getattr(_db_local, 'conn', None)
+    if conn is not None and getattr(_db_local, 'pad', None) == pad:
+        return conn
+    if conn is not None:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    with _db_init_lock:
+        eerste = pad not in _db_geinitialiseerd
+        conn = sqlite3.connect(pad, timeout=30)
+        conn.execute('PRAGMA journal_mode=WAL')
+        # FULL: elke commit fsynct de WAL — financiële data mag ook bij
+        # stroomuitval geen bevestigde commit verliezen.
+        conn.execute('PRAGMA synchronous=FULL')
+        if eerste:
+            _maak_schema(conn)
+            _migreer_json_bestanden(conn)
+            _chmod_db_bestanden()
+            _db_geinitialiseerd.add(pad)
+    _db_local.conn = conn
+    _db_local.pad = pad
+    return conn
+
+
+def _lees_key_bytes(key: str) -> tuple[bytes, str] | None:
+    """Lees één key als (JSON-bytes, versie), of None wanneer de key niet
+    bestaat. De array-vorm wordt uit de record-rijen samengesteld en is
+    byte-identiek aan wat _schrijf_key hashte — de versie-header klopt dus
+    altijd met de geserveerde inhoud."""
+    conn = _db()
+    rij = conn.execute('SELECT versie, soort FROM versies WHERE key=?', (key,)).fetchone()
+    if rij is None:
+        return None
+    versie, soort = rij
+    if soort == 'array':
+        delen = [r[0] for r in conn.execute(
+            'SELECT data FROM records WHERE key=? ORDER BY seq', (key,))]
+        return ('[' + ','.join(delen) + ']').encode('utf-8'), versie
+    kv = conn.execute('SELECT data FROM kv WHERE key=?', (key,)).fetchone()
+    return (kv[0] if kv else 'null').encode('utf-8'), versie
+
+
 def _read_json(key: str, default=None):
-    """Lees een JSON-databestand uit /data/. Geeft default terug als bestand niet bestaat."""
-    filepath = DATA_DIR / f'{key}.json'
-    if not filepath.exists():
+    """Lees een data-key uit de SQLite-opslag. Geeft default terug als de key niet bestaat."""
+    gelezen = _lees_key_bytes(key)
+    if gelezen is None:
         return default
     try:
-        return json.loads(filepath.read_text(encoding='utf-8'))
-    except (json.JSONDecodeError, OSError):
+        return json.loads(gelezen[0])
+    except json.JSONDecodeError:
         return default
 
 
@@ -854,7 +1060,7 @@ def _payload_geldig(key: str, parsed) -> bool:
 # mogen nooit gewijzigd of verwijderd worden, alleen aangevuld (correcties
 # gaan via storno-regels). De server dwingt dat af: een POST/commit die een
 # bestaande regel mist of wijzigt wordt met 422 geweigerd. Aanroepen onder
-# _data_lock (leest het huidige bestand).
+# _data_lock (leest de huidige inhoud uit de database).
 
 _APPEND_ONLY = ('journaal',)
 
@@ -864,15 +1070,9 @@ def _append_only_ok(key: str, parsed) -> bool:
     (vergelijking per id). Alleen relevant voor keys in _APPEND_ONLY."""
     if key not in _APPEND_ONLY or not isinstance(parsed, list):
         return True
-    filepath = DATA_DIR / f'{key}.json'
-    if not filepath.exists():
-        return True
-    try:
-        huidig = json.loads(filepath.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return True  # onleesbaar bestand nooit een reden om een write te blokkeren
+    huidig = _read_json(key)
     if not isinstance(huidig, list):
-        return True
+        return True  # onbestaande/afwijkende inhoud nooit een reden om een write te blokkeren
     nieuw_per_id = {r.get('id'): r for r in parsed if isinstance(r, dict)}
     for regel in huidig:
         if not isinstance(regel, dict):
@@ -930,7 +1130,9 @@ def _unmask_secrets(key: str, data):
 
 
 def _harden_secure_files() -> None:
-    """Zet bestandsrechten 0600 op bestaande creds-bestanden (eenmalig bij start)."""
+    """Zet bestandsrechten 0600 op de database (bevat o.a. de credentials) en
+    op eventueel nog aanwezige legacy creds-JSON-bestanden (eenmalig bij start)."""
+    _chmod_db_bestanden()
     for key in _SECURE_FIELDS:
         f = DATA_DIR / f'{key}.json'
         if f.exists():
@@ -1003,33 +1205,33 @@ def _volgend_nummer(reeks: str, jaar: int) -> dict:
     return {'jaar': jaar, 'nr': nr, 'nummer': f'{prefix}{nr:04d}'}
 
 
-def _data_version(filepath: Path) -> str:
-    """Versie-hash van een databestand voor optimistic locking (ERP-plan 0.1).
+def _data_version(key: str) -> str:
+    """Versie-hash van een data-key voor optimistic locking (ERP-plan 0.1).
     De client krijgt deze hash bij GET mee (X-Data-Version) en stuurt hem bij
-    POST terug; komt hij niet overeen met de actuele bestandsinhoud, dan heeft
+    POST terug; komt hij niet overeen met de opgeslagen versie, dan heeft
     een andere client/thread tussentijds geschreven en volgt een 409.
-    '0' = bestand bestaat (nog) niet."""
-    if not filepath.exists():
-        return '0'
-    try:
-        return hashlib.sha256(filepath.read_bytes()).hexdigest()[:16]
-    except OSError:
-        return '0'
+    '0' = key bestaat (nog) niet."""
+    conn = _db()
+    rij = conn.execute('SELECT versie FROM versies WHERE key=?', (key,)).fetchone()
+    return rij[0] if rij else '0'
 
 
 def _atomic_write_bytes(filepath: Path, data: bytes) -> None:
     """Schrijf atomair: eerst naar een tempbestand in dezelfde map, dan
-    os.replace. Een crash mid-write kan zo nooit een half/corrupt JSON-bestand
-    achterlaten (relevant voor de 7-jaars AGP-retentie)."""
+    os.replace. Een crash mid-write kan zo nooit een half/corrupt bestand
+    achterlaten (gebruikt voor de JSON-export in de backups)."""
     tmp = filepath.with_name(f'.{filepath.name}.tmp')
     tmp.write_bytes(data)
     os.replace(tmp, filepath)
 
 
-def _write_json(key: str, data) -> None:
-    """Schrijf data als JSON naar /data/ (atomair)."""
-    filepath = DATA_DIR / f'{key}.json'
-    _atomic_write_bytes(filepath, json.dumps(data, ensure_ascii=False).encode('utf-8'))
+def _write_json(key: str, data) -> str:
+    """Schrijf een data-key naar de SQLite-opslag (eigen transactie).
+    Retourneert de nieuwe versie-hash."""
+    conn = _db()
+    with conn:
+        versie, _ = _schrijf_key(conn, key, data)
+    return versie
 
 
 def _ha_fetch_state(entity_id: str) -> float | None:
@@ -1572,13 +1774,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         key = extract_key(path)
         if key is not None:
-            filepath = DATA_DIR / f'{key}.json'
-            if filepath.exists():
-                body = filepath.read_bytes()
-                # Versie-hash altijd over de RUWE bestandsinhoud, ook wanneer
+            gelezen = _lees_key_bytes(key)
+            if gelezen is not None:
+                # Versie altijd die van de RUWE opgeslagen inhoud, ook wanneer
                 # gemaskeerd wordt geserveerd — de POST-conflictcheck vergelijkt
                 # met dezelfde ruwe inhoud.
-                version = hashlib.sha256(body).hexdigest()[:16]
+                body, version = gelezen
                 if key in _SECURE_FIELDS:
                     try:
                         masked = _mask_secrets(key, json.loads(body))
@@ -1684,17 +1885,17 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 self._json(422, {'error': 'invalid payload', 'key': key,
                                  'expected': _KEY_TYPES.get(key)})
                 return
-            filepath = DATA_DIR / f'{key}.json'
             # Onder _data_lock zodat de achtergrondthreads (cold-crash,
-            # auto-metingen) die read-modify-write doen op dezelfde bestanden
-            # geen halve merge overschrijven; atomair tegen corruptie.
+            # auto-metingen) die read-modify-write doen op dezelfde keys
+            # geen halve merge overschrijven.
             # Optimistic locking: stuurt de client een X-Data-Version mee die
-            # niet overeenkomt met de actuele bestandsinhoud, dan heeft een
+            # niet overeenkomt met de opgeslagen versie, dan heeft een
             # andere client tussentijds geschreven → 409, niets overschrijven.
             # Zonder header (oude frontend) blijft het gedrag last-write-wins.
             expected = self.headers.get('X-Data-Version')
             with _data_lock:
-                vorige = _data_version(filepath)
+                conn = _db()
+                vorige = _data_version(key)
                 if expected is not None and expected != vorige:
                     self._json(409, {'error': 'conflict', 'version': vorige})
                     return
@@ -1705,16 +1906,16 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                     # Sentinel-waarden terugvervangen door de opgeslagen
                     # geheimen (de client kent die bewust niet).
                     parsed = _unmask_secrets(key, parsed)
-                    body = json.dumps(parsed, ensure_ascii=False).encode('utf-8')
-                _atomic_write_bytes(filepath, body)
+                try:
+                    with conn:
+                        nieuwe_versie, nbytes = _schrijf_key(conn, key, parsed)
+                except sqlite3.Error:
+                    self._json(500, {'error': 'write failed'})
+                    return
                 if key in _SECURE_FIELDS:
-                    try:
-                        os.chmod(filepath, 0o600)
-                    except OSError:
-                        pass
-            nieuwe_versie = hashlib.sha256(body).hexdigest()[:16]
+                    _chmod_db_bestanden()
             _audit_write('data_post', key, ip=self.client_address[0],
-                         bytes=len(body), versie_van=vorige,
+                         bytes=nbytes, versie_van=vorige,
                          versie_naar=nieuwe_versie, gebruiker=self._ingress_user())
             self._json(200, {'ok': True, 'version': nieuwe_versie})
             return
@@ -2390,9 +2591,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         """POST /api/commit — schrijf meerdere data-keys atomair (ERP-plan 1.1).
         Body: {"data": {key: waarde, ...}, "versions": {key: versie, ...}}.
         Alle meegegeven versies moeten kloppen (optimistic locking), anders
-        409 met de conflicterende keys en niets geschreven. Het schrijven
-        gebeurt eerst volledig naar tempbestanden en daarna pas via renames,
-        zodat een fout halverwege nooit een half-toegepaste commit achterlaat."""
+        409 met de conflicterende keys en niets geschreven. Het schrijven is
+        één SQLite-transactie (ERP-plan 4.1): een fout halverwege rolt
+        volledig terug en laat nooit een half-toegepaste commit achter."""
         body = self._read_body()
         if body is None:
             return
@@ -2420,10 +2621,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                                  'expected': _KEY_TYPES.get(key)})
                 return
         with _data_lock:
+            conn = _db()
             conflicts = {}
             vorige_versies = {}
             for key in data:
-                current = _data_version(DATA_DIR / f'{key}.json')
+                current = _data_version(key)
                 vorige_versies[key] = current
                 expected = versions.get(key)
                 if expected is not None and expected != current:
@@ -2435,42 +2637,27 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 if not _append_only_ok(key, value):
                     self._json(422, {'error': 'append-only', 'key': key})
                     return
-            # Fase 1: alle payloads naar tempbestanden.
-            writes = []
+            # Eén databasetransactie: alles-of-niets. Een sqlite-fout rolt
+            # alle keys terug (verving de twee-fasen tempfile-aanpak).
+            resultaten: dict[str, tuple[str, int]] = {}
             try:
-                for key, value in data.items():
-                    if key in _SECURE_FIELDS:
-                        value = _unmask_secrets(key, value)
-                    payload = json.dumps(value, ensure_ascii=False).encode('utf-8')
-                    filepath = DATA_DIR / f'{key}.json'
-                    tmp = filepath.with_name(f'.{filepath.name}.commit.tmp')
-                    tmp.write_bytes(payload)
-                    writes.append((key, tmp, filepath, payload))
-            except OSError:
-                for _key, tmp, _fp, _pl in writes:
-                    try:
-                        tmp.unlink()
-                    except OSError:
-                        pass
+                with conn:
+                    for key, value in data.items():
+                        if key in _SECURE_FIELDS:
+                            value = _unmask_secrets(key, value)
+                        resultaten[key] = _schrijf_key(conn, key, value)
+            except sqlite3.Error:
                 self._json(500, {'error': 'commit failed'})
                 return
-            # Fase 2: alle renames (elk atomair; het venster tussen renames
-            # is verwaarloosbaar en een crash laat nooit corrupte JSON achter).
-            new_versions = {}
-            for key, tmp, filepath, payload in writes:
-                os.replace(tmp, filepath)
-                if key in _SECURE_FIELDS:
-                    try:
-                        os.chmod(filepath, 0o600)
-                    except OSError:
-                        pass
-                new_versions[key] = hashlib.sha256(payload).hexdigest()[:16]
+            if any(k in _SECURE_FIELDS for k in data):
+                _chmod_db_bestanden()
+            new_versions = {key: versie for key, (versie, _n) in resultaten.items()}
         commit_id = hashlib.sha256(repr(sorted(new_versions.items())).encode()).hexdigest()[:12]
-        for key, tmp, filepath, payload in writes:
+        for key, (versie, nbytes) in resultaten.items():
             _audit_write('commit', key, ip=self.client_address[0],
-                         commit=commit_id, bytes=len(payload),
+                         commit=commit_id, bytes=nbytes,
                          versie_van=vorige_versies.get(key),
-                         versie_naar=new_versions[key],
+                         versie_naar=versie,
                          gebruiker=self._ingress_user())
         self._json(200, {'ok': True, 'versions': new_versions})
 
@@ -2493,12 +2680,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(400, {'error': 'invalid year'})
             return
 
-        facturen_file = DATA_DIR / 'inkoop_facturen.json'
-        try:
-            facturen = json.loads(facturen_file.read_bytes()) if facturen_file.exists() else []
-        except Exception:
-            self._json(500, {'error': 'failed to read facturen'})
-            return
+        facturen = _read_json('inkoop_facturen', [])
+        if not isinstance(facturen, list):
+            facturen = []
 
         buf = io.BytesIO()
         count = 0
@@ -2551,7 +2735,11 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8099))
     _log('server', f'Brouwerij Admin gestart op poort {port}', data_dir=str(DATA_DIR))
 
-    # Start background backup thread (AGP 7-year retention)
+    # SQLite-opslag initialiseren (schema + eenmalige JSON-migratie) vóór de
+    # eerste request en vóór de achtergrondthreads starten (ERP-plan 4.1).
+    _db()
+    _log('server', f'SQLite-opslag gereed ({DB_NAAM}, WAL)')
+
     _harden_secure_files()
 
     # Threadreferenties in _threads zodat /api/health hun status kan melden.

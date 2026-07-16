@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.7] — 2026-07-16
+
+### Gewijzigd — SQLite als opslaglaag (ERP-plan 4.1)
+
+- Alle app-data leeft nu in één SQLite-database (`/data/brewadmin.db`,
+  stdlib `sqlite3`, WAL-mode) i.p.v. losse JSON-bestanden. De
+  `/api/data/<key>`-API en de `X-Data-Version`-headers zijn ongewijzigd —
+  de frontend merkt er niets van.
+- Bestaande `/data/<key>.json`-bestanden worden bij de eerste start
+  automatisch geïmporteerd en als veiligheidskopie (0600) verplaatst naar
+  `/data/json_voor_sqlite/`; onleesbare bestanden blijven staan en worden
+  gelogd. De nummerreeksen en alle instellingen lopen naadloos door.
+- `POST /api/commit` is nu één échte databasetransactie (BEGIN…COMMIT met
+  rollback) i.p.v. de twee-fasen tempfile+rename-aanpak; array-keys worden
+  rij-per-record opgeslagen (tabel `records`) als fundering voor delta-sync
+  (plan 4.3). Bewuste afwijkingen van het plan: één generieke records-tabel
+  i.p.v. ~85 losse tabellen en geen SQL-foreign-keys — referentiële
+  integriteit blijft app-side via `checkIntegriteit` (plan 1.3).
+- Dagelijkse backups exporteren elke key weer als leesbaar `<key>.json`
+  (zelfde vorm als voorheen, restore-baar zonder tooling) plus een
+  consistente kopie van de database zelf (sqlite-backup-API); de
+  database en WAL/SHM-sidecars krijgen 0600 (credentials zitten mee in de
+  database).
+- pytest: 6 nieuwe tests (WAL actief, scalar-keys, versie-header ==
+  hash van geserveerde bytes, lege array blijft bestaan, JSON-migratie
+  incl. maskering en onleesbaar bestand, backup-export) — 41 totaal;
+  runtime-smoke: migratie, 409/422-paden, nextnr vanaf legacy teller,
+  herstart-persistentie.
+
+---
+
 ## [1.11.6] — 2026-07-16
 
 ### Opgelost — pytest-CI-job faalde op runnerrechten (ERP-plan 3.3-fix)

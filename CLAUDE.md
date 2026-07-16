@@ -63,7 +63,13 @@ BrewAdmin-HA-App/
 ### Backend data persistence
 
 - `server.py` — pure Python `BaseHTTPRequestHandler`, no frameworks
-- All app data stored as JSON files under `/data/<key>.json` (Docker volume, persistent)
+- Alle app-data in één SQLite-database `/data/brewadmin.db` (WAL; ERP 4.1) —
+  array-keys rij-per-record in tabel `records`, objecten/scalars in `kv`,
+  versie-hashes in `versies`. De `/api/data/<key>`-API werkt onveranderd met
+  complete JSON-payloads
+- Legacy `/data/<key>.json`-bestanden worden bij de eerste start automatisch
+  gemigreerd (veiligheidskopie in `/data/json_voor_sqlite/`); backups
+  exporteren elke key weer als leesbaar `<key>.json` + een db-kopie
 - External API proxy routes: Brewfather, WooCommerce, Claude AI, HA Supervisor
 
 ---
@@ -121,9 +127,10 @@ ouderdom, COGS en de Excel-backup-round-trip.
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
 optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
-onder parallelle clients), rate-limiting (429), secrets-maskering en de
-server-audit. De suite start de echte handler op een efemere poort met een
-tijdelijke DATA_DIR.
+onder parallelle clients), rate-limiting (429), secrets-maskering, de
+server-audit en de SQLite-opslaglaag (WAL, JSON-migratie, backup-export).
+De suite start de echte handler op een efemere poort met een tijdelijke
+DATA_DIR.
 
 ```bash
 npm test                 # vitest run (frontend-utils, eenmalig)
@@ -341,7 +348,7 @@ Gepland → Aan het brouwen → Aan het gisten → Conditioning → Afgevuld →
 (Planned)   (Brewing)        (Fermenting)     (Conditioning)  (Packaged)  (Closed)
 ```
 
-### Data keys (stored in `/data/<key>.json`)
+### Data keys (opgeslagen in SQLite, `/data/brewadmin.db`)
 
 Key names are alphanumeric + underscore only (enforced by server). All active keys:
 
@@ -474,8 +481,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/data/<key>` | Load JSON data file |
-| POST | `/api/data/<key>` | Save JSON data file |
+| GET | `/api/data/<key>` | Load data key (JSON, uit SQLite) |
+| POST | `/api/data/<key>` | Save data key (JSON, naar SQLite) |
 | GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
@@ -494,6 +501,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Request body size: 10 MB general, 20 MB for Claude proxy
 - File upload: only `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp` allowed
 - Key validation: `^[a-zA-Z0-9_]+$` — prevents path traversal
+- SQLite-opslag (ERP 4.1): `/data/brewadmin.db` in WAL-mode met
+  `synchronous=FULL`; schrijvers serialiseren onder `_data_lock`, de
+  database en WAL/SHM-sidecars staan op 0600 (credentials zitten erin) —
+  nooit rechtstreeks losse JSON-databestanden in `/data/` schrijven
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`

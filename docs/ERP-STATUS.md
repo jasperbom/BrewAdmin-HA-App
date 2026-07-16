@@ -12,7 +12,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.6 · **fase 0 t/m 3 volledig afgerond** — alleen fase 4 (structurele fundering, pas bij multi-user/schaal) staat nog open
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.7 · **fase 0 t/m 3 volledig afgerond**, fase 4: 4.1 (SQLite) klaar — 4.2 (gebruikers & rollen) en 4.3 (delta-sync) staan nog open
 
 ---
 
@@ -158,7 +158,16 @@
 
 ## Fase 4 — Structurele fundering (pas bij multi-user/schaal)
 
-- [ ] **4.1 SQLite als opslaglaag** (stdlib) achter de bestaande API
+- [x] **4.1 SQLite als opslaglaag** (stdlib) achter de bestaande API
+      *(v1.11.7, 2026-07-16 — alle data in `/data/brewadmin.db` (WAL,
+      `synchronous=FULL`); API en versie-headers ongewijzigd; automatische
+      eenmalige migratie van bestaande JSON-bestanden (veiligheidskopie in
+      `/data/json_voor_sqlite/`); /api/commit = één échte transactie;
+      array-keys rij-per-record als fundering voor 4.3; backups exporteren
+      elke key weer als leesbaar `<key>.json` + db-kopie. Bewuste
+      afwijkingen: één generieke `records`-tabel i.p.v. tabel-per-key en
+      geen SQL-foreign-keys — integriteit blijft app-side via
+      `checkIntegriteit` (1.3))*
 - [ ] **4.2 Gebruikers & rollen** via HA-ingress-gebruiker
 - [ ] **4.3 Delta-sync** i.p.v. hele arrays
 
@@ -196,3 +205,4 @@
 | 2026-07-16 | 1.11.4 | 3.5 | Extracties: makeZip/crc32 → utils/zip.ts, gedeeld getPeriodes → utils/btw.ts (dupliaat uit 2 pagina's weg); +6 tests (73 totaal); boy-scout-regel in CLAUDE.md |
 | 2026-07-16 | 1.11.5 | 3.6 | JSON-serverlogging (stdlib logging, bron-veld per subsysteem) + GET /api/health (threads/backup/uptime) + dashboard-healthregel; pytest 35 totaal; runtime-smoke: health 4/4 threads, JSON-logregels, dashboardregel zichtbaar — **fase 3 compleet** |
 | 2026-07-16 | 1.11.6 | 3.3-fix | pytest-CI-job faalde op PermissionError /data (runner zonder root): DATA_DIR overridebaar via BREWADMIN_DATA_DIR + tests/conftest.py zet een tmp-map vóór de server-import |
+| 2026-07-16 | 1.11.7 | 4.1 | SQLite-opslaglaag (WAL) achter ongewijzigde API: JSON-migratie bij eerste start, commit = één transactie, rij-per-record, backup = JSON-export + db-kopie, 0600 op db; 6 nieuwe pytest-tests (41 totaal) + runtime-smoke (migratie, herstart-persistentie, nextnr vanaf legacy teller) |
