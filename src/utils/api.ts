@@ -585,6 +585,19 @@ export type Rol = 'beheer' | 'boekhouding' | 'productie' | 'alleen_lezen'
 export interface Whoami {
   gebruiker: string
   rol: Rol
+  // true = ingelogd via de directe-toegangspoort (HA-login met sessiecookie)
+  sessie?: boolean
+}
+
+// Beëindig de sessie op de directe-toegangspoort. Geeft true terug bij
+// succes; de aanroeper herlaadt daarna de pagina (terug naar de loginpagina).
+export const uitloggen = async (): Promise<boolean> => {
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/logout', {method: 'POST'}, 0)
+    return r.ok
+  } catch {
+    return false
+  }
 }
 
 export const getWhoami = async (): Promise<Whoami | null> => {

@@ -4,7 +4,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami } from '../utils/api'
+import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
@@ -189,11 +189,19 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid">
       <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_rollen_title')}</h2>
       <p className="text-sm text-gray-500 mb-4">{t('settings_rollen_desc')}</p>
-      <p className="text-xs text-gray-600 mb-4 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-        {wie?.gebruiker
-          ? t('settings_rollen_huidig').replace('{naam}', wie.gebruiker).replace('{rol}', t('rol_' + wie.rol))
-          : t('settings_rollen_geen_user')}
-      </p>
+      <div className="flex items-center justify-between gap-3 text-xs text-gray-600 mb-4 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
+        <span>
+          {wie?.gebruiker
+            ? t('settings_rollen_huidig').replace('{naam}', wie.gebruiker).replace('{rol}', t('rol_' + wie.rol))
+            : t('settings_rollen_geen_user')}
+        </span>
+        {wie?.sessie && (
+          <Btn v="secondary" s="sm" onClick={async () => {
+            if (await uitloggen()) location.reload();
+            else alert(t('err_uitloggen_mislukt'));
+          }}>{t('btn_uitloggen')}</Btn>
+        )}
+      </div>
       {namen.length === 0 ? (
         <p className="text-sm text-gray-400 mb-4">{t('settings_rollen_leeg')}</p>
       ) : (

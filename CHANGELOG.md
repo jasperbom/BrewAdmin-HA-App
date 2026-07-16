@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.10] — 2026-07-16
+
+### Toegevoegd — Directe toegang met HA-login (tweede poort)
+
+- Nieuwe optionele poort **8098** voor toegang buiten de HA-ingress om
+  (bv. een tablet in de brouwerij): standaard **uit**
+  (`ports: 8098/tcp: null`) — zet hem aan door in de addon-netwerkconfig
+  een hostpoort in te vullen.
+- Inloggen gebeurt met je **echte Home Assistant-account**: de Supervisor
+  valideert gebruikersnaam/wachtwoord (`auth_api: true`,
+  `POST http://supervisor/auth`). Na login volgt een
+  HttpOnly/SameSite=Strict-sessiecookie (24 uur glijdend, in-memory —
+  addon-herstart = opnieuw inloggen). Donkere loginpagina in appstijl.
+- De sessiegebruiker telt volledig mee voor het **rollenmodel** (4.2) en de
+  audit; `X-Remote-User`-headers worden op deze poort genegeerd (daar
+  spoofbaar). Strenge login-rate-limit (5 mislukte pogingen per 5 min per
+  IP, 429) en audit van login/logout/mislukte pogingen — nooit wachtwoorden.
+- `GET /api/whoami` meldt nu ook `sessie: true|false`; de kaart
+  "Gebruikers & rollen" toont een **uitlogknop** bij sessie-toegang
+  (i18n in alle 5 talen). De ingress-route is volledig onveranderd.
+- pytest: 5 nieuwe tests (loginpagina + 401 zonder sessie, 503 zonder
+  Supervisor, volledige login/rollen/spoofing/logout-flow, login-rate-limit,
+  geen login-endpoint op de ingress-poort) — 56 totaal; runtime-smoke van
+  beide poorten.
+
+---
+
 ## [1.11.9] — 2026-07-16
 
 ### Toegevoegd — Delta-sync i.p.v. hele arrays (ERP-plan 4.3)

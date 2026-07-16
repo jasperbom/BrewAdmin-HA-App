@@ -2596,6 +2596,8 @@
   "err_batch_delete_fiscaal": "Este lote tiene entregas y/o registros de impuestos especiales y, por tanto, está registrado fiscalmente. La eliminación está bloqueada para evitar registros huérfanos.",
   "err_save_geweigerd": "El servidor ha rechazado este cambio (formato de datos no válido). Se han vuelto a cargar los datos actuales; el último cambio no se ha guardado.",
   "err_geen_rechten": "Tu rol no permite este cambio. Los datos actuales se han recargado; el último cambio no se ha guardado.",
+  "btn_uitloggen": "Cerrar sesión",
+  "err_uitloggen_mislukt": "Error al cerrar sesión — inténtalo de nuevo.",
   "settings_rollen_title": "Usuarios y roles",
   "settings_rollen_desc": "Asigna un rol a cada usuario de Home Assistant. El servidor aplica los roles: administración puede hacerlo todo, contabilidad gestiona los registros financieros, producción se encarga de la elaboración y el stock, solo lectura no puede cambiar nada. Sin asignación se aplica el rol predeterminado.",
   "settings_rollen_huidig": "Conectado como {naam} — rol: {rol}",

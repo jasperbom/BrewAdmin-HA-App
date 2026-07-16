@@ -2596,6 +2596,8 @@
   "err_batch_delete_fiscaal": "Dieser Sud hat Auslieferungen und/oder Verbrauchsteuereinträge und ist damit steuerlich erfasst. Löschen ist gesperrt, um verwaiste Datensätze zu vermeiden.",
   "err_save_geweigerd": "Der Server hat diese Änderung abgelehnt (ungültiges Datenformat). Die aktuellen Daten wurden neu geladen; die letzte Änderung wurde nicht gespeichert.",
   "err_geen_rechten": "Deine Rolle erlaubt diese Änderung nicht. Die aktuellen Daten wurden neu geladen; die letzte Änderung wurde nicht gespeichert.",
+  "btn_uitloggen": "Abmelden",
+  "err_uitloggen_mislukt": "Abmelden fehlgeschlagen — bitte erneut versuchen.",
   "settings_rollen_title": "Benutzer & Rollen",
   "settings_rollen_desc": "Weise jedem Home-Assistant-Benutzer eine Rolle zu. Der Server erzwingt die Rollen: Verwaltung darf alles, Buchhaltung die Finanzunterlagen, Produktion die Brau- und Lagerarbeit, Nur-Lesen darf nichts ändern. Benutzer ohne Zuweisung erhalten die Standardrolle.",
   "settings_rollen_huidig": "Angemeldet als {naam} — Rolle: {rol}",

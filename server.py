@@ -14,6 +14,7 @@ import datetime
 import email.message
 import email.utils
 import hashlib
+import http.cookies
 import http.server
 import io
 import ipaddress
@@ -22,6 +23,7 @@ import logging
 import os
 import sys
 import re
+import secrets
 import shutil
 import smtplib
 import socket
@@ -1144,6 +1146,158 @@ def _harden_secure_files() -> None:
                 pass
 
 
+# ── Directe toegang met HA-login (tweede poort) ──────────────────────────
+# Naast de HA-ingress (poort 8099, alleen bereikbaar via de ingress-gateway)
+# luistert de server op een tweede poort voor directe toegang, bv. vanaf een
+# tablet in de brouwerij zonder HA-frontend. Die poort is standaard NIET
+# gepubliceerd (config.yaml `ports: 8098/tcp: null`) — de gebruiker zet hem
+# bewust aan in de addon-netwerkconfig. Beveiliging:
+#   - login met het échte HA-account: de Supervisor valideert
+#     gebruikersnaam/wachtwoord via POST http://supervisor/auth
+#     (config.yaml `auth_api: true`);
+#   - na login een HttpOnly/SameSite=Strict sessiecookie (in-memory,
+#     verlopen na inactiviteit; addon-herstart = opnieuw inloggen);
+#   - X-Remote-User-headers worden op deze poort volledig genegeerd
+#     (die zijn daar spoofbaar) — de sessiegebruiker telt als gebruiker
+#     voor het rollenmodel (4.2) en de audit;
+#   - strenge login-rate-limit per IP tegen brute force, pogingen worden
+#     geauditeerd (zonder wachtwoord).
+# Buiten HA (geen SUPERVISOR_TOKEN) antwoordt login met 503 — de directe
+# poort is dan onbruikbaar (lokale dev gebruikt gewoon de hoofdpoort).
+
+DIRECT_PORT = int(os.environ.get('BREWADMIN_DIRECT_PORT', 8098))
+LOGIN_PATH = '/api/login'
+LOGOUT_PATH = '/api/logout'
+SESSIE_COOKIE = 'brewadmin_sessie'
+SESSIE_DUUR = 24 * 3600  # 24 uur, glijdend verlengd bij gebruik
+
+_LOGIN_RATE_WINDOW = 300  # 5 minuten
+_LOGIN_RATE_MAX = 5       # max mislukte pogingen per IP per venster
+_login_pogingen: dict = defaultdict(list)
+
+_sessies: dict = {}
+_sessie_lock = threading.Lock()
+
+
+def _login_rate_ok(ip: str) -> bool:
+    now = time.monotonic()
+    _login_pogingen[ip] = [t for t in _login_pogingen[ip]
+                           if now - t < _LOGIN_RATE_WINDOW]
+    return len(_login_pogingen[ip]) < _LOGIN_RATE_MAX
+
+
+def _login_poging_registreer(ip: str) -> None:
+    _login_pogingen[ip].append(time.monotonic())
+
+
+def _sessie_maak(gebruiker: str) -> str:
+    token = secrets.token_urlsafe(32)
+    with _sessie_lock:
+        _sessies[token] = {'gebruiker': gebruiker,
+                           'verloopt': time.monotonic() + SESSIE_DUUR}
+    return token
+
+
+def _sessie_gebruiker(token: str) -> str | None:
+    """Gebruiker bij dit sessietoken, of None. Geldige sessies worden
+    glijdend verlengd; verlopen sessies worden opgeruimd."""
+    if not token:
+        return None
+    now = time.monotonic()
+    with _sessie_lock:
+        sessie = _sessies.get(token)
+        if sessie is None:
+            return None
+        if sessie['verloopt'] < now:
+            del _sessies[token]
+            return None
+        sessie['verloopt'] = now + SESSIE_DUUR
+        return sessie['gebruiker']
+
+
+def _sessie_verwijder(token: str) -> None:
+    with _sessie_lock:
+        _sessies.pop(token, None)
+
+
+def _ha_auth_check(gebruiker: str, wachtwoord: str) -> bool:
+    """Valideer HA-credentials via de Supervisor-auth-API (vereist
+    `auth_api: true` in config.yaml). Nooit iets van de invoer loggen."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token or not gebruiker or not wachtwoord:
+        return False
+    try:
+        req = urllib.request.Request(
+            'http://supervisor/auth',
+            data=json.dumps({'username': gebruiker, 'password': wachtwoord}).encode('utf-8'),
+            headers={'Authorization': f'Bearer {token}',
+                     'Content-Type': 'application/json'},
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return 200 <= r.status < 300
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+# Minimale loginpagina voor de directe poort. Bewust server-side en
+# zelfstandig (de SPA is hier nog niet geladen); inline CSS/JS valt binnen
+# de bestaande CSP ('unsafe-inline').
+_LOGIN_PAGE = """<!doctype html>
+<html lang="nl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrewAdmin — inloggen</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#1c1917;color:#e7e5e4;
+display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+form{background:#292524;padding:2rem;border-radius:1rem;width:20rem;
+box-shadow:0 8px 30px rgba(0,0,0,.4)}
+h1{font-size:1.15rem;margin:0 0 .25rem;color:#fbbf24}
+p{font-size:.8rem;color:#a8a29e;margin:0 0 1.25rem}
+label{display:block;font-size:.7rem;text-transform:uppercase;
+letter-spacing:.05em;color:#a8a29e;margin-bottom:.25rem}
+input{width:100%;box-sizing:border-box;padding:.55rem .7rem;margin-bottom:1rem;
+border-radius:.5rem;border:1px solid #44403c;background:#1c1917;color:#e7e5e4}
+button{width:100%;padding:.6rem;border:none;border-radius:.5rem;
+background:#b45309;color:#fff;font-weight:600;cursor:pointer}
+button:hover{background:#92400e}
+#fout{color:#f87171;font-size:.8rem;min-height:1.2rem;margin:.5rem 0 0}
+</style></head><body>
+<form id="f">
+<h1>BrewAdmin</h1>
+<p>Log in met je Home Assistant-account</p>
+<label for="u">Gebruikersnaam</label>
+<input id="u" autocomplete="username" required>
+<label for="w">Wachtwoord</label>
+<input id="w" type="password" autocomplete="current-password" required>
+<button type="submit">Inloggen</button>
+<div id="fout"></div>
+</form>
+<script>
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fout = document.getElementById('fout');
+  fout.textContent = '';
+  try {
+    const r = await fetch('api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        username: document.getElementById('u').value,
+        password: document.getElementById('w').value,
+      }),
+    });
+    if (r.ok) { location.reload(); return; }
+    if (r.status === 429) { fout.textContent = 'Te veel pogingen \\u2014 wacht even en probeer opnieuw.'; return; }
+    if (r.status === 503) { fout.textContent = 'HA-authenticatie niet beschikbaar (draait de app als addon?).'; return; }
+    fout.textContent = 'Inloggen mislukt \\u2014 controleer gebruikersnaam en wachtwoord.';
+  } catch (err) {
+    fout.textContent = 'Server niet bereikbaar.';
+  }
+});
+</script></body></html>"""
+
+
 # ── Gebruikers & rollen (ERP-plan 4.2) ───────────────────────────────────
 # HA-ingress geeft de ingelogde gebruiker door (X-Remote-User-Name/-Id;
 # sinds plan 1.5 al per mutatie geauditeerd). Daar bovenop nu simpele
@@ -1781,9 +1935,27 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Expose-Headers', 'X-Data-Version, Retry-After')
             self.send_header('Vary', 'Origin')
 
+    def _is_direct(self) -> bool:
+        """True wanneer dit request via de directe-toegangspoort binnenkwam
+        (HA-login met sessiecookie i.p.v. ingress)."""
+        return bool(getattr(self.server, 'brewadmin_direct', False))
+
+    def _sessie_token(self) -> str:
+        """Sessietoken uit het Cookie-header, of ''."""
+        try:
+            jar = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
+            morsel = jar.get(SESSIE_COOKIE)
+            return morsel.value if morsel else ''
+        except http.cookies.CookieError:
+            return ''
+
     def _ingress_user(self) -> str:
-        """Gebruikersnaam/-id zoals door de HA-ingress-proxy meegegeven;
-        leeg buiten HA of wanneer de headers ontbreken."""
+        """Gebruikersnaam van dit request. Via ingress: de door de
+        HA-ingress-proxy meegegeven headers. Via de directe poort: de
+        sessiegebruiker — de X-Remote-User-headers zijn daar spoofbaar en
+        worden volledig genegeerd. Leeg buiten HA of zonder sessie."""
+        if self._is_direct():
+            return _sessie_gebruiker(self._sessie_token()) or ''
         return (self.headers.get('X-Remote-User-Name')
                 or self.headers.get('X-Remote-User-Id')
                 or '')
@@ -1804,13 +1976,93 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
     def _rate_check(self) -> bool:
         ip = self.client_address[0]
-        if not _client_allowed(ip):
+        # De directe poort accepteert per definitie clients buiten de
+        # ingress-gateway — daar beschermt de sessielogin (_direct_auth);
+        # de algemene rate-limit blijft ook daar gelden.
+        if not self._is_direct() and not _client_allowed(ip):
             self._json(403, {'error': 'forbidden'})
             return False
         if not _check_rate(ip):
             self._json(429, {'error': 'too many requests'}, extra_headers=[('Retry-After', str(_retry_after(ip)))])
             return False
         return True
+
+    def _direct_auth(self, path: str) -> bool:
+        """Poortwachter voor de directe-toegangspoort. True = request mag
+        door naar de normale routing; False = er is al geantwoord (login-
+        pagina, login-/logout-afhandeling of 401)."""
+        if LOGIN_PATH in path:
+            if self.command == 'POST':
+                self._handle_login()
+            else:
+                self._json(405, {'error': 'method not allowed'})
+            return False
+        if _sessie_gebruiker(self._sessie_token()):
+            if LOGOUT_PATH in path:
+                self._handle_logout()
+                return False
+            return True
+        # Geen (geldige) sessie: API-calls krijgen 401, elke andere GET de
+        # loginpagina; mutaties zijn hoe dan ook geblokkeerd.
+        if '/api/' in path or self.command != 'GET':
+            self._json(401, {'error': 'login required'})
+            return False
+        body = _LOGIN_PAGE.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', len(body))
+        self._add_security_headers(html=True)
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
+    def _handle_login(self):
+        """POST /api/login (alleen directe poort) — valideer HA-credentials
+        via de Supervisor en geef een sessiecookie uit."""
+        ip = self.client_address[0]
+        raw = self._read_body(max_len=4096)
+        if raw is None:
+            return
+        try:
+            body = json.loads(raw)
+            gebruiker = str(body.get('username', '')).strip()
+            wachtwoord = str(body.get('password', ''))
+        except (json.JSONDecodeError, AttributeError):
+            self._json(400, {'error': 'invalid json'})
+            return
+        if not gebruiker or not wachtwoord:
+            self._json(400, {'error': 'missing credentials'})
+            return
+        if not _login_rate_ok(ip):
+            _audit_write('login_geblokkeerd', '-', ip=ip, gebruiker=gebruiker)
+            self._json(429, {'error': 'too many attempts'},
+                       extra_headers=[('Retry-After', str(_LOGIN_RATE_WINDOW))])
+            return
+        if not os.environ.get('SUPERVISOR_TOKEN'):
+            self._json(503, {'error': 'HA auth not available'})
+            return
+        if not _ha_auth_check(gebruiker, wachtwoord):
+            _login_poging_registreer(ip)
+            _audit_write('login_mislukt', '-', ip=ip, gebruiker=gebruiker)
+            self._json(401, {'error': 'invalid credentials'})
+            return
+        token = _sessie_maak(gebruiker)
+        _audit_write('login', '-', ip=ip, gebruiker=gebruiker,
+                     rol=_gebruiker_rol(gebruiker))
+        cookie = (f'{SESSIE_COOKIE}={token}; Path=/; HttpOnly; '
+                  f'SameSite=Strict; Max-Age={SESSIE_DUUR}')
+        self._json(200, {'ok': True, 'gebruiker': gebruiker,
+                         'rol': _gebruiker_rol(gebruiker)},
+                   extra_headers=[('Set-Cookie', cookie)])
+
+    def _handle_logout(self):
+        """POST /api/logout (alleen directe poort) — beëindig de sessie."""
+        token = self._sessie_token()
+        gebruiker = _sessie_gebruiker(token) or ''
+        _sessie_verwijder(token)
+        _audit_write('logout', '-', ip=self.client_address[0], gebruiker=gebruiker)
+        cookie = f'{SESSIE_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'
+        self._json(200, {'ok': True}, extra_headers=[('Set-Cookie', cookie)])
 
     def _json(self, status: int, data, extra_headers: list | None = None) -> None:
         body = json.dumps(data).encode()
@@ -1835,7 +2087,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
     # ── request routing ────────────────────────────────────────────────────
 
     def do_OPTIONS(self):
-        if not _client_allowed(self.client_address[0]):
+        if not self._is_direct() and not _client_allowed(self.client_address[0]):
             self._json(403, {'error': 'forbidden'})
             return
         origin = self.headers.get('Origin', '')
@@ -1855,13 +2107,20 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
         path = self.path.split('?')[0]
 
+        if self._is_direct() and not self._direct_auth(path):
+            return
+
         if HEALTH_PATH in path:
             self._handle_health()
             return
 
         if WHOAMI_PATH in path:
             gebruiker = self._ingress_user()
-            self._json(200, {'gebruiker': gebruiker, 'rol': _gebruiker_rol(gebruiker)})
+            # `sessie: true` = ingelogd via de directe poort (HA-login met
+            # sessiecookie) — de UI toont dan een uitlogknop.
+            self._json(200, {'gebruiker': gebruiker,
+                             'rol': _gebruiker_rol(gebruiker),
+                             'sessie': self._is_direct()})
             return
 
         if BF_PROXY_PREFIX in path:
@@ -1945,6 +2204,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not self._rate_check():
             return
         path = self.path.split('?')[0]
+
+        if self._is_direct() and not self._direct_auth(path):
+            return
 
         # Rollen (ERP-plan 4.2): alleen-lezen mag geen enkel mutatie-endpoint
         # aanraken; test-/backup-endpoints zijn beheer-only en nummeruitgifte
@@ -3047,6 +3309,15 @@ if __name__ == '__main__':
     _threads['carbonatie_co2'] = threading.Thread(target=_carbonatie_co2_loop, daemon=True)
     _threads['carbonatie_co2'].start()
     _log('server', 'Carbonisatie-CO₂-bewakingsthread gestart (elke minuut)')
+
+    # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
+    # van buitenaf wanneer de gebruiker de poort bewust publiceert in de
+    # addon-netwerkconfig (config.yaml ports: null = uit).
+    direct_server = http.server.ThreadingHTTPServer(('0.0.0.0', DIRECT_PORT), BrouwerijHandler)
+    direct_server.brewadmin_direct = True
+    _threads['direct_poort'] = threading.Thread(target=direct_server.serve_forever, daemon=True)
+    _threads['direct_poort'].start()
+    _log('server', f'Directe-toegangspoort gestart op {DIRECT_PORT} (HA-login vereist)')
 
     # ThreadingHTTPServer: één trage upstream-call (Claude 90s, Brewfather 30s,
     # SMTP 30s) mag niet alle andere requests — UI laden, data-saves — blokkeren.

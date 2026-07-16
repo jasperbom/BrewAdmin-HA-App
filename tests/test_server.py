@@ -49,6 +49,18 @@ def app(tmp_path_factory):
     httpd.shutdown()
 
 
+@pytest.fixture(scope='session')
+def app_direct(app):
+    """Tweede listener zoals de directe-toegangspoort (HA-login + sessie);
+    deelt de DATA_DIR met de gewone testserver."""
+    httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), srv.BrouwerijHandler)
+    httpd.brewadmin_direct = True
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield f'http://127.0.0.1:{httpd.server_address[1]}'
+    httpd.shutdown()
+
+
 def req(base, method, path, body=None, headers=None):
     """Kleine HTTP-helper: geeft (status, json-body, headers) terug."""
     data = None
@@ -580,7 +592,7 @@ class TestRollen:
         status, body, _ = req(app, 'GET', '/api/whoami',
                               headers={'X-Remote-User-Name': 'wildvreemde'})
         assert status == 200
-        assert body == {'gebruiker': 'wildvreemde', 'rol': 'beheer'}
+        assert body == {'gebruiker': 'wildvreemde', 'rol': 'beheer', 'sessie': False}
 
     def test_whoami_en_afdwinging_per_rol(self, app):
         assert self._zet_config(app) == 200
@@ -588,7 +600,7 @@ class TestRollen:
             # whoami rapporteert de toegewezen rol
             _, body, _ = req(app, 'GET', '/api/whoami',
                              headers={'X-Remote-User-Name': 'kees'})
-            assert body == {'gebruiker': 'kees', 'rol': 'alleen_lezen'}
+            assert body == {'gebruiker': 'kees', 'rol': 'alleen_lezen', 'sessie': False}
             # alleen_lezen: GET ok, elke POST 403
             assert req(app, 'GET', '/api/data/batches',
                        headers={'X-Remote-User-Name': 'kees'})[0] in (200, 404)
@@ -650,6 +662,96 @@ class TestRollen:
                        headers={'X-Remote-User-Name': 'onbekend'})[0] == 403
         finally:
             self._reset(app)
+
+
+class TestDirectLogin:
+    """Directe-toegangspoort: HA-login met sessiecookie i.p.v. ingress."""
+
+    def _login(self, app_direct, gebruiker='jasper', wachtwoord='geheim'):
+        """Log in met gemockte HA-auth; geeft (status, cookie-header) terug."""
+        status, _, headers = req(app_direct, 'POST', '/api/login',
+                                 body={'username': gebruiker, 'password': wachtwoord})
+        set_cookie = headers.get('Set-Cookie', '')
+        return status, set_cookie.split(';')[0] if set_cookie else ''
+
+    def _met_mock_auth(self):
+        """Contextmanager-achtige setup: SUPERVISOR_TOKEN + gemockte auth."""
+        import os as _os
+        echt = srv._ha_auth_check
+        srv._ha_auth_check = lambda u, w: (u, w) == ('jasper', 'geheim')
+        _os.environ['SUPERVISOR_TOKEN'] = 'testtoken'
+        def herstel():
+            srv._ha_auth_check = echt
+            _os.environ.pop('SUPERVISOR_TOKEN', None)
+            srv._login_pogingen.clear()
+        return herstel
+
+    def test_zonder_sessie_loginpagina_en_401(self, app_direct):
+        with urllib.request.urlopen(app_direct + '/') as r:
+            assert r.status == 200
+            assert 'text/html' in r.headers.get('Content-Type', '')
+            assert 'Inloggen' in r.read().decode('utf-8')
+        assert req(app_direct, 'GET', '/api/data/batches')[0] == 401
+        assert req(app_direct, 'POST', '/api/data/batches', body=[])[0] == 401
+
+    def test_login_zonder_supervisor_geeft_503(self, app_direct):
+        srv._login_pogingen.clear()
+        status, _, _ = req(app_direct, 'POST', '/api/login',
+                           body={'username': 'x', 'password': 'y'})
+        assert status == 503
+
+    def test_login_sessie_rollen_en_logout(self, app_direct, app):
+        herstel = self._met_mock_auth()
+        try:
+            # Fout wachtwoord → 401, goed → 200 met cookie
+            assert self._login(app_direct, wachtwoord='fout')[0] == 401
+            status, cookie = self._login(app_direct)
+            assert status == 200 and cookie.startswith(srv.SESSIE_COOKIE + '=')
+            # Met sessie werkt de API; whoami meldt de sessiegebruiker
+            assert req(app_direct, 'GET', '/api/data/hop_addities',
+                       headers={'Cookie': cookie})[0] in (200, 404)
+            status, wie, _ = req(app_direct, 'GET', '/api/whoami',
+                                 headers={'Cookie': cookie})
+            assert wie == {'gebruiker': 'jasper', 'rol': 'beheer', 'sessie': True}
+            # Header-spoofing wordt op deze poort genegeerd
+            _, wie2, _ = req(app_direct, 'GET', '/api/whoami',
+                             headers={'Cookie': cookie, 'X-Remote-User-Name': 'hacker'})
+            assert wie2['gebruiker'] == 'jasper'
+            # Rollen gelden ook voor sessiegebruikers
+            assert req(app, 'POST', '/api/data/gebruikers_rollen',
+                       body={'gebruikers': {'jasper': 'productie'}})[0] == 200
+            try:
+                status, body, _ = req(app_direct, 'POST', '/api/data/verkoop_facturen',
+                                      body=[], headers={'Cookie': cookie})
+                assert status == 403 and body['reden'] == 'rol'
+            finally:
+                assert req(app, 'POST', '/api/data/gebruikers_rollen', body={})[0] == 200
+            # Uitloggen beëindigt de sessie
+            assert req(app_direct, 'POST', '/api/logout',
+                       headers={'Cookie': cookie})[0] == 200
+            assert req(app_direct, 'GET', '/api/whoami',
+                       headers={'Cookie': cookie})[0] == 401
+        finally:
+            herstel()
+
+    def test_login_rate_limit(self, app_direct):
+        herstel = self._met_mock_auth()
+        try:
+            for _ in range(srv._LOGIN_RATE_MAX):
+                assert self._login(app_direct, wachtwoord='fout')[0] == 401
+            status, _, headers = req(app_direct, 'POST', '/api/login',
+                                     body={'username': 'jasper', 'password': 'fout'})
+            assert status == 429
+            assert int(headers.get('Retry-After', '0')) >= 1
+        finally:
+            herstel()
+
+    def test_ingress_poort_kent_geen_login_endpoint(self, app):
+        # Op de gewone poort bestaat de loginflow niet (valt door naar 404
+        # via de normale routing) en blijft alles header-gebaseerd werken.
+        status, _, _ = req(app, 'POST', '/api/login',
+                           body={'username': 'x', 'password': 'y'})
+        assert status == 404
 
 
 class TestLogging:

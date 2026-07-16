@@ -2596,6 +2596,8 @@
   "err_batch_delete_fiscaal": "Ce brassin a des livraisons et/ou des enregistrements d'accises et est donc fiscalement enregistré. La suppression est bloquée pour éviter les enregistrements orphelins.",
   "err_save_geweigerd": "Le serveur a rejeté cette modification (format de données invalide). Les données actuelles ont été rechargées ; la dernière modification n'a pas été enregistrée.",
   "err_geen_rechten": "Votre rôle ne permet pas cette modification. Les données actuelles ont été rechargées ; la dernière modification n'a pas été enregistrée.",
+  "btn_uitloggen": "Se déconnecter",
+  "err_uitloggen_mislukt": "Échec de la déconnexion — veuillez réessayer.",
   "settings_rollen_title": "Utilisateurs & rôles",
   "settings_rollen_desc": "Attribuez un rôle à chaque utilisateur Home Assistant. Le serveur applique les rôles : gestion peut tout faire, comptabilité gère les écritures financières, production s'occupe du brassage et du stock, lecture seule ne peut rien modifier. Sans attribution, le rôle par défaut s'applique.",
   "settings_rollen_huidig": "Connecté en tant que {naam} — rôle : {rol}",

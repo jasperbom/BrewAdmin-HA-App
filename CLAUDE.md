@@ -489,7 +489,9 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | GET | `/api/data/<key>` | Load data key (JSON, uit SQLite) |
 | POST | `/api/data/<key>` | Save data key (JSON, naar SQLite) |
 | GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
-| GET | `/api/whoami` | Ingress-gebruiker + rol (ERP 4.2): `{gebruiker, rol}` |
+| GET | `/api/whoami` | Gebruiker + rol: `{gebruiker, rol, sessie}` (`sessie: true` = ingelogd via de directe poort) |
+| POST | `/api/login` | Alleen directe poort (8098): HA-login via Supervisor-auth → sessiecookie |
+| POST | `/api/logout` | Alleen directe poort: beëindig de sessie |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
@@ -520,6 +522,13 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only
+- Directe-toegangspoort (8098, `config.yaml ports: null` = standaard uit):
+  vereist HA-login via de Supervisor-auth-API (`auth_api: true`), geeft een
+  HttpOnly/SameSite=Strict sessiecookie (in-memory, 24 u glijdend);
+  X-Remote-User-headers worden op deze poort genegeerd (spoofbaar) — de
+  sessiegebruiker telt voor rollen en audit; strenge login-rate-limit
+  (5 mislukte pogingen per 5 min per IP), logins/pogingen in de audit.
+  Nooit de sessie-check omzeilen of wachtwoorden loggen
 
 ---
 

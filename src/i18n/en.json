@@ -2596,6 +2596,8 @@
   "err_batch_delete_fiscaal": "This batch has deliveries and/or excise records and is therefore fiscally recorded. Deleting is blocked to prevent orphaned records.",
   "err_save_geweigerd": "The server rejected this change (invalid data format). The current data has been reloaded; the last change was not saved.",
   "err_geen_rechten": "Your role does not allow this change. The current data has been reloaded; your last change was not saved.",
+  "btn_uitloggen": "Sign out",
+  "err_uitloggen_mislukt": "Sign out failed — please try again.",
   "settings_rollen_title": "Users & roles",
   "settings_rollen_desc": "Assign a role to each Home Assistant user. The server enforces the roles: admin can do everything, accounting manages the financial records, production handles brewing and stock work, read-only cannot change anything. Users without an assignment get the default role.",
   "settings_rollen_huidig": "Signed in as {naam} — role: {rol}",

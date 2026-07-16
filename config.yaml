@@ -1,6 +1,6 @@
 name: "BrewAdmin"
 description: "Brewery administration — batches, ingredients, excise duty, stock and accounting"
-version: "1.11.9"
+version: "1.11.10"
 slug: "brouwerij_admin"
 init: false
 
@@ -20,6 +20,17 @@ map:
   - backup:rw
 
 homeassistant_api: true
+
+# Directe toegang buiten ingress om (optioneel): login met je HA-account.
+# auth_api laat de Supervisor gebruikersnaam/wachtwoord valideren; de poort
+# staat standaard uit (null) — vul in de addon-netwerkconfig een hostpoort
+# in om hem aan te zetten. Let op: verkeer is HTTP; alleen op het eigen LAN
+# gebruiken of zelf achter een reverse proxy met HTTPS zetten.
+auth_api: true
+ports:
+  8098/tcp: null
+ports_description:
+  8098/tcp: "Directe toegang met HA-login (standaard uit; sessie vervalt na 24 uur inactiviteit of addon-herstart)"
 
 ingress: true
 ingress_port: 8099
