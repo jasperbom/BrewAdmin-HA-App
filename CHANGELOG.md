@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.2] — 2026-07-16
+
+### Toegevoegd — GitHub Actions CI (ERP-plan 3.3)
+
+- Nieuwe workflow `.github/workflows/ci.yml` (push naar main + elke PR) met
+  vier jobs: **typecheck + vitest + productie-build** (Node 20, `tsc
+  --noEmit` — de drie resterende typefouten in BoekhoudingPage zijn
+  daarvoor opgelost), **pytest** voor server.py (Python 3.12),
+  **Docker-build** van het addon-image (multi-stage, zonder push) en een
+  **versie-bump-lint**: config.yaml moet een bijbehorende
+  `## [versie]`-sectie in CHANGELOG.md hebben en op PR's moet de versie
+  afwijken van de basisbranch (versie-bump per commit, zie CLAUDE.md).
+
+---
+
 ## [1.11.1] — 2026-07-16
 
 ### Toegevoegd — pytest-suite voor server.py (ERP-plan 3.2)

@@ -3821,9 +3821,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     {rubriek: '4a', ...verlegdAangifte.rubriek4a},
                     {rubriek: '4b', ...verlegdAangifte.rubriek4b},
                   ].filter(r => r.netto > 0 || r.btw > 0)
-                  const totNetto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0) + verlegdRows.reduce((s,r)=>s+r.netto,0)
-                  const totBtw   = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0)   + verlegdRows.reduce((s,r)=>s+r.btw,0)
-                  const totBruto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0) + verlegdRows.reduce((s,r)=>s+r.netto,0)
+                  const totNetto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0) + verlegdRows.reduce((s: number,r: any)=>s+r.netto,0)
+                  const totBtw   = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0)   + verlegdRows.reduce((s: number,r: any)=>s+r.btw,0)
+                  const totBruto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0) + verlegdRows.reduce((s: number,r: any)=>s+r.netto,0)
                   return (
                 <table className="w-full text-sm">
                   <thead>

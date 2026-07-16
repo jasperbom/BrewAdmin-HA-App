@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.1 · fase 0/1/2 afgerond, fase 3 gestart (3.1 + 3.2 klaar)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.2 · fase 0/1/2 afgerond, fase 3 gestart (3.1 t/m 3.3 klaar)
 
 ---
 
@@ -123,8 +123,13 @@
       nextnr onder 20 parallelle clients, 413, sentinel-merge en
       server-audit. Bijvangst: /api/ping bleek geen echte route te zijn
       (SPA-fallback) — gedocumenteerd, echte health-check volgt in 3.6)*
-- [ ] **3.3 GitHub Actions CI** — tsc --noEmit, build, tests, Docker-build,
-      versie-bump-check
+- [x] **3.3 GitHub Actions CI** — tsc --noEmit, build, tests, Docker-build,
+      versie-bump-check *(v1.11.2, 2026-07-16 — .github/workflows/ci.yml met
+      4 jobs: typecheck+vitest+build (de 3 resterende tsc-fouten daarvoor
+      gefixt), pytest, Docker-build, en versie-bump-lint (config.yaml ↔
+      CHANGELOG-sectie + bump t.o.v. basisbranch op PR's). Alle stappen
+      behalve de Docker-build lokaal gevalideerd — geen daemon in de
+      dev-container; eerste CI-run bevestigt die job)*
 - [ ] **3.4 TypeScript aanscherpen** — incrementeel, eerst utils/ en types/,
       page-props typeren
 - [ ] **3.5 Pagina's opsplitsen** — boy-scout-regel bij onderhoud
@@ -165,3 +170,4 @@
 | 2026-07-16 | 1.10.99 | 2.6 | COGS: `berekenBatchKostprijs` + `berekenCogs`, marge-blok in W&V; unit-checks (refactor-pariteit productkostprijs, periode/intern/onbekende-kostprijs-filters) + Playwright — **fase 2 compleet** |
 | 2026-07-16 | 1.11.0 | 3.1 | Vitest: 67 tests (6 bestanden) op accijns/BTW-rollover/grondslag/centen/journaal/bank-MT940-PSP/voorraad/ouderdom/COGS/Excel-round-trip; refactors parseMT940+PSP → utils/bank.ts, excel.ts → pure bouw/parse, window-guard in api.ts; MT940-import na refactor met Playwright gesmoke-test |
 | 2026-07-16 | 1.11.1 | 3.2 | pytest: 31 tests op server.py (helpers + live-handler-integratie: 409/422/413/429-paden, atomaire commit en nextnr-parallellisme, upload, secrets, audit); /api/ping-documentatie gecorrigeerd |
+| 2026-07-16 | 1.11.2 | 3.3 | CI-workflow (typecheck/vitest/build, pytest, Docker-build, versie-bump-lint incl. PR-bumpcheck t.o.v. basisbranch); tsc nu volledig schoon (3 reduce-typefouten gefixt); checkscript lokaal positief én negatief getest |
