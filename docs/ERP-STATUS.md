@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.0 · fase 0/1/2 afgerond, fase 3 gestart (3.1 klaar)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.1 · fase 0/1/2 afgerond, fase 3 gestart (3.1 + 3.2 klaar)
 
 ---
 
@@ -116,8 +116,13 @@
       ouderdom, COGS); parseMT940/zoekPspCombinatie naar utils/bank.ts en
       excel.ts gesplitst in pure bouw/parse-functies (round-trip-testbaar),
       zonder gedragswijziging)*
-- [ ] **3.2 pytest voor server.py** — key-validatie, rate-limit, atomic write,
-      upload, 409/422-paden
+- [x] **3.2 pytest voor server.py** — key-validatie, rate-limit, atomic write,
+      upload, 409/422-paden *(v1.11.1, 2026-07-16 — 31 tests in
+      tests/test_server.py: pure helpers + integratie tegen de echte handler
+      op een efemere poort (tijdelijke DATA_DIR); incl. atomaire commit,
+      nextnr onder 20 parallelle clients, 413, sentinel-merge en
+      server-audit. Bijvangst: /api/ping bleek geen echte route te zijn
+      (SPA-fallback) — gedocumenteerd, echte health-check volgt in 3.6)*
 - [ ] **3.3 GitHub Actions CI** — tsc --noEmit, build, tests, Docker-build,
       versie-bump-check
 - [ ] **3.4 TypeScript aanscherpen** — incrementeel, eerst utils/ en types/,
@@ -159,3 +164,4 @@
 | 2026-07-16 | 1.10.98 | 2.5 | Ouderdomsrapport debiteuren/crediteuren (buckets per relatie, aansluitend op balans, CSV); 7 unit-checks op `ouderdomsAnalyse` (grensgevallen 30/31, creditnota's, case-insensitive groepering) + Playwright |
 | 2026-07-16 | 1.10.99 | 2.6 | COGS: `berekenBatchKostprijs` + `berekenCogs`, marge-blok in W&V; unit-checks (refactor-pariteit productkostprijs, periode/intern/onbekende-kostprijs-filters) + Playwright — **fase 2 compleet** |
 | 2026-07-16 | 1.11.0 | 3.1 | Vitest: 67 tests (6 bestanden) op accijns/BTW-rollover/grondslag/centen/journaal/bank-MT940-PSP/voorraad/ouderdom/COGS/Excel-round-trip; refactors parseMT940+PSP → utils/bank.ts, excel.ts → pure bouw/parse, window-guard in api.ts; MT940-import na refactor met Playwright gesmoke-test |
+| 2026-07-16 | 1.11.1 | 3.2 | pytest: 31 tests op server.py (helpers + live-handler-integratie: 409/422/413/429-paden, atomaire commit en nextnr-parallellisme, upload, secrets, audit); /api/ping-documentatie gecorrigeerd |

@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.1] — 2026-07-16
+
+### Toegevoegd — pytest-suite voor server.py (ERP-plan 3.2)
+
+- 31 tests in `tests/test_server.py` (`python3 -m pytest`): unit-tests op de
+  pure helpers (key- en upload-validatie incl. path-traversal,
+  schemavalidatie, append-only-guard, secrets-maskering, atomic write) én
+  integratietests tegen de echte handler op een efemere poort met een
+  tijdelijke DATA_DIR — optimistic locking (409), schemavalidatie en
+  append-only via HTTP (422), atomaire `/api/commit` (conflict of
+  append-only-schending schrijft níets), `/api/nextnr` (gescheiden reeksen,
+  20 parallelle clients → 0 dubbele nummers), rate-limiting (429 +
+  Retry-After), 413 boven de request-limiet, upload/delete-upload,
+  sentinel-merge van secrets en de server-audit.
+- pytest is een dev-dependency; server.py zelf blijft stdlib-only.
+- Documentatie: CLAUDE.md-testsectie uitgebreid; de `/api/ping`-rij in de
+  endpointtabel gecorrigeerd (geen echte route — SPA-fallback; een echte
+  health-check volgt in ERP 3.6).
+
+---
+
 ## [1.11.0] — 2026-07-16
 
 ### Toegevoegd — Vitest-testsuite op de pure logica (ERP-plan 3.1)

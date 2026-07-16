@@ -118,12 +118,21 @@ De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
 ouderdom, COGS en de Excel-backup-round-trip.
 
+`server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
+key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
+optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
+onder parallelle clients), rate-limiting (429), secrets-maskering en de
+server-audit. De suite start de echte handler op een efemere poort met een
+tijdelijke DATA_DIR.
+
 ```bash
-npm test          # vitest run (eenmalig)
+npm test                 # vitest run (frontend-utils, eenmalig)
 npm run test:watch
+python3 -m pytest        # server.py (pytest is een dev-dependency, geen server-dependency)
 ```
 
-**Draai `npm test` bij elke wijziging aan `src/utils/`.** UI-gedrag heeft
+**Draai `npm test` bij elke wijziging aan `src/utils/` en
+`python3 -m pytest` bij elke wijziging aan `server.py`.** UI-gedrag heeft
 geen geautomatiseerde dekking — verifieer pagina-wijzigingen handmatig met
 de dev-server (of de verify-skill). Nieuwe pure logica? Zet hem in
 `src/utils/` en schrijf er direct een test bij.
@@ -457,7 +466,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 |--------|------|-------------|
 | GET | `/api/data/<key>` | Load JSON data file |
 | POST | `/api/data/<key>` | Save JSON data file |
-| GET | `/api/ping` | Health check |
+| GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; echte health-check komt in ERP 3.6)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
@@ -560,7 +569,7 @@ Bij elke nieuwe sleutel: voeg toe aan **alle 5** taalbestanden (nl/en/de/fr/es).
 
 ## Important Constraints
 
-- **Testdekking alleen op utils** — `npm test` dekt de pure logica in `src/utils/`; UI en server.py handmatig verifiëren
+- **Testdekking op utils + server** — `npm test` dekt de pure logica in `src/utils/`, `python3 -m pytest` dekt server.py; UI handmatig verifiëren
 - **Single-file build** — all JS/CSS is inlined; keep bundle size reasonable
 - **Python stdlib only** — `server.py` must not import third-party packages
 - **Dutch UI language** — all user-visible strings must go through i18n
