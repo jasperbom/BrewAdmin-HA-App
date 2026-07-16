@@ -141,7 +141,13 @@
       page-props getypt (AccijnsPageProps) en AccijnsRecord aangevuld met
       de runtime-velden; boy-scout-regel voor overige pagina's vastgelegd
       in CLAUDE.md — verdere page-props lopen mee met 3.5-onderhoud)*
-- [ ] **3.5 Pagina's opsplitsen** — boy-scout-regel bij onderhoud
+- [x] **3.5 Pagina's opsplitsen** — boy-scout-regel bij onderhoud
+      *(v1.11.4, 2026-07-16 — regel verankerd in CLAUDE.md en gedemonstreerd:
+      ZIP-schrijver → utils/zip.ts en het gedupliceerde getPeriodes
+      (Boekhouding + Statiegeld) → utils/btw.ts, beide met tests en onder de
+      strict-ratchet; eerdere extracties uit fase 2/3 (journaal, centen,
+      bank/MT940, excel-bouw/parse) horen bij hetzelfde patroon. Blijft
+      doorlopend van kracht bij elk onderhoud)*
 - [ ] **3.6 Gestructureerde serverlogging + /api/health**
 
 ## Fase 4 — Structurele fundering (pas bij multi-user/schaal)
@@ -181,3 +187,4 @@
 | 2026-07-16 | 1.11.1 | 3.2 | pytest: 31 tests op server.py (helpers + live-handler-integratie: 409/422/413/429-paden, atomaire commit en nextnr-parallellisme, upload, secrets, audit); /api/ping-documentatie gecorrigeerd |
 | 2026-07-16 | 1.11.2 | 3.3 | CI-workflow (typecheck/vitest/build, pytest, Docker-build, versie-bump-lint incl. PR-bumpcheck t.o.v. basisbranch); tsc nu volledig schoon (3 reduce-typefouten gefixt); checkscript lokaal positief én negatief getest |
 | 2026-07-16 | 1.11.3 | 3.4 | Strict-ratchet op utils/types/i18n (`tsconfig.strict.json`, npm run typecheck, in CI; geverifieerd met opzettelijke-fout-probe), AccijnsPage-props getypt + AccijnsRecord-runtime-velden; CLAUDE.md-conventies en werkwijze-blok geactualiseerd |
+| 2026-07-16 | 1.11.4 | 3.5 | Extracties: makeZip/crc32 → utils/zip.ts, gedeeld getPeriodes → utils/btw.ts (dupliaat uit 2 pagina's weg); +6 tests (73 totaal); boy-scout-regel in CLAUDE.md |

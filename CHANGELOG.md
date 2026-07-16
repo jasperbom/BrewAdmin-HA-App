@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.4] — 2026-07-16
+
+### Gewijzigd — Pagina's opsplitsen: eerste extracties + boy-scout-regel (ERP-plan 3.5)
+
+- ZIP-schrijver (STORE) uit BoekhoudingPage naar `src/utils/zip.ts`
+  (`makeZip`/`crc32`) — puur, getest (referentie-CRC, ZIP-structuur) en
+  onder de strict-ratchet.
+- `getPeriodes` (kwartaal-/maandperiodes) was gedupliceerd in
+  BoekhoudingPage en StatiegeldPage → één gedeelde functie in
+  `src/utils/btw.ts` met optionele locale voor maandlabels; getest
+  (datumbereiken, schrikkeljaar, labels).
+- Boy-scout-regel verankerd in CLAUDE.md: bij onderhoud aan grote pagina's
+  pure logica naar `src/utils/` (mét test) en zelfstandige
+  modals/tabbladen naar eigen bestanden — geen big-bang-refactors.
+
+---
+
 ## [1.11.3] — 2026-07-16
 
 ### Toegevoegd — TypeScript aanscherpen (ERP-plan 3.4)

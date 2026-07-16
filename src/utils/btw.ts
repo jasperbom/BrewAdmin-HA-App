@@ -83,6 +83,39 @@ export function magFactuurMuteren(
   return !isPeriodeGesloten(effectievePeriodeKey(factuur, periode), ingediendeKeys, betaaldeKeys)
 }
 
+// ── Periodeberekening ───────────────────────────────────────────────────────
+// Kwartaal- of maandperiodes van een jaar, met datumbereik en periodeKey.
+// Voorheen gedupliceerd in BoekhoudingPage en StatiegeldPage (ERP-plan 3.5).
+// Met `locale` krijgen maanden een gelokaliseerde naam (bv. "Januari"),
+// zonder locale het neutrale '<jaar>-<mm>'.
+export interface BtwPeriode {
+  label: string
+  from: string
+  to: string
+  key: string
+}
+
+export function getPeriodes(year: number, periode: BtwPeriodeType, locale?: string): BtwPeriode[] {
+  if (periode === 'maand') {
+    return Array.from({length: 12}, (_, i) => {
+      const m = String(i + 1).padStart(2, '0')
+      const lastDay = new Date(year, i + 1, 0).getDate()
+      let label = `${year}-${m}`
+      if (locale) {
+        const raw = new Date(year, i, 1).toLocaleString(locale, {month: 'long'})
+        label = raw.charAt(0).toUpperCase() + raw.slice(1)
+      }
+      return {label, from: `${year}-${m}-01`, to: `${year}-${m}-${String(lastDay).padStart(2, '0')}`, key: `${year}-M${m}`}
+    })
+  }
+  return [
+    {label: 'Q1', from: `${year}-01-01`, to: `${year}-03-31`, key: `${year}-Q1`},
+    {label: 'Q2', from: `${year}-04-01`, to: `${year}-06-30`, key: `${year}-Q2`},
+    {label: 'Q3', from: `${year}-07-01`, to: `${year}-09-30`, key: `${year}-Q3`},
+    {label: 'Q4', from: `${year}-10-01`, to: `${year}-12-31`, key: `${year}-Q4`},
+  ]
+}
+
 // ── Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2) ────────────────
 // De Belastingdienst berekent de verschuldigde BTW in de aangifte over de
 // (som van de) grondslag per tarief — niet als optelsom van per regel

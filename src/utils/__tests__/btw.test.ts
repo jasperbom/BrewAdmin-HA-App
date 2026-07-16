@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   datumToPeriodeKey, periodeKeyLabel, huidigePeriodeKey, isPeriodeGesloten,
   effectievePeriodeKey, geslotenPeriodeSets, magFactuurMuteren, bepaalRollover,
-  omzetBtwOpGrondslag,
+  omzetBtwOpGrondslag, getPeriodes,
 } from '../btw'
 
 describe('datumToPeriodeKey / periodeKeyLabel', () => {
@@ -68,6 +68,26 @@ describe('bepaalRollover', () => {
   it('betaalde periode telt ook als gesloten', () => {
     const r = bepaalRollover('2026-01-15', 'kwartaal', new Set(), new Set(['2026-Q1']), today)
     expect(r?.rolloverNaar).toBe('2026-Q2')
+  })
+})
+
+describe('getPeriodes (gedeeld door Boekhouding en Statiegeld, ERP 3.5)', () => {
+  it('kwartalen hebben sluitende datumbereiken en keys', () => {
+    const q = getPeriodes(2026, 'kwartaal')
+    expect(q).toHaveLength(4)
+    expect(q[0]).toEqual({label: 'Q1', from: '2026-01-01', to: '2026-03-31', key: '2026-Q1'})
+    expect(q[3].to).toBe('2026-12-31')
+  })
+  it('maanden kennen de juiste laatste dag (incl. schrikkeljaar)', () => {
+    const m26 = getPeriodes(2026, 'maand')
+    expect(m26).toHaveLength(12)
+    expect(m26[1]).toMatchObject({from: '2026-02-01', to: '2026-02-28', key: '2026-M02'})
+    expect(getPeriodes(2028, 'maand')[1].to).toBe('2028-02-29')
+  })
+  it('labels: neutraal zonder locale, gelokaliseerd mét', () => {
+    expect(getPeriodes(2026, 'maand')[0].label).toBe('2026-01')
+    const nl = getPeriodes(2026, 'maand', 'nl')[0].label
+    expect(nl.toLowerCase()).toContain('januari')
   })
 })
 

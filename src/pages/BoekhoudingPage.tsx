@@ -6,7 +6,8 @@ import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/k
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies, ouderdomsAnalyse, berekenCogs } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
-import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren, omzetBtwOpGrondslag } from '../utils/btw'
+import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren, omzetBtwOpGrondslag, getPeriodes } from '../utils/btw'
+import { makeZip } from '../utils/zip'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
 import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
 import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie } from '../utils/bank'
@@ -17,58 +18,6 @@ import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/
 import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 
-// ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
-const _crcTbl = (() => {
-  const t = new Uint32Array(256)
-  for (let n = 0; n < 256; n++) {
-    let c = n
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)
-    t[n] = c
-  }
-  return t
-})()
-function _crc32(data: Uint8Array): number {
-  let c = 0xFFFFFFFF
-  for (let i = 0; i < data.length; i++) c = _crcTbl[(c ^ data[i]) & 0xFF] ^ (c >>> 8)
-  return (c ^ 0xFFFFFFFF) >>> 0
-}
-function _cat(...parts: Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0))
-  let off = 0; for (const p of parts) { out.set(p, off); off += p.length }
-  return out
-}
-function _u16(v: number) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, v, true); return b }
-function _u32(v: number) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, v, true); return b }
-function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
-  const enc = new TextEncoder()
-  const locals: Uint8Array[] = [], centrals: Uint8Array[] = []
-  let offset = 0
-  for (const f of files) {
-    const nm = enc.encode(f.name), crc = _crc32(f.data), sz = f.data.length
-    const loc = _cat(
-      new Uint8Array([0x50,0x4B,0x03,0x04]),
-      _u16(20), _u16(0), _u16(0), _u16(0), _u16(0),
-      _u32(crc), _u32(sz), _u32(sz), _u16(nm.length), _u16(0),
-      nm, f.data
-    )
-    locals.push(loc)
-    centrals.push(_cat(
-      new Uint8Array([0x50,0x4B,0x01,0x02]),
-      _u16(20), _u16(20), _u16(0), _u16(0), _u16(0), _u16(0),
-      _u32(crc), _u32(sz), _u32(sz), _u16(nm.length), _u16(0), _u16(0),
-      _u16(0), _u16(0), _u32(0), _u32(offset),
-      nm
-    ))
-    offset += loc.length
-  }
-  const cd = _cat(...centrals)
-  return _cat(...locals, cd, _cat(
-    new Uint8Array([0x50,0x4B,0x05,0x06]),
-    _u16(0), _u16(0), _u16(files.length), _u16(files.length),
-    _u32(cd.length), _u32(offset), _u16(0)
-  ))
-}
-// ──────────────────────────────────────────────────────────────────────────────
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
@@ -847,25 +796,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }));
     return Object.values(map).sort((a: any,b: any) => a.tarief - b.tarief);
   }, [verkoopGefilterd]);
-
-  // ── Aangiftes helpers ──────────────────────────────────────────────────────
-  const getPeriodes = (year: any, periode: any) => {
-    if (periode === 'maand') {
-      return Array.from({length:12}, (_,i) => {
-        const m = String(i+1).padStart(2,'0');
-        const lastDay = new Date(year, i+1, 0).getDate();
-        const raw = new Date(year, i, 1).toLocaleString(getLang(), {month:'long'});
-        const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-        return {label, from:`${year}-${m}-01`, to:`${year}-${m}-${String(lastDay).padStart(2,'0')}`, key:`${year}-M${m}`};
-      });
-    }
-    return [
-      {label:'Q1', from:`${year}-01-01`, to:`${year}-03-31`, key:`${year}-Q1`},
-      {label:'Q2', from:`${year}-04-01`, to:`${year}-06-30`, key:`${year}-Q2`},
-      {label:'Q3', from:`${year}-07-01`, to:`${year}-09-30`, key:`${year}-Q3`},
-      {label:'Q4', from:`${year}-10-01`, to:`${year}-12-31`, key:`${year}-Q4`},
-    ];
-  };
 
   const fetchJaarordrers = async (year: any) => {
     if (!wcCreds?.enabled || !wcCreds.storeUrl) { setAangifteError(t('msg_wc_not_active_settings')); return; }
@@ -3498,7 +3428,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
       {mainTab==='btw_aangifte' && (()=>{
         const periode = (btwInst as any)?.periode || 'kwartaal';
-        const periodes = getPeriodes(aangifteYear, periode);
+        const periodes = getPeriodes(aangifteYear, periode, getLang());
         // tod() = lokale kalenderdag; toISOString() is UTC en gaf rond
         // middernacht (CET/CEST) een dag verschil in de periodestatus.
         const today = tod();

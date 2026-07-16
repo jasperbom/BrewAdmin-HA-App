@@ -9,6 +9,7 @@ import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels } from '../utils/centen'
+import { getPeriodes } from '../utils/btw'
 
 interface Props {
   verpakkingen: any[]
@@ -66,23 +67,6 @@ const StatiegeldPage: React.FC<Props> = ({
     })
     return out
   }, [verkoopFacturen])
-
-  // Periodes (kwartaal of maand)
-  const getPeriodes = (year: number, periode: 'kwartaal' | 'maand') => {
-    if (periode === 'maand') {
-      return Array.from({ length: 12 }, (_, i) => {
-        const m = String(i + 1).padStart(2, '0')
-        const lastDay = new Date(year, i + 1, 0).getDate()
-        return { label: `${year}-${m}`, from: `${year}-${m}-01`, to: `${year}-${m}-${String(lastDay).padStart(2, '0')}`, key: `${year}-M${m}` }
-      })
-    }
-    return [
-      { label: 'Q1', from: `${year}-01-01`, to: `${year}-03-31`, key: `${year}-Q1` },
-      { label: 'Q2', from: `${year}-04-01`, to: `${year}-06-30`, key: `${year}-Q2` },
-      { label: 'Q3', from: `${year}-07-01`, to: `${year}-09-30`, key: `${year}-Q3` },
-      { label: 'Q4', from: `${year}-10-01`, to: `${year}-12-31`, key: `${year}-Q4` },
-    ]
-  }
 
   // Set van SNd-perioden die al afgedragen zijn (gekoppeld aan banktransactie)
   const sndAfgedragen = useMemo(() => {

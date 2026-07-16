@@ -193,7 +193,12 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
 
 ### Component structure
 
-- Pages are large single-file components (`~1,000–1,750 lines`) with inline state
+- Pages are large single-file components (`~1,000–4,000 lines`) with inline state
+- **Boy-scout-regel (ERP 3.5):** raak je een grote pagina aan, verplaats dan
+  waar het kan pure logica naar `src/utils/` (mét test — valt onder de
+  strict-ratchet) en zelfstandige modals/tabbladen naar eigen bestanden.
+  Geen big-bang-refactors; voorbeelden: `utils/zip.ts`, `getPeriodes` in
+  `utils/btw.ts`, `parseMT940` in `utils/bank.ts`
 - Shared UI primitives live in `src/components/ui/` — use these, don't create inline one-offs
 - Theming via CSS variables: `--t-accent`, `--t-light`, `--t-dark`, `--t-text`, `--t-bg`
 - No global state manager — use `useStore(key)` for server-synced data, `useState` for local UI state
