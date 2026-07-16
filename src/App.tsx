@@ -1229,9 +1229,14 @@ function App() {
       document.head.appendChild(meta);
     }
     meta.content = th.from;
-    // Achtergrond van het html-element: zichtbaar in de statusbalkstrook en
-    // bij overscroll (rubber-banding) op iOS — donker i.p.v. wit.
-    document.documentElement.style.backgroundColor = th.from;
+    // Achtergrond van het html-element (zichtbaar in de statusbalkstrook en
+    // bij overscroll/rubber-banding op iOS): ALLEEN donker in
+    // home-screen-modus — daar vult hij het gebied achter de klok. In de
+    // browser en de HA-companion-app (ingress) hoort overscroll juist licht
+    // te blijven, passend bij de app-achtergrond.
+    const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches
+      || (navigator as any).standalone === true;
+    document.documentElement.style.backgroundColor = standalone ? th.from : th.bg;
   }, [navTheme]);
 
   // Browsertab-icoon (favicon) volgt het ingestelde logo. Het

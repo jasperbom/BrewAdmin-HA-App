@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.19] — 2026-07-16
+
+### Opgelost — Donkere overscroll lekte naar de HA-app
+
+- De donkere html-achtergrond uit v1.11.18 (voor de statusbalkstrook van
+  de home-screen-app) werd onvoorwaardelijk gezet en kleurde daardoor ook
+  de overscroll/rubber-banding in de HA-companion-app en de browser
+  donker. Nu conditioneel: alleen in standalone-modus
+  (`display-mode: standalone` / `navigator.standalone`) donker; elders
+  volgt de overscroll de lichte app-achtergrond van het thema.
+
+---
+
 ## [1.11.18] — 2026-07-16
 
 ### Verbeterd — iPhone/home-screen-app: statusbalk, icoon, zoom en logo
