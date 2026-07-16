@@ -750,7 +750,7 @@ _KEY_TYPES = {
         'water_doelprofielen', 'hop_addities', 'dry_hops', 'koel_logs',
         'batch_notities', 'kapitaal_boekingen', 'alt_rekeningen',
         'inventarisaties', 'audit_log', 'accijns_aangiftes', 'btw_aangiftes',
-        'journaal',
+        'journaal', 'jaarafsluitingen',
         'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
         'haccp_schoonmaak_log', 'haccp_ccp_definities', 'haccp_ccp_metingen',
         'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
@@ -763,7 +763,8 @@ _KEY_TYPES = {
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'coldcrash_instellingen', 'planning_instellingen',
-        'brouwproces_instellingen', 'bank_koppelingen', 'tank_statussen',
+        'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
+        'tank_statussen',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
     )},
     # scalars

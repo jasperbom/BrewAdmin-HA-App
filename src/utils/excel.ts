@@ -128,6 +128,7 @@ export const excelExport = (data: any) => {
     addSheet('AccijnsAangiftes',     data.accijns_aangiftes)
     addSheet('BtwAangiftes',         data.btw_aangiftes)
     addSheet('Journaal',             data.journaal)
+    addSheet('Jaarafsluitingen',     data.jaarafsluitingen)
     addSheet('Producten',            data.producten)
     addSheet('ProductArtikelen',     data.product_artikelen)
     addSheet('HACCPSchoonmaakTaken', data.haccp_schoonmaak_taken)
@@ -166,6 +167,7 @@ export const excelExport = (data: any) => {
       {sleutel: 'planning_instellingen',  waarde: JSON.stringify(data.planning_instellingen  ?? {})},
       {sleutel: 'brouwproces_instellingen', waarde: JSON.stringify(data.brouwproces_instellingen ?? {})},
       {sleutel: 'bank_koppelingen',     waarde: JSON.stringify(data.bank_koppelingen     ?? {})},
+      {sleutel: 'bank_saldi',           waarde: JSON.stringify(data.bank_saldi           ?? {})},
       {sleutel: 'app_name',             waarde: data.app_name  ?? ''},
       {sleutel: 'nav_theme',            waarde: data.nav_theme ?? 'amber'},
     ]
@@ -310,6 +312,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?
         accijns_aangiftes:            parse('AccijnsAangiftes'),
         btw_aangiftes:                parse('BtwAangiftes'),
         journaal:                     parse('Journaal'),
+        jaarafsluitingen:             parse('Jaarafsluitingen'),
         producten:                    parse('Producten'),
         product_artikelen:            parse('ProductArtikelen'),
         haccp_schoonmaak_taken:       parse('HACCPSchoonmaakTaken'),
@@ -342,6 +345,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?
         planning_instellingen:  parseInst('planning_instellingen'),
         brouwproces_instellingen: parseInst('brouwproces_instellingen'),
         bank_koppelingen:     parseInst('bank_koppelingen'),
+        bank_saldi:           parseInst('bank_saldi'),
         app_name:             instMap['app_name'] != null ? String(instMap['app_name']) : undefined,
         nav_theme:            instMap['nav_theme'] ? String(instMap['nav_theme']) : undefined,
         app_logo:             readLogo('app_logo'),

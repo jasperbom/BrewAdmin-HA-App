@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.96] — 2026-07-16
+
+### Toegevoegd — Balans compleet (ERP-plan 2.3)
+
+- **Crediteuren** op de balans: openstaande inkoopfacturen (was hardcoded €0).
+- **Liquide middelen** op de balans: bij elke MT940-import wordt het
+  eindsaldo per IBAN vastgelegd in de nieuwe `bank_saldi`-store (nooit
+  overschreven door een ouder afschrift); de balans toont de som met
+  saldodatum per rekening.
+- **Jaarafsluiting met beginbalans-overdracht**: nieuwe `jaarafsluitingen`-store
+  en een "Boekjaar afsluiten"-knop op de balans die de balansposten en het
+  eigen vermogen vastlegt. De balans toont daarnaast een EV-verloopkaart:
+  beginbalans (vorige afsluiting) + resultaat boekjaar (journaal-W&V) =
+  berekend eigen vermogen, met het aansluitverschil t.o.v. het EV als
+  sluitpost als controlecijfer.
+- Beide nieuwe stores zitten in de Excel-backup (sheet resp. Instellingen)
+  en in de server-schemavalidatie; i18n in alle 5 talen.
+
+---
+
 ## [1.10.95] — 2026-07-16
 
 ### Toegevoegd — Bedragen in centen + BTW op grondslag (ERP-plan 2.2)

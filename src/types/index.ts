@@ -787,6 +787,38 @@ export interface BankAfschrift {
   transacties: BankTransactie[]
 }
 
+// Laatst bekende banksaldo per rekening, vastgelegd bij elke MT940-import
+// (ERP-plan 2.3). Sleutel in de `bank_saldi`-store is de IBAN (of 'onbekend').
+// De balans leest hieruit de post "liquide middelen".
+export interface BankSaldo {
+  iban: string
+  eindsaldo: number
+  beginsaldo?: number
+  datum: string            // datum van de laatste transactie in het afschrift
+  afschrift_nr?: string
+  geimporteerd_op: string  // ISO-timestamp van de import
+}
+
+// Jaarafsluiting (ERP-plan 2.3): snapshot van de balansposten bij het
+// afsluiten van een boekjaar. Het eigen vermogen hieruit is de beginbalans
+// van het volgende boekjaar; de balans toont daarmee een EV-verloop
+// (begin + resultaat = eind) naast het EV als sluitpost.
+export interface Jaarafsluiting {
+  id: number
+  jaar: number             // het afgesloten boekjaar
+  afgesloten_op: string    // ISO-timestamp
+  eigen_vermogen: number
+  balans: {
+    debiteuren: number
+    voorraad: number
+    liquide: number
+    crediteuren: number
+    accijns_schuld: number
+    schuld_alt_rekeningen: number
+    gestort_kapitaal: number
+  }
+}
+
 export interface KapitaalBoeking {
   id: number
   datum: string

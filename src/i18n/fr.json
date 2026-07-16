@@ -2623,5 +2623,21 @@
   "jr_memoriaal": "OD",
   "jr_storno": "Extourne",
   "jr_migratie": "Reprise",
-  "lbl_btw_grondslag_hint": "TVA due calculée sur la base imposable cumulée par taux (et non comme la somme des arrondis par ligne)."
+  "lbl_btw_grondslag_hint": "TVA due calculée sur la base imposable cumulée par taux (et non comme la somme des arrondis par ligne).",
+  "lbl_liquide_middelen": "Disponibilités bancaires",
+  "lbl_bank_saldo_geen": "Aucun solde bancaire connu — importez un relevé MT940 via l'onglet Banque.",
+  "lbl_ev_verloop": "Capitaux propres — évolution {jaar}",
+  "lbl_ev_begin": "Bilan d'ouverture (clôture {jaar})",
+  "lbl_resultaat_boekjaar": "Résultat de l'exercice (journal)",
+  "lbl_ev_berekend": "Capitaux propres calculés",
+  "lbl_ev_volgens_balans": "Capitaux propres selon le bilan",
+  "lbl_aansluitverschil": "Écart de rapprochement",
+  "lbl_jaarafsluitingen": "Clôtures annuelles",
+  "lbl_boekjaar": "Exercice",
+  "lbl_afgesloten_op": "Clôturé le",
+  "btn_jaar_afsluiten": "Clôturer l'exercice {jaar}",
+  "confirm_jaar_afsluiten": "Clôturer l'exercice {jaar} ? Les postes actuels du bilan seront enregistrés comme bilan de clôture et serviront de bilan d'ouverture pour l'exercice suivant.",
+  "confirm_jaar_opnieuw_afsluiten": "L'exercice {jaar} est déjà clôturé. Clôturer à nouveau et remplacer le bilan de clôture enregistré ?",
+  "msg_geen_afsluiting": "Pas encore de clôture pour {jaar} — clôturez l'exercice pour enregistrer le bilan d'ouverture.",
+  "msg_afsluiting_hint": "Clôturez un exercice juste après sa fin, afin que le bilan enregistré reflète la fin d'année."
 }

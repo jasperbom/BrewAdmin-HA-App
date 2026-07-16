@@ -1,6 +1,6 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
-import { tod, ymd, r2, r3 } from '../utils/format'
+import { tod, ymd, r2, r3, fmtD } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
@@ -111,7 +111,7 @@ function zoekPspCombinatie(bedrag: number, facturen: any[]): number[] | null {
   return best
 }
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -1276,6 +1276,28 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       accijnsAutoBetaald.forEach(({maand, datum}) => markeerAccijnsMaandBetaald(maand, datum))
       setBankAfschrift(afschrift)
       setBankTransacties(gematcht)
+      // Banksaldo per IBAN vastleggen (ERP-plan 2.3): de balans leest hieruit
+      // de post "liquide middelen". Alleen overschrijven wanneer dit afschrift
+      // niet ouder is dan het al bekende saldo (herimport van een oud bestand
+      // mag een nieuwer saldo niet terugdraaien).
+      const saldoDatum = afschrift.transacties.reduce(
+        (max: string, tx: any) => (tx.datum && tx.datum > max ? tx.datum : max), '') || tod()
+      const ibanKey = (afschrift.iban || '').trim() || 'onbekend'
+      setBankSaldi((prev: any) => {
+        const huidig = (prev || {})[ibanKey]
+        if (huidig?.datum && huidig.datum > saldoDatum) return prev || {}
+        return {
+          ...(prev || {}),
+          [ibanKey]: {
+            iban: ibanKey,
+            eindsaldo: afschrift.eindsaldo ?? 0,
+            beginsaldo: afschrift.beginsaldo ?? 0,
+            datum: saldoDatum,
+            afschrift_nr: afschrift.afschriftNr || '',
+            geimporteerd_op: new Date().toISOString(),
+          },
+        }
+      })
     }
     reader.readAsText(file, 'latin1')
   }
@@ -3069,28 +3091,68 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
         {/* Balans */}
         {rapportTab==='balans' && (()=>{
+          const boekjaar = new Date().getFullYear()
           const openVerkoop = (verkoopFacturen||[]).filter((f:any)=>f.status!=='betaald').reduce((s:number,f:any)=>s+(f.bruto||0),0)
           const voorraadWaarde = (lots||[]).filter((l:any)=>l.beschikbaar!==false&&l.hoeveelheid>0&&l.prijs_per_eenheid).reduce((s:number,l:any)=>s+(l.hoeveelheid||0)*(l.prijs_per_eenheid||0),0)
+          // Liquide middelen uit de bij MT940-import vastgelegde eindsaldi (ERP-plan 2.3).
+          const saldi = Object.values(bankSaldi||{}) as any[]
+          const liquide = saldi.reduce((s:number,b:any)=>s+(Number(b?.eindsaldo)||0),0)
+          // Crediteuren: openstaande inkoopfacturen (ERP-plan 2.3).
+          const crediteuren = (inkoopFacturen||[]).filter((f:any)=>f.status!=='betaald').reduce((s:number,f:any)=>s+(f.totaal_bruto||0),0)
           const accijnsSchuld = (acc||[]).filter((r:any)=>!r.betaald).reduce((s:number,r:any)=>s+(r.totaal_accijns||r.accijns||0),0)
           const gestortKapitaal = (kapitaalBoekingen||[]).reduce((s:number,k:any)=>k.type==='storting'?s+k.bedrag:s-k.bedrag, 0)
           const schuldAltRek = totaleSchuldAltRekeningen
-          const totaalActiva = openVerkoop + voorraadWaarde
-          const totaalPassiva = accijnsSchuld + gestortKapitaal + schuldAltRek
+          const totaalActiva = openVerkoop + voorraadWaarde + liquide
+          const totaalPassiva = crediteuren + accijnsSchuld + gestortKapitaal + schuldAltRek
           const eigenVermogen = totaalActiva - totaalPassiva
-          return (
+
+          // EV-verloop over het boekjaar: beginbalans uit de jaarafsluiting van
+          // vorig jaar + resultaat van dit boekjaar (journaal-W&V). Het verschil
+          // met het EV als sluitpost is de aansluitcontrole.
+          const vorigeAfsluiting = (jaarafsluitingen||[]).find((j:any)=>Number(j.jaar)===boekjaar-1) || null
+          const resultaatBoekjaar = berekenWv(`${boekjaar}-01-01`, `${boekjaar}-12-31`).nettowinst
+          const evBerekend = vorigeAfsluiting ? (Number(vorigeAfsluiting.eigen_vermogen)||0) + resultaatBoekjaar : null
+          const aansluitVerschil = evBerekend != null ? eigenVermogen - evBerekend : null
+
+          const sluitBoekjaarAf = () => {
+            const jaar = boekjaar - 1
+            const bestaande = (jaarafsluitingen||[]).find((j:any)=>Number(j.jaar)===jaar)
+            const vraag = t(bestaande ? 'confirm_jaar_opnieuw_afsluiten' : 'confirm_jaar_afsluiten').replace('{jaar}', String(jaar))
+            if (!confirm(vraag)) return
+            const nieuw = {
+              id: newId(jaarafsluitingen||[]),
+              jaar,
+              afgesloten_op: new Date().toISOString(),
+              eigen_vermogen: r2(eigenVermogen),
+              balans: {
+                debiteuren: r2(openVerkoop), voorraad: r2(voorraadWaarde), liquide: r2(liquide),
+                crediteuren: r2(crediteuren), accijns_schuld: r2(accijnsSchuld),
+                schuld_alt_rekeningen: r2(schuldAltRek), gestort_kapitaal: r2(gestortKapitaal),
+              },
+            }
+            setJaarafsluitingen((prev:any[]) => [...(prev||[]).filter((j:any)=>Number(j.jaar)!==jaar), nieuw])
+            logAudit(auditLog, setAuditLog, {entiteit:'Jaarafsluiting', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boekjaar ${jaar} afgesloten (EV ${fmt(eigenVermogen)})`})
+          }
+
+          const afsluitingen = [...(jaarafsluitingen||[])].sort((a:any,b:any)=>Number(b.jaar)-Number(a.jaar))
+          return (<>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className={card}>
                 <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_activa')}</h3>
                 <table className="w-full text-sm"><tbody>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_liquide_middelen')}</td><td className="py-1.5 text-right font-medium">{fmt(liquide)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_debiteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(openVerkoop)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_voorraden_indicatief')}</td><td className="py-1.5 text-right font-medium">{fmt(voorraadWaarde)}</td></tr>
                   <tr className="border-t border-gray-200"><td className="py-2 font-bold text-gray-800">{t('lbl_total')}</td><td className="py-2 text-right font-bold">{fmt(totaalActiva)}</td></tr>
                 </tbody></table>
+                {saldi.length > 0
+                  ? <p className="text-xs text-gray-400 mt-2">{saldi.map((b:any)=>`${b.iban}: ${fmt(b.eindsaldo)} (${b.datum})`).join(' · ')}</p>
+                  : <p className="text-xs text-gray-400 mt-2 italic">{t('lbl_bank_saldo_geen')}</p>}
               </div>
               <div className={card}>
                 <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_passiva')}</h3>
                 <table className="w-full text-sm"><tbody>
-                  <tr><td className="py-1.5 text-gray-600">{t('lbl_crediteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(0)}</td></tr>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_crediteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(crediteuren)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_accijns_schuld')}</td><td className="py-1.5 text-right font-medium">{fmt(accijnsSchuld)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_schuld_alt_rekeningen')}</td><td className={`py-1.5 text-right font-medium ${schuldAltRek>0.005?'text-orange-600':'text-gray-400'}`}>{fmt(schuldAltRek)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_gestort_kapitaal')}</td><td className={`py-1.5 text-right font-medium ${gestortKapitaal>=0?'text-purple-600':'text-red-600'}`}>{fmt(gestortKapitaal)}</td></tr>
@@ -3099,7 +3161,71 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 </tbody></table>
               </div>
             </div>
-          )
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              {/* Eigen vermogen — verloop boekjaar (aansluitcontrole) */}
+              <div className={card}>
+                <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_ev_verloop').replace('{jaar}', String(boekjaar))}</h3>
+                <table className="w-full text-sm"><tbody>
+                  <tr>
+                    <td className="py-1.5 text-gray-600">{t('lbl_ev_begin').replace('{jaar}', String(boekjaar-1))}</td>
+                    <td className="py-1.5 text-right font-medium">{vorigeAfsluiting ? fmt(vorigeAfsluiting.eigen_vermogen) : '—'}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 text-gray-600">{t('lbl_resultaat_boekjaar')}</td>
+                    <td className={`py-1.5 text-right font-medium ${resultaatBoekjaar>=0?'text-green-600':'text-red-600'}`}>{fmt(resultaatBoekjaar)}</td>
+                  </tr>
+                  <tr className="border-t border-gray-200">
+                    <td className="py-2 font-semibold text-gray-700">{t('lbl_ev_berekend')}</td>
+                    <td className="py-2 text-right font-semibold">{evBerekend != null ? fmt(evBerekend) : '—'}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 text-gray-600">{t('lbl_ev_volgens_balans')}</td>
+                    <td className="py-1.5 text-right font-medium">{fmt(eigenVermogen)}</td>
+                  </tr>
+                  {aansluitVerschil != null && (
+                    <tr>
+                      <td className="py-1.5 text-gray-600">{t('lbl_aansluitverschil')}</td>
+                      <td className={`py-1.5 text-right font-medium ${Math.abs(aansluitVerschil)<=0.005?'text-green-600':'text-orange-600'}`}>{fmt(aansluitVerschil)}</td>
+                    </tr>
+                  )}
+                </tbody></table>
+                {!vorigeAfsluiting && <p className="text-xs text-gray-400 mt-2 italic">{t('msg_geen_afsluiting').replace('{jaar}', String(boekjaar-1))}</p>}
+              </div>
+
+              {/* Jaarafsluitingen */}
+              <div className={card}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-700">{t('lbl_jaarafsluitingen')}</h3>
+                  <button onClick={sluitBoekjaarAf}
+                    className="px-3 py-1.5 tbtn rounded-lg text-xs font-medium transition-colors">
+                    {t('btn_jaar_afsluiten').replace('{jaar}', String(boekjaar-1))}
+                  </button>
+                </div>
+                {afsluitingen.length === 0
+                  ? <p className="text-sm text-gray-400">{t('msg_geen_afsluiting').replace('{jaar}', String(boekjaar-1))}</p>
+                  : (
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_boekjaar')}</th>
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_afgesloten_op')}</th>
+                        <th className="py-1.5 text-right font-medium">{t('lbl_eigen_vermogen')}</th>
+                      </tr></thead>
+                      <tbody>
+                        {afsluitingen.map((j:any)=>(
+                          <tr key={j.id} className="border-b border-gray-50">
+                            <td className="py-1.5 pr-3 font-medium text-gray-700">{j.jaar}</td>
+                            <td className="py-1.5 pr-3 text-gray-500">{fmtD(String(j.afgesloten_op||'').slice(0,10))}</td>
+                            <td className={`py-1.5 text-right font-medium ${j.eigen_vermogen>=0?'text-green-600':'text-red-600'}`}>{fmt(j.eigen_vermogen)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                <p className="text-xs text-gray-400 mt-2 italic">{t('msg_afsluiting_hint')}</p>
+              </div>
+            </div>
+          </>)
         })()}
 
         {/* Omzet per categorie */}

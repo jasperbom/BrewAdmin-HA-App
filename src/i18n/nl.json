@@ -2623,5 +2623,21 @@
   "jr_memoriaal": "Memoriaal",
   "jr_storno": "Storno",
   "jr_migratie": "Opbouw",
-  "lbl_btw_grondslag_hint": "Verschuldigde BTW berekend over de som van de grondslag per tarief (niet als optelsom van regelafrondingen)."
+  "lbl_btw_grondslag_hint": "Verschuldigde BTW berekend over de som van de grondslag per tarief (niet als optelsom van regelafrondingen).",
+  "lbl_liquide_middelen": "Liquide middelen (bank)",
+  "lbl_bank_saldo_geen": "Nog geen banksaldo bekend — importeer een MT940-afschrift via het Bank-tabblad.",
+  "lbl_ev_verloop": "Eigen vermogen — verloop {jaar}",
+  "lbl_ev_begin": "Beginbalans (afsluiting {jaar})",
+  "lbl_resultaat_boekjaar": "Resultaat boekjaar (journaal)",
+  "lbl_ev_berekend": "Eigen vermogen berekend",
+  "lbl_ev_volgens_balans": "Eigen vermogen volgens balans",
+  "lbl_aansluitverschil": "Aansluitverschil",
+  "lbl_jaarafsluitingen": "Jaarafsluitingen",
+  "lbl_boekjaar": "Boekjaar",
+  "lbl_afgesloten_op": "Afgesloten op",
+  "btn_jaar_afsluiten": "Boekjaar {jaar} afsluiten",
+  "confirm_jaar_afsluiten": "Boekjaar {jaar} afsluiten? De huidige balansposten worden vastgelegd als eindbalans en dienen als beginbalans voor het volgende boekjaar.",
+  "confirm_jaar_opnieuw_afsluiten": "Boekjaar {jaar} is al afgesloten. Opnieuw afsluiten en de vastgelegde eindbalans vervangen?",
+  "msg_geen_afsluiting": "Nog geen jaarafsluiting van {jaar} — sluit het boekjaar af om de beginbalans vast te leggen.",
+  "msg_afsluiting_hint": "Sluit een boekjaar af direct na afloop, zodat de vastgelegde balans het jaareinde weerspiegelt."
 }

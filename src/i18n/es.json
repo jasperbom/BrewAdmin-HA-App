@@ -2623,5 +2623,21 @@
   "jr_memoriaal": "Diario general",
   "jr_storno": "Extorno",
   "jr_migratie": "Carga inicial",
-  "lbl_btw_grondslag_hint": "IVA devengado calculado sobre la base imponible sumada por tipo (no como suma de redondeos por línea)."
+  "lbl_btw_grondslag_hint": "IVA devengado calculado sobre la base imponible sumada por tipo (no como suma de redondeos por línea).",
+  "lbl_liquide_middelen": "Tesorería (banco)",
+  "lbl_bank_saldo_geen": "Aún no hay saldo bancario — importe un extracto MT940 en la pestaña Banco.",
+  "lbl_ev_verloop": "Patrimonio neto — evolución {jaar}",
+  "lbl_ev_begin": "Balance de apertura (cierre {jaar})",
+  "lbl_resultaat_boekjaar": "Resultado del ejercicio (diario)",
+  "lbl_ev_berekend": "Patrimonio neto calculado",
+  "lbl_ev_volgens_balans": "Patrimonio neto según balance",
+  "lbl_aansluitverschil": "Diferencia de conciliación",
+  "lbl_jaarafsluitingen": "Cierres anuales",
+  "lbl_boekjaar": "Ejercicio",
+  "lbl_afgesloten_op": "Cerrado el",
+  "btn_jaar_afsluiten": "Cerrar el ejercicio {jaar}",
+  "confirm_jaar_afsluiten": "¿Cerrar el ejercicio {jaar}? Las partidas actuales del balance se registrarán como balance de cierre y servirán de balance de apertura del siguiente ejercicio.",
+  "confirm_jaar_opnieuw_afsluiten": "El ejercicio {jaar} ya está cerrado. ¿Cerrarlo de nuevo y sustituir el balance de cierre registrado?",
+  "msg_geen_afsluiting": "Aún no hay cierre de {jaar} — cierre el ejercicio para registrar el balance de apertura.",
+  "msg_afsluiting_hint": "Cierre el ejercicio justo después de terminar, para que el balance registrado refleje el fin de año."
 }

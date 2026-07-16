@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.95 · fase 0 en 1 afgerond, fase 2 gestart (2.1 + 2.2 klaar)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.96 · fase 0 en 1 afgerond, fase 2 gestart (2.1 t/m 2.3 klaar)
 
 ---
 
@@ -82,8 +82,12 @@
       `*_cent`-velden opgeslagen naast de euro-velden (compatibiliteit);
       rubriek 1a/1b en het te-betalen-bedrag op grondslag per tarief via
       `omzetBtwOpGrondslag`; voorbelasting blijft som van gefactureerde BTW)*
-- [ ] **2.3 Balans compleet** — crediteuren, liquide middelen uit MT940-saldi,
-      jaarafsluiting met beginbalans-overdracht
+- [x] **2.3 Balans compleet** — crediteuren, liquide middelen uit MT940-saldi,
+      jaarafsluiting met beginbalans-overdracht *(v1.10.96, 2026-07-16 —
+      crediteuren uit open inkoopfacturen; `bank_saldi`-store gevuld bij
+      MT940-import (eindsaldo per IBAN, ouder afschrift overschrijft nooit);
+      `jaarafsluitingen`-store + afsluitknop op de balans; EV-verloopkaart
+      begin + resultaat (journaal) = berekend EV met aansluitverschil)*
 - [ ] **2.4 Bankreconciliatie versterken** — match op bedrag + tegenrekening +
       kenmerk; saldo-aansluitcontrole per import
 - [ ] **2.5 Debiteuren/crediteuren-ouderdom** in buckets (0-30/31-60/61-90/90+)
@@ -132,3 +136,4 @@
 | 2026-07-15 | 1.10.91 | 0.5-fix | Permission denied op /backup/brewadmin verholpen: entrypoint.sh maakt de submap als root aan en chowned naar appuser |
 | 2026-07-16 | 1.10.94 | 2.1 | Journaal: append-only key + server-guard (curl-getest: weglaten/muteren → 422, aanvullen → 200), boekingen op alle definitief-momenten, storno-flow, W&V + Journaal-rapport uit journaal, eenmalige opbouw; bedragen in centen (voorschot 2.2). Versies 1.10.92/93 waren losse features buiten het plan |
 | 2026-07-16 | 1.10.95 | 2.2 | Centen: `totaliseerRegels`/`totaliseerInkoop` (cent-exact, `*_cent`-velden op alle 12 factuur-aanmaakplekken) + `omzetBtwOpGrondslag` (rubriek 1a/1b en te-betalen op grondslag per tarief). Unit-getest via esbuild-bundle (drift-case 3×€1,03: €0,65 i.p.v. €0,66) en runtime in de aangiftetab |
+| 2026-07-16 | 1.10.96 | 2.3 | Balans: crediteuren + liquide middelen (`bank_saldi` bij MT940-import) + `jaarafsluitingen` met EV-verloop/aansluitverschil; Playwright-getest (import fixture-afschrift → saldo op balans, afsluitknop → snapshot op disk) |

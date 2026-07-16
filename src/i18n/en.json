@@ -2623,5 +2623,21 @@
   "jr_memoriaal": "General",
   "jr_storno": "Reversal",
   "jr_migratie": "Backfill",
-  "lbl_btw_grondslag_hint": "VAT due calculated over the summed taxable base per rate (not as a sum of per-line roundings)."
+  "lbl_btw_grondslag_hint": "VAT due calculated over the summed taxable base per rate (not as a sum of per-line roundings).",
+  "lbl_liquide_middelen": "Cash at bank",
+  "lbl_bank_saldo_geen": "No bank balance known yet — import an MT940 statement via the Bank tab.",
+  "lbl_ev_verloop": "Equity — movement {jaar}",
+  "lbl_ev_begin": "Opening balance (close of {jaar})",
+  "lbl_resultaat_boekjaar": "Result for the year (journal)",
+  "lbl_ev_berekend": "Equity calculated",
+  "lbl_ev_volgens_balans": "Equity per balance sheet",
+  "lbl_aansluitverschil": "Reconciliation difference",
+  "lbl_jaarafsluitingen": "Year-end closings",
+  "lbl_boekjaar": "Financial year",
+  "lbl_afgesloten_op": "Closed on",
+  "btn_jaar_afsluiten": "Close financial year {jaar}",
+  "confirm_jaar_afsluiten": "Close financial year {jaar}? The current balance sheet items will be recorded as the closing balance and serve as the opening balance for the next year.",
+  "confirm_jaar_opnieuw_afsluiten": "Financial year {jaar} has already been closed. Close again and replace the recorded closing balance?",
+  "msg_geen_afsluiting": "No year-end closing for {jaar} yet — close the year to record the opening balance.",
+  "msg_afsluiting_hint": "Close a financial year right after it ends, so the recorded balance reflects year-end."
 }

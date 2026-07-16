@@ -351,6 +351,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `water_doelprofielen` | array | Eigen doelprofielen brouwwater (gereedschap Waterprofiel), naast de ingebouwde stijlprofielen |
 | `kapitaal_boekingen` | array | Kapitaalstortingen / -onttrekkingen |
 | `journaal` | array | Onveranderlijke journaalregels (ERP 2.1): geboekt bij definitief maken van facturen/aangiftes, bedragen in centen, correcties via storno — server-side append-only (422 bij wijzigen/verwijderen van bestaande regels) |
+| `jaarafsluitingen` | array | Jaarafsluitingen (ERP 2.3): snapshot balansposten + eigen vermogen per afgesloten boekjaar; beginbalans voor het EV-verloop op de balans |
+| `bank_saldi` | object | Laatst bekende MT940-eindsaldo per IBAN (ERP 2.3), gezet bij bankimport; bron voor "liquide middelen" op de balans |
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
 | `accijns_instellingen` | object | Accijnstarieven |

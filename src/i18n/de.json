@@ -2623,5 +2623,21 @@
   "jr_memoriaal": "Memorial",
   "jr_storno": "Storno",
   "jr_migratie": "Aufbau",
-  "lbl_btw_grondslag_hint": "Geschuldete USt berechnet über die summierte Bemessungsgrundlage je Satz (nicht als Summe zeilenweiser Rundungen)."
+  "lbl_btw_grondslag_hint": "Geschuldete USt berechnet über die summierte Bemessungsgrundlage je Satz (nicht als Summe zeilenweiser Rundungen).",
+  "lbl_liquide_middelen": "Bankguthaben",
+  "lbl_bank_saldo_geen": "Noch kein Banksaldo bekannt — importieren Sie einen MT940-Auszug über den Bank-Tab.",
+  "lbl_ev_verloop": "Eigenkapital — Verlauf {jaar}",
+  "lbl_ev_begin": "Eröffnungsbilanz (Abschluss {jaar})",
+  "lbl_resultaat_boekjaar": "Jahresergebnis (Journal)",
+  "lbl_ev_berekend": "Eigenkapital berechnet",
+  "lbl_ev_volgens_balans": "Eigenkapital laut Bilanz",
+  "lbl_aansluitverschil": "Abstimmdifferenz",
+  "lbl_jaarafsluitingen": "Jahresabschlüsse",
+  "lbl_boekjaar": "Geschäftsjahr",
+  "lbl_afgesloten_op": "Abgeschlossen am",
+  "btn_jaar_afsluiten": "Geschäftsjahr {jaar} abschließen",
+  "confirm_jaar_afsluiten": "Geschäftsjahr {jaar} abschließen? Die aktuellen Bilanzposten werden als Schlussbilanz festgehalten und dienen als Eröffnungsbilanz des Folgejahres.",
+  "confirm_jaar_opnieuw_afsluiten": "Geschäftsjahr {jaar} ist bereits abgeschlossen. Erneut abschließen und die festgehaltene Schlussbilanz ersetzen?",
+  "msg_geen_afsluiting": "Noch kein Jahresabschluss für {jaar} — schließen Sie das Jahr ab, um die Eröffnungsbilanz festzulegen.",
+  "msg_afsluiting_hint": "Schließen Sie ein Geschäftsjahr direkt nach Ablauf ab, damit die festgehaltene Bilanz das Jahresende widerspiegelt."
 }
