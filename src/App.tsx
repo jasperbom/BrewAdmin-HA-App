@@ -1212,7 +1212,34 @@ function App() {
     r.setProperty('--t-btn-h',  th.btnH);
     r.setProperty('--t-btn-a',  th.btnA);
     r.setProperty('--t-bg',     th.bg);
+    // Browser-/statusbalk (mobiel, PWA) meekleuren met de headergradient —
+    // zonder deze meta blijft de bovenkant grijs terwijl de app van thema
+    // wisselt.
+    let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      document.head.appendChild(meta);
+    }
+    meta.content = th.from;
   }, [navTheme]);
+
+  // App-icoon (browsertab + startscherm) volgt het ingestelde logo; zonder
+  // logo blijft het standaardicoon van de browser.
+  React.useEffect(() => {
+    const zetIcoon = (rel: string) => {
+      let link = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+      if (!logo) { if (link) link.remove(); return; }
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = rel;
+        document.head.appendChild(link);
+      }
+      link.href = logo;
+    };
+    zetIcoon('icon');
+    zetIcoon('apple-touch-icon');
+  }, [logo]);
 
   return (
     <div className="min-h-screen" style={{backgroundColor:'var(--t-bg)'}}>

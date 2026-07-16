@@ -4,6 +4,57 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.16] — 2026-07-16
+
+### Verbeterd — Snellere synchronisatie, meekleurende browserbalk, logo als app-icoon
+
+- **App-start ~30× minder requests**: nieuw endpoint `GET /api/bulk`
+  levert alle data-keys + versies in één antwoord; `useStore` laadt daar
+  nu uit (met stille terugval op losse GETs voor oudere servers).
+  Gemeten: van ~100 requests per app-start naar 3. Dit scheelt vooral
+  via HA-ingress (elke request loopt door de core→supervisor→addon-keten)
+  en met meerdere apparaten.
+- Rate-limit verruimd van 120 naar 600 requests/minuut: via ingress delen
+  álle apparaten hetzelfde gateway-IP, waardoor de oude limiet bij
+  meerdere gebruikers/reloads 429's en trage sync veroorzaakte. De
+  strenge login-limiet op de directe poort blijft ongewijzigd.
+- De browser-/statusbalk (mobiel, tablet, PWA) kleurt nu mee met het
+  gekozen thema (`theme-color`-meta, dynamisch bijgewerkt bij
+  themawissel; ook op de loginpagina op basis van de achtergrondkleur).
+- Het **app-icoon volgt nu het ingestelde logo**: browsertab (favicon) en
+  startscherm (apple-touch-icon), ook op de loginpagina van de directe
+  poort. Zonder logo blijft het standaardicoon.
+- pytest: 2 nieuwe tests (bulk = data + versies identiek aan losse GET,
+  secrets gemaskeerd in bulk) — 68 totaal; runtime-verificatie met
+  Playwright (request-telling, theme-color, favicon).
+
+---
+
+## [1.11.15] — 2026-07-16
+
+### Toegevoegd — HA-gebruikers ophalen voor het rollenbeheer
+
+- De kaart "Gebruikers & rollen" toont bij het toevoegen nu een
+  **keuzelijst met de echte Home Assistant-gebruikers** (naam +
+  gebruikersnaam, zonder systeem- en gedeactiveerde accounts) i.p.v.
+  alleen vrije invoer. Vrije invoer blijft mogelijk als fallback.
+- Nieuw endpoint `GET /api/ha_gebruikers` (beheer-only). De gebruikerslijst
+  bestaat alleen op de core-websocket (`config/auth/list`), dus de server
+  kreeg een minimale stdlib-RFC6455-websocketclient die via de
+  Supervisor-proxy (`/core/websocket`, handshake geverifieerd tegen de
+  Supervisor-broncode) één command/response uitwisselt.
+- Ingress-gebruikersdetectie: valt nu ook terug op
+  `X-Remote-User-Display-Name` (de Supervisor stuurt die naast de
+  gebruikersnaam mee wanneer de ingress-sessie gebruikersdata heeft).
+- Loginpagina: een 502 toont nu de specifieke oorzaak — "auth_api-recht
+  niet actief (stop en start de addon volledig)" versus "onverwachte fout,
+  zie addon-logboek" — zodat je niet meer in het logboek hoeft te graven.
+- pytest: 5 nieuwe tests, waaronder een volledige websocket-round-trip
+  tegen een nep-core-server (handshake, auth-flow, filtering van
+  systeem-/inactieve gebruikers) — 66 totaal.
+
+---
+
 ## [1.11.14] — 2026-07-16
 
 ### Opgelost — HA-login op de directe poort faalde altijd met 401

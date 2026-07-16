@@ -106,8 +106,10 @@ def _laatste_backup_datum():
         return None
 
 API_DATA_PREFIX = '/api/data/'
+BULK_PATH = '/api/bulk'
 HEALTH_PATH = '/api/health'
 WHOAMI_PATH = '/api/whoami'
+HA_GEBRUIKERS_PATH = '/api/ha_gebruikers'
 BF_API_BASE = 'https://api.brewfather.app/v2'
 BF_PROXY_PREFIX = '/api/brewfather/'
 BF_TEST_PATH = '/api/brewfather/test'
@@ -178,9 +180,14 @@ _CONTENT_TYPES = {
     'heif': 'image/heif',
 }
 
-# Rate limiting: max requests per window per IP
+# Rate limiting: max requests per window per IP. Let op: via HA-ingress
+# delen álle apparaten hetzelfde gateway-IP (172.30.32.2) — de limiet moet
+# dus ruim genoeg zijn voor meerdere gelijktijdige gebruikers. Sinds
+# /api/bulk kost een app-start ~5 requests i.p.v. ~100; 600/min is ruim
+# voor normaal gebruik en nog steeds een rem op echt misbruik. De login op
+# de directe poort heeft zijn eigen, veel strengere limiet.
 _RATE_WINDOW = 60   # seconds
-_RATE_MAX    = 120  # requests per window
+_RATE_MAX    = 600  # requests per window
 _rate_buckets: dict = defaultdict(list)
 
 
@@ -1224,6 +1231,162 @@ def _sessie_verwijder(token: str) -> None:
         _sessies.pop(token, None)
 
 
+# ── HA-gebruikerslijst via de core-websocket ─────────────────────────────
+# De REST-API van HA kent geen gebruikerslijst; die zit alleen achter het
+# websocket-commando `config/auth/list`. De Supervisor proxiet
+# ws://supervisor/core/websocket voor addons met homeassistant_api-recht
+# (handshake: auth_required → {access_token} → auth_ok, daarna 1-op-1
+# relay). Python-stdlib heeft geen websocket-client, dus hieronder een
+# minimale RFC6455-implementatie voor dit ene request/response-verkeer:
+# kleine tekstframes, client→server gemaskeerd, ping/pong afgehandeld.
+
+_CORE_WS_HOST = 'supervisor'
+_CORE_WS_POORT = 80
+_CORE_WS_PAD = '/core/websocket'
+
+
+def _ws_frame(payload: bytes) -> bytes:
+    """Bouw één gemaskeerd client→server tekstframe (FIN=1)."""
+    kop = 0x81  # FIN + text
+    lengte = len(payload)
+    if lengte < 126:
+        header = bytes([kop, 0x80 | lengte])
+    elif lengte < 65536:
+        header = bytes([kop, 0x80 | 126]) + lengte.to_bytes(2, 'big')
+    else:
+        header = bytes([kop, 0x80 | 127]) + lengte.to_bytes(8, 'big')
+    masker = secrets.token_bytes(4)
+    gemaskeerd = bytes(b ^ masker[i % 4] for i, b in enumerate(payload))
+    return header + masker + gemaskeerd
+
+
+class _WsVerbinding:
+    """Minimale websocket-client voor één command/response-uitwisseling."""
+
+    def __init__(self, host: str, poort: int, pad: str, timeout: float = 10.0):
+        self._sock = socket.create_connection((host, poort), timeout=timeout)
+        self._rest = b''
+        sleutel = base64.b64encode(secrets.token_bytes(16)).decode()
+        verzoek = (f'GET {pad} HTTP/1.1\r\nHost: {host}\r\n'
+                   f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
+                   f'Sec-WebSocket-Key: {sleutel}\r\n'
+                   f'Sec-WebSocket-Version: 13\r\n\r\n')
+        self._sock.sendall(verzoek.encode())
+        buf = b''
+        while b'\r\n\r\n' not in buf:
+            chunk = self._sock.recv(4096)
+            if not chunk or len(buf) > 65536:
+                raise OSError('websocket-handshake mislukt')
+            buf += chunk
+        statusregel = buf.split(b'\r\n', 1)[0]
+        if b' 101 ' not in statusregel:
+            raise OSError(f'websocket-upgrade geweigerd: {statusregel[:80]!r}')
+        # Bytes ná de headers horen al bij het eerste frame — bewaren.
+        self._rest = buf.split(b'\r\n\r\n', 1)[1]
+
+    def _lees(self, n: int) -> bytes:
+        data = self._rest[:n]
+        self._rest = self._rest[n:]
+        while len(data) < n:
+            chunk = self._sock.recv(n - len(data))
+            if not chunk:
+                raise OSError('websocket onverwacht gesloten')
+            data += chunk
+        return data
+
+    def stuur_json(self, obj) -> None:
+        self._sock.sendall(_ws_frame(_json_compact(obj).encode('utf-8')))
+
+    def lees_json(self) -> dict:
+        """Lees frames tot een tekstframe; beantwoord pings, negeer pongs."""
+        for _ in range(50):
+            b1, b2 = self._lees(2)
+            opcode = b1 & 0x0F
+            lengte = b2 & 0x7F
+            if lengte == 126:
+                lengte = int.from_bytes(self._lees(2), 'big')
+            elif lengte == 127:
+                lengte = int.from_bytes(self._lees(8), 'big')
+            masker = self._lees(4) if b2 & 0x80 else b''
+            payload = self._lees(lengte) if lengte else b''
+            if masker:
+                payload = bytes(b ^ masker[i % 4] for i, b in enumerate(payload))
+            if opcode == 0x8:  # close
+                raise OSError('websocket gesloten door server')
+            if opcode == 0x9:  # ping → pong (met zelfde payload, gemaskeerd)
+                pong = _ws_frame(payload)
+                self._sock.sendall(bytes([0x8A]) + pong[1:])
+                continue
+            if opcode == 0xA:  # pong
+                continue
+            data = json.loads(payload)
+            if not isinstance(data, dict):
+                continue
+            return data
+        raise OSError('websocket: geen bruikbaar frame ontvangen')
+
+    def sluit(self) -> None:
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+
+def _core_ws_call(commando: dict, timeout: float = 10.0) -> dict | None:
+    """Voer één core-websocket-commando uit via de Supervisor-proxy.
+    Retourneert het result-bericht, of None bij elke fout (gelogd)."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token:
+        return None
+    try:
+        ws = _WsVerbinding(_CORE_WS_HOST, _CORE_WS_POORT, _CORE_WS_PAD, timeout)
+    except OSError as exc:
+        _log('core-ws', f'verbinden mislukt: {exc}', level=logging.ERROR)
+        return None
+    try:
+        bericht = ws.lees_json()  # auth_required
+        if bericht.get('type') != 'auth_required':
+            _log('core-ws', f"onverwachte start: {bericht.get('type')}", level=logging.ERROR)
+            return None
+        ws.stuur_json({'type': 'auth', 'access_token': token})
+        bericht = ws.lees_json()
+        if bericht.get('type') != 'auth_ok':
+            _log('core-ws', f"auth geweigerd: {bericht.get('type')}", level=logging.ERROR)
+            return None
+        ws.stuur_json({'id': 1, **commando})
+        for _ in range(20):
+            bericht = ws.lees_json()
+            if bericht.get('id') == 1 and bericht.get('type') == 'result':
+                return bericht
+        _log('core-ws', 'geen result-bericht ontvangen', level=logging.ERROR)
+        return None
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        _log('core-ws', f'fout: {exc}', level=logging.ERROR)
+        return None
+    finally:
+        ws.sluit()
+
+
+def _ha_gebruikerslijst() -> list[dict] | None:
+    """Alle actieve, niet-systeem-gebruikers uit HA (config/auth/list):
+    [{naam, gebruikersnaam, eigenaar}]. None bij fout."""
+    resultaat = _core_ws_call({'type': 'config/auth/list'})
+    if not resultaat or not resultaat.get('success'):
+        return None
+    gebruikers = []
+    for u in resultaat.get('result') or []:
+        if not isinstance(u, dict) or u.get('system_generated'):
+            continue
+        if u.get('is_active') is False:
+            continue
+        gebruikers.append({
+            'naam': str(u.get('name') or ''),
+            'gebruikersnaam': str(u.get('username') or ''),
+            'eigenaar': bool(u.get('is_owner')),
+        })
+    return gebruikers
+
+
 def _addon_opties() -> dict:
     """Addon-opties zoals de Supervisor die in /data/options.json zet
     (ssl/certfile/keyfile). Leeg dict buiten HA of bij leesfouten."""
@@ -1361,25 +1524,33 @@ def _login_pagina() -> bytes:
     if isinstance(afb, str) and len(afb) <= _LOGIN_AFB_MAX and _DATA_IMG_RE.match(afb):
         body_bg = f'url("{afb}") center/cover no-repeat fixed {achtergrond}'
 
+    logo = _read_json('app_logo')
+    logo_geldig = (isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX
+                   and _DATA_IMG_RE.match(logo))
     logo_html = ''
-    if inst.get('logo_tonen', True):
-        logo = _read_json('app_logo')
-        if isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX and _DATA_IMG_RE.match(logo):
-            logo_html = f'<img src="{logo}" alt="" class="logo">'
+    if inst.get('logo_tonen', True) and logo_geldig:
+        logo_html = f'<img src="{logo}" alt="" class="logo">'
+    # Tab-icoon volgt het app-logo (ongeacht logo_tonen — dat gaat alleen
+    # over het grote logo op het formulier).
+    favicon_html = f'<link rel="icon" href="{logo}">' if logo_geldig else ''
 
     pagina = (_LOGIN_PAGE
               .replace('__TITEL__', titel)
               .replace('__ONDERTITEL__', ondertitel)
               .replace('__KNOP__', knop)
               .replace('__ACCENT__', accent)
+              .replace('__ACHTERGROND__', achtergrond)
               .replace('__BODY_BG__', body_bg)
-              .replace('__LOGO__', logo_html))
+              .replace('__LOGO__', logo_html)
+              .replace('__FAVICON__', favicon_html))
     return pagina.encode('utf-8')
 
 
 _LOGIN_PAGE = """<!doctype html>
 <html lang="nl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="__ACHTERGROND__">
+__FAVICON__
 <title>__TITEL__ — inloggen</title>
 <style>
 body{font-family:system-ui,sans-serif;background:__BODY_BG__;color:#e7e5e4;
@@ -1428,7 +1599,14 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     if (r.ok) { location.reload(); return; }
     if (r.status === 429) { fout.textContent = 'Te veel pogingen \\u2014 wacht even en probeer opnieuw.'; return; }
     if (r.status === 503) { fout.textContent = 'HA-authenticatie niet beschikbaar (draait de app als addon?).'; return; }
-    if (r.status === 502) { fout.textContent = 'HA-authenticatie geweigerd voor deze addon \\u2014 herstart de addon volledig en kijk in het addon-logboek (auth_api).'; return; }
+    if (r.status === 502) {
+      let d = '';
+      try { d = ((await r.json()) || {}).detail || ''; } catch (e) {}
+      fout.textContent = d === 'geweigerd'
+        ? 'De addon mag de HA-authenticatie niet gebruiken (auth_api-recht niet actief). Stop en start de addon volledig en probeer opnieuw.'
+        : 'HA-authenticatie gaf een onverwachte fout \\u2014 kijk in het addon-logboek naar de regel met "supervisor-auth".';
+      return;
+    }
     fout.textContent = 'Inloggen mislukt \\u2014 gebruik je HA-gebruikersnaam (waarmee je in Home Assistant inlogt, niet je weergavenaam) en controleer het wachtwoord.';
   } catch (err) {
     fout.textContent = 'Server niet bereikbaar.';
@@ -2095,7 +2273,13 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         worden volledig genegeerd. Leeg buiten HA of zonder sessie."""
         if self._is_direct():
             return _sessie_gebruiker(self._sessie_token()) or ''
+        # Supervisor-ingress stuurt (bij een sessie mét gebruikersdata):
+        # X-Remote-User-Name = login-gebruikersnaam, -Display-Name =
+        # weergavenaam, -Id = intern id. Voorkeursvolgorde: gebruikersnaam
+        # (zelfde identiteit als de directe-poort-login), dan weergavenaam,
+        # dan id.
         return (self.headers.get('X-Remote-User-Name')
+                or self.headers.get('X-Remote-User-Display-Name')
                 or self.headers.get('X-Remote-User-Id')
                 or '')
 
@@ -2266,6 +2450,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._handle_health()
             return
 
+        if BULK_PATH in path:
+            self._handle_bulk()
+            return
+
         if WHOAMI_PATH in path:
             gebruiker = self._ingress_user()
             # `sessie: true` = ingelogd via de directe poort (HA-login met
@@ -2273,6 +2461,22 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'gebruiker': gebruiker,
                              'rol': _gebruiker_rol(gebruiker),
                              'sessie': self._is_direct()})
+            return
+
+        if HA_GEBRUIKERS_PATH in path:
+            # Gebruikerslijst hoort bij het rollenbeheer → beheer-only.
+            rol = self._rol()
+            if rol != 'beheer':
+                self._rol_geweigerd(rol)
+                return
+            if not os.environ.get('SUPERVISOR_TOKEN'):
+                self._json(503, {'error': 'ha not available'})
+                return
+            gebruikers = _ha_gebruikerslijst()
+            if gebruikers is None:
+                self._json(502, {'error': 'could not fetch users'})
+                return
+            self._json(200, {'gebruikers': gebruikers})
             return
 
         if BF_PROXY_PREFIX in path:
@@ -2938,6 +3142,33 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'ok': True})
         else:
             self._json(502, {'error': 'notify failed'})
+
+    def _handle_bulk(self):
+        """GET /api/bulk — alle data-keys + versies in één antwoord.
+        De app laadt bij het opstarten ~100 keys; door de ingress-keten
+        (core → supervisor → addon) en de gedeelde rate-limit maakte dat de
+        eerste synchronisatie traag. Deze bulk vervangt al die losse GETs
+        door één request. Zelfde regels als de losse GET: secrets
+        gemaskeerd, versies identiek aan de X-Data-Version-headers."""
+        with _data_lock:
+            conn = _db()
+            keys = [r[0] for r in conn.execute('SELECT key FROM versies ORDER BY key')]
+            data: dict = {}
+            versions: dict = {}
+            for key in keys:
+                gelezen = _lees_key_bytes(key)
+                if gelezen is None:
+                    continue
+                raw, versie = gelezen
+                try:
+                    waarde = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if key in _SECURE_FIELDS:
+                    waarde = _mask_secrets(key, waarde)
+                data[key] = waarde
+                versions[key] = versie
+        self._json(200, {'data': data, 'versions': versions})
 
     def _handle_health(self):
         """GET /api/health — status van server, achtergrondthreads en backup

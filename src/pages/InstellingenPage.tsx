@@ -4,7 +4,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen } from '../utils/api'
+import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
@@ -167,7 +167,13 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
   const [wie, setWie] = React.useState<Whoami | null>(null);
   const [naam, setNaam] = React.useState('');
   const [rol, setRol] = React.useState('productie');
-  React.useEffect(() => { getWhoami().then(setWie); }, []);
+  // Echte HA-gebruikers als keuzelijst (datalist) — vrije invoer blijft
+  // mogelijk wanneer de lijst niet beschikbaar is (buiten HA / geen beheer).
+  const [haGebruikers, setHaGebruikers] = React.useState<HaGebruiker[]>([]);
+  React.useEffect(() => {
+    getWhoami().then(setWie);
+    getHaGebruikers().then(g => { if (g) setHaGebruikers(g); });
+  }, []);
 
   const conf = rollen && typeof rollen === 'object' ? rollen : {};
   const gebruikers: Record<string, string> = conf.gebruikers || {};
@@ -229,8 +235,17 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
       )}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <input value={naam} onChange={(e: any) => setNaam(e.target.value)}
-          placeholder={t('settings_rollen_gebruiker_ph')}
+          placeholder={t('settings_rollen_gebruiker_ph')} list="ha-gebruikers-lijst"
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none t-input shadow-sm" />
+        <datalist id="ha-gebruikers-lijst">
+          {haGebruikers
+            .filter(g => (g.gebruikersnaam || g.naam) && !gebruikers[g.gebruikersnaam || g.naam])
+            .map(g => (
+              <option key={g.gebruikersnaam || g.naam} value={g.gebruikersnaam || g.naam}>
+                {g.naam && g.gebruikersnaam && g.naam !== g.gebruikersnaam ? g.naam : undefined}
+              </option>
+            ))}
+        </datalist>
         <select value={rol} onChange={(e: any) => setRol(e.target.value)} className={selectCls}>
           {rolOpties.map(r => <option key={r} value={r}>{t('rol_' + r)}</option>)}
         </select>

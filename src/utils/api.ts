@@ -449,6 +449,30 @@ const _doCommit = async (
   }
 }
 
+// ── Bulk-load bij het opstarten ─────────────────────────────────────────────
+// De app registreert ~100 useStore-keys; die elk apart GETten maakte de
+// eerste synchronisatie traag (elke request loopt door de ingress-keten en
+// alle apparaten delen één rate-limit-budget). Eén GET /api/bulk levert nu
+// alle keys + versies in één keer; de per-key-GET blijft de fallback voor
+// oudere servers en voor refresh/herstel.
+let _bulkPromise: Promise<{data: any, versions: Record<string, string>} | null> | null = null
+
+const _bulkLoad = (): Promise<{data: any, versions: Record<string, string>} | null> => {
+  if (!_bulkPromise) {
+    _bulkPromise = _fetchWithRetry(ADDON_BASE + 'api/bulk', {headers: {'Cache-Control': 'no-cache'}}, 1)
+      .then(async r => {
+        if (!r.ok) return null
+        const d = await r.json()
+        if (!d || typeof d.data !== 'object' || typeof d.versions !== 'object') return null
+        _serverReachable = true
+        _syncErrors = 0
+        return d
+      })
+      .catch(() => null)
+  }
+  return _bulkPromise
+}
+
 export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void, () => void] => {
   const { secure = false } = opts
   _allKeys.add(key)
@@ -456,35 +480,67 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   const modified = useRef(false)
 
   useEffect(() => {
-    _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-      .then(r => {
-        _serverReachable = true
-        _updateVersion(key, r)
-        if (r.ok) {
-          _syncErrors = 0
+    // Fallback voor servers zonder /api/bulk (en voor bulk-fouten):
+    // de oorspronkelijke per-key-GET met 404-initial-sync.
+    const perKeyFetch = () => {
+      _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
+        .then(r => {
+          _serverReachable = true
+          _updateVersion(key, r)
+          if (r.ok) {
+            _syncErrors = 0
+            if (secure) localStorage.removeItem('craftery_' + key)
+            return r.json()
+          }
+          if (r.status === 404) {
+            const localRaw = localStorage.getItem('craftery_' + key)
+            const toSync = localRaw !== null ? JSON.parse(localRaw) : initial
+            if (secure && localRaw !== null) localStorage.removeItem('craftery_' + key)
+            try { _postToServer(key, toSync) } catch(e) {}
+          }
+          return null
+        })
+        .then(d => {
+          _fetchedKeys.add(key)
+          if (d !== null && d !== undefined && !modified.current) {
+            _rememberSynced(key, d)
+            setData(d)
+            if (!secure) lsSet(key, d)
+          }
+        })
+        .catch(() => {
+          _fetchedKeys.add(key)
+          _serverReachable = false
+        })
+    }
+
+    _bulkLoad().then(bulk => {
+      if (!bulk) { perKeyFetch(); return }
+      try {
+        if (Object.prototype.hasOwnProperty.call(bulk.data, key)) {
+          const v = bulk.versions[key]
+          if (typeof v === 'string') _versions.set(key, v)
+          const d = bulk.data[key]
+          _fetchedKeys.add(key)
           if (secure) localStorage.removeItem('craftery_' + key)
-          return r.json()
+          if (d !== null && d !== undefined && !modified.current) {
+            _rememberSynced(key, d)
+            setData(d)
+            if (!secure) lsSet(key, d)
+          }
+          return
         }
-        if (r.status === 404) {
-          const localRaw = localStorage.getItem('craftery_' + key)
-          const toSync = localRaw !== null ? JSON.parse(localRaw) : initial
-          if (secure && localRaw !== null) localStorage.removeItem('craftery_' + key)
-          try { _postToServer(key, toSync) } catch(e) {}
-        }
-        return null
-      })
-      .then(d => {
+        // Server bereikt maar key bestaat daar nog niet — zelfde pad als de
+        // 404 van de losse GET: lokale/initial waarde naar de server syncen.
         _fetchedKeys.add(key)
-        if (d !== null && d !== undefined && !modified.current) {
-          _rememberSynced(key, d)
-          setData(d)
-          if (!secure) lsSet(key, d)
-        }
-      })
-      .catch(() => {
+        const localRaw = localStorage.getItem('craftery_' + key)
+        const toSync = localRaw !== null ? JSON.parse(localRaw) : initial
+        if (secure && localRaw !== null) localStorage.removeItem('craftery_' + key)
+        try { _postToServer(key, toSync) } catch(e) {}
+      } catch (e) {
         _fetchedKeys.add(key)
-        _serverReachable = false
-      })
+      }
+    })
   }, [key])
 
   // Serverdata terugladen + gebruiker melden. Gebruikt bij een conflict
@@ -587,6 +643,27 @@ export interface Whoami {
   rol: Rol
   // true = ingelogd via de directe-toegangspoort (HA-login met sessiecookie)
   sessie?: boolean
+}
+
+// HA-gebruikerslijst voor het rollenbeheer (GET /api/ha_gebruikers,
+// beheer-only; server haalt hem via de core-websocket op). null wanneer de
+// lijst niet beschikbaar is (buiten HA, geen rechten, fout) — de UI valt
+// dan terug op vrije invoer.
+export interface HaGebruiker {
+  naam: string
+  gebruikersnaam: string
+  eigenaar: boolean
+}
+
+export const getHaGebruikers = async (): Promise<HaGebruiker[] | null> => {
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/ha_gebruikers', {headers: {'Cache-Control': 'no-cache'}}, 0)
+    if (!r.ok) return null
+    const d = await r.json()
+    return Array.isArray(d?.gebruikers) ? d.gebruikers as HaGebruiker[] : null
+  } catch {
+    return null
+  }
 }
 
 // Beëindig de sessie op de directe-toegangspoort. Geeft true terug bij

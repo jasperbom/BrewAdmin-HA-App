@@ -43,11 +43,11 @@ NODE_PATH=$(npm root -g) node script.mjs
 # in script: chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
 ```
 
-**Gotcha — rate limiter:** de server staat 120 requests/minuut per IP toe en
-één app-boot verbruikt er ±60 (elke `useStore`-sleutel is een GET, ook de
-404's tellen). Twee boots binnen een minuut → 429's, de app rendert dan
-niet of saves gaan verloren. Wacht ~70 s tussen browser-runs en doe alle
-stappen in één sessie.
+**Gotcha — rate limiter:** de server staat 600 requests/minuut per IP toe.
+Een app-boot kost sinds `/api/bulk` nog maar ±3 requests (was ±60 losse
+GETs) — behalve de állereerste boot tegen een lege DATA_DIR: die seedt
+~100 keys via losse POSTs. Herhaalde browser-runs binnen een minuut zijn
+dus prima; alleen vlak na een eerste-boot-seed kort wachten.
 
 **Taal:** zonder `localStorage.lang` rendert de app in het **Engels** —
 selectors dus op Engelse labels ("Products", "Confirm rebrand") of zet
