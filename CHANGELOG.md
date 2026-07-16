@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.13] — 2026-07-16
+
+### Verbeterd — Login-diagnose directe poort + gecentreerd logo
+
+- "Inloggen mislukt" verhulde twee totaal verschillende oorzaken. De
+  Supervisor-antwoorden worden nu onderscheiden: **401** = echt verkeerde
+  gebruikersnaam/wachtwoord (melding wijst er nu op dat je je
+  HA-*gebruikersnaam* nodig hebt, niet je weergavenaam); **403** = de addon
+  mag de auth-API (nog) niet gebruiken (`auth_api`-recht niet actief —
+  addon volledig herstarten/updaten) → eigen melding + foutregel in het
+  addon-logboek met de statuscode; overige fouten (Supervisor onbereikbaar)
+  eveneens gelogd. Backend-fouten tellen niet meer mee voor de
+  brute-force-limiet en de audit-regel `login_mislukt` kreeg een
+  `reden`-veld.
+- Loginpagina: logo, titel en ondertitel staan nu gecentreerd.
+- pytest: nieuwe test (502 bij auth-backend-fout, geen rate-limit-impact) —
+  61 totaal; Playwright-screenshot van de gecentreerde pagina.
+
+---
+
 ## [1.11.12] — 2026-07-16
 
 ### Toegevoegd — HTTPS met eigen domein op de directe-toegangspoort
