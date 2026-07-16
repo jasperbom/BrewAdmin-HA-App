@@ -1291,10 +1291,15 @@ def _ha_auth_check(gebruiker: str, wachtwoord: str) -> str:
     if not token or not gebruiker or not wachtwoord:
         return 'fout'
     try:
+        # LET OP: de addon-token MOET via X-Supervisor-Token, niet via
+        # Authorization. Het /auth-endpoint interpreteert élke aanwezige
+        # Authorization-header als Basic-auth met de gebruikerscredentials
+        # en leest de JSON-body dan niet meer — een Bearer-header maakt
+        # daardoor elke login een 401 (supervisor/api/auth.py).
         req = urllib.request.Request(
             'http://supervisor/auth',
             data=json.dumps({'username': gebruiker, 'password': wachtwoord}).encode('utf-8'),
-            headers={'Authorization': f'Bearer {token}',
+            headers={'X-Supervisor-Token': token,
                      'Content-Type': 'application/json'},
             method='POST',
         )
