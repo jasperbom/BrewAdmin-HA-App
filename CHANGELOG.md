@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.5] — 2026-07-16
+
+### Toegevoegd — Gestructureerde serverlogging + /api/health (ERP-plan 3.6)
+
+- Serverlogging via stdlib `logging` met JSON-regels naar stdout (één regel
+  per gebeurtenis met `ts`/`level`/`msg`/`bron` + contextvelden); alle 26
+  `print()`-regels omgezet, fouten loggen op error-niveau, en de
+  HTTP-toegangslog (niet-routinestatussen) loopt via dezelfde formatter.
+- Nieuw endpoint `GET /api/health`: status van de vier achtergrondthreads
+  (backup, auto-metingen, cold-crash, carbonatie-CO₂), laatste lokale
+  backupdatum, data-dir-check en uptime. `ok: false` zodra een thread dood
+  is of de datamap ontbreekt.
+- Dashboard toont een compacte healthregel (groen "Server en
+  achtergrondtaken OK · laatste backup {datum}", oranje bij een probleem of
+  een backup ouder dan 2 dagen); typed `getServerHealth()` in api.ts,
+  i18n in alle 5 talen.
+- 4 nieuwe pytest-tests (health zonder threads, laatste-backupdatum, dode
+  thread → ok:false, JSON-logformaat) — **fase 3 van het ERP-plan compleet**.
+
+---
+
 ## [1.11.4] — 2026-07-16
 
 ### Gewijzigd — Pagina's opsplitsen: eerste extracties + boy-scout-regel (ERP-plan 3.5)

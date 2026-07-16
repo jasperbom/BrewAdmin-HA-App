@@ -2666,5 +2666,10 @@
   "lbl_cogs": "Herstellkosten des Umsatzes (COGS)",
   "lbl_brutomarge_werkelijk": "Bruttomarge (tatsächliche Kosten)",
   "msg_geen_uitleveringen_periode": "Keine Auslieferungen in diesem Zeitraum.",
-  "warn_cogs_onbekend": "{liters} L aus Suden ohne bekannten Selbstkostenpreis geliefert — diese Liter fehlen in den COGS."
+  "warn_cogs_onbekend": "{liters} L aus Suden ohne bekannten Selbstkostenpreis geliefert — diese Liter fehlen in den COGS.",
+  "health_server_ok": "Server und Hintergrundaufgaben OK",
+  "health_probleem": "Serverproblem — Add-on-Logs prüfen",
+  "health_backup_laatste": "letztes Backup {datum}",
+  "health_backup_oud": "letztes Backup {datum} — älter als 2 Tage",
+  "health_backup_geen": "noch kein Backup erstellt"
 }

@@ -461,6 +461,27 @@ export const newId = (arr: any[]): number => {
   return _lastId
 }
 
+// ── Serverhealth (ERP-plan 3.6) ─────────────────────────────────────────────
+// GET /api/health: status van de server, achtergrondthreads en laatste backup.
+export interface ServerHealth {
+  ok: boolean
+  threads: Record<string, boolean> | null
+  laatste_backup: string | null
+  data_dir: boolean
+  uptime_s: number
+}
+
+export const getServerHealth = async (): Promise<ServerHealth | null> => {
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/health', {headers: {'Cache-Control': 'no-cache'}}, 0)
+    if (!r.ok) return null
+    const d = await r.json()
+    return d && typeof d.ok === 'boolean' ? d as ServerHealth : null
+  } catch {
+    return null
+  }
+}
+
 // ── Factuurnummering (ERP-plan 0.2) ─────────────────────────────────────────
 // Nummers worden server-side atomair uitgegeven (POST /api/nextnr) zodat twee
 // tabs/kassa's nooit hetzelfde nummer krijgen en verwijderde facturen geen

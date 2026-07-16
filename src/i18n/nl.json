@@ -2666,5 +2666,10 @@
   "lbl_cogs": "Kostprijs geleverde producten (COGS)",
   "lbl_brutomarge_werkelijk": "Brutomarge (werkelijke kostprijs)",
   "msg_geen_uitleveringen_periode": "Geen uitleveringen in deze periode.",
-  "warn_cogs_onbekend": "{liters} L geleverd uit batches zonder bekende kostprijs — deze liters tellen niet mee in de COGS."
+  "warn_cogs_onbekend": "{liters} L geleverd uit batches zonder bekende kostprijs — deze liters tellen niet mee in de COGS.",
+  "health_server_ok": "Server en achtergrondtaken OK",
+  "health_probleem": "Serverprobleem — controleer de addon-logs",
+  "health_backup_laatste": "laatste backup {datum}",
+  "health_backup_oud": "laatste backup {datum} — ouder dan 2 dagen",
+  "health_backup_geen": "nog geen backup gemaakt"
 }

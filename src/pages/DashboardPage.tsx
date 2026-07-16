@@ -4,7 +4,7 @@ import { fmt, fmtD, fmtQty, tod } from '../utils/format'
 import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie, TANK_STATUSSEN, effectiefOG, effectiefFG } from '../utils/calculations'
 import { STATUS_CLR, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
-import { haCallService, haGetState } from '../utils/api'
+import { haCallService, haGetState, getServerHealth, ServerHealth } from '../utils/api'
 import SectionHeader from '../components/ui/SectionHeader'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
@@ -13,6 +13,10 @@ import Inp from '../components/ui/Inp'
 function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setPage, tanks, tankStatussen={}, setTankStatussen=()=>{}, tankLog=[], setTankLog=()=>{}, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[], bestellingen=[], setOpenOrderId=()=>{}}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
+
+  // Serverhealth (ERP-plan 3.6): eenmalig ophalen bij openen van het dashboard.
+  const [serverHealth, setServerHealth] = useState<ServerHealth|null>(null);
+  React.useEffect(() => { getServerHealth().then(setServerHealth) }, []);
 
   const [metingBatchId, setMetingBatchId] = useState<number|null>(null);
   const [mForm, setMForm] = useState({sg: '', ph: '', temp: ''});
@@ -876,9 +880,25 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
 
   return (
     <div>
-      {/* ── Kassa-snelknop — de kassa zit niet in het hoofdmenu maar wordt
-          vanaf het dashboard geopend. ─────────────────────────────────────── */}
-      <div className="flex justify-end mb-4">
+      {/* ── Serverhealth (ERP-plan 3.6) + kassa-snelknop ──────────────────── */}
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="text-xs">
+          {serverHealth && (() => {
+            const backup = serverHealth.laatste_backup
+            const backupOud = backup ? (today.getTime() - new Date(backup).getTime()) / dayMs > 2 : false
+            const gezond = serverHealth.ok && !backupOud
+            return (
+              <span className={gezond ? 'text-gray-400' : 'text-orange-600 font-medium'}>
+                <span className={gezond ? 'text-green-500' : 'text-orange-500'}>●</span>{' '}
+                {serverHealth.ok ? t('health_server_ok') : t('health_probleem')}
+                {' · '}
+                {backup
+                  ? (backupOud ? t('health_backup_oud').replace('{datum}', fmtD(backup)) : t('health_backup_laatste').replace('{datum}', fmtD(backup)))
+                  : t('health_backup_geen')}
+              </span>
+            )
+          })()}
+        </div>
         <Btn s="lg" onClick={() => setPage('kassa')}>{t('dash_kassa_open')}</Btn>
       </div>
 

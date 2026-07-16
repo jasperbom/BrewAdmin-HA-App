@@ -12,7 +12,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.3 · fase 0/1/2 afgerond, fase 3 grotendeels klaar (3.1 t/m 3.4)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.5 · **fase 0 t/m 3 volledig afgerond** — alleen fase 4 (structurele fundering, pas bij multi-user/schaal) staat nog open
 
 ---
 
@@ -148,7 +148,13 @@
       strict-ratchet; eerdere extracties uit fase 2/3 (journaal, centen,
       bank/MT940, excel-bouw/parse) horen bij hetzelfde patroon. Blijft
       doorlopend van kracht bij elk onderhoud)*
-- [ ] **3.6 Gestructureerde serverlogging + /api/health**
+- [x] **3.6 Gestructureerde serverlogging + /api/health** *(v1.11.5,
+      2026-07-16 — stdlib logging met JSON-regels (ts/level/msg/bron +
+      contextvelden; 26 prints omgezet, HTTP-log via dezelfde formatter);
+      GET /api/health met threads-status, laatste-backupdatum, data-dir en
+      uptime; dashboard toont een healthregel (oranje bij probleem of
+      backup >2 dagen oud); 4 pytest-tests + runtime-smoke (threads 4/4,
+      JSON-log geverifieerd) — **fase 3 compleet**)*
 
 ## Fase 4 — Structurele fundering (pas bij multi-user/schaal)
 
@@ -188,3 +194,4 @@
 | 2026-07-16 | 1.11.2 | 3.3 | CI-workflow (typecheck/vitest/build, pytest, Docker-build, versie-bump-lint incl. PR-bumpcheck t.o.v. basisbranch); tsc nu volledig schoon (3 reduce-typefouten gefixt); checkscript lokaal positief én negatief getest |
 | 2026-07-16 | 1.11.3 | 3.4 | Strict-ratchet op utils/types/i18n (`tsconfig.strict.json`, npm run typecheck, in CI; geverifieerd met opzettelijke-fout-probe), AccijnsPage-props getypt + AccijnsRecord-runtime-velden; CLAUDE.md-conventies en werkwijze-blok geactualiseerd |
 | 2026-07-16 | 1.11.4 | 3.5 | Extracties: makeZip/crc32 → utils/zip.ts, gedeeld getPeriodes → utils/btw.ts (dupliaat uit 2 pagina's weg); +6 tests (73 totaal); boy-scout-regel in CLAUDE.md |
+| 2026-07-16 | 1.11.5 | 3.6 | JSON-serverlogging (stdlib logging, bron-veld per subsysteem) + GET /api/health (threads/backup/uptime) + dashboard-healthregel; pytest 35 totaal; runtime-smoke: health 4/4 threads, JSON-logregels, dashboardregel zichtbaar — **fase 3 compleet** |

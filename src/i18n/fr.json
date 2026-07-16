@@ -2666,5 +2666,10 @@
   "lbl_cogs": "Coût des produits livrés (COGS)",
   "lbl_brutomarge_werkelijk": "Marge brute (coût réel)",
   "msg_geen_uitleveringen_periode": "Aucune livraison sur cette période.",
-  "warn_cogs_onbekend": "{liters} L livrés depuis des brassins sans coût connu — ces litres ne comptent pas dans le COGS."
+  "warn_cogs_onbekend": "{liters} L livrés depuis des brassins sans coût connu — ces litres ne comptent pas dans le COGS.",
+  "health_server_ok": "Serveur et tâches d'arrière-plan OK",
+  "health_probleem": "Problème serveur — consultez les journaux de l'add-on",
+  "health_backup_laatste": "dernière sauvegarde {datum}",
+  "health_backup_oud": "dernière sauvegarde {datum} — plus de 2 jours",
+  "health_backup_geen": "aucune sauvegarde encore"
 }

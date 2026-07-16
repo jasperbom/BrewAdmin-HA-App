@@ -2666,5 +2666,10 @@
   "lbl_cogs": "Cost of goods sold (COGS)",
   "lbl_brutomarge_werkelijk": "Gross margin (actual cost)",
   "msg_geen_uitleveringen_periode": "No deliveries in this period.",
-  "warn_cogs_onbekend": "{liters} L delivered from batches without a known cost price — these litres are not included in COGS."
+  "warn_cogs_onbekend": "{liters} L delivered from batches without a known cost price — these litres are not included in COGS.",
+  "health_server_ok": "Server and background tasks OK",
+  "health_probleem": "Server issue — check the add-on logs",
+  "health_backup_laatste": "last backup {datum}",
+  "health_backup_oud": "last backup {datum} — older than 2 days",
+  "health_backup_geen": "no backup made yet"
 }

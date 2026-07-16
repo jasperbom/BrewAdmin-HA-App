@@ -354,3 +354,55 @@ class TestSecureKeysHttp:
         assert logs, 'server-audit ontbreekt'
         regels = [json.loads(r) for r in logs[0].read_text().splitlines() if r.strip()]
         assert any(r.get('key') == 'recepten' for r in regels)
+
+
+class TestHealth:
+    def test_health_zonder_threads(self, app):
+        status, body, _ = req(app, 'GET', '/api/health')
+        assert status == 200
+        # Onder pytest zijn de achtergrondthreads niet gestart
+        assert body['threads'] is None
+        assert body['data_dir'] is True
+        assert body['ok'] is True
+        assert isinstance(body['uptime_s'], int)
+
+    def test_health_rapporteert_laatste_backup(self, app):
+        (srv.BACKUP_DIR / '2026-07-15').mkdir(exist_ok=True)
+        (srv.BACKUP_DIR / '2026-07-16').mkdir(exist_ok=True)
+        status, body, _ = req(app, 'GET', '/api/health')
+        assert status == 200
+        assert body['laatste_backup'] == '2026-07-16'
+
+    def test_health_rapporteert_dode_thread(self, app):
+        import threading as _t
+        dood = _t.Thread(target=lambda: None)
+        dood.start(); dood.join()
+        srv._threads['backup'] = dood
+        try:
+            _, body, _ = req(app, 'GET', '/api/health')
+            assert body['threads'] == {'backup': False}
+            assert body['ok'] is False
+        finally:
+            srv._threads.clear()
+
+
+class TestLogging:
+    def test_log_schrijft_json_regels(self):
+        import io as _io
+        import logging as _logging
+        buf = _io.StringIO()
+        handler = _logging.StreamHandler(buf)
+        handler.setFormatter(srv._JsonFormatter())
+        srv._logger.addHandler(handler)
+        try:
+            srv._log('test', 'hallo', extra_veld=42)
+            srv._log('test', 'kapot', level=_logging.ERROR)
+        finally:
+            srv._logger.removeHandler(handler)
+        regels = [json.loads(r) for r in buf.getvalue().strip().splitlines()]
+        assert regels[0]['msg'] == 'hallo'
+        assert regels[0]['bron'] == 'test'
+        assert regels[0]['extra_veld'] == 42
+        assert regels[0]['level'] == 'info'
+        assert 'ts' in regels[0]
+        assert regels[1]['level'] == 'error'

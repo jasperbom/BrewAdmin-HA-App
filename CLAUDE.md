@@ -476,7 +476,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 |--------|------|-------------|
 | GET | `/api/data/<key>` | Load JSON data file |
 | POST | `/api/data/<key>` | Save JSON data file |
-| GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; echte health-check komt in ERP 3.6)* |
+| GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
+| GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
