@@ -107,6 +107,7 @@ def _laatste_backup_datum():
 
 API_DATA_PREFIX = '/api/data/'
 BULK_PATH = '/api/bulk'
+APP_ICOON_PATH = '/api/app_icoon'
 HEALTH_PATH = '/api/health'
 WHOAMI_PATH = '/api/whoami'
 HA_GEBRUIKERS_PATH = '/api/ha_gebruikers'
@@ -2329,6 +2330,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             else:
                 self._json(405, {'error': 'method not allowed'})
             return False
+        # Het app-icoon is pre-auth toegankelijk: het staat toch al op de
+        # loginpagina, en iOS moet het kunnen ophalen voor het
+        # home-screen-icoon.
+        if APP_ICOON_PATH in path and self.command == 'GET':
+            self._handle_app_icoon()
+            return False
         if _sessie_gebruiker(self._sessie_token()):
             if LOGOUT_PATH in path:
                 self._handle_logout()
@@ -2461,6 +2468,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if BULK_PATH in path:
             self._handle_bulk()
+            return
+
+        if APP_ICOON_PATH in path:
+            self._handle_app_icoon()
             return
 
         if WHOAMI_PATH in path:
@@ -3151,6 +3162,39 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'ok': True})
         else:
             self._json(502, {'error': 'notify failed'})
+
+    def _handle_app_icoon(self):
+        """GET /api/app_icoon — het app-logo als echt afbeeldingsbestand.
+        iOS accepteert geen data-URL als apple-touch-icon (home-screen-
+        icoon) en de header kan hiermee het logo uit de HTTP-cache tonen
+        vóór de data geladen is. ETag = de versie-hash van app_logo, met
+        304-afhandeling zodat herhaalde starts de cache gebruiken."""
+        logo = _read_json('app_logo')
+        if not (isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX
+                and _DATA_IMG_RE.match(logo)):
+            self._json(404, {'error': 'no logo'})
+            return
+        kop, _, b64 = logo.partition(';base64,')
+        try:
+            inhoud = base64.b64decode(b64)
+        except (ValueError, TypeError):
+            self._json(404, {'error': 'invalid logo'})
+            return
+        etag = f'"{_data_version("app_logo")}"'
+        if self.headers.get('If-None-Match') == etag:
+            self.send_response(304)
+            self.send_header('ETag', etag)
+            self._add_security_headers()
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header('Content-Type', kop[len('data:'):] or 'image/png')
+        self.send_header('Content-Length', len(inhoud))
+        self.send_header('Cache-Control', 'public, max-age=3600')
+        self.send_header('ETag', etag)
+        self._add_security_headers()
+        self.end_headers()
+        self.wfile.write(inhoud)
 
     def _handle_bulk(self):
         """GET /api/bulk — alle data-keys + versies in één antwoord.

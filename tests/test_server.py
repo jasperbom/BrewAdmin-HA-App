@@ -238,6 +238,45 @@ class TestBulk:
         assert body['data']['claude_creds']['apiKey'] == srv._SECRET_SENTINEL
 
 
+class TestAppIcoon:
+    """GET /api/app_icoon — het logo als echt bestand (iOS home-screen-icoon)."""
+
+    PNG = 'data:image/png;base64,' + base64.b64encode(b'\x89PNG-nep').decode()
+
+    def test_zonder_logo_404(self, app):
+        req(app, 'POST', '/api/data/app_logo', body=b'null')
+        assert req(app, 'GET', '/api/app_icoon')[0] == 404
+
+    def test_serveert_bytes_met_etag_en_304(self, app):
+        assert req(app, 'POST', '/api/data/app_logo', body=self.PNG)[0] == 200
+        try:
+            with urllib.request.urlopen(app + '/api/app_icoon') as r:
+                assert r.status == 200
+                assert r.headers['Content-Type'] == 'image/png'
+                assert 'max-age' in r.headers.get('Cache-Control', '')
+                etag = r.headers['ETag']
+                assert r.read() == b'\x89PNG-nep'
+            verzoek = urllib.request.Request(app + '/api/app_icoon',
+                                             headers={'If-None-Match': etag})
+            try:
+                urllib.request.urlopen(verzoek)
+                assert False, '304 verwacht'
+            except urllib.error.HTTPError as e:
+                assert e.code == 304
+        finally:
+            req(app, 'POST', '/api/data/app_logo', body=b'null')
+
+    def test_pre_auth_op_directe_poort(self, app, app_direct):
+        assert req(app, 'POST', '/api/data/app_logo', body=self.PNG)[0] == 200
+        try:
+            # Zonder sessie bereikbaar (staat toch op de loginpagina; iOS
+            # heeft het nodig voor het home-screen-icoon)
+            with urllib.request.urlopen(app_direct + '/api/app_icoon') as r:
+                assert r.status == 200
+        finally:
+            req(app, 'POST', '/api/data/app_logo', body=b'null')
+
+
 class TestAppendOnlyHttp:
     def test_journaal_is_append_only_via_http(self, app):
         r1 = {'id': 1, 'boekstuk': 1, 'dagboek': 'verkoop', 'netto_cent': 4800}

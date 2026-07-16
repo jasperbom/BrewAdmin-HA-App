@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.18] — 2026-07-16
+
+### Verbeterd — iPhone/home-screen-app: statusbalk, icoon, zoom en logo
+
+- **Witte statusbalk weg**: als home-screen-app negeert iOS de
+  `theme-color`-meta. De app draait nu met `black-translucent`-statusbalk
+  en `viewport-fit=cover`; de gekleurde header loopt via
+  safe-area-padding onder de klok door, en de html-achtergrond kleurt mee
+  met het thema (ook zichtbaar bij overscroll).
+- **Home-screen-icoon werkt nu écht**: iOS accepteert geen data-URL als
+  `apple-touch-icon`. Nieuw endpoint `GET /api/app_icoon` serveert het
+  ingestelde logo als echt bestand (met ETag + 304 en een uur
+  HTTP-cache); pre-auth toegankelijk op de directe poort. **Let op:
+  verwijder de app van je beginscherm en voeg hem opnieuw toe** — iOS
+  cachet het icoon op het moment van toevoegen.
+- **Geen raar inzoomen meer**: `maximum-scale=1` in de viewport voorkomt
+  de iOS-autozoom bij focus op invoervelden; zelf pinch-zoomen blijft op
+  iOS gewoon werken.
+- **Logo direct zichtbaar**: het header-logo laadt uit de HTTP-cache via
+  `api/app_icoon` zolang de data nog onderweg is (relevant voor de
+  home-screen-app, die met een eigen lege opslag start), met terugval op
+  het ingebouwde standaardicoon.
+- pytest: 3 nieuwe tests (404 zonder logo, bytes + ETag + 304, pre-auth
+  op de directe poort) — 71 totaal; runtime geverifieerd (meta's in de
+  geserveerde pagina, endpoint-headers, html-achtergrond, header-logo).
+
+---
+
 ## [1.11.17] — 2026-07-16
 
 ### Opgelost — Verbindingsresets bij gelijktijdige requests (flaky CI)
