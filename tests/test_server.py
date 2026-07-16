@@ -800,6 +800,140 @@ class TestDirectLogin:
         assert status == 404
 
 
+class TestHaGebruikers:
+    """HA-gebruikerslijst via de core-websocket (stdlib RFC6455-client)."""
+
+    GEBRUIKERS = [
+        {'id': '1', 'name': 'Jasper Bom', 'username': 'jasper', 'is_owner': True,
+         'is_active': True, 'system_generated': False},
+        {'id': '2', 'name': 'Kees', 'username': None, 'is_owner': False,
+         'is_active': True, 'system_generated': False},
+        {'id': '3', 'name': 'Supervisor', 'username': None, 'is_owner': False,
+         'is_active': True, 'system_generated': True},
+        {'id': '4', 'name': 'Oud', 'username': 'oud', 'is_owner': False,
+         'is_active': False, 'system_generated': False},
+    ]
+
+    @staticmethod
+    def _ws_stuur(conn, obj):
+        payload = json.dumps(obj).encode()
+        # server→client: ongemaskeerd; extended length voor payloads ≥126
+        if len(payload) < 126:
+            kop = bytes([0x81, len(payload)])
+        else:
+            kop = bytes([0x81, 126]) + len(payload).to_bytes(2, 'big')
+        conn.sendall(kop + payload)
+
+    @staticmethod
+    def _ws_lees(conn):
+        def lees(n):
+            data = b''
+            while len(data) < n:
+                chunk = conn.recv(n - len(data))
+                if not chunk:
+                    raise OSError('dicht')
+                data += chunk
+            return data
+        b1, b2 = lees(2)
+        lengte = b2 & 0x7F
+        if lengte == 126:
+            lengte = int.from_bytes(lees(2), 'big')
+        masker = lees(4) if b2 & 0x80 else b''
+        payload = lees(lengte)
+        if masker:
+            payload = bytes(x ^ masker[i % 4] for i, x in enumerate(payload))
+        return json.loads(payload)
+
+    @pytest.fixture()
+    def fake_core_ws(self):
+        """Nep-Supervisor-core-websocket: handshake, auth-flow en één
+        config/auth/list-antwoord."""
+        import hashlib as _hashlib
+        import socket as _socket
+        GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+        server = _socket.socket()
+        server.bind(('127.0.0.1', 0))
+        server.listen(1)
+        poort = server.getsockname()[1]
+        gezien = {}
+
+        def draai():
+            conn, _ = server.accept()
+            with conn:
+                buf = b''
+                while b'\r\n\r\n' not in buf:
+                    buf += conn.recv(4096)
+                sleutel = next(r.split(b': ', 1)[1] for r in buf.split(b'\r\n')
+                               if r.lower().startswith(b'sec-websocket-key'))
+                accept = base64.b64encode(
+                    _hashlib.sha1(sleutel + GUID.encode()).digest()).decode()
+                conn.sendall((f'HTTP/1.1 101 Switching Protocols\r\n'
+                              f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
+                              f'Sec-WebSocket-Accept: {accept}\r\n\r\n').encode())
+                self._ws_stuur(conn, {'type': 'auth_required'})
+                gezien['auth'] = self._ws_lees(conn)
+                self._ws_stuur(conn, {'type': 'auth_ok'})
+                cmd = self._ws_lees(conn)
+                gezien['cmd'] = cmd
+                self._ws_stuur(conn, {'id': cmd['id'], 'type': 'result',
+                                      'success': True, 'result': self.GEBRUIKERS})
+
+        thread = threading.Thread(target=draai, daemon=True)
+        thread.start()
+        oud = (srv._CORE_WS_HOST, srv._CORE_WS_POORT)
+        srv._CORE_WS_HOST, srv._CORE_WS_POORT = '127.0.0.1', poort
+        import os as _os
+        _os.environ['SUPERVISOR_TOKEN'] = 'testtoken'
+        yield gezien
+        srv._CORE_WS_HOST, srv._CORE_WS_POORT = oud
+        _os.environ.pop('SUPERVISOR_TOKEN', None)
+        server.close()
+
+    def test_ws_frame_masker_round_trip(self):
+        payload = json.dumps({'x': 'ünïcode ✓'}).encode()
+        frame = srv._ws_frame(payload)
+        assert frame[0] == 0x81 and (frame[1] & 0x80)
+        lengte = frame[1] & 0x7F
+        masker, data = frame[2:6], frame[6:6 + lengte]
+        assert bytes(b ^ masker[i % 4] for i, b in enumerate(data)) == payload
+
+    def test_gebruikerslijst_via_fake_core(self, fake_core_ws):
+        lijst = srv._ha_gebruikerslijst()
+        # Systeem-gebruiker en inactieve gebruiker gefilterd
+        assert lijst == [
+            {'naam': 'Jasper Bom', 'gebruikersnaam': 'jasper', 'eigenaar': True},
+            {'naam': 'Kees', 'gebruikersnaam': '', 'eigenaar': False},
+        ]
+        assert fake_core_ws['auth']['access_token'] == 'testtoken'
+        assert fake_core_ws['cmd']['type'] == 'config/auth/list'
+
+    def test_endpoint_zonder_ha_geeft_503(self, app):
+        status, _, _ = req(app, 'GET', '/api/ha_gebruikers')
+        assert status == 503
+
+    def test_endpoint_is_beheer_only(self, app):
+        assert req(app, 'POST', '/api/data/gebruikers_rollen',
+                   body={'gebruikers': {'piet': 'productie'}},
+                   headers={'X-Remote-User-Name': 'admin'})[0] == 200
+        try:
+            status, body, _ = req(app, 'GET', '/api/ha_gebruikers',
+                                  headers={'X-Remote-User-Name': 'piet'})
+            assert status == 403 and body['reden'] == 'rol'
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                       headers={'X-Remote-User-Name': 'admin'})[0] == 200
+
+    def test_ingress_user_display_name_fallback(self, app):
+        _, body, _ = req(app, 'GET', '/api/whoami',
+                         headers={'X-Remote-User-Display-Name': 'Jasper Bom'})
+        assert body['gebruiker'] == 'Jasper Bom'
+        # Gebruikersnaam blijft voorrang houden
+        _, body, _ = req(app, 'GET', '/api/whoami',
+                         headers={'X-Remote-User-Name': 'jasper',
+                                  'X-Remote-User-Display-Name': 'Jasper Bom'})
+        assert body['gebruiker'] == 'jasper'
+
+
 class TestDirectSsl:
     """HTTPS op de directe poort: addon-opties, certvalidatie, handshake."""
 

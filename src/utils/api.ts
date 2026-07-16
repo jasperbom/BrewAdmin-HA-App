@@ -589,6 +589,27 @@ export interface Whoami {
   sessie?: boolean
 }
 
+// HA-gebruikerslijst voor het rollenbeheer (GET /api/ha_gebruikers,
+// beheer-only; server haalt hem via de core-websocket op). null wanneer de
+// lijst niet beschikbaar is (buiten HA, geen rechten, fout) — de UI valt
+// dan terug op vrije invoer.
+export interface HaGebruiker {
+  naam: string
+  gebruikersnaam: string
+  eigenaar: boolean
+}
+
+export const getHaGebruikers = async (): Promise<HaGebruiker[] | null> => {
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/ha_gebruikers', {headers: {'Cache-Control': 'no-cache'}}, 0)
+    if (!r.ok) return null
+    const d = await r.json()
+    return Array.isArray(d?.gebruikers) ? d.gebruikers as HaGebruiker[] : null
+  } catch {
+    return null
+  }
+}
+
 // Beëindig de sessie op de directe-toegangspoort. Geeft true terug bij
 // succes; de aanroeper herlaadt daarna de pagina (terug naar de loginpagina).
 export const uitloggen = async (): Promise<boolean> => {

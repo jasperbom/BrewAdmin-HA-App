@@ -108,6 +108,7 @@ def _laatste_backup_datum():
 API_DATA_PREFIX = '/api/data/'
 HEALTH_PATH = '/api/health'
 WHOAMI_PATH = '/api/whoami'
+HA_GEBRUIKERS_PATH = '/api/ha_gebruikers'
 BF_API_BASE = 'https://api.brewfather.app/v2'
 BF_PROXY_PREFIX = '/api/brewfather/'
 BF_TEST_PATH = '/api/brewfather/test'
@@ -1224,6 +1225,162 @@ def _sessie_verwijder(token: str) -> None:
         _sessies.pop(token, None)
 
 
+# ── HA-gebruikerslijst via de core-websocket ─────────────────────────────
+# De REST-API van HA kent geen gebruikerslijst; die zit alleen achter het
+# websocket-commando `config/auth/list`. De Supervisor proxiet
+# ws://supervisor/core/websocket voor addons met homeassistant_api-recht
+# (handshake: auth_required → {access_token} → auth_ok, daarna 1-op-1
+# relay). Python-stdlib heeft geen websocket-client, dus hieronder een
+# minimale RFC6455-implementatie voor dit ene request/response-verkeer:
+# kleine tekstframes, client→server gemaskeerd, ping/pong afgehandeld.
+
+_CORE_WS_HOST = 'supervisor'
+_CORE_WS_POORT = 80
+_CORE_WS_PAD = '/core/websocket'
+
+
+def _ws_frame(payload: bytes) -> bytes:
+    """Bouw één gemaskeerd client→server tekstframe (FIN=1)."""
+    kop = 0x81  # FIN + text
+    lengte = len(payload)
+    if lengte < 126:
+        header = bytes([kop, 0x80 | lengte])
+    elif lengte < 65536:
+        header = bytes([kop, 0x80 | 126]) + lengte.to_bytes(2, 'big')
+    else:
+        header = bytes([kop, 0x80 | 127]) + lengte.to_bytes(8, 'big')
+    masker = secrets.token_bytes(4)
+    gemaskeerd = bytes(b ^ masker[i % 4] for i, b in enumerate(payload))
+    return header + masker + gemaskeerd
+
+
+class _WsVerbinding:
+    """Minimale websocket-client voor één command/response-uitwisseling."""
+
+    def __init__(self, host: str, poort: int, pad: str, timeout: float = 10.0):
+        self._sock = socket.create_connection((host, poort), timeout=timeout)
+        self._rest = b''
+        sleutel = base64.b64encode(secrets.token_bytes(16)).decode()
+        verzoek = (f'GET {pad} HTTP/1.1\r\nHost: {host}\r\n'
+                   f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
+                   f'Sec-WebSocket-Key: {sleutel}\r\n'
+                   f'Sec-WebSocket-Version: 13\r\n\r\n')
+        self._sock.sendall(verzoek.encode())
+        buf = b''
+        while b'\r\n\r\n' not in buf:
+            chunk = self._sock.recv(4096)
+            if not chunk or len(buf) > 65536:
+                raise OSError('websocket-handshake mislukt')
+            buf += chunk
+        statusregel = buf.split(b'\r\n', 1)[0]
+        if b' 101 ' not in statusregel:
+            raise OSError(f'websocket-upgrade geweigerd: {statusregel[:80]!r}')
+        # Bytes ná de headers horen al bij het eerste frame — bewaren.
+        self._rest = buf.split(b'\r\n\r\n', 1)[1]
+
+    def _lees(self, n: int) -> bytes:
+        data = self._rest[:n]
+        self._rest = self._rest[n:]
+        while len(data) < n:
+            chunk = self._sock.recv(n - len(data))
+            if not chunk:
+                raise OSError('websocket onverwacht gesloten')
+            data += chunk
+        return data
+
+    def stuur_json(self, obj) -> None:
+        self._sock.sendall(_ws_frame(_json_compact(obj).encode('utf-8')))
+
+    def lees_json(self) -> dict:
+        """Lees frames tot een tekstframe; beantwoord pings, negeer pongs."""
+        for _ in range(50):
+            b1, b2 = self._lees(2)
+            opcode = b1 & 0x0F
+            lengte = b2 & 0x7F
+            if lengte == 126:
+                lengte = int.from_bytes(self._lees(2), 'big')
+            elif lengte == 127:
+                lengte = int.from_bytes(self._lees(8), 'big')
+            masker = self._lees(4) if b2 & 0x80 else b''
+            payload = self._lees(lengte) if lengte else b''
+            if masker:
+                payload = bytes(b ^ masker[i % 4] for i, b in enumerate(payload))
+            if opcode == 0x8:  # close
+                raise OSError('websocket gesloten door server')
+            if opcode == 0x9:  # ping → pong (met zelfde payload, gemaskeerd)
+                pong = _ws_frame(payload)
+                self._sock.sendall(bytes([0x8A]) + pong[1:])
+                continue
+            if opcode == 0xA:  # pong
+                continue
+            data = json.loads(payload)
+            if not isinstance(data, dict):
+                continue
+            return data
+        raise OSError('websocket: geen bruikbaar frame ontvangen')
+
+    def sluit(self) -> None:
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+
+def _core_ws_call(commando: dict, timeout: float = 10.0) -> dict | None:
+    """Voer één core-websocket-commando uit via de Supervisor-proxy.
+    Retourneert het result-bericht, of None bij elke fout (gelogd)."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token:
+        return None
+    try:
+        ws = _WsVerbinding(_CORE_WS_HOST, _CORE_WS_POORT, _CORE_WS_PAD, timeout)
+    except OSError as exc:
+        _log('core-ws', f'verbinden mislukt: {exc}', level=logging.ERROR)
+        return None
+    try:
+        bericht = ws.lees_json()  # auth_required
+        if bericht.get('type') != 'auth_required':
+            _log('core-ws', f"onverwachte start: {bericht.get('type')}", level=logging.ERROR)
+            return None
+        ws.stuur_json({'type': 'auth', 'access_token': token})
+        bericht = ws.lees_json()
+        if bericht.get('type') != 'auth_ok':
+            _log('core-ws', f"auth geweigerd: {bericht.get('type')}", level=logging.ERROR)
+            return None
+        ws.stuur_json({'id': 1, **commando})
+        for _ in range(20):
+            bericht = ws.lees_json()
+            if bericht.get('id') == 1 and bericht.get('type') == 'result':
+                return bericht
+        _log('core-ws', 'geen result-bericht ontvangen', level=logging.ERROR)
+        return None
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        _log('core-ws', f'fout: {exc}', level=logging.ERROR)
+        return None
+    finally:
+        ws.sluit()
+
+
+def _ha_gebruikerslijst() -> list[dict] | None:
+    """Alle actieve, niet-systeem-gebruikers uit HA (config/auth/list):
+    [{naam, gebruikersnaam, eigenaar}]. None bij fout."""
+    resultaat = _core_ws_call({'type': 'config/auth/list'})
+    if not resultaat or not resultaat.get('success'):
+        return None
+    gebruikers = []
+    for u in resultaat.get('result') or []:
+        if not isinstance(u, dict) or u.get('system_generated'):
+            continue
+        if u.get('is_active') is False:
+            continue
+        gebruikers.append({
+            'naam': str(u.get('name') or ''),
+            'gebruikersnaam': str(u.get('username') or ''),
+            'eigenaar': bool(u.get('is_owner')),
+        })
+    return gebruikers
+
+
 def _addon_opties() -> dict:
     """Addon-opties zoals de Supervisor die in /data/options.json zet
     (ssl/certfile/keyfile). Leeg dict buiten HA of bij leesfouten."""
@@ -1428,7 +1585,14 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     if (r.ok) { location.reload(); return; }
     if (r.status === 429) { fout.textContent = 'Te veel pogingen \\u2014 wacht even en probeer opnieuw.'; return; }
     if (r.status === 503) { fout.textContent = 'HA-authenticatie niet beschikbaar (draait de app als addon?).'; return; }
-    if (r.status === 502) { fout.textContent = 'HA-authenticatie geweigerd voor deze addon \\u2014 herstart de addon volledig en kijk in het addon-logboek (auth_api).'; return; }
+    if (r.status === 502) {
+      let d = '';
+      try { d = ((await r.json()) || {}).detail || ''; } catch (e) {}
+      fout.textContent = d === 'geweigerd'
+        ? 'De addon mag de HA-authenticatie niet gebruiken (auth_api-recht niet actief). Stop en start de addon volledig en probeer opnieuw.'
+        : 'HA-authenticatie gaf een onverwachte fout \\u2014 kijk in het addon-logboek naar de regel met "supervisor-auth".';
+      return;
+    }
     fout.textContent = 'Inloggen mislukt \\u2014 gebruik je HA-gebruikersnaam (waarmee je in Home Assistant inlogt, niet je weergavenaam) en controleer het wachtwoord.';
   } catch (err) {
     fout.textContent = 'Server niet bereikbaar.';
@@ -2095,7 +2259,13 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         worden volledig genegeerd. Leeg buiten HA of zonder sessie."""
         if self._is_direct():
             return _sessie_gebruiker(self._sessie_token()) or ''
+        # Supervisor-ingress stuurt (bij een sessie mét gebruikersdata):
+        # X-Remote-User-Name = login-gebruikersnaam, -Display-Name =
+        # weergavenaam, -Id = intern id. Voorkeursvolgorde: gebruikersnaam
+        # (zelfde identiteit als de directe-poort-login), dan weergavenaam,
+        # dan id.
         return (self.headers.get('X-Remote-User-Name')
+                or self.headers.get('X-Remote-User-Display-Name')
                 or self.headers.get('X-Remote-User-Id')
                 or '')
 
@@ -2273,6 +2443,22 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'gebruiker': gebruiker,
                              'rol': _gebruiker_rol(gebruiker),
                              'sessie': self._is_direct()})
+            return
+
+        if HA_GEBRUIKERS_PATH in path:
+            # Gebruikerslijst hoort bij het rollenbeheer → beheer-only.
+            rol = self._rol()
+            if rol != 'beheer':
+                self._rol_geweigerd(rol)
+                return
+            if not os.environ.get('SUPERVISOR_TOKEN'):
+                self._json(503, {'error': 'ha not available'})
+                return
+            gebruikers = _ha_gebruikerslijst()
+            if gebruikers is None:
+                self._json(502, {'error': 'could not fetch users'})
+                return
+            self._json(200, {'gebruikers': gebruikers})
             return
 
         if BF_PROXY_PREFIX in path:

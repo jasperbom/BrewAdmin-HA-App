@@ -491,6 +491,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/data/<key>` | Save data key (JSON, naar SQLite) |
 | GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
 | GET | `/api/whoami` | Gebruiker + rol: `{gebruiker, rol, sessie}` (`sessie: true` = ingelogd via de directe poort) |
+| GET | `/api/ha_gebruikers` | HA-gebruikerslijst voor het rollenbeheer (beheer-only; via core-websocket `config/auth/list` met een stdlib-RFC6455-client) |
 | POST | `/api/login` | Alleen directe poort (8098): HA-login via Supervisor-auth → sessiecookie |
 | POST | `/api/logout` | Alleen directe poort: beëindig de sessie |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |

@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.15] — 2026-07-16
+
+### Toegevoegd — HA-gebruikers ophalen voor het rollenbeheer
+
+- De kaart "Gebruikers & rollen" toont bij het toevoegen nu een
+  **keuzelijst met de echte Home Assistant-gebruikers** (naam +
+  gebruikersnaam, zonder systeem- en gedeactiveerde accounts) i.p.v.
+  alleen vrije invoer. Vrije invoer blijft mogelijk als fallback.
+- Nieuw endpoint `GET /api/ha_gebruikers` (beheer-only). De gebruikerslijst
+  bestaat alleen op de core-websocket (`config/auth/list`), dus de server
+  kreeg een minimale stdlib-RFC6455-websocketclient die via de
+  Supervisor-proxy (`/core/websocket`, handshake geverifieerd tegen de
+  Supervisor-broncode) één command/response uitwisselt.
+- Ingress-gebruikersdetectie: valt nu ook terug op
+  `X-Remote-User-Display-Name` (de Supervisor stuurt die naast de
+  gebruikersnaam mee wanneer de ingress-sessie gebruikersdata heeft).
+- Loginpagina: een 502 toont nu de specifieke oorzaak — "auth_api-recht
+  niet actief (stop en start de addon volledig)" versus "onverwachte fout,
+  zie addon-logboek" — zodat je niet meer in het logboek hoeft te graven.
+- pytest: 5 nieuwe tests, waaronder een volledige websocket-round-trip
+  tegen een nep-core-server (handshake, auth-flow, filtering van
+  systeem-/inactieve gebruikers) — 66 totaal.
+
+---
+
 ## [1.11.14] — 2026-07-16
 
 ### Opgelost — HA-login op de directe poort faalde altijd met 401
