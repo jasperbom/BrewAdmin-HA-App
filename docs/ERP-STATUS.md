@@ -12,7 +12,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.8 · **fase 0 t/m 3 volledig afgerond**, fase 4: 4.1 (SQLite) en 4.2 (gebruikers & rollen) klaar — alleen 4.3 (delta-sync) staat nog open
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.9 · **ALLE FASEN (0 t/m 4) VOLLEDIG AFGEROND** — het ERP-verbeterplan is compleet uitgevoerd; dit document blijft als naslag en logboek
 
 ---
 
@@ -175,7 +175,14 @@
       (beheer-only, strikt gevalideerd, lockout-guard) + `GET /api/whoami`;
       UI-kaart bij Instellingen→App, client herlaadt + meldt bij 403;
       zonder configuratie of buiten HA blijft alles `beheer`)*
-- [ ] **4.3 Delta-sync** i.p.v. hele arrays
+- [x] **4.3 Delta-sync** i.p.v. hele arrays *(v1.11.9, 2026-07-16 —
+      `POST /api/delta/<key>` (upsert/delete per record) op de
+      rij-per-record-opslag van 4.1, met dezelfde garanties als de
+      volledige POST (409-conflictdetectie, rollen, append-only, audit);
+      client kiest automatisch delta via een sync-snapshot per key
+      (`utils/delta.ts`) en valt stil terug op de volledige POST bij
+      herordening/invoeging middenin/ontbrekende id's/oude server —
+      **fase 4 en daarmee het volledige plan compleet**)*
 
 ---
 
@@ -213,3 +220,4 @@
 | 2026-07-16 | 1.11.6 | 3.3-fix | pytest-CI-job faalde op PermissionError /data (runner zonder root): DATA_DIR overridebaar via BREWADMIN_DATA_DIR + tests/conftest.py zet een tmp-map vóór de server-import |
 | 2026-07-16 | 1.11.7 | 4.1 | SQLite-opslaglaag (WAL) achter ongewijzigde API: JSON-migratie bij eerste start, commit = één transactie, rij-per-record, backup = JSON-export + db-kopie, 0600 op db; 6 nieuwe pytest-tests (41 totaal) + runtime-smoke (migratie, herstart-persistentie, nextnr vanaf legacy teller) |
 | 2026-07-16 | 1.11.8 | 4.2 | Gebruikers & rollen op de ingress-user: 4 rollen server-side afgedwongen per key + endpoint (403 + audit), gebruikers_rollen-key met validatie en lockout-guard, /api/whoami, UI-kaart + 403-afhandeling in api.ts, key in Excel-backup; 5 pytest-tests (46 totaal) + runtime-smoke van alle rolpaden |
+| 2026-07-16 | 1.11.9 | 4.3 | Delta-sync: POST /api/delta/<key> (upsert/delete per record, 409/403/append-only/audit) + client-side sync-snapshots met automatische fallback naar volledige POST; 16 vitest- (89 totaal) en 5 pytest-tests (51 totaal) + curl-smoke — **hele ERP-verbeterplan afgerond** |

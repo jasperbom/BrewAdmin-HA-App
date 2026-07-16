@@ -58,6 +58,10 @@ BrewAdmin-HA-App/
 - All HTTP via `/api/` prefix
 - `src/utils/api.ts` — central fetch abstraction (`_postToServer`, `useStore` hook)
 - `useStore(key)` — localStorage-cached, server-synced state per data key
+- Delta-sync (ERP 4.3): saves van array-keys gaan waar mogelijk als
+  record-delta naar `POST /api/delta/<key>` (pure logica in
+  `src/utils/delta.ts`); bij herordening, records zonder id of een oude
+  server valt de client stil terug op de volledige POST
 - Home Assistant Ingress strips path prefix; server handles both `/` and `/brouwerij_admin/` paths
 
 ### Backend data persistence
@@ -492,6 +496,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
 | POST | `/api/nextnr` | Volgend factuur-/creditnotanummer, atomair per reeks/jaar (`{reeks, jaar}` → `{jaar, nr, nummer}`) |
 | POST | `/api/commit` | Meerdere data-keys atomair opslaan (`{data:{key:waarde}, versions:{key:versie}}`), 409 bij versieconflict |
+| POST | `/api/delta/<key>` | Delta-sync per record (ERP 4.3): `{upsert:[records], delete:[ids]}` met verplichte `X-Data-Version`; client valt bij 400/404 automatisch terug op de volledige POST |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |

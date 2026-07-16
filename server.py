@@ -134,6 +134,7 @@ MAIL_SEND_PATH           = '/api/mail/send'
 MAIL_TEST_PATH           = '/api/mail/test'
 NEXTNR_PATH              = '/api/nextnr'
 COMMIT_PATH              = '/api/commit'
+DELTA_PREFIX             = '/api/delta/'
 COMMIT_MAX_KEYS          = 50
 MAIL_MAX_CONTENT         = 20 * 1024 * 1024  # 20 MB — mail + attachments
 MAIL_SECURITY_VALUES     = {'none', 'starttls', 'ssl'}
@@ -2001,6 +2002,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._handle_commit()
             return
 
+        if DELTA_PREFIX in path:
+            self._handle_delta()
+            return
+
         if HA_PROXY_PREFIX in path:
             self._ha_proxy(path)
             return
@@ -2831,6 +2836,116 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                          versie_naar=versie,
                          gebruiker=self._ingress_user())
         self._json(200, {'ok': True, 'versions': new_versions})
+
+    def _handle_delta(self):
+        """POST /api/delta/<key> — delta-sync per record (ERP-plan 4.3).
+        Body: {"upsert": [records], "delete": [ids]}; X-Data-Version verplicht.
+        Werkt alleen op array-keys waarvan elk record een id heeft (de
+        rij-per-record-opslag uit 4.1). Alles wat delta niet aankan
+        beantwoordt de server met 400/404 — de client valt dan stil terug op
+        de volledige POST, die het laatste woord houdt. 409 blijft een echt
+        versieconflict (zelfde afhandeling als bij een volledige POST)."""
+        path = self.path.split('?')[0]
+        idx = path.find(DELTA_PREFIX)
+        key = path[idx + len(DELTA_PREFIX):].strip('/')
+        if not _valid_key(key):
+            self._json(400, {'error': 'invalid key'})
+            return
+        rol = self._rol()
+        if not _rol_mag_key(rol, key):
+            self._rol_geweigerd(rol, key)
+            return
+        # Rollenbeheer heeft extra validatie (lockout) — alleen via volledige POST.
+        if key == 'gebruikers_rollen':
+            self._json(400, {'error': 'delta not supported for this key'})
+            return
+        body = self._read_body()
+        if body is None:
+            return
+        try:
+            req = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        upserts = req.get('upsert') if isinstance(req, dict) else None
+        deletes = req.get('delete') if isinstance(req, dict) else None
+        if not isinstance(upserts, list) or not isinstance(deletes, list):
+            self._json(400, {'error': 'invalid delta: upsert/delete ontbreekt'})
+            return
+        for rec in upserts:
+            if not isinstance(rec, dict) or rec.get('id') is None:
+                self._json(400, {'error': 'invalid delta: record zonder id'})
+                return
+        if any(isinstance(d, (dict, list)) or d is None for d in deletes):
+            self._json(400, {'error': 'invalid delta: ongeldige delete-id'})
+            return
+        expected = self.headers.get('X-Data-Version')
+        if expected is None:
+            # Zonder basisversie zijn delta-semantiek en conflictdetectie
+            # niet te garanderen — volledige POST gebruiken.
+            self._json(400, {'error': 'X-Data-Version required for delta'})
+            return
+        with _data_lock:
+            conn = _db()
+            rij = conn.execute('SELECT versie, soort FROM versies WHERE key=?',
+                               (key,)).fetchone()
+            if rij is None or rij[1] != 'array':
+                # Onbekende key of geen array: client valt terug op volledige
+                # POST (zelfde fallback als een oude server zonder dit endpoint).
+                self._json(404, {'error': 'not found'})
+                return
+            if expected != rij[0]:
+                self._json(409, {'error': 'conflict', 'version': rij[0]})
+                return
+            # Delta vereist unieke, aanwezige record-id's in de opslag.
+            tellers = conn.execute(
+                'SELECT COUNT(*), COUNT(record_id), COUNT(DISTINCT record_id) '
+                'FROM records WHERE key=?', (key,)).fetchone()
+            if tellers[0] != tellers[1] or tellers[0] != tellers[2]:
+                self._json(400, {'error': 'delta not supported for this key'})
+                return
+            bestaand = {r[0] for r in conn.execute(
+                'SELECT record_id FROM records WHERE key=?', (key,))}
+            if key in _APPEND_ONLY:
+                # Append-only: alleen nieuwe records; wijzigen/verwijderen
+                # loopt via de volledige POST die het canonieke 422 geeft.
+                if deletes or any(str(rec['id']) in bestaand for rec in upserts):
+                    self._json(400, {'error': 'append-only'})
+                    return
+            try:
+                with conn:
+                    for d in deletes:
+                        conn.execute('DELETE FROM records WHERE key=? AND record_id=?',
+                                     (key, str(d)))
+                    volgende_seq = conn.execute(
+                        'SELECT COALESCE(MAX(seq), -1) + 1 FROM records WHERE key=?',
+                        (key,)).fetchone()[0]
+                    for rec in upserts:
+                        rid = str(rec['id'])
+                        data_json = _json_compact(rec)
+                        if rid in bestaand and rid not in {str(d) for d in deletes}:
+                            conn.execute(
+                                'UPDATE records SET data=? WHERE key=? AND record_id=?',
+                                (data_json, key, rid))
+                        else:
+                            conn.execute(
+                                'INSERT INTO records(key, seq, record_id, data) '
+                                'VALUES(?,?,?,?)', (key, volgende_seq, rid, data_json))
+                            volgende_seq += 1
+                    delen = [r[0] for r in conn.execute(
+                        'SELECT data FROM records WHERE key=? ORDER BY seq', (key,))]
+                    payload = ('[' + ','.join(delen) + ']').encode('utf-8')
+                    nieuwe_versie = hashlib.sha256(payload).hexdigest()[:16]
+                    conn.execute('UPDATE versies SET versie=? WHERE key=?',
+                                 (nieuwe_versie, key))
+            except sqlite3.Error:
+                self._json(500, {'error': 'delta failed'})
+                return
+        _audit_write('delta', key, ip=self.client_address[0],
+                     upserts=len(upserts), deletes=len(deletes),
+                     versie_van=expected, versie_naar=nieuwe_versie,
+                     gebruiker=self._ingress_user())
+        self._json(200, {'ok': True, 'version': nieuwe_versie, 'records': len(delen)})
 
     def _handle_backup_trigger(self):
         """POST /api/backups/trigger — run an immediate manual backup."""

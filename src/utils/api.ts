@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { lsSet, t } from '../i18n'
+import { bouwSyncSnapshot, berekenDelta, deltaIsKleiner, SyncSnapshot } from './delta'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
 // Fallback '/' voor niet-browser-omgevingen (Vitest, fase 3.1): daar worden
@@ -151,6 +152,19 @@ export const _updateVersion = (key: string, r: Response): void => {
   if (v) _versions.set(key, v)
 }
 
+// ── Delta-sync (ERP-plan 4.3) ───────────────────────────────────────────────
+// Per key de laatst met de server gesynchroniseerde stand als snapshot
+// (id → record-JSON, in volgorde). Bij een save berekent _doPost daaruit het
+// verschil en stuurt alleen de gewijzigde records naar POST /api/delta/<key>;
+// lukt delta niet (herordening, records zonder id, oude server), dan volgt
+// stil de volledige POST. `null` = key is niet delta-baar.
+const _lastSynced = new Map<string, SyncSnapshot | null>()
+
+// Export t.b.v. de vitest-suite (delta-integratie); intern gebruik verder.
+export const _rememberSynced = (key: string, data: any): void => {
+  _lastSynced.set(key, bouwSyncSnapshot(data))
+}
+
 // 'reject' = de server wees de payload definitief af (400/413/422,
 // bijv. schemavalidatie) — nooit herproberen, wél de gebruiker melden.
 // 'forbidden' = de rol van deze gebruiker mag dit niet (403, ERP-plan 4.2) —
@@ -168,7 +182,23 @@ export const _postToServer = (key: string, data: any): Promise<SaveResult> => {
   return run
 }
 
-const _doPost = (key: string, data: any): Promise<SaveResult> => {
+const _doPost = async (key: string, data: any): Promise<SaveResult> => {
+  // Delta-pad (ERP-plan 4.3): alleen wanneer we een gesynchroniseerde
+  // basisstand + versie kennen, het verschil delta-baar is én de delta ook
+  // echt kleiner over de lijn gaat dan de volledige array.
+  const prev = _lastSynced.get(key)
+  const ver = _versions.get(key)
+  if (prev && ver !== undefined && Array.isArray(data)) {
+    const delta = berekenDelta(prev, data)
+    if (delta && (delta.upsert.length || delta.verwijder.length) && deltaIsKleiner(delta, data)) {
+      const res = await _doDelta(key, data, delta, ver)
+      if (res !== 'fallback') return res
+    }
+  }
+  return _doFullPost(key, data)
+}
+
+const _doFullPost = (key: string, data: any): Promise<SaveResult> => {
   _syncPending++
   const headers: Record<string, string> = {'Content-Type': 'application/json'}
   const ver = _versions.get(key)
@@ -187,6 +217,7 @@ const _doPost = (key: string, data: any): Promise<SaveResult> => {
         const d = await r.json()
         if (d && typeof d.version === 'string') _versions.set(key, d.version)
       } catch (e) { /* oudere server zonder version-veld */ }
+      _rememberSynced(key, data)
       return 'ok' as SaveResult
     }
     if (r.status === 409) return 'conflict' as SaveResult
@@ -200,6 +231,45 @@ const _doPost = (key: string, data: any): Promise<SaveResult> => {
     }
     if (r.status !== 429) _syncErrors++
     return 'fail' as SaveResult
+  })
+  .catch(() => {
+    _syncPending = Math.max(0, _syncPending - 1)
+    _serverReachable = false
+    _syncErrors++
+    return 'fail' as SaveResult
+  })
+}
+
+// POST /api/delta/<key>. 'fallback' = dit antwoord zegt niets definitiefs
+// (oude server, niet-delta-bare key, gedupliceerde id's server-side) — de
+// aanroeper probeert dan alsnog de volledige POST, die het laatste woord
+// heeft. Alleen 200/409/403 en netwerkfouten zijn hier definitief.
+const _doDelta = (key: string, data: any, delta: {upsert: any[], verwijder: string[]}, ver: string): Promise<SaveResult | 'fallback'> => {
+  _syncPending++
+  return _fetchWithRetry(ADDON_BASE + 'api/delta/' + key, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Data-Version': ver},
+    body: JSON.stringify({upsert: delta.upsert, delete: delta.verwijder}),
+  }, 2)
+  .then(async r => {
+    _syncPending = Math.max(0, _syncPending - 1)
+    _serverReachable = true
+    if (r.ok) {
+      _syncErrors = 0
+      try {
+        const d = await r.json()
+        if (d && typeof d.version === 'string') _versions.set(key, d.version)
+      } catch (e) { /* geen version in respons */ }
+      _rememberSynced(key, data)
+      return 'ok' as SaveResult
+    }
+    if (r.status === 409) return 'conflict' as SaveResult
+    if (r.status === 403) {
+      _syncErrors++
+      return 'forbidden' as SaveResult
+    }
+    if (r.status === 429) return 'fail' as SaveResult
+    return 'fallback' as const
   })
   .catch(() => {
     _syncPending = Math.max(0, _syncPending - 1)
@@ -295,7 +365,7 @@ const _flushCommitBuffer = () => {
     }
     const res = await _doCommit(entries)
     if (res.status === 'ok') {
-      entries.forEach(([k, e]) => _handleSaveResult(k, e, 'ok'))
+      entries.forEach(([k, e]) => { _rememberSynced(k, e.data); _handleSaveResult(k, e, 'ok') })
     } else if (res.status === 'conflict') {
       // Alleen de conflicterende keys vervallen; de rest alsnog los proberen.
       for (const [k, e] of entries) {
@@ -406,6 +476,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       .then(d => {
         _fetchedKeys.add(key)
         if (d !== null && d !== undefined && !modified.current) {
+          _rememberSynced(key, d)
           setData(d)
           if (!secure) lsSet(key, d)
         }
@@ -426,6 +497,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       .then(r => { _updateVersion(key, r); return r.ok ? r.json() : null })
       .then(d => {
         if (d !== null && d !== undefined) {
+          _rememberSynced(key, d)
           setData(d)
           if (!secure) lsSet(key, d)
         }
@@ -457,6 +529,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       .then(r => { _serverReachable = true; _updateVersion(key, r); return r.ok ? r.json() : null })
       .then(d => {
         if (d !== null && d !== undefined) {
+          _rememberSynced(key, d)
           setData(d)
           if (!secure) lsSet(key, d)
         }

@@ -460,6 +460,86 @@ class TestHealth:
             srv._threads.clear()
 
 
+class TestDelta:
+    """Delta-sync per record (ERP-plan 4.3): POST /api/delta/<key>."""
+
+    def _seed(self, app, key, records):
+        status, body, _ = req(app, 'POST', f'/api/data/{key}', body=records)
+        assert status == 200
+        return body['version']
+
+    def test_upsert_delete_en_volgorde(self, app):
+        ver = self._seed(app, 'haccp_capa', [
+            {'id': 1, 'n': 'a'}, {'id': 2, 'n': 'b'}, {'id': 3, 'n': 'c'}])
+        status, body, _ = req(app, 'POST', '/api/delta/haccp_capa',
+                              body={'upsert': [{'id': 2, 'n': 'B'}, {'id': 4, 'n': 'd'}],
+                                    'delete': [1]},
+                              headers={'X-Data-Version': ver})
+        assert status == 200 and body['records'] == 3
+        status, data, headers = req(app, 'GET', '/api/data/haccp_capa')
+        # Update behoudt positie, nieuw record komt achteraan
+        assert data == [{'id': 2, 'n': 'B'}, {'id': 3, 'n': 'c'}, {'id': 4, 'n': 'd'}]
+        # Nieuwe versie is consistent met wat GET serveert
+        assert headers['X-Data-Version'] == body['version']
+
+    def test_verouderde_versie_geeft_409(self, app):
+        ver = self._seed(app, 'koel_logs', [{'id': 1}])
+        req(app, 'POST', '/api/delta/koel_logs',
+            body={'upsert': [{'id': 2}], 'delete': []}, headers={'X-Data-Version': ver})
+        status, _, _ = req(app, 'POST', '/api/delta/koel_logs',
+                           body={'upsert': [], 'delete': [1]}, headers={'X-Data-Version': ver})
+        assert status == 409
+        assert req(app, 'GET', '/api/data/koel_logs')[1] == [{'id': 1}, {'id': 2}]
+
+    def test_fallback_signalen_400_en_404(self, app):
+        # Zonder X-Data-Version → 400 (client valt terug op volledige POST)
+        self._seed(app, 'dry_hops', [{'id': 1}])
+        ver = req(app, 'GET', '/api/data/dry_hops')[2]['X-Data-Version']
+        assert req(app, 'POST', '/api/delta/dry_hops',
+                   body={'upsert': [], 'delete': []})[0] == 400
+        # Onbekende key of geen array → 404
+        assert req(app, 'POST', '/api/delta/bestaat_niet_delta',
+                   body={'upsert': [], 'delete': []},
+                   headers={'X-Data-Version': '0'})[0] == 404
+        # Record zonder id → 400
+        assert req(app, 'POST', '/api/delta/dry_hops',
+                   body={'upsert': [{'zonder': 'id'}], 'delete': []},
+                   headers={'X-Data-Version': ver})[0] == 400
+
+    def test_append_only_via_delta(self, app):
+        srv._write_json('journaal', [{'id': 10, 'netto_cent': 1}])
+        ver = req(app, 'GET', '/api/data/journaal')[2]['X-Data-Version']
+        # Aanvullen met een nieuw record mag
+        status, body, _ = req(app, 'POST', '/api/delta/journaal',
+                              body={'upsert': [{'id': 11, 'netto_cent': 2}], 'delete': []},
+                              headers={'X-Data-Version': ver})
+        assert status == 200
+        # Bestaand record wijzigen of verwijderen → 400 (volledige POST geeft het canonieke 422)
+        ver = body['version']
+        assert req(app, 'POST', '/api/delta/journaal',
+                   body={'upsert': [{'id': 10, 'netto_cent': 999}], 'delete': []},
+                   headers={'X-Data-Version': ver})[0] == 400
+        assert req(app, 'POST', '/api/delta/journaal',
+                   body={'upsert': [], 'delete': [10]},
+                   headers={'X-Data-Version': ver})[0] == 400
+
+    def test_delta_respecteert_rollen(self, app):
+        ver = self._seed(app, 'verkoop_facturen', [])
+        status, _, _ = req(app, 'POST', '/api/data/gebruikers_rollen',
+                           body={'gebruikers': {'piet': 'productie'}},
+                           headers={'X-Remote-User-Name': 'admin'})
+        assert status == 200
+        try:
+            status, body, _ = req(app, 'POST', '/api/delta/verkoop_facturen',
+                                  body={'upsert': [{'id': 1}], 'delete': []},
+                                  headers={'X-Data-Version': ver,
+                                           'X-Remote-User-Name': 'piet'})
+            assert status == 403 and body['reden'] == 'rol'
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                       headers={'X-Remote-User-Name': 'admin'})[0] == 200
+
+
 class TestRollen:
     """Gebruikers & rollen (ERP-plan 4.2): server-side afdwinging per rol."""
 

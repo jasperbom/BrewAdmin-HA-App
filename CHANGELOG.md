@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.9] — 2026-07-16
+
+### Toegevoegd — Delta-sync i.p.v. hele arrays (ERP-plan 4.3)
+
+- Nieuw endpoint `POST /api/delta/<key>`: de client stuurt alleen de
+  gewijzigde/nieuwe records (`upsert`) en verwijderde id's (`delete`)
+  i.p.v. de complete array — payloads schalen nu met de wijziging, niet
+  met de datasetgrootte. Bouwt direct op de rij-per-record-opslag van 4.1
+  (update behoudt de positie, nieuwe records komen achteraan).
+- Zelfde garanties als de volledige POST: `X-Data-Version` verplicht
+  (409 bij conflict), rollen-afdwinging per key (403), append-only-guard
+  voor het journaal, één transactie, audit-regel (`delta`) met tellers.
+- Client (`api.ts` + nieuw `utils/delta.ts`, onder de strict-ratchet):
+  houdt per key een snapshot van de laatst gesynchroniseerde serverstand
+  bij en kiest automatisch delta wanneer dat veilig kan — bij herordening,
+  invoeging middenin, records zonder id, gelijke of grotere delta-payload
+  of een server zonder delta-endpoint (404/400) valt hij stil terug op de
+  volledige POST, die het laatste woord houdt.
+- Tests: 12 vitest-tests op de pure delta-logica + 4 op de
+  api.ts-integratie met gemockte fetch (89 totaal); 5 pytest-tests op het
+  endpoint (volgorde, 409, fallback-signalen, append-only, rollen —
+  51 totaal); runtime-smoke met curl — **fase 4 en daarmee het volledige
+  ERP-verbeterplan compleet**.
+
+---
+
 ## [1.11.8] — 2026-07-16
 
 ### Toegevoegd — Gebruikers & rollen (ERP-plan 4.2)
