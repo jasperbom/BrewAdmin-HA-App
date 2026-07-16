@@ -1413,3 +1413,15 @@ export interface JournaalRegel {
   // historische data zijn aangemaakt (i.p.v. op het definitief-moment zelf).
   migratie?: boolean
 }
+
+// Gebruikers & rollen (ERP-plan 4.2). De server dwingt de rollen af op basis
+// van de HA-ingress-gebruiker; zonder configuratie geldt voor iedereen
+// `beheer`. Ongeldige rolwaarden worden door de server geweigerd (422).
+export type Rol = 'beheer' | 'boekhouding' | 'productie' | 'alleen_lezen'
+
+export interface GebruikersRollen {
+  // HA-gebruikersnaam → rol
+  gebruikers?: Record<string, Rol>
+  // Rol voor gebruikers die niet in `gebruikers` staan (default: beheer)
+  standaard_rol?: Rol
+}

@@ -105,6 +105,7 @@ def _laatste_backup_datum():
 
 API_DATA_PREFIX = '/api/data/'
 HEALTH_PATH = '/api/health'
+WHOAMI_PATH = '/api/whoami'
 BF_API_BASE = 'https://api.brewfather.app/v2'
 BF_PROXY_PREFIX = '/api/brewfather/'
 BF_TEST_PATH = '/api/brewfather/test'
@@ -1027,7 +1028,7 @@ _KEY_TYPES = {
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
-        'tank_statussen',
+        'tank_statussen', 'gebruikers_rollen',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
     )},
     # scalars
@@ -1140,6 +1141,105 @@ def _harden_secure_files() -> None:
                 os.chmod(f, 0o600)
             except OSError:
                 pass
+
+
+# ── Gebruikers & rollen (ERP-plan 4.2) ───────────────────────────────────
+# HA-ingress geeft de ingelogde gebruiker door (X-Remote-User-Name/-Id;
+# sinds plan 1.5 al per mutatie geauditeerd). Daar bovenop nu simpele
+# autorisatie: de beheerder wijst per gebruiker een rol toe in de
+# `gebruikers_rollen`-key ({gebruikers: {naam: rol}, standaard_rol}).
+# Rollen:
+#   beheer       — alles (ook instellingen, credentials en rollenbeheer)
+#   boekhouding  — financiële + gedeelde keys, geen beheer-instellingen
+#   productie    — productie-/gedeelde keys, geen financiële vastlegging
+#   alleen_lezen — alleen GET
+# Zonder rollenconfiguratie — en buiten HA, waar geen ingress-user bestaat —
+# geldt voor iedereen `beheer`: identiek aan het oude gedrag. De headers
+# zijn betrouwbaar omdat als addon alleen de ingress-gateway requests mag
+# sturen (_client_allowed) en die de X-Remote-User-headers zelf zet.
+# Afdwinging is server-side (403 + audit); de UI leest de eigen rol via
+# GET /api/whoami.
+
+ROLLEN = ('beheer', 'boekhouding', 'productie', 'alleen_lezen')
+
+# Keys die alleen `beheer` mag schrijven: app-instellingen, integraties,
+# credentials en het rollenbeheer zelf.
+_BEHEER_KEYS = frozenset((
+    'gebruikers_rollen', 'ha_instellingen', 'notificatie_instellingen',
+    'coldcrash_instellingen', 'planning_instellingen',
+    'brouwproces_instellingen', 'brewery_details', 'mail_templates',
+    'app_logo', 'factuur_logo', 'app_name', 'nav_theme',
+    'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
+))
+
+# Financiële vastlegging: alleen `boekhouding` (en `beheer`).
+_FINANCIELE_KEYS = frozenset((
+    'inkoop_facturen', 'verkoop_facturen', 'scan_correcties', 'journaal',
+    'jaarafsluitingen', 'bank_saldi', 'bank_koppelingen',
+    'kapitaal_boekingen', 'accijns', 'accijns_aangiftes',
+    'accijns_instellingen', 'btw_aangiftes', 'btw_instellingen',
+    'btw_tarieven', 'ing_type_btw', 'alt_rekeningen', 'kosten_soorten',
+    'gn_codes', 'klanten', 'factuur_counter', 'nummer_reeksen',
+))
+# Alle overige keys (batches, voorraad, recepten, bestellingen, picks,
+# HACCP, …) zijn gedeeld: `boekhouding` én `productie` mogen ze schrijven —
+# productiewerk (afvullen, uitslag, picken) raakt onvermijdelijk dezelfde
+# stores als de administratie erachter.
+
+
+def _gebruiker_rol(gebruiker: str) -> str:
+    """Rol van deze ingress-gebruiker. Buiten HA (geen ingress-user) en
+    zonder rollenconfiguratie geldt `beheer` (het oude gedrag). Een
+    ongeldige rolwaarde in de config valt terug op `alleen_lezen`
+    (fail-closed) — al voorkomt de schrijfvalidatie dat die er ooit komt."""
+    if not gebruiker:
+        return 'beheer'
+    conf = _read_json('gebruikers_rollen')
+    if not isinstance(conf, dict):
+        return 'beheer'
+    rollen = conf.get('gebruikers')
+    rol = rollen.get(gebruiker) if isinstance(rollen, dict) else None
+    if rol is None:
+        rol = conf.get('standaard_rol') or 'beheer'
+    return rol if rol in ROLLEN else 'alleen_lezen'
+
+
+def _rol_mag_key(rol: str, key: str) -> bool:
+    """Mag deze rol de gegeven data-key schrijven?"""
+    if rol == 'beheer':
+        return True
+    if rol == 'alleen_lezen':
+        return False
+    if key in _BEHEER_KEYS:
+        return False
+    if key in _FINANCIELE_KEYS:
+        return rol == 'boekhouding'
+    return True  # gedeelde keys: boekhouding én productie
+
+
+def _rollen_config_geldig(conf) -> bool:
+    """Valideer de vorm van gebruikers_rollen strikt: een typfout in een
+    rolnaam mag nooit stilletjes rechten geven of afpakken."""
+    if not isinstance(conf, dict):
+        return False
+    if conf.get('standaard_rol') is not None and conf['standaard_rol'] not in ROLLEN:
+        return False
+    gebruikers = conf.get('gebruikers') or {}
+    if not isinstance(gebruikers, dict):
+        return False
+    return all(isinstance(naam, str) and naam and rol in ROLLEN
+               for naam, rol in gebruikers.items())
+
+
+def _rollen_lockout(gebruiker: str, conf) -> bool:
+    """True wanneer deze nieuwe rollenconfig de schrijvende gebruiker zelf
+    uit `beheer` zou zetten — dat zou het rollenbeheer op slot gooien.
+    Buiten HA (geen ingress-user) is er geen lockout-risico."""
+    if not gebruiker or not isinstance(conf, dict):
+        return False
+    rollen = conf.get('gebruikers') if isinstance(conf.get('gebruikers'), dict) else {}
+    rol = rollen.get(gebruiker) or conf.get('standaard_rol') or 'beheer'
+    return rol != 'beheer'
 
 
 # ── Factuurnummering (ERP-plan 0.2) ──────────────────────────────────────
@@ -1687,6 +1787,20 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 or self.headers.get('X-Remote-User-Id')
                 or '')
 
+    def _rol(self) -> str:
+        """Rol van de huidige gebruiker (ERP-plan 4.2)."""
+        return _gebruiker_rol(self._ingress_user())
+
+    def _rol_geweigerd(self, rol: str, key: str = '') -> None:
+        """403 + audit-regel voor een door de rol geweigerde actie."""
+        _audit_write('rol_geweigerd', key or self.path.split('?')[0][:120],
+                     ip=self.client_address[0], rol=rol,
+                     gebruiker=self._ingress_user())
+        antwoord = {'error': 'forbidden', 'reden': 'rol', 'rol': rol}
+        if key:
+            antwoord['key'] = key
+        self._json(403, antwoord)
+
     def _rate_check(self) -> bool:
         ip = self.client_address[0]
         if not _client_allowed(ip):
@@ -1744,6 +1858,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._handle_health()
             return
 
+        if WHOAMI_PATH in path:
+            gebruiker = self._ingress_user()
+            self._json(200, {'gebruiker': gebruiker, 'rol': _gebruiker_rol(gebruiker)})
+            return
+
         if BF_PROXY_PREFIX in path:
             self._bf_proxy_get()
             return
@@ -1757,6 +1876,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if BACKUPS_PREFIX in path and BACKUPS_TRIGGER_PATH not in path:
+            # Backup-ZIP's bevatten de complete administratie inclusief
+            # (onmaskeerde) credentials — alleen beheer mag ze ophalen.
+            rol = self._rol()
+            if rol != 'beheer':
+                self._rol_geweigerd(rol)
+                return
             self._handle_backups_get()
             return
 
@@ -1765,6 +1890,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if DOWNLOAD_BIJLAGEN_PREFIX in path:
+            rol = self._rol()
+            if rol not in ('beheer', 'boekhouding'):
+                self._rol_geweigerd(rol)
+                return
             self._serve_bijlagen_zip()
             return
 
@@ -1815,6 +1944,23 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not self._rate_check():
             return
         path = self.path.split('?')[0]
+
+        # Rollen (ERP-plan 4.2): alleen-lezen mag geen enkel mutatie-endpoint
+        # aanraken; test-/backup-endpoints zijn beheer-only en nummeruitgifte
+        # + factuurbijlagen horen bij boekhouding. Data-keys worden verderop
+        # per key gecontroleerd (_rol_mag_key).
+        rol = self._rol()
+        if rol == 'alleen_lezen':
+            self._rol_geweigerd(rol)
+            return
+        if rol != 'beheer' and any(p in path for p in (
+                MAIL_TEST_PATH, BF_TEST_PATH, WC_TEST_PATH, BACKUPS_TRIGGER_PATH)):
+            self._rol_geweigerd(rol)
+            return
+        if rol not in ('beheer', 'boekhouding') and any(p in path for p in (
+                NEXTNR_PATH, UPLOAD_PREFIX, DELETE_UPLOAD_PREFIX)):
+            self._rol_geweigerd(rol)
+            return
 
         # Brewfather PATCH proxy (voorraad push)
         if BF_PATCH_PREFIX in path:
@@ -1885,6 +2031,19 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 self._json(422, {'error': 'invalid payload', 'key': key,
                                  'expected': _KEY_TYPES.get(key)})
                 return
+            if not _rol_mag_key(rol, key):
+                self._rol_geweigerd(rol, key)
+                return
+            if key == 'gebruikers_rollen':
+                if not _rollen_config_geldig(parsed):
+                    self._json(422, {'error': 'invalid payload', 'key': key,
+                                     'expected': 'rollen'})
+                    return
+                if _rollen_lockout(self._ingress_user(), parsed):
+                    # De beheerder mag zichzelf niet uit `beheer` zetten —
+                    # daarna zou niemand het rollenbeheer meer kunnen wijzigen.
+                    self._json(422, {'error': 'rollen-lockout', 'key': key})
+                    return
             # Onder _data_lock zodat de achtergrondthreads (cold-crash,
             # auto-metingen) die read-modify-write doen op dezelfde keys
             # geen halve merge overschrijven.
@@ -2612,6 +2771,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if len(data) > COMMIT_MAX_KEYS:
             self._json(400, {'error': f'too many keys (max {COMMIT_MAX_KEYS})'})
             return
+        rol = self._rol()
         for key, value in data.items():
             if not _valid_key(key):
                 self._json(400, {'error': f'invalid key: {key}'})
@@ -2620,6 +2780,17 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 self._json(422, {'error': 'invalid payload', 'key': key,
                                  'expected': _KEY_TYPES.get(key)})
                 return
+            if not _rol_mag_key(rol, key):
+                self._rol_geweigerd(rol, key)
+                return
+            if key == 'gebruikers_rollen':
+                if not _rollen_config_geldig(value):
+                    self._json(422, {'error': 'invalid payload', 'key': key,
+                                     'expected': 'rollen'})
+                    return
+                if _rollen_lockout(self._ingress_user(), value):
+                    self._json(422, {'error': 'rollen-lockout', 'key': key})
+                    return
         with _data_lock:
             conn = _db()
             conflicts = {}

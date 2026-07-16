@@ -460,6 +460,118 @@ class TestHealth:
             srv._threads.clear()
 
 
+class TestRollen:
+    """Gebruikers & rollen (ERP-plan 4.2): server-side afdwinging per rol."""
+
+    ADMIN = {'X-Remote-User-Name': 'admin'}
+    CONFIG = {'gebruikers': {'admin': 'beheer', 'kees': 'alleen_lezen',
+                             'piet': 'productie', 'fien': 'boekhouding'}}
+
+    def _zet_config(self, app, config=None):
+        status, _, _ = req(app, 'POST', '/api/data/gebruikers_rollen',
+                           body=self.CONFIG if config is None else config,
+                           headers=self.ADMIN)
+        return status
+
+    def _reset(self, app):
+        assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                   headers=self.ADMIN)[0] == 200
+
+    def test_rol_helpers(self):
+        assert srv._rol_mag_key('beheer', 'smtp_creds')
+        assert srv._rol_mag_key('boekhouding', 'verkoop_facturen')
+        assert not srv._rol_mag_key('boekhouding', 'smtp_creds')
+        assert not srv._rol_mag_key('productie', 'verkoop_facturen')
+        assert srv._rol_mag_key('productie', 'batches')
+        assert srv._rol_mag_key('boekhouding', 'batches')  # gedeelde key
+        assert not srv._rol_mag_key('alleen_lezen', 'batches')
+        # Configvalidatie: typfout in rol mag nooit stil doorglippen
+        assert srv._rollen_config_geldig({'gebruikers': {'x': 'beheer'}})
+        assert not srv._rollen_config_geldig({'gebruikers': {'x': 'admin'}})
+        assert not srv._rollen_config_geldig({'standaard_rol': 'root'})
+        assert not srv._rollen_config_geldig([])
+        # Lockout: schrijver moet zelf beheer houden
+        assert srv._rollen_lockout('admin', {'standaard_rol': 'alleen_lezen'})
+        assert not srv._rollen_lockout('admin', {'gebruikers': {'admin': 'beheer'},
+                                                 'standaard_rol': 'alleen_lezen'})
+        assert not srv._rollen_lockout('', {'standaard_rol': 'alleen_lezen'})
+
+    def test_zonder_config_is_iedereen_beheer(self, app):
+        status, body, _ = req(app, 'GET', '/api/whoami',
+                              headers={'X-Remote-User-Name': 'wildvreemde'})
+        assert status == 200
+        assert body == {'gebruiker': 'wildvreemde', 'rol': 'beheer'}
+
+    def test_whoami_en_afdwinging_per_rol(self, app):
+        assert self._zet_config(app) == 200
+        try:
+            # whoami rapporteert de toegewezen rol
+            _, body, _ = req(app, 'GET', '/api/whoami',
+                             headers={'X-Remote-User-Name': 'kees'})
+            assert body == {'gebruiker': 'kees', 'rol': 'alleen_lezen'}
+            # alleen_lezen: GET ok, elke POST 403
+            assert req(app, 'GET', '/api/data/batches',
+                       headers={'X-Remote-User-Name': 'kees'})[0] in (200, 404)
+            status, body, _ = req(app, 'POST', '/api/data/water_addities', body=[],
+                                  headers={'X-Remote-User-Name': 'kees'})
+            assert status == 403 and body['reden'] == 'rol'
+            # productie: gedeelde key ok, financiële key en nextnr 403
+            piet = {'X-Remote-User-Name': 'piet'}
+            assert req(app, 'POST', '/api/data/water_addities', body=[],
+                       headers=piet)[0] == 200
+            assert req(app, 'POST', '/api/data/verkoop_facturen', body=[],
+                       headers=piet)[0] == 403
+            assert req(app, 'POST', '/api/nextnr',
+                       body={'reeks': 'factuur', 'jaar': 2026}, headers=piet)[0] == 403
+            # boekhouding: financiële key ok, beheer-key en mail-test 403
+            fien = {'X-Remote-User-Name': 'fien'}
+            assert req(app, 'POST', '/api/data/verkoop_facturen', body=[],
+                       headers=fien)[0] == 200
+            assert req(app, 'POST', '/api/data/smtp_creds', body={'host': 'x'},
+                       headers=fien)[0] == 403
+            assert req(app, 'POST', '/api/mail/test', body={'host': 'x', 'port': 25},
+                       headers=fien)[0] == 403
+            # backup-download is beheer-only
+            assert req(app, 'GET', '/api/backups', headers=fien)[0] == 403
+            assert req(app, 'GET', '/api/backups', headers=self.ADMIN)[0] == 200
+        finally:
+            self._reset(app)
+
+    def test_commit_weigert_verboden_key_integraal(self, app):
+        assert self._zet_config(app) == 200
+        try:
+            piet = {'X-Remote-User-Name': 'piet'}
+            status, body, _ = req(app, 'POST', '/api/commit', body={
+                'data': {'water_addities': [{'id': 1}], 'verkoop_facturen': []},
+            }, headers=piet)
+            assert status == 403 and body['key'] == 'verkoop_facturen'
+            # Niets geschreven — ook de toegestane key niet
+            assert req(app, 'GET', '/api/data/water_addities')[1] == []
+        finally:
+            self._reset(app)
+
+    def test_rollenbeheer_zelf_alleen_beheer_en_lockout_guard(self, app):
+        assert self._zet_config(app) == 200
+        try:
+            # Niet-beheer mag de rollen niet wijzigen
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                       headers={'X-Remote-User-Name': 'fien'})[0] == 403
+            # Ongeldige rolwaarde → 422
+            assert self._zet_config(app, {'gebruikers': {'admin': 'root'}}) == 422
+            # Beheerder kan zichzelf niet uit beheer zetten → 422
+            status, body, _ = req(app, 'POST', '/api/data/gebruikers_rollen',
+                                  body={'gebruikers': {'admin': 'productie'}},
+                                  headers=self.ADMIN)
+            assert status == 422 and body['error'] == 'rollen-lockout'
+            # Standaardrol geldt voor niet-vermelde gebruikers
+            assert self._zet_config(app, {'gebruikers': {'admin': 'beheer'},
+                                          'standaard_rol': 'alleen_lezen'}) == 200
+            assert req(app, 'POST', '/api/data/water_addities', body=[],
+                       headers={'X-Remote-User-Name': 'onbekend'})[0] == 403
+        finally:
+            self._reset(app)
+
+
 class TestLogging:
     def test_log_schrijft_json_regels(self):
         import io as _io

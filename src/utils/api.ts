@@ -153,7 +153,9 @@ export const _updateVersion = (key: string, r: Response): void => {
 
 // 'reject' = de server wees de payload definitief af (400/413/422,
 // bijv. schemavalidatie) — nooit herproberen, wél de gebruiker melden.
-export type SaveResult = 'ok' | 'fail' | 'conflict' | 'reject'
+// 'forbidden' = de rol van deze gebruiker mag dit niet (403, ERP-plan 4.2) —
+// eveneens definitief: serverstand herladen en melden, nooit herproberen.
+export type SaveResult = 'ok' | 'fail' | 'conflict' | 'reject' | 'forbidden'
 
 // Alle verzendingen serialiseren via één globale keten: een volgende POST of
 // commit wacht op de versie-updates van de vorige, anders zou die met een
@@ -188,6 +190,10 @@ const _doPost = (key: string, data: any): Promise<SaveResult> => {
       return 'ok' as SaveResult
     }
     if (r.status === 409) return 'conflict' as SaveResult
+    if (r.status === 403) {
+      _syncErrors++
+      return 'forbidden' as SaveResult
+    }
     if (r.status === 400 || r.status === 413 || r.status === 422) {
       _syncErrors++
       return 'reject' as SaveResult
@@ -215,7 +221,7 @@ const lsGet = (k: string, d: any = []) => {
 // Een sequence-nummer per key voorkomt dat een oude (tragere) response of
 // retry een nieuwere save overschrijft.
 const _saveSeq = new Map<string, number>()
-const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void, onConflict: () => void, onReject: () => void}>()
+const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void, onConflict: () => void, onReject: () => void, onForbidden: () => void}>()
 let _retryTimer: ReturnType<typeof setInterval> | null = null
 
 const _flushPendingSaves = () => {
@@ -235,6 +241,9 @@ const _flushPendingSaves = () => {
       } else if (res === 'reject') {
         _pendingSaves.delete(key)
         entry.onReject()
+      } else if (res === 'forbidden') {
+        _pendingSaves.delete(key)
+        entry.onForbidden()
       }
     })
   }
@@ -250,7 +259,7 @@ const _scheduleRetry = () => {
 // dat losse POSTs die half konden slagen. Saves die in dezelfde event-tick
 // gebeuren worden nu gebufferd en als één POST /api/commit atomair
 // weggeschreven — zonder dat de aanroepende pagina's iets hoeven te weten.
-type _BufEntry = {data: any, seq: number, onOk: () => void, onConflict: () => void, onReject: () => void}
+type _BufEntry = {data: any, seq: number, onOk: () => void, onConflict: () => void, onReject: () => void, onForbidden: () => void}
 const _commitBuffer = new Map<string, _BufEntry>()
 let _flushScheduled = false
 
@@ -267,8 +276,9 @@ const _handleSaveResult = (key: string, e: _BufEntry, res: SaveResult) => {
   if (res === 'ok') e.onOk()
   else if (res === 'conflict') e.onConflict()
   else if (res === 'reject') e.onReject()
+  else if (res === 'forbidden') e.onForbidden()
   else {
-    _pendingSaves.set(key, {seq: e.seq, data: e.data, onOk: e.onOk, onConflict: e.onConflict, onReject: e.onReject})
+    _pendingSaves.set(key, {seq: e.seq, data: e.data, onOk: e.onOk, onConflict: e.onConflict, onReject: e.onReject, onForbidden: e.onForbidden})
     _scheduleRetry()
   }
 }
@@ -298,6 +308,12 @@ const _flushCommitBuffer = () => {
         if (k === res.key || !res.key) _handleSaveResult(k, e, 'reject')
         else _handleSaveResult(k, e, await _doPost(k, e.data))
       }
+    } else if (res.status === 'forbidden') {
+      // Eén key is door de rol geweigerd (403); de rest alsnog los proberen.
+      for (const [k, e] of entries) {
+        if (k === res.key || !res.key) _handleSaveResult(k, e, 'forbidden')
+        else _handleSaveResult(k, e, await _doPost(k, e.data))
+      }
     } else if (res.status === 'notfound') {
       // Oudere server zonder /api/commit → terugvallen op losse POSTs.
       for (const [k, e] of entries) _handleSaveResult(k, e, await _doPost(k, e.data))
@@ -311,7 +327,7 @@ const _flushCommitBuffer = () => {
 
 const _doCommit = async (
   entries: Array<[string, _BufEntry]>,
-): Promise<{status: 'ok' | 'fail' | 'notfound'} | {status: 'conflict', conflicts: string[]} | {status: 'reject', key?: string}> => {
+): Promise<{status: 'ok' | 'fail' | 'notfound'} | {status: 'conflict', conflicts: string[]} | {status: 'reject' | 'forbidden', key?: string}> => {
   _syncPending++
   const data: Record<string, any> = {}
   const versions: Record<string, string> = {}
@@ -341,6 +357,11 @@ const _doCommit = async (
     if (r.status === 409) {
       const d = await r.json().catch(() => ({} as any))
       return {status: 'conflict', conflicts: Object.keys(d?.conflicts || {})}
+    }
+    if (r.status === 403) {
+      _syncErrors++
+      const d = await r.json().catch(() => ({} as any))
+      return {status: 'forbidden', key: typeof d?.key === 'string' ? d.key : undefined}
     }
     if (r.status === 400 || r.status === 413 || r.status === 422) {
       _syncErrors++
@@ -414,6 +435,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   }
   const onConflict = () => herstelVanServer('sync_conflict_melding')
   const onReject = () => herstelVanServer('err_save_geweigerd')
+  const onForbidden = () => herstelVanServer('err_geen_rechten')
 
   const save = (val: any) => {
     modified.current = true
@@ -425,7 +447,7 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       _pendingSaves.delete(key) // nieuwe save vervangt elke oudere retry
       // Via de commit-buffer: saves uit dezelfde event-tick worden gebundeld
       // tot één atomaire /api/commit (ERP-plan 1.1).
-      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict, onReject})
+      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict, onReject, onForbidden})
       return next
     })
   }
@@ -477,6 +499,27 @@ export const getServerHealth = async (): Promise<ServerHealth | null> => {
     if (!r.ok) return null
     const d = await r.json()
     return d && typeof d.ok === 'boolean' ? d as ServerHealth : null
+  } catch {
+    return null
+  }
+}
+
+// ── Gebruikers & rollen (ERP-plan 4.2) ──────────────────────────────────────
+// GET /api/whoami: de ingress-gebruiker en diens rol zoals de server die
+// afdwingt. Buiten HA (geen ingress) is de gebruiker leeg en de rol 'beheer'.
+export type Rol = 'beheer' | 'boekhouding' | 'productie' | 'alleen_lezen'
+
+export interface Whoami {
+  gebruiker: string
+  rol: Rol
+}
+
+export const getWhoami = async (): Promise<Whoami | null> => {
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/whoami', {headers: {'Cache-Control': 'no-cache'}}, 0)
+    if (!r.ok) return null
+    const d = await r.json()
+    return d && typeof d.rol === 'string' ? d as Whoami : null
   } catch {
     return null
   }

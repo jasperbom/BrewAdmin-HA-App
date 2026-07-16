@@ -12,7 +12,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.7 · **fase 0 t/m 3 volledig afgerond**, fase 4: 4.1 (SQLite) klaar — 4.2 (gebruikers & rollen) en 4.3 (delta-sync) staan nog open
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.8 · **fase 0 t/m 3 volledig afgerond**, fase 4: 4.1 (SQLite) en 4.2 (gebruikers & rollen) klaar — alleen 4.3 (delta-sync) staat nog open
 
 ---
 
@@ -168,7 +168,13 @@
       afwijkingen: één generieke `records`-tabel i.p.v. tabel-per-key en
       geen SQL-foreign-keys — integriteit blijft app-side via
       `checkIntegriteit` (1.3))*
-- [ ] **4.2 Gebruikers & rollen** via HA-ingress-gebruiker
+- [x] **4.2 Gebruikers & rollen** via HA-ingress-gebruiker
+      *(v1.11.8, 2026-07-16 — rollen beheer/boekhouding/productie/
+      alleen-lezen, server-side afgedwongen per data-key en op de
+      actie-endpoints (403 + audit `rol_geweigerd`); `gebruikers_rollen`-key
+      (beheer-only, strikt gevalideerd, lockout-guard) + `GET /api/whoami`;
+      UI-kaart bij Instellingen→App, client herlaadt + meldt bij 403;
+      zonder configuratie of buiten HA blijft alles `beheer`)*
 - [ ] **4.3 Delta-sync** i.p.v. hele arrays
 
 ---
@@ -206,3 +212,4 @@
 | 2026-07-16 | 1.11.5 | 3.6 | JSON-serverlogging (stdlib logging, bron-veld per subsysteem) + GET /api/health (threads/backup/uptime) + dashboard-healthregel; pytest 35 totaal; runtime-smoke: health 4/4 threads, JSON-logregels, dashboardregel zichtbaar — **fase 3 compleet** |
 | 2026-07-16 | 1.11.6 | 3.3-fix | pytest-CI-job faalde op PermissionError /data (runner zonder root): DATA_DIR overridebaar via BREWADMIN_DATA_DIR + tests/conftest.py zet een tmp-map vóór de server-import |
 | 2026-07-16 | 1.11.7 | 4.1 | SQLite-opslaglaag (WAL) achter ongewijzigde API: JSON-migratie bij eerste start, commit = één transactie, rij-per-record, backup = JSON-export + db-kopie, 0600 op db; 6 nieuwe pytest-tests (41 totaal) + runtime-smoke (migratie, herstart-persistentie, nextnr vanaf legacy teller) |
+| 2026-07-16 | 1.11.8 | 4.2 | Gebruikers & rollen op de ingress-user: 4 rollen server-side afgedwongen per key + endpoint (403 + audit), gebruikers_rollen-key met validatie en lockout-guard, /api/whoami, UI-kaart + 403-afhandeling in api.ts, key in Excel-backup; 5 pytest-tests (46 totaal) + runtime-smoke van alle rolpaden |

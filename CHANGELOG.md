@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.8] — 2026-07-16
+
+### Toegevoegd — Gebruikers & rollen (ERP-plan 4.2)
+
+- Simpele autorisatie per Home Assistant-gebruiker, server-side afgedwongen
+  op basis van de ingress-headers (`X-Remote-User-Name`): **beheer** mag
+  alles, **boekhouding** de financiële vastlegging + gedeelde keys,
+  **productie** het brouw-/voorraadwerk + gedeelde keys, **alleen-lezen**
+  mag niets wijzigen. Zonder rollenconfiguratie — en buiten HA — geldt voor
+  iedereen `beheer` (het oude gedrag).
+- Afdwinging per data-key (403 met `reden: rol`) op `/api/data`,
+  `/api/commit` én de actie-endpoints: nummeruitgifte en factuurbijlagen
+  horen bij boekhouding; test-endpoints, backup-download en backup-trigger
+  zijn beheer-only. Geweigerde acties worden geauditeerd (`rol_geweigerd`).
+- Nieuwe key `gebruikers_rollen` ({gebruikers, standaard_rol}; alleen
+  beheer, strikt gevalideerd — 422 bij een onbekende rolnaam) met
+  lockout-guard: de beheerder kan zichzelf niet uit `beheer` zetten.
+  Nieuw endpoint `GET /api/whoami` (gebruiker + rol).
+- UI: kaart "Gebruikers & rollen" bij Instellingen→App (toewijzing per
+  gebruiker, standaardrol, eigen rol zichtbaar); een door de rol geweigerde
+  wijziging herlaadt de serverstand met een duidelijke melding i.p.v.
+  eindeloos herproberen; `gebruikers_rollen` zit mee in de Excel-backup;
+  i18n in alle 5 talen.
+- pytest: 5 nieuwe tests (rolmatrix/configvalidatie/lockout-helpers,
+  whoami + afdwinging per rol, commit-weigering integraal,
+  rollenbeheer-guards) — 46 totaal; runtime-smoke van alle rolpaden.
+
+---
+
 ## [1.11.7] — 2026-07-16
 
 ### Gewijzigd — SQLite als opslaglaag (ERP-plan 4.1)
