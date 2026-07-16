@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.17] — 2026-07-16
+
+### Opgelost — Verbindingsresets bij gelijktijdige requests (flaky CI)
+
+- `ThreadingHTTPServer` gebruikt standaard een accept-backlog van 5
+  wachtende verbindingen (`request_queue_size`); een burst gelijktijdige
+  verbindingen (20 parallelle clients in de CI-test, maar ook meerdere
+  apparaten tegelijk in de praktijk) kon daardoor in de kernel overlopen
+  → `ConnectionResetError` bij de client nog vóór er een handler draaide.
+  Nieuwe `BrouwerijServer`-klasse met backlog 64, gebruikt door beide
+  poorten én de testsuite. De parallelle-nummeruitgifte-test is 30× na
+  elkaar groen gedraaid ter bevestiging.
+
+---
+
 ## [1.11.16] — 2026-07-16
 
 ### Verbeterd — Snellere synchronisatie, meekleurende browserbalk, logo als app-icoon

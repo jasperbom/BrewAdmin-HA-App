@@ -2234,6 +2234,15 @@ def _backup_to_zip(date_str: str) -> bytes | None:
     return buf.getvalue()
 
 
+class BrouwerijServer(http.server.ThreadingHTTPServer):
+    """ThreadingHTTPServer met een ruimere accept-backlog. De standaard
+    request_queue_size van 5 laat gelijktijdige verbindings-bursts (meerdere
+    apparaten, de 20-parallelle-clients-test op een drukke CI-runner) in de
+    kernel overlopen → ConnectionResetError bij de client vóór er ook maar
+    één handler draaide."""
+    request_queue_size = 64
+
+
 class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
     # ── helpers ────────────────────────────────────────────────────────────
@@ -3711,7 +3720,7 @@ if __name__ == '__main__':
             _log('server', f'Directe-toegangspoort NIET gestart: ssl aan maar '
                            f'certificaat onbruikbaar (zie ssl-log)', level=logging.ERROR)
     if direct_ok:
-        direct_server = http.server.ThreadingHTTPServer(('0.0.0.0', DIRECT_PORT), BrouwerijHandler)
+        direct_server = BrouwerijServer(('0.0.0.0', DIRECT_PORT), BrouwerijHandler)
         direct_server.brewadmin_direct = True
         if direct_ctx is not None:
             direct_server.socket = direct_ctx.wrap_socket(direct_server.socket, server_side=True)
@@ -3729,5 +3738,5 @@ if __name__ == '__main__':
 
     # ThreadingHTTPServer: één trage upstream-call (Claude 90s, Brewfather 30s,
     # SMTP 30s) mag niet alle andere requests — UI laden, data-saves — blokkeren.
-    server = http.server.ThreadingHTTPServer(('0.0.0.0', port), BrouwerijHandler)
+    server = BrouwerijServer(('0.0.0.0', port), BrouwerijHandler)
     server.serve_forever()
