@@ -35,6 +35,8 @@ BrewAdmin-HA-App/
 │   │   ├── constants.ts    # Enums, mappings, defaults
 │   │   ├── format.ts       # Formatting utilities
 │   │   ├── calculations.ts # Business logic calculations
+│   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
+│   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)

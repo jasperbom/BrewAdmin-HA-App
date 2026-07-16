@@ -2622,5 +2622,6 @@
   "jr_btw": "USt",
   "jr_memoriaal": "Memorial",
   "jr_storno": "Storno",
-  "jr_migratie": "Aufbau"
+  "jr_migratie": "Aufbau",
+  "lbl_btw_grondslag_hint": "Geschuldete USt berechnet über die summierte Bemessungsgrundlage je Satz (nicht als Summe zeilenweiser Rundungen)."
 }

@@ -2622,5 +2622,6 @@
   "jr_btw": "VAT",
   "jr_memoriaal": "General",
   "jr_storno": "Reversal",
-  "jr_migratie": "Backfill"
+  "jr_migratie": "Backfill",
+  "lbl_btw_grondslag_hint": "VAT due calculated over the summed taxable base per rate (not as a sum of per-line roundings)."
 }

@@ -373,6 +373,12 @@ export interface InkoopFactuur {
   totaal_netto?: number
   totaal_btw?: number
   totaal_bruto?: number
+  // Canonieke totalen in hele centen (ERP-plan 2.2). Gezet bij aanmaak sinds
+  // v1.10.95; de euro-velden hierboven zijn daarvan afgeleid en blijven
+  // bestaan voor weergave en oudere facturen.
+  totaal_netto_cent?: number
+  totaal_btw_cent?: number
+  totaal_bruto_cent?: number
   status?: 'open' | 'betaald'
   betaald_datum?: string
   // PeriodeKey waarin de BTW van deze factuur wordt geclaimd ('YYYY-Qn' of
@@ -798,6 +804,12 @@ export interface VerkoopFactuur {
   netto?: number
   btw?: number
   bruto?: number
+  // Canonieke totalen in hele centen (ERP-plan 2.2). Gezet bij aanmaak sinds
+  // v1.10.95; de euro-velden hierboven zijn daarvan afgeleid en blijven
+  // bestaan voor weergave en oudere facturen.
+  netto_cent?: number
+  btw_cent?: number
+  bruto_cent?: number
   // Nieuwe velden voor order-gebaseerde facturen
   bestelling_id?: number | null
   klant_id?: number | null

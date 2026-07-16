@@ -2622,5 +2622,6 @@
   "jr_btw": "BTW",
   "jr_memoriaal": "Memoriaal",
   "jr_storno": "Storno",
-  "jr_migratie": "Opbouw"
+  "jr_migratie": "Opbouw",
+  "lbl_btw_grondslag_hint": "Verschuldigde BTW berekend over de som van de grondslag per tarief (niet als optelsom van regelafrondingen)."
 }

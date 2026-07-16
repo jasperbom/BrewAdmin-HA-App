@@ -2622,5 +2622,6 @@
   "jr_btw": "IVA",
   "jr_memoriaal": "Diario general",
   "jr_storno": "Extorno",
-  "jr_migratie": "Carga inicial"
+  "jr_migratie": "Carga inicial",
+  "lbl_btw_grondslag_hint": "IVA devengado calculado sobre la base imponible sumada por tipo (no como suma de redondeos por línea)."
 }

@@ -6,8 +6,9 @@ import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/k
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
-import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren } from '../utils/btw'
+import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren, omzetBtwOpGrondslag } from '../utils/btw'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
+import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
@@ -402,52 +403,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }
   }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
 
+  // Verschuldigde BTW (rubriek 1a/1b) op grondslag per tarief (ERP-plan 2.2):
+  // eerst de netto-grondslag per tarief optellen (in centen), dan pas de BTW
+  // berekenen — niet als som van per regel afgeronde bedragen.
   const omzetBtwPerTarief = React.useMemo(() => {
     const fromDate = selectedPeriode?.from ?? `${aangifteYear}-01-01`;
     const toDate   = selectedPeriode?.to   ?? `${aangifteYear}-12-31`;
-    const hoog = {netto: 0, btw: 0}; // 21%
-    const laag = {netto: 0, btw: 0}; // 9%
-
-    // Eigen verkoopfacturen — split per btw_pct via regels
-    (verkoopFacturen||[])
-      .filter((f: any) => f.datum >= fromDate && f.datum <= toDate)
-      .forEach((f: any) => {
-        (f.regels||[]).forEach((r: any) => {
-          const pct = r.btw_pct ?? 0;
-          const netto = r.netto ?? 0;
-          const btw = r.btw_bedrag ?? 0;
-          if (pct >= 20) { hoog.netto += netto; hoog.btw += btw; }
-          else if (pct > 0) { laag.netto += netto; laag.btw += btw; }
-        });
-      });
-
-    // WooCommerce orders — splitsing via tax_lines (rate_percent per belastingregel)
-    aangifteOrders
-      .filter((o: any) => {
-        const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,10);
-        return d >= fromDate && d <= toDate && ['completed','processing'].includes((o as any).status);
-      })
-      .forEach((o: any) => {
-        const taxLines: any[] = (o as any).tax_lines || [];
-        if (taxLines.length > 0) {
-          // tax_lines aanwezig → splitsing per tarief
-          taxLines.forEach((tl: any) => {
-            const pct = parseFloat(tl.rate_percent || 0);
-            const btwBedrag = parseFloat(tl.tax_total || 0) + parseFloat(tl.shipping_tax_total || 0);
-            const nettoBedrag = pct > 0 ? btwBedrag / (pct / 100) : 0;
-            if (pct >= 20) { hoog.netto += nettoBedrag; hoog.btw += btwBedrag; }
-            else if (pct > 0) { laag.netto += nettoBedrag; laag.btw += btwBedrag; }
-          });
-        } else {
-          // Geen tax_lines — fallback: totaal in hoog tarief
-          const btw = parseFloat((o as any).total_tax || 0);
-          const netto = parseFloat((o as any).total || 0) - btw;
-          hoog.netto += netto;
-          hoog.btw += btw;
-        }
-      });
-
-    return {hoog, laag};
+    const facturen = (verkoopFacturen||[]).filter((f: any) => f.datum >= fromDate && f.datum <= toDate);
+    const orders = aangifteOrders.filter((o: any) => {
+      const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,10);
+      return d >= fromDate && d <= toDate && ['completed','processing'].includes((o as any).status);
+    });
+    return omzetBtwOpGrondslag(facturen, orders);
   }, [verkoopFacturen, aangifteOrders, aangifteYear, selectedPeriode]);
 
   // Set van periodeKeys die een gekoppelde BTW-banktransactie hebben
@@ -675,8 +642,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_bedrag = r2(netto * pct / 100)
       return {...r, hoeveelheid: qty, prijs_per_stuk: prijs, btw_pct: pct, netto, btw_bedrag, bruto: r2(netto + btw_bedrag)}
     })
-    const totaalNetto = r2(regels.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw   = r2(regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerRegels(regels)
     const nieuw = {
       id: newId(verkoopFacturen||[]),
       datum: losseFactuurForm.datum,
@@ -690,9 +657,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       status: 'open',
       definitief: true,
       regels,
-      netto: totaalNetto,
-      btw: totaalBtw,
-      bruto: totaalNetto + totaalBtw,
+      netto: totalen.netto,
+      btw: totalen.btw,
+      bruto: totalen.bruto,
+      netto_cent: totalen.netto_cent,
+      btw_cent: totalen.btw_cent,
+      bruto_cent: totalen.bruto_cent,
     }
     setVerkoopFacturen((prev: any) => [...(prev||[]), nieuw])
     // Journaal (ERP-plan 2.1): losse verkoopfactuur is direct definitief → boeken.
@@ -786,11 +756,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     // dan geldt de ontvangst als voorraadcorrectie (lots blijven wel staan).
     const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
     if (!regels.length || !heeftFactuurData) { setShowVrijeFactuur(false); return; }
-    const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
-    const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
-    const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto;
-    const totaal_btw   = totaalManual ? r2(totaalManual.btw)   : calc_btw;
-    const totaal_bruto = totaalManual ? r2(totaalManual.bruto)  : r2(calc_netto + calc_btw);
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerInkoop(regels, totaalManual);
     const nieuwFactuurId = newId(inkoopFacturen||[]);
     const factuurDatum = factuurForm.datum || ymd(now)
     const rollover = getRolloverInfo(factuurDatum)
@@ -800,9 +767,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       factuurnummer: factuurForm.factuur || '',
       leverancier: factuurForm.leverancier || '',
       regels,
-      totaal_netto,
-      totaal_btw,
-      totaal_bruto,
+      totaal_netto: totalen.netto,
+      totaal_btw: totalen.btw,
+      totaal_bruto: totalen.bruto,
+      totaal_netto_cent: totalen.netto_cent,
+      totaal_btw_cent: totalen.btw_cent,
+      totaal_bruto_cent: totalen.bruto_cent,
       bijlage,
       ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
     };
@@ -846,11 +816,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_tarief = Number(r.btw_tarief)||0;
       regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'});
     });
-    const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
-    const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
-    const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto;
-    const totaal_btw   = totaalManual ? r2(totaalManual.btw)   : calc_btw;
-    const totaal_bruto = totaalManual ? r2(totaalManual.bruto)  : r2(calc_netto + calc_btw);
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerInkoop(regels, totaalManual);
     const nieuweDatum = factuurForm.datum || (editingFactuur as any).datum
     const huidigeRollover = (editingFactuur as any).btw_periode as string | undefined
     const rollover = getRolloverInfo(nieuweDatum)
@@ -876,7 +843,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       factuurnummer: factuurForm.factuur ?? huidigeFactuur.factuurnummer,
       leverancier: factuurForm.leverancier || huidigeFactuur.leverancier,
       regels,
-      totaal_netto, totaal_btw, totaal_bruto,
+      totaal_netto: totalen.netto, totaal_btw: totalen.btw, totaal_bruto: totalen.bruto,
+      totaal_netto_cent: totalen.netto_cent, totaal_btw_cent: totalen.btw_cent, totaal_bruto_cent: totalen.bruto_cent,
       bijlage: bijlage || huidigeFactuur.bijlage,
       ...(nieuweBtwPeriode ? {btw_periode: nieuweBtwPeriode} : {}),
     }
@@ -1379,6 +1347,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         totaal_netto: netto,
         totaal_btw: btwBedrag,
         totaal_bruto: kosten,
+        totaal_netto_cent: toCent(netto),
+        totaal_btw_cent: toCent(btwBedrag),
+        totaal_bruto_cent: toCent(kosten),
         status: 'betaald',
         betaald_datum: tx.datum,
         ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
@@ -1563,6 +1534,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         totaal_netto: netto,
         totaal_btw: btwBedrag,
         totaal_bruto: bruto,
+        totaal_netto_cent: toCent(netto),
+        totaal_btw_cent: toCent(btwBedrag),
+        totaal_bruto_cent: toCent(bruto),
         status: 'betaald',
       }
       setInkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
@@ -1581,6 +1555,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         netto,
         btw: btwBedrag,
         bruto,
+        netto_cent: toCent(netto),
+        btw_cent: toCent(btwBedrag),
+        bruto_cent: toCent(bruto),
         status: 'betaald',
         definitief: true,
       }
@@ -1607,9 +1584,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'}
     })
     if (!regels.length) return
-    const totaal_netto = r2(regels.reduce((s: any, r: any) => s+r.netto, 0))
-    const totaal_btw = r2(regels.reduce((s: any, r: any) => s+r.btw_bedrag, 0))
-    const totaal_bruto = r2(totaal_netto + totaal_btw)
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerRegels(regels)
     const factuurDatum = factuurForm?.datum || tx.datum
     const rollover = getRolloverInfo(factuurDatum)
     const factuur: any = {
@@ -1619,9 +1595,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       leverancier: factuurForm?.leverancier || tx.tegenpartij || '',
       factuurnummer: factuurForm?.factuur || '',
       regels,
-      totaal_netto,
-      totaal_btw,
-      totaal_bruto,
+      totaal_netto: totalen.netto,
+      totaal_btw: totalen.btw,
+      totaal_bruto: totalen.bruto,
+      totaal_netto_cent: totalen.netto_cent,
+      totaal_btw_cent: totalen.btw_cent,
+      totaal_bruto_cent: totalen.bruto_cent,
       bijlage: bijlage || null,
       ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
     }
@@ -3368,11 +3347,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               const d = (o.date_paid||o.date_created||'').slice(0,4);
               return d === yearStr && ['completed','processing'].includes(o.status);
             });
-            const jaarWcBtw   = jaarOrders.reduce((s: any,o: any)=>s+parseFloat(o.total_tax||0), 0);
-            const jaarEigenBtw = (verkoopFacturen||[])
-              .filter((f: any) => f.datum?.startsWith(yearStr))
-              .reduce((s: any,f: any)=>s+(f.btw||0), 0);
-            const jaarOmzetBtw = jaarWcBtw + jaarEigenBtw;
+            // Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2),
+            // consistent met de periodekaarten en de invulhulp.
+            const jaarVerkoop = (verkoopFacturen||[]).filter((f: any) => f.datum?.startsWith(yearStr));
+            const jaarOmzet = omzetBtwOpGrondslag(jaarVerkoop, jaarOrders);
+            const jaarOmzetBtw = jaarOmzet.hoog.btw + jaarOmzet.laag.btw;
             const jaarVoorbelast = inkoopFacturen
               .filter((f: any) => f.datum?.startsWith(yearStr))
               .reduce((s: any,f: any)=>s+(f.totaal_btw||0), 0);
@@ -3420,13 +3399,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 const d = (o.date_paid||o.date_created||'').slice(0,10);
                 return d >= p.from && d <= p.to && ['completed','processing'].includes(o.status);
               });
-              const wcVerkoopBtw   = pOrders.reduce((s: any,o: any)=>s+parseFloat(o.total_tax||0), 0);
               const wcVerkoopNetto = pOrders.reduce((s: any,o: any)=>s+parseFloat(o.total||0)-parseFloat(o.total_tax||0), 0);
               // Eigen verkoopfacturen
               const pVerkoop = (verkoopFacturen||[]).filter((f: any) => f.datum >= p.from && f.datum <= p.to);
-              const eigenVerkoopBtw   = pVerkoop.reduce((s: any,f: any)=>s+(f.btw||0), 0);
               const eigenVerkoopNetto = pVerkoop.reduce((s: any,f: any)=>s+(f.netto||0), 0);
-              const verkoopBtw   = wcVerkoopBtw + eigenVerkoopBtw;
+              // Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2),
+              // identiek aan de invulhulp — zo is het ingediende bedrag exact
+              // het rubriek 1a + 1b-cijfer.
+              const pOmzetBtw = omzetBtwOpGrondslag(pVerkoop, pOrders);
+              const verkoopBtw   = pOmzetBtw.hoog.btw + pOmzetBtw.laag.btw;
               const verkoopNetto = wcVerkoopNetto + eigenVerkoopNetto;
               const eigenFacturenLabel = pVerkoop.length > 0 ? ` + ${pVerkoop.length} eigen` : '';
 
@@ -3783,7 +3764,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
               <div className={card + ' bg-blue-50 border-blue-100'}>
                 <h3 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
-                <p className="text-xs text-blue-600 mb-3">{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</p>
+                <p className="text-xs text-blue-600 mb-1">{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</p>
+                <p className="text-xs text-blue-400 mb-3">{t('lbl_btw_grondslag_hint')}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a')}</div>

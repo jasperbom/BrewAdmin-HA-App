@@ -15,6 +15,7 @@ import { useStore } from '../utils/api'
 import { logAudit } from '../utils/audit'
 import { bepaalRollover } from '../utils/btw'
 import { inkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
+import { totaliseerInkoop } from '../utils/centen'
 
 interface Props {
   ing: any[]
@@ -462,14 +463,11 @@ const IngredientenPage: React.FC<Props> = ({
     // voorraadcorrectie (lots + voorraad_log blijven staan, geen boekhouding).
     const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
     if (factuurRegels.length > 0 && heeftFactuurData) {
-      const calc_netto = r2(factuurRegels.reduce((s: number, r: any) => s + r.netto, 0))
-      const calc_btw = r2(factuurRegels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
-      const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto
-      const totaal_btw = totaalManual ? r2(totaalManual.btw) : calc_btw
-      const totaal_bruto = totaalManual ? r2(totaalManual.bruto) : r2(calc_netto + calc_btw)
+      // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+      const totalen = totaliseerInkoop(factuurRegels, totaalManual)
       const factuurDatum = factuurForm.datum || tod()
       const rollover = getRolloverInfo(factuurDatum)
-      const nieuweFactuur = { id: newId(inkoopFacturen || []), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto, totaal_btw, totaal_bruto, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }
+      const nieuweFactuur = { id: newId(inkoopFacturen || []), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto: totalen.netto, totaal_btw: totalen.btw, totaal_bruto: totalen.bruto, totaal_netto_cent: totalen.netto_cent, totaal_btw_cent: totalen.btw_cent, totaal_bruto_cent: totalen.bruto_cent, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }
       setInkoopFacturen((prev: any[]) => [...prev, nieuweFactuur])
       // Journaal (ERP-plan 2.1): inkoopfactuur uit ontvangst boeken.
       setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)))

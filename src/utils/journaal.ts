@@ -11,13 +11,13 @@ import type { JournaalRegel, JournaalDagboek, JournaalBron } from '../types'
 import { newId } from './api'
 import { effectievePeriodeKey, type BtwPeriodeType } from './btw'
 import type { WinstVerliesResult } from './calculations'
+import { toCent, centNaarEuro } from './centen'
 
 // Regel-invoer zoals de boekingsbouwers die opleveren; id/boekstuk/geboekt_op
 // worden centraal toegekend in voegBoekingToe.
 export type JournaalRegelData = Omit<JournaalRegel, 'id' | 'boekstuk' | 'geboekt_op'>
 
-export const toCent = (x: any): number => Math.round((Number(x) || 0) * 100)
-export const centNaarEuro = (c: number): number => (Number(c) || 0) / 100
+export { toCent, centNaarEuro }
 
 const rnd2 = (x: number) => Math.round(x * 100) / 100
 

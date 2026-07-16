@@ -15,6 +15,7 @@ import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
+import { totaliseerRegels } from '../utils/centen'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -1012,8 +1013,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         btw: rnd2(regelsVanTarief.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
       }
     })
-    const totaalNetto = rnd2(regelsList.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw = rnd2(regelsList.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const factuurTotalen = totaliseerRegels(regelsList)
     // Klantgegevens uit de live klantkaart (via klant_id of email-match) zodat
     // de factuur ook bij volgende renders/mails de actuele waarden vindt.
     const snap = resolveKlantSnapshot(selectedOrder, klanten)
@@ -1034,9 +1035,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       klant_adres: [snap.klant_straat, snap.klant_huisnummer, snap.klant_postcode, snap.klant_stad].filter(Boolean).join(' '),
       regels: regelsList,
       btw_overzicht,
-      netto: totaalNetto,
-      btw: totaalBtw,
-      bruto: rnd2(totaalNetto + totaalBtw),
+      netto: factuurTotalen.netto,
+      btw: factuurTotalen.btw,
+      bruto: factuurTotalen.bruto,
+      netto_cent: factuurTotalen.netto_cent,
+      btw_cent: factuurTotalen.btw_cent,
+      bruto_cent: factuurTotalen.bruto_cent,
       status: 'open',
       definitief: true,
     }
@@ -1200,9 +1204,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         btw: rnd2(rv.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
       }
     })
-    const totaalNetto = rnd2(regels.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw = rnd2(regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
-    return {...fact, regels, btw_overzicht, netto: totaalNetto, btw: totaalBtw, bruto: rnd2(totaalNetto + totaalBtw)}
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const tot = totaliseerRegels(regels)
+    return {...fact, regels, btw_overzicht, netto: tot.netto, btw: tot.btw, bruto: tot.bruto,
+      netto_cent: tot.netto_cent, btw_cent: tot.btw_cent, bruto_cent: tot.bruto_cent}
   }
 
   // BTW% van een bestaande orderregel aanpassen (bijv. WC-import die bier op 9%

@@ -2,6 +2,7 @@
 // Een periodeKey is altijd 'YYYY-Qn' (kwartaal) of 'YYYY-Mnn' (maand).
 
 import type { InkoopFactuur } from '../types'
+import { toCent, centNaarEuro } from './centen'
 
 export type BtwPeriodeType = 'kwartaal' | 'maand'
 
@@ -80,6 +81,63 @@ export function magFactuurMuteren(
   betaaldeKeys: Set<string>,
 ): boolean {
   return !isPeriodeGesloten(effectievePeriodeKey(factuur, periode), ingediendeKeys, betaaldeKeys)
+}
+
+// ── Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2) ────────────────
+// De Belastingdienst berekent de verschuldigde BTW in de aangifte over de
+// (som van de) grondslag per tarief — niet als optelsom van per regel
+// afgeronde BTW-bedragen. Die twee kunnen centen verschillen (drie regels van
+// € 1,03 à 21%: 3 × € 0,22 = € 0,66, maar 21% over € 3,09 = € 0,65). Deze
+// functie telt daarom eerst de netto-grondslag per exact tarief op (in hele
+// centen) en berekent de BTW pas over dat totaal.
+//
+// Verwacht al op periode/status gefilterde invoer. WooCommerce-orders leveren
+// de grondslag via hun tax_lines (rate_percent); orders zonder tax_lines
+// vallen terug op hun werkelijke totalen in het hoge tarief (het tarief is
+// dan onbekend, dus herberekenen zou gokken zijn). Buckets volgen de
+// aangifterubrieken: hoog (≥20%, rubriek 1a) en laag (>0%, rubriek 1b);
+// 0%-regels dragen geen BTW en tellen hier niet mee.
+export interface OmzetBtwResultaat {
+  hoog: { netto: number; btw: number }
+  laag: { netto: number; btw: number }
+}
+
+export function omzetBtwOpGrondslag(verkoopFacturen: any[], wcOrders: any[]): OmzetBtwResultaat {
+  const grondslagCent: Record<string, number> = {}
+  ;(verkoopFacturen || []).forEach((f: any) => (f?.regels || []).forEach((r: any) => {
+    const pct = Number(r?.btw_pct) || 0
+    if (pct <= 0) return
+    grondslagCent[pct] = (grondslagCent[pct] || 0) + toCent(r?.netto)
+  }))
+  const fallback = { nettoCent: 0, btwCent: 0 }
+  ;(wcOrders || []).forEach((o: any) => {
+    const taxLines: any[] = o?.tax_lines || []
+    if (taxLines.length > 0) {
+      taxLines.forEach((tl: any) => {
+        const pct = parseFloat(tl?.rate_percent || 0)
+        if (pct <= 0) return
+        const btwCent = toCent(parseFloat(tl?.tax_total || 0) + parseFloat(tl?.shipping_tax_total || 0))
+        grondslagCent[pct] = (grondslagCent[pct] || 0) + Math.round(btwCent * 100 / pct)
+      })
+    } else {
+      const btw = parseFloat(o?.total_tax || 0)
+      fallback.btwCent += toCent(btw)
+      fallback.nettoCent += toCent(parseFloat(o?.total || 0)) - toCent(btw)
+    }
+  })
+  const cent = { hoog: { netto: 0, btw: 0 }, laag: { netto: 0, btw: 0 } }
+  Object.entries(grondslagCent).forEach(([pctStr, nettoCent]) => {
+    const pct = Number(pctStr)
+    const bucket = pct >= 20 ? cent.hoog : cent.laag
+    bucket.netto += nettoCent
+    bucket.btw += Math.round(nettoCent * pct / 100)
+  })
+  cent.hoog.netto += fallback.nettoCent
+  cent.hoog.btw += fallback.btwCent
+  return {
+    hoog: { netto: centNaarEuro(cent.hoog.netto), btw: centNaarEuro(cent.hoog.btw) },
+    laag: { netto: centNaarEuro(cent.laag.netto), btw: centNaarEuro(cent.laag.btw) },
+  }
 }
 
 // Bepaalt of een factuur met deze datum naar de huidige periode moet rollen,

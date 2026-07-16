@@ -13,6 +13,7 @@ import { printFactuur } from '../components/PakbonExport'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
+import { totaliseerRegels } from '../utils/centen'
 
 interface KassaPageProps {
   bat: any[]
@@ -780,8 +781,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
         btw: rnd2(rv.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
       }
     })
-    const totaalNetto = rnd2(regelsList.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw = rnd2(regelsList.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const factuurTotalen = totaliseerRegels(regelsList)
 
     // 6. Bestelling (direct afgerond — kassaverkoop) + factuur
     const bestelling: any = {
@@ -825,9 +826,12 @@ const KassaPage: React.FC<KassaPageProps> = ({
       klant_adres: [snap.klant_straat, snap.klant_huisnummer, snap.klant_postcode, snap.klant_stad].filter(Boolean).join(' '),
       regels: regelsList,
       btw_overzicht,
-      netto: totaalNetto,
-      btw: totaalBtw,
-      bruto: rnd2(totaalNetto + totaalBtw),
+      netto: factuurTotalen.netto,
+      btw: factuurTotalen.btw,
+      bruto: factuurTotalen.bruto,
+      netto_cent: factuurTotalen.netto_cent,
+      btw_cent: factuurTotalen.btw_cent,
+      bruto_cent: factuurTotalen.bruto_cent,
       status: betaalwijze === 'rekening' ? 'open' : 'betaald',
       definitief: true,
       betaalwijze,

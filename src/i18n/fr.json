@@ -2622,5 +2622,6 @@
   "jr_btw": "TVA",
   "jr_memoriaal": "OD",
   "jr_storno": "Extourne",
-  "jr_migratie": "Reprise"
+  "jr_migratie": "Reprise",
+  "lbl_btw_grondslag_hint": "TVA due calculée sur la base imposable cumulée par taux (et non comme la somme des arrondis par ligne)."
 }

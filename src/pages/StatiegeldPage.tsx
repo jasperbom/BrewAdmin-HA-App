@@ -8,6 +8,7 @@ import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
+import { totaliseerRegels } from '../utils/centen'
 
 interface Props {
   verpakkingen: any[]
@@ -179,7 +180,9 @@ const StatiegeldPage: React.FC<Props> = ({
     })
     if (regels.length === 0) return
 
-    const totaalNetto = rnd2(regels.reduce((s, r) => s + r.netto, 0))
+    // Totaal cent-exact (ERP-plan 2.2); statiegeldregels zijn altijd 0% BTW.
+    const totalen = totaliseerRegels(regels)
+    const totaalNetto = totalen.netto
     // Creditnotanummer server-side ophalen (atomair, eigen CN-reeks —
     // ERP-plan 0.2); de client nummert nooit zelf.
     let nummer: string
@@ -202,6 +205,9 @@ const StatiegeldPage: React.FC<Props> = ({
       netto: totaalNetto,
       btw: 0,
       bruto: totaalNetto,
+      netto_cent: totalen.netto_cent,
+      btw_cent: 0,
+      bruto_cent: totalen.netto_cent,
       status: 'credit',
       definitief: true,
       credit_van_factuur_id: refFact?.id || null,

@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.10.95] — 2026-07-16
+
+### Toegevoegd — Bedragen in centen + BTW op grondslag (ERP-plan 2.2)
+
+- Factuurtotalen worden bij het aanmaken cent-exact berekend (integer-centen,
+  nieuwe util `src/utils/centen.ts`) en als canonieke cent-velden opgeslagen
+  (`netto_cent`/`btw_cent`/`bruto_cent` op verkoopfacturen,
+  `totaal_*_cent` op inkoopfacturen); de euro-velden blijven bestaan voor
+  weergave en oudere facturen. Geen float-drift meer in totalen.
+- De BTW-aangifte berekent de verschuldigde BTW (rubriek 1a/1b én het
+  "te betalen"-bedrag op de periodekaart) nu over de som van de grondslag per
+  tarief — conform Belastingdienst-regels — in plaats van als optelsom van per
+  regel afgeronde bedragen (`omzetBtwOpGrondslag` in `src/utils/btw.ts`).
+  De voorbelasting blijft de som van de werkelijk gefactureerde BTW.
+- Het ingediende aangiftebedrag is daarmee exact gelijk aan de invulhulp;
+  uitlegregel toegevoegd in de invulhulp (alle 5 talen).
+
+---
+
 ## [1.10.94] — 2026-07-16
 
 ### Toegevoegd — Licht journaalmodel (ERP-plan 2.1)

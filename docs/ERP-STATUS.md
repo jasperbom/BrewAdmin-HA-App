@@ -9,7 +9,7 @@
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.94 · fase 0 en 1 afgerond, fase 2 gestart (2.1 klaar)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.10.95 · fase 0 en 1 afgerond, fase 2 gestart (2.1 + 2.2 klaar)
 
 ---
 
@@ -76,8 +76,12 @@
       accijns bewust uit de al per maand bevroren accijnsrecords; nieuw
       Journaal-rapport; eenmalige opbouw uit bestaande data; bedragen alvast
       in centen — voorschot op 2.2)*
-- [ ] **2.2 Bedragen in centen** in journaal + factuurtotalen; BTW-afronding
-      op grondslag per tarief
+- [x] **2.2 Bedragen in centen** in journaal + factuurtotalen; BTW-afronding
+      op grondslag per tarief *(v1.10.95, 2026-07-16 — journaal was al in
+      centen (2.1); factuurtotalen nu cent-exact berekend en als canonieke
+      `*_cent`-velden opgeslagen naast de euro-velden (compatibiliteit);
+      rubriek 1a/1b en het te-betalen-bedrag op grondslag per tarief via
+      `omzetBtwOpGrondslag`; voorbelasting blijft som van gefactureerde BTW)*
 - [ ] **2.3 Balans compleet** — crediteuren, liquide middelen uit MT940-saldi,
       jaarafsluiting met beginbalans-overdracht
 - [ ] **2.4 Bankreconciliatie versterken** — match op bedrag + tegenrekening +
@@ -127,3 +131,4 @@
 | 2026-07-15 | 1.10.90 | 1.5 | Append-only server-audit (JSONL per maand, versie-van/naar, commit-id, ingress-user); getest incl. backup-opname en data-API-onbereikbaarheid — **fase 1 compleet** |
 | 2026-07-15 | 1.10.91 | 0.5-fix | Permission denied op /backup/brewadmin verholpen: entrypoint.sh maakt de submap als root aan en chowned naar appuser |
 | 2026-07-16 | 1.10.94 | 2.1 | Journaal: append-only key + server-guard (curl-getest: weglaten/muteren → 422, aanvullen → 200), boekingen op alle definitief-momenten, storno-flow, W&V + Journaal-rapport uit journaal, eenmalige opbouw; bedragen in centen (voorschot 2.2). Versies 1.10.92/93 waren losse features buiten het plan |
+| 2026-07-16 | 1.10.95 | 2.2 | Centen: `totaliseerRegels`/`totaliseerInkoop` (cent-exact, `*_cent`-velden op alle 12 factuur-aanmaakplekken) + `omzetBtwOpGrondslag` (rubriek 1a/1b en te-betalen op grondslag per tarief). Unit-getest via esbuild-bundle (drift-case 3×€1,03: €0,65 i.p.v. €0,66) en runtime in de aangiftetab |
