@@ -4,6 +4,92 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.9] — 2026-07-16
+
+### Toegevoegd — Delta-sync i.p.v. hele arrays (ERP-plan 4.3)
+
+- Nieuw endpoint `POST /api/delta/<key>`: de client stuurt alleen de
+  gewijzigde/nieuwe records (`upsert`) en verwijderde id's (`delete`)
+  i.p.v. de complete array — payloads schalen nu met de wijziging, niet
+  met de datasetgrootte. Bouwt direct op de rij-per-record-opslag van 4.1
+  (update behoudt de positie, nieuwe records komen achteraan).
+- Zelfde garanties als de volledige POST: `X-Data-Version` verplicht
+  (409 bij conflict), rollen-afdwinging per key (403), append-only-guard
+  voor het journaal, één transactie, audit-regel (`delta`) met tellers.
+- Client (`api.ts` + nieuw `utils/delta.ts`, onder de strict-ratchet):
+  houdt per key een snapshot van de laatst gesynchroniseerde serverstand
+  bij en kiest automatisch delta wanneer dat veilig kan — bij herordening,
+  invoeging middenin, records zonder id, gelijke of grotere delta-payload
+  of een server zonder delta-endpoint (404/400) valt hij stil terug op de
+  volledige POST, die het laatste woord houdt.
+- Tests: 12 vitest-tests op de pure delta-logica + 4 op de
+  api.ts-integratie met gemockte fetch (89 totaal); 5 pytest-tests op het
+  endpoint (volgorde, 409, fallback-signalen, append-only, rollen —
+  51 totaal); runtime-smoke met curl — **fase 4 en daarmee het volledige
+  ERP-verbeterplan compleet**.
+
+---
+
+## [1.11.8] — 2026-07-16
+
+### Toegevoegd — Gebruikers & rollen (ERP-plan 4.2)
+
+- Simpele autorisatie per Home Assistant-gebruiker, server-side afgedwongen
+  op basis van de ingress-headers (`X-Remote-User-Name`): **beheer** mag
+  alles, **boekhouding** de financiële vastlegging + gedeelde keys,
+  **productie** het brouw-/voorraadwerk + gedeelde keys, **alleen-lezen**
+  mag niets wijzigen. Zonder rollenconfiguratie — en buiten HA — geldt voor
+  iedereen `beheer` (het oude gedrag).
+- Afdwinging per data-key (403 met `reden: rol`) op `/api/data`,
+  `/api/commit` én de actie-endpoints: nummeruitgifte en factuurbijlagen
+  horen bij boekhouding; test-endpoints, backup-download en backup-trigger
+  zijn beheer-only. Geweigerde acties worden geauditeerd (`rol_geweigerd`).
+- Nieuwe key `gebruikers_rollen` ({gebruikers, standaard_rol}; alleen
+  beheer, strikt gevalideerd — 422 bij een onbekende rolnaam) met
+  lockout-guard: de beheerder kan zichzelf niet uit `beheer` zetten.
+  Nieuw endpoint `GET /api/whoami` (gebruiker + rol).
+- UI: kaart "Gebruikers & rollen" bij Instellingen→App (toewijzing per
+  gebruiker, standaardrol, eigen rol zichtbaar); een door de rol geweigerde
+  wijziging herlaadt de serverstand met een duidelijke melding i.p.v.
+  eindeloos herproberen; `gebruikers_rollen` zit mee in de Excel-backup;
+  i18n in alle 5 talen.
+- pytest: 5 nieuwe tests (rolmatrix/configvalidatie/lockout-helpers,
+  whoami + afdwinging per rol, commit-weigering integraal,
+  rollenbeheer-guards) — 46 totaal; runtime-smoke van alle rolpaden.
+
+---
+
+## [1.11.7] — 2026-07-16
+
+### Gewijzigd — SQLite als opslaglaag (ERP-plan 4.1)
+
+- Alle app-data leeft nu in één SQLite-database (`/data/brewadmin.db`,
+  stdlib `sqlite3`, WAL-mode) i.p.v. losse JSON-bestanden. De
+  `/api/data/<key>`-API en de `X-Data-Version`-headers zijn ongewijzigd —
+  de frontend merkt er niets van.
+- Bestaande `/data/<key>.json`-bestanden worden bij de eerste start
+  automatisch geïmporteerd en als veiligheidskopie (0600) verplaatst naar
+  `/data/json_voor_sqlite/`; onleesbare bestanden blijven staan en worden
+  gelogd. De nummerreeksen en alle instellingen lopen naadloos door.
+- `POST /api/commit` is nu één échte databasetransactie (BEGIN…COMMIT met
+  rollback) i.p.v. de twee-fasen tempfile+rename-aanpak; array-keys worden
+  rij-per-record opgeslagen (tabel `records`) als fundering voor delta-sync
+  (plan 4.3). Bewuste afwijkingen van het plan: één generieke records-tabel
+  i.p.v. ~85 losse tabellen en geen SQL-foreign-keys — referentiële
+  integriteit blijft app-side via `checkIntegriteit` (plan 1.3).
+- Dagelijkse backups exporteren elke key weer als leesbaar `<key>.json`
+  (zelfde vorm als voorheen, restore-baar zonder tooling) plus een
+  consistente kopie van de database zelf (sqlite-backup-API); de
+  database en WAL/SHM-sidecars krijgen 0600 (credentials zitten mee in de
+  database).
+- pytest: 6 nieuwe tests (WAL actief, scalar-keys, versie-header ==
+  hash van geserveerde bytes, lege array blijft bestaan, JSON-migratie
+  incl. maskering en onleesbaar bestand, backup-export) — 41 totaal;
+  runtime-smoke: migratie, 409/422-paden, nextnr vanaf legacy teller,
+  herstart-persistentie.
+
+---
+
 ## [1.11.6] — 2026-07-16
 
 ### Opgelost — pytest-CI-job faalde op runnerrechten (ERP-plan 3.3-fix)

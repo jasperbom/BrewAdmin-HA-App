@@ -4,7 +4,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId } from '../utils/api'
+import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
@@ -160,6 +160,88 @@ const ServerStatusCard = () => {
   );
 };
 
+// Gebruikers & rollen (ERP-plan 4.2): rolbeheer per HA-ingress-gebruiker.
+// De server dwingt de rollen af (403 op geweigerde mutaties); deze kaart
+// beheert alleen de toewijzing en toont de eigen rol via GET /api/whoami.
+const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => void}) => {
+  const [wie, setWie] = React.useState<Whoami | null>(null);
+  const [naam, setNaam] = React.useState('');
+  const [rol, setRol] = React.useState('productie');
+  React.useEffect(() => { getWhoami().then(setWie); }, []);
+
+  const conf = rollen && typeof rollen === 'object' ? rollen : {};
+  const gebruikers: Record<string, string> = conf.gebruikers || {};
+  const namen = Object.keys(gebruikers).sort((a, b) => a.localeCompare(b));
+  const rolOpties = ['beheer', 'boekhouding', 'productie', 'alleen_lezen'];
+  const selectCls = 'border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none t-input';
+
+  // Lockout-guard: de ingelogde beheerder mag zichzelf niet uit `beheer`
+  // zetten (de server weigert dat ook, met 422 — dit vangt het eerder af).
+  const opslaan = (next: any) => {
+    if (wie?.gebruiker) {
+      const eigen = (next.gebruikers || {})[wie.gebruiker] || next.standaard_rol || 'beheer';
+      if (eigen !== 'beheer') { alert(t('settings_rollen_lockout')); return; }
+    }
+    setRollen(next);
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid">
+      <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_rollen_title')}</h2>
+      <p className="text-sm text-gray-500 mb-4">{t('settings_rollen_desc')}</p>
+      <p className="text-xs text-gray-600 mb-4 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
+        {wie?.gebruiker
+          ? t('settings_rollen_huidig').replace('{naam}', wie.gebruiker).replace('{rol}', t('rol_' + wie.rol))
+          : t('settings_rollen_geen_user')}
+      </p>
+      {namen.length === 0 ? (
+        <p className="text-sm text-gray-400 mb-4">{t('settings_rollen_leeg')}</p>
+      ) : (
+        <table className="w-full text-sm mb-4">
+          <tbody>
+            {namen.map(n => (
+              <tr key={n} className="border-b border-gray-100">
+                <td className="py-1.5 pr-3 font-medium text-gray-700">{n}</td>
+                <td className="py-1.5 pr-3">
+                  <select value={gebruikers[n]} className={selectCls}
+                    onChange={(e: any) => opslaan({...conf, gebruikers: {...gebruikers, [n]: e.target.value}})}>
+                    {rolOpties.map(r => <option key={r} value={r}>{t('rol_' + r)}</option>)}
+                  </select>
+                </td>
+                <td className="py-1.5 text-right">
+                  <Btn v="ghost" onClick={() => {
+                    const g = {...gebruikers}; delete g[n];
+                    opslaan({...conf, gebruikers: g});
+                  }}>✕</Btn>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <input value={naam} onChange={(e: any) => setNaam(e.target.value)}
+          placeholder={t('settings_rollen_gebruiker_ph')}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none t-input shadow-sm" />
+        <select value={rol} onChange={(e: any) => setRol(e.target.value)} className={selectCls}>
+          {rolOpties.map(r => <option key={r} value={r}>{t('rol_' + r)}</option>)}
+        </select>
+        <Btn disabled={!naam.trim()} onClick={() => {
+          opslaan({...conf, gebruikers: {...gebruikers, [naam.trim()]: rol}});
+          setNaam('');
+        }}>{t('settings_rollen_toevoegen')}</Btn>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('settings_rollen_standaard')}</label>
+        <select value={conf.standaard_rol || 'beheer'} className={selectCls}
+          onChange={(e: any) => opslaan({...conf, standaard_rol: e.target.value})}>
+          {rolOpties.map(r => <option key={r} value={r}>{t('rol_' + r)}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+};
+
 const BackupCard = () => {
   const [backups, setBackups] = React.useState<{date:string, file_count:number}[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -239,7 +321,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -3036,6 +3118,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* APP — automatische back-ups */}
       {activeSection==='app' && <BackupCard />}
+
+      {/* APP — gebruikers & rollen (ERP-plan 4.2) */}
+      {activeSection==='app' && <RollenCard rollen={gebruikersRollen} setRollen={setGebruikersRollen} />}
 
       {/* APP — data-gezondheid: referentiële integriteit (ERP-plan 1.3) */}
       {activeSection==='app' && (

@@ -1,15 +1,17 @@
-# pytest-suite voor server.py (ERP-plan 3.2).
+# pytest-suite voor server.py (ERP-plan 3.2; SQLite-opslag sinds 4.1).
 #
 # Twee lagen:
 #  1. unit-tests op de pure helpers (key-/upload-validatie, schemavalidatie,
 #     append-only-guard, secrets-maskering, atomic write);
 #  2. integratietests tegen een échte ThreadingHTTPServer op een efemere
 #     poort met een tijdelijke DATA_DIR — de 409/422-paden, /api/commit,
-#     /api/nextnr (atomair onder parallelle clients), rate-limiting en upload.
+#     /api/nextnr (atomair onder parallelle clients), rate-limiting, upload
+#     en de SQLite-laag (WAL, JSON-migratie, backup-export).
 #
 # Draaien: python3 -m pytest
 
 import base64
+import hashlib
 import http.client
 import http.server
 import json
@@ -112,19 +114,25 @@ class TestAtomicWrite:
 
 class TestAppendOnly:
     def test_append_only_guard(self, app):
-        pad = srv.DATA_DIR / 'journaal.json'
-        pad.write_text(json.dumps([{'id': 1, 'netto_cent': 100}]))
-        # aanvullen mag
-        assert srv._append_only_ok('journaal', [{'id': 1, 'netto_cent': 100}, {'id': 2}])
-        # muteren en weglaten niet
-        assert not srv._append_only_ok('journaal', [{'id': 1, 'netto_cent': 999}])
-        assert not srv._append_only_ok('journaal', [{'id': 2}])
-        assert not srv._append_only_ok('journaal', [])
-        # niet-append-only keys blijven vrij
-        assert srv._append_only_ok('batches', [])
-        pad.unlink()
+        srv._write_json('journaal', [{'id': 1, 'netto_cent': 100}])
+        try:
+            # aanvullen mag
+            assert srv._append_only_ok('journaal', [{'id': 1, 'netto_cent': 100}, {'id': 2}])
+            # muteren en weglaten niet
+            assert not srv._append_only_ok('journaal', [{'id': 1, 'netto_cent': 999}])
+            assert not srv._append_only_ok('journaal', [{'id': 2}])
+            assert not srv._append_only_ok('journaal', [])
+            # niet-append-only keys blijven vrij
+            assert srv._append_only_ok('batches', [])
+        finally:
+            # Testdata opruimen — direct in de database, buiten de API om
+            # (de API weigert het leegmaken terecht met 422).
+            conn = srv._db()
+            with conn:
+                conn.execute("DELETE FROM records WHERE key='journaal'")
+                conn.execute("DELETE FROM versies WHERE key='journaal'")
 
-    def test_ontbrekend_bestand_blokkeert_niet(self, app):
+    def test_ontbrekende_key_blokkeert_niet(self, app):
         assert srv._append_only_ok('journaal', [{'id': 1}])
 
 
@@ -179,7 +187,7 @@ class TestDataApi:
         status, body, _ = req(app, 'POST', '/api/data/tanks', body=[],
                               headers={'X-Data-Version': v1})
         assert status == 409
-        assert json.loads((srv.DATA_DIR / 'tanks.json').read_text()) == [{'id': 1}, {'id': 2}]
+        assert req(app, 'GET', '/api/data/tanks')[1] == [{'id': 1}, {'id': 2}]
 
     def test_get_geeft_versie_header(self, app):
         req(app, 'POST', '/api/data/klanten', body=[{'id': 1}])
@@ -224,7 +232,7 @@ class TestCommit:
         })
         assert status == 200
         assert set(body['versions']) == {'lots', 'ingredienten'}
-        assert json.loads((srv.DATA_DIR / 'lots.json').read_text()) == [{'id': 1}]
+        assert req(app, 'GET', '/api/data/lots')[1] == [{'id': 1}]
 
     def test_commit_conflict_schrijft_niets(self, app):
         req(app, 'POST', '/api/data/verpakkingen', body=[{'id': 1}])
@@ -234,18 +242,18 @@ class TestCommit:
         })
         assert status == 409
         assert 'verpakkingen' in body['conflicts']
-        assert json.loads((srv.DATA_DIR / 'verpakkingen.json').read_text()) == [{'id': 1}]
-        assert not (srv.DATA_DIR / 'onderdelen.json').exists()
+        assert req(app, 'GET', '/api/data/verpakkingen')[1] == [{'id': 1}]
+        assert req(app, 'GET', '/api/data/onderdelen')[0] == 404
 
     def test_commit_appendonly_schending_schrijft_niets(self, app):
         # Zorg (volgorde-onafhankelijk) dat het journaal een regel heeft;
         # leegmaken via commit moet dan integraal geweigerd worden.
-        (srv.DATA_DIR / 'journaal.json').write_text(json.dumps([{'id': 900}]))
+        srv._write_json('journaal', [{'id': 900}])
         status, body, _ = req(app, 'POST', '/api/commit', body={
             'data': {'journaal': [], 'artikelen': [{'id': 3}]},
         })
         assert status == 422 and body['key'] == 'journaal'
-        assert not (srv.DATA_DIR / 'artikelen.json').exists()
+        assert req(app, 'GET', '/api/data/artikelen')[0] == 404
 
     def test_commit_zonder_data_geeft_400(self, app):
         status, _, _ = req(app, 'POST', '/api/commit', body={'data': {}})
@@ -341,12 +349,12 @@ class TestSecureKeysHttp:
         assert status == 200
         assert body['password'] == srv._SECRET_SENTINEL
         assert body['host'] == 'mail.x'
-        # POST met sentinel + gewijzigde host → geheim blijft op disk staan
+        # POST met sentinel + gewijzigde host → geheim blijft opgeslagen
         status, _, _ = req(app, 'POST', '/api/data/smtp_creds',
                            body={'host': 'nieuw.x', 'password': srv._SECRET_SENTINEL})
         assert status == 200
-        op_disk = json.loads((srv.DATA_DIR / 'smtp_creds.json').read_text())
-        assert op_disk == {'host': 'nieuw.x', 'password': 'supergeheim'}
+        opgeslagen = srv._read_json('smtp_creds')
+        assert opgeslagen == {'host': 'nieuw.x', 'password': 'supergeheim'}
 
     def test_audit_log_wordt_server_side_geschreven(self, app):
         req(app, 'POST', '/api/data/recepten', body=[{'id': 1}])
@@ -354,6 +362,72 @@ class TestSecureKeysHttp:
         assert logs, 'server-audit ontbreekt'
         regels = [json.loads(r) for r in logs[0].read_text().splitlines() if r.strip()]
         assert any(r.get('key') == 'recepten' for r in regels)
+
+
+class TestSqliteOpslag:
+    """SQLite-opslaglaag (ERP-plan 4.1): WAL, migratie, versies, backup."""
+
+    def test_wal_mode_actief(self, app):
+        assert srv._db().execute('PRAGMA journal_mode').fetchone()[0] == 'wal'
+
+    def test_scalar_keys_round_trip(self, app):
+        status, _, _ = req(app, 'POST', '/api/data/app_name', body='Proefbrouwerij')
+        assert status == 200
+        assert req(app, 'GET', '/api/data/app_name')[1] == 'Proefbrouwerij'
+        status, _, _ = req(app, 'POST', '/api/data/app_logo', body=b'null')
+        assert status == 200
+        assert req(app, 'GET', '/api/data/app_logo')[1] is None
+
+    def test_versie_header_is_hash_van_geserveerde_bytes(self, app):
+        # Zelfde contract als vóór SQLite: X-Data-Version == sha256[:16] van
+        # exact de bytes die GET serveert (niet-secure keys).
+        req(app, 'POST', '/api/data/koel_logs', body=[{'id': 1, 'temp': 4.2}])
+        with urllib.request.urlopen(app + '/api/data/koel_logs') as r:
+            raw = r.read()
+            versie = r.headers['X-Data-Version']
+        assert versie == hashlib.sha256(raw).hexdigest()[:16]
+
+    def test_lege_array_blijft_bestaan(self, app):
+        # Een key met een lege array is een bestaande key (200, geen 404).
+        req(app, 'POST', '/api/data/dry_hops', body=[])
+        status, body, headers = req(app, 'GET', '/api/data/dry_hops')
+        assert status == 200 and body == []
+        assert headers.get('X-Data-Version') not in (None, '0')
+
+    def test_migratie_importeert_en_verplaatst_json(self, app, tmp_path_factory):
+        oud_data_dir = srv.DATA_DIR
+        vers = tmp_path_factory.mktemp('migratie')
+        (vers / 'batches.json').write_text(json.dumps([{'id': 7, 'naam': 'Tripel'}]))
+        (vers / 'app_name.json').write_text('"Migratietest"')
+        (vers / 'smtp_creds.json').write_text(json.dumps({'host': 'mail.x', 'password': 'geheim'}))
+        (vers / 'kapot.json').write_text('{dit is geen json')
+        srv.DATA_DIR = vers
+        try:
+            # Eerste request initialiseert de database en draait de migratie.
+            status, body, _ = req(app, 'GET', '/api/data/batches')
+            assert status == 200 and body == [{'id': 7, 'naam': 'Tripel'}]
+            assert req(app, 'GET', '/api/data/app_name')[1] == 'Migratietest'
+            # Gemigreerde credentials worden via GET gemaskeerd geserveerd
+            status, creds, _ = req(app, 'GET', '/api/data/smtp_creds')
+            assert status == 200 and creds['password'] == srv._SECRET_SENTINEL
+            # Bronbestanden zijn verplaatst naar de veiligheidsmap
+            assert not (vers / 'batches.json').exists()
+            migratie_dir = vers / srv.JSON_MIGRATIE_DIRNAAM
+            assert (migratie_dir / 'batches.json').exists()
+            assert (migratie_dir / 'smtp_creds.json').exists()
+            # Onleesbaar bestand blijft staan (niet stil weggegooid)
+            assert (vers / 'kapot.json').exists()
+            assert (vers / srv.DB_NAAM).exists()
+        finally:
+            srv.DATA_DIR = oud_data_dir
+
+    def test_backup_exporteert_json_en_database(self, app):
+        req(app, 'POST', '/api/data/gn_codes', body=[{'id': 1, 'code': '2203'}])
+        status, body, _ = req(app, 'POST', '/api/backups/trigger', body={})
+        assert status == 200
+        dest = srv.BACKUP_DIR / body['date']
+        assert json.loads((dest / 'gn_codes.json').read_text()) == [{'id': 1, 'code': '2203'}]
+        assert (dest / srv.DB_NAAM).exists()
 
 
 class TestHealth:
@@ -384,6 +458,198 @@ class TestHealth:
             assert body['ok'] is False
         finally:
             srv._threads.clear()
+
+
+class TestDelta:
+    """Delta-sync per record (ERP-plan 4.3): POST /api/delta/<key>."""
+
+    def _seed(self, app, key, records):
+        status, body, _ = req(app, 'POST', f'/api/data/{key}', body=records)
+        assert status == 200
+        return body['version']
+
+    def test_upsert_delete_en_volgorde(self, app):
+        ver = self._seed(app, 'haccp_capa', [
+            {'id': 1, 'n': 'a'}, {'id': 2, 'n': 'b'}, {'id': 3, 'n': 'c'}])
+        status, body, _ = req(app, 'POST', '/api/delta/haccp_capa',
+                              body={'upsert': [{'id': 2, 'n': 'B'}, {'id': 4, 'n': 'd'}],
+                                    'delete': [1]},
+                              headers={'X-Data-Version': ver})
+        assert status == 200 and body['records'] == 3
+        status, data, headers = req(app, 'GET', '/api/data/haccp_capa')
+        # Update behoudt positie, nieuw record komt achteraan
+        assert data == [{'id': 2, 'n': 'B'}, {'id': 3, 'n': 'c'}, {'id': 4, 'n': 'd'}]
+        # Nieuwe versie is consistent met wat GET serveert
+        assert headers['X-Data-Version'] == body['version']
+
+    def test_verouderde_versie_geeft_409(self, app):
+        ver = self._seed(app, 'koel_logs', [{'id': 1}])
+        req(app, 'POST', '/api/delta/koel_logs',
+            body={'upsert': [{'id': 2}], 'delete': []}, headers={'X-Data-Version': ver})
+        status, _, _ = req(app, 'POST', '/api/delta/koel_logs',
+                           body={'upsert': [], 'delete': [1]}, headers={'X-Data-Version': ver})
+        assert status == 409
+        assert req(app, 'GET', '/api/data/koel_logs')[1] == [{'id': 1}, {'id': 2}]
+
+    def test_fallback_signalen_400_en_404(self, app):
+        # Zonder X-Data-Version → 400 (client valt terug op volledige POST)
+        self._seed(app, 'dry_hops', [{'id': 1}])
+        ver = req(app, 'GET', '/api/data/dry_hops')[2]['X-Data-Version']
+        assert req(app, 'POST', '/api/delta/dry_hops',
+                   body={'upsert': [], 'delete': []})[0] == 400
+        # Onbekende key of geen array → 404
+        assert req(app, 'POST', '/api/delta/bestaat_niet_delta',
+                   body={'upsert': [], 'delete': []},
+                   headers={'X-Data-Version': '0'})[0] == 404
+        # Record zonder id → 400
+        assert req(app, 'POST', '/api/delta/dry_hops',
+                   body={'upsert': [{'zonder': 'id'}], 'delete': []},
+                   headers={'X-Data-Version': ver})[0] == 400
+
+    def test_append_only_via_delta(self, app):
+        srv._write_json('journaal', [{'id': 10, 'netto_cent': 1}])
+        ver = req(app, 'GET', '/api/data/journaal')[2]['X-Data-Version']
+        # Aanvullen met een nieuw record mag
+        status, body, _ = req(app, 'POST', '/api/delta/journaal',
+                              body={'upsert': [{'id': 11, 'netto_cent': 2}], 'delete': []},
+                              headers={'X-Data-Version': ver})
+        assert status == 200
+        # Bestaand record wijzigen of verwijderen → 400 (volledige POST geeft het canonieke 422)
+        ver = body['version']
+        assert req(app, 'POST', '/api/delta/journaal',
+                   body={'upsert': [{'id': 10, 'netto_cent': 999}], 'delete': []},
+                   headers={'X-Data-Version': ver})[0] == 400
+        assert req(app, 'POST', '/api/delta/journaal',
+                   body={'upsert': [], 'delete': [10]},
+                   headers={'X-Data-Version': ver})[0] == 400
+
+    def test_delta_respecteert_rollen(self, app):
+        ver = self._seed(app, 'verkoop_facturen', [])
+        status, _, _ = req(app, 'POST', '/api/data/gebruikers_rollen',
+                           body={'gebruikers': {'piet': 'productie'}},
+                           headers={'X-Remote-User-Name': 'admin'})
+        assert status == 200
+        try:
+            status, body, _ = req(app, 'POST', '/api/delta/verkoop_facturen',
+                                  body={'upsert': [{'id': 1}], 'delete': []},
+                                  headers={'X-Data-Version': ver,
+                                           'X-Remote-User-Name': 'piet'})
+            assert status == 403 and body['reden'] == 'rol'
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                       headers={'X-Remote-User-Name': 'admin'})[0] == 200
+
+
+class TestRollen:
+    """Gebruikers & rollen (ERP-plan 4.2): server-side afdwinging per rol."""
+
+    ADMIN = {'X-Remote-User-Name': 'admin'}
+    CONFIG = {'gebruikers': {'admin': 'beheer', 'kees': 'alleen_lezen',
+                             'piet': 'productie', 'fien': 'boekhouding'}}
+
+    def _zet_config(self, app, config=None):
+        status, _, _ = req(app, 'POST', '/api/data/gebruikers_rollen',
+                           body=self.CONFIG if config is None else config,
+                           headers=self.ADMIN)
+        return status
+
+    def _reset(self, app):
+        assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                   headers=self.ADMIN)[0] == 200
+
+    def test_rol_helpers(self):
+        assert srv._rol_mag_key('beheer', 'smtp_creds')
+        assert srv._rol_mag_key('boekhouding', 'verkoop_facturen')
+        assert not srv._rol_mag_key('boekhouding', 'smtp_creds')
+        assert not srv._rol_mag_key('productie', 'verkoop_facturen')
+        assert srv._rol_mag_key('productie', 'batches')
+        assert srv._rol_mag_key('boekhouding', 'batches')  # gedeelde key
+        assert not srv._rol_mag_key('alleen_lezen', 'batches')
+        # Configvalidatie: typfout in rol mag nooit stil doorglippen
+        assert srv._rollen_config_geldig({'gebruikers': {'x': 'beheer'}})
+        assert not srv._rollen_config_geldig({'gebruikers': {'x': 'admin'}})
+        assert not srv._rollen_config_geldig({'standaard_rol': 'root'})
+        assert not srv._rollen_config_geldig([])
+        # Lockout: schrijver moet zelf beheer houden
+        assert srv._rollen_lockout('admin', {'standaard_rol': 'alleen_lezen'})
+        assert not srv._rollen_lockout('admin', {'gebruikers': {'admin': 'beheer'},
+                                                 'standaard_rol': 'alleen_lezen'})
+        assert not srv._rollen_lockout('', {'standaard_rol': 'alleen_lezen'})
+
+    def test_zonder_config_is_iedereen_beheer(self, app):
+        status, body, _ = req(app, 'GET', '/api/whoami',
+                              headers={'X-Remote-User-Name': 'wildvreemde'})
+        assert status == 200
+        assert body == {'gebruiker': 'wildvreemde', 'rol': 'beheer'}
+
+    def test_whoami_en_afdwinging_per_rol(self, app):
+        assert self._zet_config(app) == 200
+        try:
+            # whoami rapporteert de toegewezen rol
+            _, body, _ = req(app, 'GET', '/api/whoami',
+                             headers={'X-Remote-User-Name': 'kees'})
+            assert body == {'gebruiker': 'kees', 'rol': 'alleen_lezen'}
+            # alleen_lezen: GET ok, elke POST 403
+            assert req(app, 'GET', '/api/data/batches',
+                       headers={'X-Remote-User-Name': 'kees'})[0] in (200, 404)
+            status, body, _ = req(app, 'POST', '/api/data/water_addities', body=[],
+                                  headers={'X-Remote-User-Name': 'kees'})
+            assert status == 403 and body['reden'] == 'rol'
+            # productie: gedeelde key ok, financiële key en nextnr 403
+            piet = {'X-Remote-User-Name': 'piet'}
+            assert req(app, 'POST', '/api/data/water_addities', body=[],
+                       headers=piet)[0] == 200
+            assert req(app, 'POST', '/api/data/verkoop_facturen', body=[],
+                       headers=piet)[0] == 403
+            assert req(app, 'POST', '/api/nextnr',
+                       body={'reeks': 'factuur', 'jaar': 2026}, headers=piet)[0] == 403
+            # boekhouding: financiële key ok, beheer-key en mail-test 403
+            fien = {'X-Remote-User-Name': 'fien'}
+            assert req(app, 'POST', '/api/data/verkoop_facturen', body=[],
+                       headers=fien)[0] == 200
+            assert req(app, 'POST', '/api/data/smtp_creds', body={'host': 'x'},
+                       headers=fien)[0] == 403
+            assert req(app, 'POST', '/api/mail/test', body={'host': 'x', 'port': 25},
+                       headers=fien)[0] == 403
+            # backup-download is beheer-only
+            assert req(app, 'GET', '/api/backups', headers=fien)[0] == 403
+            assert req(app, 'GET', '/api/backups', headers=self.ADMIN)[0] == 200
+        finally:
+            self._reset(app)
+
+    def test_commit_weigert_verboden_key_integraal(self, app):
+        assert self._zet_config(app) == 200
+        try:
+            piet = {'X-Remote-User-Name': 'piet'}
+            status, body, _ = req(app, 'POST', '/api/commit', body={
+                'data': {'water_addities': [{'id': 1}], 'verkoop_facturen': []},
+            }, headers=piet)
+            assert status == 403 and body['key'] == 'verkoop_facturen'
+            # Niets geschreven — ook de toegestane key niet
+            assert req(app, 'GET', '/api/data/water_addities')[1] == []
+        finally:
+            self._reset(app)
+
+    def test_rollenbeheer_zelf_alleen_beheer_en_lockout_guard(self, app):
+        assert self._zet_config(app) == 200
+        try:
+            # Niet-beheer mag de rollen niet wijzigen
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                       headers={'X-Remote-User-Name': 'fien'})[0] == 403
+            # Ongeldige rolwaarde → 422
+            assert self._zet_config(app, {'gebruikers': {'admin': 'root'}}) == 422
+            # Beheerder kan zichzelf niet uit beheer zetten → 422
+            status, body, _ = req(app, 'POST', '/api/data/gebruikers_rollen',
+                                  body={'gebruikers': {'admin': 'productie'}},
+                                  headers=self.ADMIN)
+            assert status == 422 and body['error'] == 'rollen-lockout'
+            # Standaardrol geldt voor niet-vermelde gebruikers
+            assert self._zet_config(app, {'gebruikers': {'admin': 'beheer'},
+                                          'standaard_rol': 'alleen_lezen'}) == 200
+            assert req(app, 'POST', '/api/data/water_addities', body=[],
+                       headers={'X-Remote-User-Name': 'onbekend'})[0] == 403
+        finally:
+            self._reset(app)
 
 
 class TestLogging:

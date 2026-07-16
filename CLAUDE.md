@@ -58,12 +58,22 @@ BrewAdmin-HA-App/
 - All HTTP via `/api/` prefix
 - `src/utils/api.ts` — central fetch abstraction (`_postToServer`, `useStore` hook)
 - `useStore(key)` — localStorage-cached, server-synced state per data key
+- Delta-sync (ERP 4.3): saves van array-keys gaan waar mogelijk als
+  record-delta naar `POST /api/delta/<key>` (pure logica in
+  `src/utils/delta.ts`); bij herordening, records zonder id of een oude
+  server valt de client stil terug op de volledige POST
 - Home Assistant Ingress strips path prefix; server handles both `/` and `/brouwerij_admin/` paths
 
 ### Backend data persistence
 
 - `server.py` — pure Python `BaseHTTPRequestHandler`, no frameworks
-- All app data stored as JSON files under `/data/<key>.json` (Docker volume, persistent)
+- Alle app-data in één SQLite-database `/data/brewadmin.db` (WAL; ERP 4.1) —
+  array-keys rij-per-record in tabel `records`, objecten/scalars in `kv`,
+  versie-hashes in `versies`. De `/api/data/<key>`-API werkt onveranderd met
+  complete JSON-payloads
+- Legacy `/data/<key>.json`-bestanden worden bij de eerste start automatisch
+  gemigreerd (veiligheidskopie in `/data/json_voor_sqlite/`); backups
+  exporteren elke key weer als leesbaar `<key>.json` + een db-kopie
 - External API proxy routes: Brewfather, WooCommerce, Claude AI, HA Supervisor
 
 ---
@@ -121,9 +131,10 @@ ouderdom, COGS en de Excel-backup-round-trip.
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
 optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
-onder parallelle clients), rate-limiting (429), secrets-maskering en de
-server-audit. De suite start de echte handler op een efemere poort met een
-tijdelijke DATA_DIR.
+onder parallelle clients), rate-limiting (429), secrets-maskering, de
+server-audit en de SQLite-opslaglaag (WAL, JSON-migratie, backup-export).
+De suite start de echte handler op een efemere poort met een tijdelijke
+DATA_DIR.
 
 ```bash
 npm test                 # vitest run (frontend-utils, eenmalig)
@@ -341,7 +352,7 @@ Gepland → Aan het brouwen → Aan het gisten → Conditioning → Afgevuld →
 (Planned)   (Brewing)        (Fermenting)     (Conditioning)  (Packaged)  (Closed)
 ```
 
-### Data keys (stored in `/data/<key>.json`)
+### Data keys (opgeslagen in SQLite, `/data/brewadmin.db`)
 
 Key names are alphanumeric + underscore only (enforced by server). All active keys:
 
@@ -392,6 +403,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, BTW-nr., website (klikbaar logo in mail) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |
+| `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota`), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
 | `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`) |
@@ -474,15 +486,17 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/data/<key>` | Load JSON data file |
-| POST | `/api/data/<key>` | Save JSON data file |
+| GET | `/api/data/<key>` | Load data key (JSON, uit SQLite) |
+| POST | `/api/data/<key>` | Save data key (JSON, naar SQLite) |
 | GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
+| GET | `/api/whoami` | Ingress-gebruiker + rol (ERP 4.2): `{gebruiker, rol}` |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
 | POST | `/api/nextnr` | Volgend factuur-/creditnotanummer, atomair per reeks/jaar (`{reeks, jaar}` → `{jaar, nr, nummer}`) |
 | POST | `/api/commit` | Meerdere data-keys atomair opslaan (`{data:{key:waarde}, versions:{key:versie}}`), 409 bij versieconflict |
+| POST | `/api/delta/<key>` | Delta-sync per record (ERP 4.3): `{upsert:[records], delete:[ids]}` met verplichte `X-Data-Version`; client valt bij 400/404 automatisch terug op de volledige POST |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
@@ -494,10 +508,15 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Request body size: 10 MB general, 20 MB for Claude proxy
 - File upload: only `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp` allowed
 - Key validation: `^[a-zA-Z0-9_]+$` — prevents path traversal
+- SQLite-opslag (ERP 4.1): `/data/brewadmin.db` in WAL-mode met
+  `synchronous=FULL`; schrijvers serialiseren onder `_data_lock`, de
+  database en WAL/SHM-sidecars staan op 0600 (credentials zitten erin) —
+  nooit rechtstreeks losse JSON-databestanden in `/data/` schrijven
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
 - Append-only keys: `_APPEND_ONLY` (o.a. `journaal`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno-regels. Nooit omzeilen
+- Gebruikers & rollen (ERP 4.2): mutaties worden per rol afgedwongen (`_rol_mag_key` + endpoint-gates in do_GET/do_POST, 403 met `reden: rol` + audit). Nieuwe financiële key? Voeg hem toe aan `_FINANCIELE_KEYS`; nieuwe instellingen-key aan `_BEHEER_KEYS`. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only
