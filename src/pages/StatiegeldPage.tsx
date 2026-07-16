@@ -7,6 +7,9 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
+import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
+import { totaliseerRegels } from '../utils/centen'
+import { getPeriodes } from '../utils/btw'
 
 interface Props {
   verpakkingen: any[]
@@ -18,6 +21,7 @@ interface Props {
   bankKoppelingen?: any
   auditLog?: any[]
   setAuditLog?: any
+  setJournaal?: any
 }
 
 type Tab = 'config' | 'snd' | 'fust' | 'mutaties'
@@ -34,7 +38,7 @@ const klantLabel = (f: any) => f?.klant_naam || t('lbl_onbekend')
 const StatiegeldPage: React.FC<Props> = ({
   verpakkingen, setVerpakkingen, verkoopFacturen, setVerkoopFacturen,
   factuurCounter, setFactuurCounter = () => {}, bankKoppelingen = {},
-  auditLog = [], setAuditLog = (() => {})
+  auditLog = [], setAuditLog = (() => {}), setJournaal = () => {}
 }) => {
   const [tab, setTab] = useState<Tab>('config')
   const [aangifteYear, setAangifteYear] = useState(new Date().getFullYear())
@@ -63,23 +67,6 @@ const StatiegeldPage: React.FC<Props> = ({
     })
     return out
   }, [verkoopFacturen])
-
-  // Periodes (kwartaal of maand)
-  const getPeriodes = (year: number, periode: 'kwartaal' | 'maand') => {
-    if (periode === 'maand') {
-      return Array.from({ length: 12 }, (_, i) => {
-        const m = String(i + 1).padStart(2, '0')
-        const lastDay = new Date(year, i + 1, 0).getDate()
-        return { label: `${year}-${m}`, from: `${year}-${m}-01`, to: `${year}-${m}-${String(lastDay).padStart(2, '0')}`, key: `${year}-M${m}` }
-      })
-    }
-    return [
-      { label: 'Q1', from: `${year}-01-01`, to: `${year}-03-31`, key: `${year}-Q1` },
-      { label: 'Q2', from: `${year}-04-01`, to: `${year}-06-30`, key: `${year}-Q2` },
-      { label: 'Q3', from: `${year}-07-01`, to: `${year}-09-30`, key: `${year}-Q3` },
-      { label: 'Q4', from: `${year}-10-01`, to: `${year}-12-31`, key: `${year}-Q4` },
-    ]
-  }
 
   // Set van SNd-perioden die al afgedragen zijn (gekoppeld aan banktransactie)
   const sndAfgedragen = useMemo(() => {
@@ -177,7 +164,9 @@ const StatiegeldPage: React.FC<Props> = ({
     })
     if (regels.length === 0) return
 
-    const totaalNetto = rnd2(regels.reduce((s, r) => s + r.netto, 0))
+    // Totaal cent-exact (ERP-plan 2.2); statiegeldregels zijn altijd 0% BTW.
+    const totalen = totaliseerRegels(regels)
+    const totaalNetto = totalen.netto
     // Creditnotanummer server-side ophalen (atomair, eigen CN-reeks —
     // ERP-plan 0.2); de client nummert nooit zelf.
     let nummer: string
@@ -200,12 +189,18 @@ const StatiegeldPage: React.FC<Props> = ({
       netto: totaalNetto,
       btw: 0,
       bruto: totaalNetto,
+      netto_cent: totalen.netto_cent,
+      btw_cent: 0,
+      bruto_cent: totalen.netto_cent,
       status: 'credit',
       definitief: true,
       credit_van_factuur_id: refFact?.id || null,
     }
 
     setVerkoopFacturen((prev: any[]) => [...(prev || []), nieuw])
+    // Journaal (ERP-plan 2.1): creditnota is direct definitief → boeken
+    // (bedragen zijn al negatief).
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(nieuw)))
     logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Creditnota statiegeld`})
     setRetourFor(null)
     setRetourQty({})

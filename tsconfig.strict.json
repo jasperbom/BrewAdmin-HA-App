@@ -1,0 +1,9 @@
+{
+  "//": "Strikte ratchet (ERP-plan 3.4): deze subset van de codebase is volledig strict-clean en moet dat blijven. Breidt de include uit zodra een map is opgeschoond — nooit inkrimpen. Draait via `npm run typecheck` en in CI.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true
+  },
+  "include": ["src/utils", "src/types", "src/i18n"]
+}

@@ -1,19 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
 import { lsSet, t } from '../i18n'
 
-// KRITIEK: relatieve paden voor HA Ingress compatibiliteit
-const p = window.location.pathname
+// KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
+// Fallback '/' voor niet-browser-omgevingen (Vitest, fase 3.1): daar worden
+// alleen de pure helpers gebruikt, nooit de fetch-paden zelf.
+const _pad = () => (typeof window !== 'undefined' ? window.location.pathname : '/')
+const p = _pad()
 export const API_BASE = p.replace(/[^/]*$/, '') + 'api/data/'
 export const ADDON_BASE = API_BASE.replace('api/data/', '')
 
 // Proxy paths
-export const _BF_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/brewfather/' })()
-export const _BF_TEST  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/brewfather/test' })()
-export const _WC_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/' })()
-export const _WC_PUT   = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/put/' })()
-export const _WC_TEST  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/test' })()
-export const _WC_PING  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping' })()
-export const _HA_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/homeassistant/' })()
+export const _BF_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/brewfather/' })()
+export const _BF_TEST  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/brewfather/test' })()
+export const _WC_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/' })()
+export const _WC_PUT   = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/put/' })()
+export const _WC_TEST  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/test' })()
+export const _WC_PING  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping' })()
+export const _HA_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/homeassistant/' })()
 
 const _rateLimitError = (prefix: string, r: Response): Error => {
   const secs = Math.ceil(_retryAfterMs(r) / 1000)
@@ -456,6 +459,27 @@ export const newId = (arr: any[]): number => {
   const kandidaat = Date.now() * 1000 + Math.floor(Math.random() * 1000)
   _lastId = Math.max(_lastId + 1, kandidaat, bestaandMax + 1)
   return _lastId
+}
+
+// ── Serverhealth (ERP-plan 3.6) ─────────────────────────────────────────────
+// GET /api/health: status van de server, achtergrondthreads en laatste backup.
+export interface ServerHealth {
+  ok: boolean
+  threads: Record<string, boolean> | null
+  laatste_backup: string | null
+  data_dir: boolean
+  uptime_s: number
+}
+
+export const getServerHealth = async (): Promise<ServerHealth | null> => {
+  try {
+    const r = await _fetchWithRetry(ADDON_BASE + 'api/health', {headers: {'Cache-Control': 'no-cache'}}, 0)
+    if (!r.ok) return null
+    const d = await r.json()
+    return d && typeof d.ok === 'boolean' ? d as ServerHealth : null
+  } catch {
+    return null
+  }
 }
 
 // ── Factuurnummering (ERP-plan 0.2) ─────────────────────────────────────────

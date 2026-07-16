@@ -14,6 +14,8 @@ import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
+import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
+import { totaliseerRegels } from '../utils/centen'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -57,6 +59,7 @@ interface BestellingenPageProps {
   btwInst?: any
   btwAangiftes?: any[]
   bankKoppelingen?: Record<string, any>
+  setJournaal?: any
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -87,6 +90,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   mailTemplates={},
   btwTarieven=[0, 9, 21],
   btwInst={}, btwAangiftes=[], bankKoppelingen={},
+  setJournaal=()=>{},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -1009,8 +1013,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         btw: rnd2(regelsVanTarief.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
       }
     })
-    const totaalNetto = rnd2(regelsList.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw = rnd2(regelsList.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const factuurTotalen = totaliseerRegels(regelsList)
     // Klantgegevens uit de live klantkaart (via klant_id of email-match) zodat
     // de factuur ook bij volgende renders/mails de actuele waarden vindt.
     const snap = resolveKlantSnapshot(selectedOrder, klanten)
@@ -1031,9 +1035,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       klant_adres: [snap.klant_straat, snap.klant_huisnummer, snap.klant_postcode, snap.klant_stad].filter(Boolean).join(' '),
       regels: regelsList,
       btw_overzicht,
-      netto: totaalNetto,
-      btw: totaalBtw,
-      bruto: rnd2(totaalNetto + totaalBtw),
+      netto: factuurTotalen.netto,
+      btw: factuurTotalen.btw,
+      bruto: factuurTotalen.bruto,
+      netto_cent: factuurTotalen.netto_cent,
+      btw_cent: factuurTotalen.btw_cent,
+      bruto_cent: factuurTotalen.bruto_cent,
       status: 'open',
       definitief: true,
     }
@@ -1061,6 +1068,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
     }
     setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
+    // Journaal (ERP-plan 2.1): orderfactuur is bij uitreiken definitief → boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(verkoopFact)))
     setBestellingen((prev: any[]) => prev.map((b: any) => b.id === selectedOrder.id ? {
       ...b,
       status: 'afgerond',
@@ -1195,9 +1204,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         btw: rnd2(rv.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
       }
     })
-    const totaalNetto = rnd2(regels.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw = rnd2(regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
-    return {...fact, regels, btw_overzicht, netto: totaalNetto, btw: totaalBtw, bruto: rnd2(totaalNetto + totaalBtw)}
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const tot = totaliseerRegels(regels)
+    return {...fact, regels, btw_overzicht, netto: tot.netto, btw: tot.btw, bruto: tot.bruto,
+      netto_cent: tot.netto_cent, btw_cent: tot.btw_cent, bruto_cent: tot.bruto_cent}
   }
 
   // BTW% van een bestaande orderregel aanpassen (bijv. WC-import die bier op 9%
@@ -1231,11 +1241,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // dezelfde volgorde uit de orderregels opgebouwd (statiegeldregels komen
     // erná), dus factuurregel op positie `regelIdx` hoort bij deze orderregel.
     if (selectedOrder.factuur_id != null && regelIdx >= 0) {
-      setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => {
-        if (f.id !== selectedOrder.factuur_id) return f
-        const regels = (f.regels||[]).map((fr: any, i: number) => i === regelIdx ? {...fr, btw_pct: nieuwBtw} : fr)
-        return herberekenFactuur({...f, regels})
-      }))
+      const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
+      if (fact) {
+        const regels = (fact.regels||[]).map((fr: any, i: number) => i === regelIdx ? {...fr, btw_pct: nieuwBtw} : fr)
+        const nieuweFactuur = herberekenFactuur({...fact, regels})
+        setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => f.id === fact.id ? nieuweFactuur : f))
+        // Journaal (ERP-plan 2.1): correctie op een al geboekte factuur =
+        // storno van de oude regels + herboeking van de gecorrigeerde factuur.
+        setJournaal((prev: any[]) => voegBoekingToe(
+          voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'verkoop_factuur', fact.id)),
+          verkoopFactuurBoeking(nieuweFactuur)))
+      }
     }
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%${selectedOrder.factuur_id != null ? ` (factuur ${selectedOrder.factuur_nummer||selectedOrder.factuur_id} bijgewerkt)` : ''}`})
   }

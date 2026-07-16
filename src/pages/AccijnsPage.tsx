@@ -4,6 +4,8 @@ import { fmt, fmtD, tod } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
+import { accijnsAangifteBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
+import type { Batch, AccijnsRecord, AccijnsAangifte, AccijnsInst, Uitlevering, Afvulling } from '../types'
 
 // Inline 4-ogen-controleblok (Douane v2.4 §12.2). Reviewer (default Elise Kok) vinkt akkoord
 // of opmerkingen aan, eventueel met bevindingen. Pas bij 'akkoord' kan de aangifte naar
@@ -88,7 +90,28 @@ const ControleBlok: React.FC<{
   )
 }
 
-function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}, bankDebets=[], koppelAccijnsBetaling=null, ontkoppelAccijnsBetaling=null, accijnsKoppelingInfo=null}: any) {
+// Getypte page-props (ERP-plan 3.4) — setters volgen het useStore-patroon
+// (waarde óf updater-functie), vandaar de brede setter-typen.
+interface AccijnsPageProps {
+  bat: Batch[]
+  acc: AccijnsRecord[]
+  setAcc: (v: AccijnsRecord[] | ((prev: AccijnsRecord[]) => AccijnsRecord[])) => void
+  uit?: Uitlevering[]
+  av?: Afvulling[]
+  accijnsAangiftes?: AccijnsAangifte[]
+  setAccijnsAangiftes?: (v: AccijnsAangifte[] | ((prev: AccijnsAangifte[]) => AccijnsAangifte[])) => void
+  accijnsInst?: AccijnsInst | null
+  auditLog?: any[]
+  setAuditLog?: (v: any) => void
+  // Onkoppelbare bankdebets voor de betaalkoppeling (uit BoekhoudingPage)
+  bankDebets?: {key: string, datum: string, label: string, bedrag: number}[]
+  koppelAccijnsBetaling?: ((txKey: string, maandKey: string) => void) | null
+  ontkoppelAccijnsBetaling?: ((maandKey: string) => void) | null
+  accijnsKoppelingInfo?: ((maandKey: string) => {datum?: string, bedrag?: number} | null) | null
+  setJournaal?: (v: any) => void
+}
+
+function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}, bankDebets=[], koppelAccijnsBetaling=null, ontkoppelAccijnsBetaling=null, accijnsKoppelingInfo=null, setJournaal=()=>{}}: AccijnsPageProps) {
   const {useState, useMemo} = React;
   // acc records: {id, batch_id, batch_nummer, uitlevering_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
   const getAccijns = (a: any) => Number(a.accijns ?? a.totaal_accijns ?? 0);
@@ -187,6 +210,14 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
       if (existing) return prev.map((x: any) => x.maand === monthKey ? {...x, status, [datumKey]: datum, ...extra} : x)
       return [...prev, {maand: monthKey, status, [datumKey]: datum, ...extra}]
     })
+    // Journaal (ERP-plan 2.1): bij indienen het (4-ogen-gecontroleerde)
+    // maandbedrag als onveranderlijke boeking vastleggen; een eventuele
+    // eerdere indiening van dezelfde maand wordt eerst tegengeboekt.
+    if (status === 'ingediend') {
+      setJournaal((prev: any[]) => voegBoekingToe(
+        voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'accijns_aangifte', monthKey)),
+        accijnsAangifteBoeking(monthKey, extra.bedrag || 0, `${t('lbl_accijns_aangifte')} ${monthKey}`)))
+    }
     logAudit(auditLog, setAuditLog, {entiteit:'Accijnsaangifte', entiteit_id:0, actie:'gewijzigd', omschrijving:`Aangifte ${monthKey} → ${status}`});
     if (status === 'betaald') markMonthPaid(monthKey)
     logAudit(auditLog, setAuditLog, {

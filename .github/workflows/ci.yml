@@ -1,0 +1,81 @@
+# CI (ERP-plan 3.3): typecheck + tests + build + Docker-build + versie-bump-lint.
+# Draait op elke push naar main en op elke pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Typecheck, vitest & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Dependencies
+        run: npm ci
+      - name: Typecheck (tsc --noEmit + strict ratchet op utils/types/i18n)
+        run: npm run typecheck
+      - name: Vitest (pure logica src/utils/)
+        run: npm test
+      - name: Productie-build (vite, single-file)
+        run: npm run build
+
+  server:
+    name: pytest server.py
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: pytest installeren
+        run: pip install pytest
+      - name: pytest (server.py — 409/422-paden, commit, nextnr, rate-limit, upload)
+        run: python3 -m pytest -q
+
+  docker:
+    name: Docker-build (addon-image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker build (multi-stage, zonder push)
+        run: docker build -t brewadmin-ci .
+
+  versie-check:
+    name: Versie-bump-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Basisbranch nodig om op PR's te controleren dat de versie is gebumpt.
+          fetch-depth: 0
+      - name: config.yaml ↔ CHANGELOG.md in sync + bump t.o.v. basisbranch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          versie=$(sed -n 's/^version:[[:space:]]*"\([^"]*\)".*/\1/p' config.yaml | head -1)
+          if [ -z "$versie" ]; then
+            echo "::error file=config.yaml::Geen version-veld gevonden"; exit 1
+          fi
+          echo "config.yaml versie: $versie"
+          if ! grep -qF "## [$versie]" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md mist een sectie '## [$versie]' voor de versie uit config.yaml (versie-bump per commit, zie CLAUDE.md)"
+            exit 1
+          fi
+          # Op PR's: de versie moet verschillen van de basisbranch (elke commit bumpt +0.0.1).
+          if [ -n "${BASE_REF:-}" ]; then
+            basis=$(git show "origin/${BASE_REF}:config.yaml" | sed -n 's/^version:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+            echo "basisbranch (${BASE_REF}) versie: ${basis:-onbekend}"
+            if [ -n "$basis" ] && [ "$basis" = "$versie" ]; then
+              echo "::error file=config.yaml::Versie ($versie) is gelijk aan ${BASE_REF} — bump de versie (+0.0.1, zie CLAUDE.md)"
+              exit 1
+            fi
+          fi
+          echo "Versie-check OK"

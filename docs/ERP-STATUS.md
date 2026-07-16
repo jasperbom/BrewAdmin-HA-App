@@ -4,12 +4,15 @@
 > waarheid voor de voortgang van het ERP-verbeterplan
 > (zie `docs/ERP-VERBETERPLAN.md` voor de volledige bevindingen en het plan).
 > Werkwijze: pak het **eerstvolgende onafgevinkte punt** op, implementeer het,
-> vink het hier af (met datum + versienummer), bump de versie in `config.yaml`
-> (+0.0.1, zie CLAUDE.md), werk `CHANGELOG.md` bij, en commit alles samen.
+> verifieer (nieuwe pure logica krijgt een test; draai `npm test` én
+> `python3 -m pytest`, en `npx tsc --noEmit` moet schoon blijven — CI (3.3)
+> controleert dit ook), vink het punt hier af (met datum + versienummer +
+> logboekregel), bump de versie in `config.yaml` (+0.0.1, zie CLAUDE.md),
+> werk `CHANGELOG.md` bij, en commit alles samen.
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-15 · versie 1.10.91 · **fase 0 én fase 1 volledig afgerond**
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.6 · **fase 0 t/m 3 volledig afgerond** — alleen fase 4 (structurele fundering, pas bij multi-user/schaal) staat nog open
 
 ---
 
@@ -68,30 +71,90 @@
 
 ## Fase 2 — Financieel professionaliseren
 
-- [ ] **2.1 Licht journaalmodel** — onveranderlijke journaalregels bij
-      definitief maken; rapporten lezen uit journaal
-- [ ] **2.2 Bedragen in centen** in journaal + factuurtotalen; BTW-afronding
-      op grondslag per tarief
-- [ ] **2.3 Balans compleet** — crediteuren, liquide middelen uit MT940-saldi,
-      jaarafsluiting met beginbalans-overdracht
-- [ ] **2.4 Bankreconciliatie versterken** — match op bedrag + tegenrekening +
-      kenmerk; saldo-aansluitcontrole per import
-- [ ] **2.5 Debiteuren/crediteuren-ouderdom** in buckets (0-30/31-60/61-90/90+)
-- [ ] **2.6 COGS-optie** — kostprijs per batch gekoppeld aan uitleveringen,
-      marge-weergave in W&V
+- [x] **2.1 Licht journaalmodel** — onveranderlijke journaalregels bij
+      definitief maken; rapporten lezen uit journaal *(v1.10.94, 2026-07-16 —
+      `journaal`-key server-side append-only afgedwongen (422); boekingen bij
+      alle 5 verkoopfactuur-plekken, inkoopfactuur-CRUD (wijzig/verwijder =
+      storno), accijns-/BTW-aangifte indienen; W&V leest uit journaal met
+      accijns bewust uit de al per maand bevroren accijnsrecords; nieuw
+      Journaal-rapport; eenmalige opbouw uit bestaande data; bedragen alvast
+      in centen — voorschot op 2.2)*
+- [x] **2.2 Bedragen in centen** in journaal + factuurtotalen; BTW-afronding
+      op grondslag per tarief *(v1.10.95, 2026-07-16 — journaal was al in
+      centen (2.1); factuurtotalen nu cent-exact berekend en als canonieke
+      `*_cent`-velden opgeslagen naast de euro-velden (compatibiliteit);
+      rubriek 1a/1b en het te-betalen-bedrag op grondslag per tarief via
+      `omzetBtwOpGrondslag`; voorbelasting blijft som van gefactureerde BTW)*
+- [x] **2.3 Balans compleet** — crediteuren, liquide middelen uit MT940-saldi,
+      jaarafsluiting met beginbalans-overdracht *(v1.10.96, 2026-07-16 —
+      crediteuren uit open inkoopfacturen; `bank_saldi`-store gevuld bij
+      MT940-import (eindsaldo per IBAN, ouder afschrift overschrijft nooit);
+      `jaarafsluitingen`-store + afsluitknop op de balans; EV-verloopkaart
+      begin + resultaat (journaal) = berekend EV met aansluitverschil)*
+- [x] **2.4 Bankreconciliatie versterken** — match op bedrag + tegenrekening +
+      kenmerk; saldo-aansluitcontrole per import *(v1.10.97, 2026-07-16 —
+      `scoreMatch`/`besteMatch` in utils/bank.ts: bedrag als toegangseis,
+      factuurnummer-kenmerk +2, tegenpartijnaam +1, gelijkspel → ambigu en
+      niet auto-koppelen; controlebalk op Bank-tab: afschrift intern,
+      aansluiting op vorig eindsaldo (bank_saldi, 2.3) en gekoppeld/open —
+      live bij (ont)koppelen. N.b. facturen dragen geen tegenrekening-IBAN,
+      dus "tegenrekening" is ingevuld als tegenpartijnaam-match)*
+- [x] **2.5 Debiteuren/crediteuren-ouderdom** in buckets (0-30/31-60/61-90/90+)
+      *(v1.10.98, 2026-07-16 — rapport-subtab "Ouderdom" met per-relatie-
+      buckets op dagen sinds factuurdatum, totalen sluiten aan op de
+      balansposten, CSV-export; pure `ouderdomsAnalyse` in calculations.ts)*
+- [x] **2.6 COGS-optie** — kostprijs per batch gekoppeld aan uitleveringen,
+      marge-weergave in W&V *(v1.10.99, 2026-07-16 — `berekenBatchKostprijs`
+      (refactor uit productkostprijs, zelfde uitkomst) + `berekenCogs`:
+      uitgeleverde liters × batchkostprijs/liter; W&V-tab toont marge-blok
+      met brutomarge en %, interne uitleveringen uitgesloten, liters zonder
+      kostprijs apart gemeld — **fase 2 compleet**)*
 
 ## Fase 3 — Kwaliteit & proces
 
-- [ ] **3.1 Vitest + testsuite** op pure logica (accijns, BTW-rollover,
-      voorraad, MT940, PSP, Excel round-trip)
-- [ ] **3.2 pytest voor server.py** — key-validatie, rate-limit, atomic write,
-      upload, 409/422-paden
-- [ ] **3.3 GitHub Actions CI** — tsc --noEmit, build, tests, Docker-build,
-      versie-bump-check
-- [ ] **3.4 TypeScript aanscherpen** — incrementeel, eerst utils/ en types/,
-      page-props typeren
-- [ ] **3.5 Pagina's opsplitsen** — boy-scout-regel bij onderhoud
-- [ ] **3.6 Gestructureerde serverlogging + /api/health**
+- [x] **3.1 Vitest + testsuite** op pure logica (accijns, BTW-rollover,
+      voorraad, MT940, PSP, Excel round-trip) *(v1.11.0, 2026-07-16 —
+      67 tests in src/utils/__tests__/ over alle plan-onderwerpen plus de
+      fase 2-logica (centen, journaal/storno, grondslag-BTW, match-score,
+      ouderdom, COGS); parseMT940/zoekPspCombinatie naar utils/bank.ts en
+      excel.ts gesplitst in pure bouw/parse-functies (round-trip-testbaar),
+      zonder gedragswijziging)*
+- [x] **3.2 pytest voor server.py** — key-validatie, rate-limit, atomic write,
+      upload, 409/422-paden *(v1.11.1, 2026-07-16 — 31 tests in
+      tests/test_server.py: pure helpers + integratie tegen de echte handler
+      op een efemere poort (tijdelijke DATA_DIR); incl. atomaire commit,
+      nextnr onder 20 parallelle clients, 413, sentinel-merge en
+      server-audit. Bijvangst: /api/ping bleek geen echte route te zijn
+      (SPA-fallback) — gedocumenteerd, echte health-check volgt in 3.6)*
+- [x] **3.3 GitHub Actions CI** — tsc --noEmit, build, tests, Docker-build,
+      versie-bump-check *(v1.11.2, 2026-07-16 — .github/workflows/ci.yml met
+      4 jobs: typecheck+vitest+build (de 3 resterende tsc-fouten daarvoor
+      gefixt), pytest, Docker-build, en versie-bump-lint (config.yaml ↔
+      CHANGELOG-sectie + bump t.o.v. basisbranch op PR's). Alle stappen
+      behalve de Docker-build lokaal gevalideerd — geen daemon in de
+      dev-container; eerste CI-run bevestigt die job)*
+- [x] **3.4 TypeScript aanscherpen** — incrementeel, eerst utils/ en types/,
+      page-props typeren *(v1.11.3, 2026-07-16 — strict-ratchet
+      tsconfig.strict.json: utils/types/i18n onder volledige `strict: true`
+      (verder dan het geplande noImplicitAny — bleek al schoon), bewaakt via
+      `npm run typecheck` + CI, include mag alleen groeien; eerste
+      page-props getypt (AccijnsPageProps) en AccijnsRecord aangevuld met
+      de runtime-velden; boy-scout-regel voor overige pagina's vastgelegd
+      in CLAUDE.md — verdere page-props lopen mee met 3.5-onderhoud)*
+- [x] **3.5 Pagina's opsplitsen** — boy-scout-regel bij onderhoud
+      *(v1.11.4, 2026-07-16 — regel verankerd in CLAUDE.md en gedemonstreerd:
+      ZIP-schrijver → utils/zip.ts en het gedupliceerde getPeriodes
+      (Boekhouding + Statiegeld) → utils/btw.ts, beide met tests en onder de
+      strict-ratchet; eerdere extracties uit fase 2/3 (journaal, centen,
+      bank/MT940, excel-bouw/parse) horen bij hetzelfde patroon. Blijft
+      doorlopend van kracht bij elk onderhoud)*
+- [x] **3.6 Gestructureerde serverlogging + /api/health** *(v1.11.5,
+      2026-07-16 — stdlib logging met JSON-regels (ts/level/msg/bron +
+      contextvelden; 26 prints omgezet, HTTP-log via dezelfde formatter);
+      GET /api/health met threads-status, laatste-backupdatum, data-dir en
+      uptime; dashboard toont een healthregel (oranje bij probleem of
+      backup >2 dagen oud); 4 pytest-tests + runtime-smoke (threads 4/4,
+      JSON-log geverifieerd) — **fase 3 compleet**)*
 
 ## Fase 4 — Structurele fundering (pas bij multi-user/schaal)
 
@@ -120,3 +183,16 @@
 | 2026-07-15 | 1.10.89 | 1.4 | Containertype-validatie (85 keys) op data-POST en commit; 422 met verwachte vorm; client: reject → herladen + melding, geen retry-loop |
 | 2026-07-15 | 1.10.90 | 1.5 | Append-only server-audit (JSONL per maand, versie-van/naar, commit-id, ingress-user); getest incl. backup-opname en data-API-onbereikbaarheid — **fase 1 compleet** |
 | 2026-07-15 | 1.10.91 | 0.5-fix | Permission denied op /backup/brewadmin verholpen: entrypoint.sh maakt de submap als root aan en chowned naar appuser |
+| 2026-07-16 | 1.10.94 | 2.1 | Journaal: append-only key + server-guard (curl-getest: weglaten/muteren → 422, aanvullen → 200), boekingen op alle definitief-momenten, storno-flow, W&V + Journaal-rapport uit journaal, eenmalige opbouw; bedragen in centen (voorschot 2.2). Versies 1.10.92/93 waren losse features buiten het plan |
+| 2026-07-16 | 1.10.95 | 2.2 | Centen: `totaliseerRegels`/`totaliseerInkoop` (cent-exact, `*_cent`-velden op alle 12 factuur-aanmaakplekken) + `omzetBtwOpGrondslag` (rubriek 1a/1b en te-betalen op grondslag per tarief). Unit-getest via esbuild-bundle (drift-case 3×€1,03: €0,65 i.p.v. €0,66) en runtime in de aangiftetab |
+| 2026-07-16 | 1.10.96 | 2.3 | Balans: crediteuren + liquide middelen (`bank_saldi` bij MT940-import) + `jaarafsluitingen` met EV-verloop/aansluitverschil; Playwright-getest (import fixture-afschrift → saldo op balans, afsluitknop → snapshot op disk) |
+| 2026-07-16 | 1.10.97 | 2.4 | Bankmatch-score (kenmerk/naam, ambigu → handmatig) + saldo-aansluitcontrolebalk per import; 7 unit-checks (esbuild) + Playwright-fixture (kenmerk wint van gelijk bedrag, ambigu-badge, controlebalk) |
+| 2026-07-16 | 1.10.98 | 2.5 | Ouderdomsrapport debiteuren/crediteuren (buckets per relatie, aansluitend op balans, CSV); 7 unit-checks op `ouderdomsAnalyse` (grensgevallen 30/31, creditnota's, case-insensitive groepering) + Playwright |
+| 2026-07-16 | 1.10.99 | 2.6 | COGS: `berekenBatchKostprijs` + `berekenCogs`, marge-blok in W&V; unit-checks (refactor-pariteit productkostprijs, periode/intern/onbekende-kostprijs-filters) + Playwright — **fase 2 compleet** |
+| 2026-07-16 | 1.11.0 | 3.1 | Vitest: 67 tests (6 bestanden) op accijns/BTW-rollover/grondslag/centen/journaal/bank-MT940-PSP/voorraad/ouderdom/COGS/Excel-round-trip; refactors parseMT940+PSP → utils/bank.ts, excel.ts → pure bouw/parse, window-guard in api.ts; MT940-import na refactor met Playwright gesmoke-test |
+| 2026-07-16 | 1.11.1 | 3.2 | pytest: 31 tests op server.py (helpers + live-handler-integratie: 409/422/413/429-paden, atomaire commit en nextnr-parallellisme, upload, secrets, audit); /api/ping-documentatie gecorrigeerd |
+| 2026-07-16 | 1.11.2 | 3.3 | CI-workflow (typecheck/vitest/build, pytest, Docker-build, versie-bump-lint incl. PR-bumpcheck t.o.v. basisbranch); tsc nu volledig schoon (3 reduce-typefouten gefixt); checkscript lokaal positief én negatief getest |
+| 2026-07-16 | 1.11.3 | 3.4 | Strict-ratchet op utils/types/i18n (`tsconfig.strict.json`, npm run typecheck, in CI; geverifieerd met opzettelijke-fout-probe), AccijnsPage-props getypt + AccijnsRecord-runtime-velden; CLAUDE.md-conventies en werkwijze-blok geactualiseerd |
+| 2026-07-16 | 1.11.4 | 3.5 | Extracties: makeZip/crc32 → utils/zip.ts, gedeeld getPeriodes → utils/btw.ts (dupliaat uit 2 pagina's weg); +6 tests (73 totaal); boy-scout-regel in CLAUDE.md |
+| 2026-07-16 | 1.11.5 | 3.6 | JSON-serverlogging (stdlib logging, bron-veld per subsysteem) + GET /api/health (threads/backup/uptime) + dashboard-healthregel; pytest 35 totaal; runtime-smoke: health 4/4 threads, JSON-logregels, dashboardregel zichtbaar — **fase 3 compleet** |
+| 2026-07-16 | 1.11.6 | 3.3-fix | pytest-CI-job faalde op PermissionError /data (runner zonder root): DATA_DIR overridebaar via BREWADMIN_DATA_DIR + tests/conftest.py zet een tmp-map vóór de server-import |

@@ -14,6 +14,8 @@ import SearchInput from '../components/ui/SearchInput'
 import { useStore } from '../utils/api'
 import { logAudit } from '../utils/audit'
 import { bepaalRollover } from '../utils/btw'
+import { inkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
+import { totaliseerInkoop } from '../utils/centen'
 
 interface Props {
   ing: any[]
@@ -28,7 +30,9 @@ interface Props {
   setLog: (v: any) => void
   bi?: any[]
   bat?: any[]
+  inkoopFacturen?: any[]
   setInkoopFacturen?: (v: any) => void
+  setJournaal?: (v: any) => void
   claudeCreds?: any
   ingTypes?: string[]
   ingTypeBtw?: Record<string, any>
@@ -46,7 +50,7 @@ interface Props {
 const IngredientenPage: React.FC<Props> = ({
   ing, setIng, lots, setLots, verpakkingen, setVerpakkingen,
   onderdelen = [], setOnderdelen, log, setLog,
-  bi = [], bat = [], setInkoopFacturen = () => {}, claudeCreds = null,
+  bi = [], bat = [], inkoopFacturen = [], setInkoopFacturen = () => {}, setJournaal = () => {}, claudeCreds = null,
   ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {}, kostenSoorten = BUILTIN_KOSTEN_SOORTEN,
   bfCreds = null, auditLog = [], setAuditLog = () => {},
   btwInst = {}, btwAangiftes = [], bankKoppelingen = {},
@@ -459,14 +463,14 @@ const IngredientenPage: React.FC<Props> = ({
     // voorraadcorrectie (lots + voorraad_log blijven staan, geen boekhouding).
     const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
     if (factuurRegels.length > 0 && heeftFactuurData) {
-      const calc_netto = r2(factuurRegels.reduce((s: number, r: any) => s + r.netto, 0))
-      const calc_btw = r2(factuurRegels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
-      const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto
-      const totaal_btw = totaalManual ? r2(totaalManual.btw) : calc_btw
-      const totaal_bruto = totaalManual ? r2(totaalManual.bruto) : r2(calc_netto + calc_btw)
+      // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+      const totalen = totaliseerInkoop(factuurRegels, totaalManual)
       const factuurDatum = factuurForm.datum || tod()
       const rollover = getRolloverInfo(factuurDatum)
-      setInkoopFacturen((prev: any[]) => [...prev, { id: newId(prev), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto, totaal_btw, totaal_bruto, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }])
+      const nieuweFactuur = { id: newId(inkoopFacturen || []), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto: totalen.netto, totaal_btw: totalen.btw, totaal_bruto: totalen.bruto, totaal_netto_cent: totalen.netto_cent, totaal_btw_cent: totalen.btw_cent, totaal_bruto_cent: totalen.bruto_cent, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }
+      setInkoopFacturen((prev: any[]) => [...prev, nieuweFactuur])
+      // Journaal (ERP-plan 2.1): inkoopfactuur uit ontvangst boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)))
     }
     setShowO(false)
   }

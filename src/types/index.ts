@@ -373,6 +373,12 @@ export interface InkoopFactuur {
   totaal_netto?: number
   totaal_btw?: number
   totaal_bruto?: number
+  // Canonieke totalen in hele centen (ERP-plan 2.2). Gezet bij aanmaak sinds
+  // v1.10.95; de euro-velden hierboven zijn daarvan afgeleid en blijven
+  // bestaan voor weergave en oudere facturen.
+  totaal_netto_cent?: number
+  totaal_btw_cent?: number
+  totaal_bruto_cent?: number
   status?: 'open' | 'betaald'
   betaald_datum?: string
   // PeriodeKey waarin de BTW van deze factuur wordt geclaimd ('YYYY-Qn' of
@@ -678,13 +684,19 @@ export interface AccijnsRecord {
   id: number
   batch_id?: number
   batch_naam?: string
+  batch_nummer?: string
   verpakking_naam?: string
+  // Runtime-velden die AccijnsPage leest (historisch naast *_naam ontstaan)
+  verpakking_type?: string
+  aantal?: number
   liter?: number
+  totaal_liter?: number
   abv?: number
   accijns?: number
   totaal_accijns?: number
   datum?: string
   betaald?: boolean
+  betaal_datum?: string
   uitlevering_id?: number
   // Bron van de boeking: 'uitlevering' (bier verlaat AGP richting klant of
   // voor intern gebruik) of 'verplaatsing' (bier verlaat AGP naar een andere
@@ -781,6 +793,38 @@ export interface BankAfschrift {
   transacties: BankTransactie[]
 }
 
+// Laatst bekende banksaldo per rekening, vastgelegd bij elke MT940-import
+// (ERP-plan 2.3). Sleutel in de `bank_saldi`-store is de IBAN (of 'onbekend').
+// De balans leest hieruit de post "liquide middelen".
+export interface BankSaldo {
+  iban: string
+  eindsaldo: number
+  beginsaldo?: number
+  datum: string            // datum van de laatste transactie in het afschrift
+  afschrift_nr?: string
+  geimporteerd_op: string  // ISO-timestamp van de import
+}
+
+// Jaarafsluiting (ERP-plan 2.3): snapshot van de balansposten bij het
+// afsluiten van een boekjaar. Het eigen vermogen hieruit is de beginbalans
+// van het volgende boekjaar; de balans toont daarmee een EV-verloop
+// (begin + resultaat = eind) naast het EV als sluitpost.
+export interface Jaarafsluiting {
+  id: number
+  jaar: number             // het afgesloten boekjaar
+  afgesloten_op: string    // ISO-timestamp
+  eigen_vermogen: number
+  balans: {
+    debiteuren: number
+    voorraad: number
+    liquide: number
+    crediteuren: number
+    accijns_schuld: number
+    schuld_alt_rekeningen: number
+    gestort_kapitaal: number
+  }
+}
+
 export interface KapitaalBoeking {
   id: number
   datum: string
@@ -798,6 +842,12 @@ export interface VerkoopFactuur {
   netto?: number
   btw?: number
   bruto?: number
+  // Canonieke totalen in hele centen (ERP-plan 2.2). Gezet bij aanmaak sinds
+  // v1.10.95; de euro-velden hierboven zijn daarvan afgeleid en blijven
+  // bestaan voor weergave en oudere facturen.
+  netto_cent?: number
+  btw_cent?: number
+  bruto_cent?: number
   // Nieuwe velden voor order-gebaseerde facturen
   bestelling_id?: number | null
   klant_id?: number | null
@@ -1313,4 +1363,53 @@ export interface WaterDoelprofielEigen {
   cl: number | null
   so4: number | null
   hco3: number | null
+}
+
+// ── Journaal (ERP-plan 2.1) ─────────────────────────────────────────────────
+// Onveranderlijke journaalregels, weggeschreven op het moment dat een
+// financieel feit definitief wordt: verkoopfactuur uitgereikt, inkoopfactuur
+// geboekt, accijns-/BTW-aangifte ingediend. De server dwingt append-only af
+// (bestaande regels mogen nooit wijzigen of verdwijnen); correcties gaan
+// altijd via een tegenboeking (storno). Rapporten lezen uit het journaal
+// i.p.v. live uit de muteerbare factuurlijsten.
+
+export type JournaalDagboek = 'verkoop' | 'inkoop' | 'accijns' | 'btw' | 'memoriaal'
+
+export type JournaalBron =
+  | 'verkoop_factuur'
+  | 'inkoop_factuur'
+  | 'accijns_aangifte'
+  | 'btw_aangifte'
+
+export interface JournaalRegel {
+  id: number
+  // Alle regels van één boeking (één brondocument, één moment) delen een
+  // boekstuknummer; een storno krijgt een eigen boekstuk.
+  boekstuk: number
+  geboekt_op: string        // ISO-timestamp van vastlegging (nooit wijzigen)
+  datum: string             // documentdatum YYYY-MM-DD (rapportagedatum)
+  dagboek: JournaalDagboek
+  bron: JournaalBron
+  bron_id: number | string  // factuur-id, accijnsmaand ('YYYY-MM') of BTW-periodeKey
+  nummer?: string           // factuurnummer van het brondocument
+  relatie?: string          // klantnaam / leverancier
+  omschrijving: string
+  // Uitsplitsing: één regel per BTW-tarief (verkoop) of per
+  // kostensoort+tarief+btw_soort (inkoop). Aangifteboekingen hebben één regel.
+  btw_tarief?: number
+  btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'
+  kostensoort?: string
+  btw_periode?: string      // effectieve BTW-periodeKey (incl. rollover)
+  // Bedragen in hele centen (integers) — bewust vooruitlopend op ERP-plan 2.2
+  // zodat het journaal nooit een float-migratie nodig heeft. Verkoop positief =
+  // omzet, inkoop positief = kosten; creditnota's en storno's zijn negatief.
+  netto_cent: number
+  btw_cent: number
+  bruto_cent: number
+  // Boekstuknummer van de boeking die deze regels tegenboekt (alleen op de
+  // storno-regels zelf gezet).
+  storno_van?: number
+  // True op regels die door de eenmalige journaal-opbouw uit bestaande
+  // historische data zijn aangemaakt (i.p.v. op het definitief-moment zelf).
+  migratie?: boolean
 }

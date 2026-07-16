@@ -12,6 +12,8 @@ import SearchInput from '../components/ui/SearchInput'
 import { printFactuur } from '../components/PakbonExport'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
+import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
+import { totaliseerRegels } from '../utils/centen'
 
 interface KassaPageProps {
   bat: any[]
@@ -45,6 +47,7 @@ interface KassaPageProps {
   afboekingen?: any[]
   auditLog?: any[]
   setAuditLog?: any
+  setJournaal?: any
 }
 
 // Eén regel op de kassabon. De prijs komt altijd uit het artikel (normaal of
@@ -86,6 +89,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
   klanten = [], setKlanten = () => {},
   locaties = [], verplaatsingen = [], afboekingen = [],
   auditLog = [], setAuditLog = () => {},
+  setJournaal = () => {},
 }) => {
   const [cart, setCart] = useState<BonRegel[]>([])
   const [selectedKlantId, setSelectedKlantId] = useState<number | null>(null)
@@ -777,8 +781,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
         btw: rnd2(rv.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
       }
     })
-    const totaalNetto = rnd2(regelsList.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw = rnd2(regelsList.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const factuurTotalen = totaliseerRegels(regelsList)
 
     // 6. Bestelling (direct afgerond — kassaverkoop) + factuur
     const bestelling: any = {
@@ -822,9 +826,12 @@ const KassaPage: React.FC<KassaPageProps> = ({
       klant_adres: [snap.klant_straat, snap.klant_huisnummer, snap.klant_postcode, snap.klant_stad].filter(Boolean).join(' '),
       regels: regelsList,
       btw_overzicht,
-      netto: totaalNetto,
-      btw: totaalBtw,
-      bruto: rnd2(totaalNetto + totaalBtw),
+      netto: factuurTotalen.netto,
+      btw: factuurTotalen.btw,
+      bruto: factuurTotalen.bruto,
+      netto_cent: factuurTotalen.netto_cent,
+      btw_cent: factuurTotalen.btw_cent,
+      bruto_cent: factuurTotalen.bruto_cent,
       status: betaalwijze === 'rekening' ? 'open' : 'betaald',
       definitief: true,
       betaalwijze,
@@ -838,6 +845,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
     if (nieuweUitleveringen.length > 0) setUit((prev: any[]) => [...(prev || []), ...nieuweUitleveringen])
     if (nieuweAccijns.length > 0) setAcc((prev: any[]) => [...(prev || []), ...nieuweAccijns])
     setVerkoopFacturen((prev: any[]) => [...(prev || []), factuur])
+    // Journaal (ERP-plan 2.1): kassafactuur is direct definitief → boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(factuur)))
     setLog((prev: any[]) => {
       let logId = newId(prev || [])
       const entries = nieuweUitleveringen.map((u: any) => ({

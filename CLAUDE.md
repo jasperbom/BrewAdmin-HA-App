@@ -35,6 +35,8 @@ BrewAdmin-HA-App/
 │   │   ├── constants.ts    # Enums, mappings, defaults
 │   │   ├── format.ts       # Formatting utilities
 │   │   ├── calculations.ts # Business logic calculations
+│   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
+│   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
@@ -109,9 +111,31 @@ docker build -t brewadmin .
 # Stage 2: python:3.12-alpine copies server.py + dist/index.html
 ```
 
-### No automated tests
+### Tests
 
-There is no test suite (no Jest, Vitest, or Python unittest). Verify changes manually by running the dev server and exercising the relevant feature.
+De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
+`src/utils/__tests__/`: accijns, BTW-rollover en grondslag-BTW, centen,
+journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
+ouderdom, COGS en de Excel-backup-round-trip.
+
+`server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
+key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
+optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
+onder parallelle clients), rate-limiting (429), secrets-maskering en de
+server-audit. De suite start de echte handler op een efemere poort met een
+tijdelijke DATA_DIR.
+
+```bash
+npm test                 # vitest run (frontend-utils, eenmalig)
+npm run test:watch
+python3 -m pytest        # server.py (pytest is een dev-dependency, geen server-dependency)
+```
+
+**Draai `npm test` bij elke wijziging aan `src/utils/` en
+`python3 -m pytest` bij elke wijziging aan `server.py`.** UI-gedrag heeft
+geen geautomatiseerde dekking — verifieer pagina-wijzigingen handmatig met
+de dev-server (of de verify-skill). Nieuwe pure logica? Zet hem in
+`src/utils/` en schrijf er direct een test bij.
 
 ---
 
@@ -169,14 +193,24 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
 
 ### Component structure
 
-- Pages are large single-file components (`~1,000–1,750 lines`) with inline state
+- Pages are large single-file components (`~1,000–4,000 lines`) with inline state
+- **Boy-scout-regel (ERP 3.5):** raak je een grote pagina aan, verplaats dan
+  waar het kan pure logica naar `src/utils/` (mét test — valt onder de
+  strict-ratchet) en zelfstandige modals/tabbladen naar eigen bestanden.
+  Geen big-bang-refactors; voorbeelden: `utils/zip.ts`, `getPeriodes` in
+  `utils/btw.ts`, `parseMT940` in `utils/bank.ts`
 - Shared UI primitives live in `src/components/ui/` — use these, don't create inline one-offs
 - Theming via CSS variables: `--t-accent`, `--t-light`, `--t-dark`, `--t-text`, `--t-bg`
 - No global state manager — use `useStore(key)` for server-synced data, `useState` for local UI state
 
 ### TypeScript
 
-- Strict mode is **off** in `tsconfig.json` — loose typing is acceptable
+- Strict mode is **off** in `tsconfig.json` voor de pagina's, maar
+  `tsconfig.strict.json` (ERP 3.4) draait **strict** op `src/utils`,
+  `src/types` en `src/i18n` — die ratchet moet schoon blijven
+  (`npm run typecheck`, ook in CI) en de include mag alleen groeien
+- Page-props: typ nieuwe/aangeraakte pagina's met een `XxxPageProps`-interface
+  (zie AccijnsPage) i.p.v. `: any` — boy-scout-regel
 - All shared types defined in `src/types/index.ts`
 - Prefer explicit type annotations on function parameters
 
@@ -348,6 +382,9 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `water_profielen` | array | Waterprofielen bronwater (gereedschap Waterprofiel): ionen in mg/L uit een gescand waterkwaliteitsrapport of handmatige invoer |
 | `water_doelprofielen` | array | Eigen doelprofielen brouwwater (gereedschap Waterprofiel), naast de ingebouwde stijlprofielen |
 | `kapitaal_boekingen` | array | Kapitaalstortingen / -onttrekkingen |
+| `journaal` | array | Onveranderlijke journaalregels (ERP 2.1): geboekt bij definitief maken van facturen/aangiftes, bedragen in centen, correcties via storno — server-side append-only (422 bij wijzigen/verwijderen van bestaande regels) |
+| `jaarafsluitingen` | array | Jaarafsluitingen (ERP 2.3): snapshot balansposten + eigen vermogen per afgesloten boekjaar; beginbalans voor het EV-verloop op de balans |
+| `bank_saldi` | object | Laatst bekende MT940-eindsaldo per IBAN (ERP 2.3), gezet bij bankimport; bron voor "liquide middelen" op de balans |
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
 | `accijns_instellingen` | object | Accijnstarieven |
@@ -439,7 +476,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 |--------|------|-------------|
 | GET | `/api/data/<key>` | Load JSON data file |
 | POST | `/api/data/<key>` | Save JSON data file |
-| GET | `/api/ping` | Health check |
+| GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
+| GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
@@ -459,6 +497,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
+- Append-only keys: `_APPEND_ONLY` (o.a. `journaal`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno-regels. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
 - CORS: localhost/127.0.0.1/[::1] only
@@ -541,11 +580,11 @@ Bij elke nieuwe sleutel: voeg toe aan **alle 5** taalbestanden (nl/en/de/fr/es).
 
 ## Important Constraints
 
-- **No test suite** — be careful with refactors; test manually
+- **Testdekking op utils + server** — `npm test` dekt de pure logica in `src/utils/`, `python3 -m pytest` dekt server.py; UI handmatig verifiëren
 - **Single-file build** — all JS/CSS is inlined; keep bundle size reasonable
 - **Python stdlib only** — `server.py` must not import third-party packages
 - **Dutch UI language** — all user-visible strings must go through i18n
 - **HA Ingress compatibility** — paths must work with and without `/brouwerij_admin/` prefix
 - **Non-root Docker** — code runs as `appuser`; avoid hardcoded `/root/` paths
 - **Data files in `/data/`** — never write outside this directory from server.py
-- **Strict mode off** — TypeScript strict checks are disabled; don't rely on them catching errors
+- **Strict alleen op utils/types/i18n** — de pagina's draaien zonder strict; vertrouw daar niet op de compiler. De strict-ratchet (`tsconfig.strict.json`) moet schoon blijven

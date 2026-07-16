@@ -1,12 +1,16 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
-import { tod, ymd, r2, r3 } from '../utils/format'
+import { tod, ymd, r2, r3, fmtD } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
-import { berekenWinstVerlies } from '../utils/calculations'
+import { berekenWinstVerlies, ouderdomsAnalyse, berekenCogs } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
-import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren } from '../utils/btw'
+import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabel, magFactuurMuteren, omzetBtwOpGrondslag, getPeriodes } from '../utils/btw'
+import { makeZip } from '../utils/zip'
+import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
+import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
+import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
@@ -14,102 +18,8 @@ import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/
 import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 
-// ─── Minimale ZIP-schrijver (STORE, geen compressie) ──────────────────────────
-const _crcTbl = (() => {
-  const t = new Uint32Array(256)
-  for (let n = 0; n < 256; n++) {
-    let c = n
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)
-    t[n] = c
-  }
-  return t
-})()
-function _crc32(data: Uint8Array): number {
-  let c = 0xFFFFFFFF
-  for (let i = 0; i < data.length; i++) c = _crcTbl[(c ^ data[i]) & 0xFF] ^ (c >>> 8)
-  return (c ^ 0xFFFFFFFF) >>> 0
-}
-function _cat(...parts: Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0))
-  let off = 0; for (const p of parts) { out.set(p, off); off += p.length }
-  return out
-}
-function _u16(v: number) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, v, true); return b }
-function _u32(v: number) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, v, true); return b }
-function makeZip(files: {name: string, data: Uint8Array}[]): Uint8Array {
-  const enc = new TextEncoder()
-  const locals: Uint8Array[] = [], centrals: Uint8Array[] = []
-  let offset = 0
-  for (const f of files) {
-    const nm = enc.encode(f.name), crc = _crc32(f.data), sz = f.data.length
-    const loc = _cat(
-      new Uint8Array([0x50,0x4B,0x03,0x04]),
-      _u16(20), _u16(0), _u16(0), _u16(0), _u16(0),
-      _u32(crc), _u32(sz), _u32(sz), _u16(nm.length), _u16(0),
-      nm, f.data
-    )
-    locals.push(loc)
-    centrals.push(_cat(
-      new Uint8Array([0x50,0x4B,0x01,0x02]),
-      _u16(20), _u16(20), _u16(0), _u16(0), _u16(0), _u16(0),
-      _u32(crc), _u32(sz), _u32(sz), _u16(nm.length), _u16(0), _u16(0),
-      _u16(0), _u16(0), _u32(0), _u32(offset),
-      nm
-    ))
-    offset += loc.length
-  }
-  const cd = _cat(...centrals)
-  return _cat(...locals, cd, _cat(
-    new Uint8Array([0x50,0x4B,0x05,0x06]),
-    _u16(0), _u16(0), _u16(files.length), _u16(files.length),
-    _u32(cd.length), _u32(offset), _u16(0)
-  ))
-}
-// ──────────────────────────────────────────────────────────────────────────────
 
-// ─── PSP-uitbetalingen (gebundelde betalingen) ────────────────────────────────
-// Payment service providers betalen meerdere factuurbetalingen gebundeld uit,
-// minus transactiekosten. Herkenning op tegenpartij/omschrijving/referentie.
-const PSP_PATROON = /mollie|stripe|adyen|sumup|zettle|paypal|pay\.nl|buckaroo|multisafepay|online betaalplatform|cm\.com/i
-const isPspTransactie = (tx: any): boolean =>
-  tx.type === 'C' && PSP_PATROON.test(`${tx.tegenpartij||''} ${tx.omschrijving||''} ${tx.referentie||''}`)
-
-// Zoekt een combinatie open verkoopfacturen waarvan de som overeenkomt met het
-// uitbetaalde bedrag plus aannemelijke PSP-kosten (max ~5% + €0,40 per factuur).
-// Geeft de combinatie met de laagste kosten terug, of null als niets past.
-function zoekPspCombinatie(bedrag: number, facturen: any[]): number[] | null {
-  const kandidaten = facturen
-    .filter((f: any) => (f.bruto||0) > 0)
-    .sort((a: any, b: any) => (b.bruto||0) - (a.bruto||0))
-    .slice(0, 24)
-  let best: number[] | null = null
-  let bestKosten = Infinity
-  let iteraties = 0
-  const maxKosten = (som: number, aantal: number) => som * 0.05 + aantal * 0.40 + 0.01
-  const dfs = (idx: number, som: number, gekozen: number[]) => {
-    if (iteraties++ > 20000) return
-    if (gekozen.length > 0) {
-      const kosten = som - bedrag
-      if (kosten >= -0.005 && kosten <= maxKosten(som, gekozen.length) && kosten < bestKosten) {
-        bestKosten = kosten
-        best = [...gekozen]
-      }
-    }
-    for (let i = idx; i < kandidaten.length; i++) {
-      const nieuw = som + (kandidaten[i].bruto||0)
-      // Kandidaten staan aflopend gesorteerd: als deze te groot is, kan een
-      // kleinere verderop nog wel passen — daarom continue i.p.v. break.
-      if (nieuw - bedrag > maxKosten(nieuw, gekozen.length + 1)) continue
-      gekozen.push(kandidaten[i].id)
-      dfs(i + 1, nieuw, gekozen)
-      gekozen.pop()
-    }
-  }
-  dfs(0, 0, [])
-  return best
-}
-
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -152,6 +62,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const bankFileRef = React.useRef<any>(null)
   const [bankAfschrift, setBankAfschrift] = React.useState<any>(null)
   const [bankTransacties, setBankTransacties] = React.useState<any[]>([])
+  // Laatst bekende eindsaldo vóór de huidige import (ERP-plan 2.4): basis
+  // voor de aansluitcontrole "sluit dit afschrift aan op het vorige?".
+  const [vorigEindsaldoBijImport, setVorigEindsaldoBijImport] = React.useState<number | null>(null)
 
   // PSP-uitsplitsing modal state (één credittransactie → meerdere facturen)
   const [pspTxIndex, setPspTxIndex] = React.useState<number|null>(null)
@@ -401,52 +314,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }
   }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
 
+  // Verschuldigde BTW (rubriek 1a/1b) op grondslag per tarief (ERP-plan 2.2):
+  // eerst de netto-grondslag per tarief optellen (in centen), dan pas de BTW
+  // berekenen — niet als som van per regel afgeronde bedragen.
   const omzetBtwPerTarief = React.useMemo(() => {
     const fromDate = selectedPeriode?.from ?? `${aangifteYear}-01-01`;
     const toDate   = selectedPeriode?.to   ?? `${aangifteYear}-12-31`;
-    const hoog = {netto: 0, btw: 0}; // 21%
-    const laag = {netto: 0, btw: 0}; // 9%
-
-    // Eigen verkoopfacturen — split per btw_pct via regels
-    (verkoopFacturen||[])
-      .filter((f: any) => f.datum >= fromDate && f.datum <= toDate)
-      .forEach((f: any) => {
-        (f.regels||[]).forEach((r: any) => {
-          const pct = r.btw_pct ?? 0;
-          const netto = r.netto ?? 0;
-          const btw = r.btw_bedrag ?? 0;
-          if (pct >= 20) { hoog.netto += netto; hoog.btw += btw; }
-          else if (pct > 0) { laag.netto += netto; laag.btw += btw; }
-        });
-      });
-
-    // WooCommerce orders — splitsing via tax_lines (rate_percent per belastingregel)
-    aangifteOrders
-      .filter((o: any) => {
-        const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,10);
-        return d >= fromDate && d <= toDate && ['completed','processing'].includes((o as any).status);
-      })
-      .forEach((o: any) => {
-        const taxLines: any[] = (o as any).tax_lines || [];
-        if (taxLines.length > 0) {
-          // tax_lines aanwezig → splitsing per tarief
-          taxLines.forEach((tl: any) => {
-            const pct = parseFloat(tl.rate_percent || 0);
-            const btwBedrag = parseFloat(tl.tax_total || 0) + parseFloat(tl.shipping_tax_total || 0);
-            const nettoBedrag = pct > 0 ? btwBedrag / (pct / 100) : 0;
-            if (pct >= 20) { hoog.netto += nettoBedrag; hoog.btw += btwBedrag; }
-            else if (pct > 0) { laag.netto += nettoBedrag; laag.btw += btwBedrag; }
-          });
-        } else {
-          // Geen tax_lines — fallback: totaal in hoog tarief
-          const btw = parseFloat((o as any).total_tax || 0);
-          const netto = parseFloat((o as any).total || 0) - btw;
-          hoog.netto += netto;
-          hoog.btw += btw;
-        }
-      });
-
-    return {hoog, laag};
+    const facturen = (verkoopFacturen||[]).filter((f: any) => f.datum >= fromDate && f.datum <= toDate);
+    const orders = aangifteOrders.filter((o: any) => {
+      const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,10);
+      return d >= fromDate && d <= toDate && ['completed','processing'].includes((o as any).status);
+    });
+    return omzetBtwOpGrondslag(facturen, orders);
   }, [verkoopFacturen, aangifteOrders, aangifteYear, selectedPeriode]);
 
   // Set van periodeKeys die een gekoppelde BTW-banktransactie hebben
@@ -477,17 +356,32 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     [btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden]
   )
 
+  // W&V op journaalbasis (ERP-plan 2.1): het rapport leest uit de
+  // onveranderlijke journaalregels. Fallback op de live berekening zolang het
+  // journaal nog leeg is (verse installatie vóór de eenmalige opbouw).
+  const berekenWv = (van: string, tot: string) => (journaal || []).length
+    ? berekenWinstVerliesUitJournaal(journaal || [], acc || [], van, tot)
+    : berekenWinstVerlies(verkoopFacturen || [], inkoopFacturen || [], acc || [], van, tot)
+
   const markeerAangifteIngediend = (periodeKey: string, bedrag: number) => {
     const today = tod();
     setBtwAangiftes((prev: any[]) => {
       const zonder = (prev||[]).filter((a: any) => a.periodeKey !== periodeKey);
       return [...zonder, {id: newId(zonder), periodeKey, ingediend_datum: today, bedrag: Math.round(bedrag)}];
     });
+    // Journaal (ERP-plan 2.1): het ingediende aangiftebedrag vastleggen als
+    // onveranderlijke boeking (na storno van een eventuele eerdere indiening
+    // van dezelfde periode).
+    setJournaal((prev: any[]) => voegBoekingToe(
+      voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'btw_aangifte', periodeKey)),
+      btwAangifteBoeking(periodeKey, Math.round(bedrag), `${t('lbl_btw_aangifte')} ${periodeKeyLabel(periodeKey)}`)));
     logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'aangemaakt', omschrijving:`Aangifte ${periodeKey} ingediend (€ ${Math.round(bedrag)})`});
   };
 
   const ontkoppelAangifteIngediend = (periodeKey: string) => {
     setBtwAangiftes((prev: any[]) => (prev||[]).filter((a: any) => a.periodeKey !== periodeKey));
+    // Journaal (ERP-plan 2.1): terugzetten = tegenboeking van de aangifte.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'btw_aangifte', periodeKey)));
     logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'verwijderd', omschrijving:`Aangifte ${periodeKey} teruggezet naar openstaand`});
   };
 
@@ -571,7 +465,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     files.push({name:'csv/transactieoverzicht.csv', data: enc.encode('\uFEFF' + [txHdr,...txRows].map(csvRow).join('\n'))})
 
     // 4. Winst & Verlies CSV
-    const wv = berekenWinstVerlies(verkoopFacturen||[], inkoopFacturen||[], acc||[], rapportVan, rapportTot)
+    const wv = berekenWv(rapportVan, rapportTot)
     const wvData = [
       [t('lbl_omzet'), wv.omzet.toFixed(2)],
       [t('lbl_inkoopkosten'), (-wv.inkoopTotaal).toFixed(2)],
@@ -644,6 +538,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       fetch(`${ADDON_BASE}api/delete_upload/${f.bijlage.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
     }
     setInkoopFacturen((prev: any) => prev.filter((f: any)=>f.id!==id));
+    // Journaal (ERP-plan 2.1): regels verdwijnen nooit — verwijderen van een
+    // (nog muteerbare) factuur wordt een tegenboeking.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', id)));
     if (expandedFactuur===id) setExpandedFactuur(null);
   };
 
@@ -656,8 +553,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_bedrag = r2(netto * pct / 100)
       return {...r, hoeveelheid: qty, prijs_per_stuk: prijs, btw_pct: pct, netto, btw_bedrag, bruto: r2(netto + btw_bedrag)}
     })
-    const totaalNetto = r2(regels.reduce((s: number, r: any) => s + r.netto, 0))
-    const totaalBtw   = r2(regels.reduce((s: number, r: any) => s + r.btw_bedrag, 0))
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerRegels(regels)
     const nieuw = {
       id: newId(verkoopFacturen||[]),
       datum: losseFactuurForm.datum,
@@ -671,11 +568,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       status: 'open',
       definitief: true,
       regels,
-      netto: totaalNetto,
-      btw: totaalBtw,
-      bruto: totaalNetto + totaalBtw,
+      netto: totalen.netto,
+      btw: totalen.btw,
+      bruto: totalen.bruto,
+      netto_cent: totalen.netto_cent,
+      btw_cent: totalen.btw_cent,
+      bruto_cent: totalen.bruto_cent,
     }
     setVerkoopFacturen((prev: any) => [...(prev||[]), nieuw])
+    // Journaal (ERP-plan 2.1): losse verkoopfactuur is direct definitief → boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(nieuw)))
     logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`${nieuw.klant_naam||''} — ${nieuw.factuurnummer||''}`});
     setShowLosseFactuur(false)
     setLosseFactuurForm(emptyLosseFactuur())
@@ -765,26 +667,29 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     // dan geldt de ontvangst als voorraadcorrectie (lots blijven wel staan).
     const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
     if (!regels.length || !heeftFactuurData) { setShowVrijeFactuur(false); return; }
-    const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
-    const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
-    const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto;
-    const totaal_btw   = totaalManual ? r2(totaalManual.btw)   : calc_btw;
-    const totaal_bruto = totaalManual ? r2(totaalManual.bruto)  : r2(calc_netto + calc_btw);
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerInkoop(regels, totaalManual);
     const nieuwFactuurId = newId(inkoopFacturen||[]);
     const factuurDatum = factuurForm.datum || ymd(now)
     const rollover = getRolloverInfo(factuurDatum)
-    setInkoopFacturen((prev: any) => [...prev, {
+    const nieuweFactuur = {
       id: nieuwFactuurId,
       datum: factuurDatum,
       factuurnummer: factuurForm.factuur || '',
       leverancier: factuurForm.leverancier || '',
       regels,
-      totaal_netto,
-      totaal_btw,
-      totaal_bruto,
+      totaal_netto: totalen.netto,
+      totaal_btw: totalen.btw,
+      totaal_bruto: totalen.bruto,
+      totaal_netto_cent: totalen.netto_cent,
+      totaal_btw_cent: totalen.btw_cent,
+      totaal_bruto_cent: totalen.bruto_cent,
       bijlage,
       ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
-    }]);
+    };
+    setInkoopFacturen((prev: any) => [...prev, nieuweFactuur]);
+    // Journaal (ERP-plan 2.1): inkoopfactuur boeken bij vastleggen.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)));
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuwFactuurId, actie:'aangemaakt', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
     setShowVrijeFactuur(false);
   };
@@ -822,11 +727,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const btw_tarief = Number(r.btw_tarief)||0;
       regels.push({naam:r.naam.trim(), type:'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'});
     });
-    const calc_netto = r2(regels.reduce((s: any,r: any)=>s+r.netto, 0));
-    const calc_btw = r2(regels.reduce((s: any,r: any)=>s+r.btw_bedrag, 0));
-    const totaal_netto = totaalManual ? r2(totaalManual.netto) : calc_netto;
-    const totaal_btw   = totaalManual ? r2(totaalManual.btw)   : calc_btw;
-    const totaal_bruto = totaalManual ? r2(totaalManual.bruto)  : r2(calc_netto + calc_btw);
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerInkoop(regels, totaalManual);
     const nieuweDatum = factuurForm.datum || (editingFactuur as any).datum
     const huidigeRollover = (editingFactuur as any).btw_periode as string | undefined
     const rollover = getRolloverInfo(nieuweDatum)
@@ -844,20 +746,25 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       // Datum valt in een open periode → geen rollover meer nodig; veld droppen.
       nieuweBtwPeriode = undefined
     }
-    setInkoopFacturen((prev: any) => prev.map((f: any) => {
-      if (f.id !== (editingFactuur as any).id) return f
-      const {btw_periode: _oud, ...rest} = f
-      return {
-        ...rest,
-        datum: nieuweDatum,
-        factuurnummer: factuurForm.factuur ?? f.factuurnummer,
-        leverancier: factuurForm.leverancier || f.leverancier,
-        regels,
-        totaal_netto, totaal_btw, totaal_bruto,
-        bijlage: bijlage || f.bijlage,
-        ...(nieuweBtwPeriode ? {btw_periode: nieuweBtwPeriode} : {}),
-      }
-    }));
+    const huidigeFactuur = (inkoopFacturen||[]).find((f: any) => f.id === (editingFactuur as any).id) || (editingFactuur as any)
+    const {btw_periode: _oud, ...rest} = huidigeFactuur
+    const bijgewerkteFactuur = {
+      ...rest,
+      datum: nieuweDatum,
+      factuurnummer: factuurForm.factuur ?? huidigeFactuur.factuurnummer,
+      leverancier: factuurForm.leverancier || huidigeFactuur.leverancier,
+      regels,
+      totaal_netto: totalen.netto, totaal_btw: totalen.btw, totaal_bruto: totalen.bruto,
+      totaal_netto_cent: totalen.netto_cent, totaal_btw_cent: totalen.btw_cent, totaal_bruto_cent: totalen.bruto_cent,
+      bijlage: bijlage || huidigeFactuur.bijlage,
+      ...(nieuweBtwPeriode ? {btw_periode: nieuweBtwPeriode} : {}),
+    }
+    setInkoopFacturen((prev: any) => prev.map((f: any) => f.id === (editingFactuur as any).id ? bijgewerkteFactuur : f));
+    // Journaal (ERP-plan 2.1): wijzigen van een al geboekte factuur = storno
+    // van de oude regels + herboeking met de nieuwe cijfers (append-only).
+    setJournaal((prev: any[]) => voegBoekingToe(
+      voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', (editingFactuur as any).id)),
+      inkoopFactuurBoeking(bijgewerkteFactuur, btwPeriodeType)))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:(editingFactuur as any).id, actie:'gewijzigd', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${nieuweBtwPeriode ? ` (BTW → ${nieuweBtwPeriode})` : ''}`});
     setEditingFactuur(null);
   };
@@ -889,25 +796,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }));
     return Object.values(map).sort((a: any,b: any) => a.tarief - b.tarief);
   }, [verkoopGefilterd]);
-
-  // ── Aangiftes helpers ──────────────────────────────────────────────────────
-  const getPeriodes = (year: any, periode: any) => {
-    if (periode === 'maand') {
-      return Array.from({length:12}, (_,i) => {
-        const m = String(i+1).padStart(2,'0');
-        const lastDay = new Date(year, i+1, 0).getDate();
-        const raw = new Date(year, i, 1).toLocaleString(getLang(), {month:'long'});
-        const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-        return {label, from:`${year}-${m}-01`, to:`${year}-${m}-${String(lastDay).padStart(2,'0')}`, key:`${year}-M${m}`};
-      });
-    }
-    return [
-      {label:'Q1', from:`${year}-01-01`, to:`${year}-03-31`, key:`${year}-Q1`},
-      {label:'Q2', from:`${year}-04-01`, to:`${year}-06-30`, key:`${year}-Q2`},
-      {label:'Q3', from:`${year}-07-01`, to:`${year}-09-30`, key:`${year}-Q3`},
-      {label:'Q4', from:`${year}-10-01`, to:`${year}-12-31`, key:`${year}-Q4`},
-    ];
-  };
 
   const fetchJaarordrers = async (year: any) => {
     if (!wcCreds?.enabled || !wcCreds.storeUrl) { setAangifteError(t('msg_wc_not_active_settings')); return; }
@@ -1087,85 +975,6 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   // ── MT940 parser ──────────────────────────────────────────────────────────
-  const parseMT940 = (text: string): any => {
-    const result: any = { iban:'', referentie:'', afschriftNr:'', beginsaldo:0, eindsaldo:0, transacties:[] }
-    const parseAmt = (s: string) => parseFloat(s.replace(',','.'))
-    const parseDate6 = (s: string) => {
-      const yy=s.slice(0,2),mm=s.slice(2,4),dd=s.slice(4,6)
-      const yr = parseInt(yy) <= (new Date().getFullYear()%100) ? '20'+yy : '19'+yy
-      return `${yr}-${mm}-${dd}`
-    }
-    // Parse SEPA-structured :86: field into counterparty + description
-    const parse86 = (raw: string): {tegenpartij: string, omschrijving: string} => {
-      const s = raw.replace(/\r?\n/g,' ').replace(/\s+/g,' ').trim()
-      // Split on /KEY/ boundaries (KEY = 2-8 uppercase letters only)
-      const kv: Record<string,string> = {}
-      const segs = s.split(/(?=\/[A-Z]{2,8}\/)/)
-      for (const seg of segs) {
-        const m = seg.match(/^\/([A-Z]{2,8})\/(.*)$/)
-        if (m) kv[m[1]] = m[2].replace(/\/$/, '').trim()
-      }
-      // /CNTP/IBAN/BIC/Name/City — name is 3rd slash-part
-      let tegenpartij = ''
-      if (kv['CNTP']) {
-        const parts = kv['CNTP'].split('/')
-        tegenpartij = (parts.length >= 3 ? parts[2] : parts[0]) || ''
-      }
-      tegenpartij = tegenpartij || kv['NAME'] || kv['NAMOP'] || kv['NAAM'] || kv['BENM'] || ''
-      // ABN AMRO plain-text style: "NAAM: Company  OMSCHRIJVING: ..."
-      if (!tegenpartij) tegenpartij = s.match(/\bNAAM:\s*(.+?)(?:\s{2,}|\s+(?:OMSCHRIJVING|KENMERK|IBAN):)/)?.[1]?.trim() || ''
-      // Description
-      let omschrijving = kv['REMI'] || kv['EREF'] || kv['CREF'] || kv['MREF'] || kv['PREF'] || ''
-      if (!omschrijving) omschrijving = s.match(/\bOMSCHRIJVING:\s*(.+?)(?:\s{2,}|\s+(?:NAAM|KENMERK|IBAN):)/)?.[1]?.trim() || ''
-      if (!omschrijving) omschrijving = s.match(/\bKENMERK:\s*(.+)/)?.[1]?.trim() || ''
-      // Fallback: if nothing structured found, use the raw string
-      if (!tegenpartij && !omschrijving) omschrijving = s
-      return {tegenpartij, omschrijving}
-    }
-    let field='', buf='', pendingTx: any=null
-    const flush = () => {
-      if (!field) return
-      const v = buf.trim()
-      if (field==='25') result.iban = v.split('/')[0].replace(/\./g,'').trim()
-      else if (field==='20') result.referentie = v
-      else if (field==='28C') result.afschriftNr = v
-      else if (field==='60F'||field==='60M') {
-        const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
-        // Alleen het eerste beginsaldo bewaren (bij meerdere statements in één bestand)
-        if (m && !result._beginsaldoGezet) { result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3]); result._beginsaldoGezet = true }
-      } else if (field==='62F'||field==='62M') {
-        const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
-        if (m) result.eindsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
-      } else if (field==='61') {
-        const m = v.match(/^(\d{6})(\d{4})?([CD]R?)([A-Z]?)(\d+,\d{2})/)
-        if (m) {
-          if (pendingTx) result.transacties.push(pendingTx)
-          const refM = v.match(/\/\/(.+)/)
-          pendingTx = { datum:parseDate6(m[1]), type:m[3].startsWith('C')?'C':'D', bedrag:parseAmt(m[5]), referentie:refM?refM[1].split('\n')[0].trim():'', tegenpartij:'', omschrijving:'', gekoppeldFactuurId:null, gekoppeldInkoopId:null, autoGematcht:false }
-        }
-      } else if (field==='86') {
-        if (pendingTx) {
-          const parsed = parse86(v)
-          pendingTx.tegenpartij = parsed.tegenpartij
-          pendingTx.omschrijving = parsed.omschrijving
-          result.transacties.push(pendingTx)
-          pendingTx = null
-        }
-      }
-      field=''; buf=''
-    }
-    for (const line of text.split(/\r?\n/)) {
-      if (line.startsWith('-')||line===':') { flush(); continue }
-      const m = line.match(/^:(\w+):(.*)$/)
-      if (m) { flush(); field=m[1]; buf=m[2] }
-      else if (field) buf+='\n'+line
-    }
-    flush()
-    if (pendingTx) result.transacties.push(pendingTx)
-    delete result._beginsaldoGezet
-    return result
-  }
-
   const importMT940 = (file: File) => {
     const reader = new FileReader()
     reader.onload = (e: any) => {
@@ -1195,25 +1004,33 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             herinneringsGematcht: true,
           }
         }
-        // Automatisch koppelen op basis van bedrag (open facturen)
+        // Automatisch koppelen op match-score (ERP-plan 2.4): bedrag is de
+        // toegangseis, kenmerk (factuurnummer) en tegenpartijnaam tellen mee.
+        // Meerdere kandidaten met gelijke score → bewust niet koppelen (ambigu).
         if (tx.type === 'C') {
-          const match = openVerkoop.find((f: any) => Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
-          if (match) {
-            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: match.id}
-            return {...tx, gekoppeldFactuurId:match.id, autoGematcht:true}
+          const verkoopKandidaat = (fs: any[]) => fs.map((f: any) => ({id: f.id, bedrag: f.bruto||0, nummer: f.factuurnummer, naam: f.klant_naam, f}))
+          const open = besteMatch(tx, verkoopKandidaat(openVerkoop))
+          if (open.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: open.kandidaat.id}
+            return {...tx, gekoppeldFactuurId: open.kandidaat.id, autoGematcht: true}
           }
+          if (open.ambigu) return {...tx, matchAmbigu: true}
           // Fallback: zoek in betaalde facturen (retroactieve herkenning)
-          const retro = (verkoopFacturen||[]).find((f: any) => f.status === 'betaald' && Math.abs((f.bruto||0) - tx.bedrag) <= 0.01)
-          if (retro) {
-            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: retro.id}
-            return {...tx, gekoppeldFactuurId:retro.id, autoGematcht:true, retroGematcht:true}
+          const retro = besteMatch(tx, verkoopKandidaat((verkoopFacturen||[]).filter((f: any) => f.status === 'betaald')))
+          if (retro.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: retro.kandidaat.id}
+            return {...tx, gekoppeldFactuurId: retro.kandidaat.id, autoGematcht: true, retroGematcht: true}
           }
+          if (retro.ambigu) return {...tx, matchAmbigu: true}
           // Negatieve inkoopfactuur (creditnota): bedrag komt overeen met abs(totaal_bruto)
-          const inkoopCredit = (inkoopFacturen||[]).find((f: any) => f.status !== 'betaald' && (f.totaal_bruto||0) < 0 && Math.abs((f.totaal_bruto||0) + tx.bedrag) <= 0.01)
-          if (inkoopCredit) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: inkoopCredit.id}
-            return {...tx, gekoppeldInkoopId: inkoopCredit.id, autoGematcht: true}
+          const credit = besteMatch(tx, (inkoopFacturen||[])
+            .filter((f: any) => f.status !== 'betaald' && (f.totaal_bruto||0) < 0)
+            .map((f: any) => ({id: f.id, bedrag: Math.abs(f.totaal_bruto||0), nummer: f.factuurnummer, naam: f.leverancier})))
+          if (credit.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: credit.kandidaat.id}
+            return {...tx, gekoppeldInkoopId: credit.kandidaat.id, autoGematcht: true}
           }
+          if (credit.ambigu) return {...tx, matchAmbigu: true}
           // BTW-teruggave: een ingediende aangifte met negatief bedrag wordt
           // door de Belastingdienst uitbetaald en komt dus als CREDIT binnen.
           const teruggaveAangifte = (btwAangiftes||[]).find((a: any) => {
@@ -1234,17 +1051,20 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             return {...tx, pspHerkend: true, pspVoorstelIds: voorstel || undefined}
           }
         } else {
-          const match = openInkoop.find((f: any) => Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
-          if (match) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: match.id}
-            return {...tx, gekoppeldInkoopId:match.id, autoGematcht:true}
+          const inkoopKandidaat = (fs: any[]) => fs.map((f: any) => ({id: f.id, bedrag: f.totaal_bruto||0, nummer: f.factuurnummer, naam: f.leverancier, f}))
+          const open = besteMatch(tx, inkoopKandidaat(openInkoop))
+          if (open.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: open.kandidaat.id}
+            return {...tx, gekoppeldInkoopId: open.kandidaat.id, autoGematcht: true}
           }
+          if (open.ambigu) return {...tx, matchAmbigu: true}
           // Fallback: zoek in betaalde facturen (retroactieve herkenning)
-          const retro = (inkoopFacturen||[]).find((f: any) => f.status === 'betaald' && Math.abs((f.totaal_bruto||0) - tx.bedrag) <= 0.01)
-          if (retro) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: retro.id}
-            return {...tx, gekoppeldInkoopId:retro.id, autoGematcht:true, retroGematcht:true}
+          const retro = besteMatch(tx, inkoopKandidaat((inkoopFacturen||[]).filter((f: any) => f.status === 'betaald')))
+          if (retro.kandidaat) {
+            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: retro.kandidaat.id}
+            return {...tx, gekoppeldInkoopId: retro.kandidaat.id, autoGematcht: true, retroGematcht: true}
           }
+          if (retro.ambigu) return {...tx, matchAmbigu: true}
           // BTW-aangifte match op ingediende periode (±1 EUR tolerantie voor
           // euro-afronding). Alleen aangiftes met een POSITIEF bedrag (te
           // betalen) — een teruggave (negatief) komt als credit binnen en
@@ -1280,6 +1100,31 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       accijnsAutoBetaald.forEach(({maand, datum}) => markeerAccijnsMaandBetaald(maand, datum))
       setBankAfschrift(afschrift)
       setBankTransacties(gematcht)
+      // Banksaldo per IBAN vastleggen (ERP-plan 2.3): de balans leest hieruit
+      // de post "liquide middelen". Alleen overschrijven wanneer dit afschrift
+      // niet ouder is dan het al bekende saldo (herimport van een oud bestand
+      // mag een nieuwer saldo niet terugdraaien).
+      const saldoDatum = afschrift.transacties.reduce(
+        (max: string, tx: any) => (tx.datum && tx.datum > max ? tx.datum : max), '') || tod()
+      const ibanKey = (afschrift.iban || '').trim() || 'onbekend'
+      // Aansluitcontrole (ERP-plan 2.4): het eindsaldo dat vóór deze import
+      // bekend was, is het referentiepunt voor "sluit dit afschrift aan?".
+      setVorigEindsaldoBijImport((bankSaldi || {})[ibanKey]?.eindsaldo ?? null)
+      setBankSaldi((prev: any) => {
+        const huidig = (prev || {})[ibanKey]
+        if (huidig?.datum && huidig.datum > saldoDatum) return prev || {}
+        return {
+          ...(prev || {}),
+          [ibanKey]: {
+            iban: ibanKey,
+            eindsaldo: afschrift.eindsaldo ?? 0,
+            beginsaldo: afschrift.beginsaldo ?? 0,
+            datum: saldoDatum,
+            afschrift_nr: afschrift.afschriftNr || '',
+            geimporteerd_op: new Date().toISOString(),
+          },
+        }
+      })
     }
     reader.readAsText(file, 'latin1')
   }
@@ -1351,12 +1196,17 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         totaal_netto: netto,
         totaal_btw: btwBedrag,
         totaal_bruto: kosten,
+        totaal_netto_cent: toCent(netto),
+        totaal_btw_cent: toCent(btwBedrag),
+        totaal_bruto_cent: toCent(kosten),
         status: 'betaald',
         betaald_datum: tx.datum,
         ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
       }
       kostenFactuurId = kostenFactuur.id
       setInkoopFacturen((prev: any[]) => [...(prev||[]), kostenFactuur])
+      // Journaal (ERP-plan 2.1): automatische PSP-kostenpost boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(kostenFactuur, btwPeriodeType)))
       logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:kostenFactuur.id, actie:'aangemaakt', omschrijving:`PSP-kosten — ${kostenFactuur.leverancier} (${fmt(kosten)})`})
     }
     setBankKoppelingen((k: any) => ({...k, [key]: {soort: 'psp', factuurIds: [...pspSelectie], kostenFactuurId, gemarkeerdBetaald}}))
@@ -1376,6 +1226,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       // Automatisch aangemaakte kostenpost weer verwijderen
       if (opgeslagen.kostenFactuurId) {
         setInkoopFacturen((prev: any[]) => (prev||[]).filter((f: any) => f.id !== opgeslagen.kostenFactuurId))
+        // Journaal (ERP-plan 2.1): verwijderen = tegenboeking.
+        setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', opgeslagen.kostenFactuurId)))
       }
       // Facturen die door deze koppeling betaald zijn gemarkeerd terugzetten
       const terug = opgeslagen.gemarkeerdBetaald || []
@@ -1531,9 +1383,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         totaal_netto: netto,
         totaal_btw: btwBedrag,
         totaal_bruto: bruto,
+        totaal_netto_cent: toCent(netto),
+        totaal_btw_cent: toCent(btwBedrag),
+        totaal_bruto_cent: toCent(bruto),
         status: 'betaald',
       }
       setInkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
+      // Journaal (ERP-plan 2.1): bankboeking (debet) als inkoop boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuw, btwPeriodeType)))
       logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boeking debet — ${nieuw.leverancier}`});
       koppelBankTransactie(txIdx, nieuw.id, 'inkoop')
     } else {
@@ -1547,10 +1404,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         netto,
         btw: btwBedrag,
         bruto,
+        netto_cent: toCent(netto),
+        btw_cent: toCent(btwBedrag),
+        bruto_cent: toCent(bruto),
         status: 'betaald',
         definitief: true,
       }
       setVerkoopFacturen((prev: any[]) => [...(prev||[]), nieuw])
+      // Journaal (ERP-plan 2.1): bankboeking (credit) als omzet boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(nieuw)))
       logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boeking credit — ${nieuw.klant_naam}`});
       koppelBankTransactie(txIdx, nieuw.id, 'verkoop')
     }
@@ -1571,9 +1433,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'}
     })
     if (!regels.length) return
-    const totaal_netto = r2(regels.reduce((s: any, r: any) => s+r.netto, 0))
-    const totaal_btw = r2(regels.reduce((s: any, r: any) => s+r.btw_bedrag, 0))
-    const totaal_bruto = r2(totaal_netto + totaal_btw)
+    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
+    const totalen = totaliseerRegels(regels)
     const factuurDatum = factuurForm?.datum || tx.datum
     const rollover = getRolloverInfo(factuurDatum)
     const factuur: any = {
@@ -1583,13 +1444,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       leverancier: factuurForm?.leverancier || tx.tegenpartij || '',
       factuurnummer: factuurForm?.factuur || '',
       regels,
-      totaal_netto,
-      totaal_btw,
-      totaal_bruto,
+      totaal_netto: totalen.netto,
+      totaal_btw: totalen.btw,
+      totaal_bruto: totalen.bruto,
+      totaal_netto_cent: totalen.netto_cent,
+      totaal_btw_cent: totalen.btw_cent,
+      totaal_bruto_cent: totalen.bruto_cent,
       bijlage: bijlage || null,
       ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
     }
     setInkoopFacturen((prev: any[]) => [...(prev||[]), factuur])
+    // Journaal (ERP-plan 2.1): boekingfactuur (bank) als inkoop boeken.
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(factuur, btwPeriodeType)))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuur.id, actie:'aangemaakt', omschrijving:`Boekingfactuur — ${factuur.leverancier}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
     koppelBankTransactie(txIdx, factuur.id, 'inkoop')
     setBoekingTxIndex(null)
@@ -2485,6 +2351,52 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           </div>
 
+          {/* Saldo-aansluitcontrole per import (ERP-plan 2.4) — rekent live
+              mee met handmatig (ont)koppelen. */}
+          {bankAfschrift && bankTransacties.length > 0 && (() => {
+            const c = saldoControle(bankAfschrift, bankTransacties, vorigEindsaldoBijImport)
+            const internOk = Math.abs(c.verschilIntern) <= 0.005
+            const aansluitOk = c.aansluitVerschil == null || Math.abs(c.aansluitVerschil) <= 0.005
+            return (
+              <div className="mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  <div className="bg-gray-50 rounded-xl p-2">
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_mutatie_afschrift')}</div>
+                    <div className="text-sm font-bold text-gray-800">{fmt(c.mutatie)}</div>
+                    <div className="text-xs text-gray-400">{fmt(c.beginsaldo)} → {fmt(c.eindsaldo)}</div>
+                  </div>
+                  <div className={`rounded-xl p-2 ${internOk ? 'bg-gray-50' : 'bg-orange-50'}`}>
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_som_transacties')}</div>
+                    <div className={`text-sm font-bold ${internOk ? 'text-gray-800' : 'text-orange-600'}`}>{fmt(c.somTransacties)}</div>
+                    <div className={`text-xs font-medium ${internOk ? 'text-green-600' : 'text-orange-600'}`}>
+                      {internOk ? `✓ ${t('lbl_sluit_aan')}` : t('lbl_verschil_kort').replace('{bedrag}', fmt(c.verschilIntern))}
+                    </div>
+                  </div>
+                  <div className={`rounded-xl p-2 ${aansluitOk ? 'bg-gray-50' : 'bg-orange-50'}`}>
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_aansluiting_vorig')}</div>
+                    <div className={`text-sm font-bold ${aansluitOk ? 'text-gray-800' : 'text-orange-600'}`}>
+                      {c.vorigEindsaldo == null ? '—' : fmt(c.vorigEindsaldo)}
+                    </div>
+                    <div className={`text-xs font-medium ${aansluitOk ? 'text-green-600' : 'text-orange-600'}`}>
+                      {c.vorigEindsaldo == null ? t('lbl_eerste_import')
+                        : aansluitOk ? `✓ ${t('lbl_sluit_aan')}`
+                        : t('lbl_verschil_kort').replace('{bedrag}', fmt(c.aansluitVerschil ?? 0))}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-2">
+                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_gekoppeld_bedrag')}</div>
+                    <div className="text-sm font-bold text-gray-800">{fmt(c.gekoppeldBedrag)}</div>
+                    <div className="text-xs text-gray-400">
+                      {c.aantalGekoppeld}/{c.aantalTransacties} · {t('lbl_ongekoppeld_kort').replace('{bedrag}', fmt(c.ongekoppeldBedrag))}
+                    </div>
+                  </div>
+                </div>
+                {!aansluitOk && <p className="text-xs text-orange-600 mt-1">⚠ {t('warn_saldo_gat')}</p>}
+                {!internOk && <p className="text-xs text-orange-600 mt-1">⚠ {t('warn_afschrift_intern')}</p>}
+              </div>
+            )
+          })()}
+
           {!bankAfschrift ? (
             <div className="text-center py-10 text-gray-400 text-sm">
               <div className="text-3xl mb-2">🏦</div>
@@ -2544,6 +2456,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           </span>}
                           {tx.retroGematcht && <span className="text-xs text-gray-500 mr-2">✓ {t('lbl_retro_gematcht')}</span>}
                           {tx.autoGematcht && !tx.herinneringsGematcht && !tx.retroGematcht && <span className="text-xs text-green-600 mr-2">✓ {t('lbl_auto_gematcht')}</span>}
+                          {tx.matchAmbigu && !tx.gekoppeldFactuurId && !tx.gekoppeldInkoopId && <span className="text-xs text-orange-600 mr-2" title={t('lbl_match_ambigu_hint')}>⚠ {t('lbl_match_ambigu')}</span>}
                           {tx.type==='C' ? tx.gekoppeldPspFactuurIds ? (
                             <span className="text-xs text-blue-600 font-medium">
                               ✓ {t('lbl_psp_badge').replace('{n}', String(tx.gekoppeldPspFactuurIds.length))}
@@ -2998,10 +2911,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           </div>
           <div className="flex gap-1 border-b border-gray-100 flex-wrap">
-            {(['wv','balans','omzet_cat','transacties'] as const).map(tab => (
+            {(['wv','balans','ouderdom','omzet_cat','transacties','journaal'] as const).map(tab => (
               <button key={tab} onClick={()=>setRapportTab(tab)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${rapportTab===tab?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':tab==='omzet_cat'?'tab_omzet_cat':'tab_transacties')}
+                {t(tab==='wv'?'tab_wv':tab==='balans'?'tab_balans':tab==='ouderdom'?'tab_ouderdom':tab==='omzet_cat'?'tab_omzet_cat':tab==='transacties'?'tab_transacties':'tab_journaal')}
               </button>
             ))}
           </div>
@@ -3009,7 +2922,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
         {/* Winst & Verlies */}
         {rapportTab==='wv' && (()=>{
-          const wv = berekenWinstVerlies(verkoopFacturen||[], inkoopFacturen||[], acc||[], rapportVan, rapportTot)
+          const wv = berekenWv(rapportVan, rapportTot)
           const ksRows = Object.entries(wv.inkoopPerKostensoort)
             .sort(([a],[b]) => a.localeCompare(b,'nl'))
             .map(([ks, val]) => ({
@@ -3029,12 +2942,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`wv_${rapportVan}_${rapportTot}.csv`})
             a.click()
           }
-          return (
+          // COGS-optie (ERP-plan 2.6): marge op werkelijke kostprijs — de
+          // uitgeleverde liters in de periode tegen de batchkostprijs.
+          const cogs = berekenCogs(uit||[], bat||[], bi||[], lots, av, verpakkingen, onderdelen, acc, rapportVan, rapportTot)
+          const brutomargeWerkelijk = wv.omzet - cogs.cogs
+          const margePct = wv.omzet > 0 ? (brutomargeWerkelijk / wv.omzet) * 100 : null
+          return (<>
             <div className={card}>
-              <div className="flex items-center justify-between mb-4">
+              <div className={`flex items-center justify-between ${(journaal||[]).length ? 'mb-1' : 'mb-4'}`}>
                 <h3 className="font-semibold text-gray-800">{t('tab_wv')} — {rapportVan} {t('lbl_t_m')} {rapportTot}</h3>
                 <button onClick={exportWvCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
               </div>
+              {(journaal||[]).length > 0 && <div className="text-xs text-gray-400 mb-4">{t('wv_bron_journaal')}</div>}
               <table className="w-full text-sm">
                 <tbody>
                   {rows.map((r,i) => (
@@ -3046,33 +2965,108 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 </tbody>
               </table>
             </div>
-          )
+
+            {/* Marge op werkelijke kostprijs (COGS, ERP-plan 2.6) */}
+            <div className={card + ' mt-4'}>
+              <h3 className="font-semibold text-gray-800 mb-1">{t('lbl_cogs_titel')}</h3>
+              <p className="text-xs text-gray-400 mb-4">{t('cogs_uitleg')}</p>
+              {cogs.aantalUitleveringen === 0 ? (
+                <p className="text-sm text-gray-400">{t('msg_geen_uitleveringen_periode')}</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    <tr>
+                      <td className="py-2 text-gray-700">{t('lbl_omzet')}</td>
+                      <td className="py-2 text-right whitespace-nowrap text-green-700 font-semibold">{fmt(wv.omzet)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 text-gray-700">
+                        {t('lbl_cogs')}
+                        <span className="text-xs text-gray-400"> · {cogs.liters.toFixed(1)} L</span>
+                      </td>
+                      <td className="py-2 text-right whitespace-nowrap text-gray-700">{fmt(-cogs.cogs)}</td>
+                    </tr>
+                    <tr className="border-t border-gray-200">
+                      <td className="py-2 font-semibold text-gray-700">
+                        {t('lbl_brutomarge_werkelijk')}
+                        {margePct != null && <span className={`ml-2 text-xs font-semibold px-1.5 py-0.5 rounded ${brutomargeWerkelijk>=0?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{margePct.toFixed(1)}%</span>}
+                      </td>
+                      <td className={`py-2 text-right whitespace-nowrap font-bold ${brutomargeWerkelijk>=0?'text-green-700':'text-red-600'}`}>{fmt(brutomargeWerkelijk)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+              {cogs.litersZonderKostprijs > 0 && (
+                <p className="text-xs text-orange-600 mt-2">⚠ {t('warn_cogs_onbekend').replace('{liters}', cogs.litersZonderKostprijs.toFixed(1))}</p>
+              )}
+            </div>
+          </>)
         })()}
 
         {/* Balans */}
         {rapportTab==='balans' && (()=>{
+          const boekjaar = new Date().getFullYear()
           const openVerkoop = (verkoopFacturen||[]).filter((f:any)=>f.status!=='betaald').reduce((s:number,f:any)=>s+(f.bruto||0),0)
           const voorraadWaarde = (lots||[]).filter((l:any)=>l.beschikbaar!==false&&l.hoeveelheid>0&&l.prijs_per_eenheid).reduce((s:number,l:any)=>s+(l.hoeveelheid||0)*(l.prijs_per_eenheid||0),0)
+          // Liquide middelen uit de bij MT940-import vastgelegde eindsaldi (ERP-plan 2.3).
+          const saldi = Object.values(bankSaldi||{}) as any[]
+          const liquide = saldi.reduce((s:number,b:any)=>s+(Number(b?.eindsaldo)||0),0)
+          // Crediteuren: openstaande inkoopfacturen (ERP-plan 2.3).
+          const crediteuren = (inkoopFacturen||[]).filter((f:any)=>f.status!=='betaald').reduce((s:number,f:any)=>s+(f.totaal_bruto||0),0)
           const accijnsSchuld = (acc||[]).filter((r:any)=>!r.betaald).reduce((s:number,r:any)=>s+(r.totaal_accijns||r.accijns||0),0)
           const gestortKapitaal = (kapitaalBoekingen||[]).reduce((s:number,k:any)=>k.type==='storting'?s+k.bedrag:s-k.bedrag, 0)
           const schuldAltRek = totaleSchuldAltRekeningen
-          const totaalActiva = openVerkoop + voorraadWaarde
-          const totaalPassiva = accijnsSchuld + gestortKapitaal + schuldAltRek
+          const totaalActiva = openVerkoop + voorraadWaarde + liquide
+          const totaalPassiva = crediteuren + accijnsSchuld + gestortKapitaal + schuldAltRek
           const eigenVermogen = totaalActiva - totaalPassiva
-          return (
+
+          // EV-verloop over het boekjaar: beginbalans uit de jaarafsluiting van
+          // vorig jaar + resultaat van dit boekjaar (journaal-W&V). Het verschil
+          // met het EV als sluitpost is de aansluitcontrole.
+          const vorigeAfsluiting = (jaarafsluitingen||[]).find((j:any)=>Number(j.jaar)===boekjaar-1) || null
+          const resultaatBoekjaar = berekenWv(`${boekjaar}-01-01`, `${boekjaar}-12-31`).nettowinst
+          const evBerekend = vorigeAfsluiting ? (Number(vorigeAfsluiting.eigen_vermogen)||0) + resultaatBoekjaar : null
+          const aansluitVerschil = evBerekend != null ? eigenVermogen - evBerekend : null
+
+          const sluitBoekjaarAf = () => {
+            const jaar = boekjaar - 1
+            const bestaande = (jaarafsluitingen||[]).find((j:any)=>Number(j.jaar)===jaar)
+            const vraag = t(bestaande ? 'confirm_jaar_opnieuw_afsluiten' : 'confirm_jaar_afsluiten').replace('{jaar}', String(jaar))
+            if (!confirm(vraag)) return
+            const nieuw = {
+              id: newId(jaarafsluitingen||[]),
+              jaar,
+              afgesloten_op: new Date().toISOString(),
+              eigen_vermogen: r2(eigenVermogen),
+              balans: {
+                debiteuren: r2(openVerkoop), voorraad: r2(voorraadWaarde), liquide: r2(liquide),
+                crediteuren: r2(crediteuren), accijns_schuld: r2(accijnsSchuld),
+                schuld_alt_rekeningen: r2(schuldAltRek), gestort_kapitaal: r2(gestortKapitaal),
+              },
+            }
+            setJaarafsluitingen((prev:any[]) => [...(prev||[]).filter((j:any)=>Number(j.jaar)!==jaar), nieuw])
+            logAudit(auditLog, setAuditLog, {entiteit:'Jaarafsluiting', entiteit_id:nieuw.id, actie:'aangemaakt', omschrijving:`Boekjaar ${jaar} afgesloten (EV ${fmt(eigenVermogen)})`})
+          }
+
+          const afsluitingen = [...(jaarafsluitingen||[])].sort((a:any,b:any)=>Number(b.jaar)-Number(a.jaar))
+          return (<>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className={card}>
                 <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_activa')}</h3>
                 <table className="w-full text-sm"><tbody>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_liquide_middelen')}</td><td className="py-1.5 text-right font-medium">{fmt(liquide)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_debiteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(openVerkoop)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_voorraden_indicatief')}</td><td className="py-1.5 text-right font-medium">{fmt(voorraadWaarde)}</td></tr>
                   <tr className="border-t border-gray-200"><td className="py-2 font-bold text-gray-800">{t('lbl_total')}</td><td className="py-2 text-right font-bold">{fmt(totaalActiva)}</td></tr>
                 </tbody></table>
+                {saldi.length > 0
+                  ? <p className="text-xs text-gray-400 mt-2">{saldi.map((b:any)=>`${b.iban}: ${fmt(b.eindsaldo)} (${b.datum})`).join(' · ')}</p>
+                  : <p className="text-xs text-gray-400 mt-2 italic">{t('lbl_bank_saldo_geen')}</p>}
               </div>
               <div className={card}>
                 <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_passiva')}</h3>
                 <table className="w-full text-sm"><tbody>
-                  <tr><td className="py-1.5 text-gray-600">{t('lbl_crediteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(0)}</td></tr>
+                  <tr><td className="py-1.5 text-gray-600">{t('lbl_crediteuren_open')}</td><td className="py-1.5 text-right font-medium">{fmt(crediteuren)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_accijns_schuld')}</td><td className="py-1.5 text-right font-medium">{fmt(accijnsSchuld)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_schuld_alt_rekeningen')}</td><td className={`py-1.5 text-right font-medium ${schuldAltRek>0.005?'text-orange-600':'text-gray-400'}`}>{fmt(schuldAltRek)}</td></tr>
                   <tr><td className="py-1.5 text-gray-600">{t('lbl_gestort_kapitaal')}</td><td className={`py-1.5 text-right font-medium ${gestortKapitaal>=0?'text-purple-600':'text-red-600'}`}>{fmt(gestortKapitaal)}</td></tr>
@@ -3081,7 +3075,150 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 </tbody></table>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              {/* Eigen vermogen — verloop boekjaar (aansluitcontrole) */}
+              <div className={card}>
+                <h3 className="font-semibold text-gray-700 mb-3">{t('lbl_ev_verloop').replace('{jaar}', String(boekjaar))}</h3>
+                <table className="w-full text-sm"><tbody>
+                  <tr>
+                    <td className="py-1.5 text-gray-600">{t('lbl_ev_begin').replace('{jaar}', String(boekjaar-1))}</td>
+                    <td className="py-1.5 text-right font-medium">{vorigeAfsluiting ? fmt(vorigeAfsluiting.eigen_vermogen) : '—'}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 text-gray-600">{t('lbl_resultaat_boekjaar')}</td>
+                    <td className={`py-1.5 text-right font-medium ${resultaatBoekjaar>=0?'text-green-600':'text-red-600'}`}>{fmt(resultaatBoekjaar)}</td>
+                  </tr>
+                  <tr className="border-t border-gray-200">
+                    <td className="py-2 font-semibold text-gray-700">{t('lbl_ev_berekend')}</td>
+                    <td className="py-2 text-right font-semibold">{evBerekend != null ? fmt(evBerekend) : '—'}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 text-gray-600">{t('lbl_ev_volgens_balans')}</td>
+                    <td className="py-1.5 text-right font-medium">{fmt(eigenVermogen)}</td>
+                  </tr>
+                  {aansluitVerschil != null && (
+                    <tr>
+                      <td className="py-1.5 text-gray-600">{t('lbl_aansluitverschil')}</td>
+                      <td className={`py-1.5 text-right font-medium ${Math.abs(aansluitVerschil)<=0.005?'text-green-600':'text-orange-600'}`}>{fmt(aansluitVerschil)}</td>
+                    </tr>
+                  )}
+                </tbody></table>
+                {!vorigeAfsluiting && <p className="text-xs text-gray-400 mt-2 italic">{t('msg_geen_afsluiting').replace('{jaar}', String(boekjaar-1))}</p>}
+              </div>
+
+              {/* Jaarafsluitingen */}
+              <div className={card}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-700">{t('lbl_jaarafsluitingen')}</h3>
+                  <button onClick={sluitBoekjaarAf}
+                    className="px-3 py-1.5 tbtn rounded-lg text-xs font-medium transition-colors">
+                    {t('btn_jaar_afsluiten').replace('{jaar}', String(boekjaar-1))}
+                  </button>
+                </div>
+                {afsluitingen.length === 0
+                  ? <p className="text-sm text-gray-400">{t('msg_geen_afsluiting').replace('{jaar}', String(boekjaar-1))}</p>
+                  : (
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_boekjaar')}</th>
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_afgesloten_op')}</th>
+                        <th className="py-1.5 text-right font-medium">{t('lbl_eigen_vermogen')}</th>
+                      </tr></thead>
+                      <tbody>
+                        {afsluitingen.map((j:any)=>(
+                          <tr key={j.id} className="border-b border-gray-50">
+                            <td className="py-1.5 pr-3 font-medium text-gray-700">{j.jaar}</td>
+                            <td className="py-1.5 pr-3 text-gray-500">{fmtD(String(j.afgesloten_op||'').slice(0,10))}</td>
+                            <td className={`py-1.5 text-right font-medium ${j.eigen_vermogen>=0?'text-green-600':'text-red-600'}`}>{fmt(j.eigen_vermogen)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                <p className="text-xs text-gray-400 mt-2 italic">{t('msg_afsluiting_hint')}</p>
+              </div>
+            </div>
+          </>)
+        })()}
+
+        {/* Ouderdomsanalyse debiteuren/crediteuren (ERP-plan 2.5) */}
+        {rapportTab==='ouderdom' && (()=>{
+          const vandaag = tod()
+          const debiteuren = ouderdomsAnalyse(
+            (verkoopFacturen||[])
+              .filter((f:any)=>f.status!=='betaald')
+              .map((f:any)=>({relatie: klantNaamVoor(f) || t('lbl_onbekend'), bedrag: f.bruto||0, datum: f.datum})),
+            vandaag)
+          const crediteuren = ouderdomsAnalyse(
+            (inkoopFacturen||[])
+              .filter((f:any)=>f.status!=='betaald')
+              .map((f:any)=>({relatie: f.leverancier || t('lbl_onbekend'), bedrag: f.totaal_bruto||0, datum: f.datum})),
+            vandaag)
+          const buckets = ['b0_30','b31_60','b61_90','b90plus'] as const
+          const bucketLabels = [t('lbl_b0_30'), t('lbl_b31_60'), t('lbl_b61_90'), t('lbl_b90plus')]
+          const exportOuderdomCSV = () => {
+            const hdr = ['', ...bucketLabels, t('lbl_total')]
+            const rij = (r: any) => [r.relatie, ...buckets.map(b=>Number(r[b]).toFixed(2).replace('.',',')), Number(r.totaal).toFixed(2).replace('.',',')]
+            const rows: any[] = [[t('lbl_debiteuren')], hdr, ...debiteuren.rijen.map(rij), rij({...debiteuren.totalen, relatie: t('lbl_total')}),
+              [], [t('lbl_crediteuren')], hdr, ...crediteuren.rijen.map(rij), rij({...crediteuren.totalen, relatie: t('lbl_total')})]
+            const csv = rows.map((r: any[])=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
+            const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'})),download:`ouderdom_${vandaag}.csv`})
+            a.click()
+          }
+          const tabel = (titel: string, analyse: any) => (
+            <div className={card}>
+              <h3 className="font-semibold text-gray-700 mb-3">{titel}</h3>
+              {analyse.rijen.length === 0
+                ? <p className="text-sm text-gray-400 py-4">{t('msg_geen_open_posten')}</p>
+                : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[480px]">
+                      <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                        <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_relatie')}</th>
+                        {bucketLabels.map((l,i)=><th key={i} className="py-1.5 pr-3 text-right font-medium">{l}</th>)}
+                        <th className="py-1.5 text-right font-medium">{t('lbl_total')}</th>
+                      </tr></thead>
+                      <tbody>
+                        {analyse.rijen.map((r: any, i: number)=>(
+                          <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-1.5 pr-3 text-gray-700">{r.relatie || t('lbl_onbekend')}</td>
+                            {buckets.map(b=>(
+                              <td key={b} className={`py-1.5 pr-3 text-right ${!r[b] ? 'text-gray-300' : b==='b90plus' ? 'text-red-600 font-medium' : b==='b61_90' ? 'text-orange-600' : 'text-gray-700'}`}>
+                                {r[b] ? fmt(r[b]) : '—'}
+                              </td>
+                            ))}
+                            <td className="py-1.5 text-right font-semibold text-gray-900">{fmt(r.totaal)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                        <td className="py-2 pr-3 text-gray-700">{t('lbl_total')}</td>
+                        {buckets.map(b=>(
+                          <td key={b} className={`py-2 pr-3 text-right ${b==='b90plus' && analyse.totalen[b] ? 'text-red-600' : ''}`}>{fmt(analyse.totalen[b])}</td>
+                        ))}
+                        <td className="py-2 text-right">{fmt(analyse.totalen.totaal)}</td>
+                      </tr></tfoot>
+                    </table>
+                  </div>
+                )}
+            </div>
           )
+          return (<>
+            <div className={card}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-gray-800">{t('tab_ouderdom')}</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('ouderdom_uitleg')}</p>
+                </div>
+                <button onClick={exportOuderdomCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+              {tabel(t('lbl_debiteuren'), debiteuren)}
+              {tabel(t('lbl_crediteuren'), crediteuren)}
+            </div>
+          </>)
         })()}
 
         {/* Omzet per categorie */}
@@ -3214,15 +3351,84 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             </div>
           )
         })()}
+
+        {/* Journaal (ERP-plan 2.1): onveranderlijke boekingen, append-only */}
+        {rapportTab==='journaal' && (()=>{
+          const regels = (journaal||[])
+            .filter((r: any) => r.datum >= rapportVan && r.datum <= rapportTot)
+            .sort((a: any, b: any) => b.datum.localeCompare(a.datum) || (b.id - a.id))
+          const dagboekLabel = (d: string) => t(`jr_${d}`) !== `jr_${d}` ? t(`jr_${d}`) : d
+          const dagboekCls: Record<string,string> = {
+            verkoop:'bg-green-100 text-green-700', inkoop:'bg-blue-100 text-blue-700',
+            accijns:'bg-purple-100 text-purple-700', btw:'bg-orange-100 text-orange-700',
+            memoriaal:'bg-gray-100 text-gray-600',
+          }
+          const totNetto = regels.reduce((s: number, r: any)=>s+(r.netto_cent||0),0)
+          const totBtw = regels.reduce((s: number, r: any)=>s+(r.btw_cent||0),0)
+          const totBruto = regels.reduce((s: number, r: any)=>s+(r.bruto_cent||0),0)
+          const exportJournaalCSV = () => {
+            const hdr = `"${t('lbl_date')}","${t('lbl_dagboek')}","${t('lbl_invoice')}","${t('lbl_relatie')}","${t('lbl_omschrijving')}","${t('lbl_netto')}","${t('lbl_btw')}","${t('lbl_total')}"`
+            const rows = regels.map((r: any)=>`"${r.datum}","${dagboekLabel(r.dagboek)}","${r.nummer||''}","${(r.relatie||'').replace(/"/g,'""')}","${(r.omschrijving||'').replace(/"/g,'""')}","${centNaarEuro(r.netto_cent).toFixed(2).replace('.',',')}","${centNaarEuro(r.btw_cent).toFixed(2).replace('.',',')}","${centNaarEuro(r.bruto_cent).toFixed(2).replace('.',',')}"`)
+            const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+[hdr,...rows].join('\n')],{type:'text/csv;charset=utf-8'})),download:`journaal_${rapportVan}_${rapportTot}.csv`})
+            a.click()
+          }
+          if (!regels.length) return <div className={card+' text-center py-10 text-gray-400 text-sm'}>{t('journaal_leeg')}</div>
+          return (
+            <div className={card}>
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-gray-800">{t('tab_journaal')} — {rapportVan} {t('lbl_t_m')} {rapportTot}</h3>
+                <button onClick={exportJournaalCSV} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors">{t('btn_export_csv_rapport')}</button>
+              </div>
+              <div className="text-xs text-gray-400 mb-4">{t('journaal_uitleg')}</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[700px]">
+                  <thead><tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_date')}</th>
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_dagboek')}</th>
+                    <th className="py-1.5 pr-3 text-left font-medium">{t('lbl_omschrijving')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_netto')}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('lbl_btw')}</th>
+                    <th className="py-1.5 text-right font-medium">{t('lbl_total')}</th>
+                  </tr></thead>
+                  <tbody>
+                    {regels.map((r: any)=>(
+                      <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-1.5 pr-3 text-gray-600 whitespace-nowrap">{r.datum}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${dagboekCls[r.dagboek]||'bg-gray-100 text-gray-600'}`}>{dagboekLabel(r.dagboek)}</span>
+                          {r.storno_van != null && <span className="ml-1 text-xs font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">{t('jr_storno')}</span>}
+                          {r.migratie && <span className="ml-1 text-xs font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{t('jr_migratie')}</span>}
+                        </td>
+                        <td className="py-1.5 pr-3 text-gray-700">
+                          {r.omschrijving}
+                          {(r.kostensoort || r.btw_tarief != null) && <span className="text-xs text-gray-400"> · {[r.kostensoort, r.btw_tarief != null ? `${r.btw_tarief}%` : null].filter(Boolean).join(' · ')}</span>}
+                        </td>
+                        <td className={`py-1.5 pr-3 text-right ${r.netto_cent<0?'text-red-600':'text-gray-700'}`}>{fmt(centNaarEuro(r.netto_cent))}</td>
+                        <td className="py-1.5 pr-3 text-right text-blue-600">{fmt(centNaarEuro(r.btw_cent))}</td>
+                        <td className={`py-1.5 text-right font-semibold ${r.bruto_cent<0?'text-red-600':'text-gray-900'}`}>{fmt(centNaarEuro(r.bruto_cent))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                    <td className="py-2 pr-3 text-gray-700" colSpan={3}>{t('lbl_total')}</td>
+                    <td className="py-2 pr-3 text-right">{fmt(centNaarEuro(totNetto))}</td>
+                    <td className="py-2 pr-3 text-right text-blue-600">{fmt(centNaarEuro(totBtw))}</td>
+                    <td className="py-2 text-right">{fmt(centNaarEuro(totBruto))}</td>
+                  </tr></tfoot>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
       </>)}
 
       {/* ══════════════════════ ACCIJNS ══════════════════════ */}
-      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} bankDebets={bankDebetsVoorKoppeling} koppelAccijnsBetaling={koppelAccijnsBetaling} ontkoppelAccijnsBetaling={ontkoppelAccijnsBetaling} accijnsKoppelingInfo={accijnsKoppelingInfo} />}
+      {mainTab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} bankDebets={bankDebetsVoorKoppeling} koppelAccijnsBetaling={koppelAccijnsBetaling} ontkoppelAccijnsBetaling={ontkoppelAccijnsBetaling} accijnsKoppelingInfo={accijnsKoppelingInfo} setJournaal={setJournaal} />}
 
       {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
       {mainTab==='btw_aangifte' && (()=>{
         const periode = (btwInst as any)?.periode || 'kwartaal';
-        const periodes = getPeriodes(aangifteYear, periode);
+        const periodes = getPeriodes(aangifteYear, periode, getLang());
         // tod() = lokale kalenderdag; toISOString() is UTC en gaf rond
         // middernacht (CET/CEST) een dag verschil in de periodestatus.
         const today = tod();
@@ -3260,11 +3466,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               const d = (o.date_paid||o.date_created||'').slice(0,4);
               return d === yearStr && ['completed','processing'].includes(o.status);
             });
-            const jaarWcBtw   = jaarOrders.reduce((s: any,o: any)=>s+parseFloat(o.total_tax||0), 0);
-            const jaarEigenBtw = (verkoopFacturen||[])
-              .filter((f: any) => f.datum?.startsWith(yearStr))
-              .reduce((s: any,f: any)=>s+(f.btw||0), 0);
-            const jaarOmzetBtw = jaarWcBtw + jaarEigenBtw;
+            // Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2),
+            // consistent met de periodekaarten en de invulhulp.
+            const jaarVerkoop = (verkoopFacturen||[]).filter((f: any) => f.datum?.startsWith(yearStr));
+            const jaarOmzet = omzetBtwOpGrondslag(jaarVerkoop, jaarOrders);
+            const jaarOmzetBtw = jaarOmzet.hoog.btw + jaarOmzet.laag.btw;
             const jaarVoorbelast = inkoopFacturen
               .filter((f: any) => f.datum?.startsWith(yearStr))
               .reduce((s: any,f: any)=>s+(f.totaal_btw||0), 0);
@@ -3312,13 +3518,15 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                 const d = (o.date_paid||o.date_created||'').slice(0,10);
                 return d >= p.from && d <= p.to && ['completed','processing'].includes(o.status);
               });
-              const wcVerkoopBtw   = pOrders.reduce((s: any,o: any)=>s+parseFloat(o.total_tax||0), 0);
               const wcVerkoopNetto = pOrders.reduce((s: any,o: any)=>s+parseFloat(o.total||0)-parseFloat(o.total_tax||0), 0);
               // Eigen verkoopfacturen
               const pVerkoop = (verkoopFacturen||[]).filter((f: any) => f.datum >= p.from && f.datum <= p.to);
-              const eigenVerkoopBtw   = pVerkoop.reduce((s: any,f: any)=>s+(f.btw||0), 0);
               const eigenVerkoopNetto = pVerkoop.reduce((s: any,f: any)=>s+(f.netto||0), 0);
-              const verkoopBtw   = wcVerkoopBtw + eigenVerkoopBtw;
+              // Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2),
+              // identiek aan de invulhulp — zo is het ingediende bedrag exact
+              // het rubriek 1a + 1b-cijfer.
+              const pOmzetBtw = omzetBtwOpGrondslag(pVerkoop, pOrders);
+              const verkoopBtw   = pOmzetBtw.hoog.btw + pOmzetBtw.laag.btw;
               const verkoopNetto = wcVerkoopNetto + eigenVerkoopNetto;
               const eigenFacturenLabel = pVerkoop.length > 0 ? ` + ${pVerkoop.length} eigen` : '';
 
@@ -3543,9 +3751,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     {rubriek: '4a', ...verlegdAangifte.rubriek4a},
                     {rubriek: '4b', ...verlegdAangifte.rubriek4b},
                   ].filter(r => r.netto > 0 || r.btw > 0)
-                  const totNetto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0) + verlegdRows.reduce((s,r)=>s+r.netto,0)
-                  const totBtw   = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0)   + verlegdRows.reduce((s,r)=>s+r.btw,0)
-                  const totBruto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0) + verlegdRows.reduce((s,r)=>s+r.netto,0)
+                  const totNetto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0) + verlegdRows.reduce((s: number,r: any)=>s+r.netto,0)
+                  const totBtw   = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0)   + verlegdRows.reduce((s: number,r: any)=>s+r.btw,0)
+                  const totBruto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0) + verlegdRows.reduce((s: number,r: any)=>s+r.netto,0)
                   return (
                 <table className="w-full text-sm">
                   <thead>
@@ -3675,7 +3883,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
               <div className={card + ' bg-blue-50 border-blue-100'}>
                 <h3 className="text-xs font-semibold text-blue-800 mb-1 uppercase tracking-wide">{t('lbl_btw_aangifte_hulp')}</h3>
-                <p className="text-xs text-blue-600 mb-3">{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</p>
+                <p className="text-xs text-blue-600 mb-1">{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</p>
+                <p className="text-xs text-blue-400 mb-3">{t('lbl_btw_grondslag_hint')}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                   <div className="bg-white rounded-xl p-3 border border-blue-100">
                     <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a')}</div>

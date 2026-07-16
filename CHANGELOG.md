@@ -4,6 +4,248 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.6] — 2026-07-16
+
+### Opgelost — pytest-CI-job faalde op runnerrechten (ERP-plan 3.3-fix)
+
+- `server.py` maakt bij import zijn datamappen aan onder `/data`; op
+  GitHub Actions-runners (geen root) gaf dat `PermissionError` tijdens de
+  testcollectie. `DATA_DIR` is nu overridebaar via de omgevingsvariabele
+  `BREWADMIN_DATA_DIR` en `tests/conftest.py` zet die vóór de import naar
+  een tijdelijke map — pytest draait daarmee ook zonder root. In de addon
+  blijft het pad gewoon `/data`.
+
+---
+
+## [1.11.5] — 2026-07-16
+
+### Toegevoegd — Gestructureerde serverlogging + /api/health (ERP-plan 3.6)
+
+- Serverlogging via stdlib `logging` met JSON-regels naar stdout (één regel
+  per gebeurtenis met `ts`/`level`/`msg`/`bron` + contextvelden); alle 26
+  `print()`-regels omgezet, fouten loggen op error-niveau, en de
+  HTTP-toegangslog (niet-routinestatussen) loopt via dezelfde formatter.
+- Nieuw endpoint `GET /api/health`: status van de vier achtergrondthreads
+  (backup, auto-metingen, cold-crash, carbonatie-CO₂), laatste lokale
+  backupdatum, data-dir-check en uptime. `ok: false` zodra een thread dood
+  is of de datamap ontbreekt.
+- Dashboard toont een compacte healthregel (groen "Server en
+  achtergrondtaken OK · laatste backup {datum}", oranje bij een probleem of
+  een backup ouder dan 2 dagen); typed `getServerHealth()` in api.ts,
+  i18n in alle 5 talen.
+- 4 nieuwe pytest-tests (health zonder threads, laatste-backupdatum, dode
+  thread → ok:false, JSON-logformaat) — **fase 3 van het ERP-plan compleet**.
+
+---
+
+## [1.11.4] — 2026-07-16
+
+### Gewijzigd — Pagina's opsplitsen: eerste extracties + boy-scout-regel (ERP-plan 3.5)
+
+- ZIP-schrijver (STORE) uit BoekhoudingPage naar `src/utils/zip.ts`
+  (`makeZip`/`crc32`) — puur, getest (referentie-CRC, ZIP-structuur) en
+  onder de strict-ratchet.
+- `getPeriodes` (kwartaal-/maandperiodes) was gedupliceerd in
+  BoekhoudingPage en StatiegeldPage → één gedeelde functie in
+  `src/utils/btw.ts` met optionele locale voor maandlabels; getest
+  (datumbereiken, schrikkeljaar, labels).
+- Boy-scout-regel verankerd in CLAUDE.md: bij onderhoud aan grote pagina's
+  pure logica naar `src/utils/` (mét test) en zelfstandige
+  modals/tabbladen naar eigen bestanden — geen big-bang-refactors.
+
+---
+
+## [1.11.3] — 2026-07-16
+
+### Toegevoegd — TypeScript aanscherpen (ERP-plan 3.4)
+
+- Nieuwe strict-ratchet `tsconfig.strict.json`: `src/utils`, `src/types` en
+  `src/i18n` type-checken onder volledige `strict: true` (bleken al schoon
+  dankzij het fase 2/3-werk) en moeten dat blijven; de include mag alleen
+  groeien. Draait via het nieuwe `npm run typecheck` en in de CI-workflow.
+- Eerste page-props getypt: AccijnsPage heeft nu een `AccijnsPageProps`-
+  interface (Batch/AccijnsRecord/AccijnsAangifte/…) i.p.v. `: any`;
+  `AccijnsRecord` aangevuld met de runtime-velden die de pagina leest
+  (verpakking_type, aantal, batch_nummer, betaal_datum, totaal_liter).
+- CLAUDE.md-conventies bijgewerkt (ratchet + boy-scout-regel voor page-props).
+- Werkwijze-blok in docs/ERP-STATUS.md geactualiseerd: tests + typecheck
+  horen nu expliciet bij elk punt.
+
+---
+
+## [1.11.2] — 2026-07-16
+
+### Toegevoegd — GitHub Actions CI (ERP-plan 3.3)
+
+- Nieuwe workflow `.github/workflows/ci.yml` (push naar main + elke PR) met
+  vier jobs: **typecheck + vitest + productie-build** (Node 20, `tsc
+  --noEmit` — de drie resterende typefouten in BoekhoudingPage zijn
+  daarvoor opgelost), **pytest** voor server.py (Python 3.12),
+  **Docker-build** van het addon-image (multi-stage, zonder push) en een
+  **versie-bump-lint**: config.yaml moet een bijbehorende
+  `## [versie]`-sectie in CHANGELOG.md hebben en op PR's moet de versie
+  afwijken van de basisbranch (versie-bump per commit, zie CLAUDE.md).
+
+---
+
+## [1.11.1] — 2026-07-16
+
+### Toegevoegd — pytest-suite voor server.py (ERP-plan 3.2)
+
+- 31 tests in `tests/test_server.py` (`python3 -m pytest`): unit-tests op de
+  pure helpers (key- en upload-validatie incl. path-traversal,
+  schemavalidatie, append-only-guard, secrets-maskering, atomic write) én
+  integratietests tegen de echte handler op een efemere poort met een
+  tijdelijke DATA_DIR — optimistic locking (409), schemavalidatie en
+  append-only via HTTP (422), atomaire `/api/commit` (conflict of
+  append-only-schending schrijft níets), `/api/nextnr` (gescheiden reeksen,
+  20 parallelle clients → 0 dubbele nummers), rate-limiting (429 +
+  Retry-After), 413 boven de request-limiet, upload/delete-upload,
+  sentinel-merge van secrets en de server-audit.
+- pytest is een dev-dependency; server.py zelf blijft stdlib-only.
+- Documentatie: CLAUDE.md-testsectie uitgebreid; de `/api/ping`-rij in de
+  endpointtabel gecorrigeerd (geen echte route — SPA-fallback; een echte
+  health-check volgt in ERP 3.6).
+
+---
+
+## [1.11.0] — 2026-07-16
+
+### Toegevoegd — Vitest-testsuite op de pure logica (ERP-plan 3.1)
+
+- Vitest als dev-dependency met `npm test` / `npm run test:watch`; 67 tests
+  in `src/utils/__tests__/` over de financiële kernlogica: accijns
+  (tarieven, historie, maand-lock), BTW (periodekeys, periode-lock,
+  **rollover**, grondslag-BTW), centen/totalisering, journaalboekingen
+  (uitsplitsing, storno-flow, W&V uit journaal), bankreconciliatie
+  (**MT940-parser**, match-score, saldo-controle, **PSP-combinatie**),
+  **voorraadPerLocatie** (cap tegen phantom voorraad), ouderdomsanalyse,
+  batchkostprijs/COGS en de **Excel-backup-round-trip** (incl. cel-chunking
+  en legacy Uitslagen-migratie).
+- Testbaarheids-refactors zonder gedragswijziging: `parseMT940`,
+  `isPspTransactie` en `zoekPspCombinatie` verhuisd van BoekhoudingPage naar
+  `src/utils/bank.ts`; `excel.ts` gesplitst in puur
+  `bouwBackupWerkboek`/`parseBackupWerkboek` + dunne DOM-wrappers;
+  `api.ts` werkt nu ook buiten de browser (window-guard).
+
+---
+
+## [1.10.99] — 2026-07-16
+
+### Toegevoegd — COGS-optie: marge op werkelijke kostprijs (ERP-plan 2.6)
+
+- De W&V (Boekhouding → Rapporten) toont naast de bestaande opstelling
+  (inkoop direct als kosten) een blok "Marge op werkelijke kostprijs":
+  de uitgeleverde liters in de periode tegen de kostprijs per liter van hun
+  batch (grondstoffen, utilities, verpakking en accijns), met brutomarge en
+  marge-%. Interne uitleveringen tellen niet mee; liters uit batches zonder
+  bekende kostprijs worden apart gemeld i.p.v. stil de marge te flatteren.
+- `berekenBatchKostprijs` uit `berekenProductKostprijs` gelicht (zelfde
+  uitkomst, nu ook per batch bruikbaar) + nieuwe pure functie `berekenCogs`
+  in `utils/calculations.ts`.
+
+---
+
+## [1.10.98] — 2026-07-16
+
+### Toegevoegd — Ouderdomsanalyse debiteuren/crediteuren (ERP-plan 2.5)
+
+- Nieuw rapport "Ouderdom" (Boekhouding → Rapporten): openstaande verkoop-
+  en inkoopfacturen per relatie in buckets 0-30 / 31-60 / 61-90 / > 90 dagen
+  (sinds factuurdatum), met totalenregel en CSV-export. Creditnota's tellen
+  negatief mee zodat de totalen exact aansluiten op de balansposten
+  debiteuren/crediteuren. Buckets 61-90 en > 90 kleuren oranje/rood.
+- Pure functie `ouderdomsAnalyse` in `utils/calculations.ts` (cent-exact,
+  relatie-groepering hoofdletterongevoelig) — direct unit-testbaar.
+
+---
+
+## [1.10.97] — 2026-07-16
+
+### Toegevoegd — Bankreconciliatie versterkt (ERP-plan 2.4)
+
+- **Match-score i.p.v. eerste-bedrag-match**: automatische koppeling van
+  banktransacties weegt naast het bedrag (toegangseis, ±€0,01) nu ook het
+  kenmerk (factuurnummer in omschrijving/referentie, zwaarst) en de
+  tegenpartijnaam mee (`scoreMatch`/`besteMatch` in `src/utils/bank.ts`).
+  Bij meerdere kandidaten met gelijke score wordt bewust níet gekoppeld:
+  de transactie krijgt een "meerdere kandidaten"-markering en wordt
+  handmatig gekoppeld — twee gelijke bedragen kunnen niet meer stil aan de
+  verkeerde factuur worden gehangen.
+- **Saldo-aansluitcontrole per import**: het Bank-tabblad toont na import een
+  controlebalk met (1) de saldomutatie van het afschrift vs. de som van de
+  transacties (bestand incompleet?), (2) de aansluiting van het beginsaldo op
+  het laatst bekende eindsaldo uit `bank_saldi` (ontbreekt er een afschrift?)
+  en (3) het gekoppelde vs. ongekoppelde bedrag — dit rekent live mee met
+  handmatig (ont)koppelen.
+
+---
+
+## [1.10.96] — 2026-07-16
+
+### Toegevoegd — Balans compleet (ERP-plan 2.3)
+
+- **Crediteuren** op de balans: openstaande inkoopfacturen (was hardcoded €0).
+- **Liquide middelen** op de balans: bij elke MT940-import wordt het
+  eindsaldo per IBAN vastgelegd in de nieuwe `bank_saldi`-store (nooit
+  overschreven door een ouder afschrift); de balans toont de som met
+  saldodatum per rekening.
+- **Jaarafsluiting met beginbalans-overdracht**: nieuwe `jaarafsluitingen`-store
+  en een "Boekjaar afsluiten"-knop op de balans die de balansposten en het
+  eigen vermogen vastlegt. De balans toont daarnaast een EV-verloopkaart:
+  beginbalans (vorige afsluiting) + resultaat boekjaar (journaal-W&V) =
+  berekend eigen vermogen, met het aansluitverschil t.o.v. het EV als
+  sluitpost als controlecijfer.
+- Beide nieuwe stores zitten in de Excel-backup (sheet resp. Instellingen)
+  en in de server-schemavalidatie; i18n in alle 5 talen.
+
+---
+
+## [1.10.95] — 2026-07-16
+
+### Toegevoegd — Bedragen in centen + BTW op grondslag (ERP-plan 2.2)
+
+- Factuurtotalen worden bij het aanmaken cent-exact berekend (integer-centen,
+  nieuwe util `src/utils/centen.ts`) en als canonieke cent-velden opgeslagen
+  (`netto_cent`/`btw_cent`/`bruto_cent` op verkoopfacturen,
+  `totaal_*_cent` op inkoopfacturen); de euro-velden blijven bestaan voor
+  weergave en oudere facturen. Geen float-drift meer in totalen.
+- De BTW-aangifte berekent de verschuldigde BTW (rubriek 1a/1b én het
+  "te betalen"-bedrag op de periodekaart) nu over de som van de grondslag per
+  tarief — conform Belastingdienst-regels — in plaats van als optelsom van per
+  regel afgeronde bedragen (`omzetBtwOpGrondslag` in `src/utils/btw.ts`).
+  De voorbelasting blijft de som van de werkelijk gefactureerde BTW.
+- Het ingediende aangiftebedrag is daarmee exact gelijk aan de invulhulp;
+  uitlegregel toegevoegd in de invulhulp (alle 5 talen).
+
+---
+
+## [1.10.94] — 2026-07-16
+
+### Toegevoegd — Licht journaalmodel (ERP-plan 2.1)
+
+- Nieuwe append-only datasleutel `journaal`: onveranderlijke journaalregels
+  in hele centen, geboekt op het moment dat een financieel feit definitief
+  wordt — verkoopfactuur uitgereikt (kassa, order, creditnota, losse factuur,
+  bankboeking), inkoopfactuur vastgelegd (incl. bankboekingen en automatische
+  PSP-kostenpost), accijnsaangifte ingediend en BTW-aangifte ingediend.
+- Correcties zijn altijd tegenboekingen (storno): wijzigen/verwijderen van
+  een nog muteerbare inkoopfactuur, BTW-correctie op een orderfactuur en het
+  terugzetten van een BTW-aangifte boeken de oude regels exact tegen.
+- De server dwingt append-only af: een POST/commit die bestaande
+  journaalregels wijzigt of laat verdwijnen wordt met 422 geweigerd.
+- Winst & Verlies (rapport + CSV + ZIP-export) leest nu uit het journaal;
+  accijnskosten blijven bewust uit de per maand bevroren accijnsrecords komen.
+- Nieuw rapport "Journaal" (Boekhouding → Rapporten) met dagboek-badges,
+  storno-markering en CSV-export.
+- Eenmalige opbouw: bestaande verkoop-/inkoopfacturen en ingediende
+  accijns-/BTW-aangiftes worden bij de eerste start als journaalregels
+  (gemarkeerd `migratie`) ingeboekt, zodat rapporten direct aansluiten.
+- Excel-backup bevat het journaal als eigen sheet; import voegt alleen
+  ontbrekende regels toe (union op id) en respecteert append-only.
+
+---
+
 ## [1.10.93] — 2026-07-15
 
 ### Ontwikkeling — verificatie-skill

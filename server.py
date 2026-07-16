@@ -16,7 +16,9 @@ import http.server
 import io
 import ipaddress
 import json
+import logging
 import os
+import sys
 import re
 import shutil
 import smtplib
@@ -31,7 +33,10 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
-DATA_DIR = Path('/data')
+# Overridebaar via env voor tests/dev zonder schrijfrechten op /data
+# (bv. GitHub Actions-runners draaien niet als root). In de addon blijft
+# dit gewoon /data.
+DATA_DIR = Path(os.environ.get('BREWADMIN_DATA_DIR', '/data'))
 STATIC_FILE = Path('/app/static/index.html')
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB — bescherming tegen DoS via grote requests
 UPLOAD_DIR = DATA_DIR / 'inkoop_facturen'
@@ -44,7 +49,59 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 
+
+# ── Gestructureerde logging (ERP-plan 3.6) ────────────────────────────────
+# Eén JSON-regel per gebeurtenis naar stdout (machine-leesbaar in de
+# HA-addon-logs), met een vast `bron`-veld per subsysteem. Vervangt de losse
+# print()-regels.
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        regel = {
+            'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+            'level': record.levelname.lower(),
+            'msg': record.getMessage(),
+        }
+        velden = getattr(record, 'velden', None)
+        if isinstance(velden, dict):
+            regel.update(velden)
+        return json.dumps(regel, ensure_ascii=False)
+
+
+def _maak_logger() -> logging.Logger:
+    lg = logging.getLogger('brewadmin')
+    lg.setLevel(logging.INFO)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(_JsonFormatter())
+    lg.addHandler(handler)
+    lg.propagate = False
+    return lg
+
+
+_logger = _maak_logger()
+
+
+def _log(bron: str, msg: str, level: int = logging.INFO, **velden) -> None:
+    _logger.log(level, msg, extra={'velden': {'bron': bron, **velden}})
+
+
+# Referenties naar de achtergrondthreads, gezet in __main__ zodat /api/health
+# hun status kan rapporteren. Leeg wanneer de server niet via __main__ draait
+# (bv. onder pytest) — health meldt de threads dan als niet-gestart.
+_threads: dict = {}
+_start_tijd = time.monotonic()
+
+
+def _laatste_backup_datum():
+    """Datum (YYYY-MM-DD) van de nieuwste lokale backupmap, of None."""
+    try:
+        datums = sorted(d.name for d in BACKUP_DIR.iterdir() if d.is_dir())
+        return datums[-1] if datums else None
+    except OSError:
+        return None
+
 API_DATA_PREFIX = '/api/data/'
+HEALTH_PATH = '/api/health'
 BF_API_BASE = 'https://api.brewfather.app/v2'
 BF_PROXY_PREFIX = '/api/brewfather/'
 BF_TEST_PATH = '/api/brewfather/test'
@@ -601,7 +658,7 @@ def _offsite_backup(dest: Path, today: str) -> None:
                     zf.write(f, str(f.relative_to(dest)))
         os.replace(tmp, OFFSITE_BACKUP_DIR / f'brewadmin_backup_{today}.zip')
     except OSError as exc:
-        print(f'[backup] offsite backup failed: {exc}', flush=True)
+        _log('backup', f'offsite backup failed: {exc}', level=logging.ERROR)
 
 
 def _cleanup_offsite_backups() -> None:
@@ -665,7 +722,7 @@ def _backup_loop(interval: float = 86400.0) -> None:
             _cleanup_offsite_backups()
             _cleanup_audit()
         except Exception as exc:
-            print(f'[backup] error: {exc}', flush=True)
+            _log('backup', f'error: {exc}', level=logging.ERROR)
         time.sleep(interval)
 
 
@@ -750,6 +807,7 @@ _KEY_TYPES = {
         'water_doelprofielen', 'hop_addities', 'dry_hops', 'koel_logs',
         'batch_notities', 'kapitaal_boekingen', 'alt_rekeningen',
         'inventarisaties', 'audit_log', 'accijns_aangiftes', 'btw_aangiftes',
+        'journaal', 'jaarafsluitingen',
         'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
         'haccp_schoonmaak_log', 'haccp_ccp_definities', 'haccp_ccp_metingen',
         'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
@@ -762,7 +820,8 @@ _KEY_TYPES = {
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'coldcrash_instellingen', 'planning_instellingen',
-        'brouwproces_instellingen', 'bank_koppelingen', 'tank_statussen',
+        'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
+        'tank_statussen',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
     )},
     # scalars
@@ -787,6 +846,42 @@ def _payload_geldig(key: str, parsed) -> bool:
         return isinstance(parsed, str)
     if verwacht == 'string_or_null':
         return parsed is None or isinstance(parsed, str)
+    return True
+
+
+# ── Append-only keys (ERP-plan 2.1) ──────────────────────────────────────
+# Het journaal is de onveranderlijke financiële vastlegging: bestaande regels
+# mogen nooit gewijzigd of verwijderd worden, alleen aangevuld (correcties
+# gaan via storno-regels). De server dwingt dat af: een POST/commit die een
+# bestaande regel mist of wijzigt wordt met 422 geweigerd. Aanroepen onder
+# _data_lock (leest het huidige bestand).
+
+_APPEND_ONLY = ('journaal',)
+
+
+def _append_only_ok(key: str, parsed) -> bool:
+    """True wanneer de nieuwe payload alle bestaande regels ongewijzigd bevat
+    (vergelijking per id). Alleen relevant voor keys in _APPEND_ONLY."""
+    if key not in _APPEND_ONLY or not isinstance(parsed, list):
+        return True
+    filepath = DATA_DIR / f'{key}.json'
+    if not filepath.exists():
+        return True
+    try:
+        huidig = json.loads(filepath.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return True  # onleesbaar bestand nooit een reden om een write te blokkeren
+    if not isinstance(huidig, list):
+        return True
+    nieuw_per_id = {r.get('id'): r for r in parsed if isinstance(r, dict)}
+    for regel in huidig:
+        if not isinstance(regel, dict):
+            continue
+        nieuw = nieuw_per_id.get(regel.get('id'))
+        if nieuw is None:
+            return False
+        if json.dumps(nieuw, sort_keys=True) != json.dumps(regel, sort_keys=True):
+            return False
     return True
 
 
@@ -1027,7 +1122,7 @@ def _auto_metingen_loop(interval: float = 600.0) -> None:
         try:
             _auto_metingen_tick()
         except Exception as exc:
-            print(f'[auto-metingen] error: {exc}', flush=True)
+            _log('auto-metingen', f'error: {exc}', level=logging.ERROR)
         time.sleep(interval)
 
 
@@ -1041,7 +1136,7 @@ def _cold_crash_loop(interval: float = 60.0) -> None:
         try:
             _cold_crash_tick()
         except Exception as exc:
-            print(f'[cold-crash] error: {exc}', flush=True)
+            _log('cold-crash', f'error: {exc}', level=logging.ERROR)
         time.sleep(interval)
 
 
@@ -1054,7 +1149,7 @@ def _carbonatie_co2_loop(interval: float = 60.0) -> None:
         try:
             _carbonatie_co2_tick()
         except Exception as exc:
-            print(f'[carb-co2] error: {exc}', flush=True)
+            _log('carb-co2', f'error: {exc}', level=logging.ERROR)
         time.sleep(interval)
 
 
@@ -1079,7 +1174,7 @@ def _carbonatie_co2_tick() -> None:
 
     raw = _ha_fetch_state(entity)
     if raw is None:
-        print(f'[carb-co2] kon sensor {entity} niet lezen — skip', flush=True)
+        _log('carb-co2', f'kon sensor {entity} niet lezen — skip')
         return
     huidig_gram = raw * 1000.0 if unit == 'kg' else raw
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -1156,7 +1251,7 @@ def _carbonatie_co2_tick() -> None:
 
     for service, titel, bericht in notify_jobs:
         ok = _ha_notify(service, titel, bericht)
-        print(f"[carb-co2] notify {service}: {'ok' if ok else 'mislukt'}", flush=True)
+        _log('carb-co2', f"notify {service}: {'ok' if ok else 'mislukt'}", level=logging.ERROR)
 
 
 def _auto_metingen_tick() -> None:
@@ -1209,7 +1304,7 @@ def _auto_metingen_tick() -> None:
             metingen.append(entry)
         _write_json('gist_metingen', metingen)
 
-    print(f'[auto-metingen] {len(new_entries)} meting(en) opgeslagen', flush=True)
+    _log('auto-metingen', f'{len(new_entries)} meting(en) opgeslagen')
 
 
 def _cold_crash_tick() -> None:
@@ -1226,11 +1321,11 @@ def _cold_crash_tick() -> None:
     with _data_lock:
         ha_inst = _read_json('ha_instellingen', {}) or {}
     if not ha_inst.get('climates_enabled'):
-        print(f"[cold-crash] {len(active)} actieve batch(es), maar climates_enabled=false in ha_instellingen — skip", flush=True)
+        _log('cold-crash', f"{len(active)} actieve batch(es), maar climates_enabled=false in ha_instellingen — skip")
         return
     climates = ha_inst.get('climates', []) or []
     if not climates:
-        print(f"[cold-crash] {len(active)} actieve batch(es), maar geen climates geconfigureerd — skip", flush=True)
+        _log('cold-crash', f"{len(active)} actieve batch(es), maar geen climates geconfigureerd — skip")
         return
 
     # Gebruik UTC met tzinfo: de frontend slaat `new Date().toISOString()` op
@@ -1246,19 +1341,19 @@ def _cold_crash_tick() -> None:
         try:
             target = float(batch.get('cold_crash_target'))
         except (TypeError, ValueError):
-            print(f"[cold-crash] batch {batch_id}: ongeldig cold_crash_target — skip", flush=True)
+            _log('cold-crash', f"batch {batch_id}: ongeldig cold_crash_target — skip")
             continue
         try:
             batch_ramp = float(batch.get('cold_crash_ramp') or 1)
         except (TypeError, ValueError):
             batch_ramp = 1.0
         if batch_ramp <= 0:
-            print(f"[cold-crash] batch {batch_id}: ramp<=0 — skip", flush=True)
+            _log('cold-crash', f"batch {batch_id}: ramp<=0 — skip")
             continue
 
         climate = next((c for c in climates if c.get('tank') == batch.get('tank') and c.get('entity')), None)
         if not climate:
-            print(f"[cold-crash] batch {batch_id}: geen climate gekoppeld aan tank {batch.get('tank')!r} — skip", flush=True)
+            _log('cold-crash', f"batch {batch_id}: geen climate gekoppeld aan tank {batch.get('tank')!r} — skip")
             continue
         entity_id = climate['entity']
 
@@ -1275,7 +1370,7 @@ def _cold_crash_tick() -> None:
             if last_dt.tzinfo is None:
                 last_dt = last_dt.replace(tzinfo=datetime.timezone.utc)
         except (TypeError, ValueError):
-            print(f"[cold-crash] batch {batch_id}: ongeldig timestamp {last_iso!r} — skip", flush=True)
+            _log('cold-crash', f"batch {batch_id}: ongeldig timestamp {last_iso!r} — skip")
             continue
         elapsed_h = (now - last_dt).total_seconds() / 3600.0
         if elapsed_h < 1.0:
@@ -1283,15 +1378,15 @@ def _cold_crash_tick() -> None:
             # we wachten. (int(min) % 10 == 0)
             mins = int((now - last_dt).total_seconds() / 60)
             if mins > 0 and mins % 10 == 0:
-                print(f"[cold-crash] batch {batch_id}: wacht op volgend uur (elapsed {mins} min)", flush=True)
+                _log('cold-crash', f"batch {batch_id}: wacht op volgend uur (elapsed {mins} min)")
             continue
 
         current_sp = _ha_fetch_climate_setpoint(entity_id)
         if current_sp is None:
-            print(f"[cold-crash] batch {batch_id}: kon setpoint van {entity_id} niet lezen — skip", flush=True)
+            _log('cold-crash', f"batch {batch_id}: kon setpoint van {entity_id} niet lezen — skip")
             continue
         if current_sp <= target + 1e-6:
-            print(f"[cold-crash] batch {batch_id}: setpoint {current_sp}°C <= target {target}°C — klaar", flush=True)
+            _log('cold-crash', f"batch {batch_id}: setpoint {current_sp}°C <= target {target}°C — klaar")
             continue
 
         # Doe zoveel hele uur-stappen als mogelijk in één tick — voorkomt
@@ -1304,7 +1399,7 @@ def _cold_crash_tick() -> None:
         new_sp = round(new_sp, 2)
 
         if not _ha_set_climate_temperature(entity_id, new_sp):
-            print(f"[cold-crash] batch {batch_id}: set_temperature({entity_id}, {new_sp}) faalde — skip", flush=True)
+            _log('cold-crash', f"batch {batch_id}: set_temperature({entity_id}, {new_sp}) faalde — skip", level=logging.ERROR)
             continue
 
         # Verplaats de "laatste stap"-ijkpunt vooruit per hele uur, zodat
@@ -1332,7 +1427,7 @@ def _cold_crash_tick() -> None:
         _write_json('batches', current)
 
     for u in updated:
-        print(f"[cold-crash] batch {u['id']}: setpoint → {u['new_sp']}°C ({u['steps']} stap(pen))", flush=True)
+        _log('cold-crash', f"batch {u['id']}: setpoint → {u['new_sp']}°C ({u['steps']} stap(pen))")
 
 
 def _list_backups() -> list[dict]:
@@ -1442,6 +1537,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not self._rate_check():
             return
         path = self.path.split('?')[0]
+
+        if HEALTH_PATH in path:
+            self._handle_health()
+            return
 
         if BF_PROXY_PREFIX in path:
             self._bf_proxy_get()
@@ -1598,6 +1697,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 vorige = _data_version(filepath)
                 if expected is not None and expected != vorige:
                     self._json(409, {'error': 'conflict', 'version': vorige})
+                    return
+                if not _append_only_ok(key, parsed):
+                    self._json(422, {'error': 'append-only', 'key': key})
                     return
                 if key in _SECURE_FIELDS:
                     # Sentinel-waarden terugvervangen door de opgeslagen
@@ -2058,6 +2160,21 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         else:
             self._json(502, {'error': 'notify failed'})
 
+    def _handle_health(self):
+        """GET /api/health — status van server, achtergrondthreads en backup
+        (ERP-plan 3.6). `threads` is None wanneer de server niet via __main__
+        draait (dan zijn er geen threads gestart, bv. onder pytest)."""
+        threads = {naam: t.is_alive() for naam, t in _threads.items()} or None
+        data_ok = DATA_DIR.is_dir()
+        ok = data_ok and (threads is None or all(threads.values()))
+        self._json(200, {
+            'ok': ok,
+            'threads': threads,
+            'laatste_backup': _laatste_backup_datum(),
+            'data_dir': data_ok,
+            'uptime_s': int(time.monotonic() - _start_tijd),
+        })
+
     def _handle_upload(self):
         """Accept a base64-encoded file upload and save it to UPLOAD_DIR."""
         filename = _extract_upload_filename(self.path.split('?')[0], UPLOAD_PREFIX)
@@ -2314,6 +2431,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             if conflicts:
                 self._json(409, {'error': 'conflict', 'conflicts': conflicts})
                 return
+            for key, value in data.items():
+                if not _append_only_ok(key, value):
+                    self._json(422, {'error': 'append-only', 'key': key})
+                    return
             # Fase 1: alle payloads naar tempbestanden.
             writes = []
             try:
@@ -2423,35 +2544,35 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         # Only log non-routine status codes
         if args and len(args) >= 2 and str(args[1]) not in ('200', '404', '204'):
-            print(f'{self.address_string()} {format % args}', flush=True)
+            _log('http', f'{self.address_string()} {format % args}', level=logging.WARNING)
 
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8099))
-    print(f'Brouwerij Admin gestart op poort {port}', flush=True)
-    print(f'Data opgeslagen in {DATA_DIR}', flush=True)
+    _log('server', f'Brouwerij Admin gestart op poort {port}', data_dir=str(DATA_DIR))
 
     # Start background backup thread (AGP 7-year retention)
     _harden_secure_files()
 
-    _backup_thread = threading.Thread(target=_backup_loop, daemon=True)
-    _backup_thread.start()
-    print(f'Backup thread gestart (dagelijks naar {BACKUP_DIR})', flush=True)
+    # Threadreferenties in _threads zodat /api/health hun status kan melden.
+    _threads['backup'] = threading.Thread(target=_backup_loop, daemon=True)
+    _threads['backup'].start()
+    _log('server', f'Backup-thread gestart (dagelijks naar {BACKUP_DIR})')
 
     # Start background auto-measurement thread (every 10 minutes)
-    _metingen_thread = threading.Thread(target=_auto_metingen_loop, daemon=True)
-    _metingen_thread.start()
-    print('Auto-metingen thread gestart (elke 10 minuten)', flush=True)
+    _threads['auto_metingen'] = threading.Thread(target=_auto_metingen_loop, daemon=True)
+    _threads['auto_metingen'].start()
+    _log('server', 'Auto-metingen-thread gestart (elke 10 minuten)')
 
     # Start background cold-crash thread (every minute — ramp-steps are hourly)
-    _coldcrash_thread = threading.Thread(target=_cold_crash_loop, daemon=True)
-    _coldcrash_thread.start()
-    print('Cold-crash thread gestart (elke minuut)', flush=True)
+    _threads['cold_crash'] = threading.Thread(target=_cold_crash_loop, daemon=True)
+    _threads['cold_crash'].start()
+    _log('server', 'Cold-crash-thread gestart (elke minuut)')
 
     # Start background CO₂-carbonisatie-bewakingsthread (every minute)
-    _carb_co2_thread = threading.Thread(target=_carbonatie_co2_loop, daemon=True)
-    _carb_co2_thread.start()
-    print('Carbonisatie CO₂-bewaking thread gestart (elke minuut)', flush=True)
+    _threads['carbonatie_co2'] = threading.Thread(target=_carbonatie_co2_loop, daemon=True)
+    _threads['carbonatie_co2'].start()
+    _log('server', 'Carbonisatie-CO₂-bewakingsthread gestart (elke minuut)')
 
     # ThreadingHTTPServer: één trage upstream-call (Claude 90s, Brewfather 30s,
     # SMTP 30s) mag niet alle andere requests — UI laden, data-saves — blokkeren.
