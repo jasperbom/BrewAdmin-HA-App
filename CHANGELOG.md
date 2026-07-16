@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.14] — 2026-07-16
+
+### Opgelost — HA-login op de directe poort faalde altijd met 401
+
+- De aanroep naar de Supervisor-auth-API stuurde de addon-token mee als
+  `Authorization: Bearer …`. Het `/auth`-endpoint van de Supervisor
+  interpreteert élke aanwezige `Authorization`-header echter als
+  Basic-auth met de gebruikerscredentials en leest de JSON-body dan niet
+  meer (geverifieerd in `supervisor/api/auth.py`) — waardoor iedere
+  loginpoging op 401 uitdraaide, ook met correcte gegevens.
+- De addon-token gaat nu via de `X-Supervisor-Token`-header (de standaard
+  voor addon→Supervisor-aanroepen), zodat de `Authorization`-header vrij
+  blijft en de JSON-flow met gebruikersnaam/wachtwoord daadwerkelijk
+  gevalideerd wordt. De overige Supervisor-aanroepen (core-API-proxy)
+  gebruiken terecht wél Bearer en zijn ongewijzigd.
+
+---
+
 ## [1.11.13] — 2026-07-16
 
 ### Verbeterd — Login-diagnose directe poort + gecentreerd logo
