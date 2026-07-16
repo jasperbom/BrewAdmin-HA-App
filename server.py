@@ -1031,7 +1031,7 @@ _KEY_TYPES = {
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
-        'tank_statussen', 'gebruikers_rollen',
+        'tank_statussen', 'gebruikers_rollen', 'login_instellingen',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
     )},
     # scalars
@@ -1242,35 +1242,91 @@ def _ha_auth_check(gebruiker: str, wachtwoord: str) -> bool:
 
 # Minimale loginpagina voor de directe poort. Bewust server-side en
 # zelfstandig (de SPA is hier nog niet geladen); inline CSS/JS valt binnen
-# de bestaande CSP ('unsafe-inline').
+# de bestaande CSP ('unsafe-inline'). De pagina is stylebaar via de
+# `login_instellingen`-key (Instellingen → App → Loginpagina): titel,
+# ondertitel, knoptekst, accent-/achtergrondkleur, achtergrondafbeelding en
+# het app-logo. LET OP: dit is een pre-auth-pagina — alle teksten worden
+# ge-escaped en kleuren/afbeeldingen strikt gevalideerd (fallback naar de
+# defaults), anders zou een beheerd veld hier XSS kunnen injecteren.
+
+_KLEUR_RE = re.compile(r'^#[0-9a-fA-F]{3,8}$')
+_DATA_IMG_RE = re.compile(r'^data:image/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=\s]+$')
+_LOGIN_AFB_MAX = 1_500_000  # ~1,1 MB afbeelding als base64
+
+
+def _login_pagina() -> bytes:
+    """Render de loginpagina met de opgeslagen styling (of de defaults)."""
+    import html as _html
+    inst = _read_json('login_instellingen', {})
+    if not isinstance(inst, dict):
+        inst = {}
+    app_name = _read_json('app_name', '')
+
+    titel = _html.escape(str(inst.get('titel') or app_name or 'BrewAdmin')[:60])
+    ondertitel = _html.escape(str(inst.get('ondertitel')
+                                  or 'Log in met je Home Assistant-account')[:120])
+    knop = _html.escape(str(inst.get('knop_tekst') or 'Inloggen')[:40])
+
+    def kleur(veld: str, standaard: str) -> str:
+        w = inst.get(veld)
+        return w if isinstance(w, str) and _KLEUR_RE.match(w) else standaard
+
+    accent = kleur('accent', '#b45309')
+    achtergrond = kleur('achtergrond', '#1c1917')
+    # CSS-shorthand: kleur als laatste; afbeelding alleen wanneer die het
+    # strikte data-url-patroon volgt (nooit ruwe invoer in de CSS).
+    body_bg = achtergrond
+    afb = inst.get('achtergrond_afbeelding')
+    if isinstance(afb, str) and len(afb) <= _LOGIN_AFB_MAX and _DATA_IMG_RE.match(afb):
+        body_bg = f'url("{afb}") center/cover no-repeat fixed {achtergrond}'
+
+    logo_html = ''
+    if inst.get('logo_tonen', True):
+        logo = _read_json('app_logo')
+        if isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX and _DATA_IMG_RE.match(logo):
+            logo_html = f'<img src="{logo}" alt="" class="logo">'
+
+    pagina = (_LOGIN_PAGE
+              .replace('__TITEL__', titel)
+              .replace('__ONDERTITEL__', ondertitel)
+              .replace('__KNOP__', knop)
+              .replace('__ACCENT__', accent)
+              .replace('__BODY_BG__', body_bg)
+              .replace('__LOGO__', logo_html))
+    return pagina.encode('utf-8')
+
+
 _LOGIN_PAGE = """<!doctype html>
 <html lang="nl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BrewAdmin — inloggen</title>
+<title>__TITEL__ — inloggen</title>
 <style>
-body{font-family:system-ui,sans-serif;background:#1c1917;color:#e7e5e4;
+body{font-family:system-ui,sans-serif;background:__BODY_BG__;color:#e7e5e4;
 display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
-form{background:#292524;padding:2rem;border-radius:1rem;width:20rem;
+form{background:rgba(41,37,36,.92);padding:2rem;border-radius:1rem;width:20rem;
 box-shadow:0 8px 30px rgba(0,0,0,.4)}
-h1{font-size:1.15rem;margin:0 0 .25rem;color:#fbbf24}
+.logo{display:block;max-height:4.5rem;max-width:12rem;object-fit:contain;
+margin:0 0 1rem}
+h1{font-size:1.15rem;margin:0 0 .25rem;color:__ACCENT__;filter:brightness(1.4)}
 p{font-size:.8rem;color:#a8a29e;margin:0 0 1.25rem}
 label{display:block;font-size:.7rem;text-transform:uppercase;
 letter-spacing:.05em;color:#a8a29e;margin-bottom:.25rem}
 input{width:100%;box-sizing:border-box;padding:.55rem .7rem;margin-bottom:1rem;
 border-radius:.5rem;border:1px solid #44403c;background:#1c1917;color:#e7e5e4}
 button{width:100%;padding:.6rem;border:none;border-radius:.5rem;
-background:#b45309;color:#fff;font-weight:600;cursor:pointer}
-button:hover{background:#92400e}
+background:__ACCENT__;color:#fff;font-weight:600;cursor:pointer}
+button:hover{filter:brightness(.85)}
 #fout{color:#f87171;font-size:.8rem;min-height:1.2rem;margin:.5rem 0 0}
 </style></head><body>
 <form id="f">
-<h1>BrewAdmin</h1>
-<p>Log in met je Home Assistant-account</p>
+__LOGO__
+<h1>__TITEL__</h1>
+<p>__ONDERTITEL__</p>
 <label for="u">Gebruikersnaam</label>
 <input id="u" autocomplete="username" required>
 <label for="w">Wachtwoord</label>
 <input id="w" type="password" autocomplete="current-password" required>
-<button type="submit">Inloggen</button>
+<button type="submit">__KNOP__</button>
 <div id="fout"></div>
 </form>
 <script>
@@ -1323,7 +1379,7 @@ _BEHEER_KEYS = frozenset((
     'gebruikers_rollen', 'ha_instellingen', 'notificatie_instellingen',
     'coldcrash_instellingen', 'planning_instellingen',
     'brouwproces_instellingen', 'brewery_details', 'mail_templates',
-    'app_logo', 'factuur_logo', 'app_name', 'nav_theme',
+    'app_logo', 'factuur_logo', 'app_name', 'nav_theme', 'login_instellingen',
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
 ))
 
@@ -2007,7 +2063,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if '/api/' in path or self.command != 'GET':
             self._json(401, {'error': 'login required'})
             return False
-        body = _LOGIN_PAGE.encode('utf-8')
+        body = _login_pagina()
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', len(body))

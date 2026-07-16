@@ -250,6 +250,113 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
   );
 };
 
+// Loginpagina-styling (directe-toegangspoort): teksten, kleuren, achtergrond
+// en logo. De server rendert de pagina met deze instellingen en valideert
+// alles strikt (escaping + kleur-/afbeeldingspatronen) — zie _login_pagina().
+const LoginStyleCard = ({inst, setInst}: {inst: any, setInst: (v: any) => void}) => {
+  const conf = inst && typeof inst === 'object' ? inst : {};
+  const [draft, setDraft] = React.useState({
+    titel: conf.titel || '', ondertitel: conf.ondertitel || '',
+    knop_tekst: conf.knop_tekst || '',
+    accent: conf.accent || '#b45309', achtergrond: conf.achtergrond || '#1c1917',
+  });
+  const [msg, setMsg] = React.useState('');
+
+  // Actuele themakleur (--t-btn) als hex; kleurinputs accepteren alleen hex.
+  const themaKleur = (): string => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--t-btn').trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+    const m = raw.match(/^rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+    if (!m) return '#b45309';
+    return '#' + [m[1], m[2], m[3]].map(n => Number(n).toString(16).padStart(2, '0')).join('');
+  };
+
+  const opslaan = (extra: any = {}) => {
+    setInst({...conf, ...draft, ...extra});
+    setMsg('✓'); setTimeout(() => setMsg(''), 2000);
+  };
+
+  const veld = 'w-full max-w-xs border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none t-input shadow-sm';
+  const lbl = 'block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1';
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid">
+      <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_login_title')}</h2>
+      <p className="text-sm text-gray-500 mb-4">{t('settings_login_desc')}</p>
+      <div className="space-y-3">
+        <div>
+          <label className={lbl}>{t('lbl_login_titel')}</label>
+          <input value={draft.titel} onChange={(e: any) => setDraft({...draft, titel: e.target.value})}
+            maxLength={60} placeholder="BrewAdmin" className={veld} />
+        </div>
+        <div>
+          <label className={lbl}>{t('lbl_login_ondertitel')}</label>
+          <input value={draft.ondertitel} onChange={(e: any) => setDraft({...draft, ondertitel: e.target.value})}
+            maxLength={120} placeholder="Log in met je Home Assistant-account" className={veld} />
+        </div>
+        <div>
+          <label className={lbl}>{t('lbl_login_knop')}</label>
+          <input value={draft.knop_tekst} onChange={(e: any) => setDraft({...draft, knop_tekst: e.target.value})}
+            maxLength={40} placeholder="Inloggen" className={veld} />
+        </div>
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className={lbl}>{t('lbl_login_accent')}</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={draft.accent}
+                onChange={(e: any) => setDraft({...draft, accent: e.target.value})}
+                className="h-8 w-12 border border-gray-200 rounded cursor-pointer" />
+              <Btn v="secondary" s="sm" onClick={() => setDraft({...draft, accent: themaKleur()})}>
+                {t('btn_login_themakleur')}
+              </Btn>
+            </div>
+          </div>
+          <div>
+            <label className={lbl}>{t('lbl_login_achtergrond')}</label>
+            <input type="color" value={draft.achtergrond}
+              onChange={(e: any) => setDraft({...draft, achtergrond: e.target.value})}
+              className="h-8 w-12 border border-gray-200 rounded cursor-pointer" />
+          </div>
+        </div>
+        <div>
+          <label className={lbl}>{t('lbl_login_achtergrond_afb')}</label>
+          <div className="flex items-center gap-3 flex-wrap">
+            {conf.achtergrond_afbeelding && (
+              <img src={conf.achtergrond_afbeelding} alt="" className="h-12 max-w-[120px] object-cover border border-gray-200 rounded" />
+            )}
+            <label className="cursor-pointer px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors">
+              {t('btn_login_afb_kiezen')}
+              <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(e: any) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                if (f.size > 1_000_000) { alert(t('err_login_afb_groot')); e.target.value = ''; return; }
+                const reader = new FileReader();
+                reader.onload = (ev: any) => opslaan({achtergrond_afbeelding: ev.target.result});
+                reader.readAsDataURL(f);
+                e.target.value = '';
+              }} />
+            </label>
+            {conf.achtergrond_afbeelding && (
+              <Btn v="danger" s="sm" onClick={() => opslaan({achtergrond_afbeelding: null})}>
+                {t('btn_login_afb_weg')}
+              </Btn>
+            )}
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input type="checkbox" className="t-checkbox" checked={conf.logo_tonen !== false}
+            onChange={(e: any) => opslaan({logo_tonen: e.target.checked})} />
+          {t('lbl_login_logo_tonen')}
+        </label>
+        <div className="flex items-center gap-3 pt-1">
+          <Btn onClick={() => opslaan()}>{t('btn_save')}</Btn>
+          {msg && <span className="text-sm text-green-600">{msg}</span>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const BackupCard = () => {
   const [backups, setBackups] = React.useState<{date:string, file_count:number}[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -329,7 +436,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -3129,6 +3236,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* APP — gebruikers & rollen (ERP-plan 4.2) */}
       {activeSection==='app' && <RollenCard rollen={gebruikersRollen} setRollen={setGebruikersRollen} />}
+
+      {/* APP — loginpagina-styling (directe-toegangspoort) */}
+      {activeSection==='app' && <LoginStyleCard inst={loginInst} setInst={setLoginInst} />}
 
       {/* APP — data-gezondheid: referentiële integriteit (ERP-plan 1.3) */}
       {activeSection==='app' && (

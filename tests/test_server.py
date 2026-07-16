@@ -746,6 +746,38 @@ class TestDirectLogin:
         finally:
             herstel()
 
+    def test_loginpagina_styling_en_escaping(self, app_direct, app):
+        # Styling uit login_instellingen wordt toegepast; teksten worden
+        # ge-escaped en ongeldige kleuren vallen terug op de default —
+        # dit is een pre-auth-pagina, dus injectie mag nooit kunnen.
+        logo = 'data:image/png;base64,' + base64.b64encode(b'fake-png').decode()
+        assert req(app, 'POST', '/api/data/app_logo', body=logo)[0] == 200
+        assert req(app, 'POST', '/api/data/login_instellingen', body={
+            'titel': 'Brouwerij <script>alert(1)</script>',
+            'ondertitel': 'Welkom!', 'knop_tekst': 'Ga verder',
+            'accent': '#336699', 'achtergrond': 'javascript:evil',
+            'achtergrond_afbeelding': 'https://kwaadaardig/x.png',
+        })[0] == 200
+        try:
+            with urllib.request.urlopen(app_direct + '/') as r:
+                pagina = r.read().decode('utf-8')
+            assert 'Brouwerij &lt;script&gt;alert(1)&lt;/script&gt;' in pagina
+            assert '<script>alert(1)' not in pagina
+            assert 'Welkom!' in pagina and 'Ga verder' in pagina
+            assert '#336699' in pagina
+            # Ongeldige achtergrondkleur → default; externe URL nooit in de CSS
+            assert '#1c1917' in pagina and 'javascript:evil' not in pagina
+            assert 'kwaadaardig' not in pagina
+            # Geldig app-logo (data-url) wordt getoond
+            assert f'<img src="{logo}"' in pagina
+            # logo_tonen: false verbergt het logo
+            req(app, 'POST', '/api/data/login_instellingen', body={'logo_tonen': False})
+            with urllib.request.urlopen(app_direct + '/') as r:
+                assert '<img src=' not in r.read().decode('utf-8')
+        finally:
+            req(app, 'POST', '/api/data/login_instellingen', body={})
+            req(app, 'POST', '/api/data/app_logo', body=b'null')
+
     def test_ingress_poort_kent_geen_login_endpoint(self, app):
         # Op de gewone poort bestaat de loginflow niet (valt door naar 404
         # via de normale routing) en blijft alles header-gebaseerd werken.

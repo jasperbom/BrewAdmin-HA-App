@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.11] — 2026-07-16
+
+### Toegevoegd — Loginpagina stylebaar vanuit Instellingen
+
+- Nieuwe kaart **"Loginpagina (directe toegang)"** bij Instellingen → App:
+  titel, ondertitel en knoptekst; accentkleur (met één klik overnemen van
+  het actieve app-thema) en achtergrondkleur; optionele
+  achtergrondafbeelding (upload, max 1 MB); toggle om het app-logo op de
+  loginpagina te tonen. i18n in alle 5 talen; nieuwe key
+  `login_instellingen` (beheer-only) zit mee in de Excel-backup.
+- De server rendert de loginpagina met deze styling (`_login_pagina`) met
+  strikte validatie omdat dit een pre-auth-pagina is: alle teksten worden
+  ge-escaped, kleuren moeten hex zijn en afbeeldingen een geldige
+  `data:image/...`-URL — ongeldige waarden vallen stil terug op de
+  defaults. Zonder configuratie blijft de pagina exact zoals hij was
+  (titel = app-naam, logo = app-logo).
+- pytest: styling-/escaping-test (XSS-poging in de titel wordt ge-escaped,
+  ongeldige kleur en externe afbeeldings-URL bereiken de pagina nooit,
+  logo-toggle) — 57 totaal; runtime-verificatie met Playwright-screenshots
+  van pagina én instellingen-kaart.
+
+---
+
 ## [1.11.10] — 2026-07-16
 
 ### Toegevoegd — Directe toegang met HA-login (tweede poort)
