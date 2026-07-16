@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.12] — 2026-07-16
+
+### Toegevoegd — HTTPS met eigen domein op de directe-toegangspoort
+
+- Nieuwe addon-opties `ssl`, `certfile` en `keyfile`: met `ssl: true`
+  draait de directe-toegangspoort (8098) HTTPS met certificaten uit de
+  HA `/ssl`-map — je eigen domein via de Let's Encrypt- of DuckDNS-addon
+  (config.yaml kreeg `map: ssl:ro`). TLS ≥ 1.2.
+- **Fail-closed**: is `ssl` aangezet maar het certificaat onbruikbaar
+  (ontbrekend bestand, ongeldige naam, padcomponenten), dan start de
+  directe poort helemaal niet — er wordt nooit stil teruggevallen op
+  onversleuteld. De ingress-poort blijft altijd gewoon draaien.
+- Certificaten worden dagelijks opnieuw ingelezen zodat een
+  Let's Encrypt-verlenging zonder addon-herstart wordt opgepikt; de
+  sessiecookie krijgt de `Secure`-vlag zodra de poort HTTPS draait.
+- Bijvangst-fix: `/data/options.json` (addon-opties van de Supervisor)
+  wordt nu expliciet uitgesloten van de eenmalige JSON→SQLite-migratie.
+- pytest: 3 nieuwe tests (opties + migratie-uitzondering, certvalidatie
+  incl. fail-closed en padtraversal, echte TLS-handshake naar de
+  loginpagina) — 60 totaal; runtime-smoke: HTTPS met domein-cert,
+  hoofdpoort onaangetast, fail-closed zonder key.
+
+---
+
 ## [1.11.11] — 2026-07-16
 
 ### Toegevoegd — Loginpagina stylebaar vanuit Instellingen

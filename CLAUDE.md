@@ -525,7 +525,12 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - CORS: localhost/127.0.0.1/[::1] only
 - Directe-toegangspoort (8098, `config.yaml ports: null` = standaard uit):
   vereist HA-login via de Supervisor-auth-API (`auth_api: true`), geeft een
-  HttpOnly/SameSite=Strict sessiecookie (in-memory, 24 u glijdend);
+  HttpOnly/SameSite=Strict sessiecookie (in-memory, 24 u glijdend; `Secure`
+  zodra de poort HTTPS draait). Addon-optie `ssl: true` = HTTPS met
+  certificaten uit `/ssl` (eigen domein via Let's Encrypt-/DuckDNS-addon),
+  dagelijks herladen; onbruikbaar certificaat → poort start NIET
+  (fail-closed, nooit stil onversleuteld). `/data/options.json` is van de
+  Supervisor — nooit migreren of via de data-API aanraken;
   X-Remote-User-headers worden op deze poort genegeerd (spoofbaar) — de
   sessiegebruiker telt voor rollen en audit; strenge login-rate-limit
   (5 mislukte pogingen per 5 min per IP), logins/pogingen in de audit.

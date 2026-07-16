@@ -858,8 +858,10 @@ def _migreer_json_bestanden(conn: sqlite3.Connection) -> None:
     json_voor_sqlite/ (buiten de data-API en de reguliere backups om).
     Idempotent: een key die al in de database staat wordt niet opnieuw
     geïmporteerd; onleesbare bestanden blijven staan en worden gelogd."""
+    # options.json is van de Supervisor (addon-opties), geen app-data —
+    # nooit migreren of verplaatsen.
     bestanden = [f for f in sorted(DATA_DIR.glob('*.json'))
-                 if f.is_file() and _valid_key(f.stem)]
+                 if f.is_file() and _valid_key(f.stem) and f.stem != 'options']
     if not bestanden:
         return
     doel = DATA_DIR / JSON_MIGRATIE_DIRNAAM
@@ -1166,6 +1168,8 @@ def _harden_secure_files() -> None:
 # poort is dan onbruikbaar (lokale dev gebruikt gewoon de hoofdpoort).
 
 DIRECT_PORT = int(os.environ.get('BREWADMIN_DIRECT_PORT', 8098))
+# HA-conventie: certificaten (Let's Encrypt-/DuckDNS-addon) staan in /ssl.
+SSL_DIR = Path(os.environ.get('BREWADMIN_SSL_DIR', '/ssl'))
 LOGIN_PATH = '/api/login'
 LOGOUT_PATH = '/api/logout'
 SESSIE_COOKIE = 'brewadmin_sessie'
@@ -1218,6 +1222,57 @@ def _sessie_gebruiker(token: str) -> str | None:
 def _sessie_verwijder(token: str) -> None:
     with _sessie_lock:
         _sessies.pop(token, None)
+
+
+def _addon_opties() -> dict:
+    """Addon-opties zoals de Supervisor die in /data/options.json zet
+    (ssl/certfile/keyfile). Leeg dict buiten HA of bij leesfouten."""
+    try:
+        opties = json.loads((DATA_DIR / 'options.json').read_text(encoding='utf-8'))
+        return opties if isinstance(opties, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _valid_certnaam(naam: str) -> bool:
+    """Alleen kale bestandsnamen binnen /ssl — geen padcomponenten."""
+    return bool(naam) and '/' not in naam and '\\' not in naam and not naam.startswith('.')
+
+
+def _ssl_context(certfile: str, keyfile: str) -> ssl.SSLContext | None:
+    """TLS-context voor de directe poort met certificaten uit /ssl
+    (bv. van de Let's Encrypt-addon voor je eigen domein). None wanneer de
+    bestanden ontbreken of ongeldig zijn — de aanroeper start de poort dan
+    NIET (fail-closed: nooit stil terugvallen op onversleuteld)."""
+    if not _valid_certnaam(certfile) or not _valid_certnaam(keyfile):
+        _log('ssl', f'ongeldige certfile/keyfile-naam: {certfile!r}/{keyfile!r}',
+             level=logging.ERROR)
+        return None
+    cert_pad = SSL_DIR / certfile
+    key_pad = SSL_DIR / keyfile
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_cert_chain(str(cert_pad), str(key_pad))
+        return ctx
+    except (OSError, ssl.SSLError) as exc:
+        _log('ssl', f'certificaat laden mislukt ({cert_pad}): {exc}',
+             level=logging.ERROR)
+        return None
+
+
+def _ssl_reload_loop(ctx: ssl.SSLContext, certfile: str, keyfile: str,
+                     interval: float = 86400.0) -> None:
+    """Herlaad het certificaat dagelijks op de bestaande context: nieuwe
+    verbindingen gebruiken dan het vernieuwde Let's Encrypt-certificaat
+    zonder addon-herstart. Fouten alleen loggen (oude cert blijft werken)."""
+    while True:
+        time.sleep(interval)
+        try:
+            ctx.load_cert_chain(str(SSL_DIR / certfile), str(SSL_DIR / keyfile))
+            _log('ssl', 'certificaat herladen')
+        except (OSError, ssl.SSLError) as exc:
+            _log('ssl', f'certificaat herladen mislukt: {exc}', level=logging.ERROR)
 
 
 def _ha_auth_check(gebruiker: str, wachtwoord: str) -> bool:
@@ -2105,8 +2160,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         token = _sessie_maak(gebruiker)
         _audit_write('login', '-', ip=ip, gebruiker=gebruiker,
                      rol=_gebruiker_rol(gebruiker))
+        # Secure-vlag zodra de poort HTTPS draait: de browser stuurt de
+        # sessiecookie dan nooit over onversleuteld verkeer mee.
+        secure = '; Secure' if getattr(self.server, 'brewadmin_ssl', False) else ''
         cookie = (f'{SESSIE_COOKIE}={token}; Path=/; HttpOnly; '
-                  f'SameSite=Strict; Max-Age={SESSIE_DUUR}')
+                  f'SameSite=Strict; Max-Age={SESSIE_DUUR}{secure}')
         self._json(200, {'ok': True, 'gebruiker': gebruiker,
                          'rol': _gebruiker_rol(gebruiker)},
                    extra_headers=[('Set-Cookie', cookie)])
@@ -3368,12 +3426,37 @@ if __name__ == '__main__':
 
     # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
     # van buitenaf wanneer de gebruiker de poort bewust publiceert in de
-    # addon-netwerkconfig (config.yaml ports: null = uit).
-    direct_server = http.server.ThreadingHTTPServer(('0.0.0.0', DIRECT_PORT), BrouwerijHandler)
-    direct_server.brewadmin_direct = True
-    _threads['direct_poort'] = threading.Thread(target=direct_server.serve_forever, daemon=True)
-    _threads['direct_poort'].start()
-    _log('server', f'Directe-toegangspoort gestart op {DIRECT_PORT} (HA-login vereist)')
+    # addon-netwerkconfig (config.yaml ports: null = uit). Met de
+    # addon-optie `ssl: true` draait de poort HTTPS met certificaten uit
+    # /ssl (eigen domein via de Let's Encrypt-/DuckDNS-addon); faalt het
+    # certificaat, dan start de poort NIET (nooit stil onversleuteld).
+    opties = _addon_opties()
+    direct_ctx = None
+    direct_ok = True
+    if opties.get('ssl'):
+        certfile = str(opties.get('certfile') or 'fullchain.pem')
+        keyfile = str(opties.get('keyfile') or 'privkey.pem')
+        direct_ctx = _ssl_context(certfile, keyfile)
+        if direct_ctx is None:
+            direct_ok = False
+            _log('server', f'Directe-toegangspoort NIET gestart: ssl aan maar '
+                           f'certificaat onbruikbaar (zie ssl-log)', level=logging.ERROR)
+    if direct_ok:
+        direct_server = http.server.ThreadingHTTPServer(('0.0.0.0', DIRECT_PORT), BrouwerijHandler)
+        direct_server.brewadmin_direct = True
+        if direct_ctx is not None:
+            direct_server.socket = direct_ctx.wrap_socket(direct_server.socket, server_side=True)
+            direct_server.brewadmin_ssl = True
+            _threads['ssl_reload'] = threading.Thread(
+                target=_ssl_reload_loop,
+                args=(direct_ctx, str(opties.get('certfile') or 'fullchain.pem'),
+                      str(opties.get('keyfile') or 'privkey.pem')),
+                daemon=True)
+            _threads['ssl_reload'].start()
+        _threads['direct_poort'] = threading.Thread(target=direct_server.serve_forever, daemon=True)
+        _threads['direct_poort'].start()
+        _log('server', f'Directe-toegangspoort gestart op {DIRECT_PORT} '
+                       f'({"HTTPS" if direct_ctx else "HTTP"}, HA-login vereist)')
 
     # ThreadingHTTPServer: één trage upstream-call (Claude 90s, Brewfather 30s,
     # SMTP 30s) mag niet alle andere requests — UI laden, data-saves — blokkeren.

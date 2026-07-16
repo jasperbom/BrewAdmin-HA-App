@@ -786,6 +786,81 @@ class TestDirectLogin:
         assert status == 404
 
 
+class TestDirectSsl:
+    """HTTPS op de directe poort: addon-opties, certvalidatie, handshake."""
+
+    def _maak_cert(self, tmp_path):
+        import subprocess
+        subprocess.run([
+            'openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+            '-keyout', str(tmp_path / 'privkey.pem'),
+            '-out', str(tmp_path / 'fullchain.pem'),
+            '-days', '1', '-subj', '/CN=brewadmin.test',
+        ], check=True, capture_output=True)
+
+    def test_addon_opties_en_migratie_uitzondering(self, app):
+        # options.json is van de Supervisor: wél leesbaar via _addon_opties,
+        # nooit meegenomen/verplaatst door de JSON-migratie.
+        (srv.DATA_DIR / 'options.json').write_text(
+            json.dumps({'ssl': True, 'certfile': 'a.pem', 'keyfile': 'b.pem'}))
+        try:
+            assert srv._addon_opties() == {'ssl': True, 'certfile': 'a.pem', 'keyfile': 'b.pem'}
+            conn = srv._db()
+            srv._migreer_json_bestanden(conn)
+            assert (srv.DATA_DIR / 'options.json').exists()
+            assert conn.execute("SELECT 1 FROM versies WHERE key='options'").fetchone() is None
+        finally:
+            (srv.DATA_DIR / 'options.json').unlink()
+        assert srv._addon_opties() == {}
+
+    def test_ssl_context_valideert(self, tmp_path):
+        import shutil as _shutil
+        if not _shutil.which('openssl'):
+            pytest.skip('openssl niet beschikbaar')
+        self._maak_cert(tmp_path)
+        oud = srv.SSL_DIR
+        srv.SSL_DIR = tmp_path
+        try:
+            assert srv._ssl_context('fullchain.pem', 'privkey.pem') is not None
+            # Ontbrekend bestand of padcomponenten → None (fail-closed)
+            assert srv._ssl_context('bestaat_niet.pem', 'privkey.pem') is None
+            assert srv._ssl_context('../fullchain.pem', 'privkey.pem') is None
+            assert srv._ssl_context('', 'privkey.pem') is None
+        finally:
+            srv.SSL_DIR = oud
+
+    def test_https_handshake_en_loginpagina(self, app, tmp_path):
+        import shutil as _shutil
+        import ssl as _ssl
+        if not _shutil.which('openssl'):
+            pytest.skip('openssl niet beschikbaar')
+        self._maak_cert(tmp_path)
+        oud = srv.SSL_DIR
+        srv.SSL_DIR = tmp_path
+        try:
+            ctx = srv._ssl_context('fullchain.pem', 'privkey.pem')
+            assert ctx is not None
+            httpd = http.server.ThreadingHTTPServer(('127.0.0.1', 0), srv.BrouwerijHandler)
+            httpd.brewadmin_direct = True
+            httpd.brewadmin_ssl = True
+            httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+            poort = httpd.server_address[1]
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                client_ctx = _ssl.create_default_context()
+                client_ctx.check_hostname = False
+                client_ctx.verify_mode = _ssl.CERT_NONE
+                with urllib.request.urlopen(f'https://127.0.0.1:{poort}/',
+                                            context=client_ctx) as r:
+                    assert r.status == 200
+                    assert 'Inloggen' in r.read().decode('utf-8')
+            finally:
+                httpd.shutdown()
+        finally:
+            srv.SSL_DIR = oud
+
+
 class TestLogging:
     def test_log_schrijft_json_regels(self):
         import io as _io
