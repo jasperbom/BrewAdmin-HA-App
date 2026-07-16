@@ -281,6 +281,16 @@ class TestAppIcoon:
             req(app, 'POST', '/api/data/app_logo', body=b'null')
             req(app, 'POST', '/api/data/app_logo_icoon', body={})
 
+    def test_versie_pad_bereikt_zelfde_endpoint(self, app):
+        # De client cache-bust met /api/app_icoon/v<versie> — prefix-route
+        assert req(app, 'POST', '/api/data/app_logo', body=self.PNG)[0] == 200
+        try:
+            with urllib.request.urlopen(app + '/api/app_icoon/v12345g') as r:
+                assert r.status == 200
+                assert r.read() == b'\x89PNG-nep'
+        finally:
+            req(app, 'POST', '/api/data/app_logo', body=b'null')
+
     def test_groot_raw_logo_wordt_toch_geserveerd(self, app):
         # Ruwe-logo-fallback accepteert grote uploads (>1,5 MB) — de
         # loginpagina-limiet geldt alleen voor inline embedden.
