@@ -111,9 +111,22 @@ docker build -t brewadmin .
 # Stage 2: python:3.12-alpine copies server.py + dist/index.html
 ```
 
-### No automated tests
+### Tests
 
-There is no test suite (no Jest, Vitest, or Python unittest). Verify changes manually by running the dev server and exercising the relevant feature.
+De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
+`src/utils/__tests__/`: accijns, BTW-rollover en grondslag-BTW, centen,
+journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
+ouderdom, COGS en de Excel-backup-round-trip.
+
+```bash
+npm test          # vitest run (eenmalig)
+npm run test:watch
+```
+
+**Draai `npm test` bij elke wijziging aan `src/utils/`.** UI-gedrag heeft
+geen geautomatiseerde dekking — verifieer pagina-wijzigingen handmatig met
+de dev-server (of de verify-skill). Nieuwe pure logica? Zet hem in
+`src/utils/` en schrijf er direct een test bij.
 
 ---
 
@@ -547,7 +560,7 @@ Bij elke nieuwe sleutel: voeg toe aan **alle 5** taalbestanden (nl/en/de/fr/es).
 
 ## Important Constraints
 
-- **No test suite** — be careful with refactors; test manually
+- **Testdekking alleen op utils** — `npm test` dekt de pure logica in `src/utils/`; UI en server.py handmatig verifiëren
 - **Single-file build** — all JS/CSS is inlined; keep bundle size reasonable
 - **Python stdlib only** — `server.py` must not import third-party packages
 - **Dutch UI language** — all user-visible strings must go through i18n

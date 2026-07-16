@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.0] — 2026-07-16
+
+### Toegevoegd — Vitest-testsuite op de pure logica (ERP-plan 3.1)
+
+- Vitest als dev-dependency met `npm test` / `npm run test:watch`; 67 tests
+  in `src/utils/__tests__/` over de financiële kernlogica: accijns
+  (tarieven, historie, maand-lock), BTW (periodekeys, periode-lock,
+  **rollover**, grondslag-BTW), centen/totalisering, journaalboekingen
+  (uitsplitsing, storno-flow, W&V uit journaal), bankreconciliatie
+  (**MT940-parser**, match-score, saldo-controle, **PSP-combinatie**),
+  **voorraadPerLocatie** (cap tegen phantom voorraad), ouderdomsanalyse,
+  batchkostprijs/COGS en de **Excel-backup-round-trip** (incl. cel-chunking
+  en legacy Uitslagen-migratie).
+- Testbaarheids-refactors zonder gedragswijziging: `parseMT940`,
+  `isPspTransactie` en `zoekPspCombinatie` verhuisd van BoekhoudingPage naar
+  `src/utils/bank.ts`; `excel.ts` gesplitst in puur
+  `bouwBackupWerkboek`/`parseBackupWerkboek` + dunne DOM-wrappers;
+  `api.ts` werkt nu ook buiten de browser (window-guard).
+
+---
+
 ## [1.10.99] — 2026-07-16
 
 ### Toegevoegd — COGS-optie: marge op werkelijke kostprijs (ERP-plan 2.6)

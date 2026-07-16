@@ -62,10 +62,11 @@ const migreerUitleveringen = (nieuw: any[], oud: any[]): any[] => {
   })
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
-// Verwacht hetzelfde object als de JSON-backup (alle app-data).
-export const excelExport = (data: any) => {
-  try {
+// ── Werkboek bouwen (puur, testbaar) ──────────────────────────────────────────
+// Verwacht hetzelfde object als de JSON-backup (alle app-data) en geeft het
+// volledige backup-werkboek terug. Los van de DOM-download zodat de
+// round-trip unit-testbaar is (fase 3.1).
+export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     const wb = XLSX.utils.book_new()
 
     const addSheet = (name: string, arr: any[]) =>
@@ -186,6 +187,14 @@ export const excelExport = (data: any) => {
     pushLogo('app_logo',     data.app_logo)
     pushLogo('factuur_logo', data.factuur_logo)
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inst), 'Instellingen')
+    return wb
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+// Verwacht hetzelfde object als de JSON-backup (alle app-data).
+export const excelExport = (data: any) => {
+  try {
+    const wb = bouwBackupWerkboek(data)
 
     // Genereer buffer en download via Blob URL
     const buf = XLSX.write(wb, {bookType: 'xlsx', type: 'array'})
@@ -204,14 +213,9 @@ export const excelExport = (data: any) => {
   }
 }
 
-// ── Import ────────────────────────────────────────────────────────────────────
-// Leest een xlsx-bestand en roept cb aan met hetzelfde object als de JSON-backup.
-export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?: string) => void) => {
-  const r = new FileReader()
-  r.onload = e => {
-    try {
-      const wb = XLSX.read((e.target as any).result, {type: 'array'})
-
+// ── Werkboek parsen (puur, testbaar) ──────────────────────────────────────────
+// Leest een backup-werkboek en geeft hetzelfde object terug als de JSON-backup.
+export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
       const gs   = (n: string): any[] => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n]) : []
       const parse = (n: string): any[] => gs(n).map(fromRow)
 
@@ -247,7 +251,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?
         return v
       }
 
-      cb({
+      return ({
         // Array data
         ingredienten:                 parse('Ingredienten'),
         lots:                         parse('Lots'),
@@ -351,6 +355,15 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?
         app_logo:             readLogo('app_logo'),
         factuur_logo:         readLogo('factuur_logo'),
       })
+}
+
+// ── Import ────────────────────────────────────────────────────────────────────
+// Leest een xlsx-bestand en roept cb aan met hetzelfde object als de JSON-backup.
+export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?: string) => void) => {
+  const r = new FileReader()
+  r.onload = e => {
+    try {
+      cb(parseBackupWerkboek(XLSX.read((e.target as any).result, {type: 'array'})))
     } catch (err) {
       // Diagnostiek i.p.v. stil falen (ERP-plan 0.8): de foutdetails gaan
       // naar de console én naar de melding, zodat een kapotte backup te

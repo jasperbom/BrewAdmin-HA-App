@@ -1,19 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
 import { lsSet, t } from '../i18n'
 
-// KRITIEK: relatieve paden voor HA Ingress compatibiliteit
-const p = window.location.pathname
+// KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
+// Fallback '/' voor niet-browser-omgevingen (Vitest, fase 3.1): daar worden
+// alleen de pure helpers gebruikt, nooit de fetch-paden zelf.
+const _pad = () => (typeof window !== 'undefined' ? window.location.pathname : '/')
+const p = _pad()
 export const API_BASE = p.replace(/[^/]*$/, '') + 'api/data/'
 export const ADDON_BASE = API_BASE.replace('api/data/', '')
 
 // Proxy paths
-export const _BF_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/brewfather/' })()
-export const _BF_TEST  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/brewfather/test' })()
-export const _WC_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/' })()
-export const _WC_PUT   = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/put/' })()
-export const _WC_TEST  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/test' })()
-export const _WC_PING  = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping' })()
-export const _HA_PROXY = (() => { const p = window.location.pathname; return p.replace(/[^/]*$/, '') + 'api/homeassistant/' })()
+export const _BF_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/brewfather/' })()
+export const _BF_TEST  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/brewfather/test' })()
+export const _WC_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/' })()
+export const _WC_PUT   = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/put/' })()
+export const _WC_TEST  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/test' })()
+export const _WC_PING  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping' })()
+export const _HA_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/homeassistant/' })()
 
 const _rateLimitError = (prefix: string, r: Response): Error => {
   const secs = Math.ceil(_retryAfterMs(r) / 1000)
