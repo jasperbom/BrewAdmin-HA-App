@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.20] — 2026-07-16
+
+### Opgelost — iOS-icoon pakte het logo nog steeds niet
+
+- iOS stelt harde eisen aan een home-screen-icoon: een écht, vierkant
+  PNG-bestand — SVG wordt geweigerd, foto-formaten (HEIC) vallen buiten
+  de validatie en transparantie wordt zwart. Het ruwe logo rechtstreeks
+  serveren was daardoor niet genoeg.
+- De app genereert nu **automatisch een 180×180-PNG-icoon** uit het
+  ingestelde logo (canvas-rastering, gecentreerd met ademruimte op een
+  witte achtergrond — werkt voor elk formaat dat de browser kan tonen).
+  Opgeslagen in de nieuwe beheer-only key `app_logo_icoon` (alleen de
+  beheerder genereert; afgeleide data, bewust niet in de Excel-backup);
+  `GET /api/app_icoon` verkiest dit icoon boven het ruwe logo, met eigen
+  ETag. `sizes="180x180"` op de apple-touch-icon-link.
+- pytest: nieuwe voorrang-test (SVG-logo + gegenereerd PNG-icoon → PNG
+  geserveerd) — 72 totaal; end-to-end geverifieerd met Playwright:
+  SVG-logo in, echte 180×180-PNG uit (magic bytes + afmeting
+  gecontroleerd). **Na de update: app opnieuw toevoegen aan het
+  beginscherm** — iOS cachet het icoon op het moment van toevoegen.
+
+---
+
 ## [1.11.19] — 2026-07-16
 
 ### Opgelost — Donkere overscroll lekte naar de HA-app

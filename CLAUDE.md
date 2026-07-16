@@ -411,6 +411,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties aan facturen/BTW (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |
+| `app_logo_icoon` | object | Automatisch gegenereerd 180×180-PNG-icoon uit het logo (`{van, icoon}`) t.b.v. `GET /api/app_icoon` (iOS-home-screen); afgeleide data — beheer-only, bewust níét in de Excel-backup (regenereert vanzelf) |
 | `factuur_logo` | string\|null | Base64 factuurlogo |
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |

@@ -1042,6 +1042,7 @@ _KEY_TYPES = {
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
         'tank_statussen', 'gebruikers_rollen', 'login_instellingen',
+        'app_logo_icoon',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
     )},
     # scalars
@@ -1642,6 +1643,7 @@ _BEHEER_KEYS = frozenset((
     'coldcrash_instellingen', 'planning_instellingen',
     'brouwproces_instellingen', 'brewery_details', 'mail_templates',
     'app_logo', 'factuur_logo', 'app_name', 'nav_theme', 'login_instellingen',
+    'app_logo_icoon',
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
 ))
 
@@ -3167,9 +3169,18 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         """GET /api/app_icoon — het app-logo als echt afbeeldingsbestand.
         iOS accepteert geen data-URL als apple-touch-icon (home-screen-
         icoon) en de header kan hiermee het logo uit de HTTP-cache tonen
-        vóór de data geladen is. ETag = de versie-hash van app_logo, met
-        304-afhandeling zodat herhaalde starts de cache gebruiken."""
-        logo = _read_json('app_logo')
+        vóór de data geladen is. Voorkeur: het door de client gegenereerde
+        vierkante 180×180-PNG-icoon (app_logo_icoon — iOS weigert SVG en
+        rendert transparantie zwart); anders het ruwe logo. ETag = de
+        versie-hash van de gebruikte key, met 304-afhandeling zodat
+        herhaalde starts de cache gebruiken."""
+        icoon_conf = _read_json('app_logo_icoon')
+        logo = icoon_conf.get('icoon') if isinstance(icoon_conf, dict) else None
+        bron_key = 'app_logo_icoon'
+        if not (isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX
+                and _DATA_IMG_RE.match(logo)):
+            logo = _read_json('app_logo')
+            bron_key = 'app_logo'
         if not (isinstance(logo, str) and len(logo) <= _LOGIN_AFB_MAX
                 and _DATA_IMG_RE.match(logo)):
             self._json(404, {'error': 'no logo'})
@@ -3180,7 +3191,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         except (ValueError, TypeError):
             self._json(404, {'error': 'invalid logo'})
             return
-        etag = f'"{_data_version("app_logo")}"'
+        etag = f'"{_data_version(bron_key)}"'
         if self.headers.get('If-None-Match') == etag:
             self.send_response(304)
             self.send_header('ETag', etag)
