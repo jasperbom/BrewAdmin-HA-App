@@ -674,11 +674,12 @@ class TestDirectLogin:
         set_cookie = headers.get('Set-Cookie', '')
         return status, set_cookie.split(';')[0] if set_cookie else ''
 
-    def _met_mock_auth(self):
+    def _met_mock_auth(self, uitkomst_fout='ongeldig'):
         """Contextmanager-achtige setup: SUPERVISOR_TOKEN + gemockte auth."""
         import os as _os
         echt = srv._ha_auth_check
-        srv._ha_auth_check = lambda u, w: (u, w) == ('jasper', 'geheim')
+        srv._ha_auth_check = (lambda u, w:
+                              'ok' if (u, w) == ('jasper', 'geheim') else uitkomst_fout)
         _os.environ['SUPERVISOR_TOKEN'] = 'testtoken'
         def herstel():
             srv._ha_auth_check = echt
@@ -731,6 +732,19 @@ class TestDirectLogin:
                        headers={'Cookie': cookie})[0] == 200
             assert req(app_direct, 'GET', '/api/whoami',
                        headers={'Cookie': cookie})[0] == 401
+        finally:
+            herstel()
+
+    def test_auth_backend_fout_geeft_502_geen_401(self, app_direct):
+        # auth_api niet actief (Supervisor 403) → 502 met detail, duidelijk
+        # te onderscheiden van verkeerde credentials; telt niet mee voor de
+        # brute-force-limiet.
+        herstel = self._met_mock_auth(uitkomst_fout='geweigerd')
+        try:
+            status, body, _ = req(app_direct, 'POST', '/api/login',
+                                  body={'username': 'jasper', 'password': 'fout'})
+            assert status == 502 and body['detail'] == 'geweigerd'
+            assert not srv._login_pogingen.get('127.0.0.1')
         finally:
             herstel()
 

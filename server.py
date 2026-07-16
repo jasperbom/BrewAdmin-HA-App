@@ -1275,12 +1275,21 @@ def _ssl_reload_loop(ctx: ssl.SSLContext, certfile: str, keyfile: str,
             _log('ssl', f'certificaat herladen mislukt: {exc}', level=logging.ERROR)
 
 
-def _ha_auth_check(gebruiker: str, wachtwoord: str) -> bool:
+def _ha_auth_check(gebruiker: str, wachtwoord: str) -> str:
     """Valideer HA-credentials via de Supervisor-auth-API (vereist
-    `auth_api: true` in config.yaml). Nooit iets van de invoer loggen."""
+    `auth_api: true` in config.yaml). Retourneert:
+      'ok'        — credentials kloppen;
+      'ongeldig'  — Supervisor zegt 401: verkeerde gebruikersnaam/wachtwoord
+                    (let op: de HA-gebruikersnaam, niet de weergavenaam);
+      'geweigerd' — Supervisor zegt 403: de addon mag de auth-API (nog) niet
+                    gebruiken — auth_api-recht niet actief, herstart/update
+                    de addon volledig;
+      'fout'      — Supervisor onbereikbaar of onverwacht antwoord.
+    De niet-401-gevallen worden gelogd (nooit de invoer zelf) zodat het
+    addon-logboek de echte oorzaak toont i.p.v. een generieke loginfout."""
     token = os.environ.get('SUPERVISOR_TOKEN', '')
     if not token or not gebruiker or not wachtwoord:
-        return False
+        return 'fout'
     try:
         req = urllib.request.Request(
             'http://supervisor/auth',
@@ -1290,9 +1299,21 @@ def _ha_auth_check(gebruiker: str, wachtwoord: str) -> bool:
             method='POST',
         )
         with urllib.request.urlopen(req, timeout=10) as r:
-            return 200 <= r.status < 300
-    except (urllib.error.URLError, OSError):
-        return False
+            if 200 <= r.status < 300:
+                return 'ok'
+            _log('login', f'supervisor-auth gaf onverwacht {r.status}',
+                 level=logging.ERROR, status=r.status)
+            return 'fout'
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return 'ongeldig'
+        _log('login', f'supervisor-auth weigerde met {e.code}'
+                      f'{" — auth_api-recht niet actief? Herstart/update de addon" if e.code == 403 else ""}',
+             level=logging.ERROR, status=e.code)
+        return 'geweigerd' if e.code == 403 else 'fout'
+    except (urllib.error.URLError, OSError) as exc:
+        _log('login', f'supervisor-auth onbereikbaar: {exc}', level=logging.ERROR)
+        return 'fout'
 
 
 # Minimale loginpagina voor de directe poort. Bewust server-side en
@@ -1361,9 +1382,10 @@ display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0
 form{background:rgba(41,37,36,.92);padding:2rem;border-radius:1rem;width:20rem;
 box-shadow:0 8px 30px rgba(0,0,0,.4)}
 .logo{display:block;max-height:4.5rem;max-width:12rem;object-fit:contain;
-margin:0 0 1rem}
-h1{font-size:1.15rem;margin:0 0 .25rem;color:__ACCENT__;filter:brightness(1.4)}
-p{font-size:.8rem;color:#a8a29e;margin:0 0 1.25rem}
+margin:0 auto 1rem}
+h1{font-size:1.15rem;margin:0 0 .25rem;color:__ACCENT__;filter:brightness(1.4);
+text-align:center}
+p{font-size:.8rem;color:#a8a29e;margin:0 0 1.25rem;text-align:center}
 label{display:block;font-size:.7rem;text-transform:uppercase;
 letter-spacing:.05em;color:#a8a29e;margin-bottom:.25rem}
 input{width:100%;box-sizing:border-box;padding:.55rem .7rem;margin-bottom:1rem;
@@ -1401,7 +1423,8 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     if (r.ok) { location.reload(); return; }
     if (r.status === 429) { fout.textContent = 'Te veel pogingen \\u2014 wacht even en probeer opnieuw.'; return; }
     if (r.status === 503) { fout.textContent = 'HA-authenticatie niet beschikbaar (draait de app als addon?).'; return; }
-    fout.textContent = 'Inloggen mislukt \\u2014 controleer gebruikersnaam en wachtwoord.';
+    if (r.status === 502) { fout.textContent = 'HA-authenticatie geweigerd voor deze addon \\u2014 herstart de addon volledig en kijk in het addon-logboek (auth_api).'; return; }
+    fout.textContent = 'Inloggen mislukt \\u2014 gebruik je HA-gebruikersnaam (waarmee je in Home Assistant inlogt, niet je weergavenaam) en controleer het wachtwoord.';
   } catch (err) {
     fout.textContent = 'Server niet bereikbaar.';
   }
@@ -2152,10 +2175,20 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not os.environ.get('SUPERVISOR_TOKEN'):
             self._json(503, {'error': 'HA auth not available'})
             return
-        if not _ha_auth_check(gebruiker, wachtwoord):
-            _login_poging_registreer(ip)
-            _audit_write('login_mislukt', '-', ip=ip, gebruiker=gebruiker)
-            self._json(401, {'error': 'invalid credentials'})
+        uitkomst = _ha_auth_check(gebruiker, wachtwoord)
+        if uitkomst != 'ok':
+            _audit_write('login_mislukt', '-', ip=ip, gebruiker=gebruiker,
+                         reden=uitkomst)
+            if uitkomst == 'ongeldig':
+                # Alleen échte verkeerde credentials tellen mee voor de
+                # brute-force-limiet; backend-fouten niet.
+                _login_poging_registreer(ip)
+                self._json(401, {'error': 'invalid credentials'})
+            else:
+                # Backend-probleem (auth_api niet actief / Supervisor
+                # onbereikbaar) — duidelijk onderscheiden van een verkeerd
+                # wachtwoord zodat de gebruiker weet wáár hij moet kijken.
+                self._json(502, {'error': 'auth backend', 'detail': uitkomst})
             return
         token = _sessie_maak(gebruiker)
         _audit_write('login', '-', ip=ip, gebruiker=gebruiker,
