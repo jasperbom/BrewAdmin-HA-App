@@ -2,9 +2,20 @@
 <html lang="nl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- maximum-scale=1 voorkomt de iOS-autozoom bij focus op invoervelden
+         (<16px); pinch-zoomen door de gebruiker blijft op iOS gewoon werken.
+         viewport-fit=cover laat de app onder de statusbalk/notch doorlopen. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <!-- Default vóór de app laadt; App.tsx werkt dit bij naar het actieve thema -->
     <meta name="theme-color" content="#451a03" />
+    <!-- Home-screen-app (iOS/Android): statusbalk transparant over de
+         gekleurde header (de nav krijgt safe-area-padding in App.tsx). -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- iOS accepteert geen data-URL als home-screen-icoon; dit endpoint
+         serveert het ingestelde logo als echt bestand (404 zonder logo). -->
+    <link rel="apple-touch-icon" href="api/app_icoon" />
     <title>BrewAdmin</title>
   </head>
   <body>
