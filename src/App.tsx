@@ -31,6 +31,15 @@ import AgpPage from './pages/AgpPage'
 import PlanningPage from './pages/PlanningPage'
 import GereedschapPage from './pages/GereedschapPage'
 
+// Home-screen-modus (iOS/Android-PWA). In de HA-companion-app/ingress draait
+// de app in een iframe dat de safe-area-insets van de fullscreen webview
+// erft — daar hoort de header géén statusbalk-padding te krijgen (HA regelt
+// de statusbalk zelf). Alleen als geïnstalleerde webapp dus.
+const IS_STANDALONE = typeof window !== 'undefined' && (
+  window.matchMedia?.('(display-mode: standalone)')?.matches
+  || (navigator as any).standalone === true
+);
+
 class PageErrorBoundary extends React.Component<{children: React.ReactNode, page: string}, {err: string|null}> {
   state = { err: null as string|null }
   static getDerivedStateFromError(e: Error) { return { err: e?.message || String(e) } }
@@ -1208,8 +1217,10 @@ function App() {
   const nt = NAV_THEMES[navTheme] || NAV_THEMES.amber;
   // paddingTop env(safe-area-inset-top): als home-screen-app op iOS loopt de
   // header onder de statusbalk door (black-translucent) — de gradient vult
-  // dan het gebied achter de klok. In een gewone browser is de inset 0.
-  const navStyle = {background:`linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`, borderBottomColor: nt.accent, paddingTop: 'env(safe-area-inset-top)'};
+  // dan het gebied achter de klok. Alléén in standalone-modus: in de
+  // HA-companion-app erft het ingress-iframe de inset van de webview en
+  // zou de header onterecht hoog worden.
+  const navStyle = {background:`linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`, borderBottomColor: nt.accent, ...(IS_STANDALONE ? {paddingTop: 'env(safe-area-inset-top)'} : {})};
   React.useEffect(() => {
     const th = NAV_THEMES[navTheme] || NAV_THEMES.amber;
     const r = document.documentElement.style;
@@ -1236,9 +1247,7 @@ function App() {
     // home-screen-modus — daar vult hij het gebied achter de klok. In de
     // browser en de HA-companion-app (ingress) hoort overscroll juist licht
     // te blijven, passend bij de app-achtergrond.
-    const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches
-      || (navigator as any).standalone === true;
-    document.documentElement.style.backgroundColor = standalone ? th.from : th.bg;
+    document.documentElement.style.backgroundColor = IS_STANDALONE ? th.from : th.bg;
   }, [navTheme]);
 
   // Home-screen-icoon: iOS accepteert alleen een vierkant PNG-bestand als

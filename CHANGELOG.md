@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.23] — 2026-07-16
+
+### Opgelost — Safe-area-header zat precies verkeerdom
+
+- **Hoge header in HA ingress weg**: de statusbalk-padding
+  (`env(safe-area-inset-top)`) stond onvoorwaardelijk op de header. In de
+  HA-companion-app erft het ingress-iframe de safe-area-inset van de
+  fullscreen webview, waardoor de header dáár onterecht hoog werd. De
+  padding geldt nu alleen in standalone-modus (geïnstalleerde
+  home-screen-app).
+- **Hoge header in de geïnstalleerde webapp terug**: iOS legt de
+  meta-tags vast op het moment van "Zet op beginscherm" — en dat gebeurt
+  op de directe poort meestal vanaf de **loginpagina**, die
+  `viewport-fit=cover`, `apple-mobile-web-app-capable` en
+  `black-translucent` miste. De geïnstalleerde app draaide daardoor niet
+  onder de statusbalk (inset 0, geen gekleurde strook achter de klok).
+  De loginpagina heeft nu dezelfde home-screen-meta's als de app zelf;
+  verwijder de app van het beginscherm en zet hem opnieuw neer.
+
+---
+
 ## [1.11.22] — 2026-07-16
 
 ### Opgelost — Safari-cache blokkeerde het home-screen-icoon
