@@ -684,13 +684,19 @@ export interface AccijnsRecord {
   id: number
   batch_id?: number
   batch_naam?: string
+  batch_nummer?: string
   verpakking_naam?: string
+  // Runtime-velden die AccijnsPage leest (historisch naast *_naam ontstaan)
+  verpakking_type?: string
+  aantal?: number
   liter?: number
+  totaal_liter?: number
   abv?: number
   accijns?: number
   totaal_accijns?: number
   datum?: string
   betaald?: boolean
+  betaal_datum?: string
   uitlevering_id?: number
   // Bron van de boeking: 'uitlevering' (bier verlaat AGP richting klant of
   // voor intern gebruik) of 'verplaatsing' (bier verlaat AGP naar een andere

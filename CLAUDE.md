@@ -200,7 +200,12 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
 
 ### TypeScript
 
-- Strict mode is **off** in `tsconfig.json` — loose typing is acceptable
+- Strict mode is **off** in `tsconfig.json` voor de pagina's, maar
+  `tsconfig.strict.json` (ERP 3.4) draait **strict** op `src/utils`,
+  `src/types` en `src/i18n` — die ratchet moet schoon blijven
+  (`npm run typecheck`, ook in CI) en de include mag alleen groeien
+- Page-props: typ nieuwe/aangeraakte pagina's met een `XxxPageProps`-interface
+  (zie AccijnsPage) i.p.v. `: any` — boy-scout-regel
 - All shared types defined in `src/types/index.ts`
 - Prefer explicit type annotations on function parameters
 
@@ -576,4 +581,4 @@ Bij elke nieuwe sleutel: voeg toe aan **alle 5** taalbestanden (nl/en/de/fr/es).
 - **HA Ingress compatibility** — paths must work with and without `/brouwerij_admin/` prefix
 - **Non-root Docker** — code runs as `appuser`; avoid hardcoded `/root/` paths
 - **Data files in `/data/`** — never write outside this directory from server.py
-- **Strict mode off** — TypeScript strict checks are disabled; don't rely on them catching errors
+- **Strict alleen op utils/types/i18n** — de pagina's draaien zonder strict; vertrouw daar niet op de compiler. De strict-ratchet (`tsconfig.strict.json`) moet schoon blijven

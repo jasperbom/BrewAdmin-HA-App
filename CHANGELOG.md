@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.3] — 2026-07-16
+
+### Toegevoegd — TypeScript aanscherpen (ERP-plan 3.4)
+
+- Nieuwe strict-ratchet `tsconfig.strict.json`: `src/utils`, `src/types` en
+  `src/i18n` type-checken onder volledige `strict: true` (bleken al schoon
+  dankzij het fase 2/3-werk) en moeten dat blijven; de include mag alleen
+  groeien. Draait via het nieuwe `npm run typecheck` en in de CI-workflow.
+- Eerste page-props getypt: AccijnsPage heeft nu een `AccijnsPageProps`-
+  interface (Batch/AccijnsRecord/AccijnsAangifte/…) i.p.v. `: any`;
+  `AccijnsRecord` aangevuld met de runtime-velden die de pagina leest
+  (verpakking_type, aantal, batch_nummer, betaal_datum, totaal_liter).
+- CLAUDE.md-conventies bijgewerkt (ratchet + boy-scout-regel voor page-props).
+- Werkwijze-blok in docs/ERP-STATUS.md geactualiseerd: tests + typecheck
+  horen nu expliciet bij elk punt.
+
+---
+
 ## [1.11.2] — 2026-07-16
 
 ### Toegevoegd — GitHub Actions CI (ERP-plan 3.3)

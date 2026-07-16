@@ -5,6 +5,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
 import { accijnsAangifteBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
+import type { Batch, AccijnsRecord, AccijnsAangifte, AccijnsInst, Uitlevering, Afvulling } from '../types'
 
 // Inline 4-ogen-controleblok (Douane v2.4 §12.2). Reviewer (default Elise Kok) vinkt akkoord
 // of opmerkingen aan, eventueel met bevindingen. Pas bij 'akkoord' kan de aangifte naar
@@ -89,7 +90,28 @@ const ControleBlok: React.FC<{
   )
 }
 
-function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}, bankDebets=[], koppelAccijnsBetaling=null, ontkoppelAccijnsBetaling=null, accijnsKoppelingInfo=null, setJournaal=()=>{}}: any) {
+// Getypte page-props (ERP-plan 3.4) — setters volgen het useStore-patroon
+// (waarde óf updater-functie), vandaar de brede setter-typen.
+interface AccijnsPageProps {
+  bat: Batch[]
+  acc: AccijnsRecord[]
+  setAcc: (v: AccijnsRecord[] | ((prev: AccijnsRecord[]) => AccijnsRecord[])) => void
+  uit?: Uitlevering[]
+  av?: Afvulling[]
+  accijnsAangiftes?: AccijnsAangifte[]
+  setAccijnsAangiftes?: (v: AccijnsAangifte[] | ((prev: AccijnsAangifte[]) => AccijnsAangifte[])) => void
+  accijnsInst?: AccijnsInst | null
+  auditLog?: any[]
+  setAuditLog?: (v: any) => void
+  // Onkoppelbare bankdebets voor de betaalkoppeling (uit BoekhoudingPage)
+  bankDebets?: {key: string, datum: string, label: string, bedrag: number}[]
+  koppelAccijnsBetaling?: ((txKey: string, maandKey: string) => void) | null
+  ontkoppelAccijnsBetaling?: ((maandKey: string) => void) | null
+  accijnsKoppelingInfo?: ((maandKey: string) => {datum?: string, bedrag?: number} | null) | null
+  setJournaal?: (v: any) => void
+}
+
+function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}, bankDebets=[], koppelAccijnsBetaling=null, ontkoppelAccijnsBetaling=null, accijnsKoppelingInfo=null, setJournaal=()=>{}}: AccijnsPageProps) {
   const {useState, useMemo} = React;
   // acc records: {id, batch_id, batch_nummer, uitlevering_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
   const getAccijns = (a: any) => Number(a.accijns ?? a.totaal_accijns ?? 0);

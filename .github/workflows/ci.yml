@@ -19,8 +19,8 @@ jobs:
           cache: npm
       - name: Dependencies
         run: npm ci
-      - name: Typecheck (tsc --noEmit)
-        run: npx tsc --noEmit
+      - name: Typecheck (tsc --noEmit + strict ratchet op utils/types/i18n)
+        run: npm run typecheck
       - name: Vitest (pure logica src/utils/)
         run: npm test
       - name: Productie-build (vite, single-file)

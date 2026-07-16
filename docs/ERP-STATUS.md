@@ -4,12 +4,15 @@
 > waarheid voor de voortgang van het ERP-verbeterplan
 > (zie `docs/ERP-VERBETERPLAN.md` voor de volledige bevindingen en het plan).
 > Werkwijze: pak het **eerstvolgende onafgevinkte punt** op, implementeer het,
-> vink het hier af (met datum + versienummer), bump de versie in `config.yaml`
-> (+0.0.1, zie CLAUDE.md), werk `CHANGELOG.md` bij, en commit alles samen.
+> verifieer (nieuwe pure logica krijgt een test; draai `npm test` én
+> `python3 -m pytest`, en `npx tsc --noEmit` moet schoon blijven — CI (3.3)
+> controleert dit ook), vink het punt hier af (met datum + versienummer +
+> logboekregel), bump de versie in `config.yaml` (+0.0.1, zie CLAUDE.md),
+> werk `CHANGELOG.md` bij, en commit alles samen.
 > Branch-conventie: `claude/erp-fase-<n>-<beschrijving>` vanaf `main`
 > (of werk verder op de branch die de gebruiker aanwijst).
 
-**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.2 · fase 0/1/2 afgerond, fase 3 gestart (3.1 t/m 3.3 klaar)
+**Laatst bijgewerkt:** 2026-07-16 · versie 1.11.3 · fase 0/1/2 afgerond, fase 3 grotendeels klaar (3.1 t/m 3.4)
 
 ---
 
@@ -130,8 +133,14 @@
       CHANGELOG-sectie + bump t.o.v. basisbranch op PR's). Alle stappen
       behalve de Docker-build lokaal gevalideerd — geen daemon in de
       dev-container; eerste CI-run bevestigt die job)*
-- [ ] **3.4 TypeScript aanscherpen** — incrementeel, eerst utils/ en types/,
-      page-props typeren
+- [x] **3.4 TypeScript aanscherpen** — incrementeel, eerst utils/ en types/,
+      page-props typeren *(v1.11.3, 2026-07-16 — strict-ratchet
+      tsconfig.strict.json: utils/types/i18n onder volledige `strict: true`
+      (verder dan het geplande noImplicitAny — bleek al schoon), bewaakt via
+      `npm run typecheck` + CI, include mag alleen groeien; eerste
+      page-props getypt (AccijnsPageProps) en AccijnsRecord aangevuld met
+      de runtime-velden; boy-scout-regel voor overige pagina's vastgelegd
+      in CLAUDE.md — verdere page-props lopen mee met 3.5-onderhoud)*
 - [ ] **3.5 Pagina's opsplitsen** — boy-scout-regel bij onderhoud
 - [ ] **3.6 Gestructureerde serverlogging + /api/health**
 
@@ -171,3 +180,4 @@
 | 2026-07-16 | 1.11.0 | 3.1 | Vitest: 67 tests (6 bestanden) op accijns/BTW-rollover/grondslag/centen/journaal/bank-MT940-PSP/voorraad/ouderdom/COGS/Excel-round-trip; refactors parseMT940+PSP → utils/bank.ts, excel.ts → pure bouw/parse, window-guard in api.ts; MT940-import na refactor met Playwright gesmoke-test |
 | 2026-07-16 | 1.11.1 | 3.2 | pytest: 31 tests op server.py (helpers + live-handler-integratie: 409/422/413/429-paden, atomaire commit en nextnr-parallellisme, upload, secrets, audit); /api/ping-documentatie gecorrigeerd |
 | 2026-07-16 | 1.11.2 | 3.3 | CI-workflow (typecheck/vitest/build, pytest, Docker-build, versie-bump-lint incl. PR-bumpcheck t.o.v. basisbranch); tsc nu volledig schoon (3 reduce-typefouten gefixt); checkscript lokaal positief én negatief getest |
+| 2026-07-16 | 1.11.3 | 3.4 | Strict-ratchet op utils/types/i18n (`tsconfig.strict.json`, npm run typecheck, in CI; geverifieerd met opzettelijke-fout-probe), AccijnsPage-props getypt + AccijnsRecord-runtime-velden; CLAUDE.md-conventies en werkwijze-blok geactualiseerd |
