@@ -266,6 +266,21 @@ class TestAppIcoon:
         finally:
             req(app, 'POST', '/api/data/app_logo', body=b'null')
 
+    def test_gegenereerd_icoon_heeft_voorrang(self, app):
+        # Het client-gegenereerde vierkante PNG-icoon (app_logo_icoon) wint
+        # van het ruwe logo — iOS weigert bv. SVG als home-screen-icoon.
+        svg = 'data:image/svg+xml;base64,' + base64.b64encode(b'<svg/>').decode()
+        png = 'data:image/png;base64,' + base64.b64encode(b'\x89PNG-icoon').decode()
+        req(app, 'POST', '/api/data/app_logo', body=svg)
+        req(app, 'POST', '/api/data/app_logo_icoon', body={'van': 'x', 'icoon': png})
+        try:
+            with urllib.request.urlopen(app + '/api/app_icoon') as r:
+                assert r.headers['Content-Type'] == 'image/png'
+                assert r.read() == b'\x89PNG-icoon'
+        finally:
+            req(app, 'POST', '/api/data/app_logo', body=b'null')
+            req(app, 'POST', '/api/data/app_logo_icoon', body={})
+
     def test_pre_auth_op_directe_poort(self, app, app_direct):
         assert req(app, 'POST', '/api/data/app_logo', body=self.PNG)[0] == 200
         try:

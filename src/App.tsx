@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys } from './utils/api'
+import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami } from './utils/api'
+import { maakAppIcoon } from './utils/icoon'
 import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
@@ -108,6 +109,7 @@ function App() {
   const [mailTemplates, setMailTemplates] = useStore('mail_templates', {pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}});
   const [gebruikersRollen, setGebruikersRollen] = useStore('gebruikers_rollen', {});
   const [loginInst, setLoginInst] = useStore('login_instellingen', {});
+  const [logoIcoon, setLogoIcoon] = useStore('app_logo_icoon', {});
   const [factuurCounter, setFactuurCounter] = useStore('factuur_counter', {jaar:0,nr:0});
   const [gistMetingen, setGistMetingen, refreshGistMetingen] = useStore('gist_metingen', []);
   const [carbSessies, setCarbSessies, refreshCarbSessies] = useStore('carbonatie_sessies', []);
@@ -1229,10 +1231,37 @@ function App() {
       document.head.appendChild(meta);
     }
     meta.content = th.from;
-    // Achtergrond van het html-element: zichtbaar in de statusbalkstrook en
-    // bij overscroll (rubber-banding) op iOS — donker i.p.v. wit.
-    document.documentElement.style.backgroundColor = th.from;
+    // Achtergrond van het html-element (zichtbaar in de statusbalkstrook en
+    // bij overscroll/rubber-banding op iOS): ALLEEN donker in
+    // home-screen-modus — daar vult hij het gebied achter de klok. In de
+    // browser en de HA-companion-app (ingress) hoort overscroll juist licht
+    // te blijven, passend bij de app-achtergrond.
+    const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches
+      || (navigator as any).standalone === true;
+    document.documentElement.style.backgroundColor = standalone ? th.from : th.bg;
   }, [navTheme]);
+
+  // Home-screen-icoon: iOS accepteert alleen een vierkant PNG-bestand als
+  // apple-touch-icon (geen SVG/HEIC, transparantie wordt zwart). Genereer
+  // daarom automatisch een 180×180 PNG uit het logo (app_logo_icoon), dat
+  // de server via api/app_icoon serveert. Alleen de beheerder genereert —
+  // andere rollen mogen deze key niet schrijven en hoeven het niet te doen.
+  React.useEffect(() => {
+    let actief = true;
+    getWhoami().then(w => {
+      if (!actief || !w || w.rol !== 'beheer') return;
+      if (!logo) {
+        if (logoIcoon && logoIcoon.icoon) setLogoIcoon({});
+        return;
+      }
+      const vingerafdruk = `${String(logo).length}:${String(logo).slice(0, 40)}`;
+      if (logoIcoon && logoIcoon.van === vingerafdruk && logoIcoon.icoon) return;
+      maakAppIcoon(logo).then(icoon => {
+        if (actief && icoon) setLogoIcoon({van: vingerafdruk, icoon});
+      });
+    });
+    return () => { actief = false; };
+  }, [logo, logoIcoon]);
 
   // Browsertab-icoon (favicon) volgt het ingestelde logo. Het
   // startscherm-icoon (apple-touch-icon) staat als statische link in
