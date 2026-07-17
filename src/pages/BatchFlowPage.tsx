@@ -5,6 +5,7 @@ import { tod, fmtD, fmt, r3 } from '../utils/format'
 import {
   STATUSSEN, TANK_REINIGING_LABEL_KEY, VERLIES_BRONNEN, convertEenheid,
   DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase,
+  BUILTIN_ING_TYPES, EENHEDEN,
 } from '../utils/constants'
 import {
   markTankVuilBijVertrek, fgStabiel, tankRestVolume, appendTankHistorie,
@@ -20,8 +21,6 @@ import SectionHeader from '../components/ui/SectionHeader'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
-import WaterAdditieSection from '../components/batch/WaterAdditieSection'
-import KoelLogSection from '../components/batch/KoelLogSection'
 import DryHopSection from '../components/batch/DryHopSection'
 
 interface BatchFlowPageProps {
@@ -344,6 +343,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [moveTankTarget, setMoveTankTarget] = useState('')
   // Rij-id van de batch-ingredient waarvan de koppel-picker openstaat (afboek-tabel).
   const [koppelRow, setKoppelRow] = useState<number | null>(null)
+  // Handmatig een ingredient aan de brouwdag toevoegen (naast het recept).
+  const emptyIForm = {ingredient_id: '', ingredient_naam: '', ingredient_type: 'Mout', hoeveelheid: '', eenheid: 'kg'}
+  const [iForm, setIForm] = useState<any>(emptyIForm)
+  const [ingFormOpen, setIngFormOpen] = useState(false)
   // Nieuwe batch plannen vanaf het overzicht (plus-kaart)
   const [nieuwOpen, setNieuwOpen] = useState(false)
   const [nieuwForm, setNieuwForm] = useState<any>({recept_id: '', naam: '', datum: tod(), tank: ''})
@@ -593,6 +596,35 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const isDryHopRij = (row: any) => {
     const g = String(row.gebruik || '').toLowerCase()
     return g === 'dry hop' || g === 'dry-hop' || g === 'dryhop'
+  }
+
+  // Commit een handmatig aangepaste hoeveelheid op een nog niet afgeboekte
+  // regel (zoals op de Batches-pagina: aanpasbaar tot het afboeken).
+  const commitBiHoeveelheid = (rowId: number, val: string) => {
+    const n = Number(val)
+    setBi((prev: any[]) => prev.map((x: any) => x.id === rowId ? {...x, hoeveelheid: (isNaN(n) || n < 0) ? 0 : n} : x))
+  }
+
+  // Handmatig een ingredient aan de brouwdag toevoegen (naast het recept). De
+  // regel komt onafgeboekt binnen; de gebruiker kiest een lot en boekt daarna
+  // af — zo kan de hoeveelheid vooraf nog worden aangepast.
+  const addBrouwIng = () => {
+    if (!selB) return
+    const ingObj = iForm.ingredient_id && iForm.ingredient_id !== 'custom'
+      ? (ing || []).find((i: any) => i.id === Number(iForm.ingredient_id)) : null
+    const naam = ingObj ? ingObj.naam : String(iForm.ingredient_naam || '').trim()
+    const type = ingObj ? ingObj.type : iForm.ingredient_type
+    if (!naam) { alert(t('err_select_ingredient')); return }
+    if (!iForm.hoeveelheid || Number(iForm.hoeveelheid) <= 0) { alert(t('err_qty_required')); return }
+    setBi((prev: any[]) => [...(prev || []), {
+      id: newId(prev || []), batch_id: selB.id,
+      ingredient_id: ingObj ? ingObj.id : null,
+      ingredient_naam: naam, ingredient_type: type,
+      hoeveelheid: Number(iForm.hoeveelheid), eenheid: iForm.eenheid,
+      lot_id: null, kosten: null, afgeboekt: false,
+    }])
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: `Ingredient toegevoegd: ${naam} (${iForm.hoeveelheid} ${iForm.eenheid})`})
+    setIForm(emptyIForm); setIngFormOpen(false)
   }
 
   // Afboeken van één regel van de voorraad — zelfde lot/FEFO-gedrag als op de
@@ -1433,7 +1465,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Afweeg/afboek-lijst: lot kiezen + per regel afboeken van de voorraad.
   // Compacte twee-regel-rijen i.p.v. een brede tabel, zodat alles ook op
   // smalle schermen zonder horizontaal scrollen past.
-  const renderAfboekTabel = (rows: any[]) => {
+  const renderAfboekTabel = (rows: any[], metToevoegen = false) => {
     // Totaal: som van bekende kosten over de getoonde regels.
     const totaal = rows.reduce((s: number, r: any) => {
       if (r.kosten) return s + Number(r.kosten)
@@ -1442,7 +1474,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }, 0)
     return (
       <div>
-        {rows.length === 0 ? (
+        {rows.length === 0 && !metToevoegen ? (
           <div className="text-sm text-gray-400 italic">{t('flow_afboek_geen')}</div>
         ) : (
           <div className="space-y-1.5">
@@ -1464,7 +1496,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                       {row.gebruik && <span className="ml-1 text-xs text-gray-400">({row.gebruik})</span>}
                       {renderKoppelPill(row)}
                     </span>
-                    <span className="text-gray-600 text-xs whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</span>
+                    {row.afgeboekt ? (
+                      <span className="text-gray-600 text-xs whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</span>
+                    ) : (
+                      // Hoeveelheid aanpasbaar tot het afboeken (zoals in de batch flow).
+                      <span className="whitespace-nowrap text-xs text-gray-600">
+                        <input type="number" step="any" min="0" defaultValue={row.hoeveelheid}
+                          onBlur={e => commitBiHoeveelheid(row.id, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                          title={t('batch_ing_qty_edit_title')}
+                          className="w-16 border border-gray-200 rounded px-1 py-0.5 text-right t-input" /> {row.eenheid}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     {row.afgeboekt ? (
@@ -1498,6 +1541,40 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <div className="flex items-center justify-end gap-2 pt-1 text-xs font-semibold">
                 <span className="text-gray-500">{t('lbl_total')}</span>
                 <span className="text-gray-700">{fmt(totaal)}</span>
+              </div>
+            )}
+            {metToevoegen && (
+              <div className="pt-1">
+                <button type="button" onClick={() => setIngFormOpen(o => !o)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700">
+                  <span className="text-gray-400">{ingFormOpen ? '▼' : '▶'}</span>
+                  {t('batch_add_ingredient_btn')}
+                </button>
+                {ingFormOpen && (
+                  <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+                    <select value={iForm.ingredient_id} onChange={e => {
+                      const id = e.target.value
+                      const o = (ing || []).find((i: any) => i.id === Number(id))
+                      setIForm((f: any) => ({...f, ingredient_id: id, ingredient_naam: o ? o.naam : '', ingredient_type: o ? o.type : f.ingredient_type,
+                        eenheid: o ? (String(o.type).toLowerCase() === 'mout' || String(o.type).toLowerCase() === 'suiker' ? 'kg' : 'g') : f.eenheid}))
+                    }} className="col-span-2 sm:col-span-1 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+                      <option value="">{t('ing_choose_ingredient_opt')}</option>
+                      {BUILTIN_ING_TYPES.map((ingTyp: string) => {
+                        const r = [...(ing || []).filter((i: any) => i.type === ingTyp)].sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam), 'nl'))
+                        return r.length ? <optgroup key={ingTyp} label={t('ing_type_' + ingTyp.toLowerCase())}>{r.map((i: any) => <option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>)}</optgroup> : null
+                      })}
+                      <option value="custom">{t('ing_free_fill')}</option>
+                    </select>
+                    {iForm.ingredient_id === 'custom'
+                      ? <Inp value={iForm.ingredient_naam} onChange={(v: string) => setIForm((f: any) => ({...f, ingredient_naam: v}))} placeholder={t('ph_ingredient_name')} />
+                      : <div className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-400 bg-gray-50 flex items-center">{iForm.ingredient_type ? t('ing_type_' + iForm.ingredient_type.toLowerCase()) : <span className="italic text-xs">type</span>}</div>}
+                    <div className="flex gap-1">
+                      <Inp type="number" value={iForm.hoeveelheid} onChange={(v: string) => setIForm((f: any) => ({...f, hoeveelheid: v}))} placeholder={t('ph_qty')} cls="flex-1" />
+                      <Sel value={iForm.eenheid} onChange={(v: string) => setIForm((f: any) => ({...f, eenheid: v}))} opts={EENHEDEN.map((e: string) => ({v: e, l: t('unit_' + e.toLowerCase())}))} cls="w-20" />
+                    </div>
+                    <Btn s="sm" onClick={addBrouwIng}>{t('settings_tank_add_btn')}</Btn>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1628,31 +1705,60 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // Fermentatie-progressiebar: OG → doel-FG op basis van de laatste meting.
-  const renderProgressie = () => {
+  // Volle-breedte kop bij Vergisten: OG→FG-progressie met de huidige SG én de
+  // huidige (gemeten) temperatuur in één oogopslag, bovenaan de fase.
+  const renderVergistHeader = () => {
     const og = Number(selB.OG) || 0
     const huidige = laatsteSg ?? (Number(selB.FG) > 0 ? Number(selB.FG) : null)
-    if (!(og > 1) || fgDoel == null || huidige == null || og <= fgDoel) {
-      return (
-        <div className="text-xs text-gray-400 italic">{t('flow_progressie_hint')}</div>
-      )
-    }
-    const pct = Math.min(100, Math.max(0, (og - huidige) / (og - fgDoel) * 100))
+    // Huidige temp: HA-sensor als die er is, anders de laatst gemeten temp.
+    const sensorTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+    const sensorTemp = typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw) ? sensorTempRaw : null
+    const laatsteTemp = (() => {
+      const ms = mijnMetingen.filter((m: any) => m.temp !== '' && m.temp != null && !isNaN(Number(m.temp)))
+        .sort((a: any, b: any) => (String(b.datum || '') + 'T' + String(b.tijd || '00:00')).localeCompare(String(a.datum || '') + 'T' + String(a.tijd || '00:00')))
+      return ms.length ? Number(ms[0].temp) : null
+    })()
+    const temp = sensorTemp ?? laatsteTemp
+    const pct = (og > 1 && fgDoel != null && huidige != null && og > fgDoel)
+      ? Math.min(100, Math.max(0, (og - huidige) / (og - fgDoel) * 100)) : null
     return (
-      <div>
-        <div className="flex items-center justify-end mb-1.5">
-          <div className="text-xs text-gray-500">
-            {t('flow_progressie_sg')}: <span className="font-mono font-medium">{huidige.toFixed(3)}</span>
+      <div className="rounded-xl border border-gray-100 bg-white shadow-card p-4">
+        <div className="flex items-center justify-between gap-4 mb-2 flex-wrap">
+          <div className="flex items-baseline gap-4">
+            <div>
+              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{t('flow_progressie_sg')}</div>
+              <div className="text-2xl font-bold font-mono text-gray-800">{huidige != null ? huidige.toFixed(3) : '—'}</div>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{t('flow_temp_gemeten')}</div>
+              <div className="text-2xl font-bold text-gray-800">{temp != null ? `${temp.toFixed(1)}°C` : '—'}</div>
+            </div>
+            {doelTemp != null && (
+              <div>
+                <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{t('flow_temp_doel')}</div>
+                <div className="text-2xl font-bold" style={{color: 'var(--t-accent)'}}>{doelTemp}°C</div>
+              </div>
+            )}
           </div>
+          {pct != null && (
+            <div className="text-sm font-medium" style={{color: 'var(--t-accent)'}}>
+              {t('flow_progressie_vergist').replace('{pct}', pct.toFixed(0))}
+            </div>
+          )}
         </div>
-        <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
-          <div className="h-full rounded-full transition-all" style={{width: `${pct}%`, backgroundColor: 'var(--t-accent)'}} />
-        </div>
-        <div className="flex items-center justify-between text-[11px] text-gray-400 mt-1">
-          <span>OG {og.toFixed(3)}</span>
-          <span className="font-medium" style={{color: 'var(--t-accent)'}}>{t('flow_progressie_vergist').replace('{pct}', pct.toFixed(0))}</span>
-          <span>FG {fgDoel.toFixed(3)}</span>
-        </div>
+        {pct != null ? (
+          <>
+            <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{width: `${pct}%`, backgroundColor: 'var(--t-accent)'}} />
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-gray-400 mt-1">
+              <span>OG {og.toFixed(3)}</span>
+              <span>FG {fgDoel!.toFixed(3)}</span>
+            </div>
+          </>
+        ) : (
+          <div className="text-xs text-gray-400 italic">{t('flow_progressie_hint')}</div>
+        )}
       </div>
     )
   }
@@ -2094,6 +2200,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </div>
         )}
 
+        {/* Vergisten: progressie + huidige waarden over de volle breedte bovenin. */}
+        {faseStatus === 'Vergisten' && renderVergistHeader()}
+
         {/* Stappen: op desktop in twee kolommen (masonry via CSS columns),
             zodat je meer in één oogopslag ziet. */}
         <div className="lg:columns-2 lg:gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
@@ -2139,19 +2248,24 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         })()}
 
         {/* ── Brouwen ─────────────────────────────────────────────────────── */}
+        {/* Eén doorlopende brouwdag-flow: het afweeg/afboek-blok en de koel-log
+            zitten verweven in de wizard (afboekSlot resp. koelstap), zodat je
+            van boven naar beneden werkt. De losse Water-additie-sectie is
+            vervallen — ingrediënten voeg je nu direct in het afboek-blok toe. */}
         {faseStatus === 'Brouwen' && (
           <>
-            <FlowStap title={t('flow_sectie_afboeken')} done={!!clMap.afgeboekt?.done} detail={clMap.afgeboekt?.detail} {...so('afboeken', !!clMap.afgeboekt?.done)}>
-              {renderAfboekTabel(brouwBi)}
-            </FlowStap>
-            <WaterAdditieSection batch={selB}
-              waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
             <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
               stappen={brouwdagStappen} setStappen={setBrouwdagStappen}
               tanks={tanks} lots={lots} ingredienten={ing}
               hopStorageDefault={brouwprocesInst?.hop_storage}
-              recepten={recepten} />
-            <KoelLogSection batch={selB} koelLogs={koelLogs} setKoelLogs={setKoelLogs} />
+              recepten={recepten}
+              koelLogs={koelLogs} setKoelLogs={setKoelLogs}
+              afboekSlot={
+                <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                  <SectionHeader title={t('flow_sectie_afboeken')} info={clMap.afgeboekt?.detail || null} />
+                  <div className="p-4">{renderAfboekTabel(brouwBi, true)}</div>
+                </div>
+              } />
             {takenVoorFase('Brouwen').length > 0 && (
               <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
                 {renderTaken('Brouwen')}
@@ -2162,7 +2276,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
         {/* ── Vergisten ───────────────────────────────────────────────────── */}
         {faseStatus === 'Vergisten' && (() => {
-          const metingenDone = !!clMap.metingen?.done && !!clMap.fg?.done && !!clMap.fg_stabiel?.done
+          // Dry hop is alleen relevant als het recept dry-hop-additions heeft
+          // óf er al dry-hops voor deze batch geregistreerd zijn.
+          const mijnDryHops = (dryHops || []).filter((h: any) => h.batch_id === selB.id)
+          const dryHopVanToepassing = dryHopBi.length > 0 || mijnDryHops.length > 0
           return (
             <>
               <FlowStap title={t('flow_sectie_schema')} optional done={schemaProfiel.length > 0} {...so('schema', true)}>
@@ -2172,11 +2289,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     doelTemp={doelTemp} doelLabel={t('flow_temp_doel')} />
                 </div>
               </FlowStap>
-              <FlowStap title={t('flow_stap_metingen')} done={metingenDone}
-                detail={[clMap.metingen?.detail && `${clMap.metingen.detail}×`, clMap.fg?.detail].filter(Boolean).join(' · ') || undefined}
-                {...so('metingen', metingenDone)}>
-                {renderFaseVelden('Vergisten')}
-                {renderProgressie()}
+              <FlowStap title={t('flow_stap_metingen')} done={!!clMap.metingen?.done}
+                detail={clMap.metingen?.detail ? `${clMap.metingen.detail}×` : undefined}
+                {...so('metingen', !!clMap.metingen?.done)}>
                 {renderMetingForm()}
                 {renderGrafiek()}
               </FlowStap>
@@ -2185,7 +2300,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   {renderAfboekTabel(dryHopBi)}
                 </FlowStap>
               )}
-              <DryHopSection batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
+              {dryHopVanToepassing && (
+                <DryHopSection batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
+              )}
               <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
                 detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
                 {...so('verlies', true)}>
@@ -2287,6 +2404,19 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </FlowStap>
         )}
         </div>
+
+        {/* ── Vergisten: FG-meting als sluitstuk (volle breedte, onderaan) ──── */}
+        {faseStatus === 'Vergisten' && (() => {
+          const fgDone = !!clMap.fg?.done && !!clMap.fg_stabiel?.done
+          return (
+            <FlowStap title={t('flow_stap_fg')} done={fgDone} detail={clMap.fg?.detail} {...so('fg', fgDone)}>
+              {renderFaseVelden('Vergisten')}
+              <div className={`text-xs mt-1 ${clMap.fg_stabiel?.done ? 'text-green-600' : 'text-gray-400'}`}>
+                {clMap.fg_stabiel?.done ? t('flow_fg_stabiel_klaar') : t('flow_fg_stabiel_hint')}
+              </div>
+            </FlowStap>
+          )
+        })()}
 
         {/* ── Gereed: samenvatting + financieel resultaat (volle breedte) ──── */}
         {faseStatus === 'Gesloten' && (
