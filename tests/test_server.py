@@ -566,11 +566,15 @@ class TestHealth:
         assert isinstance(body['uptime_s'], int)
 
     def test_health_rapporteert_laatste_backup(self, app):
+        # Geen hardcoded recente datums: de server maakt bij het starten zelf
+        # een backupmap met de datum van vandaag, die lexicografisch wint van
+        # elke testdatum in het verleden. Een ver-toekomstige datum sorteert
+        # gegarandeerd als nieuwste — zo is de test datum-onafhankelijk.
         (srv.BACKUP_DIR / '2026-07-15').mkdir(exist_ok=True)
-        (srv.BACKUP_DIR / '2026-07-16').mkdir(exist_ok=True)
+        (srv.BACKUP_DIR / '2099-12-31').mkdir(exist_ok=True)
         status, body, _ = req(app, 'GET', '/api/health')
         assert status == 200
-        assert body['laatste_backup'] == '2026-07-16'
+        assert body['laatste_backup'] == '2099-12-31'
 
     def test_health_rapporteert_dode_thread(self, app):
         import threading as _t

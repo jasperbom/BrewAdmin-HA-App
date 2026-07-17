@@ -110,11 +110,11 @@ export interface Batch {
 
 // ── Brouwdag-stappen ─────────────────────────────────────────────────────────
 // Eén stap in de brouwdag-wizard. `fase` groepeert stappen logisch
-// ('water'|'maisch'|'lauter'|'koken'|'koelen'|'og'); `volgorde` bepaalt de
-// volgorde binnen de fase. `doel`/`gemeten` zijn vrije strings zodat per stap
-// verschillende eenheden mogelijk zijn (°C, min, SG, L). `voltooid` = true
-// markeert de stap als afgerond.
-export type BrouwdagFase = 'water' | 'maisch' | 'lauter' | 'koken' | 'koelen' | 'og'
+// ('water'|'maisch'|'lauter'|'koken'|'whirlpool'|'koelen'|'og'); `volgorde`
+// bepaalt de volgorde binnen de fase. `doel`/`gemeten` zijn vrije strings zodat
+// per stap verschillende eenheden mogelijk zijn (°C, min, SG, L). `voltooid` =
+// true markeert de stap als afgerond.
+export type BrouwdagFase = 'water' | 'maisch' | 'lauter' | 'koken' | 'whirlpool' | 'koelen' | 'og'
 
 export interface BrouwdagStap {
   id: number
