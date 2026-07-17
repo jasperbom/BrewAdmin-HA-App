@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.25] — 2026-07-17
+
+### Opgelost — Datum-afhankelijke servertest
+
+- **`test_health_rapporteert_laatste_backup` faalde sinds 17-07**: de test
+  verwachtte hardcoded `2026-07-16` als nieuwste backupmap, maar de server
+  maakt bij het starten zelf een backupmap met de datum van vandaag — die
+  sorteert sindsdien hoger. De test gebruikt nu een ver-toekomstige datum
+  en is daarmee datum-onafhankelijk.
+
+---
+
 ## [1.11.24] — 2026-07-17
 
 ### Verbeterd — Batch flow chronologisch
