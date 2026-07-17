@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.28] — 2026-07-17
+
+### Verbeterd — Brouwdag over de volle breedte
+
+- **Brouwen-layout**: de brouwdag-wizard is één lange, doorlopende
+  stappenlijst en werd door de tweekoloms-masonry in de linkerkolom gepropt,
+  met een halflege rechterkolom ernaast. De Brouwen-fase gebruikt nu de
+  volle breedte: de stappen staan bovenaan over de hele breedte en de
+  takenlijst eronder — geen lege rechterkolom/witruimte meer. De overige
+  fasen houden de tweekoloms-weergave.
+
+---
+
 ## [1.11.27] — 2026-07-17
 
 ### Verbeterd — Brouwdag- en vergistingsflow

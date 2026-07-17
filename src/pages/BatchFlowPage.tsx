@@ -2204,8 +2204,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         {faseStatus === 'Vergisten' && renderVergistHeader()}
 
         {/* Stappen: op desktop in twee kolommen (masonry via CSS columns),
-            zodat je meer in één oogopslag ziet. */}
-        <div className="lg:columns-2 lg:gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
+            zodat je meer in één oogopslag ziet. Brouwen is de uitzondering: de
+            brouwdag-wizard is één lange, doorlopende stappenlijst en werkt het
+            prettigst over de volle breedte (geen halflege rechterkolom). */}
+        <div className={faseStatus === 'Brouwen'
+          ? 'space-y-3'
+          : 'lg:columns-2 lg:gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid'}>
 
         {/* ── Gepland ─────────────────────────────────────────────────────── */}
         {faseStatus === 'Gepland' && (() => {
