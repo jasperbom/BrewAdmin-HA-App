@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.26] — 2026-07-17
+
+### Opgelost — Botteldag-taken bij de verkeerde fase + dubbele checks
+
+- **Botteldag stond bij Brouwen**: de v1-taken-migratie gaf de groepen
+  Brouwdag/Botteldag/HACCP een verschoven groep-ID (hoogste
+  hygiëne-groep-ID + 1/2/3), terwijl de legacy-ID-koppeling van de
+  default-posities uitgaat. Bij een ander aantal hygiëne-groepen kwamen de
+  botteldag-taken zo bij Brouwen (en de brouwdag-taken bij Vergisten)
+  terecht. Een eenmalige opschoning (v3) laat nu de **inhoud** van de groep
+  winnen: botteldag-taken → Afvullen, brouwdag-taken → Brouwen,
+  HACCP-metingen → expliciet géén fase. De fase wordt expliciet vastgelegd
+  zodat ID-verschuivingen nooit meer kunnen bijten; handmatig gekozen fases
+  blijven onaangeroerd.
+- **Dubbele checks uitgezet**: acht brouwdag-checks bestonden dubbel — ze
+  zitten sinds 1.11.24 als stap of invulveld in de chronologische
+  stappenlijst (water, maischen, spoelen, kook-start, hop-addities, koelen,
+  OG- en pH-meting). Ook de hygiëne-defaults "Waterslot gevuld" en
+  "Fermentatie-emmer gesteriliseerd" dubbelden met de brouwdag-checks
+  fermentor/waterslot. Deze staan nu op inactief (terug aan te zetten via
+  Instellingen → Batchtaken; afvinkhistorie blijft bewaard) en zitten niet
+  meer in de defaults voor nieuwe installaties. Overblijvend in de
+  Brouwdag-groep: jodiumtest, gist aangezet, fermentor klaargezet,
+  waterslot. Pure logica + tests in `src/utils/taken.ts`.
+
+---
+
 ## [1.11.25] — 2026-07-17
 
 ### Opgelost — Datum-afhankelijke servertest

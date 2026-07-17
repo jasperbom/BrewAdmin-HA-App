@@ -239,26 +239,21 @@ export const FASE_LABEL_KEYS: Record<string, string> = {
 //   100-199 = check-items uit brouwdag-checklist (i18n labelKey)
 //   200-299 = check-items uit botteldag-checklist (i18n labelKey)
 //   300-399 = meting-items (CCP-definities)
+// Sinds de chronologische brouwdag-stappenlijst bevatten de defaults géén
+// checks meer die daar al als stap of invulveld bestaan (water, maischen,
+// spoelen, kook-start, hop-addities, koelen, OG- en pH-meting) en geen
+// hygiëne-dubbels van de brouwdag-checks fermentor/waterslot. Bestaande
+// installaties krijgen dezelfde opschoning via schoonTakenOp (utils/taken.ts).
 export const DEFAULT_BATCH_TAKEN_ITEMS = [
   // Hygiëne (groepen 1/2/3)
   {id:1, type:'check' as const, label:'Ketel gereinigd en gespoeld',  group_id:1, volgorde:0, actief:true},
-  {id:2, type:'check' as const, label:'Waterslot gevuld',              group_id:3, volgorde:0, actief:true},
-  {id:3, type:'check' as const, label:'Fermentatie-emmer gesteriliseerd', group_id:3, volgorde:1, actief:true},
   {id:4, type:'check' as const, label:'Thermometer gesteriliseerd',    group_id:2, volgorde:0, actief:true},
   {id:5, type:'check' as const, label:'Hydrometer gesteriliseerd',     group_id:2, volgorde:1, actief:true},
   // Brouwdag (groep 4) — via i18n labelKey zodat alle talen werken
-  {id:101, type:'check' as const, labelKey:'brouwdag_check_1_water',       group_id:4, volgorde:0, actief:true},
-  {id:102, type:'check' as const, labelKey:'brouwdag_check_2_maischen',    group_id:4, volgorde:1, actief:true},
-  {id:103, type:'check' as const, labelKey:'brouwdag_check_3_jodiumtest',  group_id:4, volgorde:2, actief:true},
-  {id:104, type:'check' as const, labelKey:'brouwdag_check_4_spoelen',     group_id:4, volgorde:3, actief:true},
-  {id:105, type:'check' as const, labelKey:'brouwdag_check_5_kook_start',  group_id:4, volgorde:4, actief:true},
-  {id:106, type:'check' as const, labelKey:'brouwdag_check_6_hop_toevoeg', group_id:4, volgorde:5, actief:true},
-  {id:107, type:'check' as const, labelKey:'brouwdag_check_7_koelen',      group_id:4, volgorde:6, actief:true},
-  {id:108, type:'check' as const, labelKey:'brouwdag_check_8_og_meting',   group_id:4, volgorde:7, actief:true},
-  {id:109, type:'check' as const, labelKey:'brouwdag_check_9_ph_meting',   group_id:4, volgorde:8, actief:true},
-  {id:110, type:'check' as const, labelKey:'brouwdag_check_10_gist',       group_id:4, volgorde:9, actief:true},
-  {id:111, type:'check' as const, labelKey:'brouwdag_check_11_fermentor',  group_id:4, volgorde:10, actief:true},
-  {id:112, type:'check' as const, labelKey:'brouwdag_check_12_waterslot',  group_id:4, volgorde:11, actief:true},
+  {id:103, type:'check' as const, labelKey:'brouwdag_check_3_jodiumtest',  group_id:4, volgorde:0, actief:true},
+  {id:110, type:'check' as const, labelKey:'brouwdag_check_10_gist',       group_id:4, volgorde:1, actief:true},
+  {id:111, type:'check' as const, labelKey:'brouwdag_check_11_fermentor',  group_id:4, volgorde:2, actief:true},
+  {id:112, type:'check' as const, labelKey:'brouwdag_check_12_waterslot',  group_id:4, volgorde:3, actief:true},
   // Botteldag (groep 5) — via i18n labelKey
   {id:201, type:'check' as const, labelKey:'botteldag_check_1_reiniging',       group_id:5, volgorde:0, actief:true},
   {id:202, type:'check' as const, labelKey:'botteldag_check_2_sanitair',        group_id:5, volgorde:1, actief:true},

@@ -9,6 +9,7 @@ import { findKlantVoorOrder } from './utils/klant'
 import { accijnsCalc, tariefVoorDatum } from './utils/calculations'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, btwAangifteBoeking, voegBoekingToe } from './utils/journaal'
 import { periodeKeyLabel } from './utils/btw'
+import { schoonTakenOp } from './utils/taken'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
@@ -506,49 +507,41 @@ function App() {
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenFaseMigratie, takenMigratie, batchTakenGroepen]);
 
-  // Eenmalige migratie (v2): gemigreerde Brouwdag-/Botteldag-groepen kregen in
-  // de v1-migratie een nieuw (hoog) groep-ID en geen `fase`-veld, waardoor de
-  // legacy-ID-koppeling (IDs 1-5) ze niet vangt en hun taken nergens in de
-  // batch flow verschijnen — botteldag-taken horen bij Afvullen, brouwdag-taken
-  // bij Brouwen. We herkennen die groepen taalonafhankelijk aan de i18n-
-  // labelKeys van hun items en vullen de fase eenmalig aan.
-  const [takenFaseMigratieV2, setTakenFaseMigratieV2] = useStore('batch_taken_fase_migratie_v2', null);
-  const takenFaseMigratieV2Ref = React.useRef(false);
+  // Eenmalige opschoning (v3, vervangt de v2-fase-backfill): de v1-migratie
+  // gaf Brouwdag/Botteldag/CCP-groepen een verschoven ID (hoogste
+  // hygiëne-groep-ID + 1/2/3), terwijl de legacy-ID-koppeling van de
+  // default-posities uitgaat. Bij ≠3 hygiëne-groepen kwamen botteldag-taken
+  // zo bijvoorbeeld bij Brouwen terecht — en omdat de legacy-koppeling wél
+  // een (foute) fase teruggaf, sloeg de v2-backfill die groepen over. De
+  // inhoud (labelKeys) wint nu van de ID-koppeling. Tegelijk worden dubbele
+  // checks uitgezet: acht brouwdag-checks die als stap/invulveld in de
+  // chronologische stappenlijst zitten, plus de twee hygiëne-defaults die
+  // dubbelen met de brouwdag-checks "fermentor" en "waterslot". Pure logica
+  // + tests in src/utils/taken.ts.
+  const [takenOpschoningV3, setTakenOpschoningV3] = useStore('batch_taken_opschoning_v3', null);
+  const takenOpschoningV3Ref = React.useRef(false);
   React.useEffect(() => {
-    if (takenFaseMigratieV2Ref.current) return;
-    if (takenFaseMigratieV2 === 'v2') { takenFaseMigratieV2Ref.current = true; return; }
+    if (takenOpschoningV3Ref.current) return;
+    if (takenOpschoningV3 === 'v3') { takenOpschoningV3Ref.current = true; return; }
     if (takenMigratie !== 'v1' && takenMigratie !== 'done') return;
-    const needed = ['batch_taken_groepen', 'batch_taken_items', 'batch_taken_fase_migratie_v2'];
+    const needed = ['batch_taken_groepen', 'batch_taken_items', 'batch_taken_opschoning_v3'];
     const ready = () => needed.every(k => _fetchedKeys.has(k));
     const run = () => {
-      if (takenFaseMigratieV2Ref.current) return;
-      takenFaseMigratieV2Ref.current = true;
-      const groepen = Array.isArray(batchTakenGroepen) ? batchTakenGroepen : [];
-      const items = Array.isArray(batchTakenItems) ? batchTakenItems : [];
-      const faseVoorGroep = (g: any): string | null => {
-        const keys = items.filter((it: any) => it.group_id === g.id && it.labelKey)
-          .map((it: any) => String(it.labelKey));
-        if (!keys.length) return null;
-        if (keys.every(k => k.startsWith('botteldag_check_'))) return 'Afgevuld';
-        if (keys.every(k => k.startsWith('brouwdag_check_'))) return 'Brouwen';
-        return null;
-      };
-      let changed = false;
-      const bijgewerkt = groepen.map((g: any) => {
-        if (groepFase(g) !== null) return g; // heeft al een (legacy of expliciete) fase
-        const fase = faseVoorGroep(g);
-        if (!fase) return g;
-        changed = true;
-        return {...g, fase};
-      });
-      if (changed) setBatchTakenGroepen(bijgewerkt);
-      setTakenFaseMigratieV2('v2');
+      if (takenOpschoningV3Ref.current) return;
+      takenOpschoningV3Ref.current = true;
+      const res = schoonTakenOp(
+        Array.isArray(batchTakenGroepen) ? batchTakenGroepen : [],
+        Array.isArray(batchTakenItems) ? batchTakenItems : [],
+      );
+      if (res.groepenGewijzigd) setBatchTakenGroepen(res.groepen);
+      if (res.itemsGewijzigd) setBatchTakenItems(res.items);
+      setTakenOpschoningV3('v3');
     };
     if (ready()) { run(); return; }
     const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
     const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
     return () => { clearInterval(int); clearTimeout(timeout); };
-  }, [takenFaseMigratieV2, takenMigratie, batchTakenGroepen, batchTakenItems]);
+  }, [takenOpschoningV3, takenMigratie, batchTakenGroepen, batchTakenItems]);
 
   // Eenmalige migratie: bestaande batches met status 'Verpakt' worden hernoemd
   // naar 'Afgevuld' (canonieke status sinds v1.9.75). 'Verpakt' blijft in de
