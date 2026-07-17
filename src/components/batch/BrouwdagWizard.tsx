@@ -1,6 +1,6 @@
 import React from 'react'
 import { t } from '../../i18n'
-import { newId, mapHopGebruik } from '../../utils/api'
+import { newId, mapHopGebruik, _fetchedKeys } from '../../utils/api'
 import { tod, r3 } from '../../utils/format'
 import { convertEenheid } from '../../utils/constants'
 import {
@@ -30,12 +30,13 @@ interface Props {
   recepten?: any[]
 }
 
-const FASE_VOLGORDE: BrouwdagFase[] = ['water', 'maisch', 'lauter', 'koken', 'koelen', 'og']
+const FASE_VOLGORDE: BrouwdagFase[] = ['water', 'maisch', 'lauter', 'koken', 'whirlpool', 'koelen', 'og']
 const FASE_LABEL: Record<BrouwdagFase, string> = {
   water: 'brouwdag_fase_water',
   maisch: 'brouwdag_fase_maisch',
   lauter: 'brouwdag_fase_lauter',
   koken: 'brouwdag_fase_koken',
+  whirlpool: 'brouwdag_fase_whirlpool',
   koelen: 'brouwdag_fase_koelen',
   og: 'brouwdag_fase_og',
 }
@@ -45,11 +46,27 @@ const FASE_LABEL: Record<BrouwdagFase, string> = {
 // gegevens van het gekoppelde batch_ingredient. Zo werken wijzigingen in
 // het Hop-schema (tijdstip, naam) direct door in de stappenlijst.
 const hopAddLabel = (h: any): string => {
+  if (String(h?.gebruik || '').toLowerCase() === 'whirlpool') {
+    const temp = h?.temp_c != null && h.temp_c !== '' ? String(h.temp_c) : '?'
+    return t('brouwdag_label_hop_whirlpool')
+      .replace('{n}', h?.ingredient_naam || '')
+      .replace('{temp}', temp)
+  }
   const tijdMin = h && h.tijdstip_min != null && h.tijdstip_min !== '' ? Number(h.tijdstip_min) : null
   return t('brouwdag_label_hop_add')
     .replace('{n}', h?.ingredient_naam || '')
     .replace('{t}', tijdMin != null ? String(tijdMin) : '?')
 }
+
+// Selectie-helpers voor hop-addities per brouwdag-fase: kook-hops horen bij
+// 'koken', whirlpool-hops bij 'whirlpool'. Dry-hops en mash-hops krijgen geen
+// brouwdag-stap (die lopen via de vergisting resp. het maischen zelf).
+const isBoilHop = (i: any) =>
+  String(i.ingredient_type).toLowerCase() === 'hop' &&
+  (!i.gebruik || ['boil', 'kook'].includes(String(i.gebruik).toLowerCase()))
+const isWhirlpoolHop = (i: any) =>
+  String(i.ingredient_type).toLowerCase() === 'hop' &&
+  String(i.gebruik || '').toLowerCase() === 'whirlpool'
 
 // Bepaalt de effectieve α-zuur% voor een hop-additie. Een gekoppeld lot
 // representeert de chargespecifieke gemeten waarde uit de lab-analyse en
@@ -134,7 +151,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   // zonder batch_ingredient_id: probeer te matchen op naam uit het opgeslagen
   // label ("Hop-additie: NAAM @").
   const resolveStapLabel = (s: BrouwdagStap): string => {
-    if (s.fase === 'koken' && s.batch_ingredient_id != null) {
+    if ((s.fase === 'koken' || s.fase === 'whirlpool') && s.batch_ingredient_id != null) {
       const h = batchBi.find(b => b.id === s.batch_ingredient_id)
       if (h) return hopAddLabel(h)
     }
@@ -204,41 +221,55 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   }
 
   // Verwijdert alle bestaande hop-additie-stappen voor deze batch en regenereert
-  // ze op basis van het actuele Hop-schema. Behoudt de overige brouwdag-stappen
+  // ze op basis van het actuele Hop-schema — kook-hops in de fase 'koken',
+  // whirlpool-hops in de fase 'whirlpool'. Behoudt de overige brouwdag-stappen
   // (water/maisch/lauter/koelen/og + hand-toegevoegde stappen).
   const syncHopStappen = () => {
-    const hopAddities = batchBi
-      .filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
-      .filter(i => !i.gebruik || String(i.gebruik).toLowerCase() === 'boil' || String(i.gebruik).toLowerCase() === 'kook')
+    const boilAddities = batchBi.filter(isBoilHop)
       .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
+    const wpAddities = batchBi.filter(isWhirlpoolHop)
+      .sort((a: any, b: any) => Number(b.temp_c || 0) - Number(a.temp_c || 0))
 
     setStappen((prev: any[]) => {
       const isHopStap = (s: any) =>
-        s.batch_id === batch.id && s.fase === 'koken' && (
+        s.batch_id === batch.id && (s.fase === 'koken' || s.fase === 'whirlpool') && (
           s.batch_ingredient_id != null ||
           (typeof s.label === 'string' && /^[^:]+:\s*.+?\s*@/.test(s.label))
         )
       const overig = (prev || []).filter((s: any) => !isHopStap(s))
-      const maxVolgorde = overig
-        .filter((s: any) => s.batch_id === batch.id && s.fase === 'koken')
+      const maxVolgordeVoor = (fase: string) => overig
+        .filter((s: any) => s.batch_id === batch.id && s.fase === fase)
         .reduce((m: number, s: any) => Math.max(m, s.volgorde || 0), 0)
       let id = newId(overig)
-      let volgorde = maxVolgorde + 1
-      const nieuwe: BrouwdagStap[] = hopAddities.map(h => ({
-        id: id++, batch_id: batch.id, fase: 'koken' as BrouwdagFase, volgorde: volgorde++,
-        label: hopAddLabel(h),
-        batch_ingredient_id: h.id,
-        doel: `${h.hoeveelheid}${h.eenheid || 'g'}`,
-        doel_eenheid: 'g',
-        created_at: new Date().toISOString(),
-      }))
-      return [...overig, ...nieuwe]
+      const maakStappen = (addities: any[], fase: BrouwdagFase): BrouwdagStap[] => {
+        let volgorde = maxVolgordeVoor(fase) + 1
+        return addities.map(h => ({
+          id: id++, batch_id: batch.id, fase, volgorde: volgorde++,
+          label: hopAddLabel(h),
+          batch_ingredient_id: h.id,
+          doel: `${h.hoeveelheid}${h.eenheid || 'g'}`,
+          doel_eenheid: 'g',
+          created_at: new Date().toISOString(),
+        }))
+      }
+      return [...overig, ...maakStappen(boilAddities, 'koken'), ...maakStappen(wpAddities, 'whirlpool')]
     })
   }
 
   // ── Kerngegevens-velden direct op batch ───────────────────────────────────
   const updField = (veld: keyof Batch, val: any) => {
     setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, [veld]: val} : b))
+  }
+  // OG invullen berekent ook het platogehalte — zelfde kubische benadering als
+  // de Batches-pagina, zodat de flow geen functionaliteit verliest nu het
+  // OG-veld hier in de stappenlijst leeft.
+  const updOG = (val: any) => {
+    const patch: any = { OG: val }
+    const og = Number(val)
+    if (!isNaN(og) && og >= 1 && og <= 1.2) {
+      patch.platogehalte = String(Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og) * 10) / 10)
+    }
+    setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, ...patch} : b))
   }
 
   // ── Auto-berekende waarden ────────────────────────────────────────────────
@@ -267,6 +298,67 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   // gebruiken we niet als fallback.
   const ibuVolume = Number(batch.kook_volume_eind_l) || Number(batch.kook_volume) || Number(batch.gist_volume_l) || Number(batch.liter_vergist) || 0
   const ibu = iBUTinseth(hopsVoorIBU as any, ibuOG, ibuVolume)
+
+  // ── Chronologische meetvelden per brouwdag-fase ───────────────────────────
+  // De voormalige "Kerngegevens"-kaart is opgegaan in de stappenlijst: elk
+  // meetveld staat bij de fase waarin je het daadwerkelijk meet. Doelwaarden
+  // komen uit het gekoppelde recept (zelfde afleidingen als voorheen).
+  const rec: any = batchRecept || {}
+  const doelOGRecept = Number(rec.OG) || null
+  const doelBatchSize = Number(rec.batch_size) || null
+  const doelKookVol = Number(rec.kook_volume) || null
+  // Geschatte pre-boil SG: aanname dat alle suiker al in het wort zit, dus
+  // pre-boil SG verhoudt zich tot OG als batch_size/kook_volume.
+  const doelPreBoilSg = (doelOGRecept && doelBatchSize && doelKookVol && doelKookVol > 0)
+    ? 1 + (doelOGRecept - 1) * (doelBatchSize / doelKookVol)
+    : null
+
+  interface MeetVeldDef {
+    veld: string
+    labelKey: string
+    step: string
+    ph: string
+    doel?: number | null
+    doelUnit?: string
+    doelDecimals?: number
+    hint?: string
+  }
+  const FASE_MEETVELDEN: Partial<Record<BrouwdagFase, MeetVeldDef[]>> = {
+    maisch: [
+      { veld: 'maisch_ph', labelKey: 'batch_info_mash_ph', step: '0.01', ph: '5.40', hint: '5.2–5.4' },
+    ],
+    lauter: [
+      { veld: 'pre_boil_sg', labelKey: 'brouwdag_pre_boil_sg', step: '0.001', ph: '1.045', doel: doelPreBoilSg, doelDecimals: 3 },
+      { veld: 'pre_boil_volume_l', labelKey: 'brouwdag_pre_boil_vol', step: '0.1', ph: '28', doel: doelKookVol, doelUnit: ' L', doelDecimals: 1 },
+    ],
+    koken: [
+      { veld: 'kook_volume_start_l', labelKey: 'brouwdag_kook_vol_start', step: '0.1', ph: '28', doel: doelKookVol, doelUnit: ' L', doelDecimals: 1 },
+      { veld: 'kook_volume_eind_l', labelKey: 'brouwdag_kook_vol_eind', step: '0.1', ph: '24', doel: doelBatchSize, doelUnit: ' L', doelDecimals: 1 },
+      { veld: 'kook_ph', labelKey: 'batch_info_boil_ph', step: '0.01', ph: '5.20', hint: '5.0–5.2' },
+    ],
+    koelen: [
+      { veld: 'gist_volume_l', labelKey: 'brouwdag_gist_vol', step: '0.1', ph: '22', doel: doelBatchSize, doelUnit: ' L', doelDecimals: 1 },
+      { veld: 'liter_vergist', labelKey: 'lbl_liters_fermented', step: '0.1', ph: '22', doel: doelBatchSize, doelUnit: ' L', doelDecimals: 1 },
+    ],
+    og: [
+      { veld: 'OG', labelKey: 'brouwdag_og_meting', step: '0.001', ph: '1.052', doel: doelOGRecept, doelDecimals: 3 },
+    ],
+  }
+  const renderMeetVeld = (v: MeetVeldDef) => (
+    <div key={v.veld}>
+      <label className="text-xs text-gray-500">{t(v.labelKey)}</label>
+      <input type="number" step={v.step} value={(batch as any)[v.veld] ?? ''}
+        onChange={e => v.veld === 'OG' ? updOG(e.target.value) : updField(v.veld as any, e.target.value)}
+        className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder={v.ph} />
+      {v.doel != null && !isNaN(Number(v.doel)) ? (
+        <div className="text-[10px] text-gray-400 mt-0.5">
+          {t('brouwdag_doel')}: {v.doelDecimals != null ? Number(v.doel).toFixed(v.doelDecimals) : String(v.doel)}{v.doelUnit || ''}
+        </div>
+      ) : v.hint ? (
+        <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_typisch')}: {v.hint}</div>
+      ) : null}
+    </div>
+  )
 
   // Persisteer berekende waarden zodra de inputs aanwezig zijn — zo blijven ze
   // beschikbaar voor overzicht/print zonder steeds herberekenen.
@@ -363,9 +455,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       created_at: new Date().toISOString(),
     })
 
-    const hopAddities = batchBi
-      .filter(i => String(i.ingredient_type).toLowerCase() === 'hop')
-      .filter(i => !i.gebruik || String(i.gebruik).toLowerCase() === 'boil' || String(i.gebruik).toLowerCase() === 'kook')
+    const hopAddities = batchBi.filter(isBoilHop)
       .sort((a: any, b: any) => Number(b.tijdstip_min || 0) - Number(a.tijdstip_min || 0))
     hopAddities.forEach((h: any) => {
       nieuwe.push({
@@ -373,6 +463,21 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
         // Label is een fallback-momentopname. De render gebruikt
         // batch_ingredient_id om het label live op te bouwen uit het
         // huidige Hop-schema.
+        label: hopAddLabel(h),
+        batch_ingredient_id: h.id,
+        doel: `${h.hoeveelheid}${h.eenheid || 'g'}`,
+        doel_eenheid: 'g',
+        created_at: new Date().toISOString(),
+      })
+    })
+
+    // 4b. Whirlpool — whirlpool-hops uit het recept/hop-schema als eigen fase,
+    // gesorteerd op temperatuur (heetste stand eerst).
+    const wpAddities = batchBi.filter(isWhirlpoolHop)
+      .sort((a: any, b: any) => Number(b.temp_c || 0) - Number(a.temp_c || 0))
+    wpAddities.forEach((h: any) => {
+      nieuwe.push({
+        id: id++, batch_id: batch.id, fase: 'whirlpool', volgorde: volgorde++,
         label: hopAddLabel(h),
         batch_ingredient_id: h.id,
         doel: `${h.hoeveelheid}${h.eenheid || 'g'}`,
@@ -399,6 +504,29 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
 
     setStappen((prev: any[]) => [...(prev || []), ...nieuwe])
   }
+
+  // Automatisch stappen genereren zodra de batch in de fase Brouwen staat en er
+  // nog geen stappen zijn. De flag `brouwdag_stappen_auto` op de batch zorgt dat
+  // dit één keer gebeurt — wie de stappen daarna bewust verwijdert, krijgt ze
+  // niet opnieuw opgedrongen. We wachten tot de stappen-store van de server is
+  // geladen zodat we geen duplicaten genereren naast nog-niet-gesynchroniseerde
+  // bestaande stappen.
+  const autoGenRef = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    if (autoGenRef.current === batch.id) return
+    if (batch.status !== 'Brouwen') return
+    if ((batch as any).brouwdag_stappen_auto) return
+    if (!_fetchedKeys.has('brouwdag_stappen')) return
+    if (mijnStappen.length > 0) return
+    // Alleen genereren als er iets ís om te genereren (maischprofiel of
+    // ingrediënten uit een recept) — anders blijft de handmatige knop staan.
+    const maisch = (batch as any).maischprofiel || []
+    if (!maisch.length && !batchBi.length) return
+    autoGenRef.current = batch.id
+    genereerStappen()
+    setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, brouwdag_stappen_auto: true} : b))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.id, batch.status, mijnStappen.length])
 
   const togglevoltooid = (id: number) => {
     setStappen((prev: any[]) => prev.map(s => s.id === id
@@ -446,136 +574,6 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
         />
       </div>
 
-      {/* Kerngegevens — invoer voor calculaties. Onder elke input toont een
-          mini-label de doelwaarde uit het gekoppelde recept (indien beschikbaar)
-          zodat je tijdens het brouwen meteen ziet waar je naartoe moet werken. */}
-      <div className="bg-white rounded-xl shadow-card p-4">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-          {t('brouwdag_kerngegevens')}
-        </div>
-        {(() => {
-          // Doel-waardes uit recept (of batch-velden als fallback voor pre-fill).
-          const rec = batchRecept || {}
-          // Geschatte pre-boil SG: ruwe schatting op basis van OG, batch-grootte
-          // en kook-volume. Aanname: alle suiker zit al in het wort voor het
-          // koken, dus pre-boil SG verhoudt zich tot OG als batch_size/kook_vol.
-          const doelOG = Number(rec.OG) || Number(batch.OG) || null
-          const doelBatchSize = Number(rec.batch_size) || null
-          const doelKookVol = Number(rec.kook_volume) || null
-          const doelPreBoilSg = (doelOG && doelBatchSize && doelKookVol && doelKookVol > 0)
-            ? 1 + (doelOG - 1) * (doelBatchSize / doelKookVol)
-            : null
-          const Doel: React.FC<{value: any, unit?: string, decimals?: number}> = ({value, unit = '', decimals}) => {
-            if (value == null || value === '' || (typeof value === 'number' && isNaN(value))) return null
-            const fmt = typeof value === 'number' && decimals != null ? value.toFixed(decimals) : String(value)
-            return <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_doel')}: {fmt}{unit}</div>
-          }
-          return (
-            <>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <div>
-            <label className="text-xs text-gray-500">{t('brouwdag_pre_boil_sg')}</label>
-            <input type="number" step="0.001" value={batch.pre_boil_sg ?? ''}
-              onChange={e => updField('pre_boil_sg', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="1.045" />
-            <Doel value={doelPreBoilSg} decimals={3} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('brouwdag_pre_boil_vol')}</label>
-            <input type="number" step="0.1" value={batch.pre_boil_volume_l ?? ''}
-              onChange={e => updField('pre_boil_volume_l', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="28" />
-            <Doel value={doelKookVol} unit=" L" decimals={1} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('brouwdag_kook_vol_start')}</label>
-            <input type="number" step="0.1" value={batch.kook_volume_start_l ?? ''}
-              onChange={e => updField('kook_volume_start_l', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="28" />
-            <Doel value={doelKookVol} unit=" L" decimals={1} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('brouwdag_kook_vol_eind')}</label>
-            <input type="number" step="0.1" value={batch.kook_volume_eind_l ?? ''}
-              onChange={e => updField('kook_volume_eind_l', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="24" />
-            <Doel value={doelBatchSize} unit=" L" decimals={1} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('brouwdag_og_meting')}</label>
-            <input type="number" step="0.001" value={batch.OG ?? ''}
-              onChange={e => updField('OG' as any, e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="1.052" />
-            <Doel value={Number(rec.OG) || null} decimals={3} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('brouwdag_gist_vol')}</label>
-            <input type="number" step="0.1" value={batch.gist_volume_l ?? ''}
-              onChange={e => updField('gist_volume_l', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="22" />
-            <Doel value={doelBatchSize} unit=" L" decimals={1} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('lbl_liters_fermented')}</label>
-            <input type="number" step="0.1" value={batch.liter_vergist ?? ''}
-              onChange={e => updField('liter_vergist', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="22" />
-            <Doel value={doelBatchSize} unit=" L" decimals={1} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('batch_info_mash_ph')}</label>
-            <input type="number" step="0.01" value={batch.maisch_ph ?? ''}
-              onChange={e => updField('maisch_ph', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="5.40" />
-            <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_typisch')}: 5.2–5.4</div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('batch_info_product_ph')}</label>
-            <input type="number" step="0.01" value={batch.product_ph ?? ''}
-              onChange={e => updField('product_ph', e.target.value)}
-              className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="4.40" />
-            <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_typisch')}: 4.2–4.6</div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">{t('lbl_tank')}</label>
-            {tanks && tanks.length > 0 ? (
-              <select value={batch.tank || ''}
-                onChange={e => updField('tank', e.target.value)}
-                className="w-full border border-gray-200 rounded px-2 py-1 t-input">
-                <option value="">{t('batch_no_tank')}</option>
-                {tanks.map((tk: any) => (
-                  <option key={tk.id} value={tk.id}>{tk.naam || tk.id}</option>
-                ))}
-              </select>
-            ) : (
-              <input value={batch.tank || ''}
-                onChange={e => updField('tank', e.target.value)}
-                className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="T1" />
-            )}
-          </div>
-        </div>
-            </>
-          )
-        })()}
-
-        {/* Live calculaties */}
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-          <CalcCard label={t('brouwdag_calc_mash_eff')} value={mashEff > 0 ? `${mashEff.toFixed(1)}%` : null} />
-          <CalcCard label={t('brouwdag_calc_brouwzaal_eff')} value={brEff > 0 ? `${brEff.toFixed(1)}%` : null} />
-          <CalcCard label={t('brouwdag_kook_verdamping')} value={verdamping > 0 ? `${verdamping.toFixed(1)}%/u` : null} />
-          <CalcCard
-            label={t('brouwdag_calc_ibu_tinseth')}
-            value={ibu > 0 ? `${ibu}` : (ibuOG <= 0 ? t('brouwdag_ibu_geen_og') : null)}
-            target={Number(batchRecept?.IBU) > 0 ? Number(batchRecept!.IBU).toFixed(1) : null}
-            hint={ibu > 0 ? t('calc_disclaimer_tinseth') : ''}
-          />
-        </div>
-        {maxExtract === 0 && (fermentables.length > 0) && (
-          <div className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-            ⚠ {t('calc_geen_data')}: extract% (yield) ontbreekt op mout. Voeg toe via Brewfather-sync of handmatig in batch-ingrediënten.
-          </div>
-        )}
-      </div>
 
       {/* Hop-schema (kook-additie tijden — bewerkbaar) */}
       {(() => {
@@ -932,22 +930,28 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
         />
         {stappenOpen && (
           <div className="p-4">
-            {mijnStappen.length === 0 ? (
-              <div>
-                <div className="text-sm text-gray-500 italic py-3">{t('brouwdag_geen_stappen')}</div>
+            {mijnStappen.length === 0 && (
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                <div className="text-sm text-gray-500 italic">{t('brouwdag_geen_stappen')}</div>
                 <Btn s="sm" onClick={genereerStappen}>{t('brouwdag_genereer_uit_recept')}</Btn>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {FASE_VOLGORDE.map(fase => {
-                  const items = mijnStappen.filter(s => s.fase === fase).sort((a, b) => (a.volgorde || 0) - (b.volgorde || 0))
-                  if (!items.length) return null
-                  return (
-                    <div key={fase} className="border-l-4 pl-3" style={{borderColor: 'var(--t-accent)'}}>
-                      <div className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center justify-between">
-                        <span>{t(FASE_LABEL[fase])}</span>
-                        <button onClick={() => voegStapToe(fase)} className="text-xs text-gray-400 hover:text-gray-600">+ {t('brouwdag_voeg_stap_toe')}</button>
-                      </div>
+            )}
+            {/* Chronologische fasen: stappen + de bijbehorende meetvelden in
+                één blok, zodat je tijdens de brouwdag van boven naar beneden
+                werkt en meteen invult wat je op dat moment meet. */}
+            <div className="space-y-3">
+              {FASE_VOLGORDE.map(fase => {
+                const items = mijnStappen.filter(s => s.fase === fase).sort((a, b) => (a.volgorde || 0) - (b.volgorde || 0))
+                const velden = FASE_MEETVELDEN[fase] || []
+                const toonTank = fase === 'koelen'
+                if (!items.length && !velden.length && !toonTank) return null
+                return (
+                  <div key={fase} className="border-l-4 pl-3" style={{borderColor: 'var(--t-accent)'}}>
+                    <div className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center justify-between">
+                      <span>{t(FASE_LABEL[fase])}</span>
+                      <button onClick={() => voegStapToe(fase)} className="text-xs text-gray-400 hover:text-gray-600">+ {t('brouwdag_voeg_stap_toe')}</button>
+                    </div>
+                    {items.length > 0 && (
                       <div className="space-y-1.5">
                         {items.map(s => (
                           <StapRij key={s.id} stap={s}
@@ -958,11 +962,58 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                             onDelete={() => deleteStap(s.id)} />
                         ))}
                       </div>
-                    </div>
-                  )
-                })}
+                    )}
+                    {(velden.length > 0 || toonTank) && (
+                      <div className={`grid grid-cols-2 md:grid-cols-4 gap-3 text-sm ${items.length ? 'mt-2' : ''}`}>
+                        {velden.map(renderMeetVeld)}
+                        {toonTank && (
+                          <div>
+                            <label className="text-xs text-gray-500">{t('lbl_tank')}</label>
+                            {tanks && tanks.length > 0 ? (
+                              <select value={batch.tank || ''}
+                                onChange={e => updField('tank', e.target.value)}
+                                className="w-full border border-gray-200 rounded px-2 py-1 t-input">
+                                <option value="">{t('batch_no_tank')}</option>
+                                {tanks.map((tk: any) => (
+                                  <option key={tk.id} value={tk.id}>{tk.naam || tk.id}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input value={batch.tank || ''}
+                                onChange={e => updField('tank', e.target.value)}
+                                className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder="T1" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Live calculaties — afgeleid uit de hierboven ingevulde metingen */}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                {t('brouwdag_kerngegevens')}
               </div>
-            )}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <CalcCard label={t('brouwdag_calc_mash_eff')} value={mashEff > 0 ? `${mashEff.toFixed(1)}%` : null} />
+                <CalcCard label={t('brouwdag_calc_brouwzaal_eff')} value={brEff > 0 ? `${brEff.toFixed(1)}%` : null} />
+                <CalcCard label={t('brouwdag_kook_verdamping')} value={verdamping > 0 ? `${verdamping.toFixed(1)}%/u` : null} />
+                <CalcCard
+                  label={t('brouwdag_calc_ibu_tinseth')}
+                  value={ibu > 0 ? `${ibu}` : (ibuOG <= 0 ? t('brouwdag_ibu_geen_og') : null)}
+                  target={Number(batchRecept?.IBU) > 0 ? Number(batchRecept!.IBU).toFixed(1) : null}
+                  hint={ibu > 0 ? t('calc_disclaimer_tinseth') : ''}
+                />
+              </div>
+              {maxExtract === 0 && (fermentables.length > 0) && (
+                <div className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  ⚠ {t('calc_geen_data')}: extract% (yield) ontbreekt op mout. Voeg toe via Brewfather-sync of handmatig in batch-ingrediënten.
+                </div>
+              )}
+            </div>
 
             {mijnStappen.length > 0 && !batch.brouwdag_voltooid && (
               <div className="mt-4 pt-3 border-t flex justify-end">

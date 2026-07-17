@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.24] — 2026-07-17
+
+### Verbeterd — Batch flow chronologisch
+
+- **Brouwdag chronologisch**: de "Kerngegevens"- en "Gegevens invullen"-
+  blokken zijn samengevoegd in de brouwdag-stappenlijst. Elk meetveld staat
+  nu bij de fase waarin je het meet: maisch-pH bij het maischen, pre-boil
+  SG/volume bij het lauteren, kookvolumes + kook-pH bij het koken, tank +
+  gistvolume bij het koelen en de OG-meting als afsluiter. De live-
+  kengetallen (rendementen, verdamping, IBU) staan eronder.
+- **Stappen automatisch uit het recept**: zodra een batch de fase Brouwen
+  ingaat en er nog geen brouwdag-stappen zijn, worden ze automatisch
+  gegenereerd — inclusief een eigen **whirlpool-fase** met de
+  whirlpool-hops (met temperatuur) uit het recept. De sync-knop neemt
+  whirlpool-hops nu ook mee.
+- **Thermostaat bedienen bij Vergisten/Conditioneren**: het
+  temperatuurblok toont de huidige stand van de gekoppelde climate-entity
+  en kan hem aan/uit zetten en van hvac-modus wisselen.
+- **Cold-crash-knop bij Conditioneren**: dezelfde cold-crash-preset als op
+  het Dashboard is nu ook in de flow te starten en te stoppen, met
+  status-badge (actief/target bereikt).
+- **Compactere ingrediëntenweergave**: de ingrediëntenlijst bij Gepland
+  staat in twee kolommen met twee regels per ingrediënt, en de
+  afweeg/afboek-tabel bij Brouwen is vervangen door compacte twee-regel-
+  rijen die ook op smalle schermen zonder scrollen passen.
+- **Botteldag-taken bij Afvullen**: gemigreerde Botteldag-/Brouwdag-
+  taakgroepen zonder fase-koppeling kregen hun taken nergens in de flow te
+  zien; een eenmalige migratie herkent ze (taalonafhankelijk) en hangt ze
+  aan de juiste fase (Afvullen resp. Brouwen).
+
+---
+
 ## [1.11.23] — 2026-07-16
 
 ### Opgelost — Safe-area-header zat precies verkeerdom

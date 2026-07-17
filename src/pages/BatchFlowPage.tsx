@@ -49,6 +49,7 @@ interface BatchFlowPageProps {
   batchNotities: any[], setBatchNotities: any,
   batchTakenItems: any[], batchTakenGroepen: any[],
   brouwprocesInst: any,
+  coldcrashInst: any,
   haInst: any, haTankTemps: Record<string, number>,
   tanks: any[], tankStatussen: any, setTankStatussen: any,
   tankLog: any[], setTankLog: any,
@@ -137,13 +138,9 @@ const FlowStap: React.FC<{
 
 // Bewerkbare batchvelden per fase. De checklist hierboven leest dezelfde velden,
 // dus invullen vinkt de bijbehorende controle automatisch af.
+// De Brouwen-velden (OG, liters, pH's) leven sinds de chronologische brouwdag-
+// flow in de stappenlijst van de BrouwdagWizard — niet meer hier.
 const FASE_VELDEN: Record<string, { key: string, labelKey: string, step: string, ph: string }[]> = {
-  Brouwen: [
-    { key: 'OG', labelKey: 'batch_info_og', step: '0.001', ph: '1.052' },
-    { key: 'liter_vergist', labelKey: 'flow_veld_liter', step: '0.1', ph: '20' },
-    { key: 'maisch_ph', labelKey: 'batch_info_mash_ph', step: '0.01', ph: '5.40' },
-    { key: 'kook_ph', labelKey: 'batch_info_boil_ph', step: '0.01', ph: '5.20' },
-  ],
   Vergisten: [
     { key: 'FG', labelKey: 'batch_info_fg', step: '0.001', ph: '1.012' },
   ],
@@ -160,10 +157,18 @@ const faseIndex = (status: string): number => {
   return i < 0 ? 0 : i
 }
 
-// ── Tanktemperatuur: HA-sensor lezen + climate-setpoint sturen ──────────────
-// Toont gemeten temperatuur (sensor), doeltemperatuur (vergistingsschema) en
-// het huidige setpoint van de gekoppelde climate-entity. Setpoint sturen kan
-// direct vanaf hier (climate.set_temperature staat op de server-whitelist).
+// ── Tanktemperatuur: HA-sensor lezen + climate-entity sturen ────────────────
+// Toont gemeten temperatuur (sensor), doeltemperatuur (vergistingsschema), het
+// huidige setpoint én de stand (hvac-modus) van de gekoppelde climate-entity.
+// Setpoint sturen, aan/uit zetten en de modus kiezen kan direct vanaf hier —
+// climate.set_temperature/turn_on/turn_off/set_hvac_mode staan op de
+// server-whitelist.
+const HVAC_LABEL_KEY: Record<string, string> = {
+  off: 'hvac_off', heat: 'hvac_heat', cool: 'hvac_cool', auto: 'hvac_auto',
+}
+const hvacLabel = (mode: string): string =>
+  HVAC_LABEL_KEY[mode] ? t(HVAC_LABEL_KEY[mode]) : mode
+
 const TempControl: React.FC<{
   tank: string | null | undefined
   haInst: any
@@ -180,6 +185,8 @@ const TempControl: React.FC<{
 
   const [setpoint, setSetpoint] = useState<string>('')
   const [huidig, setHuidig] = useState<number | null>(null)
+  const [hvac, setHvac] = useState<string | null>(null)
+  const [hvacModes, setHvacModes] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -189,6 +196,8 @@ const TempControl: React.FC<{
       const st = await haGetState(climate.entity)
       const sp = st?.attributes?.temperature
       if (typeof sp === 'number' && !isNaN(sp)) setHuidig(sp)
+      if (typeof st?.state === 'string' && st.state) setHvac(st.state)
+      if (Array.isArray(st?.attributes?.hvac_modes)) setHvacModes(st.attributes.hvac_modes.filter((m: any) => typeof m === 'string'))
     } catch { /* stil — sensor kan tijdelijk weg zijn */ }
   }, [climate?.entity])
 
@@ -206,6 +215,22 @@ const TempControl: React.FC<{
       await haCallService('climate', 'set_temperature', { entity_id: climate.entity, temperature: temp })
       setMsg(t('flow_temp_gestuurd').replace('{t}', String(temp)))
       refresh()
+    } catch (e: any) {
+      setMsg(`⚠ ${e.message}`)
+    }
+    setBusy(false)
+    setTimeout(() => setMsg(''), 4000)
+  }
+
+  // Aan/uit/modus van de climate-entity. Na de call even wachten met verversen:
+  // HA heeft een moment nodig om de nieuwe stand terug te melden.
+  const stuurStand = async (service: 'turn_on' | 'turn_off' | 'set_hvac_mode', data: any = {}) => {
+    if (!climate?.entity) return
+    setBusy(true)
+    try {
+      await haCallService('climate', service, { entity_id: climate.entity, ...data })
+      setMsg(t('flow_temp_stand_gestuurd'))
+      setTimeout(refresh, 800)
     } catch (e: any) {
       setMsg(`⚠ ${e.message}`)
     }
@@ -246,11 +271,32 @@ const TempControl: React.FC<{
           </>
         )}
       </div>
-      {climate && doelTemp != null && (
-        <div className="mt-2">
-          <Btn v="secondary" s="sm" disabled={busy} onClick={() => stuur(doelTemp)}>
-            {t('flow_temp_doel_btn').replace('{t}', String(doelTemp))}
-          </Btn>
+      {climate && (
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          {/* Huidige stand van de thermostaat + aan/uit + modus-keuze */}
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+            hvac && hvac !== 'off' ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-gray-100 text-gray-500'}`}>
+            {hvac ? hvacLabel(hvac) : '—'}
+          </span>
+          {hvac === 'off' ? (
+            <Btn v="green" s="sm" disabled={busy} onClick={() => stuurStand('turn_on')}>{t('flow_temp_aan')}</Btn>
+          ) : (
+            <Btn v="secondary" s="sm" disabled={busy} onClick={() => stuurStand('turn_off')}>{t('flow_temp_uit')}</Btn>
+          )}
+          {hvacModes.length > 1 && (
+            <select value={hvac || ''}
+              onChange={e => { if (e.target.value) stuurStand('set_hvac_mode', { hvac_mode: e.target.value }) }}
+              disabled={busy}
+              className="border border-gray-200 rounded px-1.5 py-1 text-xs t-input">
+              {!hvac && <option value="">{t('flow_temp_modus')}</option>}
+              {hvacModes.map(m => <option key={m} value={m}>{hvacLabel(m)}</option>)}
+            </select>
+          )}
+          {doelTemp != null && (
+            <Btn v="secondary" s="sm" disabled={busy} onClick={() => stuur(doelTemp)}>
+              {t('flow_temp_doel_btn').replace('{t}', String(doelTemp))}
+            </Btn>
+          )}
         </div>
       )}
       {msg && <div className="text-xs mt-2" style={{color: 'var(--t-accent)'}}>{msg}</div>}
@@ -272,7 +318,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   verliesRegistraties, setVerliesRegistraties, dryHops, setDryHops,
   brouwdagStappen, setBrouwdagStappen, waterAddities, setWaterAddities,
   koelLogs, setKoelLogs, batchNotities, setBatchNotities,
-  batchTakenItems, batchTakenGroepen, brouwprocesInst, haInst, haTankTemps,
+  batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, haInst, haTankTemps,
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
   log, setLog, auditLog, setAuditLog, setPage, setNavBatchId,
 }) => {
@@ -833,6 +879,61 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (!isNaN(tempNum) && stap.temp !== '' && stap.temp != null) stuurClimateTemp(tempNum)
   }
 
+  // ── Cold-crash (zelfde gedrag als het Dashboard) ───────────────────────────
+  // Start een cold-crash op de geselecteerde batch: legt target/ramp vast, zet
+  // de eerste setpoint-stap en laat de server-tick daarna elk uur verder
+  // afbouwen. Startpunt van de ramp: huidig climate-setpoint, anders de
+  // gemeten tanktemperatuur, anders het target (nooit per ongeluk warmer).
+  const startColdCrash = async () => {
+    if (!selB) return
+    if (!coldcrashInst?.enabled) {
+      if (!confirm(t('dashboard_coldcrash_confirm_off'))) return
+    } else if (!confirm(t('dashboard_coldcrash_confirm').replace('{t}', String(coldcrashInst.target_temp)))) {
+      return
+    }
+    const target = Number(coldcrashInst?.target_temp ?? 2)
+    const ramp = Number(coldcrashInst?.ramp_per_uur ?? 1)
+    const nowIso = new Date().toISOString()
+    const tankTemp = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+    let startTemp = (typeof tankTemp === 'number' && !isNaN(tankTemp)) ? tankTemp : target
+    if (batchClimate?.entity) {
+      try {
+        const st = await haGetState(batchClimate.entity)
+        const sp = st?.attributes?.temperature
+        if (typeof sp === 'number' && !isNaN(sp)) startTemp = sp
+      } catch { /* stil — val terug op tanktemp/target */ }
+    }
+    const firstStep = Math.max(target, Math.round((startTemp - ramp) * 100) / 100)
+    // Vergistingsstap doorspoelen: alle stappen boven het target zijn door de
+    // crash heen gehaald; spring naar de eerste stap op/onder target. Nooit
+    // regresseren.
+    const profiel: any[] = Array.isArray(selB.vergistingsprofiel) ? selB.vergistingsprofiel : []
+    const huidigeIdx = Math.max(0, Math.min(Math.max(0, profiel.length - 1), Number(selB.vergisting_stap_idx ?? 0)))
+    let stapPatch: Record<string, any> = {}
+    if (profiel.length > 0) {
+      const eersteOpTarget = profiel.findIndex((s: any) => {
+        const tn = Number(s?.temp)
+        return !isNaN(tn) && tn <= target
+      })
+      const doelIdx = eersteOpTarget >= 0 ? eersteOpTarget : profiel.length - 1
+      const nieuweIdx = Math.max(huidigeIdx, doelIdx)
+      if (nieuweIdx !== huidigeIdx) stapPatch = { vergisting_stap_idx: nieuweIdx, vergisting_stap_start: nowIso }
+    }
+    // Batch die nog in Vergisten staat gaat mee naar Conditioneren — de
+    // server-tick verwerkt alleen batches in die status.
+    const statusPatch = selB.status !== 'Conditioneren' ? { status: 'Conditioneren' } : {}
+    updateBatch({ cold_crash_datum: nowIso, cold_crash_target: target, cold_crash_ramp: ramp, cold_crash_laatste_stap: nowIso, ...stapPatch, ...statusPatch })
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: `Cold-crash gestart → ${target}°C (${ramp}°C/u), eerste stap ${firstStep}°C`})
+    if (batchClimate?.entity) stuurClimateTemp(firstStep)
+  }
+
+  const stopColdCrash = () => {
+    if (!selB) return
+    if (!confirm(t('dashboard_coldcrash_stop_confirm'))) return
+    updateBatch({ cold_crash_datum: undefined, cold_crash_target: undefined, cold_crash_ramp: undefined, cold_crash_laatste_stap: undefined })
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: 'Cold-crash gestopt'})
+  }
+
   // ── Tankverplaatsing (zelfde regels als BatchesPage) ───────────────────────
   const verplaatsTank = () => {
     if (!selB || !moveTankTarget) return
@@ -1329,96 +1430,81 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // Afweeg/afboek-tabel: lot kiezen + per regel afboeken van de voorraad.
-  const renderAfboekTabel = (rows: any[]) => (
-    <div>
-      {rows.length === 0 ? (
-        <div className="text-sm text-gray-400 italic">{t('flow_afboek_geen')}</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs text-gray-500 bg-gray-50">
-              <tr>
-                <th className="px-2 py-1.5 text-left">{t('lbl_name')}</th>
-                <th className="px-2 py-1.5 text-right">{t('lbl_quantity')}</th>
-                <th className="px-2 py-1.5 text-left">{t('hop_schema_lot')}</th>
-                <th className="px-2 py-1.5 text-left">{t('lbl_status')}</th>
-                <th className="px-2 py-1.5 text-right">{t('lbl_costs')}</th>
-                <th className="px-2 py-1.5 text-right"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map((row: any) => {
-                const rowLots = row.ingredient_id
-                  ? (lots || []).filter((l: any) => l.ingredient_id === row.ingredient_id && (Number(l.hoeveelheid || 0) > 0 || l.id === row.lot_id))
-                  : []
-                // Kosten: vastgelegde kosten van de regel, of anders de lotprijs ×
-                // hoeveelheid van het gekozen lot — zelfde als op de Batches-pagina.
-                const rowLot = (lots || []).find((l: any) => l.id === row.lot_id)
-                const kosten = row.kosten
-                  ? Number(row.kosten)
-                  : (rowLot?.prijs_per_eenheid ? rowLot.prijs_per_eenheid * Number(row.hoeveelheid || 0) : null)
-                return (
-                  <tr key={row.id} className={row.afgeboekt ? 'bg-green-50/50' : ''}>
-                    <td className="px-2 py-1.5">
-                      <span className="align-middle">{row.ingredient_naam}</span>
+  // Afweeg/afboek-lijst: lot kiezen + per regel afboeken van de voorraad.
+  // Compacte twee-regel-rijen i.p.v. een brede tabel, zodat alles ook op
+  // smalle schermen zonder horizontaal scrollen past.
+  const renderAfboekTabel = (rows: any[]) => {
+    // Totaal: som van bekende kosten over de getoonde regels.
+    const totaal = rows.reduce((s: number, r: any) => {
+      if (r.kosten) return s + Number(r.kosten)
+      const l = (lots || []).find((ll: any) => ll.id === r.lot_id)
+      return s + (l?.prijs_per_eenheid ? l.prijs_per_eenheid * Number(r.hoeveelheid || 0) : 0)
+    }, 0)
+    return (
+      <div>
+        {rows.length === 0 ? (
+          <div className="text-sm text-gray-400 italic">{t('flow_afboek_geen')}</div>
+        ) : (
+          <div className="space-y-1.5">
+            {rows.map((row: any) => {
+              const rowLots = row.ingredient_id
+                ? (lots || []).filter((l: any) => l.ingredient_id === row.ingredient_id && (Number(l.hoeveelheid || 0) > 0 || l.id === row.lot_id))
+                : []
+              // Kosten: vastgelegde kosten van de regel, of anders de lotprijs ×
+              // hoeveelheid van het gekozen lot — zelfde als op de Batches-pagina.
+              const rowLot = (lots || []).find((l: any) => l.id === row.lot_id)
+              const kosten = row.kosten
+                ? Number(row.kosten)
+                : (rowLot?.prijs_per_eenheid ? rowLot.prijs_per_eenheid * Number(row.hoeveelheid || 0) : null)
+              return (
+                <div key={row.id} className={`px-2 py-1.5 rounded border ${row.afgeboekt ? 'bg-green-50/50 border-green-100' : 'bg-white border-gray-200'}`}>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 min-w-0 truncate text-gray-700">
+                      {row.ingredient_naam}
                       {row.gebruik && <span className="ml-1 text-xs text-gray-400">({row.gebruik})</span>}
                       {renderKoppelPill(row)}
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</td>
-                    <td className="px-2 py-1.5">
-                      {row.afgeboekt ? (
-                        <span className="text-xs text-gray-500">{(lots || []).find((l: any) => l.id === row.lot_id)?.lotnummer || (row.lot_id ? `#${row.lot_id}` : '—')}</span>
-                      ) : rowLots.length > 0 ? (
-                        <select value={row.lot_id || ''}
-                          onChange={e => setBi((prev: any[]) => prev.map((x: any) => x.id === row.id ? {...x, lot_id: e.target.value ? Number(e.target.value) : ''} : x))}
-                          className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[14rem]">
-                          <option value="">—</option>
-                          {rowLots.map((l: any) => (
-                            <option key={l.id} value={l.id}>
-                              {(l.lotnummer || `#${l.id}`)} — {l.hoeveelheid} {l.eenheid}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5"><VoorraadChip row={row} /></td>
-                    <td className="px-2 py-1.5 text-right text-xs text-gray-600 whitespace-nowrap">{kosten !== null ? fmt(kosten) : '—'}</td>
-                    <td className="px-2 py-1.5 text-right">
-                      {!row.afgeboekt && (
-                        <Btn s="sm" v="secondary" disabled={!row.lot_id} onClick={() => haalVanVoorraad(row)}>
-                          {t('btn_afboeken')}
-                        </Btn>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            {(() => {
-              // Totaalregel: som van bekende kosten over de getoonde regels.
-              const totaal = rows.reduce((s: number, r: any) => {
-                if (r.kosten) return s + Number(r.kosten)
-                const l = (lots || []).find((ll: any) => ll.id === r.lot_id)
-                return s + (l?.prijs_per_eenheid ? l.prijs_per_eenheid * Number(r.hoeveelheid || 0) : 0)
-              }, 0)
-              return totaal > 0 ? (
-                <tfoot>
-                  <tr className="border-t border-gray-200">
-                    <td colSpan={4} className="px-2 py-1.5 text-right text-xs font-semibold text-gray-500">{t('lbl_total')}</td>
-                    <td className="px-2 py-1.5 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">{fmt(totaal)}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              ) : null
-            })()}
-          </table>
-        </div>
-      )}
-    </div>
-  )
+                    </span>
+                    <span className="text-gray-600 text-xs whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {row.afgeboekt ? (
+                      <span className="text-xs text-gray-500">{rowLot?.lotnummer || (row.lot_id ? `#${row.lot_id}` : '—')}</span>
+                    ) : rowLots.length > 0 ? (
+                      <select value={row.lot_id || ''}
+                        onChange={e => setBi((prev: any[]) => prev.map((x: any) => x.id === row.id ? {...x, lot_id: e.target.value ? Number(e.target.value) : ''} : x))}
+                        className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[12rem]">
+                        <option value="">—</option>
+                        {rowLots.map((l: any) => (
+                          <option key={l.id} value={l.id}>
+                            {(l.lotnummer || `#${l.id}`)} — {l.hoeveelheid} {l.eenheid}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                    <VoorraadChip row={row} />
+                    <span className="ml-auto text-xs text-gray-600 whitespace-nowrap">{kosten !== null ? fmt(kosten) : ''}</span>
+                    {!row.afgeboekt && (
+                      <Btn s="sm" v="secondary" disabled={!row.lot_id} onClick={() => haalVanVoorraad(row)}>
+                        {t('btn_afboeken')}
+                      </Btn>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            {totaal > 0 && (
+              <div className="flex items-center justify-end gap-2 pt-1 text-xs font-semibold">
+                <span className="text-gray-500">{t('lbl_total')}</span>
+                <span className="text-gray-700">{fmt(totaal)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // Recept & doelen (Gepland) — receptinfo + ingrediëntenlijst met voorraadcheck.
   const renderReceptKaart = () => {
@@ -1459,15 +1545,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           {mijnBi.length === 0 ? (
             <div className="text-sm text-gray-400 italic">{t('flow_afboek_geen')}</div>
           ) : (
-            <div className="space-y-1">
+            // Compact: twee kolommen op desktop en per ingredient twee regels
+            // (naam + hoeveelheid boven, type/gebruik + voorraadstatus onder),
+            // zodat lange lijsten in één oogopslag passen.
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {mijnBi.map((row: any) => (
-                <div key={row.id} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 text-sm">
-                  <span className="flex-1 min-w-0 truncate text-gray-700">
-                    {row.ingredient_naam}
-                    <span className="ml-1 text-xs text-gray-400">{row.ingredient_type}{row.gebruik ? ` · ${row.gebruik}` : ''}</span>
-                  </span>
-                  <span className="text-xs text-gray-500 whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</span>
-                  <VoorraadChip row={row} />
+                <div key={row.id} className="px-2 py-1.5 rounded border border-gray-100 bg-gray-50 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-gray-700">{row.ingredient_naam}</span>
+                    <span className="text-xs text-gray-500 whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <span className="text-[11px] text-gray-400 truncate">{row.ingredient_type}{row.gebruik ? ` · ${row.gebruik}` : ''}</span>
+                    <VoorraadChip row={row} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -2053,11 +2144,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             <FlowStap title={t('flow_sectie_afboeken')} done={!!clMap.afgeboekt?.done} detail={clMap.afgeboekt?.detail} {...so('afboeken', !!clMap.afgeboekt?.done)}>
               {renderAfboekTabel(brouwBi)}
             </FlowStap>
-            <FlowStap title={t('flow_veld_titel')} done={!!clMap.og?.done && !!clMap.liter?.done}
-              detail={[clMap.og?.detail, clMap.liter?.detail].filter(Boolean).join(' · ') || undefined}
-              {...so('meetwaarden', !!clMap.og?.done && !!clMap.liter?.done)}>
-              {renderFaseVelden('Brouwen')}
-            </FlowStap>
             <WaterAdditieSection batch={selB}
               waterAddities={waterAddities} setWaterAddities={setWaterAddities} />
             <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
@@ -2120,6 +2206,33 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             <FlowStap title={t('flow_temp_titel')} optional done={!!selB.cold_crash_datum} {...so('temp', true)}>
               <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
                 doelTemp={doelTemp} doelLabel={selB.cold_crash_datum ? t('flow_temp_doel_coldcrash') : t('flow_temp_doel')} />
+              {/* Cold-crash — zelfde preset en server-ramp als op het Dashboard */}
+              {(() => {
+                const ccActive = !!selB.cold_crash_datum
+                const ccTarget = Number(selB.cold_crash_target ?? coldcrashInst?.target_temp ?? 2)
+                const ccRamp = Number(selB.cold_crash_ramp ?? coldcrashInst?.ramp_per_uur ?? 1)
+                const tankTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+                const tankTemp = typeof tankTempRaw === 'number' && !isNaN(tankTempRaw) ? tankTempRaw : null
+                const reached = ccActive && tankTemp != null && tankTemp <= ccTarget + 0.5
+                return ccActive ? (
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className={`px-2 py-0.5 rounded-full font-medium ${
+                      reached ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'}`}>
+                      ❄ {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
+                    </span>
+                    <span className="text-gray-500">→ {ccTarget}°C @ {ccRamp}°C/{t('lbl_uur')}</span>
+                    <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
+                    <Btn v="secondary" s="sm" onClick={stopColdCrash}>{t('dashboard_coldcrash_stop_btn')}</Btn>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Btn s="sm" onClick={startColdCrash}>❄ {t('dashboard_coldcrash_btn')}</Btn>
+                    {coldcrashInst?.enabled && (
+                      <span className="text-xs text-gray-400">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
+                    )}
+                  </div>
+                )
+              })()}
             </FlowStap>
             <FlowStap title={t('carb_title')} done={!!clMap.carb?.done} detail={clMap.carb?.detail} {...so('carb', !!clMap.carb?.done)}>
               {renderCarbonatie()}

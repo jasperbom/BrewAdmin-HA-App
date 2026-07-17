@@ -506,6 +506,50 @@ function App() {
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenFaseMigratie, takenMigratie, batchTakenGroepen]);
 
+  // Eenmalige migratie (v2): gemigreerde Brouwdag-/Botteldag-groepen kregen in
+  // de v1-migratie een nieuw (hoog) groep-ID en geen `fase`-veld, waardoor de
+  // legacy-ID-koppeling (IDs 1-5) ze niet vangt en hun taken nergens in de
+  // batch flow verschijnen — botteldag-taken horen bij Afvullen, brouwdag-taken
+  // bij Brouwen. We herkennen die groepen taalonafhankelijk aan de i18n-
+  // labelKeys van hun items en vullen de fase eenmalig aan.
+  const [takenFaseMigratieV2, setTakenFaseMigratieV2] = useStore('batch_taken_fase_migratie_v2', null);
+  const takenFaseMigratieV2Ref = React.useRef(false);
+  React.useEffect(() => {
+    if (takenFaseMigratieV2Ref.current) return;
+    if (takenFaseMigratieV2 === 'v2') { takenFaseMigratieV2Ref.current = true; return; }
+    if (takenMigratie !== 'v1' && takenMigratie !== 'done') return;
+    const needed = ['batch_taken_groepen', 'batch_taken_items', 'batch_taken_fase_migratie_v2'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    const run = () => {
+      if (takenFaseMigratieV2Ref.current) return;
+      takenFaseMigratieV2Ref.current = true;
+      const groepen = Array.isArray(batchTakenGroepen) ? batchTakenGroepen : [];
+      const items = Array.isArray(batchTakenItems) ? batchTakenItems : [];
+      const faseVoorGroep = (g: any): string | null => {
+        const keys = items.filter((it: any) => it.group_id === g.id && it.labelKey)
+          .map((it: any) => String(it.labelKey));
+        if (!keys.length) return null;
+        if (keys.every(k => k.startsWith('botteldag_check_'))) return 'Afgevuld';
+        if (keys.every(k => k.startsWith('brouwdag_check_'))) return 'Brouwen';
+        return null;
+      };
+      let changed = false;
+      const bijgewerkt = groepen.map((g: any) => {
+        if (groepFase(g) !== null) return g; // heeft al een (legacy of expliciete) fase
+        const fase = faseVoorGroep(g);
+        if (!fase) return g;
+        changed = true;
+        return {...g, fase};
+      });
+      if (changed) setBatchTakenGroepen(bijgewerkt);
+      setTakenFaseMigratieV2('v2');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [takenFaseMigratieV2, takenMigratie, batchTakenGroepen, batchTakenItems]);
+
   // Eenmalige migratie: bestaande batches met status 'Verpakt' worden hernoemd
   // naar 'Afgevuld' (canonieke status sinds v1.9.75). 'Verpakt' blijft in de
   // codebase als backwards-compat alias zodat oude data nooit "breekt", maar
@@ -1389,7 +1433,7 @@ function App() {
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} accijnsInst={accijnsInst} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} wcCreds={wcCreds} artikelen={artikelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} hopAddities={hopAddities} setHopAddities={setHopAddities} dryHops={dryHops} setDryHops={setDryHops} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} brouwprocesInst={brouwprocesInst} haInst={haInst} haTankTemps={haTankTemps} planningInst={planningInst} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} recepten={recepten} />}
-        {page==='batchflow' && <BatchFlowPage bat={bat} setBat={setBat} bi={bi} setBi={setBi} ing={ing} lots={lots} setLots={setLots} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} artikelen={artikelen} accijnsInst={accijnsInst} acc={acc} recepten={recepten} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} dryHops={dryHops} setDryHops={setDryHops} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwprocesInst={brouwprocesInst} haInst={haInst} haTankTemps={haTankTemps} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} />}
+        {page==='batchflow' && <BatchFlowPage bat={bat} setBat={setBat} bi={bi} setBi={setBi} ing={ing} lots={lots} setLots={setLots} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} artikelen={artikelen} accijnsInst={accijnsInst} acc={acc} recepten={recepten} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} dryHops={dryHops} setDryHops={setDryHops} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwprocesInst={brouwprocesInst} coldcrashInst={coldcrashInst} haInst={haInst} haTankTemps={haTankTemps} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} />}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} afboekingen={afboekingen} smtpCreds={smtpCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} />}
