@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.27] — 2026-07-17
+
+### Verbeterd — Brouwdag- en vergistingsflow
+
+- **Brouwen is één doorlopende flow**: het afweeg/afboek-blok en de
+  koel-log zitten nu verweven in de brouwdag-stappenlijst i.p.v. als losse
+  kaarten eromheen. De aparte 'Water-additie & mineralen'-sectie en het
+  lege 'Brouwdag-log'-kopje zijn vervallen.
+- **Ingrediënten toevoegen + hoeveelheid aanpassen**: in het afboek-blok
+  kun je nu handmatig een ingredient toevoegen (uit de catalogus of vrij)
+  en de hoeveelheid per regel aanpassen vóór het afboeken — net als op de
+  Batches-pagina.
+- **Koel-log verweven in de koelstap**: start/eind-temperatuur, duur en
+  methode leg je nu vast bij de 'Koelen'-stap (blijft de bron voor de
+  HACCP-koelsnelheid).
+- **Geen dubbel volumeveld meer**: op de brouwdag vul je alleen nog
+  'Volume naar gistvat' in; 'Liters vergist' (bron voor accijns/rendement)
+  wordt daaruit overgenomen.
+- **Vergisten — progressie bovenin**: een balk over de volle breedte toont
+  de OG→FG-voortgang met de huidige SG én de huidige (gemeten) temperatuur
+  in één oogopslag.
+- **Dry hop alleen indien van toepassing**: het dry-hop-blok verschijnt
+  alleen nog als het recept dry-hop-additions heeft of er al dry-hops zijn
+  geregistreerd.
+- **FG als sluitstuk**: de FG-meting is nu de laatste stap van Vergisten —
+  in te vullen zodra de vergisting stabiel is, vlak voor Conditioneren.
+
+---
+
 ## [1.11.26] — 2026-07-17
 
 ### Opgelost — Botteldag-taken bij de verkeerde fase + dubbele checks

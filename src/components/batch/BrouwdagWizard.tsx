@@ -1,7 +1,7 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { newId, mapHopGebruik, _fetchedKeys } from '../../utils/api'
-import { tod, r3 } from '../../utils/format'
+import { tod, r3, fmtD } from '../../utils/format'
 import { convertEenheid } from '../../utils/constants'
 import {
   mashEfficiency, brouwzaalEfficiency, kookVerdampingPct,
@@ -28,6 +28,13 @@ interface Props {
   // Alle recepten — gebruikt om hop-tijden/alpha uit het gekoppelde recept
   // op te halen via de "Tijden uit recept"-knop.
   recepten?: any[]
+  // Afweeg/afboek-blok (ingrediënten wegen + van voorraad afboeken). Wordt
+  // door de BatchFlowPage aangeleverd zodat de complexe lot-/voorraad-logica
+  // dáár blijft, maar het blok chronologisch bovenaan de brouwdag-flow toont.
+  afboekSlot?: React.ReactNode
+  // Koel-log (start/eind-temp, duur, methode) — verweven in de koelstap.
+  koelLogs?: any[]
+  setKoelLogs?: any
 }
 
 const FASE_VOLGORDE: BrouwdagFase[] = ['water', 'maisch', 'lauter', 'koken', 'whirlpool', 'koelen', 'og']
@@ -140,11 +147,13 @@ const effectieveAlpha = (
   return {alpha: 0, bron: 'none'}
 }
 
-const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel', recepten = []}) => {
+const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel', recepten = [], afboekSlot, koelLogs, setKoelLogs}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
   const [hopOpen, setHopOpen] = React.useState<boolean>(true)
+  // Koel-invoer (verweven in de koelstap)
+  const [koelForm, setKoelForm] = React.useState<any>({ datum: tod(), start_temp: '', eind_temp: '', duur_min: '', methode: 'plate', opmerking: '' })
 
   // Resolved label voor een stap: bij gekoppelde hop-additie wordt het
   // label live uit batch_ingredienten gehaald. Fallback voor oude stappen
@@ -271,6 +280,12 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     }
     setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, ...patch} : b))
   }
+  // 'Volume naar gistvat' is het enige volume-veld op de brouwdag. De brede
+  // 'liter_vergist' (accijns/rendement/tankrest) spiegelt mee zodat die
+  // afleidingen blijven kloppen zonder een tweede invulveld.
+  const updGistVolume = (val: any) => {
+    setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, gist_volume_l: val, liter_vergist: val} : b))
+  }
 
   // ── Auto-berekende waarden ────────────────────────────────────────────────
   const fermentables = batchBi.filter(i => String(i.ingredient_type).toLowerCase().includes('mout') || String(i.ingredient_type).toLowerCase() === 'suiker')
@@ -337,8 +352,10 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       { veld: 'kook_ph', labelKey: 'batch_info_boil_ph', step: '0.01', ph: '5.20', hint: '5.0–5.2' },
     ],
     koelen: [
+      // 'Volume naar gistvat' is de gemeten hoeveelheid in de gistkuip. De
+      // afgeleide 'liter_vergist' (bron voor accijns/rendement) wordt hieruit
+      // gespiegeld — zie updGistVolume — zodat er geen dubbel invulveld staat.
       { veld: 'gist_volume_l', labelKey: 'brouwdag_gist_vol', step: '0.1', ph: '22', doel: doelBatchSize, doelUnit: ' L', doelDecimals: 1 },
-      { veld: 'liter_vergist', labelKey: 'lbl_liters_fermented', step: '0.1', ph: '22', doel: doelBatchSize, doelUnit: ' L', doelDecimals: 1 },
     ],
     og: [
       { veld: 'OG', labelKey: 'brouwdag_og_meting', step: '0.001', ph: '1.052', doel: doelOGRecept, doelDecimals: 3 },
@@ -348,7 +365,9 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     <div key={v.veld}>
       <label className="text-xs text-gray-500">{t(v.labelKey)}</label>
       <input type="number" step={v.step} value={(batch as any)[v.veld] ?? ''}
-        onChange={e => v.veld === 'OG' ? updOG(e.target.value) : updField(v.veld as any, e.target.value)}
+        onChange={e => v.veld === 'OG' ? updOG(e.target.value)
+          : v.veld === 'gist_volume_l' ? updGistVolume(e.target.value)
+          : updField(v.veld as any, e.target.value)}
         className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder={v.ph} />
       {v.doel != null && !isNaN(Number(v.doel)) ? (
         <div className="text-[10px] text-gray-400 mt-0.5">
@@ -562,18 +581,75 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, brouwdag_voltooid: true} : b))
   }
 
+  // ── Koel-log verweven in de koelstap ──────────────────────────────────────
+  const METHODE_LBL: Record<string, string> = {
+    plate: 'koel_methode_plate', dompel: 'koel_methode_dompel',
+    counterflow: 'koel_methode_counterflow', overig: 'koel_methode_overig',
+  }
+  const mijnKoel = (koelLogs || []).filter((k: any) => k.batch_id === batch.id)
+    .sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || ''))
+  const addKoel = () => {
+    if (!setKoelLogs) return
+    if (!koelForm.start_temp && !koelForm.eind_temp && !koelForm.duur_min) return
+    const nieuw = {
+      id: newId(koelLogs || []), batch_id: batch.id, datum: koelForm.datum || tod(),
+      start_temp: koelForm.start_temp ? Number(koelForm.start_temp) : undefined,
+      eind_temp: koelForm.eind_temp ? Number(koelForm.eind_temp) : undefined,
+      duur_min: koelForm.duur_min ? Number(koelForm.duur_min) : undefined,
+      methode: koelForm.methode, opmerking: koelForm.opmerking || undefined,
+      created_at: new Date().toISOString(),
+    }
+    setKoelLogs((prev: any[]) => [...(prev || []), nieuw])
+    setKoelForm({ ...koelForm, start_temp: '', eind_temp: '', duur_min: '', opmerking: '' })
+  }
+  const deleteKoel = (id: number) => setKoelLogs && setKoelLogs((prev: any[]) => (prev || []).filter((k: any) => k.id !== id))
+  const renderKoelInline = () => {
+    if (!setKoelLogs) return null
+    return (
+      <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
+        <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{t('koel_log_titel')}</div>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+          <input type="number" step="0.1" value={koelForm.start_temp}
+            onChange={e => setKoelForm({ ...koelForm, start_temp: e.target.value })}
+            placeholder={t('koel_log_start_temp')} className="border border-gray-200 rounded px-2 py-1 text-sm t-input" />
+          <input type="number" step="0.1" value={koelForm.eind_temp}
+            onChange={e => setKoelForm({ ...koelForm, eind_temp: e.target.value })}
+            placeholder={t('koel_log_eind_temp')} className="border border-gray-200 rounded px-2 py-1 text-sm t-input" />
+          <input type="number" step="1" value={koelForm.duur_min}
+            onChange={e => setKoelForm({ ...koelForm, duur_min: e.target.value })}
+            placeholder={t('koel_log_duur')} className="border border-gray-200 rounded px-2 py-1 text-sm t-input" />
+          <select value={koelForm.methode} onChange={e => setKoelForm({ ...koelForm, methode: e.target.value })}
+            className="border border-gray-200 rounded px-2 py-1 text-sm t-input">
+            {['plate', 'dompel', 'counterflow', 'overig'].map(m => <option key={m} value={m}>{t(METHODE_LBL[m])}</option>)}
+          </select>
+          <input value={koelForm.opmerking} onChange={e => setKoelForm({ ...koelForm, opmerking: e.target.value })}
+            placeholder={t('lbl_notes')} className="border border-gray-200 rounded px-2 py-1 text-sm t-input" />
+          <Btn s="sm" onClick={addKoel}>{t('koel_log_voeg_toe')}</Btn>
+        </div>
+        {mijnKoel.length > 0 && (
+          <div className="space-y-1 mt-2">
+            {mijnKoel.map((k: any) => (
+              <div key={k.id} className="flex items-center justify-between px-2 py-1 rounded bg-white border border-gray-100 text-xs text-gray-600">
+                <span>
+                  {fmtD(k.datum)} · {k.methode ? t(METHODE_LBL[k.methode]) : '—'}
+                  {(k.start_temp != null || k.eind_temp != null) && <> · {k.start_temp ?? '?'}°C → {k.eind_temp ?? '?'}°C</>}
+                  {k.duur_min != null && <> · {k.duur_min} min</>}
+                  {k.opmerking && <span className="italic text-gray-400"> · {k.opmerking}</span>}
+                </span>
+                <button onClick={() => deleteKoel(k.id)} className="text-gray-300 hover:text-red-500">×</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Render
   return (
     <div className="space-y-3">
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-card overflow-hidden">
-        <SectionHeader
-          title={t('brouwdag_titel')}
-          info={batch.brouwdag_voltooid ? <span className="text-emerald-300">{t('brouwdag_brouwdag_voltooid')}</span> : null}
-          solid
-        />
-      </div>
-
+      {/* Afweeg/afboek-ingrediënten — chronologisch bovenaan de brouwdag */}
+      {afboekSlot}
 
       {/* Hop-schema (kook-additie tijden — bewerkbaar) */}
       {(() => {
@@ -987,6 +1063,8 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                         )}
                       </div>
                     )}
+                    {/* Koel-log verweven in de koelstap */}
+                    {fase === 'koelen' && renderKoelInline()}
                   </div>
                 )
               })}
