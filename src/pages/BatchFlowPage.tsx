@@ -117,8 +117,12 @@ const FlowStap: React.FC<{
   open: boolean
   onToggle: () => void
   children: React.ReactNode
-}> = ({ title, done, optional, detail, open, onToggle, children }) => (
-  <div className="border border-gray-200 rounded-lg overflow-hidden">
+  /* Extra klassen op de buitenste kaart; o.a. `[column-span:all]` om een
+     grafiek-kaart in de tweekoloms-masonry over de volle breedte te laten
+     lopen i.p.v. een halflege kolom te forceren. */
+  className?: string
+}> = ({ title, done, optional, detail, open, onToggle, children, className }) => (
+  <div className={`border border-gray-200 rounded-lg overflow-hidden${className ? ` ${className}` : ''}`}>
     <button type="button" onClick={onToggle}
       className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors">
       <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
@@ -2204,9 +2208,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         {faseStatus === 'Vergisten' && renderVergistHeader()}
 
         {/* Stappen: op desktop in twee kolommen (masonry via CSS columns),
-            zodat je meer in één oogopslag ziet. Brouwen is de uitzondering: de
-            brouwdag-wizard is één lange, doorlopende stappenlijst en werkt het
-            prettigst over de volle breedte (geen halflege rechterkolom). */}
+            zodat je meer in één oogopslag ziet. Grafiek-kaarten (metingen)
+            krijgen `[column-span:all]` zodat ze de volle breedte pakken i.p.v.
+            een halflege kolom ernaast te forceren. Brouwen is de uitzondering:
+            die verzorgt zijn eigen tweekoloms-indeling in de BrouwdagWizard
+            (links ingrediënten, rechts stappen) en staat hier dus in één
+            verticale stroom. */}
         <div className={faseStatus === 'Brouwen'
           ? 'space-y-3'
           : 'lg:columns-2 lg:gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid'}>
@@ -2295,6 +2302,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               </FlowStap>
               <FlowStap title={t('flow_stap_metingen')} done={!!clMap.metingen?.done}
                 detail={clMap.metingen?.detail ? `${clMap.metingen.detail}×` : undefined}
+                className={mijnMetingen.length >= 2 ? '[column-span:all]' : undefined}
                 {...so('metingen', !!clMap.metingen?.done)}>
                 {renderMetingForm()}
                 {renderGrafiek()}
@@ -2363,7 +2371,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               {abvKnop}
             </FlowStap>
             <FlowStap title={t('flow_meting_snel')} optional done={mijnMetingen.length >= 2}
-              detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined} {...so('meting', true)}>
+              detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined}
+              className={mijnMetingen.length >= 2 ? '[column-span:all]' : undefined} {...so('meting', true)}>
               {renderMetingForm()}
               {renderGrafiek()}
             </FlowStap>
