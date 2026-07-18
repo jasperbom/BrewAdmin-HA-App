@@ -647,9 +647,15 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
 
   // Render
   return (
-    <div className="space-y-3">
-      {/* Afweeg/afboek-ingrediënten — chronologisch bovenaan de brouwdag */}
-      {afboekSlot}
+    // Brouwdag in twee kolommen op desktop: links de ingrediënten
+    // (afweeg/afboek + hop-schema), rechts de doorlopende stappenlijst.
+    // items-start voorkomt dat de korte ingrediëntenkolom meerekt met de
+    // (doorgaans langere) stappenkolom.
+    <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start space-y-3 lg:space-y-0">
+      {/* ── Links: ingrediënten ─────────────────────────────────────────── */}
+      <div className="space-y-3">
+        {/* Afweeg/afboek-ingrediënten — chronologisch bovenaan de brouwdag */}
+        {afboekSlot}
 
       {/* Hop-schema (kook-additie tijden — bewerkbaar) */}
       {(() => {
@@ -993,7 +999,10 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
           </div>
         )
       })()}
+      </div>
 
+      {/* ── Rechts: doorlopende brouwdag-stappen ─────────────────────────── */}
+      <div className="space-y-3">
       {/* Stappenlijst */}
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
         <SectionHeader
@@ -1102,6 +1111,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   )

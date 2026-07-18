@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.29] — 2026-07-18
+
+### Verbeterd — Brouwen tweekoloms + grafiek over volle breedte
+
+- **Brouwen-layout**: de brouwdag staat weer in twee kolommen — **links de
+  ingrediënten** (afwegen/afboeken + hop-schema), **rechts de doorlopende
+  stappenlijst** (mash → koken → whirlpool → koelen → OG). De BrouwdagWizard
+  verzorgt die indeling nu zelf (`items-start`, zodat de kortere
+  ingrediëntenkolom niet meerekt met de stappenkolom).
+- **Witruimte in de tweekoloms-masonry weg**: de grafiek-kaart met metingen
+  (Vergisten & Conditioneren) maakte de masonry-kolommen ongelijk en liet een
+  grote lege kolom achter. Die kaart pakt nu de volle breedte
+  (`[column-span:all]`) — de korte kaarten tegelen er netjes twee-koloms
+  boven- en onderaan omheen en de grafiek krijgt meteen meer breedte.
+
+---
+
 ## [1.11.28] — 2026-07-17
 
 ### Verbeterd — Brouwdag over de volle breedte
