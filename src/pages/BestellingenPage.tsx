@@ -17,7 +17,7 @@ import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
 import { regelBedrag, heeftAutoritair } from '../utils/orderRegel'
-import { matchAfvullingenVoorRegel } from '../utils/picking'
+import { matchAfvullingenVoorRegel, diagnosePickMatch } from '../utils/picking'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -1919,6 +1919,30 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {resterend > 0 && afvullingen.length === 0 && (
                       <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}{r.artikel_key ? '' : ''}</div>
                     )}
+                    {resterend > 0 && afvullingen.length === 0 && (() => {
+                      // ── Tijdelijke diagnose (bieren-picken-visibility) ──
+                      // Toont waarom geen enkele voorraad-afvulling aan deze
+                      // orderregel koppelt. Mag weg zodra de oorzaak vaststaat.
+                      const orderSku = r.sku || (r.artikel_key ? (artikelen||[]).find((a: any) => a.key === r.artikel_key)?.artikelnummer : null) || null
+                      const metVoorraad = (av||[]).filter((a: any) => beschikbaarVoorAfvulling(a, selectedOrder.id) > 0)
+                      const diag = diagnosePickMatch(metVoorraad, r.bier_naam, r.verpakking_type, orderSku, {bat, artikelen, producten, productArtikelen, verpakkingen})
+                      const kandidaten = diag.regels.filter((d: any) => d.gerelateerd)
+                      const toon = kandidaten.length ? kandidaten : diag.regels.slice(0, 8)
+                      return (
+                        <details className="mt-1 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded p-2">
+                          <summary className="cursor-pointer font-semibold text-gray-600">🔎 Diagnose koppeling (tijdelijk)</summary>
+                          <div className="mt-1 font-mono whitespace-pre-wrap break-all leading-snug">
+                            {`order: bier="${diag.regel_bier}" verpakking="${diag.regel_verpakking}" sku=${diag.orderSku ?? '—'} → product_id=${diag.order_product_id ?? '—'}`}
+                            {`\nvoorraad-afvullingen bekeken: ${diag.regels.length}, gerelateerd getoond: ${toon.length}`}
+                            {toon.map((d: any) => (
+                              `\n\n#${d.id} batch=${d.batch_id} "${d.batch_naam}"${d.batch_biernaam ? ` (bier="${d.batch_biernaam}")` : ''}`
+                              + `\n  av.product_id=${d.product_id ?? '—'} batch.product_id=${d.batch_product_id ?? '—'} av.sku=${d.artikel_sku ?? '—'} verp="${d.verpakking_type ?? '—'}"`
+                              + `\n  tier1(sku)=${d.tier1_sku_exact?'✓':'✗'} tier2(geen-sku)=${d.tier2_geen_sku?'✓':'✗'} tier3(product)=${d.tier3_product?'✓':'✗'} naam-fb=${d.naam_fallback?'✓':'✗'} verp-match=${d.verpakking_matcht?'✓':'✗'}`
+                            )).join('')}
+                          </div>
+                        </details>
+                      )
+                    })()}
                   </div>
                 )
               })}
