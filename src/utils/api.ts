@@ -692,7 +692,7 @@ export const getWhoami = async (): Promise<Whoami | null> => {
 // Nummers worden server-side atomair uitgegeven (POST /api/nextnr) zodat twee
 // tabs/kassa's nooit hetzelfde nummer krijgen en verwijderde facturen geen
 // nummer-hergebruik veroorzaken. De client mag nooit zelf nummeren.
-export const volgendFactuurNummer = async (reeks: 'factuur' | 'creditnota'): Promise<string> => {
+export const volgendFactuurNummer = async (reeks: 'factuur' | 'creditnota' | 'bestelling'): Promise<string> => {
   const r = await _fetchWithRetry(ADDON_BASE + 'api/nextnr', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -703,6 +703,11 @@ export const volgendFactuurNummer = async (reeks: 'factuur' | 'creditnota'): Pro
   if (!d || typeof d.nummer !== 'string') throw new Error('nextnr: invalid response')
   return d.nummer
 }
+
+// Kort, oplopend bestelnummer voor handmatige orders (bijv. "M-0015"),
+// server-side atomair uitgegeven. Losgekoppeld van het interne record-id
+// (dat is tijdgebaseerd en botsingsvrij, maar niet leesbaar als ordernummer).
+export const volgendBestelNummer = (): Promise<string> => volgendFactuurNummer('bestelling')
 
 // WooCommerce helpers
 export const wcGet = async (subpath: string) => {

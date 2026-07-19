@@ -422,6 +422,27 @@ class TestNextNr:
         status, _, _ = req(app, 'POST', '/api/nextnr', body={'reeks': 'factuur', 'jaar': 1900})
         assert status == 400
 
+    def test_bestelling_reeks_is_kort_en_doorlopend(self, app):
+        # Handmatige bestellingen krijgen een kort M-nummer dat NIET per jaar
+        # reset: nr 2 (2026) telt door naar nr 3 in 2027, prefix blijft "M-".
+        s1, b1, _ = req(app, 'POST', '/api/nextnr', body={'reeks': 'bestelling', 'jaar': 2026})
+        s2, b2, _ = req(app, 'POST', '/api/nextnr', body={'reeks': 'bestelling', 'jaar': 2026})
+        s3, b3, _ = req(app, 'POST', '/api/nextnr', body={'reeks': 'bestelling', 'jaar': 2027})
+        assert (s1, s2, s3) == (200, 200, 200)
+        assert b1['nummer'].startswith('M-') and '2026' not in b1['nummer']
+        assert b2['nr'] == b1['nr'] + 1
+        assert b3['nr'] == b2['nr'] + 1  # geen jaarreset
+
+    def test_bestelling_vangnet_bestaand_nummer(self, app):
+        # Staat er al een hoger bestel_nummer in de data (bijv. na restore),
+        # dan geeft de reeks het volgende dáárboven uit — geen hergebruik.
+        req(app, 'POST', '/api/data/bestellingen',
+            body=[{'id': 1, 'bestel_nummer': 'M-0042'}])
+        s, b, _ = req(app, 'POST', '/api/nextnr', body={'reeks': 'bestelling', 'jaar': 2026})
+        assert s == 200
+        assert b['nr'] == 43
+        assert b['nummer'] == 'M-0043'
+
 
 class TestRateLimit:
     def test_429_boven_de_limiet_met_retry_after(self, app):

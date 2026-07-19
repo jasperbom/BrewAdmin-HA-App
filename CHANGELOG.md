@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.32] — 2026-07-19
+
+### Verbeterd — AGP toont productnaam (etiket) i.p.v. receptnaam
+
+- De **Bier**-kolom op de AGP-pagina toont nu de **productnaam** in plaats van
+  de recept-/batchnaam. Eén batch kan bij het afvullen over meerdere producten
+  worden verdeeld (verschillende etiketten = verschillende producten); die
+  afvullingen kregen voorheen allemaal dezelfde receptnaam en waren zo niet uit
+  elkaar te houden. Voorrang: product van de afvulling → product van de batch →
+  batchnaam als er (nog) geen product gekoppeld is. Toegepast op alle
+  AGP-secties (tanks, verpakt in AGP, uitgeslagen voorraad, mutaties) en de
+  mutatie-zoekfilter. Nieuwe pure helper `src/utils/product.ts` met Vitest.
+
+---
+
+## [1.11.31] — 2026-07-19
+
+### Opgelost — handmatige bestellingen krijgen weer een kort, oplopend nummer
+
+- **Probleem**: handmatige orders toonden als nummer het interne record-id
+  (`M-<id>`). Sinds dat id tijdgebaseerd en botsingsvrij werd gegenereerd
+  (ERP 1.2), verscheen daar een lang, niet-oplopend nummer als
+  `M-1784297699102588` in plaats van `M-14`, `M-15`, …
+- **Oplossing**: handmatige bestellingen krijgen nu een eigen kort,
+  oplopend bestelnummer (`bestel_nummer`, bijv. `M-0015`), server-side
+  atomair uitgegeven via een nieuwe doorlopende `bestelling`-reeks in
+  `POST /api/nextnr` (net als facturen, maar zónder jaarreset). Het interne
+  id blijft ongewijzigd voor de opslag. WooCommerce-orders tonen onveranderd
+  hun WC-nummer; oudere handmatige orders zonder `bestel_nummer` vallen terug
+  op `M-<id>`.
+
+---
+
 ## [1.11.30] — 2026-07-19
 
 ### Opgelost — WooCommerce-import cent-kasverschil (€4,01 i.p.v. €4,00)
