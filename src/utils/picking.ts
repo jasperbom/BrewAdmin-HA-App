@@ -37,6 +37,10 @@ const fefo = (a: any, b: any): number => {
 const verpakkingMatcht = (avVerpakkingType: any, regelVerpakking: string, verpakkingen: any[]): boolean => {
   const avp = lower(avVerpakkingType)
   const doel = lower(regelVerpakking)
+  // Order specificeert geen verpakking (bv. een WooCommerce-artikel zonder
+  // verpakking_type): dan kan verpakking geen discriminator zijn — product-id
+  // en/of naam identificeren het bier al. Niet wegfilteren.
+  if (!doel) return true
   if (avp === doel) return true
   const namen = (verpakkingen || [])
     .filter((v: any) => lower(v.type) === doel)

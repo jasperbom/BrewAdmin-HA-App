@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.35] — 2026-07-19
+
+### Opgelost — bier verschijnt niet bij het picken (lege order-verpakking)
+
+- **Probleem**: voorraad van een gerebrand bier verscheen niet in het
+  pick-scherm ("geen voorraad beschikbaar"), terwijl de voorraad elders wél
+  zichtbaar was. Oorzaak (via de diagnose achterhaald): de orderregel had géén
+  verpakking (`verpakking=""`, komt van een WooCommerce-artikel zonder
+  `verpakking_type`). De afvulling hoorde via `product_id` bij het juiste
+  product, maar tier 3 (product-fallback) én de naam-fallback vielen af op de
+  verpakking-vergelijking, omdat een lege doel-verpakking nergens mee matcht.
+- **Fix**: `verpakkingMatcht` in `utils/picking.ts` behandelt een lege
+  order-verpakking niet langer als filter — product-id en/of naam identificeren
+  het bier dan al. Andere producten (eigen SKU, andere verpakking) blijven
+  geweerd. Getest in `utils/__tests__/picking.test.ts`.
+- **Tip**: vul het `verpakking_type` op het artikel (bijv. `TAFL033-1`) in, dan
+  tonen nieuwe orders de verpakking ook weer in de UI.
+
 ## [1.11.34] — 2026-07-19
 
 ### Diagnose — bier verschijnt niet bij het picken (tijdelijk)

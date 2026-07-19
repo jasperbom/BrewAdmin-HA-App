@@ -70,6 +70,25 @@ describe('matchAfvullingenVoorRegel — FEFO-sortering', () => {
   })
 })
 
+describe('matchAfvullingenVoorRegel — orderregel zonder verpakking', () => {
+  it('matcht een gerebrande afvulling via product-id ook als de order geen verpakking heeft', () => {
+    // Echt geval: WooCommerce-artikel zonder verpakking_type → order-regel
+    // verpakking "". Afvulling is gerebrand (product_id klopt, artikel_sku is
+    // null geworden, batch.biernaam draagt nog de oude naam). Mag tóch matchen.
+    const av = [{ id: 30, batch_id: 10, product_id: 1, artikel_sku: null, verpakking_type: '033 fles Vichy' }]
+    const r = matchAfvullingenVoorRegel(av, 'Tripel Phase', '', 'TAFL033-1', data)
+    expect(r.map(a => a.id)).toEqual([30])
+  })
+
+  it('blijft een ander product met een eigen SKU weren, ook bij lege verpakking', () => {
+    // Ander product (999), eigen artikel_sku, andere verpakking → geen enkele
+    // tier matcht; een lege order-verpakking mag dat niet alsnog openzetten.
+    const av = [{ id: 31, batch_id: 99, product_id: 999, artikel_sku: 'ANDER-1', verpakking_type: 'fust 20L' }]
+    const r = matchAfvullingenVoorRegel(av, 'Tripel Phase', '', 'TAFL033-1', data)
+    expect(r).toEqual([])
+  })
+})
+
 describe('matchAfvullingenVoorRegel — geen SKU (fallback op naam)', () => {
   it('matcht op biernaam + verpakking', () => {
     const av = [{ id: 12, batch_id: 10, verpakking_type: '033 fles' }]
