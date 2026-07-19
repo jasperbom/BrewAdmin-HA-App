@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { newId, wcGet, volgendFactuurNummer } from '../utils/api'
+import { newId, wcGet, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { geslotenPeriodeSets, magFactuurMuteren } from '../utils/btw'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
@@ -160,6 +160,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // 2× €2,00 als €4,00 verschijnt en niet als €4,01.
   const orderTotaal = (b: any) =>
     centNaarEuro((b.regels||[]).reduce((s: number, r: any) => s + regelBedrag(r).bruto_cent, 0))
+
+  // Zichtbaar ordernummer. WooCommerce-orders tonen hun WC-nummer; handmatige
+  // orders hun korte, oplopende bestelnummer (server-reeks, bijv. "M-0015").
+  // Oudere handmatige orders zonder bestel_nummer vallen terug op M-<id>.
+  const orderNummer = (b: any): string =>
+    b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : (b.bestel_nummer || `M-${b.id}`)
 
   // Picks voor een bestelling
   const picksVoorOrder = (bestelling_id: number) =>
@@ -488,7 +494,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // --- Handmatige order opslaan ---
-  const saveManualOrder = () => {
+  const saveManualOrder = async () => {
     if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
     if (manualForm.klant_type === 'zakelijk' && !manualForm.klant_bedrijf?.trim()) {
       alert(t('err_order_company_required')); return
@@ -538,6 +544,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         omschrijving: manualVerzending.naam || t('lbl_verzendkosten'),
       });
     }
+    // Kort, oplopend bestelnummer via de server-reeks (atomair, botsingsvrij).
+    // Lukt de server-call niet, dan valt de weergave terug op M-<id>.
+    let bestelNummer: string | null = null
+    try { bestelNummer = await volgendBestelNummer() } catch { bestelNummer = null }
     const nb: any = {
       id: newId(bestellingen||[]),
       status: 'nieuw',
@@ -546,6 +556,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       regels,
       wc_order_id: null,
       wc_order_nummer: null,
+      bestel_nummer: bestelNummer,
     }
     setBestellingen((prev: any[]) => [...(prev||[]), nb])
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:nb.id, actie:'aangemaakt', omschrijving:`Handmatig — ${nb.klant_naam}`})
@@ -1421,7 +1432,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const mailOrderBevestiging = () => {
     if (!selectedOrder) return
-    const orderRef = selectedOrder.wc_order_nummer ? `WC-${selectedOrder.wc_order_nummer}` : `M-${selectedOrder.id}`
+    const orderRef = orderNummer(selectedOrder)
     const regelLijst = (selectedOrder.regels||[]).map((r: any) =>
       `- ${r.aantal}× ${r.bier_naam || r.omschrijving || ''}${r.verpakking_type ? ` (${r.verpakking_type})` : ''}`
     ).join('\n')
@@ -1454,7 +1465,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             {t('btn_back')}
           </button>
           <h2 className="text-xl font-bold text-gray-800">
-            {selectedOrder.wc_order_nummer ? `WC-${selectedOrder.wc_order_nummer}` : `M-${selectedOrder.id}`}
+            {orderNummer(selectedOrder)}
           </h2>
           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[selectedOrder.status]||'bg-gray-100'}`}>
             {t(`orders_status_${selectedOrder.status}`)||selectedOrder.status}
@@ -2107,7 +2118,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         {filtered.map((b: any) => {
           const totaal = orderTotaal(b)
           const picks = picksVoorOrder(b.id)
-          const orderNr = b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : `M-${b.id}`
+          const orderNr = orderNummer(b)
           const kType = effectiveKlantType(b)
           return (
             <div key={b.id} onClick={() => { setSelectedId(b.id); setView('detail') }}

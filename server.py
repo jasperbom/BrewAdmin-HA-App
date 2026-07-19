@@ -1731,18 +1731,27 @@ def _rollen_lockout(gebruiker: str, conf) -> bool:
 _NUMMER_REEKSEN = {
     'factuur':    'F{jaar}-',
     'creditnota': 'CN-{jaar}-',
+    'bestelling': 'M-',
 }
 
+# Reeksen die dóórlopen over jaargrenzen heen (geen {jaar} in het prefix, geen
+# jaarlijkse reset). Handmatige bestellingen zijn geen fiscaal document en
+# houden — net als het oude oplopende record-id — één doorlopende reeks.
+_REEKS_DOORLOPEND = {'bestelling'}
 
-def _max_bestaand_nummer(prefix: str) -> int:
-    """Hoogste al uitgegeven nummer met dit prefix in verkoop_facturen.json.
+
+def _max_bestaand_nummer(reeks: str, prefix: str) -> int:
+    """Hoogste al uitgegeven nummer met dit prefix in de bron-data.
     Vangnet tegen dubbele nummers na een backup-restore of handmatige edit
-    waarbij de tellerstand achterloopt op de werkelijk bestaande facturen."""
-    facturen = _read_json('verkoop_facturen', [])
+    waarbij de tellerstand achterloopt op de werkelijk bestaande records."""
+    if reeks == 'bestelling':
+        bron, veld = _read_json('bestellingen', []), 'bestel_nummer'
+    else:
+        bron, veld = _read_json('verkoop_facturen', []), 'factuurnummer'
     hoogste = 0
-    if isinstance(facturen, list):
-        for f in facturen:
-            nummer = f.get('factuurnummer') if isinstance(f, dict) else None
+    if isinstance(bron, list):
+        for f in bron:
+            nummer = f.get(veld) if isinstance(f, dict) else None
             if isinstance(nummer, str) and nummer.startswith(prefix):
                 try:
                     hoogste = max(hoogste, int(nummer[len(prefix):]))
@@ -1754,7 +1763,9 @@ def _max_bestaand_nummer(prefix: str) -> int:
 def _legacy_counter(reeks: str, jaar: int) -> int:
     """Tellerstand uit het oude client-side factuur_counter.json.
     Facturen: {jaar, nr}; creditnota's (statiegeld) sloegen per jaar op
-    onder de jaar-key zelf."""
+    onder de jaar-key zelf. Andere reeksen hebben geen legacy-teller."""
+    if reeks not in ('factuur', 'creditnota'):
+        return 0
     legacy = _read_json('factuur_counter', {})
     if not isinstance(legacy, dict):
         return 0
@@ -1769,17 +1780,20 @@ def _legacy_counter(reeks: str, jaar: int) -> int:
 def _volgend_nummer(reeks: str, jaar: int) -> dict:
     """Geef atomair het volgende nummer in de reeks uit (aanroepen ZONDER
     _data_lock; deze functie pakt de lock zelf)."""
-    prefix = _NUMMER_REEKSEN[reeks].format(jaar=jaar)
+    doorlopend = reeks in _REEKS_DOORLOPEND
+    prefix = _NUMMER_REEKSEN[reeks] if doorlopend else _NUMMER_REEKSEN[reeks].format(jaar=jaar)
     with _data_lock:
         reeksen = _read_json('nummer_reeksen', {})
         if not isinstance(reeksen, dict):
             reeksen = {}
         entry = reeksen.get(reeks) or {}
         try:
-            opgeslagen = int(entry.get('nr') or 0) if entry.get('jaar') == jaar else 0
+            # Doorlopende reeksen resetten niet per jaar; jaargebonden reeksen
+            # tellen alleen door binnen hetzelfde jaar.
+            opgeslagen = int(entry.get('nr') or 0) if (doorlopend or entry.get('jaar') == jaar) else 0
         except (TypeError, ValueError):
             opgeslagen = 0
-        basis = max(opgeslagen, _legacy_counter(reeks, jaar), _max_bestaand_nummer(prefix))
+        basis = max(opgeslagen, _legacy_counter(reeks, jaar), _max_bestaand_nummer(reeks, prefix))
         nr = basis + 1
         reeksen[reeks] = {'jaar': jaar, 'nr': nr}
         _write_json('nummer_reeksen', reeksen)

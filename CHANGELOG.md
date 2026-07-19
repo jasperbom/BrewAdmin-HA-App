@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.31] — 2026-07-19
+
+### Opgelost — handmatige bestellingen krijgen weer een kort, oplopend nummer
+
+- **Probleem**: handmatige orders toonden als nummer het interne record-id
+  (`M-<id>`). Sinds dat id tijdgebaseerd en botsingsvrij werd gegenereerd
+  (ERP 1.2), verscheen daar een lang, niet-oplopend nummer als
+  `M-1784297699102588` in plaats van `M-14`, `M-15`, …
+- **Oplossing**: handmatige bestellingen krijgen nu een eigen kort,
+  oplopend bestelnummer (`bestel_nummer`, bijv. `M-0015`), server-side
+  atomair uitgegeven via een nieuwe doorlopende `bestelling`-reeks in
+  `POST /api/nextnr` (net als facturen, maar zónder jaarreset). Het interne
+  id blijft ongewijzigd voor de opslag. WooCommerce-orders tonen onveranderd
+  hun WC-nummer; oudere handmatige orders zonder `bestel_nummer` vallen terug
+  op `M-<id>`.
+
+---
+
 ## [1.11.30] — 2026-07-19
 
 ### Opgelost — WooCommerce-import cent-kasverschil (€4,01 i.p.v. €4,00)
