@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.33] — 2026-07-19
+
+### Opgelost — picken vindt voorraad terug na een SKU-wijziging
+
+- **Probleem**: bij het picken van een order werd al-uitgeslagen voorraad
+  (buiten AGP) niet gevonden ("Geen beschikbare voorraad gevonden … · SKU:
+  …") wanneer de SKU van het product in het verleden is gewijzigd. De
+  afvulling droeg nog de óude `artikel_sku`, terwijl de order de nieuwe SKU
+  had; de matching keek alleen naar exacte SKU (of afvullingen zónder SKU) en
+  had geen terugval.
+- **Oplossing**: een derde matching-tier die op het **product** (`product_id`
+  van de afvulling of anders de batch) + verpakking matcht wanneer de
+  SKU-tiers niets vinden. Het product_id blijft stabiel bij een SKU-wijziging,
+  dus de voorraad wordt weer gevonden. De matching-logica is verplaatst naar de
+  pure module `src/utils/picking.ts` met Vitest-dekking (incl. het
+  SKU-wijziging-scenario); Tier 1/2 en het naam-fallbackgedrag blijven
+  ongewijzigd.
+
+---
+
 ## [1.11.32] — 2026-07-19
 
 ### Verbeterd — AGP toont productnaam (etiket) i.p.v. receptnaam
