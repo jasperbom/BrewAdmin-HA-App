@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.34] — 2026-07-19
+
+### Diagnose — bier verschijnt niet bij het picken (tijdelijk)
+
+- **Doel**: achterhalen waarom voorraad van een bepaald (gerebrand) bier niet
+  in het pick-scherm verschijnt terwijl de voorraad elders wél zichtbaar is.
+- **Toegevoegd**: pure diagnose-functie `diagnosePickMatch` in
+  `utils/picking.ts` die per voorraad-afvulling laat zien welke match-tier
+  (exacte SKU / geen-SKU / product-fallback / naam) faalt, plus een tijdelijk
+  uitklapbaar diagnose-blok onder de rode "geen voorraad"-melding in het
+  pick-scherm. Wordt weer verwijderd zodra de oorzaak vaststaat.
+
 ## [1.11.33] — 2026-07-19
 
 ### Opgelost — picken vindt voorraad terug na een SKU-wijziging

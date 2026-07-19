@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -75,6 +75,27 @@ describe('matchAfvullingenVoorRegel — geen SKU (fallback op naam)', () => {
     const av = [{ id: 12, batch_id: 10, verpakking_type: '033 fles' }]
     const r = matchAfvullingenVoorRegel(av, 'Tripel Phase', '033 fles', null, data)
     expect(r.map(a => a.id)).toEqual([12])
+  })
+})
+
+describe('diagnosePickMatch — tijdelijke diagnose', () => {
+  it('legt uit waarom een gerebrande afvulling (sku=null) niet via sku matcht maar wel via product', () => {
+    // Rebrand-scenario: afvulling hoort nu bij product 1, maar artikel_sku is
+    // null geworden en batch.biernaam draagt nog de oude naam.
+    const av = [{ id: 20, batch_id: 10, product_id: 1, artikel_sku: null, verpakking_type: '033 fles' }]
+    const diag = diagnosePickMatch(av, 'Tripel Phase', '033 fles', 'TAFL033-1', data)
+    expect(diag.order_product_id).toBe(1)
+    const d = diag.regels[0]
+    expect(d.gerelateerd).toBe(true)
+    expect(d.tier1_sku_exact).toBe(false)
+    expect(d.tier3_product).toBe(true)
+    expect(d.verpakking_matcht).toBe(true)
+  })
+
+  it('markeert niet-gerelateerde voorraad van een ander product als niet-gerelateerd', () => {
+    const av = [{ id: 21, batch_id: 99, product_id: 999, artikel_sku: 'XX-1', verpakking_type: '033 fles' }]
+    const diag = diagnosePickMatch(av, 'Tripel Phase', '033 fles', 'TAFL033-1', data)
+    expect(diag.regels[0].gerelateerd).toBe(false)
   })
 })
 
