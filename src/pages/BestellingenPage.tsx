@@ -17,6 +17,7 @@ import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
 import { regelBedrag, heeftAutoritair } from '../utils/orderRegel'
+import { matchAfvullingenVoorRegel } from '../utils/picking'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -263,57 +264,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       .join(', ')
   }
 
-  // Beschikbare afvullingen voor een orderregel (gefilterd op SKU of bier + verpakking)
+  // Beschikbare afvullingen voor een orderregel. Matching (incl. SKU-wijziging
+  // in het verleden → product-fallback) zit in utils/picking.ts.
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string, regelSku?: string) => {
     // Bepaal SKU: direct uit regel, of via artikel_key lookup
     const orderSku = regelSku || (regelArtikelKey ? (artikelen||[]).find((a: any) => a.key === regelArtikelKey)?.artikelnummer : null) || null
-    const fefo = (a: any, b: any) => {
-      if (!a.tht && !b.tht) return 0
-      if (!a.tht) return 1
-      if (!b.tht) return -1
-      return a.tht.localeCompare(b.tht)
-    }
     const filtered = (av||[]).filter((a: any) => beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
-    if (orderSku) {
-      // Tier 1: exacte artikel_sku match (nieuwe afvullingen)
-      const skuMatches = filtered.filter((a: any) => a.artikel_sku === orderSku)
-      if (skuMatches.length > 0) return skuMatches.sort(fefo)
-      // Tier 2: oude afvullingen zonder artikel_sku — match via artikel SKU + verpakking_type
-      // (batchnaam irrelevant; als batch.biernaam gezet is, moet die ook kloppen)
-      return filtered.filter((a: any) => {
-        if (a.artikel_sku) return false
-        const matchArt = (artikelen||[]).find((art: any) =>
-          art.artikelnummer === orderSku &&
-          art.verpakking_type?.toLowerCase() === a.verpakking_type?.toLowerCase()
-        )
-        if (!matchArt) return false
-        const batch = bat.find((b: any) => b.id === a.batch_id)
-        if (batch?.biernaam) return batch.biernaam === matchArt.biernaam
-        return true
-      }).sort(fefo)
-    }
-    // Geen SKU: fallback op bier_naam + verpakking (ook via product_id)
-    const prod = (producten||[]).find((p: any) => p.naam.toLowerCase() === regelBierNaam.toLowerCase())
-    // Verpakkingsnamen die bij het gevraagde type horen (bijv. "fles" → ["Vichy 33cL", "Fles 33cL", ...])
-    const vpNamenVoorType = verpakkingen
-      .filter((v: any) => v.type?.toLowerCase() === regelVerpakking.toLowerCase())
-      .map((v: any) => v.naam?.toLowerCase())
-      .filter(Boolean)
-    return filtered
-      .filter((a: any) => {
-        const avpLower = (a.verpakking_type || '').toLowerCase()
-        const matchVerpakking = avpLower === regelVerpakking.toLowerCase()
-          || vpNamenVoorType.includes(avpLower)
-          || vpNamenVoorType.some((n: string) => avpLower.includes(n) || n.includes(avpLower))
-        if (!matchVerpakking) return false
-        const batch = bat.find((b: any) => b.id === a.batch_id)
-        if (!batch) return false
-        if (batch.naam.toLowerCase() === regelBierNaam.toLowerCase()) return true
-        if (batch.biernaam && batch.biernaam.toLowerCase() === regelBierNaam.toLowerCase()) return true
-        if (prod && (a.product_id === prod.id || batch.product_id === prod.id)) return true
-        return false
-      })
-      .sort(fefo)
+    return matchAfvullingenVoorRegel(filtered, regelBierNaam, regelVerpakking, orderSku,
+      {bat, artikelen, producten, productArtikelen, verpakkingen})
   }
 
   // Beschikbare bieren voor dropdown (vanuit producten + artikelen fallback)
