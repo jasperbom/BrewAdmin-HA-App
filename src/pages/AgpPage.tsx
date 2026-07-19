@@ -9,9 +9,17 @@ import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
 import { agpOverzicht, getAgpLocatie, accijnsCalc, tariefVoorDatum, voorraadPerLocatie, gemAgpInPeriode, accijnsMaandGesloten } from '../utils/calculations'
+import { productNaam } from '../utils/product'
 
-function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog, accijnsAangiftes=[]}: any) {
+function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog, accijnsAangiftes=[]}: any) {
   const {useState, useMemo} = React;
+
+  // Toon de PRODUCTnaam (etiket) per regel i.p.v. de recept-/batchnaam. Twee
+  // afvullingen van dezelfde batch met verschillende etiketten zijn verschillende
+  // producten en krijgen zo hun eigen naam. Zonder product valt het terug op de
+  // batchnaam.
+  const bierNaam = (batch: any, afv?: any): string =>
+    productNaam(afv, batch, producten) || t('lbl_onbekend');
 
   const ovz = useMemo(() => agpOverzicht(bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst),
     [bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst]);
@@ -200,6 +208,7 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
       const naar = locById(v.naar_locatie_id);
       return (
         String(batch?.naam||'').toLowerCase().includes(q) ||
+        productNaam(afv, batch, producten).toLowerCase().includes(q) ||
         String(batch?.batch_nummer||'').toLowerCase().includes(q) ||
         String(afv?.verpakking_naam||'').toLowerCase().includes(q) ||
         String(van?.naam||'').toLowerCase().includes(q) ||
@@ -207,7 +216,7 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
         String(v.datum||'').includes(q)
       );
     });
-  }, [verplaatsingen, mutZoek, av, bat, locaties]);
+  }, [verplaatsingen, mutZoek, av, bat, locaties, producten]);
 
   const deleteVerplaats = (v: any) => {
     const heeftAcc = !!v.accijns_record_id;
@@ -308,7 +317,7 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
                 <tbody className="divide-y divide-gray-100">
                   {ovz.tanks.map((r: any) => (
                     <tr key={r.batch.id}>
-                      <td className="px-3 py-2 font-medium text-gray-800">{r.batch.naam || t('lbl_naamloos')}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800">{bierNaam(r.batch)}</td>
                       <td className="px-3 py-2 text-gray-500">{r.batch.batch_nummer ? `#${r.batch.batch_nummer}` : '—'}</td>
                       <td className="px-3 py-2 text-gray-600">{r.batch.status || '—'}</td>
                       <td className="px-3 py-2 text-gray-600">{r.batch.tank || '—'}</td>
@@ -352,7 +361,7 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
                 <tbody className="divide-y divide-gray-100">
                   {ovz.afvullingen.filter((r: any) => r.in_agp > 0).map((r: any) => (
                     <tr key={r.afv.id}>
-                      <td className="px-3 py-2 font-medium text-gray-800">{r.batch?.naam || t('lbl_onbekend')}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800">{bierNaam(r.batch, r.afv)}</td>
                       <td className="px-3 py-2 text-gray-500">{r.batch?.batch_nummer ? `#${r.batch.batch_nummer}` : '—'}</td>
                       <td className="px-3 py-2 text-gray-600">{r.afv.verpakking_naam || r.afv.verpakking_type || '—'}</td>
                       <td className="px-3 py-2 text-right">{r.in_agp}</td>
@@ -402,7 +411,7 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
                       const aantal = r.voorraad[locId];
                       return (
                         <tr key={`${r.afv.id}-${locId}`}>
-                          <td className="px-3 py-2 font-medium text-gray-800">{r.batch?.naam || t('lbl_onbekend')}{r.batch?.batch_nummer ? <span className="text-gray-400 ml-1">#{r.batch.batch_nummer}</span> : null}</td>
+                          <td className="px-3 py-2 font-medium text-gray-800">{bierNaam(r.batch, r.afv)}{r.batch?.batch_nummer ? <span className="text-gray-400 ml-1">#{r.batch.batch_nummer}</span> : null}</td>
                           <td className="px-3 py-2 text-gray-600">{r.afv.verpakking_naam || r.afv.verpakking_type || '—'}</td>
                           <td className="px-3 py-2 text-gray-600">{loc.naam}</td>
                           <td className="px-3 py-2 text-right">{aantal}</td>
@@ -459,7 +468,7 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
                         return (
                           <tr key={v.id}>
                             <td className="px-3 py-2 text-gray-600">{fmtD(v.datum)}</td>
-                            <td className="px-3 py-2">{batch?.naam || t('lbl_onbekend')} <span className="text-gray-400 text-xs">{afv?.verpakking_naam||''}</span></td>
+                            <td className="px-3 py-2">{bierNaam(batch, afv)} <span className="text-gray-400 text-xs">{afv?.verpakking_naam||''}</span></td>
                             <td className="px-3 py-2 text-right">{v.aantal}</td>
                             <td className="px-3 py-2 text-gray-600">{locById(v.van_locatie_id).naam}</td>
                             <td className="px-3 py-2 text-gray-600">{locById(v.naar_locatie_id).naam}</td>
@@ -490,7 +499,7 @@ function AgpPage({bat, av, uit, acc, setAcc, locaties, setLocaties, verplaatsing
               return (
                 <>
                   <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                    <div className="text-xs text-gray-500">{batch?.naam || t('lbl_onbekend')}{batch?.batch_nummer ? ` #${batch.batch_nummer}` : ''}</div>
+                    <div className="text-xs text-gray-500">{bierNaam(batch, afv)}{batch?.batch_nummer ? ` #${batch.batch_nummer}` : ''}</div>
                     <div className="font-medium">{afv?.verpakking_naam || afv?.verpakking_type || '—'}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">

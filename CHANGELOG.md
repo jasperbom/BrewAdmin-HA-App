@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.32] — 2026-07-19
+
+### Verbeterd — AGP toont productnaam (etiket) i.p.v. receptnaam
+
+- De **Bier**-kolom op de AGP-pagina toont nu de **productnaam** in plaats van
+  de recept-/batchnaam. Eén batch kan bij het afvullen over meerdere producten
+  worden verdeeld (verschillende etiketten = verschillende producten); die
+  afvullingen kregen voorheen allemaal dezelfde receptnaam en waren zo niet uit
+  elkaar te houden. Voorrang: product van de afvulling → product van de batch →
+  batchnaam als er (nog) geen product gekoppeld is. Toegepast op alle
+  AGP-secties (tanks, verpakt in AGP, uitgeslagen voorraad, mutaties) en de
+  mutatie-zoekfilter. Nieuwe pure helper `src/utils/product.ts` met Vitest.
+
+---
+
 ## [1.11.31] — 2026-07-19
 
 ### Opgelost — handmatige bestellingen krijgen weer een kort, oplopend nummer
