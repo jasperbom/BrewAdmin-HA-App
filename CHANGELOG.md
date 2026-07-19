@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.30] — 2026-07-19
+
+### Opgelost — WooCommerce-import cent-kasverschil (€4,01 i.p.v. €4,00)
+
+- **Kernprobleem**: WooCommerce verkoopt op ronde incl-BTW-prijzen (bijv. een
+  bier van €2,00). Bij 2 stuks betaalt de klant €4,00, maar de app toonde
+  €4,01. Oorzaak: de app modelleert `prijs_per_stuk` ex-BTW en reconstrueerde
+  het bruto als netto × (1 + btw%) met tussentijdse afronding
+  (2× 1,655 → netto 3,31 → btw round(0,6951)=0,70 → bruto 4,01), terwijl
+  WooCommerce zelf netto 3,31 + btw 0,69 = 4,00 rapporteerde. Dat gaf
+  kasverschil.
+- **Oplossing**: bij WooCommerce-import bewaart de app nu de autoritatieve
+  regelbedragen die WooCommerce zelf berekent (`wc_netto` = line-total ex-BTW,
+  `wc_btw` = line-tax) wanneer er écht BTW is berekend. Die bedragen zijn
+  leidend in het ordertotaal en op de verkoopfactuur, zodat het bruto exact
+  gelijk is aan wat de klant betaalde. Regels zonder die bedragen (handmatige
+  orders, statiegeld, of na een expliciete BTW-tariefwijziging) vallen terug op
+  de klassieke berekening. Nieuwe pure logica in `src/utils/orderRegel.ts` met
+  eigen Vitest-dekking.
+
+---
+
 ## [1.11.29] — 2026-07-18
 
 ### Verbeterd — Brouwen tweekoloms + grafiek over volle breedte

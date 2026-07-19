@@ -15,7 +15,8 @@ import { htmlToPdfBase64 } from '../utils/pdf'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
-import { totaliseerRegels } from '../utils/centen'
+import { totaliseerRegels, centNaarEuro } from '../utils/centen'
+import { regelBedrag, heeftAutoritair } from '../utils/orderRegel'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -154,10 +155,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     .filter(b => statusFilter === 'alle' || b.status === statusFilter)
     .sort((a, b) => b.datum.localeCompare(a.datum))
 
-  // Ordertotaal berekenen
+  // Ordertotaal berekenen — cent-exact en met behoud van de autoritatieve
+  // WooCommerce-bedragen (zie utils/orderRegel.ts), zodat een WC-order van
+  // 2× €2,00 als €4,00 verschijnt en niet als €4,01.
   const orderTotaal = (b: any) =>
-    (b.regels||[]).reduce((s: number, r: any) =>
-      s + Number(r.aantal||0) * Number(r.prijs_per_stuk||0) * (1 + Number(r.btw_pct||0)/100), 0)
+    centNaarEuro((b.regels||[]).reduce((s: number, r: any) => s + regelBedrag(r).bruto_cent, 0))
 
   // Picks voor een bestelling
   const picksVoorOrder = (bestelling_id: number) =>
@@ -382,6 +384,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             prijs_per_stuk: prijs,
             btw_pct: btwPct,
             omschrijving: item.name || '',
+            // Autoritatieve regelbedragen van WooCommerce bewaren wanneer er
+            // écht BTW is berekend (lineTax > 0). WooCommerce verkoopt op ronde
+            // incl-BTW-prijzen (€2,00); zonder deze waarden reconstrueert de app
+            // het bruto uit een ex-BTW-prijs en ontstaat een cent kasverschil
+            // (2× €2,00 → €4,01 i.p.v. €4,00). Zie utils/orderRegel.ts.
+            ...(lineTax > 0 ? { wc_netto: lineTotal, wc_btw: lineTax } : {}),
           }
         })
         const company = (o.billing?.company || '').trim()
@@ -957,16 +965,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // 3. VerkoopFactuur
     const rnd2 = (n: number) => Math.round(n * 100) / 100
     const regelsList: any[] = (selectedOrder.regels||[]).map((r: any) => {
-      const netto = rnd2(Number(r.aantal||0) * Number(r.prijs_per_stuk||0))
-      const btw_bedrag = rnd2(netto * Number(r.btw_pct||0) / 100)
+      // Bedragen via regelBedrag: autoritatieve WooCommerce-bedragen zijn
+      // leidend (voorkomt cent-kasverschil), anders klassieke reconstructie.
+      const b = regelBedrag(r)
       return {
         omschrijving: r.omschrijving || `${r.bier_naam} – ${r.verpakking_type}`,
         hoeveelheid: Number(r.aantal||0),
         prijs_per_stuk: Number(r.prijs_per_stuk||0),
         btw_pct: Number(r.btw_pct||0),
-        netto,
-        btw_bedrag,
-        bruto: rnd2(netto + btw_bedrag),
+        netto: b.netto,
+        btw_bedrag: b.btw,
+        bruto: b.bruto,
+        ...(heeftAutoritair(r) ? { wc_netto: Number(r.wc_netto), wc_btw: Number(r.wc_btw) } : {}),
       }
     })
     // Statiegeld auto-pass: voor elke bier-regel met een verpakking die statiegeld
@@ -1191,9 +1201,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const herberekenFactuur = (fact: any) => {
     const rnd2 = (n: number) => Math.round(n * 100) / 100
     const regels = (fact.regels||[]).map((r: any) => {
-      const netto = rnd2(Number(r.hoeveelheid||0) * Number(r.prijs_per_stuk||0))
-      const btw_bedrag = rnd2(netto * Number(r.btw_pct||0) / 100)
-      return {...r, netto, btw_bedrag, bruto: rnd2(netto + btw_bedrag)}
+      // Autoritatieve WooCommerce-bedragen blijven leidend (geen kasverschil);
+      // regels zonder die bedragen worden uit hoeveelheid × prijs herberekend.
+      const b = regelBedrag(r)
+      return {...r, netto: b.netto, btw_bedrag: b.btw, bruto: b.bruto}
     })
     const tarieven = [...new Set(regels.map((r: any) => Number(r.btw_pct||0)))] as number[]
     const btw_overzicht = tarieven.map(tarief => {
@@ -1232,9 +1243,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const orderRegels = selectedOrder.regels||[]
     const regelIdx = orderRegels.findIndex((r: any) => r.id === regelId)
     const regel = orderRegels[regelIdx]
+    // Bij een expliciete tariefwijziging vervallen de autoritatieve
+    // WooCommerce-bedragen van déze regel: het nieuwe tarief moet leidend zijn,
+    // dus de BTW wordt weer uit netto × btw% herberekend.
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id
-        ? {...b, regels: (b.regels||[]).map((r: any) => r.id === regelId ? {...r, btw_pct: nieuwBtw} : r)}
+        ? {...b, regels: (b.regels||[]).map((r: any) => {
+            if (r.id !== regelId) return r
+            const {wc_netto, wc_btw, ...rest} = r
+            return {...rest, btw_pct: nieuwBtw}
+          })}
         : b
     ))
     // Gekoppelde verkoopfactuur meecorrigeren. De factuurregels zijn 1-op-1 in
@@ -1243,7 +1261,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (selectedOrder.factuur_id != null && regelIdx >= 0) {
       const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
       if (fact) {
-        const regels = (fact.regels||[]).map((fr: any, i: number) => i === regelIdx ? {...fr, btw_pct: nieuwBtw} : fr)
+        const regels = (fact.regels||[]).map((fr: any, i: number) => {
+          if (i !== regelIdx) return fr
+          const {wc_netto, wc_btw, ...rest} = fr
+          return {...rest, btw_pct: nieuwBtw}
+        })
         const nieuweFactuur = herberekenFactuur({...fact, regels})
         setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => f.id === fact.id ? nieuweFactuur : f))
         // Journaal (ERP-plan 2.1): correctie op een al geboekte factuur =
