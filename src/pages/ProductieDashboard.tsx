@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
 import { fmtD, fmtQty, tod } from '../utils/format'
-import { TANK_STATUSSEN, telThtAlerts } from '../utils/calculations'
+import { TANK_STATUSSEN, telThtAlerts, resolveTankHistorie, tankRestVolume, effectiefOG, effectiefFG } from '../utils/calculations'
 import { telOpenstaandeBatchTaken } from '../utils/taken'
 import { volgendeBrouwdagStap } from '../utils/brouwdag'
 import { newId } from '../utils/api'
 import { logAudit } from '../utils/audit'
+import { TankVisualForSoort } from '../components/batch/TankVisual'
 import SectionHeader from '../components/ui/SectionHeader'
 import StatCard from '../components/ui/StatCard'
 import Btn from '../components/ui/Btn'
@@ -17,6 +18,9 @@ import Sel from '../components/ui/Sel'
 interface ProductieDashboardProps {
   bat: any[]
   tanks: any[]
+  av: any[]
+  verliesRegistraties: any[]
+  haTankTemps: Record<string, number>
   batchTakenItems: any[]
   batchTakenGroepen: any[]
   brouwdagStappen: any[]
@@ -30,29 +34,63 @@ interface ProductieDashboardProps {
   setNavBatchId: (id: number | null) => void
 }
 
+type MetingForm = { sg: string, ph: string, temp: string }
+const LEGE_METING: MetingForm = { sg: '', ph: '', temp: '' }
+
 // Productie-werkruimte-dashboard (ERP-navigatie-herstructurering): een lean
 // dagelijkse takenlijst voor op de vloer — mobile-first, tap-targets ≥44px.
-// Géén rijke tankbediening (climate/cold-crash/inline meetformulieren op elke
-// tank): die interactie blijft op Batches/Batchflow. Dit scherm is bewust een
-// glanceable samenvatting die doorlinkt.
+// De tankkaarten tonen wél hun visuele tankweergave (TankVisual) en
+// gistingsvoortgang zoals voorheen op het gedeelde dashboard — dat is
+// waardevolle, dagelijks gebruikte info, geen "rijke tankbediening". Climate-
+// control en cold-crash-bediening blijven wél op Batches/Batchflow.
 function ProductieDashboard({
-  bat = [], tanks = [], batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
+  bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {},
+  batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
   setPage, setNavBatchId,
 }: ProductieDashboardProps) {
   const batchNaam = (b: any) => b?.naam || b?.biernaam || t('lbl_naamloos')
+
+  // ── Meting opslaan — gedeeld tussen de snelknop-modal en de inline
+  // "+ meting toevoegen" per tankkaart, zodat er maar één schrijfpad is.
+  const slaMetingOp = (batchId: number, form: MetingForm) => {
+    if (!batchId || (!form.sg && !form.ph && !form.temp)) return
+    const id = newId(gistMetingen)
+    const nu = new Date()
+    setGistMetingen((prev: any[]) => [...(prev || []), {
+      id, batch_id: batchId, datum: tod(), tijd: nu.toTimeString().slice(0, 5),
+      sg: form.sg ? Number(form.sg) : undefined,
+      ph: form.ph ? Number(form.ph) : undefined,
+      temp: form.temp ? Number(form.temp) : undefined,
+    }])
+    const b = bat.find((x: any) => x.id === batchId)
+    logAudit(auditLog, setAuditLog, { entiteit: 'Meting', entiteit_id: id, actie: 'aangemaakt', omschrijving: `${batchNaam(b)}: SG ${form.sg || '—'}, pH ${form.ph || '—'}, ${form.temp || '—'}°C` })
+  }
+
+  const latestMeting = (batchId: number) => {
+    const ms = (gistMetingen || []).filter((m: any) => m?.batch_id === batchId && m.sg)
+    if (!ms.length) return null
+    return ms.slice().sort((a: any, b: any) =>
+      new Date(`${b.datum}T${b.tijd || '00:00'}`).getTime() - new Date(`${a.datum}T${a.tijd || '00:00'}`).getTime()
+    )[0]
+  }
+  const sgProgress = (batch: any): number | null => {
+    const m = latestMeting(batch.id)
+    const og = effectiefOG(batch)
+    const fg = effectiefFG(batch)
+    if (!m || !og || !fg || og <= fg) return null
+    return Math.min(100, Math.max(0, (og - m.sg) / (og - fg) * 100))
+  }
 
   // ── Actieve tanks + fase ───────────────────────────────────────────────────
   const actieveTanks = useMemo(() => tanks
     .map((tk: any) => ({ tank: tk, batch: bat.find((b: any) => b.tank === tk.id && TANK_STATUSSEN.includes(b.status)) }))
     .filter((x: any) => x.batch), [tanks, bat])
 
-  const dagenBezet = (b: any): number | null => {
-    if (!b?.datum) return null
-    const d = new Date(b.datum); d.setHours(0, 0, 0, 0)
-    const nu = new Date(); nu.setHours(0, 0, 0, 0)
-    return Math.max(0, Math.round((nu.getTime() - d.getTime()) / 86400000))
-  }
+  // Inline meting-form per tankkaart — één tegelijk open, zelfde patroon als
+  // voorheen op het gedeelde dashboard (metingBatchId op paginaniveau).
+  const [inlineMetingBatchId, setInlineMetingBatchId] = useState<number | null>(null)
+  const [inlineMetingForm, setInlineMetingForm] = useState<MetingForm>(LEGE_METING)
 
   // ── Taken vandaag ──────────────────────────────────────────────────────────
   // Brouwen-batches: de eerstvolgende chronologische brouwdag-stap (BatchFlowPage).
@@ -87,28 +125,12 @@ function ProductieDashboard({
   const actieveBatches = useMemo(() => bat.filter((b: any) => b?.status && b.status !== 'Gepland' && b.status !== 'Gesloten'), [bat])
   const [metingOpen, setMetingOpen] = useState(false)
   const [metingBatchId, setMetingBatchId] = useState('')
-  const [metingForm, setMetingForm] = useState({ sg: '', ph: '', temp: '' })
+  const [metingForm, setMetingForm] = useState<MetingForm>(LEGE_METING)
 
   const openMetingModal = () => {
     setMetingBatchId('')
-    setMetingForm({ sg: '', ph: '', temp: '' })
+    setMetingForm(LEGE_METING)
     setMetingOpen(true)
-  }
-
-  const slaMetingOp = () => {
-    if (!metingBatchId) return
-    const batchId = Number(metingBatchId)
-    const id = newId(gistMetingen)
-    const nu = new Date()
-    setGistMetingen((prev: any[]) => [...(prev || []), {
-      id, batch_id: batchId, datum: tod(), tijd: nu.toTimeString().slice(0, 5),
-      sg: metingForm.sg ? Number(metingForm.sg) : undefined,
-      ph: metingForm.ph ? Number(metingForm.ph) : undefined,
-      temp: metingForm.temp ? Number(metingForm.temp) : undefined,
-    }])
-    const b = bat.find((x: any) => x.id === batchId)
-    logAudit(auditLog, setAuditLog, { entiteit: 'Meting', entiteit_id: id, actie: 'aangemaakt', omschrijving: `${batchNaam(b)}: SG ${metingForm.sg || '—'}, pH ${metingForm.ph || '—'}, ${metingForm.temp || '—'}°C` })
-    setMetingOpen(false)
   }
 
   return (
@@ -120,24 +142,94 @@ function ProductieDashboard({
         <Btn s="lg" v="secondary" cls="min-h-[44px]" onClick={() => setPage('batchflow')}>{t('dash_naar_batchflow')}</Btn>
       </div>
 
-      {/* ── Actieve tanks + fase ─────────────────────────────────────────── */}
+      {/* ── Actieve tanks + fase (visueel) ────────────────────────────────── */}
       {actieveTanks.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
-          <SectionHeader title={t('dash_actieve_tanks')} info={actieveTanks.length} onToggle={() => setPage('batches')} rounded="top" />
-          <div className="divide-y divide-gray-100">
+        <div className="mb-6">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">{t('dash_actieve_tanks')}</div>
+          <div className="flex flex-wrap justify-center sm:justify-start gap-4">
             {actieveTanks.map(({ tank, batch }: any) => {
-              const dagen = dagenBezet(batch)
+              const inTank = batch?.liter_vergist ? tankRestVolume(batch, av, verliesRegistraties) : 0
+              const fillPct = batch?.liter_vergist ? (inTank / Number(batch.liter_vergist)) * 100 : 0
+              const sgPct = sgProgress(batch)
+              const latestM = latestMeting(batch.id)
+              const daysInTank = (() => {
+                const hist = resolveTankHistorie(batch)
+                const curr = hist.find((r: any) => r.isCurrent && r.tank === tank.id)
+                if (curr) return curr.dagen
+                return batch.datum ? Math.floor((Date.now() - new Date(batch.datum).getTime()) / 86400000) : null
+              })()
+              const isFormOpen = inlineMetingBatchId === batch.id
+
               return (
-                <div key={tank.id} className="flex items-center justify-between gap-3 px-5 py-3 min-h-[44px] hover:bg-gray-50 cursor-pointer"
-                  onClick={() => { setNavBatchId(batch.id); setPage('batches') }}>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm text-gray-800">{tank.naam || tank.id}</span>
-                      <span className="text-xs text-gray-400 truncate">{batchNaam(batch)}</span>
+                <div key={tank.id} className="bg-white rounded-xl shadow-sm border t-border p-4 flex-shrink-0" style={{ width: 288 }}>
+                  <div className="flex items-start gap-4 cursor-pointer" onClick={() => { setNavBatchId(batch.id); setPage('batches') }}>
+                    <TankVisualForSoort soort={tank.soort} fillPct={fillPct} status={batch.status} ebc={batch.kleur ? Number(batch.kleur) : undefined} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between mb-1 gap-2">
+                        <span className="text-sm font-bold text-gray-700 truncate">{tank.naam || tank.id}</span>
+                        <Badge s={batch.status} />
+                      </div>
+                      <div className="text-sm font-medium text-gray-800 truncate">{batchNaam(batch)}</div>
+                      <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                        {batch.batch_nummer && <span className="text-xs text-gray-400">#{batch.batch_nummer}</span>}
+                        {daysInTank != null && <span className="text-xs text-gray-500">{t('dashboard_days_in_tank').replace('{n}', String(daysInTank))}</span>}
+                        {batch.liter_vergist && <span className="text-xs text-gray-400">{inTank.toFixed(1)}L / {batch.liter_vergist}L</span>}
+                      </div>
+                      {haTankTemps[tank.id] != null && (
+                        <div className="text-sm font-bold text-blue-700 mt-1">{Number(haTankTemps[tank.id]).toFixed(1)}°C</div>
+                      )}
                     </div>
-                    {dagen != null && <div className="text-xs text-gray-500 mt-0.5">{t('dash_dagen_bezet').replace('{n}', String(dagen))}</div>}
                   </div>
-                  <Badge s={batch.status} />
+
+                  {(sgPct !== null || latestM) && (
+                    <div className="mt-3 border-t border-gray-100 pt-3">
+                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('dashboard_fermentation_progress')}</div>
+                      {sgPct !== null && (
+                        <>
+                          <div className="flex justify-between text-xs text-gray-400 mb-1">
+                            <span>OG {effectiefOG(batch)}</span>
+                            <span className="font-medium text-gray-600">{t('dashboard_sg_progress').replace('{pct}', String(Math.round(sgPct)))}</span>
+                            <span>FG {effectiefFG(batch)}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-blue-500 h-2 rounded-full transition-all duration-500" style={{ width: `${sgPct}%` }} />
+                          </div>
+                        </>
+                      )}
+                      {latestM && (
+                        <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                          {latestM.sg && <span className="font-semibold text-gray-700">SG {Number(latestM.sg).toFixed(3)}</span>}
+                          {latestM.ph && <span className="text-gray-500">pH {latestM.ph}</span>}
+                          {latestM.temp && <span className="text-gray-500">{latestM.temp}°C</span>}
+                          <span className="text-gray-400">{fmtD(latestM.datum)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                    {!isFormOpen ? (
+                      <button
+                        onClick={() => { setInlineMetingBatchId(batch.id); setInlineMetingForm(LEGE_METING) }}
+                        className="text-xs font-medium hover:underline mt-1 flex items-center gap-1"
+                        style={{ color: 'var(--t-accent)' }}
+                      >
+                        + {t('dashboard_add_measurement')}
+                      </button>
+                    ) : (
+                      <div className="mt-2 border-t border-gray-100 pt-3 space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <Inp label={t('flow_meting_sg')} type="number" step="0.001" value={inlineMetingForm.sg} onChange={(v) => setInlineMetingForm((f) => ({ ...f, sg: v }))} />
+                          <Inp label={t('flow_meting_ph')} type="number" step="0.1" value={inlineMetingForm.ph} onChange={(v) => setInlineMetingForm((f) => ({ ...f, ph: v }))} />
+                          <Inp label={t('flow_meting_temp')} type="number" step="0.1" value={inlineMetingForm.temp} onChange={(v) => setInlineMetingForm((f) => ({ ...f, temp: v }))} />
+                        </div>
+                        <div className="flex gap-2">
+                          <Btn s="sm" onClick={() => { slaMetingOp(batch.id, inlineMetingForm); setInlineMetingBatchId(null) }}>{t('btn_save')}</Btn>
+                          <Btn s="sm" v="ghost" onClick={() => setInlineMetingBatchId(null)}>{t('btn_cancel')}</Btn>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -204,7 +296,7 @@ function ProductieDashboard({
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Btn v="secondary" onClick={() => setMetingOpen(false)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={slaMetingOp} disabled={!metingBatchId}>{t('btn_save')}</Btn>
+              <Btn onClick={() => { slaMetingOp(Number(metingBatchId), metingForm); setMetingOpen(false) }} disabled={!metingBatchId}>{t('btn_save')}</Btn>
             </div>
           </div>
         </Modal>

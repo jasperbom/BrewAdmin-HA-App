@@ -194,24 +194,37 @@ export function bepaalRollover(
   return { rolloverNaar: huidig, vanafPeriode: datumKey }
 }
 
+// Periodes waarin daadwerkelijk iets te declareren viel: elke datum die naar
+// een periodeKey mapt via datumToPeriodeKey. `facturen` = verkoop- +
+// inkoopfacturen samen (alleen .datum nodig) — de aanroeper voegt ze samen.
+const periodesMetActiviteit = (facturen: any[], periode: BtwPeriodeType): Set<string> =>
+  new Set((facturen || []).map(f => datumToPeriodeKey(f?.datum || '', periode)).filter(Boolean))
+
 // ── Werkruimte-badge (Administratie) ────────────────────────────────────────
 // Telt periodes met status "Openstaand" (BoekhoudingPage): de periode is al
-// voorbij (p.to < vandaag) én er is nog geen aangifte ingediend én nog geen
-// betaling gekoppeld. `vandaag` als 'YYYY-MM-DD'-string, zelfde formaat als
-// `p.to` — laat de aanroeper meerdere jaren opgeven (bv. huidig + vorig) zodat
-// een periode die over de jaarwisseling nog open staat niet gemist wordt.
+// voorbij (p.to < vandaag), er is nog geen aangifte ingediend of betaling
+// gekoppeld, ÉN er was daadwerkelijk activiteit in die periode (minstens één
+// verkoop- of inkoopfactuur) — anders zou een jonge onderneming kwartalen van
+// vóór de oprichting als openstaand te zien krijgen (er is dan immers nooit
+// iets ingediend of betaald voor een periode die nooit bestond). Zelfde
+// principe als laatsteOpenAccijnsMaand (calculations.ts). `vandaag` als
+// 'YYYY-MM-DD'-string, zelfde formaat als `p.to` — laat de aanroeper meerdere
+// jaren opgeven (bv. huidig + vorig) zodat een periode die over de
+// jaarwisseling nog open staat niet gemist wordt.
 export function telOpenstaandeBtwPerioden(
   jaren: number[],
   periode: BtwPeriodeType,
   btwAangiftes: any[],
   bankKoppelingen: Record<string, any>,
+  facturen: any[],
   vandaag: string,
 ): number {
   const { ingediend, betaald } = geslotenPeriodeSets(btwAangiftes, bankKoppelingen)
+  const actief = periodesMetActiviteit(facturen, periode)
   let n = 0
   for (const jaar of jaren) {
     for (const p of getPeriodes(jaar, periode)) {
-      if (p.to < vandaag && !betaald.has(p.key) && !ingediend.has(p.key)) n++
+      if (p.to < vandaag && !betaald.has(p.key) && !ingediend.has(p.key) && actief.has(p.key)) n++
     }
   }
   return n
@@ -224,12 +237,14 @@ export function laatsteOpenstaandeBtwPeriode(
   periode: BtwPeriodeType,
   btwAangiftes: any[],
   bankKoppelingen: Record<string, any>,
+  facturen: any[],
   vandaag: string,
 ): BtwPeriode | null {
   const { ingediend, betaald } = geslotenPeriodeSets(btwAangiftes, bankKoppelingen)
+  const actief = periodesMetActiviteit(facturen, periode)
   const open = jaren
     .flatMap(jaar => getPeriodes(jaar, periode))
-    .filter(p => p.to < vandaag && !betaald.has(p.key) && !ingediend.has(p.key))
+    .filter(p => p.to < vandaag && !betaald.has(p.key) && !ingediend.has(p.key) && actief.has(p.key))
     .sort((a, b) => b.to.localeCompare(a.to))
   return open[0] || null
 }

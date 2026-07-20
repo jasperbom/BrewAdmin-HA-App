@@ -119,45 +119,72 @@ describe('omzetBtwOpGrondslag (ERP 2.2)', () => {
 
 describe('telOpenstaandeBtwPerioden', () => {
   const vandaag = '2026-07-20'
+  // Geeft elk kwartaal van 2025 t/m 2026-Q2 minstens één factuur, voor de
+  // tests die willen dat die periodes als "er viel iets te declareren" meetellen.
+  const facturenAlleKwartalen = [
+    { datum: '2025-02-01' }, { datum: '2025-05-01' }, { datum: '2025-08-01' }, { datum: '2025-11-01' },
+    { datum: '2026-02-01' }, { datum: '2026-05-01' },
+  ]
 
-  it('telt kwartalen die al voorbij zijn en nog geen aangifte/betaling hebben', () => {
+  it('telt kwartalen die al voorbij zijn, activiteit hadden en nog geen aangifte/betaling hebben', () => {
     // Q1 (t/m 03-31) en Q2 (t/m 06-30) zijn voorbij; Q3/Q4 nog niet
-    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', [], {}, vandaag)).toBe(2)
+    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', [], {}, facturenAlleKwartalen, vandaag)).toBe(2)
   })
 
   it('telt een periode niet mee zodra de aangifte is ingediend', () => {
     const aangiftes = [{ periodeKey: '2026-Q1' }]
-    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', aangiftes, {}, vandaag)).toBe(1)
+    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', aangiftes, {}, facturenAlleKwartalen, vandaag)).toBe(1)
   })
 
   it('telt een periode niet mee zodra een betaling gekoppeld is', () => {
     const koppelingen = { tx1: { soort: 'btw', periodeKey: '2026-Q2' } }
     const aangiftes = [{ periodeKey: '2026-Q1' }]
-    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', aangiftes, koppelingen, vandaag)).toBe(0)
+    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', aangiftes, koppelingen, facturenAlleKwartalen, vandaag)).toBe(0)
   })
 
   it('telt over meerdere opgegeven jaren mee (bv. huidig + vorig jaar)', () => {
-    // 2025 heeft alle 4 kwartalen al voorbij zonder aangifte → 4 open, plus 2 open in 2026
-    expect(telOpenstaandeBtwPerioden([2025, 2026], 'kwartaal', [], {}, vandaag)).toBe(6)
+    // 2025 heeft alle 4 kwartalen al voorbij, met activiteit, zonder aangifte → 4 open, plus 2 open in 2026
+    expect(telOpenstaandeBtwPerioden([2025, 2026], 'kwartaal', [], {}, facturenAlleKwartalen, vandaag)).toBe(6)
   })
 
   it('werkt ook voor maandperiodes', () => {
     // Januari t/m juni 2026 zijn voorbij (6 maanden); juli is nog niet voorbij
-    expect(telOpenstaandeBtwPerioden([2026], 'maand', [], {}, vandaag)).toBe(6)
+    const facturenPerMaand = [
+      { datum: '2026-01-10' }, { datum: '2026-02-10' }, { datum: '2026-03-10' },
+      { datum: '2026-04-10' }, { datum: '2026-05-10' }, { datum: '2026-06-10' },
+    ]
+    expect(telOpenstaandeBtwPerioden([2026], 'maand', [], {}, facturenPerMaand, vandaag)).toBe(6)
+  })
+
+  it('negeert periodes zonder enige factuur, bv. kwartalen van vóór de oprichting', () => {
+    // Het bedrijf bestaat pas sinds mei 2026 (eerste factuur in Q2) — 2025 en
+    // 2026-Q1 hadden geen activiteit en horen nooit als "openstaand" te
+    // tellen, ook al is er voor die periodes nooit iets ingediend of betaald.
+    const facturenJongBedrijf = [{ datum: '2026-05-01' }]
+    expect(telOpenstaandeBtwPerioden([2025, 2026], 'kwartaal', [], {}, facturenJongBedrijf, vandaag)).toBe(1)
+  })
+
+  it('is robuust voor een lege facturenlijst (dan staat nergens iets open)', () => {
+    expect(telOpenstaandeBtwPerioden([2025, 2026], 'kwartaal', [], {}, [], vandaag)).toBe(0)
   })
 })
 
 describe('laatsteOpenstaandeBtwPeriode', () => {
   const vandaag = '2026-07-20'
+  const facturen = [{ datum: '2026-02-01' }, { datum: '2026-05-01' }]
 
   it('geeft de meest recente openstaande periode (hoogste to-datum)', () => {
-    expect(laatsteOpenstaandeBtwPeriode([2026], 'kwartaal', [], {}, vandaag)).toEqual(
+    expect(laatsteOpenstaandeBtwPeriode([2026], 'kwartaal', [], {}, facturen, vandaag)).toEqual(
       { label: 'Q2', from: '2026-04-01', to: '2026-06-30', key: '2026-Q2' }
     )
   })
 
   it('geeft null als er niets openstaat', () => {
     const aangiftes = [{ periodeKey: '2026-Q1' }, { periodeKey: '2026-Q2' }]
-    expect(laatsteOpenstaandeBtwPeriode([2026], 'kwartaal', aangiftes, {}, vandaag)).toBeNull()
+    expect(laatsteOpenstaandeBtwPeriode([2026], 'kwartaal', aangiftes, {}, facturen, vandaag)).toBeNull()
+  })
+
+  it('geeft null voor een jaar zonder activiteit, ook al is er nooit iets ingediend', () => {
+    expect(laatsteOpenstaandeBtwPeriode([2025], 'kwartaal', [], {}, facturen, vandaag)).toBeNull()
   })
 })

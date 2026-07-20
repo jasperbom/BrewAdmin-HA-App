@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.43] — 2026-07-20
+
+### Opgelost — Administratie: BTW-openstaand-telling negeerde bedrijfsleeftijd
+
+- **Probleem**: de nieuwe "openstaande BTW-periodes"-badge en -widget
+  telden élk kalenderkwartaal van het huidige + vorige jaar zonder
+  aangifte/betaling als "openstaand" — ook kwartalen van vóór de
+  oprichting van de onderneming, waarvoor logischerwijs nooit een
+  aangifte is ingediend.
+- **Fix**: `telOpenstaandeBtwPerioden`/`laatsteOpenstaandeBtwPeriode`
+  (`src/utils/btw.ts`) tellen een periode alleen nog mee als er ook
+  daadwerkelijk een verkoop- of inkoopfactuur in die periode valt —
+  zelfde principe als de bestaande `laatsteOpenAccijnsMaand`-check.
+
+## [1.11.42] — 2026-07-20
+
+### Opgelost — Productie-dashboard: visuele tankkaarten terug
+
+- **Probleem**: bij het opsplitsen van het dashboard (fase 2) was de
+  "Actieve tanks"-widget vervangen door een platte lijst — de visuele
+  tankweergave (SVG met vulniveau, bierkleur op basis van EBC,
+  gistingsbubbels) was verdwenen.
+- **Fix**: `TankVisual`/`BrightTankVisual`/`BarrelVisual` (nieuw
+  `src/components/batch/TankVisual.tsx`, losgetrokken uit de vroegere
+  gedeelde dashboardpagina) zijn terug op de tankkaarten, samen met de
+  gistingsvoortgangsbalk (OG/FG/%), de laatste meting, de live
+  tanktemperatuur en het inline "+ meting toevoegen"-formulier per tank.
+  Climate-control en cold-crash-bediening blijven bewust op
+  Batches/Batchflow — dat is tankbediening, geen glanceable kaart.
+
 ## [1.11.41] — 2026-07-20
 
 ### Nieuw — startscherm per werkruimte: Productie/Verkoop/Administratie-dashboards
