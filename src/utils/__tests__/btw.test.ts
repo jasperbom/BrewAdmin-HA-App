@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   datumToPeriodeKey, periodeKeyLabel, huidigePeriodeKey, isPeriodeGesloten,
   effectievePeriodeKey, geslotenPeriodeSets, magFactuurMuteren, bepaalRollover,
-  omzetBtwOpGrondslag, getPeriodes,
+  omzetBtwOpGrondslag, getPeriodes, telOpenstaandeBtwPerioden,
 } from '../btw'
 
 describe('datumToPeriodeKey / periodeKeyLabel', () => {
@@ -114,5 +114,35 @@ describe('omzetBtwOpGrondslag (ERP 2.2)', () => {
     ])
     expect(r.hoog.netto).toBe(20)
     expect(r.hoog.btw).toBe(3.1)
+  })
+})
+
+describe('telOpenstaandeBtwPerioden', () => {
+  const vandaag = '2026-07-20'
+
+  it('telt kwartalen die al voorbij zijn en nog geen aangifte/betaling hebben', () => {
+    // Q1 (t/m 03-31) en Q2 (t/m 06-30) zijn voorbij; Q3/Q4 nog niet
+    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', [], {}, vandaag)).toBe(2)
+  })
+
+  it('telt een periode niet mee zodra de aangifte is ingediend', () => {
+    const aangiftes = [{ periodeKey: '2026-Q1' }]
+    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', aangiftes, {}, vandaag)).toBe(1)
+  })
+
+  it('telt een periode niet mee zodra een betaling gekoppeld is', () => {
+    const koppelingen = { tx1: { soort: 'btw', periodeKey: '2026-Q2' } }
+    const aangiftes = [{ periodeKey: '2026-Q1' }]
+    expect(telOpenstaandeBtwPerioden([2026], 'kwartaal', aangiftes, koppelingen, vandaag)).toBe(0)
+  })
+
+  it('telt over meerdere opgegeven jaren mee (bv. huidig + vorig jaar)', () => {
+    // 2025 heeft alle 4 kwartalen al voorbij zonder aangifte → 4 open, plus 2 open in 2026
+    expect(telOpenstaandeBtwPerioden([2025, 2026], 'kwartaal', [], {}, vandaag)).toBe(6)
+  })
+
+  it('werkt ook voor maandperiodes', () => {
+    // Januari t/m juni 2026 zijn voorbij (6 maanden); juli is nog niet voorbij
+    expect(telOpenstaandeBtwPerioden([2026], 'maand', [], {}, vandaag)).toBe(6)
   })
 })

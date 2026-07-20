@@ -2035,3 +2035,25 @@ export const fgStabiel = (
   return urenSpan >= minUur
 }
 
+// ── Werkruimte-badge (Productie) ────────────────────────────────────────────
+// THT-telling voor lots die nog voorraad hebben en beschikbaar zijn: al
+// verlopen (houdbaarheid < vandaag) vs. binnen `binnenDagen` dagen verlopend.
+// Zelfde selectie als voorheen inline in App.tsx (thtAlert/thtWarn).
+export interface ThtAlertTelling { verlopen: number; binnenkort: number }
+
+export const telThtAlerts = (
+  lots: any[],
+  vandaag: Date = new Date(),
+  binnenDagen = 30,
+): ThtAlertTelling => {
+  const t0 = new Date(vandaag); t0.setHours(0, 0, 0, 0)
+  let verlopen = 0, binnenkort = 0
+  for (const l of (lots || [])) {
+    if (!l?.beschikbaar || !(Number(l.hoeveelheid || 0) > 0) || !l.houdbaarheid) continue
+    const d = new Date(l.houdbaarheid)
+    if (d < t0) verlopen++
+    else if ((d.getTime() - t0.getTime()) / 86400000 <= binnenDagen) binnenkort++
+  }
+  return { verlopen, binnenkort }
+}
+

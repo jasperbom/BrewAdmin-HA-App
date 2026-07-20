@@ -228,3 +228,23 @@ export const diagnosePickMatch = (
     regels,
   }
 }
+
+// ── Werkruimte-badge (Verkoop) ──────────────────────────────────────────────
+// Aantal bestellingen dat nog niet volledig gepickt is: status nieuw/bevestigd
+// (nog niet naar 'gepickt' gezet) mét minstens één bierregel waarvan de
+// gepickte hoeveelheid (som van bestelling_picks) nog onder het bestelde
+// aantal zit. Zelfde optelling als BestellingenPage's gepicktVoorRegel/
+// allFull, hier als losse, testbare functie voor de werkruimte-badge.
+export const telOpenstaandeBestellingen = (
+  bestellingen: any[],
+  bestellingPicks: any[],
+): number =>
+  (bestellingen || []).filter((b: any) =>
+    b && (b.status === 'nieuw' || b.status === 'bevestigd') &&
+    (b.regels || []).some((r: any) =>
+      (r?.type || 'bier') === 'bier' &&
+      Number(r?.aantal || 0) > (bestellingPicks || [])
+        .filter((p: any) => p?.bestelling_id === b.id && p?.regel_id === r.id)
+        .reduce((s: number, p: any) => s + Number(p?.aantal || 0), 0)
+    )
+  ).length

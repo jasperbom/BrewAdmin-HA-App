@@ -193,3 +193,26 @@ export function bepaalRollover(
   if (huidig === datumKey) return null
   return { rolloverNaar: huidig, vanafPeriode: datumKey }
 }
+
+// ── Werkruimte-badge (Administratie) ────────────────────────────────────────
+// Telt periodes met status "Openstaand" (BoekhoudingPage): de periode is al
+// voorbij (p.to < vandaag) én er is nog geen aangifte ingediend én nog geen
+// betaling gekoppeld. `vandaag` als 'YYYY-MM-DD'-string, zelfde formaat als
+// `p.to` — laat de aanroeper meerdere jaren opgeven (bv. huidig + vorig) zodat
+// een periode die over de jaarwisseling nog open staat niet gemist wordt.
+export function telOpenstaandeBtwPerioden(
+  jaren: number[],
+  periode: BtwPeriodeType,
+  btwAangiftes: any[],
+  bankKoppelingen: Record<string, any>,
+  vandaag: string,
+): number {
+  const { ingediend, betaald } = geslotenPeriodeSets(btwAangiftes, bankKoppelingen)
+  let n = 0
+  for (const jaar of jaren) {
+    for (const p of getPeriodes(jaar, periode)) {
+      if (p.to < vandaag && !betaald.has(p.key) && !ingediend.has(p.key)) n++
+    }
+  }
+  return n
+}

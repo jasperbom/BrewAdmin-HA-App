@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch, telOpenstaandeBestellingen } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -127,5 +127,39 @@ describe('orderProductId', () => {
   })
   it('geeft null als niets matcht', () => {
     expect(orderProductId('BESTAATNIET', 'Ook niet', data)).toBeNull()
+  })
+})
+
+describe('telOpenstaandeBestellingen', () => {
+  it('telt alleen bestellingen met een bierregel die nog niet volledig gepickt is', () => {
+    const bestellingen = [
+      { id: 1, status: 'nieuw', regels: [{ id: 10, aantal: 24, type: 'bier' }] },
+      { id: 2, status: 'bevestigd', regels: [{ id: 20, aantal: 12, type: 'bier' }] },
+    ]
+    const picks = [{ bestelling_id: 1, regel_id: 10, aantal: 24 }] // #1 al volledig gepickt
+    expect(telOpenstaandeBestellingen(bestellingen, picks)).toBe(1)
+  })
+
+  it('telt bestellingen met status gepickt/verzonden niet mee, ook al is er geen pick geregistreerd', () => {
+    const bestellingen = [
+      { id: 1, status: 'gepickt', regels: [{ id: 10, aantal: 24, type: 'bier' }] },
+      { id: 2, status: 'verzonden', regels: [{ id: 20, aantal: 12, type: 'bier' }] },
+    ]
+    expect(telOpenstaandeBestellingen(bestellingen, [])).toBe(0)
+  })
+
+  it('negeert niet-bierregels (verzendkosten e.d.) voor de picking-status', () => {
+    const bestellingen = [{ id: 1, status: 'nieuw', regels: [{ id: 10, aantal: 1, type: 'verzending' }] }]
+    expect(telOpenstaandeBestellingen(bestellingen, [])).toBe(0)
+  })
+
+  it('behandelt een regel zonder type als bier (default)', () => {
+    const bestellingen = [{ id: 1, status: 'nieuw', regels: [{ id: 10, aantal: 6 }] }]
+    expect(telOpenstaandeBestellingen(bestellingen, [])).toBe(1)
+  })
+
+  it('is robuust voor lege of ontbrekende input', () => {
+    expect(telOpenstaandeBestellingen([], [])).toBe(0)
+    expect(telOpenstaandeBestellingen([{ id: 1, status: 'nieuw', regels: [] }], [])).toBe(0)
   })
 })

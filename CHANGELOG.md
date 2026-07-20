@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.39] — 2026-07-20
+
+### Nieuw — navigatie: attentiebadges op de werkruimte-knoppen
+
+- **Wat**: de werkruimte-wisselaar (Productie/Verkoop/Administratie) toont nu
+  een badge met een aantal zodra een werkruimte om aandacht vraagt, ook als
+  die niet actief is:
+  - **Verkoop**: bestellingen die nog niet volledig gepickt zijn.
+  - **Administratie**: BTW-periodes met status Openstaand (huidig + vorig
+    jaar). "Ongekoppelde banktransacties" zit hier bewust nog niet bij —
+    bankafschriften worden nooit opgeslagen (alleen zichtbaar binnen de
+    sessie na een MT940-import) en dat alsnog tellen zonder `server.py` aan
+    te raken zou een nieuwe opslaglaag vergen, wat voor deze
+    navigatie-herstructurering uitdrukkelijk buiten scope is.
+  - **Productie**: openstaande taken uit het unified batch-takensysteem voor
+    de huidige flow-fase van elke batch, achterstallige HACCP-
+    schoonmaaktaken, en THT-waarschuwingen (verlopen + binnen 30 dagen).
+- **Nieuwe pure functies met Vitest-tests** (`src/utils/`): 
+  `telOpenstaandeBestellingen` (picking.ts), `telOpenstaandeBatchTaken` en
+  `telAchterstalligeSchoonmaakTaken` (taken.ts), `telOpenstaandeBtwPerioden`
+  (btw.ts), `telThtAlerts` (calculations.ts) — de laatste vervangt de
+  eerdere inline THT-filtering in App.tsx.
+
 ## [1.11.38] — 2026-07-20
 
 ### Nieuw — navigatie: werkruimtes Productie/Verkoop/Administratie

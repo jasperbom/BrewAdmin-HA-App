@@ -6,10 +6,11 @@ import { tod } from './utils/format'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
 import { findKlantVoorOrder } from './utils/klant'
-import { accijnsCalc, tariefVoorDatum } from './utils/calculations'
+import { accijnsCalc, tariefVoorDatum, telThtAlerts } from './utils/calculations'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, btwAangifteBoeking, voegBoekingToe } from './utils/journaal'
-import { periodeKeyLabel } from './utils/btw'
-import { schoonTakenOp } from './utils/taken'
+import { periodeKeyLabel, telOpenstaandeBtwPerioden } from './utils/btw'
+import { schoonTakenOp, telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './utils/taken'
+import { telOpenstaandeBestellingen } from './utils/picking'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
@@ -1306,8 +1307,27 @@ function App() {
   for (const n of nav) if (n.sub) for (const s of n.sub) subIds.set(s.id, n.id);
 
   const today = new Date(); today.setHours(0,0,0,0);
-  const thtAlert = lots.filter((l: any)=>l.beschikbaar && Number(l.hoeveelheid||0)>0 && l.houdbaarheid && new Date(l.houdbaarheid)<today).length;
-  const thtWarn  = lots.filter((l: any)=>l.beschikbaar && Number(l.hoeveelheid||0)>0 && l.houdbaarheid && new Date(l.houdbaarheid)>=today && (new Date(l.houdbaarheid).getTime()-today.getTime())/86400000<=30).length;
+  const { verlopen: thtAlert, binnenkort: thtWarn } = telThtAlerts(lots, today);
+
+  // Attentiebadges per werkruimte: tellen wat om aandacht vraagt, ook als die
+  // werkruimte niet actief is (zie WERKRUIMTE_IDS-knoppen in de header).
+  // "Ongekoppelde banktransacties" ontbreekt bewust in Administratie:
+  // bankafschriften worden nooit opgeslagen (alleen zichtbaar binnen de
+  // sessie na een MT940-import, zie BoekhoudingPage) en dat alsnog
+  // persistent tellen zou een nieuwe opslaglaag vergen — dat raakt
+  // server.py, wat voor deze werkruimte-herstructurering uitdrukkelijk
+  // buiten scope is.
+  const werkruimteBadges: Record<WerkruimteId, number> = {
+    productie: telOpenstaandeBatchTaken(bat, batchTakenItems, batchTakenGroepen)
+      + telAchterstalligeSchoonmaakTaken(haccpSchoonmaakTaken, haccpSchoonmaakLog, today)
+      + thtAlert + thtWarn,
+    verkoop: telOpenstaandeBestellingen(bestellingen, bestellingPicks),
+    administratie: telOpenstaandeBtwPerioden(
+      [today.getFullYear() - 1, today.getFullYear()],
+      btwInst?.periode === 'maand' ? 'maand' : 'kwartaal',
+      btwAangiftes, bankKoppelingen, tod(),
+    ),
+  };
 
   // Header-logo: zolang de data nog laadt komt het logo uit de HTTP-cache
   // via api/app_icoon (ETag); pas als dat 404't valt hij terug op het
@@ -1441,8 +1461,9 @@ function App() {
           <div className="flex items-center gap-1 flex-shrink-0" role="group" aria-label={t('werkruimte_wissel_label')}>
             {WERKRUIMTE_IDS.map(w => (
               <button key={w} onClick={()=>kiesWerkruimte(w)} aria-pressed={werkruimte===w}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all duration-150 ${werkruimte===w?'bg-white/25 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+                className={`relative px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all duration-150 ${werkruimte===w?'bg-white/25 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
                 {t(WERKRUIMTE_LABEL_KEYS[w])}
+                {werkruimteBadges[w]>0 && <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{werkruimteBadges[w]}</span>}
               </button>
             ))}
           </div>
