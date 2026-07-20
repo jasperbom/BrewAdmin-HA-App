@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { fmt, fmtD, fmtQty, tod } from '../utils/format'
-import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie, TANK_STATUSSEN, effectiefOG, effectiefFG } from '../utils/calculations'
+import { resolveTankHistorie, getNegatieveVoorraadPosities, voorraadPerLocatie, tankRestVolume, TANK_STATUSSEN, effectiefOG, effectiefFG } from '../utils/calculations'
 import { STATUS_CLR, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { haCallService, haGetState, getServerHealth, ServerHealth } from '../utils/api'
@@ -10,7 +10,7 @@ import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 
-function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setPage, tanks, tankStatussen={}, setTankStatussen=()=>{}, tankLog=[], setTankLog=()=>{}, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[], bestellingen=[], setOpenOrderId=()=>{}}: any) {
+function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], verliesRegistraties=[], setPage, tanks, tankStatussen={}, setTankStatussen=()=>{}, tankLog=[], setTankLog=()=>{}, gistMetingen=[], haInst, haTankTemps={}, coldcrashInst={enabled:false,target_temp:2,ramp_per_uur:1}, setNavBatchId, setPlanningPreselect=()=>{}, setGistMetingen=()=>{}, btwInst={}, btwAangiftes=[], accijnsAangiftes=[], bankKoppelingen={}, verkoopFacturen=[], klanten=[], breweryDetails={}, auditLog=[], setAuditLog=()=>{}, haccpTaken=[], haccpLog=[], setHaccpLog=()=>{}, haccpCapa=[], locaties=[], verplaatsingen=[], afboekingen=[], bestellingen=[], setOpenOrderId=()=>{}}: any) {
   const today = new Date(); today.setHours(0,0,0,0);
   const dayMs = 86400000;
 
@@ -378,14 +378,6 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
       new Date(b.datum + 'T' + (b.tijd||'00:00')).getTime() -
       new Date(a.datum + 'T' + (a.tijd||'00:00')).getTime()
     )[0];
-  };
-
-  // Liters nog in tank = liter_vergist min al afgevulde liters
-  const inTankL = (batchId: number, lv: number) => {
-    const tot = (av||[])
-      .filter((a: any) => a.batch_id === batchId)
-      .reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid||0) * Number(a.hoeveelheid||0), 0);
-    return Math.max(0, Number(lv||0) - tot);
   };
 
   const sgProgress = (batch: any) => {
@@ -1066,7 +1058,11 @@ function DashboardPage({ing, lots, bat, setBat=()=>{}, bi, uit, acc, av=[], setP
             // Een Verpakt/Gesloten batch laat batch.tank vaak nog staan als historische
             // referentie — die telt niet als "in gebruik".
             const anyBatch = bat.find((b: any) => b.tank === tk.id && TANK_STATUSSEN.includes(b.status));
-            const inTank   = batch?.liter_vergist ? inTankL(batch.id, batch.liter_vergist) : 0;
+            // Liters nog in tank = liter_vergist min afgevulde liters én
+            // geregistreerde verliezen (o.a. gist dump, tankrest). Gebruikt
+            // dezelfde bron als de batch-flow (tankRestVolume) zodat een gist
+            // dump ook hier het tankvolume verlaagt.
+            const inTank   = batch?.liter_vergist ? tankRestVolume(batch, av, verliesRegistraties) : 0;
             const fillPct  = batch?.liter_vergist
               ? (inTank / Number(batch.liter_vergist)) * 100
               : 0;
