@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.44] — 2026-07-20
+
+### Toegevoegd — Batchflow: volledige carbonisatie bij conditioneren
+
+- **Wens**: in de batchflow toonde de carbonisatiestap bij het
+  conditioneren maar een uitgeklede versie van wat op de klassieke
+  Batches-pagina beschikbaar is. De uitgebreide gegevens en opties
+  ontbraken.
+- **Wijziging**: de carbonisatiestap in de conditioneerfase van
+  `BatchFlowPage` biedt nu dezelfde gegevens en opties als
+  `BatchesPage`:
+  - **Stijl-richtlijn**: het gangbare CO₂-bereik (BKG) voor de bierstijl
+    wordt getoond met een waarschuwing (⚠) als het doel buiten bereik
+    valt; batches zonder (matchende) stijl krijgen een stijlkiezer
+    (per BKG-klasse gegroepeerd) om alsnog een richtlijn te zien.
+  - **CO₂-massa**: naast de berekende kopdruk (bar/PSI) toont de
+    voorbeeldweergave nu ook de op te lossen CO₂ (g) en het totale
+    flesverbruik (g); bij een actieve sessie staan deze in het
+    sessie-overzicht.
+  - **HA-tanktemperatuur**: één klik neemt de gemeten tanktemperatuur
+    uit de Home Assistant-sensor over.
+  - **Live CO₂-cilinderbewaking**: opt-in-vinkje bij de start, plus
+    start-/huidig cilindergewicht en laatste-metingtijd tijdens de
+    sessie.
+  - **Afronden**: bij het voltooien kunnen nu ook het verbruikte CO₂
+    (met afwijkingsindicator) en een opmerking worden vastgelegd.
+  - **Sessiehistorie**: een inklapbare tabel toont alle eerdere
+    (voltooide/afgebroken) carbonisatiesessies met verwijderknop.
+- Er zijn geen nieuwe i18n-sleutels nodig; alle `carb_*`-teksten bestonden
+  al en worden nu ook in de batchflow gebruikt.
+
+---
+
 ## [1.11.43] — 2026-07-20
 
 ### Opgelost — Administratie: BTW-openstaand-telling negeerde bedrijfsleeftijd
