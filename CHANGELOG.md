@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.37] — 2026-07-20
+
+### Opgelost — dashboard: gist dump verlaagt nu het tankvolume
+
+- **Probleem**: na een **gist dump** (of andere verliespost) in de batch-flow
+  bleef het tankvolume op het **dashboard** ongewijzigd. De tank-visual en het
+  label "X L / Y L" trokken alleen de afgevulde liters van `liter_vergist` af,
+  niet de geregistreerde verliezen (`verlies_registraties`). Daardoor toonde het
+  dashboard meer bier in de tank dan er werkelijk zat.
+- **Fix**: het dashboard gebruikt nu dezelfde geteste berekening als de
+  batch-flow (`tankRestVolume`), die náást de afvullingen ook alle
+  verliesposten — gist dump, tankrest, monster, enz. — van het tankvolume
+  aftrekt. De vulgraad en het liter-label kloppen zo weer met de werkelijkheid.
+
+---
+
 ## [1.11.36] — 2026-07-20
 
 ### Verbeterd — batch-flow: overzichtelijke indeling bij Vergisten & Conditioneren
