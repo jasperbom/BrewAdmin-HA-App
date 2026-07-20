@@ -10,6 +10,7 @@ import {
 import {
   markTankVuilBijVertrek, fgStabiel, tankRestVolume, appendTankHistorie,
   carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols,
+  carbRangeForStyle, CARB_STYLE_OPTIONS,
   berekenVoorcalcVoorAfvulling, nextBatchNummer,
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
@@ -335,8 +336,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Verliesregistratie (per fase hetzelfde formulier)
   const [verliesForm, setVerliesForm] = useState<any>({datum: tod(), bron: 'monster', liter: '', notitie: ''})
   // Carbonatie
-  const [carbForm, setCarbForm] = useState<any>({methode: 'stone', doel_co2_vol: '', tank_temp_c: '', verlies_factor: '25'})
-  const [carbComplete, setCarbComplete] = useState<any>({werkelijke_druk_bar: '', gemeten_co2_vol: '', opmerking: ''})
+  const emptyCarb = {methode: 'stone', doel_co2_vol: '', tank_temp_c: '', verlies_factor: '25'}
+  const [carbForm, setCarbForm] = useState<any>(emptyCarb)
+  const emptyCarbComplete = {werkelijke_druk_bar: '', verbruikt_co2_gram: '', gemeten_co2_vol: '', opmerking: ''}
+  const [carbComplete, setCarbComplete] = useState<any>(emptyCarbComplete)
+  // Lokale stijl-override voor de carbonatie-richtlijn (zoals BatchesPage): als de
+  // batch geen (matchende) stijl heeft kan de gebruiker er hier eentje kiezen om
+  // alsnog een CO₂-bereik te zien. Reset bij wisselen van batch.
+  const [carbStyleOverride, setCarbStyleOverride] = useState<string>('')
+  React.useEffect(() => { setCarbStyleOverride('') }, [sel])
+  const [carbHistIngeklapt, setCarbHistIngeklapt] = useState(true)
   // Afvullen
   const emptyAvF = {product_id: '', verpakking_id: '', verpakking_type: '', inhoud_per_eenheid: '', hoeveelheid: '', datum: tod(), tht: ''}
   const [avF, setAvF] = useState<any>(emptyAvF)
@@ -1059,7 +1068,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     // CO₂-bewaking: leg het flesgewicht bij start vast (gram). Bij een mislukte
     // uitlezing vult de server het nulpunt later zelf in.
-    if (co2SensorOn) {
+    if (co2SensorOn && carbForm.co2_bewaking !== false) {
       nieuw.co2_monitoring = true
       try {
         const d = await haGetState(haInst.co2_entity)
@@ -1070,7 +1079,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     setCarbSessies((prev: any[]) => [...(prev || []), nieuw])
     logAudit(auditLog, setAuditLog, {entiteit: 'Carbonatiesessie', entiteit_id: nieuw.id, actie: 'aangemaakt', omschrijving: `Batch ${selB.naam || ''}: ${vols} vols @ ${temp}°C (${carbForm.methode})`})
-    setCarbForm({methode: 'stone', doel_co2_vol: '', tank_temp_c: '', verlies_factor: '25'})
+    setCarbForm(emptyCarb)
   }
   const voltooiCarbSessie = (actief: any) => {
     if (!actief || !selB) return
@@ -1081,11 +1090,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       eind_tijd: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
     }
     if (carbComplete.werkelijke_druk_bar !== '') patch.werkelijke_druk_bar = Number(carbComplete.werkelijke_druk_bar)
+    if (carbComplete.verbruikt_co2_gram !== '') patch.verbruikt_co2_gram = Number(carbComplete.verbruikt_co2_gram)
     if (carbComplete.gemeten_co2_vol !== '') patch.gemeten_co2_vol = Number(carbComplete.gemeten_co2_vol)
     if (carbComplete.opmerking) patch.opmerking = carbComplete.opmerking
     setCarbSessies((prev: any[]) => (prev || []).map((s: any) => s.id === actief.id ? {...s, ...patch} : s))
     logAudit(auditLog, setAuditLog, {entiteit: 'Carbonatiesessie', entiteit_id: actief.id, actie: 'gewijzigd', velden: {status: {oud: 'actief', nieuw: 'voltooid'}}, omschrijving: `Batch ${selB.naam || ''}: voltooid`})
-    setCarbComplete({werkelijke_druk_bar: '', gemeten_co2_vol: '', opmerking: ''})
+    setCarbComplete(emptyCarbComplete)
   }
   const afbreekCarbSessie = (actief: any) => {
     if (!actief || !selB) return
@@ -1096,7 +1106,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       eind_tijd: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
     } : s))
     logAudit(auditLog, setAuditLog, {entiteit: 'Carbonatiesessie', entiteit_id: actief.id, actie: 'gewijzigd', velden: {status: {oud: 'actief', nieuw: 'afgebroken'}}, omschrijving: `Batch ${selB.naam || ''}: afgebroken`})
-    setCarbComplete({werkelijke_druk_bar: '', gemeten_co2_vol: '', opmerking: ''})
+    setCarbComplete(emptyCarbComplete)
+  }
+  const deleteCarbSessie = (id: number) => {
+    if (!selB) return
+    if (!confirm(t('carb_delete_confirm'))) return
+    setCarbSessies((prev: any[]) => (prev || []).filter((s: any) => s.id !== id))
+    logAudit(auditLog, setAuditLog, {entiteit: 'Carbonatiesessie', entiteit_id: id, actie: 'verwijderd', omschrijving: `Batch ${selB.naam || ''}`})
   }
 
   // ── Afvulregistratie (zelfde voorraad/voorcalc-gedrag als BatchesPage) ────
@@ -1812,18 +1828,70 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // Compacte carbonatiesessie-flow (start → voltooien/afbreken).
+  // Volledige carbonatiesessie-flow (start → actief → voltooien/afbreken) met
+  // stijl-richtlijn, CO₂-massa, live cilinderbewaking en sessiehistorie —
+  // dezelfde gegevens en opties als de carbonatie op BatchesPage.
   const renderCarbonatie = () => {
     const actief = mijnCarb.find((c: any) => c.status === 'actief')
     const voltooid = mijnCarb.filter((c: any) => c.status === 'voltooid')
+    const afgebroken = mijnCarb.filter((c: any) => c.status === 'afgebroken')
+    const afgerond = [...voltooid, ...afgebroken].sort((a: any, b: any) => {
+      const ka = (a.eind_datum || a.start_datum || '') + (a.eind_tijd || a.start_tijd || '')
+      const kb = (b.eind_datum || b.start_datum || '') + (b.eind_tijd || b.start_tijd || '')
+      return kb.localeCompare(ka)
+    })
+
+    // Pre-fill defaults voor een nieuwe sessie. De batch-stijl kan worden
+    // overschreven met een handmatig gekozen BKG-preset zodat ook batches
+    // zonder (matchende) stijl een richtlijn krijgen.
+    const batchRange = carbRangeForStyle(selB.stijl)
+    const overridePreset = carbStyleOverride
+      ? (CARB_STYLE_OPTIONS as any[]).find((o: any) => o.value === carbStyleOverride)
+      : null
+    const effectiveStijl = (carbStyleOverride || selB.stijl || '').trim()
+    const displayStijl = overridePreset ? overridePreset.label : effectiveStijl
+    const styleRange = carbRangeForStyle(effectiveStijl)
+    const defaultVols = defaultCarbVols(effectiveStijl)
+    const curVols = Number(carbForm.doel_co2_vol) || defaultVols
+    const userVolsRaw = carbForm.doel_co2_vol
+    const userVolsTyped = userVolsRaw !== '' && !isNaN(Number(userVolsRaw))
+    const outOfRange = userVolsTyped && styleRange.matched && (Number(userVolsRaw) < styleRange.min || Number(userVolsRaw) > styleRange.max)
+    // Toon de stijl-kiezer als de batch zelf geen matchende stijl heeft.
+    const showStylePicker = !batchRange.matched
     const sensorTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
     const sensorTemp = typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw) ? sensorTempRaw : null
-    const defaultVols = defaultCarbVols(selB.stijl)
-    const curVols = Number(carbForm.doel_co2_vol) || defaultVols
     const curTemp = carbForm.tank_temp_c === '' ? (sensorTemp ?? 2) : (Number(carbForm.tank_temp_c) || 0)
+    const curVerliesPct = carbForm.methode === 'stone' ? (Number(carbForm.verlies_factor) || 0) : 0
+    const curVerlies = curVerliesPct / 100
+    const batchLiter = Number(selB.liter_vergist || 0)
     const previewDruk = carbDrukBar(curVols, curTemp)
+    const previewOpgelost = co2GramOpgelost(curVols, batchLiter)
+    const previewVerbruik = co2GramTotaalVerbruik(curVols, batchLiter, curVerlies)
+
+    // Indicator voor verbruikt_co2_gram tijdens een actieve sessie.
+    const actieveIndicator = (() => {
+      if (!actief) return null
+      const verbruiktRaw = carbComplete.verbruikt_co2_gram
+      if (verbruiktRaw === '' || verbruiktRaw == null) return null
+      const verbruikt = Number(verbruiktRaw)
+      const doel = Number(actief.doel_co2_gram_verbruik) || 0
+      if (!doel) return null
+      const afw = Math.abs(verbruikt - doel) / doel
+      if (afw <= 0.10) return {cls: 'bg-green-100 text-green-700', label: t('carb_indicator_ok')}
+      if (afw <= 0.25) return {cls: 'bg-yellow-100 text-yellow-700', label: t('carb_indicator_warn')}
+      return {cls: 'bg-red-100 text-red-700', label: t('carb_indicator_off')}
+    })()
+
+    const fmtDuur = (s: any) => {
+      if (!s.start_datum) return '—'
+      const start = new Date(`${s.start_datum}T${s.start_tijd || '00:00'}`)
+      const eind = s.eind_datum ? new Date(`${s.eind_datum}T${s.eind_tijd || '00:00'}`) : new Date()
+      const uren = Math.max(0, Math.round((eind.getTime() - start.getTime()) / 3600000 * 10) / 10)
+      return `${uren} ${t('carb_hours')}`
+    }
+
     return (
-      <div>
+      <div className="space-y-3">
         {actief ? (
           <div className="border border-green-200 bg-green-50 rounded-lg p-3 space-y-2">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
@@ -1845,12 +1913,24 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   {Number(actief.doel_druk_bar).toFixed(2)} bar <span className="text-xs opacity-75">({barToPsi(actief.doel_druk_bar).toFixed(1)} PSI)</span>
                 </div>
               </div>
+              <div className="col-span-2 sm:col-span-4">
+                <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_co2_label')}</div>
+                <div className="font-medium">
+                  {Number(actief.doel_co2_gram_opgelost).toFixed(0)} {t('carb_g_dissolved_short')}
+                  <span className="mx-2 text-gray-300">|</span>
+                  ≈ {Number(actief.doel_co2_gram_verbruik).toFixed(0)} {t('carb_g_consumption_short')}
+                </div>
+              </div>
             </div>
             {actief.co2_monitoring && (() => {
               const doel = Number(actief.doel_co2_gram_verbruik) || 0
               const live = Number(actief.verbruikt_co2_gram_live) || 0
               const pct = doel > 0 ? Math.min(100, Math.round(live / doel * 100)) : 0
               const bereikt = !!actief.doel_bereikt_op
+              // Flesgewicht wordt intern in gram bewaard; toon het in de eenheid
+              // die de gebruiker bij de sensor koos.
+              const co2Unit = haInst?.co2_unit || 'kg'
+              const fmtCil = (g: number) => co2Unit === 'kg' ? `${(g / 1000).toFixed(2)} kg` : `${g.toFixed(0)} g`
               return (
                 <div className="pt-2 border-t border-green-200">
                   <div className="flex items-center justify-between mb-1">
@@ -1862,19 +1942,35 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
                     <div className={`h-full rounded-full transition-all ${bereikt ? 'bg-green-500' : 'bg-blue-500'}`} style={{width: `${pct}%`}}></div>
                   </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {t('carb_co2_monitor_added').replace('{n}', live.toFixed(0))} / {doel.toFixed(0)} {t('carb_g_consumption_short')}
-                    {actief.start_cilinder_gram == null && <span className="ml-1 text-orange-600">· {t('carb_co2_monitor_waiting')}</span>}
+                  <div className="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span>{t('carb_co2_monitor_added').replace('{n}', live.toFixed(0))} / {doel.toFixed(0)} {t('carb_g_consumption_short')}</span>
+                    {actief.start_cilinder_gram != null && <span>{t('carb_co2_monitor_start')}: {fmtCil(Number(actief.start_cilinder_gram))}</span>}
+                    {actief.huidig_cilinder_gram != null && <span>{t('carb_co2_monitor_current')}: {fmtCil(Number(actief.huidig_cilinder_gram))}</span>}
+                    {actief.laatste_meting_op && <span className="text-gray-400">{t('carb_co2_monitor_updated')}: {new Date(actief.laatste_meting_op).toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'})}</span>}
                   </div>
+                  {actief.start_cilinder_gram == null && (
+                    <div className="mt-1 text-xs text-orange-600">{t('carb_co2_monitor_waiting')}</div>
+                  )}
                 </div>
               )
             })()}
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-green-200">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-green-200">
               <Inp label={t('carb_actual_pressure')} type="number" step="0.01" value={carbComplete.werkelijke_druk_bar}
                 onChange={(v: string) => setCarbComplete((f: any) => ({...f, werkelijke_druk_bar: v}))}
                 placeholder={Number(actief.doel_druk_bar).toFixed(2)} />
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('carb_co2_used_gram')}</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" value={carbComplete.verbruikt_co2_gram} onChange={e => setCarbComplete((f: any) => ({...f, verbruikt_co2_gram: e.target.value}))} placeholder={Number(actief.doel_co2_gram_verbruik).toFixed(0)} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none shadow-sm placeholder-gray-300" />
+                  {actieveIndicator && <span className={`text-xs px-2 py-1 rounded ${actieveIndicator.cls} whitespace-nowrap`}>{actieveIndicator.label}</span>}
+                </div>
+              </div>
               <Inp label={t('carb_measured_co2')} type="number" step="0.1" value={carbComplete.gemeten_co2_vol}
                 onChange={(v: string) => setCarbComplete((f: any) => ({...f, gemeten_co2_vol: v}))} placeholder="2.5" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('carb_remark')}</label>
+              <input type="text" value={carbComplete.opmerking} onChange={e => setCarbComplete((f: any) => ({...f, opmerking: e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none shadow-sm" />
             </div>
             <div className="flex gap-2 pt-1">
               <Btn v="green" s="sm" onClick={() => voltooiCarbSessie(actief)}>{t('carb_complete_btn')}</Btn>
@@ -1883,6 +1979,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </div>
         ) : (
           <div className="space-y-2">
+            <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_new_session')}</div>
             <div className="flex items-center gap-4 text-sm">
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="radio" name="flow_carb_methode" checked={carbForm.methode === 'stone'}
@@ -1895,23 +1992,156 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 <span>{t('carb_method_kopdruk')}</span>
               </label>
             </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <Inp label={t('carb_target_vols')} type="number" step="0.1" value={carbForm.doel_co2_vol}
-                onChange={(v: string) => setCarbForm((f: any) => ({...f, doel_co2_vol: v}))}
-                placeholder={String(defaultVols)} cls="w-28" />
-              <Inp label={t('carb_tank_temp')} type="number" step="0.1" value={carbForm.tank_temp_c}
-                onChange={(v: string) => setCarbForm((f: any) => ({...f, tank_temp_c: v}))}
-                placeholder={sensorTemp != null ? sensorTemp.toFixed(1) : '2'} cls="w-28" />
+            {co2SensorOn && (
+              <label className="flex items-center gap-1.5 cursor-pointer text-sm" title={t('carb_co2_monitor_tooltip')}>
+                <input type="checkbox" checked={carbForm.co2_bewaking !== false} onChange={e => setCarbForm((f: any) => ({...f, co2_bewaking: e.target.checked}))} className="t-checkbox" />
+                <span>{t('carb_co2_monitor_enable')}</span>
+              </label>
+            )}
+            <div className={`grid grid-cols-2 ${carbForm.methode === 'stone' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2`}>
+              <div>
+                <Inp label={t('carb_target_vols')} type="number" step="0.1" value={carbForm.doel_co2_vol}
+                  onChange={(v: string) => setCarbForm((f: any) => ({...f, doel_co2_vol: v}))} placeholder={defaultVols.toFixed(1)} />
+                {styleRange.matched ? (
+                  <div className={`mt-1 text-xs ${outOfRange ? 'text-orange-600' : 'text-gray-500'}`} title={displayStijl}>
+                    {(carbStyleOverride && !batchRange.matched ? t('carb_style_range_picked') : t('carb_style_range'))
+                      .replace('{stijl}', displayStijl)
+                      .replace('{min}', styleRange.min.toFixed(1))
+                      .replace('{max}', styleRange.max.toFixed(1))}
+                    {outOfRange && <span className="ml-1">⚠</span>}
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-gray-400">
+                    {t('carb_style_range_unknown')
+                      .replace('{min}', styleRange.min.toFixed(1))
+                      .replace('{max}', styleRange.max.toFixed(1))}
+                  </div>
+                )}
+                {showStylePicker && (() => {
+                  // Groepeer presets per groupKey met behoud van declaratie-
+                  // volgorde voor een stabiele UI.
+                  const groupOrder: string[] = []
+                  const grouped: Record<string, typeof CARB_STYLE_OPTIONS> = {}
+                  for (const opt of CARB_STYLE_OPTIONS) {
+                    if (!grouped[opt.groupKey]) {
+                      grouped[opt.groupKey] = []
+                      groupOrder.push(opt.groupKey)
+                    }
+                    grouped[opt.groupKey].push(opt)
+                  }
+                  return (
+                    <select
+                      value={carbStyleOverride}
+                      onChange={e => setCarbStyleOverride(e.target.value)}
+                      className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white t-input outline-none shadow-sm"
+                      title={t('carb_style_pick_tooltip')}
+                    >
+                      <option value="">{t('carb_style_pick_placeholder')}</option>
+                      {groupOrder.map(grpKey => (
+                        <optgroup key={grpKey} label={t(grpKey)}>
+                          {grouped[grpKey].map((opt: any) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  )
+                })()}
+              </div>
+              <div>
+                <Inp label={t('carb_tank_temp')} type="number" step="0.5" value={carbForm.tank_temp_c}
+                  onChange={(v: string) => setCarbForm((f: any) => ({...f, tank_temp_c: v}))}
+                  placeholder={sensorTemp != null ? sensorTemp.toFixed(1) : '2'} />
+                {sensorTemp != null && (
+                  <button type="button" onClick={() => setCarbForm((f: any) => ({...f, tank_temp_c: sensorTemp.toFixed(1)}))} className="mt-1 text-xs hover:underline" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
+                    🌡 HA: {sensorTemp.toFixed(1)}°C
+                  </button>
+                )}
+              </div>
               {carbForm.methode === 'stone' && (
                 <Inp label={t('carb_loss_factor')} type="number" step="1" value={carbForm.verlies_factor}
-                  onChange={(v: string) => setCarbForm((f: any) => ({...f, verlies_factor: v}))} cls="w-28" />
+                  onChange={(v: string) => setCarbForm((f: any) => ({...f, verlies_factor: v}))} placeholder="25" />
               )}
-              <div className="text-xs text-gray-500 pb-2">
-                {t('carb_calculated_pressure')}: <span className="font-bold" style={{color: 'var(--t-accent)'}}>{previewDruk.toFixed(2)} bar</span>
-                <span className="opacity-75"> ({barToPsi(previewDruk).toFixed(1)} PSI)</span>
-              </div>
-              <Btn s="sm" onClick={startCarbSessie}>{t('carb_start_btn')}</Btn>
             </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_calculated_pressure')}</span>
+                <span className="font-medium" style={{color: 'var(--t-accent)'}}>
+                  {previewDruk.toFixed(2)} bar <span className="text-xs opacity-75">({barToPsi(previewDruk).toFixed(1)} PSI)</span>
+                </span>
+              </div>
+              {batchLiter > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_co2_label')}</span>
+                  <span className="font-medium">
+                    {previewOpgelost.toFixed(0)} {t('carb_g_dissolved_short')}
+                    <span className="mx-2 text-gray-300">|</span>
+                    ≈ {previewVerbruik.toFixed(0)} {t('carb_g_consumption_short')}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div>
+              <Btn s="sm" onClick={startCarbSessie} disabled={!batchLiter}>{t('carb_start_btn')}</Btn>
+              {!batchLiter && <div className="text-xs text-red-600 mt-1">{t('carb_no_batch_liter')}</div>}
+            </div>
+          </div>
+        )}
+
+        {afgerond.length > 0 && (
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-600 flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setCarbHistIngeklapt((v: any) => !v)}>
+              <span className="flex items-center gap-2">
+                <span className="text-xs font-bold" style={{display: 'inline-block', transition: 'transform 0.15s', transform: !carbHistIngeklapt ? 'rotate(90deg)' : 'none'}}>▶</span>
+                {t('carb_previous_sessions')}
+              </span>
+              <span className="opacity-75 font-normal">{t('carb_summary_counts').replace('{voltooid}', String(voltooid.length)).replace('{afgebroken}', String(afgebroken.length))}</span>
+            </div>
+            {!carbHistIngeklapt && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-gray-500 bg-gray-50 border-t border-gray-200">
+                    <tr>
+                      <th className="px-3 py-1.5 text-left">{t('lbl_date')}</th>
+                      <th className="px-3 py-1.5 text-left">{t('carb_method')}</th>
+                      <th className="px-3 py-1.5 text-right">{t('carb_target_label')}</th>
+                      <th className="px-3 py-1.5 text-right">{t('carb_pressure_label')}</th>
+                      <th className="px-3 py-1.5 text-right">{t('carb_co2_used_gram')}</th>
+                      <th className="px-3 py-1.5 text-right">{t('carb_measured_co2')}</th>
+                      <th className="px-3 py-1.5 text-left">{t('carb_duration')}</th>
+                      <th className="px-3 py-1.5 text-center">{t('lbl_status') || 'Status'}</th>
+                      <th className="px-3 py-1.5"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {afgerond.map((s: any) => (
+                      <tr key={s.id} className="border-t border-gray-100">
+                        <td className="px-3 py-1.5">{fmtD(s.start_datum)}</td>
+                        <td className="px-3 py-1.5">{s.methode === 'stone' ? t('carb_method_stone') : t('carb_method_kopdruk')}</td>
+                        <td className="px-3 py-1.5 text-right">{Number(s.doel_co2_vol).toFixed(1)} vols @ {Number(s.tank_temp_c).toFixed(1)}°C</td>
+                        <td className="px-3 py-1.5 text-right">
+                          {s.werkelijke_druk_bar != null ? `${Number(s.werkelijke_druk_bar).toFixed(2)}` : `${Number(s.doel_druk_bar).toFixed(2)}*`} bar
+                        </td>
+                        <td className="px-3 py-1.5 text-right">
+                          {s.verbruikt_co2_gram != null ? `${Number(s.verbruikt_co2_gram).toFixed(0)} / ${Number(s.doel_co2_gram_verbruik).toFixed(0)}` : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{s.gemeten_co2_vol != null ? Number(s.gemeten_co2_vol).toFixed(1) : '—'}</td>
+                        <td className="px-3 py-1.5">{fmtDuur(s)}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className={`text-xs px-2 py-0.5 rounded ${s.status === 'voltooid' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {s.status === 'voltooid' ? t('carb_status_completed') : t('carb_status_aborted')}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5 text-right">
+                          <button type="button" onClick={() => deleteCarbSessie(s.id)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
