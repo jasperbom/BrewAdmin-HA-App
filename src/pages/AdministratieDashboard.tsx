@@ -15,27 +15,32 @@ interface AdministratieDashboardProps {
   accijnsAangiftes: any[]
   acc: any[]
   inkoopFacturen: any[]
+  verkoopFacturen: any[]
   setPage: (id: string) => void
   setBoekhoudingTab: (tab: string | null) => void
 }
 
 function AdministratieDashboard({
   btwInst = {}, btwAangiftes = [], bankKoppelingen = {}, accijnsAangiftes = [], acc = [],
-  inkoopFacturen = [], setPage, setBoekhoudingTab,
+  inkoopFacturen = [], verkoopFacturen = [], setPage, setBoekhoudingTab,
 }: AdministratieDashboardProps) {
   const gaNaarBoekhouding = (tab: string) => { setBoekhoudingTab(tab); setPage('boekhouding') }
 
   // ── Openstaande BTW-periodes ───────────────────────────────────────────────
+  // Alleen periodes met daadwerkelijk gefactureerde omzet/inkoop tellen mee —
+  // anders zou een jonge onderneming kwartalen van vóór de oprichting als
+  // openstaand te zien krijgen (zie telOpenstaandeBtwPerioden in utils/btw.ts).
   const vandaag = tod()
   const huidigJaar = new Date().getFullYear()
   const periodeType = btwInst?.periode === 'maand' ? 'maand' : 'kwartaal'
+  const alleFacturen = useMemo(() => [...verkoopFacturen, ...inkoopFacturen], [verkoopFacturen, inkoopFacturen])
   const btwOpenAantal = useMemo(
-    () => telOpenstaandeBtwPerioden([huidigJaar - 1, huidigJaar], periodeType, btwAangiftes, bankKoppelingen, vandaag),
-    [huidigJaar, periodeType, btwAangiftes, bankKoppelingen, vandaag]
+    () => telOpenstaandeBtwPerioden([huidigJaar - 1, huidigJaar], periodeType, btwAangiftes, bankKoppelingen, alleFacturen, vandaag),
+    [huidigJaar, periodeType, btwAangiftes, bankKoppelingen, alleFacturen, vandaag]
   )
   const btwMeestUrgent = useMemo(
-    () => laatsteOpenstaandeBtwPeriode([huidigJaar - 1, huidigJaar], periodeType, btwAangiftes, bankKoppelingen, vandaag),
-    [huidigJaar, periodeType, btwAangiftes, bankKoppelingen, vandaag]
+    () => laatsteOpenstaandeBtwPeriode([huidigJaar - 1, huidigJaar], periodeType, btwAangiftes, bankKoppelingen, alleFacturen, vandaag),
+    [huidigJaar, periodeType, btwAangiftes, bankKoppelingen, alleFacturen, vandaag]
   )
 
   // ── Accijns-deadline ────────────────────────────────────────────────────────

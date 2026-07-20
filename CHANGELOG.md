@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.43] — 2026-07-20
+
+### Opgelost — Administratie: BTW-openstaand-telling negeerde bedrijfsleeftijd
+
+- **Probleem**: de nieuwe "openstaande BTW-periodes"-badge en -widget
+  telden élk kalenderkwartaal van het huidige + vorige jaar zonder
+  aangifte/betaling als "openstaand" — ook kwartalen van vóór de
+  oprichting van de onderneming, waarvoor logischerwijs nooit een
+  aangifte is ingediend.
+- **Fix**: `telOpenstaandeBtwPerioden`/`laatsteOpenstaandeBtwPeriode`
+  (`src/utils/btw.ts`) tellen een periode alleen nog mee als er ook
+  daadwerkelijk een verkoop- of inkoopfactuur in die periode valt —
+  zelfde principe als de bestaande `laatsteOpenAccijnsMaand`-check.
+
 ## [1.11.42] — 2026-07-20
 
 ### Opgelost — Productie-dashboard: visuele tankkaarten terug
