@@ -14,7 +14,7 @@
 // brouwdag-checks "fermentor" en "waterslot". Die worden uitgezet
 // (actief: false) — niet verwijderd, zodat ze in Instellingen → Batchtaken
 // weer aan te zetten zijn en bestaande taken_checks-historie intact blijft.
-import { groepFase } from './constants'
+import { groepFase, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN } from './constants'
 
 // Brouwdag-checks die dubbel zijn met de chronologische stappenlijst: deze
 // acties bestaan daar als stap (water, maischen, spoelen, kook-start,
@@ -90,6 +90,63 @@ export const schoonTakenOp = (groepen: any[], items: any[]): TakenOpschoning => 
 
   return { groepen: nieuweGroepen, items: nieuweItems, groepenGewijzigd, itemsGewijzigd }
 }
+
+// ── Werkruimte-badge (Productie) ────────────────────────────────────────────
+// Telt, over alle nog niet gesloten batches, het aantal actieve check-taken
+// in de takengroep die bij de HUIDIGE fase (batch.status) van die batch
+// hoort en nog niet is afgevinkt in taken_checks. Spiegelt de fase-filtering
+// die BatchFlowPage gebruikt om de checklist van de actieve stap te tonen
+// (groepFase(g) === batch.status); metingen (CCP's) tellen hier niet mee —
+// die zijn geen open/dicht-vinkje maar een losse waarneming.
+export const telOpenstaandeBatchTaken = (
+  batches: any[],
+  batchTakenItems: any[],
+  batchTakenGroepen: any[],
+): number => {
+  const items = (batchTakenItems?.length ? batchTakenItems : DEFAULT_BATCH_TAKEN_ITEMS)
+    .filter((it: any) => it?.actief !== false && it?.type === 'check')
+  const groepen = batchTakenGroepen?.length ? batchTakenGroepen : DEFAULT_BATCH_TAKEN_GROEPEN
+  let totaal = 0
+  for (const b of (batches || [])) {
+    if (!b || b.status === 'Gesloten') continue
+    const groepIds = groepen.filter((g: any) => groepFase(g) === b.status).map((g: any) => g.id)
+    if (!groepIds.length) continue
+    const checks = b.taken_checks || {}
+    for (const it of items) {
+      if (groepIds.includes(it.group_id) && !checks[it.id]) totaal++
+    }
+  }
+  return totaal
+}
+
+// Vervaldata per schoonmaak-frequentie (dagen sinds de laatste log voordat
+// een taak als achterstallig geldt). Spiegelt HACCPPage's DashTab/
+// SchoonmaakTab, die dezelfde mapping tot nu toe elk apart inline hadden.
+export const SCHOONMAAK_FREQ_DAGEN: Record<string, number> = {
+  dagelijks: 1, wekelijks: 7, maandelijks: 30, per_batch: 30, anders: 30,
+}
+
+export const isSchoonmaakTaakAchterstallig = (
+  taak: any,
+  logs: any[],
+  vandaag: Date = new Date(),
+): boolean => {
+  if (!taak || taak.actief === false) return false
+  const eigenLogs = (logs || []).filter((l: any) => l?.taak_id === taak.id)
+  if (!eigenLogs.length) return true
+  const laatste = eigenLogs.slice().sort((a: any, b: any) => String(b?.datum || '').localeCompare(String(a?.datum || '')))[0]
+  const t0 = new Date(vandaag); t0.setHours(0, 0, 0, 0)
+  const d = new Date(laatste.datum); d.setHours(0, 0, 0, 0)
+  const dagen = (t0.getTime() - d.getTime()) / 86400000
+  return dagen > (SCHOONMAAK_FREQ_DAGEN[taak.frequentie] ?? 30)
+}
+
+export const telAchterstalligeSchoonmaakTaken = (
+  schoonmaakTaken: any[],
+  schoonmaakLog: any[],
+  vandaag: Date = new Date(),
+): number =>
+  (schoonmaakTaken || []).filter((tk: any) => isSchoonmaakTaakAchterstallig(tk, schoonmaakLog, vandaag)).length
 
 // Her-export voor gemak van de aanroeper (App.tsx gebruikt beide).
 export { groepFase }

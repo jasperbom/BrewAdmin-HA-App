@@ -4,6 +4,99 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.41] — 2026-07-20
+
+### Nieuw — startscherm per werkruimte: Productie/Verkoop/Administratie-dashboards
+
+`DashboardPage` is opgesplitst in drie werkruimte-dashboards (het dashboard-
+pad toont voortaan het dashboard van de actieve werkruimte), elk een lean
+dagelijkse-takenlijst die doorlinkt naar de detailpagina's — géén rijke
+tankbediening (climate/cold-crash) meer op het dashboard zelf, die
+interactie blijft op Batches/Batchflow.
+
+- **Productie** (mobile-first, tap-targets ≥44px): actieve tanks + fase,
+  taken vandaag (eerstvolgende brouwdag-stap voor brouwende batches, aantal
+  openstaande batchtaken voor andere fases), snelknop "Meting invoeren"
+  (modal), THT-waarschuwingen. Primaire acties: meting invoeren, nieuwe
+  batch, naar Batchflow.
+- **Verkoop**: te picken bestellingen, voorraad per product met
+  laag-voorraad-alerts (vaste drempel — er bestaat geen configureerbare
+  drempel per product), WooCommerce-syncstatus. Primaire acties: kassa,
+  bestellingen, producten.
+- **Administratie**: openstaande BTW-periodes, accijns-deadline,
+  openstaande inkoopfacturen, serverstatus. Primaire acties: nieuwe
+  inkoopfactuur, BTW-aangifte, bankafschrift importeren — deze linken nu
+  via een nieuwe, optionele `initialTab`-prop op `BoekhoudingPage` direct
+  naar de juiste tab i.p.v. altijd de standaardtab.
+  - "Ongekoppelde banktransacties" ontbreekt bewust: bankafschriften worden
+    nooit opgeslagen (alleen zichtbaar binnen de sessie na een MT940-import)
+    en dat alsnog tonen zou een nieuwe opslaglaag vergen die `server.py`
+    raakt — buiten scope voor deze navigatie-herstructurering.
+  - "Concept-inkoopfacturen" bestaat niet als apart statusveld (alleen
+    open/betaald) — open/onbetaalde facturen zijn hier de dichtstbijzijnde
+    eerlijke proxy.
+
+## [1.11.40] — 2026-07-20
+
+### Nieuw — pure helpers voor de werkruimte-dashboards (fase 2, voorbereiding)
+
+Bouwstenen voor de drie werkruimte-dashboards die hierna volgen, elk met
+Vitest-tests, naar het voorbeeld van de bestaande utils:
+
+- `volgendeBrouwdagStap` (nieuw `src/utils/brouwdag.ts`): eerstvolgende
+  niet-voltooide brouwdag-stap van een batch, chronologisch.
+- `bestellingenOmTePicken` (picking.ts): lijst-variant van de bestaande
+  `telOpenstaandeBestellingen` — die is er nu bovenop gebouwd i.p.v. een
+  tweede implementatie te zijn.
+- `laatsteOpenAccijnsMaand` (calculations.ts): laatste afgelopen
+  accijnsmaand zonder ingediende aangifte, hergebruikt `accijnsMaandGesloten`.
+- `laatsteOpenstaandeBtwPeriode` (btw.ts): meest recente BTW-periode met
+  status Openstaand, naast de bestaande `telOpenstaandeBtwPerioden`-telling.
+
+## [1.11.39] — 2026-07-20
+
+### Nieuw — navigatie: attentiebadges op de werkruimte-knoppen
+
+- **Wat**: de werkruimte-wisselaar (Productie/Verkoop/Administratie) toont nu
+  een badge met een aantal zodra een werkruimte om aandacht vraagt, ook als
+  die niet actief is:
+  - **Verkoop**: bestellingen die nog niet volledig gepickt zijn.
+  - **Administratie**: BTW-periodes met status Openstaand (huidig + vorig
+    jaar). "Ongekoppelde banktransacties" zit hier bewust nog niet bij —
+    bankafschriften worden nooit opgeslagen (alleen zichtbaar binnen de
+    sessie na een MT940-import) en dat alsnog tellen zonder `server.py` aan
+    te raken zou een nieuwe opslaglaag vergen, wat voor deze
+    navigatie-herstructurering uitdrukkelijk buiten scope is.
+  - **Productie**: openstaande taken uit het unified batch-takensysteem voor
+    de huidige flow-fase van elke batch, achterstallige HACCP-
+    schoonmaaktaken, en THT-waarschuwingen (verlopen + binnen 30 dagen).
+- **Nieuwe pure functies met Vitest-tests** (`src/utils/`): 
+  `telOpenstaandeBestellingen` (picking.ts), `telOpenstaandeBatchTaken` en
+  `telAchterstalligeSchoonmaakTaken` (taken.ts), `telOpenstaandeBtwPerioden`
+  (btw.ts), `telThtAlerts` (calculations.ts) — de laatste vervangt de
+  eerdere inline THT-filtering in App.tsx.
+
+## [1.11.38] — 2026-07-20
+
+### Nieuw — navigatie: werkruimtes Productie/Verkoop/Administratie
+
+- **Wat**: de platte hoofdnavigatie is opgesplitst in drie werkruimtes
+  ("petten") — **Productie**, **Verkoop** en **Administratie** — met een
+  permanente wisselaar in de header. De actieve werkruimte bepaalt welke
+  paginaknoppen de nav toont; de andere twee blijven één tik verwijderd.
+  Instellingen blijft via het bestaande pad altijd bereikbaar.
+- **Geen toegangsbeheer**: dit zijn context-filters voor een eenmanszaak om
+  sneller tussen petten te schakelen — geen enkele pagina is verborgen of
+  afgeschermd, en het rollensysteem (server-side) is ongewijzigd.
+- **Kassa** heeft nu ook een echte menuplek in Verkoop (voorheen alleen
+  bereikbaar via de dashboardknop, die blijft ook bestaan).
+- **Per apparaat onthouden**: de laatst gekozen werkruimte staat in
+  localStorage (niet gesynchroniseerd) — de telefoon in de brouwerij kan zo
+  op Productie blijven staan terwijl de kantoorlaptop op Administratie blijft.
+- **Deep-links wisselen mee**: navigeren naar een pagina buiten de actieve
+  werkruimte (bv. vanuit een batch naar boekhouding) schakelt de werkruimte
+  automatisch mee, zodat dat nooit stukloopt.
+
 ## [1.11.37] — 2026-07-20
 
 ### Opgelost — dashboard: gist dump verlaagt nu het tankvolume

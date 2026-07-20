@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { faseUitInhoud, schoonTakenOp, DUBBELE_BROUWDAG_CHECK_KEYS } from '../taken'
+import {
+  faseUitInhoud, schoonTakenOp, DUBBELE_BROUWDAG_CHECK_KEYS,
+  telOpenstaandeBatchTaken, isSchoonmaakTaakAchterstallig, telAchterstalligeSchoonmaakTaken,
+} from '../taken'
 
 // Nagebouwd migratie-scenario: installatie met twee eigen hygiëne-groepen,
 // waardoor de v1-migratie Brouwdag/Botteldag/CCP op de verschoven IDs 3/4/5
@@ -103,5 +106,85 @@ describe('schoonTakenOp', () => {
 
   it('dekt alle acht dubbele brouwdag-checks', () => {
     expect(DUBBELE_BROUWDAG_CHECK_KEYS).toHaveLength(8)
+  })
+})
+
+describe('telOpenstaandeBatchTaken', () => {
+  const takenGroepen = [
+    { id: 1, naam: 'Brouwen', fase: 'Brouwen' },
+    { id: 2, naam: 'Gisting', fase: 'Vergisten' },
+  ]
+  const takenItems = [
+    { id: 1, type: 'check', label: 'Ketel schoon', group_id: 1, actief: true },
+    { id: 2, type: 'check', label: 'Hop toegevoegd', group_id: 1, actief: true },
+    { id: 3, type: 'check', label: 'Gist gepitcht', group_id: 2, actief: true },
+    { id: 4, type: 'check', label: 'Inactieve check', group_id: 1, actief: false },
+    { id: 5, type: 'meting', label: 'Kooktemperatuur', group_id: 1, actief: true },
+  ]
+
+  it('telt onafgevinkte checks in de groep die bij de huidige fase van de batch hoort', () => {
+    const batches = [
+      { id: 1, status: 'Brouwen', taken_checks: { 1: true } },  // item 2 nog open
+      { id: 2, status: 'Vergisten', taken_checks: {} },         // item 3 nog open
+    ]
+    expect(telOpenstaandeBatchTaken(batches, takenItems, takenGroepen)).toBe(2)
+  })
+
+  it('negeert inactieve checks en metingen', () => {
+    const batches = [{ id: 1, status: 'Brouwen', taken_checks: { 1: true, 2: true } }]
+    expect(telOpenstaandeBatchTaken(batches, takenItems, takenGroepen)).toBe(0)
+  })
+
+  it('slaat gesloten batches en batches zonder bijpassende groep over', () => {
+    const batches = [
+      { id: 1, status: 'Gesloten', taken_checks: {} },
+      { id: 2, status: 'Conditioneren', taken_checks: {} }, // geen groep met deze fase
+    ]
+    expect(telOpenstaandeBatchTaken(batches, takenItems, takenGroepen)).toBe(0)
+  })
+
+  it('is robuust voor lege input', () => {
+    expect(telOpenstaandeBatchTaken([], [], [])).toBe(0)
+  })
+})
+
+describe('isSchoonmaakTaakAchterstallig / telAchterstalligeSchoonmaakTaken', () => {
+  const vandaag = new Date('2026-07-20T12:00:00Z')
+
+  it('is achterstallig zonder enige log', () => {
+    const taak = { id: 1, frequentie: 'wekelijks', actief: true }
+    expect(isSchoonmaakTaakAchterstallig(taak, [], vandaag)).toBe(true)
+  })
+
+  it('is niet achterstallig binnen de frequentietermijn', () => {
+    const taak = { id: 1, frequentie: 'wekelijks', actief: true }
+    const logs = [{ taak_id: 1, datum: '2026-07-16' }] // 4 dagen geleden, < 7
+    expect(isSchoonmaakTaakAchterstallig(taak, logs, vandaag)).toBe(false)
+  })
+
+  it('is achterstallig voorbij de frequentietermijn', () => {
+    const taak = { id: 1, frequentie: 'wekelijks', actief: true }
+    const logs = [{ taak_id: 1, datum: '2026-07-01' }] // 19 dagen geleden, > 7
+    expect(isSchoonmaakTaakAchterstallig(taak, logs, vandaag)).toBe(true)
+  })
+
+  it('een inactieve taak is nooit achterstallig', () => {
+    const taak = { id: 1, frequentie: 'dagelijks', actief: false }
+    expect(isSchoonmaakTaakAchterstallig(taak, [], vandaag)).toBe(false)
+  })
+
+  it('gebruikt de meest recente log bij meerdere entries', () => {
+    const taak = { id: 1, frequentie: 'wekelijks', actief: true }
+    const logs = [{ taak_id: 1, datum: '2026-06-01' }, { taak_id: 1, datum: '2026-07-18' }]
+    expect(isSchoonmaakTaakAchterstallig(taak, logs, vandaag)).toBe(false) // 2 dagen geleden
+  })
+
+  it('telAchterstalligeSchoonmaakTaken telt over alle taken', () => {
+    const taken = [
+      { id: 1, frequentie: 'wekelijks', actief: true },
+      { id: 2, frequentie: 'dagelijks', actief: true },
+    ]
+    const logs = [{ taak_id: 1, datum: '2026-07-18' }] // taak 1 recent, taak 2 heeft geen log
+    expect(telAchterstalligeSchoonmaakTaken(taken, logs, vandaag)).toBe(1)
   })
 })

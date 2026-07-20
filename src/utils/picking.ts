@@ -228,3 +228,31 @@ export const diagnosePickMatch = (
     regels,
   }
 }
+
+// ── Werkruimte-badge & -dashboard (Verkoop) ─────────────────────────────────
+// Bestellingen die nog niet volledig gepickt zijn: status nieuw/bevestigd
+// (nog niet naar 'gepickt' gezet) mét minstens één bierregel waarvan de
+// gepickte hoeveelheid (som van bestelling_picks) nog onder het bestelde
+// aantal zit. Zelfde optelling als BestellingenPage's gepicktVoorRegel/
+// allFull, hier als losse, testbare functie. Oudste datum eerst — dat is de
+// meest urgente om als eerste te picken.
+export const bestellingenOmTePicken = (
+  bestellingen: any[],
+  bestellingPicks: any[],
+): any[] =>
+  (bestellingen || [])
+    .filter((b: any) =>
+      b && (b.status === 'nieuw' || b.status === 'bevestigd') &&
+      (b.regels || []).some((r: any) =>
+        (r?.type || 'bier') === 'bier' &&
+        Number(r?.aantal || 0) > (bestellingPicks || [])
+          .filter((p: any) => p?.bestelling_id === b.id && p?.regel_id === r.id)
+          .reduce((s: number, p: any) => s + Number(p?.aantal || 0), 0)
+      )
+    )
+    .sort((a: any, b: any) => String(a?.datum || '').localeCompare(String(b?.datum || '')))
+
+export const telOpenstaandeBestellingen = (
+  bestellingen: any[],
+  bestellingPicks: any[],
+): number => bestellingenOmTePicken(bestellingen, bestellingPicks).length

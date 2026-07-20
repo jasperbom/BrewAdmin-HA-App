@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   accijnsCalc, tariefVoorDatum, accijnsMaandGesloten, berekenWinstVerlies,
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
-  berekenProductKostprijs, berekenCogs,
+  berekenProductKostprijs, berekenCogs, telThtAlerts, laatsteOpenAccijnsMaand,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -140,5 +140,61 @@ describe('batchkostprijs en COGS (ERP 2.6)', () => {
     expect(c.cogs).toBeCloseTo((24 * 0.33 + 20) * (120 / 53), 9)
     expect(c.litersZonderKostprijs).toBe(10)
     expect(c.aantalUitleveringen).toBe(3)
+  })
+})
+
+describe('telThtAlerts', () => {
+  const vandaag = new Date('2026-07-20T12:00:00Z')
+
+  it('telt verlopen en binnenkort-verlopende lots apart', () => {
+    const lots = [
+      { beschikbaar: true, hoeveelheid: 5, houdbaarheid: '2026-07-01' },  // al verlopen
+      { beschikbaar: true, hoeveelheid: 5, houdbaarheid: '2026-08-01' },  // binnen 30 dagen
+      { beschikbaar: true, hoeveelheid: 5, houdbaarheid: '2027-01-01' },  // ver weg, telt niet mee
+    ]
+    expect(telThtAlerts(lots, vandaag)).toEqual({ verlopen: 1, binnenkort: 1 })
+  })
+
+  it('negeert lots zonder voorraad, niet-beschikbare lots en lots zonder houdbaarheidsdatum', () => {
+    const lots = [
+      { beschikbaar: true, hoeveelheid: 0, houdbaarheid: '2026-07-01' },   // geen voorraad meer
+      { beschikbaar: false, hoeveelheid: 5, houdbaarheid: '2026-07-01' },  // niet beschikbaar
+      { beschikbaar: true, hoeveelheid: 5, houdbaarheid: null },           // geen THT bekend
+    ]
+    expect(telThtAlerts(lots, vandaag)).toEqual({ verlopen: 0, binnenkort: 0 })
+  })
+
+  it('respecteert een aangepaste binnenDagen-drempel', () => {
+    const lots = [{ beschikbaar: true, hoeveelheid: 1, houdbaarheid: '2026-07-25' }] // 5 dagen
+    expect(telThtAlerts(lots, vandaag, 3).binnenkort).toBe(0)
+    expect(telThtAlerts(lots, vandaag, 7).binnenkort).toBe(1)
+  })
+
+  it('is robuust voor lege input', () => {
+    expect(telThtAlerts([], vandaag)).toEqual({ verlopen: 0, binnenkort: 0 })
+  })
+})
+
+describe('laatsteOpenAccijnsMaand', () => {
+  const vandaag = new Date('2026-07-20T12:00:00Z') // vorige maand = 2026-06
+
+  it('geeft de vorige maand als er accijns is geboekt en nog geen aangifte staat', () => {
+    const acc = [{ datum: '2026-06-15' }]
+    expect(laatsteOpenAccijnsMaand([], acc, vandaag)).toEqual({ maand: '2026-06' })
+  })
+
+  it('geeft null zodra de aangifte is ingediend of betaald', () => {
+    const acc = [{ datum: '2026-06-15' }]
+    expect(laatsteOpenAccijnsMaand([{ maand: '2026-06', status: 'ingediend' }], acc, vandaag)).toBeNull()
+    expect(laatsteOpenAccijnsMaand([{ maand: '2026-06', status: 'betaald' }], acc, vandaag)).toBeNull()
+  })
+
+  it('geeft null als er niets te declareren viel die maand', () => {
+    expect(laatsteOpenAccijnsMaand([], [], vandaag)).toBeNull()
+  })
+
+  it('kijkt alleen naar de vorige kalendermaand, niet naar oudere openstaande maanden', () => {
+    const acc = [{ datum: '2026-01-15' }] // januari, niet de vorige maand (juni)
+    expect(laatsteOpenAccijnsMaand([], acc, vandaag)).toBeNull()
   })
 })

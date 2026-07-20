@@ -240,6 +240,26 @@ export const accijnsMaandGesloten = (datum: string, accijnsAangiftes: any[]): bo
   return !!a && (a.status === 'ingediend' || a.status === 'betaald')
 }
 
+// ── Werkruimte-dashboard (Administratie) ────────────────────────────────────
+// Laatste afgelopen accijnsmaand (kalendermaand vóór vandaag) waarvan de
+// aangifte nog niet is ingediend — alleen als er ook daadwerkelijk
+// accijnsboekingen in die maand staan (anders is er niets aan te geven).
+// Hergebruikt accijnsMaandGesloten voor de ingediend/betaald-check.
+export interface OpenAccijnsMaand { maand: string }
+
+export const laatsteOpenAccijnsMaand = (
+  accijnsAangiftes: any[],
+  acc: any[],
+  vandaag: Date = new Date(),
+): OpenAccijnsMaand | null => {
+  const vorigeMaand = new Date(vandaag.getFullYear(), vandaag.getMonth() - 1, 1)
+  const maand = `${vorigeMaand.getFullYear()}-${String(vorigeMaand.getMonth() + 1).padStart(2, '0')}`
+  if (accijnsMaandGesloten(`${maand}-01`, accijnsAangiftes)) return null
+  const heeftAccijnsInPeriode = (acc || []).some((a: any) => String(a?.datum || a?.created_at || '').slice(0, 7) === maand)
+  if (!heeftAccijnsInPeriode) return null
+  return { maand }
+}
+
 // Impact-rapport voor een tariefwijziging in een specifiek jaar: rekent elke
 // batch van dat jaar dubbel door (oud tarief vs. nieuw tarief) en geeft het
 // verschil per batch + totaal. `nieuwTarief` hoeft niet in `tarieven_historie`
@@ -2033,5 +2053,27 @@ export const fgStabiel = (
   const laatstTs = new Date(`${laatste3[laatste3.length - 1].datum}T${laatste3[laatste3.length - 1].tijd || '00:00'}`).getTime()
   const urenSpan = (laatstTs - eerstTs) / 3600000
   return urenSpan >= minUur
+}
+
+// ── Werkruimte-badge (Productie) ────────────────────────────────────────────
+// THT-telling voor lots die nog voorraad hebben en beschikbaar zijn: al
+// verlopen (houdbaarheid < vandaag) vs. binnen `binnenDagen` dagen verlopend.
+// Zelfde selectie als voorheen inline in App.tsx (thtAlert/thtWarn).
+export interface ThtAlertTelling { verlopen: number; binnenkort: number }
+
+export const telThtAlerts = (
+  lots: any[],
+  vandaag: Date = new Date(),
+  binnenDagen = 30,
+): ThtAlertTelling => {
+  const t0 = new Date(vandaag); t0.setHours(0, 0, 0, 0)
+  let verlopen = 0, binnenkort = 0
+  for (const l of (lots || [])) {
+    if (!l?.beschikbaar || !(Number(l.hoeveelheid || 0) > 0) || !l.houdbaarheid) continue
+    const d = new Date(l.houdbaarheid)
+    if (d < t0) verlopen++
+    else if ((d.getTime() - t0.getTime()) / 86400000 <= binnenDagen) binnenkort++
+  }
+  return { verlopen, binnenkort }
 }
 
