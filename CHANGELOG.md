@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.42] — 2026-07-20
+
+### Opgelost — Productie-dashboard: visuele tankkaarten terug
+
+- **Probleem**: bij het opsplitsen van het dashboard (fase 2) was de
+  "Actieve tanks"-widget vervangen door een platte lijst — de visuele
+  tankweergave (SVG met vulniveau, bierkleur op basis van EBC,
+  gistingsbubbels) was verdwenen.
+- **Fix**: `TankVisual`/`BrightTankVisual`/`BarrelVisual` (nieuw
+  `src/components/batch/TankVisual.tsx`, losgetrokken uit de vroegere
+  gedeelde dashboardpagina) zijn terug op de tankkaarten, samen met de
+  gistingsvoortgangsbalk (OG/FG/%), de laatste meting, de live
+  tanktemperatuur en het inline "+ meting toevoegen"-formulier per tank.
+  Climate-control en cold-crash-bediening blijven bewust op
+  Batches/Batchflow — dat is tankbediening, geen glanceable kaart.
+
 ## [1.11.41] — 2026-07-20
 
 ### Nieuw — startscherm per werkruimte: Productie/Verkoop/Administratie-dashboards
