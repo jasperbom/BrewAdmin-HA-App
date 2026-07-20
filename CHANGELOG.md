@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.41] — 2026-07-20
+
+### Nieuw — startscherm per werkruimte: Productie/Verkoop/Administratie-dashboards
+
+`DashboardPage` is opgesplitst in drie werkruimte-dashboards (het dashboard-
+pad toont voortaan het dashboard van de actieve werkruimte), elk een lean
+dagelijkse-takenlijst die doorlinkt naar de detailpagina's — géén rijke
+tankbediening (climate/cold-crash) meer op het dashboard zelf, die
+interactie blijft op Batches/Batchflow.
+
+- **Productie** (mobile-first, tap-targets ≥44px): actieve tanks + fase,
+  taken vandaag (eerstvolgende brouwdag-stap voor brouwende batches, aantal
+  openstaande batchtaken voor andere fases), snelknop "Meting invoeren"
+  (modal), THT-waarschuwingen. Primaire acties: meting invoeren, nieuwe
+  batch, naar Batchflow.
+- **Verkoop**: te picken bestellingen, voorraad per product met
+  laag-voorraad-alerts (vaste drempel — er bestaat geen configureerbare
+  drempel per product), WooCommerce-syncstatus. Primaire acties: kassa,
+  bestellingen, producten.
+- **Administratie**: openstaande BTW-periodes, accijns-deadline,
+  openstaande inkoopfacturen, serverstatus. Primaire acties: nieuwe
+  inkoopfactuur, BTW-aangifte, bankafschrift importeren — deze linken nu
+  via een nieuwe, optionele `initialTab`-prop op `BoekhoudingPage` direct
+  naar de juiste tab i.p.v. altijd de standaardtab.
+  - "Ongekoppelde banktransacties" ontbreekt bewust: bankafschriften worden
+    nooit opgeslagen (alleen zichtbaar binnen de sessie na een MT940-import)
+    en dat alsnog tonen zou een nieuwe opslaglaag vergen die `server.py`
+    raakt — buiten scope voor deze navigatie-herstructurering.
+  - "Concept-inkoopfacturen" bestaat niet als apart statusveld (alleen
+    open/betaald) — open/onbetaalde facturen zijn hier de dichtstbijzijnde
+    eerlijke proxy.
+
 ## [1.11.40] — 2026-07-20
 
 ### Nieuw — pure helpers voor de werkruimte-dashboards (fase 2, voorbereiding)

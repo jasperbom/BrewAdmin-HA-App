@@ -19,7 +19,7 @@ import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, onInitialTabConsumed=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -33,7 +33,18 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const firstOfYear = ymd(new Date(now.getFullYear(), 0, 1));
   const [dateFrom, setDateFrom] = React.useState(firstOfYear);
   const [dateTo, setDateTo] = React.useState(ymd(now));
-  const [mainTab, setMainTab] = React.useState('verkoop');
+  // initialTab: optionele deep-link (bv. vanuit het Administratie-dashboard
+  // dat direct naar de BTW- of bank-tab wil linken) — zelfde eenmalige-
+  // consume-patroon als preselectBatchId op PlanningPage. BoekhoudingPage
+  // wordt door App.tsx conditioneel gerenderd (mount/unmount per navigatie),
+  // dus de useState-initializer volstaat voor de starttab; de consumed-
+  // callback wist alleen het App.tsx-signaal zodat een latere, gewone
+  // navigatie naar Boekhouding niet per ongeluk dezelfde tab hergebruikt.
+  const [mainTab, setMainTab] = React.useState(initialTab || 'verkoop');
+  React.useEffect(() => {
+    if (initialTab) onInitialTabConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [inkoopSortDesc, setInkoopSortDesc] = React.useState(true);
   const [expandedFactuur, setExpandedFactuur] = React.useState(null);
   // Aangiftes tab state
