@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.36] — 2026-07-20
+
+### Verbeterd — batch-flow: overzichtelijke indeling bij Vergisten & Conditioneren
+
+- **Probleem**: bij de fases **Vergisten** en **Conditioneren** liepen de
+  SG-metingen en de snelle metingen (met grafiek) dwars door de rest van de
+  stappen heen. De grafiek-kaart forceerde een `column-span:all` midden in de
+  masonry-kolommen, waardoor de indeling in tweeën werd geknipt en rommelig oogde.
+- **Fix**: beide fases hebben nu — net als Brouwen — een vaste tweekoloms-indeling.
+  De metingen + grafiek staan als aparte volle-breedte band (Vergisten bovenaan
+  onder de progressie-kop, Conditioneren onderaan), de operationele stappen
+  eronder in twee nette kolommen: bij Vergisten links vergisting/dry-hop en rechts
+  verlies + taken, bij Conditioneren links de processtappen (temp/cold-crash,
+  carbonatie, ABV) en rechts de logistiek (verlies, tankverplaatsing, taken).
+  De grafiek snijdt zo niet meer dwars door de indeling.
+
+---
+
 ## [1.11.35] — 2026-07-19
 
 ### Opgelost — bier verschijnt niet bij het picken (lege order-verpakking)

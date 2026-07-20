@@ -117,9 +117,8 @@ const FlowStap: React.FC<{
   open: boolean
   onToggle: () => void
   children: React.ReactNode
-  /* Extra klassen op de buitenste kaart; o.a. `[column-span:all]` om een
-     grafiek-kaart in de tweekoloms-masonry over de volle breedte te laten
-     lopen i.p.v. een halflege kolom te forceren. */
+  /* Extra klassen op de buitenste kaart (escape hatch voor bijzondere
+     plaatsing binnen een fase-indeling). */
   className?: string
 }> = ({ title, done, optional, detail, open, onToggle, children, className }) => (
   <div className={`border border-gray-200 rounded-lg overflow-hidden${className ? ` ${className}` : ''}`}>
@@ -2207,14 +2206,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         {/* Vergisten: progressie + huidige waarden over de volle breedte bovenin. */}
         {faseStatus === 'Vergisten' && renderVergistHeader()}
 
-        {/* Stappen: op desktop in twee kolommen (masonry via CSS columns),
-            zodat je meer in één oogopslag ziet. Grafiek-kaarten (metingen)
-            krijgen `[column-span:all]` zodat ze de volle breedte pakken i.p.v.
-            een halflege kolom ernaast te forceren. Brouwen is de uitzondering:
-            die verzorgt zijn eigen tweekoloms-indeling in de BrouwdagWizard
-            (links ingrediënten, rechts stappen) en staat hier dus in één
-            verticale stroom. */}
-        <div className={faseStatus === 'Brouwen'
+        {/* Stappen: de kortere fases (Gepland/Afvullen/Gesloten) staan op desktop
+            in twee kolommen (masonry via CSS columns), zodat je meer in één
+            oogopslag ziet. Brouwen, Vergisten en Conditioneren verzorgen hun
+            eigen vaste tweekoloms-indeling (zie hieronder) en staan hier dus in
+            één verticale stroom — hun metingen/grafiek-kaarten krijgen een eigen
+            volle-breedte band i.p.v. dwars door een masonry-kolom te snijden. */}
+        <div className={['Brouwen', 'Vergisten', 'Conditioneren'].includes(faseStatus)
           ? 'space-y-3'
           : 'lg:columns-2 lg:gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid'}>
 
@@ -2286,6 +2284,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         )}
 
         {/* ── Vergisten ───────────────────────────────────────────────────── */}
+        {/* Volle-breedte metingen-band (SG-form + grafiek) direct onder de
+            progressie-kop, daarna de operationele stappen in twee vaste kolommen:
+            links vergisting/dry-hop, rechts verlies + taken. Zo snijdt de grafiek
+            niet meer dwars door de indeling. */}
         {faseStatus === 'Vergisten' && (() => {
           // Dry hop is alleen relevant als het recept dry-hop-additions heeft
           // óf er al dry-hops voor deze batch geregistreerd zijn.
@@ -2293,102 +2295,116 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           const dryHopVanToepassing = dryHopBi.length > 0 || mijnDryHops.length > 0
           return (
             <>
-              <FlowStap title={t('flow_sectie_schema')} optional done={schemaProfiel.length > 0} {...so('schema', true)}>
-                {renderVergistingsSchema()}
-                <div className="pt-1">
-                  <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
-                    doelTemp={doelTemp} doelLabel={t('flow_temp_doel')} />
-                </div>
-              </FlowStap>
               <FlowStap title={t('flow_stap_metingen')} done={!!clMap.metingen?.done}
                 detail={clMap.metingen?.detail ? `${clMap.metingen.detail}×` : undefined}
-                className={mijnMetingen.length >= 2 ? '[column-span:all]' : undefined}
                 {...so('metingen', !!clMap.metingen?.done)}>
                 {renderMetingForm()}
                 {renderGrafiek()}
               </FlowStap>
-              {dryHopBi.length > 0 && (
-                <FlowStap title={t('flow_dryhop_afboek_titel')} done={!!clMap.dryhop?.done} detail={clMap.dryhop?.detail} {...so('dryhop', !!clMap.dryhop?.done)}>
-                  {renderAfboekTabel(dryHopBi)}
-                </FlowStap>
-              )}
-              {dryHopVanToepassing && (
-                <DryHopSection batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
-              )}
-              <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
-                detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
-                {...so('verlies', true)}>
-                {renderVerlies('monster')}
-              </FlowStap>
-              {takenVoorFase('Vergisten').length > 0 && (
-                <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
-                  {renderTaken('Vergisten')}
-                </FlowStap>
-              )}
+              <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start space-y-3 lg:space-y-0">
+                <div className="space-y-3">
+                  <FlowStap title={t('flow_sectie_schema')} optional done={schemaProfiel.length > 0} {...so('schema', true)}>
+                    {renderVergistingsSchema()}
+                    <div className="pt-1">
+                      <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
+                        doelTemp={doelTemp} doelLabel={t('flow_temp_doel')} />
+                    </div>
+                  </FlowStap>
+                  {dryHopBi.length > 0 && (
+                    <FlowStap title={t('flow_dryhop_afboek_titel')} done={!!clMap.dryhop?.done} detail={clMap.dryhop?.detail} {...so('dryhop', !!clMap.dryhop?.done)}>
+                      {renderAfboekTabel(dryHopBi)}
+                    </FlowStap>
+                  )}
+                  {dryHopVanToepassing && (
+                    <DryHopSection batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
+                    detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
+                    {...so('verlies', true)}>
+                    {renderVerlies('monster')}
+                  </FlowStap>
+                  {takenVoorFase('Vergisten').length > 0 && (
+                    <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                      {renderTaken('Vergisten')}
+                    </FlowStap>
+                  )}
+                </div>
+              </div>
             </>
           )
         })()}
 
         {/* ── Conditioneren ───────────────────────────────────────────────── */}
+        {/* Twee vaste kolommen: links de processtappen (temp/cold-crash,
+            carbonatie, ABV), rechts de logistiek (verlies, tankverplaatsing,
+            taken). De snelle SG-meting + grafiek staat als volle-breedte band
+            onderaan, zodat de grafiek niet dwars door de kolommen snijdt. */}
         {faseStatus === 'Conditioneren' && (
           <>
-            <FlowStap title={t('flow_temp_titel')} optional done={!!selB.cold_crash_datum} {...so('temp', true)}>
-              <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
-                doelTemp={doelTemp} doelLabel={selB.cold_crash_datum ? t('flow_temp_doel_coldcrash') : t('flow_temp_doel')} />
-              {/* Cold-crash — zelfde preset en server-ramp als op het Dashboard */}
-              {(() => {
-                const ccActive = !!selB.cold_crash_datum
-                const ccTarget = Number(selB.cold_crash_target ?? coldcrashInst?.target_temp ?? 2)
-                const ccRamp = Number(selB.cold_crash_ramp ?? coldcrashInst?.ramp_per_uur ?? 1)
-                const tankTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
-                const tankTemp = typeof tankTempRaw === 'number' && !isNaN(tankTempRaw) ? tankTempRaw : null
-                const reached = ccActive && tankTemp != null && tankTemp <= ccTarget + 0.5
-                return ccActive ? (
-                  <div className="flex items-center gap-2 flex-wrap text-xs">
-                    <span className={`px-2 py-0.5 rounded-full font-medium ${
-                      reached ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'}`}>
-                      ❄ {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
-                    </span>
-                    <span className="text-gray-500">→ {ccTarget}°C @ {ccRamp}°C/{t('lbl_uur')}</span>
-                    <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
-                    <Btn v="secondary" s="sm" onClick={stopColdCrash}>{t('dashboard_coldcrash_stop_btn')}</Btn>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Btn s="sm" onClick={startColdCrash}>❄ {t('dashboard_coldcrash_btn')}</Btn>
-                    {coldcrashInst?.enabled && (
-                      <span className="text-xs text-gray-400">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
-                    )}
-                  </div>
-                )
-              })()}
-            </FlowStap>
-            <FlowStap title={t('carb_title')} done={!!clMap.carb?.done} detail={clMap.carb?.detail} {...so('carb', !!clMap.carb?.done)}>
-              {renderCarbonatie()}
-            </FlowStap>
-            <FlowStap title={t('flow_chk_abv')} done={!!clMap.abv?.done} detail={clMap.abv?.detail} {...so('abv', !!clMap.abv?.done)}>
-              {renderFaseVelden('Conditioneren')}
-              {abvKnop}
-            </FlowStap>
+            <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start space-y-3 lg:space-y-0">
+              <div className="space-y-3">
+                <FlowStap title={t('flow_temp_titel')} optional done={!!selB.cold_crash_datum} {...so('temp', true)}>
+                  <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
+                    doelTemp={doelTemp} doelLabel={selB.cold_crash_datum ? t('flow_temp_doel_coldcrash') : t('flow_temp_doel')} />
+                  {/* Cold-crash — zelfde preset en server-ramp als op het Dashboard */}
+                  {(() => {
+                    const ccActive = !!selB.cold_crash_datum
+                    const ccTarget = Number(selB.cold_crash_target ?? coldcrashInst?.target_temp ?? 2)
+                    const ccRamp = Number(selB.cold_crash_ramp ?? coldcrashInst?.ramp_per_uur ?? 1)
+                    const tankTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+                    const tankTemp = typeof tankTempRaw === 'number' && !isNaN(tankTempRaw) ? tankTempRaw : null
+                    const reached = ccActive && tankTemp != null && tankTemp <= ccTarget + 0.5
+                    return ccActive ? (
+                      <div className="flex items-center gap-2 flex-wrap text-xs">
+                        <span className={`px-2 py-0.5 rounded-full font-medium ${
+                          reached ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'}`}>
+                          ❄ {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
+                        </span>
+                        <span className="text-gray-500">→ {ccTarget}°C @ {ccRamp}°C/{t('lbl_uur')}</span>
+                        <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
+                        <Btn v="secondary" s="sm" onClick={stopColdCrash}>{t('dashboard_coldcrash_stop_btn')}</Btn>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Btn s="sm" onClick={startColdCrash}>❄ {t('dashboard_coldcrash_btn')}</Btn>
+                        {coldcrashInst?.enabled && (
+                          <span className="text-xs text-gray-400">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </FlowStap>
+                <FlowStap title={t('carb_title')} done={!!clMap.carb?.done} detail={clMap.carb?.detail} {...so('carb', !!clMap.carb?.done)}>
+                  {renderCarbonatie()}
+                </FlowStap>
+                <FlowStap title={t('flow_chk_abv')} done={!!clMap.abv?.done} detail={clMap.abv?.detail} {...so('abv', !!clMap.abv?.done)}>
+                  {renderFaseVelden('Conditioneren')}
+                  {abvKnop}
+                </FlowStap>
+              </div>
+              <div className="space-y-3">
+                <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
+                  detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
+                  {...so('verlies', mijnVerlies.length > 0)}>
+                  {renderVerlies('gist_dump')}
+                </FlowStap>
+                <FlowStap title={t('flow_sectie_tankmove')} optional done={false} {...so('tankmove', true)}>
+                  {renderTankMove()}
+                </FlowStap>
+                {takenVoorFase('Conditioneren').length > 0 && (
+                  <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                    {renderTaken('Conditioneren')}
+                  </FlowStap>
+                )}
+              </div>
+            </div>
             <FlowStap title={t('flow_meting_snel')} optional done={mijnMetingen.length >= 2}
-              detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined}
-              className={mijnMetingen.length >= 2 ? '[column-span:all]' : undefined} {...so('meting', true)}>
+              detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined} {...so('meting', true)}>
               {renderMetingForm()}
               {renderGrafiek()}
             </FlowStap>
-            <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
-              detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
-              {...so('verlies', mijnVerlies.length > 0)}>
-              {renderVerlies('gist_dump')}
-            </FlowStap>
-            <FlowStap title={t('flow_sectie_tankmove')} optional done={false} {...so('tankmove', true)}>
-              {renderTankMove()}
-            </FlowStap>
-            {takenVoorFase('Conditioneren').length > 0 && (
-              <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
-                {renderTaken('Conditioneren')}
-              </FlowStap>
-            )}
           </>
         )}
 
