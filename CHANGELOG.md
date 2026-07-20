@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.38] — 2026-07-20
+
+### Nieuw — navigatie: werkruimtes Productie/Verkoop/Administratie
+
+- **Wat**: de platte hoofdnavigatie is opgesplitst in drie werkruimtes
+  ("petten") — **Productie**, **Verkoop** en **Administratie** — met een
+  permanente wisselaar in de header. De actieve werkruimte bepaalt welke
+  paginaknoppen de nav toont; de andere twee blijven één tik verwijderd.
+  Instellingen blijft via het bestaande pad altijd bereikbaar.
+- **Geen toegangsbeheer**: dit zijn context-filters voor een eenmanszaak om
+  sneller tussen petten te schakelen — geen enkele pagina is verborgen of
+  afgeschermd, en het rollensysteem (server-side) is ongewijzigd.
+- **Kassa** heeft nu ook een echte menuplek in Verkoop (voorheen alleen
+  bereikbaar via de dashboardknop, die blijft ook bestaan).
+- **Per apparaat onthouden**: de laatst gekozen werkruimte staat in
+  localStorage (niet gesynchroniseerd) — de telefoon in de brouwerij kan zo
+  op Productie blijven staan terwijl de kantoorlaptop op Administratie blijft.
+- **Deep-links wisselen mee**: navigeren naar een pagina buiten de actieve
+  werkruimte (bv. vanuit een batch naar boekhouding) schakelt de werkruimte
+  automatisch mee, zodat dat nooit stukloopt.
+
 ## [1.11.37] — 2026-07-20
 
 ### Opgelost — dashboard: gist dump verlaagt nu het tankvolume

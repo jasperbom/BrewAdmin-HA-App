@@ -41,6 +41,37 @@ const IS_STANDALONE = typeof window !== 'undefined' && (
   || (navigator as any).standalone === true
 );
 
+// Werkruimte-navigatie (ERP-plan navigatie-herstructurering): drie "petten"
+// voor de eenmanszaak — Productie/Verkoop/Administratie. Dit zijn
+// context-filters om snel te schakelen, GEEN toegangsbeheer (dat blijft
+// volledig bij het bestaande rollensysteem in server.py). Elke pagina hoort
+// bij precies één werkruimte; dashboard/instellingen zijn werkruimte-loos en
+// blijven altijd bereikbaar.
+type WerkruimteId = 'productie' | 'verkoop' | 'administratie';
+const WERKRUIMTE_IDS: WerkruimteId[] = ['productie', 'verkoop', 'administratie'];
+const WERKRUIMTE_LABEL_KEYS: Record<WerkruimteId, string> = {
+  productie: 'werkruimte_productie', verkoop: 'werkruimte_verkoop', administratie: 'werkruimte_administratie',
+};
+const PAGINA_WERKRUIMTE: Record<string, WerkruimteId> = {
+  ingredienten: 'productie', recepten: 'productie', batches: 'productie', batchflow: 'productie',
+  planning: 'productie', haccp: 'productie', tool_phcorrectie: 'productie', tool_waterprofiel: 'productie',
+  producten: 'verkoop', bestellingen: 'verkoop', kassa: 'verkoop', klanten: 'verkoop', statiegeld: 'verkoop',
+  boekhouding: 'administratie', agp: 'administratie', inventarisatie: 'administratie', voorraadverloop: 'administratie',
+};
+// Per-apparaat, bewust NIET via useStore/server gesynchroniseerd (zelfde
+// rechtstreekse localStorage-patroon als de negeer-lijst in
+// StatusSuggestion.tsx) — zo blijft de telefoon in de brouwerij op Productie
+// staan terwijl de kantoorlaptop op Administratie blijft, elk met zijn eigen
+// laatst gekozen werkruimte.
+const WERKRUIMTE_KEY = 'brewadmin_werkruimte';
+const leesWerkruimte = (): WerkruimteId => {
+  try {
+    const v = localStorage.getItem(WERKRUIMTE_KEY);
+    if (v && (WERKRUIMTE_IDS as string[]).includes(v)) return v as WerkruimteId;
+  } catch (_) { /* localStorage niet beschikbaar */ }
+  return 'productie';
+};
+
 class PageErrorBoundary extends React.Component<{children: React.ReactNode, page: string}, {err: string|null}> {
   state = { err: null as string|null }
   static getDerivedStateFromError(e: Error) { return { err: e?.message || String(e) } }
@@ -228,7 +259,31 @@ function App() {
     }
   }, [auditLog, breweryDetails?.accijns_verantwoordelijke]);
 
-  const [page, setPage] = useState('dashboard');
+  const [werkruimte, setWerkruimteState] = useState<WerkruimteId>(leesWerkruimte);
+  const [page, setPageIntern] = useState('dashboard');
+  // Wisselt van werkruimte. Bij een ECHTE wissel (niet opnieuw op de al
+  // actieve werkruimte tikken) springt de pagina mee naar het dashboard van
+  // die werkruimte — anders zou de vorige pagina (uit de oude werkruimte)
+  // eronder blijven staan terwijl de nav al de nieuwe werkruimte toont, wat
+  // met geen enkel zichtbaar nav-item meer overeenkomt. Bij een deep-link
+  // (via setPage hieronder) wint de daaropvolgende setPageIntern(id)-call in
+  // dezelfde tick alsnog van deze dashboard-sprong (React batcht synchrone
+  // setState-aanroepen; de laatste wint).
+  const kiesWerkruimte = (w: WerkruimteId) => {
+    if (w !== werkruimte) setPageIntern('dashboard');
+    setWerkruimteState(w);
+    try { localStorage.setItem(WERKRUIMTE_KEY, w); } catch (_) { /* localStorage niet beschikbaar */ }
+  };
+  // Elke navigatie — ook diep vanuit een andere pagina (bv. een batch die naar
+  // boekhouding linkt) — wisselt de werkruimte automatisch mee. Alle
+  // bestaande setPage(...)-aanroepen (nav-knoppen, deep-links vanuit
+  // paginacomponenten) krijgen dit gedrag hierdoor gratis: alleen dít punt
+  // hoeft te weten welke pagina bij welke werkruimte hoort.
+  const setPage = (id: string) => {
+    const w = PAGINA_WERKRUIMTE[id];
+    if (w && w !== werkruimte) kiesWerkruimte(w);
+    setPageIntern(id);
+  };
   const [openMenu, setOpenMenu] = useState<string|null>(null);
   const menuRefs = useRef<Record<string, HTMLDivElement|null>>({});
   const [openOrderId, setOpenOrderId] = useState<number | null>(null);
@@ -1214,32 +1269,39 @@ function App() {
   const openAcc = acc.filter((a: any)=>!a.betaald).reduce((s: any,a: any)=>s+Number(a.accijns??a.totaal_accijns??0),0);
   const openBestellingen = (bestellingen||[]).filter((b: any) => b.status==='nieuw'||b.status==='gepickt').length;
 
-  const nav: Array<{id:string,l:string,sub?:Array<{id:string,l:string}>}> = [
-    {id:'brouwerij',l:t('nav_brouwerij'),sub:[
+  // Per-werkruimte nav-items — de actieve werkruimte (hierboven) bepaalt welke
+  // lijst getoond wordt; de andere twee blijven één tik verwijderd via de
+  // werkruimte-wisselaar. 'kassa' had voorheen bewust geen menuplek (alleen
+  // bereikbaar via de dashboardknop) — die krijgt hij hier alsnog, naast de
+  // dashboardknop die blijft bestaan.
+  const navPerWerkruimte: Record<WerkruimteId, Array<{id:string,l:string,sub?:Array<{id:string,l:string}>}>> = {
+    productie: [
       {id:'ingredienten',l:t('nav_ingredienten')},
       {id:'recepten',l:t('nav_recepten')},
       {id:'batches',l:t('nav_batches')},
       {id:'batchflow',l:t('nav_batchflow')},
       {id:'planning',l:t('nav_planning')},
-    ]},
-    {id:'producten',l:t('nav_producten')},
-    {id:'bestellingen',l:t('nav_bestellingen')},
-    // 'kassa' staat bewust niet in het menu — de kassa wordt geopend via de
-    // knop op het dashboard (DashboardPage).
-    {id:'klanten',l:t('nav_klanten')},
-    {id:'agp',l:t('nav_agp')},
-    {id:'haccp',l:t('nav_haccp')},
-    {id:'gereedschap',l:t('nav_gereedschap'),sub:[
-      {id:'tool_phcorrectie',l:t('nav_tool_phcorrectie')},
-      {id:'tool_waterprofiel',l:t('nav_tool_waterprofiel')},
-    ]},
-    {id:'administratie',l:t('nav_administratie'),sub:[
+      {id:'haccp',l:t('nav_haccp')},
+      {id:'gereedschap',l:t('nav_gereedschap'),sub:[
+        {id:'tool_phcorrectie',l:t('nav_tool_phcorrectie')},
+        {id:'tool_waterprofiel',l:t('nav_tool_waterprofiel')},
+      ]},
+    ],
+    verkoop: [
+      {id:'producten',l:t('nav_producten')},
+      {id:'bestellingen',l:t('nav_bestellingen')},
+      {id:'kassa',l:t('nav_kassa')},
+      {id:'klanten',l:t('nav_klanten')},
+      {id:'statiegeld',l:t('nav_statiegeld')},
+    ],
+    administratie: [
       {id:'boekhouding',l:t('nav_boekhouding')},
+      {id:'agp',l:t('nav_agp')},
       {id:'inventarisatie',l:t('nav_inventarisatie')},
       {id:'voorraadverloop',l:t('nav_voorraadverloop')},
-      {id:'statiegeld',l:t('nav_statiegeld')},
-    ]},
-  ];
+    ],
+  };
+  const nav = navPerWerkruimte[werkruimte];
   const subIds = new Map<string, string>();
   for (const n of nav) if (n.sub) for (const s of n.sub) subIds.set(s.id, n.id);
 
@@ -1376,6 +1438,25 @@ function App() {
           <button onClick={()=>setPage('dashboard')} className="font-bold text-sm mr-3 hidden sm:block px-2 py-1 rounded-lg transition-colors tracking-wide text-white hover:bg-white/20">
             {appName || t('app_title')}
           </button>
+          <div className="flex items-center gap-1 flex-shrink-0" role="group" aria-label={t('werkruimte_wissel_label')}>
+            {WERKRUIMTE_IDS.map(w => (
+              <button key={w} onClick={()=>kiesWerkruimte(w)} aria-pressed={werkruimte===w}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all duration-150 ${werkruimte===w?'bg-white/25 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+                {t(WERKRUIMTE_LABEL_KEYS[w])}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-1">
+            <SyncDot />
+            <button onClick={()=>setPage('instellingen')} title={t('nav_instellingen')} className={`px-2 py-1 rounded-lg transition-colors flex items-center justify-center ${page==='instellingen'?'text-white':'text-white/70 hover:text-white'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" width="20" height="20">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 flex items-center h-11 gap-2 overflow-x-auto border-t border-white/10">
           {nav.map(n => n.sub ? (
             <div key={n.id} ref={el => { menuRefs.current[n.id] = el }} className="relative flex-shrink-0">
               <button
@@ -1407,15 +1488,6 @@ function App() {
               {n.id==='bestellingen'&&openBestellingen>0&&<span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{openBestellingen}</span>}
             </button>
           ))}
-          <div className="ml-auto flex items-center gap-1">
-            <SyncDot />
-            <button onClick={()=>setPage('instellingen')} title={t('nav_instellingen')} className={`px-2 py-1 rounded-lg transition-colors flex items-center justify-center ${page==='instellingen'?'text-white':'text-white/70 hover:text-white'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" width="20" height="20">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-              </svg>
-            </button>
-          </div>
         </div>
       </nav>
       <PageErrorBoundary page={page}>
