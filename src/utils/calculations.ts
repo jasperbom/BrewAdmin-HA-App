@@ -240,6 +240,26 @@ export const accijnsMaandGesloten = (datum: string, accijnsAangiftes: any[]): bo
   return !!a && (a.status === 'ingediend' || a.status === 'betaald')
 }
 
+// ── Werkruimte-dashboard (Administratie) ────────────────────────────────────
+// Laatste afgelopen accijnsmaand (kalendermaand vóór vandaag) waarvan de
+// aangifte nog niet is ingediend — alleen als er ook daadwerkelijk
+// accijnsboekingen in die maand staan (anders is er niets aan te geven).
+// Hergebruikt accijnsMaandGesloten voor de ingediend/betaald-check.
+export interface OpenAccijnsMaand { maand: string }
+
+export const laatsteOpenAccijnsMaand = (
+  accijnsAangiftes: any[],
+  acc: any[],
+  vandaag: Date = new Date(),
+): OpenAccijnsMaand | null => {
+  const vorigeMaand = new Date(vandaag.getFullYear(), vandaag.getMonth() - 1, 1)
+  const maand = `${vorigeMaand.getFullYear()}-${String(vorigeMaand.getMonth() + 1).padStart(2, '0')}`
+  if (accijnsMaandGesloten(`${maand}-01`, accijnsAangiftes)) return null
+  const heeftAccijnsInPeriode = (acc || []).some((a: any) => String(a?.datum || a?.created_at || '').slice(0, 7) === maand)
+  if (!heeftAccijnsInPeriode) return null
+  return { maand }
+}
+
 // Impact-rapport voor een tariefwijziging in een specifiek jaar: rekent elke
 // batch van dat jaar dubbel door (oud tarief vs. nieuw tarief) en geeft het
 // verschil per batch + totaal. `nieuwTarief` hoeft niet in `tarieven_historie`

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   datumToPeriodeKey, periodeKeyLabel, huidigePeriodeKey, isPeriodeGesloten,
   effectievePeriodeKey, geslotenPeriodeSets, magFactuurMuteren, bepaalRollover,
-  omzetBtwOpGrondslag, getPeriodes, telOpenstaandeBtwPerioden,
+  omzetBtwOpGrondslag, getPeriodes, telOpenstaandeBtwPerioden, laatsteOpenstaandeBtwPeriode,
 } from '../btw'
 
 describe('datumToPeriodeKey / periodeKeyLabel', () => {
@@ -144,5 +144,20 @@ describe('telOpenstaandeBtwPerioden', () => {
   it('werkt ook voor maandperiodes', () => {
     // Januari t/m juni 2026 zijn voorbij (6 maanden); juli is nog niet voorbij
     expect(telOpenstaandeBtwPerioden([2026], 'maand', [], {}, vandaag)).toBe(6)
+  })
+})
+
+describe('laatsteOpenstaandeBtwPeriode', () => {
+  const vandaag = '2026-07-20'
+
+  it('geeft de meest recente openstaande periode (hoogste to-datum)', () => {
+    expect(laatsteOpenstaandeBtwPeriode([2026], 'kwartaal', [], {}, vandaag)).toEqual(
+      { label: 'Q2', from: '2026-04-01', to: '2026-06-30', key: '2026-Q2' }
+    )
+  })
+
+  it('geeft null als er niets openstaat', () => {
+    const aangiftes = [{ periodeKey: '2026-Q1' }, { periodeKey: '2026-Q2' }]
+    expect(laatsteOpenstaandeBtwPeriode([2026], 'kwartaal', aangiftes, {}, vandaag)).toBeNull()
   })
 })

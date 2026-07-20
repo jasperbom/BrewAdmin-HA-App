@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.40] — 2026-07-20
+
+### Nieuw — pure helpers voor de werkruimte-dashboards (fase 2, voorbereiding)
+
+Bouwstenen voor de drie werkruimte-dashboards die hierna volgen, elk met
+Vitest-tests, naar het voorbeeld van de bestaande utils:
+
+- `volgendeBrouwdagStap` (nieuw `src/utils/brouwdag.ts`): eerstvolgende
+  niet-voltooide brouwdag-stap van een batch, chronologisch.
+- `bestellingenOmTePicken` (picking.ts): lijst-variant van de bestaande
+  `telOpenstaandeBestellingen` — die is er nu bovenop gebouwd i.p.v. een
+  tweede implementatie te zijn.
+- `laatsteOpenAccijnsMaand` (calculations.ts): laatste afgelopen
+  accijnsmaand zonder ingediende aangifte, hergebruikt `accijnsMaandGesloten`.
+- `laatsteOpenstaandeBtwPeriode` (btw.ts): meest recente BTW-periode met
+  status Openstaand, naast de bestaande `telOpenstaandeBtwPerioden`-telling.
+
 ## [1.11.39] — 2026-07-20
 
 ### Nieuw — navigatie: attentiebadges op de werkruimte-knoppen

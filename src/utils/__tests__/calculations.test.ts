@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   accijnsCalc, tariefVoorDatum, accijnsMaandGesloten, berekenWinstVerlies,
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
-  berekenProductKostprijs, berekenCogs, telThtAlerts,
+  berekenProductKostprijs, berekenCogs, telThtAlerts, laatsteOpenAccijnsMaand,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -172,5 +172,29 @@ describe('telThtAlerts', () => {
 
   it('is robuust voor lege input', () => {
     expect(telThtAlerts([], vandaag)).toEqual({ verlopen: 0, binnenkort: 0 })
+  })
+})
+
+describe('laatsteOpenAccijnsMaand', () => {
+  const vandaag = new Date('2026-07-20T12:00:00Z') // vorige maand = 2026-06
+
+  it('geeft de vorige maand als er accijns is geboekt en nog geen aangifte staat', () => {
+    const acc = [{ datum: '2026-06-15' }]
+    expect(laatsteOpenAccijnsMaand([], acc, vandaag)).toEqual({ maand: '2026-06' })
+  })
+
+  it('geeft null zodra de aangifte is ingediend of betaald', () => {
+    const acc = [{ datum: '2026-06-15' }]
+    expect(laatsteOpenAccijnsMaand([{ maand: '2026-06', status: 'ingediend' }], acc, vandaag)).toBeNull()
+    expect(laatsteOpenAccijnsMaand([{ maand: '2026-06', status: 'betaald' }], acc, vandaag)).toBeNull()
+  })
+
+  it('geeft null als er niets te declareren viel die maand', () => {
+    expect(laatsteOpenAccijnsMaand([], [], vandaag)).toBeNull()
+  })
+
+  it('kijkt alleen naar de vorige kalendermaand, niet naar oudere openstaande maanden', () => {
+    const acc = [{ datum: '2026-01-15' }] // januari, niet de vorige maand (juni)
+    expect(laatsteOpenAccijnsMaand([], acc, vandaag)).toBeNull()
   })
 })

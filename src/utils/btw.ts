@@ -216,3 +216,20 @@ export function telOpenstaandeBtwPerioden(
   }
   return n
 }
+
+// Meest recente periode met status Openstaand (of null): voor een
+// dashboard-widget die één concrete actie toont i.p.v. alleen een telling.
+export function laatsteOpenstaandeBtwPeriode(
+  jaren: number[],
+  periode: BtwPeriodeType,
+  btwAangiftes: any[],
+  bankKoppelingen: Record<string, any>,
+  vandaag: string,
+): BtwPeriode | null {
+  const { ingediend, betaald } = geslotenPeriodeSets(btwAangiftes, bankKoppelingen)
+  const open = jaren
+    .flatMap(jaar => getPeriodes(jaar, periode))
+    .filter(p => p.to < vandaag && !betaald.has(p.key) && !ingediend.has(p.key))
+    .sort((a, b) => b.to.localeCompare(a.to))
+  return open[0] || null
+}
