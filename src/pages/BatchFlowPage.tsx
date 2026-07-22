@@ -15,8 +15,9 @@ import {
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import {
-  vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap,
+  vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap, verpakProjectie,
 } from '../utils/vergisting'
+import PlanningPage from './PlanningPage'
 import Btn from '../components/ui/Btn'
 import Badge from '../components/ui/Badge'
 import Inp from '../components/ui/Inp'
@@ -53,6 +54,7 @@ interface BatchFlowPageProps {
   batchTakenItems: any[], batchTakenGroepen: any[],
   brouwprocesInst: any,
   coldcrashInst: any,
+  planningInst: any,
   haInst: any, haTankTemps: Record<string, number>,
   tanks: any[], tankStatussen: any, setTankStatussen: any,
   tankLog: any[], setTankLog: any,
@@ -325,7 +327,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   verliesRegistraties, setVerliesRegistraties, dryHops, setDryHops,
   brouwdagStappen, setBrouwdagStappen, waterAddities, setWaterAddities,
   koelLogs, setKoelLogs, batchNotities, setBatchNotities,
-  batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, haInst, haTankTemps,
+  batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, planningInst, haInst, haTankTemps,
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
   log, setLog, auditLog, setAuditLog, setPage, setNavBatchId, openBatchId,
 }) => {
@@ -336,6 +338,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [openStappen, setOpenStappen] = useState<Record<string, boolean>>({})
   const [geslotenOpen, setGeslotenOpen] = useState(false)
   const [notitiesOpen, setNotitiesOpen] = useState(false)
+  // Inklapbare planning-tijdlijn bovenaan het overzicht (samengevoegd met de
+  // vroegere losse Planning-pagina). Standaard ingeklapt.
+  const [tijdlijnOpen, setTijdlijnOpen] = useState(false)
   const [mForm, setMForm] = useState({sg: '', temp: '', ph: ''})
   // Verliesregistratie (per fase hetzelfde formulier)
   const [verliesForm, setVerliesForm] = useState<any>({datum: tod(), bron: 'monster', liter: '', notitie: ''})
@@ -1224,6 +1229,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const BatchKaart = ({b}: {b: any}) => {
     const idx = faseIndex(b.status)
     const pct = Math.round((idx / (STATUSSEN.length - 1)) * 100)
+    // Verwachte verpakdatum: giststart + vergistingsschema + conditioneringstijd.
+    // Alleen zinvol zolang de batch nog niet verpakt/gesloten is.
+    const vp = verpakProjectie(b, Number(planningInst?.conditioneren_dagen ?? 14))
+    const toonVerpak = !['Afgevuld', 'Verpakt', 'Gesloten'].includes(b.status) && vp.verpakkenMs != null
     return (
       <div
         className="bg-white rounded-xl p-4 shadow-card border border-gray-100 cursor-pointer hover:shadow-card-md transition-shadow"
@@ -1248,6 +1257,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           {t('flow_fase_x_van').replace('{x}', String(idx + 1)).replace('{y}', String(STATUSSEN.length))}
           {' — '}{STATUS_LABELS[b.status] || b.status}
         </div>
+        {toonVerpak && (
+          <div className="text-[11px] mt-1 font-medium" style={{color: 'var(--t-accent)'}}>
+            {t('flow_verwacht_verpakken')}: {fmtD(new Date(vp.verpakkenMs as number).toISOString())}
+          </div>
+        )}
       </div>
     )
   }
@@ -1262,6 +1276,19 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
           <SectionHeader title={t('flow_titel')} info={betaBadge} />
           <div className="p-4 text-sm text-gray-600">{t('flow_intro')}</div>
+        </div>
+
+        {/* Planning-tijdlijn (samengevoegd met de vroegere Planning-pagina) */}
+        <div className="space-y-3">
+          <div className="bg-white rounded-xl shadow-card overflow-hidden">
+            <SectionHeader title={t('flow_tijdlijn_titel')} open={tijdlijnOpen}
+              onToggle={() => setTijdlijnOpen(o => !o)} rounded={tijdlijnOpen ? 'top' : 'full'}
+              info={<span className="text-xs text-gray-500">{t('flow_tijdlijn_info')}</span>} />
+          </div>
+          {tijdlijnOpen && (
+            <PlanningPage embedded bat={bat} setBat={setBat} bi={bi} recepten={recepten}
+              ing={ing} lots={lots} producten={producten} tanks={tanks} planningInst={planningInst} />
+          )}
         </div>
 
         <div>
@@ -1760,6 +1787,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             {t('flow_schema_verwacht_klaar').replace('{datum}', fmtMs(proj.verwachtKlaarMs))}
           </div>
         )}
+        {(() => {
+          // Volledige tijdpad tot verpakken: gistingsschema + conditioneringstijd.
+          const vp = verpakProjectie(selB, Number(planningInst?.conditioneren_dagen ?? 14))
+          if (vp.verpakkenMs == null) return null
+          return (
+            <div className="mt-1 text-xs font-semibold" style={{color: 'var(--t-accent)'}}>
+              {t('flow_verwacht_verpakken')}: {fmtMs(vp.verpakkenMs)}
+              <span className="text-gray-400 font-normal"> · {t('flow_tijdpad_detail')
+                .replace('{gist}', String(vp.fermentDagen)).replace('{cond}', String(vp.condDagen))}</span>
+            </div>
+          )
+        })()}
         <div className="flex items-center gap-2 mt-2">
           {stapIdx > 0 && (
             <Btn v="secondary" s="sm" onClick={() => gaNaarStap(stapIdx - 1)}>← {t('flow_schema_vorige')}</Btn>

@@ -12,6 +12,7 @@
 // milliseconden binnen (Date.now()) zodat de functies testbaar zijn zonder klok.
 
 import type { VergistingsStap } from '../types'
+import { sumVergistingDagen } from './calculations'
 
 export const DAG_MS = 86_400_000
 
@@ -123,6 +124,40 @@ export function vergistProjectie(
   }
   const verwachtKlaarMs = stappen.length ? stappen[stappen.length - 1].eindMs : null
   return { stappen, verwachtKlaarMs }
+}
+
+// ── Verwachte verpakdatum ───────────────────────────────────────────────────
+// Wanneer is het bier naar verwachting gereed voor verpakking? Tijdpad vanaf de
+// giststart (of, voor een geplande batch, de brouwdatum): eerst het hele
+// vergistingsschema (som van de stap-dagen), daarna de conditioneringstijd.
+// Consistent met berekenTanktijd(profiel, conditionerenDagen) in calculations.ts.
+// Een handmatig gezette `tank_dagen` (totale tankbezetting) wint als die er is,
+// zodat de planning-gantt en deze projectie hetzelfde tonen.
+export interface VerpakProjectie {
+  startMs: number | null        // giststart of geplande brouwdatum
+  fermentDagen: number          // som van de vergistingsstappen (dagen)
+  fermentEindMs: number | null  // startMs + fermentDagen
+  condDagen: number             // conditioneringstijd (dagen)
+  totaalDagen: number           // totale tankbezetting (gisten + conditioneren)
+  verpakkenMs: number | null    // verwachte datum gereed voor verpakking
+  geschat: boolean              // true = totaal berekend (geen expliciete tank_dagen)
+}
+
+export function verpakProjectie(
+  batch: VergistBatch & { tank_dagen?: number | string | null },
+  conditionerenDagen: number,
+): VerpakProjectie {
+  const startMs = vergistStartMs(batch)
+  const profiel = Array.isArray(batch.vergistingsprofiel) ? batch.vergistingsprofiel : []
+  const fermentDagen = sumVergistingDagen(profiel)
+  const condDagen = Math.max(0, Number(conditionerenDagen) || 0)
+  const berekend = Math.ceil(fermentDagen + condDagen)
+  const tankDagen = Number(batch.tank_dagen)
+  const heeftTankDagen = !isNaN(tankDagen) && tankDagen > 0
+  const totaalDagen = heeftTankDagen ? tankDagen : berekend
+  const fermentEindMs = startMs != null && fermentDagen > 0 ? startMs + fermentDagen * DAG_MS : null
+  const verpakkenMs = startMs != null && totaalDagen > 0 ? startMs + totaalDagen * DAG_MS : null
+  return { startMs, fermentDagen, fermentEindMs, condDagen, totaalDagen, verpakkenMs, geschat: !heeftTankDagen }
 }
 
 // Enige waarheidsbron voor 'de huidige stap van deze batch is gereed'. De
