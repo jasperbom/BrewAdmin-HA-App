@@ -15,11 +15,13 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "pdfjs-dist": "3.11.174",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "xlsx": "file:./vendor/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.1",

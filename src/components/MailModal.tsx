@@ -38,6 +38,10 @@ interface Props {
   /** Optionele Mollie-betaalcontext; als aanwezig verschijnt een checkbox
    *  "betaallink toevoegen" die vóór verzenden een Mollie-betaling aanmaakt. */
   mollie?: MollieMailContext | null
+  /** Bouwt de bijlagen opnieuw met de Mollie-betaallink erin verwerkt (QR +
+   *  link op de factuur-PDF). Alleen aangeroepen als er een betaallink is
+   *  aangemaakt; faalt dit, dan wordt de oorspronkelijke PDF verstuurd. */
+  regenerateAttachments?: (payUrl: string) => Promise<MailAttachment[] | null>
   onClose: () => void
   onSent?: () => void
 }
@@ -46,7 +50,7 @@ const LOGO_CID = 'brewadmin-logo'
 
 export default function MailModal({
   title, initialTo, initialSubject, initialText, attachments,
-  brewery, logoDataUri, replyTo, smtpReady, mollie, onClose, onSent,
+  brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, onClose, onSent,
 }: Props) {
   const [to, setTo] = React.useState(initialTo || '')
   const [subject, setSubject] = React.useState(initialSubject || '')
@@ -121,13 +125,22 @@ export default function MailModal({
         logoCid: inlineLogo ? LOGO_CID : undefined,
         payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
       })
+      // Bijlagen: bij een betaallink de factuur-PDF opnieuw bouwen mét QR +
+      // link erin. Mislukt dat, dan gewoon de al gegenereerde PDF meesturen.
+      let finalAttachments = attachments
+      if (payUrl && regenerateAttachments) {
+        try {
+          const re = await regenerateAttachments(payUrl)
+          if (re && re.length) finalAttachments = re
+        } catch { /* val terug op de oorspronkelijke bijlage */ }
+      }
       await mailSendApi({
         to: to.split(/[,;]/).map(s => s.trim()).filter(Boolean),
         subject,
         text: finalText,
         html: finalHtml,
         replyTo,
-        attachments,
+        attachments: finalAttachments,
         inlineImages: inlineLogo ? [inlineLogo] : undefined,
       })
       setStatus({type:'ok', msg: t('mail_send_success')})
