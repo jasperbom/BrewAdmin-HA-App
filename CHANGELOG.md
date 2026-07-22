@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.51] — 2026-07-22
+
+### Gewijzigd — Mollie-betaallink ook vanaf de bestellingen-pagina + dubbel €-teken opgelost
+
+- De checkbox **"Mollie betaallink toevoegen"** verschijnt nu óók bij het
+  mailen van een factuur **vanaf de bestellingen-pagina** (knop *Factuur mailen*
+  op een order). Voorheen zat de betaallink alleen in de mailflow op de
+  boekhoudingspagina.
+- **Opgelost:** in de factuurmail stond het bedrag met een **dubbel €-teken**
+  ("€ €12,34"). De helper `fmt()` bevat zelf al een €, dus de extra `'€ '`-prefix
+  is verwijderd — zowel op de boekhoudings- als de bestellingen-pagina.
+
 ## [1.11.50] — 2026-07-22
 
 ### Toegevoegd — Mollie-betaallink op verkoopfacturen
