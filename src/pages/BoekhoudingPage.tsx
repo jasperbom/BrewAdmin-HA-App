@@ -17,6 +17,7 @@ import AccijnsPage from './AccijnsPage'
 import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
+import { qrDataUrl } from '../utils/qr'
 
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, onInitialTabConsumed=()=>{}}: any) {
@@ -932,6 +933,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     attachments?: {filename: string, contentBase64: string, mimeType: string}[]
     factuurId?: number
     mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
+    regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState<number | null>(null)
 
@@ -993,6 +995,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             factuurnummer: factuurNr,
           }
         : null
+      // Bij een Mollie-betaallink de PDF opnieuw bouwen mét QR-code + link erin.
+      const regenerateAttachments = mollieCtx ? async (payUrl: string) => {
+        const qr = await qrDataUrl(payUrl)
+        const html2 = buildFactuurHTML(resolved, factuur, breweryMet, appName, factuurLogo || logo, {url: payUrl, qrDataUrl: qr})
+        const pdf2 = await htmlToPdfBase64(html2)
+        return [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdf2, mimeType: 'application/pdf'}]
+      } : undefined
       setMailModal({
         title: t('mail_modal_title_factuur'),
         to: ontvanger,
@@ -1001,6 +1010,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         factuurId: factuur.id,
         mollie: mollieCtx,
+        regenerateAttachments,
       })
     } catch (e: any) {
       alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
@@ -3994,6 +4004,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           replyTo={(breweryDetails as any)?.email}
           smtpReady={!!smtpCreds?.enabled}
           mollie={mailModal.mollie}
+          regenerateAttachments={mailModal.regenerateAttachments}
           onClose={() => setMailModal(null)}
           onSent={() => {
             if (mailModal.factuurId) {

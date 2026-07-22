@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.52] — 2026-07-22
+
+### Toegevoegd — Betaallink met QR-code op de factuur-PDF
+
+- Mail je een factuur met de **Mollie betaallink** aangevinkt, dan staat die
+  link nu ook **op de factuur-PDF zelf**, met een **QR-code** die de klant kan
+  scannen om direct online te betalen (iDEAL, creditcard, Bancontact e.a.).
+- De PDF met QR wordt op het moment van verzenden gebouwd (dan is de betaallink
+  bekend); lukt dat onverhoopt niet, dan wordt de factuur gewoon zónder QR
+  verstuurd. Werkt op beide mailplekken (boekhoudings- én bestellingen-pagina).
+
+### Gewijzigd — Duidelijkere kolomnamen op de factuur
+
+- De kolommen **"Netto"** en **"Bruto"** heten nu **"Excl. BTW"** en
+  **"Incl. BTW"** (in de regeltabel én het BTW-overzicht), zodat de betekenis
+  meteen duidelijk is. De bedragen en berekening blijven ongewijzigd.
+
+### Technisch
+
+- Nieuwe util `src/utils/qr.ts` (QR als PNG-data-URL via `qrcode`);
+  `buildFactuurHTML`/`buildFactuurBody` krijgen een optionele `payInfo` die als
+  betaalblok (QR + tekst) op de factuur wordt gerenderd.
+- `MailModal` krijgt een `regenerateAttachments`-callback die bij een betaallink
+  de factuur-PDF opnieuw bouwt; beide mailflows leveren die callback.
+- Nieuwe dependency `qrcode` (browser-build met canvas), `@types/qrcode` als
+  dev-dependency. i18n-sleutels `lbl_kol_excl_btw`, `lbl_kol_incl_btw`,
+  `lbl_online_betalen`, `lbl_scan_qr` in nl/en/de/fr/es.
+
 ## [1.11.51] — 2026-07-22
 
 ### Gewijzigd — Mollie-betaallink ook vanaf de bestellingen-pagina + dubbel €-teken opgelost

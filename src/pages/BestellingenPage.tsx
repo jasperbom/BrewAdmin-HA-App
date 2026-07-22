@@ -12,6 +12,7 @@ import SectionHeader from '../components/ui/SectionHeader'
 import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
+import { qrDataUrl } from '../utils/qr'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
@@ -1311,6 +1312,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
      * overgang van 'nieuw' naar 'bevestigd' na succesvolle verzending. */
     kind?: 'pakbon' | 'factuur' | 'bevestiging'
     mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
+    regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
 
@@ -1398,6 +1400,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             factuurnummer: factuurNr,
           }
         : null
+      // Bij een Mollie-betaallink de PDF opnieuw bouwen mét QR-code + link erin.
+      const regenerateAttachments = mollieCtx ? async (payUrl: string) => {
+        const qr = await qrDataUrl(payUrl)
+        const html2 = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryDetails||{}, appName, factuurLogo||logo, {url: payUrl, qrDataUrl: qr})
+        const pdf2 = await htmlToPdfBase64(html2)
+        return [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdf2, mimeType: 'application/pdf'}]
+      } : undefined
       setMailModal({
         title: t('mail_modal_title_factuur'),
         to: (resolvedSelectedOrder?.klant_email || ''),
@@ -1406,6 +1415,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         kind: 'factuur',
         mollie: mollieCtx,
+        regenerateAttachments,
       })
     } catch (e: any) {
       alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
@@ -1735,6 +1745,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             replyTo={(breweryDetails as any)?.email}
             smtpReady={!!smtpCreds?.enabled}
             mollie={mailModal.mollie}
+            regenerateAttachments={mailModal.regenerateAttachments}
             onClose={() => setMailModal(null)}
             onSent={() => {
               // Per maild-type een leesbare log-omschrijving — wordt onderaan de

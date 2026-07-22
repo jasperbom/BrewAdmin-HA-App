@@ -263,7 +263,8 @@ function buildFactuurBody(
   factuur: any,
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  payInfo?: {url: string, qrDataUrl?: string} | null
 ): {bodyHtml: string, filename: string} | null {
   if (!factuur) return null
 
@@ -355,9 +356,9 @@ function buildFactuurBody(
           <th class="r">Aantal</th>
           <th class="r">Prijs</th>
           <th class="r">BTW%</th>
-          <th class="r">Netto</th>
+          <th class="r">${t('lbl_kol_excl_btw')}</th>
           <th class="r">BTW</th>
-          <th class="r">Bruto</th>
+          <th class="r">${t('lbl_kol_incl_btw')}</th>
         </tr>
       </thead>
       <tbody>
@@ -371,9 +372,9 @@ function buildFactuurBody(
         <thead>
           <tr>
             <th>BTW-tarief</th>
-            <th class="r">Netto</th>
+            <th class="r">${t('lbl_kol_excl_btw')}</th>
             <th class="r">BTW</th>
-            <th class="r">Bruto</th>
+            <th class="r">${t('lbl_kol_incl_btw')}</th>
           </tr>
         </thead>
         <tbody>${btwRows}</tbody>
@@ -396,6 +397,14 @@ function buildFactuurBody(
       <div>o.v.v. factuurnummer <strong>${esc(factuurnummer)}</strong></div>
     </div>` : ''}
 
+    ${(payInfo?.qrDataUrl && !isCredit) ? `<div style="margin-top:4mm;display:flex;align-items:center;gap:5mm;border:1px solid #e5e7eb;border-radius:2mm;padding:3mm 4mm;">
+      <img src="${payInfo.qrDataUrl}" alt="QR" style="width:26mm;height:26mm;flex:0 0 auto;display:block;" />
+      <div style="font-size:9pt;line-height:1.5;color:#374151;">
+        <div style="font-weight:bold;color:#92400e;font-size:10.5pt;margin-bottom:1mm;">${t('lbl_online_betalen')}</div>
+        <div>${t('lbl_scan_qr')}</div>
+      </div>
+    </div>` : ''}
+
     ${order?.opmerkingen ? `<div class="remarks" style="margin-top:3mm;"><strong>Opmerking:</strong> ${esc(order.opmerkingen)}</div>` : ''}
   </div>`
 
@@ -408,9 +417,10 @@ export function buildFactuurHTML(
   factuur: any,
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  payInfo?: {url: string, qrDataUrl?: string} | null
 ): string {
-  const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
+  const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo, payInfo)
   if (!result) return ''
   return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(result.filename)}</title><style>${CSS}</style></head><body>${result.bodyHtml}</body></html>`
 }
