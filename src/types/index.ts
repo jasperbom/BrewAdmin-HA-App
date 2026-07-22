@@ -86,7 +86,15 @@ export interface Batch {
   log?: BatchLogEntry[]
   platogehalte?: number | string
   gn_code?: string
+  // Primair product van de batch (biernaam/etiket). Blijft leidend voor
+  // biernaam-prefill, planning-recept en voorraadnamen.
   product_id?: number
+  // Extra producten waaraan deze batch óók gekoppeld is, náást product_id.
+  // Eén brouwsel kan over meerdere producten verdeeld worden (bijv. wanneer een
+  // deel van de afvulling naar een ander etiket wordt ge-rebrand). Voor de
+  // kostprijs telt het afgevulde volume per product — deze koppeling bepaalt
+  // alleen onder welke producten de batch zichtbaar/geteld wordt.
+  product_ids?: number[]
   created_at?: string
   tank_historie?: TankHistorieEntry[]
   hygiene_checks?: Record<number, boolean>     // @deprecated: gemigreerd naar taken_checks

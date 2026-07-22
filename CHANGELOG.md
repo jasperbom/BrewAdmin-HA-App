@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.48] — 2026-07-22
+
+### Toegevoegd — Batch aan meerdere producten koppelen (kostprijs naar afgevuld volume)
+
+- Een **batch kan nu aan meerdere producten** gekoppeld worden (naast het
+  primaire product), zodat één brouwsel dat over verschillende etiketten wordt
+  verdeeld onder elk product zichtbaar is en correct wordt doorgerekend.
+- **Rebrand koppelt de batch automatisch aan het doelproduct.** Wanneer (een
+  deel van) een afvulling naar een ander product wordt ge-rebrand, wordt de
+  batch aan dat product gekoppeld — voor het productoverzicht én de
+  prijsberekening.
+- **Kostprijs per product wordt nu naar afgevuld volume verdeeld.** Elke
+  afgevulde liter telt tegen de kostprijs/liter van zijn batch; een batch die
+  over meerdere producten is verdeeld belast elk product alleen met zíjn eigen
+  liters (geen dubbeltelling meer op het primaire product).
+- Op het **productdetail** kun je batches handmatig **koppelen en ontkoppelen**;
+  de batchlijst toont ook batches die via een afvulling aan het product hangen.
+
+### Technisch
+
+- Nieuw veld `product_ids` op de batch (naast `product_id`); Excel-backup blijft
+  automatisch round-trippen (geneste array).
+- `berekenProductKostprijs` herschreven naar volume-per-product; nieuwe helpers
+  `productIdsVoorBatch`/`batchHoortBijProduct` met Vitest-dekking.
+
 ## [1.11.47] — 2026-07-22
 
 ### Toegevoegd — Batch-flow: snelkoppeling-banners, duidelijker tegels en zoeken

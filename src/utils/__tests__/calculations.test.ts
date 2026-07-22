@@ -3,6 +3,7 @@ import {
   accijnsCalc, tariefVoorDatum, accijnsMaandGesloten, berekenWinstVerlies,
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
   berekenProductKostprijs, berekenCogs, telThtAlerts, laatsteOpenAccijnsMaand,
+  productIdsVoorBatch, batchHoortBijProduct,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -140,6 +141,72 @@ describe('batchkostprijs en COGS (ERP 2.6)', () => {
     expect(c.cogs).toBeCloseTo((24 * 0.33 + 20) * (120 / 53), 9)
     expect(c.litersZonderKostprijs).toBe(10)
     expect(c.aantalUitleveringen).toBe(3)
+  })
+})
+
+describe('berekenProductKostprijs — verdeling naar afgevuld volume per product', () => {
+  it('splitst het batchvolume over de producten van de afvullingen (rebrand)', () => {
+    // Eén batch, kostprijs 120 over 53 L. 33 L is als product 8 ge-rebrand;
+    // de 20 L-afvulling heeft geen eigen product en valt terug op batch.product_id (9).
+    const batches = [{id: 1, product_id: 9, overige_kosten: 60, electra_kosten: 20, water_kosten: 10, schoonmaak_kosten: 10}]
+    const bi = [{batch_id: 1, lot_id: 5, hoeveelheid: 10}]
+    const lots = [{id: 5, prijs_per_eenheid: 2}]
+    const afvullingen = [
+      {id: 11, batch_id: 1, product_id: 8, inhoud_per_eenheid: 0.33, hoeveelheid: 100},  // → product 8
+      {id: 12, batch_id: 1, inhoud_per_eenheid: 20, hoeveelheid: 1},                      // → product 9 (batch)
+    ]
+    const p9 = berekenProductKostprijs(9, batches, bi, lots, afvullingen, [], [], [])
+    const p8 = berekenProductKostprijs(8, batches, bi, lots, afvullingen, [], [], [])
+    expect(p9.totaal_liter).toBeCloseTo(20, 9)
+    expect(p8.totaal_liter).toBeCloseTo(33, 9)
+    // Per-liter blijft de batch-kostprijs (120/53) voor beide producten.
+    expect(p9.kostprijs_per_liter).toBeCloseTo(120 / 53, 9)
+    expect(p8.kostprijs_per_liter).toBeCloseTo(120 / 53, 9)
+    // Geen dubbeltelling: som van de toegerekende kosten = de batchkosten.
+    expect(p8.totaal_kosten + p9.totaal_kosten).toBeCloseTo(120, 9)
+  })
+
+  it('middelt de kostprijs/liter gewogen over batches die hetzelfde product voeden', () => {
+    const batches = [
+      {id: 1, product_id: 9, overige_kosten: 100},  // 100 / 100 L = 1.0 /L
+      {id: 2, product_id: 9, overige_kosten: 300},  // 300 / 100 L = 3.0 /L
+    ]
+    const afvullingen = [
+      {id: 11, batch_id: 1, product_id: 9, inhoud_per_eenheid: 1, hoeveelheid: 100},
+      {id: 12, batch_id: 2, product_id: 9, inhoud_per_eenheid: 1, hoeveelheid: 100},
+    ]
+    const pk = berekenProductKostprijs(9, batches, [], [], afvullingen, [], [], [])
+    expect(pk.totaal_liter).toBeCloseTo(200, 9)
+    expect(pk.totaal_kosten).toBeCloseTo(400, 9)
+    expect(pk.kostprijs_per_liter).toBeCloseTo(2.0, 9)  // gewogen gemiddelde
+  })
+
+  it('telt liters uit batches zonder bekende kostprijs niet mee', () => {
+    const batches = [{id: 1, product_id: 9}]  // geen kosten → kostprijs/liter 0
+    const afvullingen = [{id: 11, batch_id: 1, product_id: 9, inhoud_per_eenheid: 1, hoeveelheid: 50}]
+    const pk = berekenProductKostprijs(9, batches, [], [], afvullingen, [], [], [])
+    expect(pk.kostprijs_per_liter).toBe(0)
+    expect(pk.totaal_liter).toBe(0)
+  })
+})
+
+describe('productIdsVoorBatch / batchHoortBijProduct', () => {
+  it('combineert primair product_id met extra product_ids en ontdubbelt', () => {
+    expect(productIdsVoorBatch({product_id: 3, product_ids: [5, 3, 7]})).toEqual([3, 5, 7])
+  })
+  it('werkt met alleen product_id, alleen product_ids of geen van beide', () => {
+    expect(productIdsVoorBatch({product_id: 4})).toEqual([4])
+    expect(productIdsVoorBatch({product_ids: [8, 9]})).toEqual([8, 9])
+    expect(productIdsVoorBatch({})).toEqual([])
+  })
+  it('negeert lege/ongeldige waarden en normaliseert strings', () => {
+    expect(productIdsVoorBatch({product_id: '', product_ids: ['6', null, undefined, 6]})).toEqual([6])
+  })
+  it('batchHoortBijProduct herkent primaire en extra koppelingen', () => {
+    const b = {product_id: 3, product_ids: [7]}
+    expect(batchHoortBijProduct(b, 3)).toBe(true)
+    expect(batchHoortBijProduct(b, 7)).toBe(true)
+    expect(batchHoortBijProduct(b, 9)).toBe(false)
   })
 })
 

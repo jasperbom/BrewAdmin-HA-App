@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
-import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen } from '../utils/calculations'
+import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen } from '../utils/calculations'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -71,6 +71,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const [fotoTab, setFotoTab] = useState(0);
   const [artForm, setArtForm] = useState<any>(null);
   const [receptSelectOpen, setReceptSelectOpen] = useState(false);
+  const [batchSelectOpen, setBatchSelectOpen] = useState(false);
   const [voorraadOpen, setVoorraadOpen] = useState(true);
   const [afboekModal, setAfboekModal] = useState<any>(null);
   const [afboekForm, setAfboekForm] = useState<{
@@ -226,7 +227,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const avBatchIds = new Set(
         (av||[]).filter((a: any) => a.product_id === p.id).map((a: any) => a.batch_id)
       );
-      const pBatches = (bat||[]).filter((b: any) => b.product_id === p.id || avBatchIds.has(b.id));
+      const pBatches = (bat||[]).filter((b: any) => batchHoortBijProduct(b, p.id) || avBatchIds.has(b.id));
       const batchIds = new Set(pBatches.map((b: any) => b.id));
       const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
       const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
@@ -250,7 +251,23 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const gekoppeld = new Set(selProduct?.recept_ids || []);
     return (recepten||[]).filter((r: any) => !gekoppeld.has(r.id));
   }, [selProduct, recepten]);
-  const selBatches = useMemo(() => (bat||[]).filter((b: any) => b.product_id === sel), [bat, sel]);
+  // Batches van het geselecteerde product: direct gekoppeld (primair product_id
+  // of extra product_ids) én batches die via een afvulling aan dit product zijn
+  // gekoppeld (afvulling.product_id, bijv. na een rebrand).
+  const selBatches = useMemo(() => {
+    if (!sel) return [];
+    const avBatchIds = new Set((av||[]).filter((a: any) => a.product_id === sel).map((a: any) => a.batch_id));
+    return (bat||[]).filter((b: any) => batchHoortBijProduct(b, sel) || avBatchIds.has(b.id));
+  }, [bat, av, sel]);
+  // Batches die (nog) niet aan dit product gekoppeld zijn — kandidaten voor de
+  // handmatige koppel-selector op het productdetail.
+  const beschikbareBatches = useMemo(() => {
+    if (!sel) return [];
+    const gekoppeld = new Set(selBatches.map((b: any) => b.id));
+    return (bat||[])
+      .filter((b: any) => !gekoppeld.has(b.id))
+      .sort((a: any, b: any) => String(b.datum||'').localeCompare(String(a.datum||'')) || Number(b.id||0) - Number(a.id||0));
+  }, [bat, selBatches, sel]);
 
   // Voorraad voor geselecteerd product: afvullingen gegroepeerd per verpakkingstype
   const selVoorraad = useMemo(() => {
@@ -311,7 +328,15 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
     setProducten((prev: any[]) => prev.filter((p: any) => p.id !== sel));
     setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.product_id !== sel));
-    setBat((prev: any[]) => prev.map((b: any) => b.product_id === sel ? {...b, product_id: undefined} : b));
+    setBat((prev: any[]) => prev.map((b: any) => {
+      const heeftExtra = (b.product_ids||[]).some((id: any) => Number(id) === Number(sel));
+      if (Number(b.product_id) !== Number(sel) && !heeftExtra) return b;
+      return {
+        ...b,
+        ...(Number(b.product_id) === Number(sel) ? {product_id: undefined} : {}),
+        product_ids: (b.product_ids||[]).filter((id: any) => Number(id) !== Number(sel)),
+      };
+    }));
     setSel(null);
   };
 
@@ -373,6 +398,37 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   const ontkoppelRecept = (receptId: string) => {
     setForm((f: any) => ({...f, recept_ids: (f.recept_ids||[]).filter((id: string) => id !== receptId)}));
+  };
+
+  // Batch handmatig aan het geselecteerde product koppelen (extra product_ids).
+  // Het primaire product_id van de batch blijft ongemoeid; de batch kan zo aan
+  // meerdere producten hangen. De kostprijs verdeelt naar afgevuld volume.
+  const koppelBatch = (batchId: number) => {
+    if (!sel || !setBat) return;
+    const b = (bat||[]).find((x: any) => x.id === batchId);
+    if (!b || batchHoortBijProduct(b, sel)) { setBatchSelectOpen(false); return; }
+    setBat((prev: any[]) => (prev||[]).map((x: any) => x.id === batchId
+      ? {...x, product_ids: [...(x.product_ids||[]), sel]}
+      : x));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batchId, actie: 'gewijzigd',
+      omschrijving: `Batch "${b.naam || ''}" gekoppeld aan product "${selProduct?.naam || ''}"`});
+    setBatchSelectOpen(false);
+  };
+
+  // Batch loskoppelen van het product: verwijder het product uit product_ids en,
+  // als het het primaire product was, uit product_id. Batches die alleen via een
+  // afvulling gekoppeld zijn worden hier niet getoond met een ontkoppelknop.
+  const ontkoppelBatch = (batchId: number) => {
+    if (!sel || !setBat) return;
+    const b = (bat||[]).find((x: any) => x.id === batchId);
+    setBat((prev: any[]) => (prev||[]).map((x: any) => {
+      if (x.id !== batchId) return x;
+      const next: any = {...x, product_ids: (x.product_ids||[]).filter((id: any) => Number(id) !== Number(sel))};
+      if (Number(x.product_id) === Number(sel)) next.product_id = undefined;
+      return next;
+    }));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batchId, actie: 'gewijzigd',
+      omschrijving: `Batch "${b?.naam || ''}" ontkoppeld van product "${selProduct?.naam || ''}"`});
   };
 
   // Artikel CRUD
@@ -523,6 +579,16 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           ...rebrandVelden,
         },
       ]);
+    }
+    // Koppel de batch óók aan het doelproduct (extra product_ids). Zo verschijnt
+    // de batch onder dat product en telt de kostprijs — die naar afgevuld volume
+    // wordt verdeeld — het ge-rebrande deel bij het nieuwe product mee.
+    if (setBat) {
+      setBat((prev: any[]) => (prev||[]).map((b: any) => (
+        b.id === a.batch_id && !batchHoortBijProduct(b, doelId)
+          ? {...b, product_ids: [...(b.product_ids||[]), doelId]}
+          : b
+      )));
     }
     const vanNaam = vanProduct?.naam || t('lbl_onbekend');
     const naarNaam = doelProduct?.naam || t('lbl_onbekend');
@@ -1455,20 +1521,48 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 info={selBatches.length}
               />
               <div className="p-3">
-                {selBatches.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_producten')}</div>}
-                {selBatches.slice(0, 10).map((b: any) => (
-                  <div key={b.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
-                    <div>
-                      <span className="text-sm font-medium">{b.naam}</span>
-                      {b.batch_nummer && <span className="text-xs text-gray-400 ml-2">#{b.batch_nummer}</span>}
+                {selBatches.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_batches_gekoppeld')}</div>}
+                {selBatches.slice(0, 10).map((b: any) => {
+                  const direct = batchHoortBijProduct(b, sel);
+                  return (
+                    <div key={b.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
+                      <div>
+                        <span className="text-sm font-medium">{b.naam}</span>
+                        {b.batch_nummer && <span className="text-xs text-gray-400 ml-2">#{b.batch_nummer}</span>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {b.ABV && <span className="text-xs text-gray-500">{Number(b.ABV).toFixed(1)}%</span>}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
+                        {direct && setBat && (
+                          <button type="button" onClick={() => ontkoppelBatch(b.id)}
+                            title={t('btn_ontkoppel_batch')}
+                            className="text-xs text-gray-400 hover:text-red-600 px-1 leading-none">✕</button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {b.ABV && <span className="text-xs text-gray-500">{Number(b.ABV).toFixed(1)}%</span>}
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {selBatches.length > 10 && <div className="text-xs text-gray-400 text-center py-1">+{selBatches.length - 10}</div>}
+
+                {/* Batch koppelen */}
+                {setBat && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <Btn onClick={() => setBatchSelectOpen(!batchSelectOpen)} s="sm" v="ghost">{t('btn_koppel_batch')}</Btn>
+                    {batchSelectOpen && (beschikbareBatches.length > 0 ? (
+                      <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto bg-white shadow-sm">
+                        {beschikbareBatches.map((b: any) => (
+                          <button key={b.id} onClick={() => koppelBatch(b.id)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
+                            <span className="font-medium">{b.naam}</span>
+                            {b.batch_nummer && <span className="text-gray-400 ml-2 text-xs">#{b.batch_nummer}</span>}
+                            {b.datum && <span className="text-gray-400 ml-2 text-xs">{fmtD(b.datum)}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-xs text-gray-400 py-1">{t('lbl_geen_batches_beschikbaar')}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
