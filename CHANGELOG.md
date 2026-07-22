@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.47] — 2026-07-22
+
+### Toegevoegd — Batch-flow: snelkoppeling-banners, duidelijker tegels en zoeken
+
+- **Snelkoppeling-banners** bovenaan de app voor een batch die aandacht vraagt,
+  met een knop om direct naar die batch te gaan:
+  - **blauw** wanneer een batch aan het **brouwen** is (brouwdag bezig);
+  - **paars** wanneer een batch tijdens het **conditioneren wordt
+    gecarboniseerd** (actieve sessie die z'n doel nog niet bereikt heeft — de
+    bestaande groene "doel bereikt"-banner blijft het voltooien dekken).
+  - Beide zijn te sluiten en volgen dezelfde meldingsinstelling (`on_screen`)
+    als de bestaande banners.
+- **Batchtegels** tonen nu als titel de **productnaam** (met het **recept** klein
+  eronder) als die er is, anders de **receptnaam**; het **batchnummer** staat
+  prominenter in beeld (vet, in de themakleur).
+- **Zoekbalk** bij de **gesloten batches** op de batch-flow-pagina (zoekt op
+  naam, product, recept, batchnummer en stijl), met een lege-resultaat-melding.
+
 ## [1.11.46] — 2026-07-22
 
 ### Gewijzigd — Brouwplanning samengevoegd met de batch-flow + tijdpad naar verpakken

@@ -23,6 +23,7 @@ import Badge from '../components/ui/Badge'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import SectionHeader from '../components/ui/SectionHeader'
+import SearchInput from '../components/ui/SearchInput'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
@@ -341,6 +342,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Inklapbare planning-tijdlijn bovenaan het overzicht (samengevoegd met de
   // vroegere losse Planning-pagina). Standaard ingeklapt.
   const [tijdlijnOpen, setTijdlijnOpen] = useState(false)
+  // Zoekterm voor de gesloten batches.
+  const [zoekGesloten, setZoekGesloten] = useState('')
   const [mForm, setMForm] = useState({sg: '', temp: '', ph: ''})
   // Verliesregistratie (per fase hetzelfde formulier)
   const [verliesForm, setVerliesForm] = useState<any>({datum: tod(), bron: 'monster', liter: '', notitie: ''})
@@ -420,6 +423,32 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     (bat || []).filter((b: any) => b.status === 'Gesloten')
       .sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || '')),
     [bat])
+
+  // Titel-resolutie voor een batchkaart: productnaam wint (met het recept klein
+  // eronder), anders de receptnaam, anders de eigen batchnaam. Ook gebruikt door
+  // het zoekfilter van de gesloten batches.
+  const batchTitels = (b: any) => {
+    const prod = b.product_id ? (producten || []).find((p: any) => p.id === b.product_id) : null
+    const recept = b.recept_id
+      ? (recepten || []).find((r: any) => r.id === b.recept_id && r.is_huidige !== false)
+      : null
+    const productNaam = prod?.naam || null
+    const receptNaam = recept?.naam || null
+    const titel = productNaam || receptNaam || b.naam || t('lbl_naamloos')
+    return { titel, subRecept: productNaam && receptNaam ? receptNaam : null, productNaam, receptNaam }
+  }
+
+  // Gesloten batches gefilterd op de zoekterm (naam/product/recept/nummer/stijl).
+  const geslotenGefilterd = useMemo(() => {
+    const q = zoekGesloten.trim().toLowerCase()
+    if (!q) return geslotenBatches
+    return geslotenBatches.filter((b: any) => {
+      const { titel, productNaam, receptNaam } = batchTitels(b)
+      return [titel, productNaam, receptNaam, b.batch_nummer, b.stijl, b.naam, b.biernaam]
+        .some((x: any) => x && String(x).toLowerCase().includes(q))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geslotenBatches, zoekGesloten, producten, recepten])
 
   // ── Gedeelde helpers ───────────────────────────────────────────────────────
   const addLog = (entry: any) => setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), ...entry}])
@@ -1233,18 +1262,27 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     // Alleen zinvol zolang de batch nog niet verpakt/gesloten is.
     const vp = verpakProjectie(b, Number(planningInst?.conditioneren_dagen ?? 14))
     const toonVerpak = !['Afgevuld', 'Verpakt', 'Gesloten'].includes(b.status) && vp.verpakkenMs != null
+    const { titel, subRecept } = batchTitels(b)
     return (
       <div
         className="bg-white rounded-xl p-4 shadow-card border border-gray-100 cursor-pointer hover:shadow-card-md transition-shadow"
         onClick={() => openBatch(b.id)}
       >
-        <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-start justify-between gap-2 mb-1">
           <div className="min-w-0">
-            <div className="font-semibold text-gray-800 truncate">{b.naam || t('lbl_naamloos')}</div>
-            <div className="text-xs text-gray-500">{b.batch_nummer}{b.stijl ? ` · ${b.stijl}` : ''}</div>
+            <div className="font-semibold text-gray-800 truncate">{titel}</div>
+            {subRecept && <div className="text-xs text-gray-500 truncate">{subRecept}</div>}
           </div>
           <Badge s={b.status} />
         </div>
+        {(b.batch_nummer || b.stijl) && (
+          <div className="flex items-baseline gap-2 mb-2">
+            {b.batch_nummer && (
+              <span className="font-mono font-bold text-sm" style={{color: 'var(--t-accent)'}}>{b.batch_nummer}</span>
+            )}
+            {b.stijl && <span className="text-xs text-gray-400 truncate">{b.stijl}</span>}
+          </div>
+        )}
         <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
           {b.datum && <span>{fmtD(b.datum)}</span>}
           {b.tank && <span>· {b.tank}</span>}
@@ -1344,8 +1382,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             <SectionHeader title={t('flow_gesloten')} open={geslotenOpen} onToggle={() => setGeslotenOpen(o => !o)}
               rounded={geslotenOpen ? 'top' : 'full'} info={geslotenBatches.length} />
             {geslotenOpen && (
-              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {geslotenBatches.map((b: any) => <BatchKaart key={b.id} b={b} />)}
+              <div className="p-4">
+                <div className="mb-3">
+                  <SearchInput value={zoekGesloten} onChange={setZoekGesloten}
+                    placeholder={t('flow_zoek_gesloten')} />
+                </div>
+                {geslotenGefilterd.length === 0 ? (
+                  <div className="text-sm text-gray-500 italic">{t('flow_geen_zoekresultaat')}</div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {geslotenGefilterd.map((b: any) => <BatchKaart key={b.id} b={b} />)}
+                  </div>
+                )}
               </div>
             )}
           </div>

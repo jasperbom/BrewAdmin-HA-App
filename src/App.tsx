@@ -1109,6 +1109,34 @@ function App() {
       .filter((x: any) => !stapAcked.includes(x.ackKey))
   }, [bat, stapAcked, notificatieInst?.on_screen, stapNowTick])
 
+  // Snelkoppeling-banner voor een batch die aan het brouwen is (brouwdag bezig).
+  const [brouwAcked, setBrouwAcked] = React.useState<number[]>([])
+  const brouwendeBatches = React.useMemo(() => {
+    if (notificatieInst?.on_screen === false) return []
+    return (bat || [])
+      .filter((b: any) => b.status === 'Brouwen' && !brouwAcked.includes(b.id))
+      .map((b: any) => ({ id: b.id as number, naam: b.naam || b.biernaam || t('lbl_naamloos') }))
+  }, [bat, brouwAcked, notificatieInst?.on_screen])
+
+  // Snelkoppeling-banner voor een batch die tijdens het conditioneren wordt
+  // gecarboniseerd (actieve sessie die z'n doel nog niet heeft bereikt — de
+  // "doel bereikt"-banner hierboven dekt het voltooien).
+  const [carbActiefAcked, setCarbActiefAcked] = React.useState<number[]>([])
+  const carboniserendeBatches = React.useMemo(() => {
+    if (notificatieInst?.on_screen === false) return []
+    const seen = new Set<number>()
+    const out: Array<{ id: number, naam: string }> = []
+    for (const s of (carbSessies || [])) {
+      if (s.status !== 'actief' || s.doel_bereikt_op) continue
+      const b = (bat || []).find((x: any) => x.id === s.batch_id)
+      if (!b || b.status !== 'Conditioneren') continue
+      if (seen.has(b.id) || carbActiefAcked.includes(b.id)) continue
+      seen.add(b.id)
+      out.push({ id: b.id as number, naam: b.naam || b.biernaam || t('lbl_naamloos') })
+    }
+    return out
+  }, [bat, carbSessies, carbActiefAcked, notificatieInst?.on_screen])
+
   const doExport = () => {
     excelExport({
       ingredienten: ing, lots, batches: bat, batch_ingredienten: bi,
@@ -1504,6 +1532,42 @@ function App() {
                 <button onClick={() => { setNavBatchId(x.id); setPage('batchflow') }}
                   className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
                 <button onClick={() => setStapAcked((p: string[]) => [...p, x.ackKey])}
+                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {brouwendeBatches.length > 0 && (
+        <div className="sticky top-0 z-50 space-y-px">
+          {brouwendeBatches.map((x: any) => (
+            <div key={x.id} className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                <span>{t('brouw_notify_screen').replace('{batch}', x.naam)}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => { setNavBatchId(x.id); setPage('batchflow') }}
+                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
+                <button onClick={() => setBrouwAcked((p: number[]) => [...p, x.id])}
+                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {carboniserendeBatches.length > 0 && (
+        <div className="sticky top-0 z-50 space-y-px">
+          {carboniserendeBatches.map((x: any) => (
+            <div key={x.id} className="bg-purple-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                <span>{t('carb_actief_notify_screen').replace('{batch}', x.naam)}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => { setNavBatchId(x.id); setPage('batchflow') }}
+                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
+                <button onClick={() => setCarbActiefAcked((p: number[]) => [...p, x.id])}
                   className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
               </div>
             </div>
