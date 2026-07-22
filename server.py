@@ -1155,6 +1155,12 @@ def _harden_secure_files() -> None:
                 os.chmod(f, 0o600)
             except OSError:
                 pass
+    # Persistente sessies (bevatten sessietokens) — zelfde 0600-behandeling.
+    if _sessie_bestand().exists():
+        try:
+            os.chmod(_sessie_bestand(), 0o600)
+        except OSError:
+            pass
 
 
 # ── Directe toegang met HA-login (tweede poort) ──────────────────────────
@@ -1166,8 +1172,10 @@ def _harden_secure_files() -> None:
 #   - login met het échte HA-account: de Supervisor valideert
 #     gebruikersnaam/wachtwoord via POST http://supervisor/auth
 #     (config.yaml `auth_api: true`);
-#   - na login een HttpOnly/SameSite=Strict sessiecookie (in-memory,
-#     verlopen na inactiviteit; addon-herstart = opnieuw inloggen);
+#   - na login een HttpOnly/SameSite=Strict sessiecookie; standaard 24 u
+#     glijdend, of 30 dagen met 'onthoud mij'. Sessies worden 0600 op schijf
+#     bewaard (brewadmin_sessies.json) en bij herstart hersteld, zodat een
+#     addon-update niet uitlogt;
 #   - X-Remote-User-headers worden op deze poort volledig genegeerd
 #     (die zijn daar spoofbaar) — de sessiegebruiker telt als gebruiker
 #     voor het rollenmodel (4.2) en de audit;
@@ -1182,7 +1190,12 @@ SSL_DIR = Path(os.environ.get('BREWADMIN_SSL_DIR', '/ssl'))
 LOGIN_PATH = '/api/login'
 LOGOUT_PATH = '/api/logout'
 SESSIE_COOKIE = 'brewadmin_sessie'
-SESSIE_DUUR = 24 * 3600  # 24 uur, glijdend verlengd bij gebruik
+SESSIE_DUUR = 24 * 3600           # 24 uur, glijdend verlengd bij gebruik
+SESSIE_DUUR_LANG = 30 * 24 * 3600  # 30 dagen — 'onthoud mij' bij het inloggen
+# Sessies overleven een addon-herstart: ze staan naast de in-memory dict ook in
+# een 0600-bestand in DATA_DIR (bevat sessietokens — zelfde gevoeligheid als de
+# db met credentials, dus nooit via de data-API bereikbaar en nooit in backups).
+SESSIE_BESTAND_NAAM = 'brewadmin_sessies.json'
 
 _LOGIN_RATE_WINDOW = 300  # 5 minuten
 _LOGIN_RATE_MAX = 5       # max mislukte pogingen per IP per venster
@@ -1190,6 +1203,7 @@ _login_pogingen: dict = defaultdict(list)
 
 _sessies: dict = {}
 _sessie_lock = threading.Lock()
+_sessies_laatst_bewaard = 0.0  # monotone tijd van de laatste schrijfronde
 
 
 def _login_rate_ok(ip: str) -> bool:
@@ -1203,34 +1217,111 @@ def _login_poging_registreer(ip: str) -> None:
     _login_pogingen[ip].append(time.monotonic())
 
 
-def _sessie_maak(gebruiker: str) -> str:
+def _sessie_bestand() -> Path:
+    """Pad naar het sessie-bestand (DATA_DIR wordt bij runtime gelezen zodat de
+    testsuite met een tijdelijke DATA_DIR blijft werken)."""
+    return DATA_DIR / SESSIE_BESTAND_NAAM
+
+
+def _sessies_bewaar(force: bool = False) -> None:
+    """Schrijf de actieve sessies atomair (0600) naar schijf. Glijdende
+    verlengingen worden hooguit eens per 5 minuten weggeschreven (throttle) om
+    schrijf-churn te vermijden; aanmaken/verwijderen forceert een schrijfronde."""
+    global _sessies_laatst_bewaard
+    now = time.monotonic()
+    if not force and now - _sessies_laatst_bewaard < 300:
+        return
+    _sessies_laatst_bewaard = now
+    with _sessie_lock:
+        snapshot = {tok: dict(s) for tok, s in _sessies.items()}
+    try:
+        pad = _sessie_bestand()
+        tmp = pad.with_suffix('.tmp')
+        tmp.write_text(json.dumps(snapshot), encoding='utf-8')
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, pad)
+    except OSError as exc:
+        _log('sessie', f'kon sessies niet bewaren: {exc}', level=logging.ERROR)
+
+
+def _sessies_laad() -> None:
+    """Herstel sessies uit het bestand bij het opstarten; verlopen sessies (op
+    wandkloktijd) worden meteen weggelaten. Corrupte inhoud wordt genegeerd."""
+    pad = _sessie_bestand()
+    try:
+        if not pad.exists():
+            return
+        rauw = json.loads(pad.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        _log('sessie', f'kon sessies niet laden: {exc}', level=logging.ERROR)
+        return
+    if not isinstance(rauw, dict):
+        return
+    now = time.time()
+    geldig: dict = {}
+    for tok, s in rauw.items():
+        if not isinstance(s, dict):
+            continue
+        verloopt = s.get('verloopt')
+        gebruiker = s.get('gebruiker')
+        if not isinstance(verloopt, (int, float)) or not gebruiker or verloopt < now:
+            continue
+        duur = s.get('duur')
+        if not isinstance(duur, (int, float)) or duur <= 0:
+            duur = SESSIE_DUUR
+        geldig[tok] = {'gebruiker': gebruiker, 'verloopt': float(verloopt), 'duur': float(duur)}
+    with _sessie_lock:
+        _sessies.clear()
+        _sessies.update(geldig)
+    if geldig:
+        _log('sessie', f'{len(geldig)} sessie(s) hersteld uit opslag')
+
+
+def _sessie_maak(gebruiker: str, lang: bool = False) -> str:
+    """Maak een sessie. `lang` = 'onthoud mij' (30 dagen i.p.v. 24 uur). De duur
+    wordt op de sessie bewaard zodat de glijdende verlenging hem aanhoudt."""
     token = secrets.token_urlsafe(32)
+    duur = SESSIE_DUUR_LANG if lang else SESSIE_DUUR
     with _sessie_lock:
         _sessies[token] = {'gebruiker': gebruiker,
-                           'verloopt': time.monotonic() + SESSIE_DUUR}
+                           'verloopt': time.time() + duur,
+                           'duur': duur}
+    _sessies_bewaar(force=True)
     return token
 
 
 def _sessie_gebruiker(token: str) -> str | None:
-    """Gebruiker bij dit sessietoken, of None. Geldige sessies worden
-    glijdend verlengd; verlopen sessies worden opgeruimd."""
+    """Gebruiker bij dit sessietoken, of None. Geldige sessies worden glijdend
+    verlengd (met de eigen duur van de sessie); verlopen sessies worden
+    opgeruimd. Wandkloktijd zodat verlopen ook over een herstart heen klopt."""
     if not token:
         return None
-    now = time.monotonic()
+    now = time.time()
+    verwijderd = False
     with _sessie_lock:
         sessie = _sessies.get(token)
         if sessie is None:
             return None
         if sessie['verloopt'] < now:
             del _sessies[token]
-            return None
-        sessie['verloopt'] = now + SESSIE_DUUR
-        return sessie['gebruiker']
+            verwijderd = True
+            gebruiker = None
+        else:
+            sessie['verloopt'] = now + sessie.get('duur', SESSIE_DUUR)
+            gebruiker = sessie['gebruiker']
+    # Buiten de lock persisteren (_sessies_bewaar pakt de lock zelf).
+    if verwijderd:
+        _sessies_bewaar(force=True)
+        return None
+    _sessies_bewaar()  # glijdende verlenging, throttled
+    return gebruiker
 
 
 def _sessie_verwijder(token: str) -> None:
     with _sessie_lock:
-        _sessies.pop(token, None)
+        bestond = _sessies.pop(token, None) is not None
+    if bestond:
+        _sessies_bewaar(force=True)
 
 
 # ── HA-gebruikerslijst via de core-websocket ─────────────────────────────
@@ -1577,6 +1668,9 @@ border-radius:.5rem;border:1px solid #44403c;background:#1c1917;color:#e7e5e4}
 button{width:100%;padding:.6rem;border:none;border-radius:.5rem;
 background:__ACCENT__;color:#fff;font-weight:600;cursor:pointer}
 button:hover{filter:brightness(.85)}
+.onthoud{display:flex;align-items:center;gap:.5rem;text-transform:none;
+letter-spacing:normal;font-size:.8rem;color:#d6d3d1;margin:-.25rem 0 1rem;cursor:pointer}
+.onthoud input{width:auto;margin:0}
 #fout{color:#f87171;font-size:.8rem;min-height:1.2rem;margin:.5rem 0 0}
 </style></head><body>
 <form id="f">
@@ -1587,6 +1681,7 @@ __LOGO__
 <input id="u" autocomplete="username" required>
 <label for="w">Wachtwoord</label>
 <input id="w" type="password" autocomplete="current-password" required>
+<label class="onthoud"><input id="onthoud" type="checkbox"> Onthoud mij (30 dagen)</label>
 <button type="submit">__KNOP__</button>
 <div id="fout"></div>
 </form>
@@ -1602,6 +1697,7 @@ document.getElementById('f').addEventListener('submit', async (e) => {
       body: JSON.stringify({
         username: document.getElementById('u').value,
         password: document.getElementById('w').value,
+        onthoud: document.getElementById('onthoud').checked,
       }),
     });
     if (r.ok) { location.reload(); return; }
@@ -2051,6 +2147,134 @@ def _carbonatie_co2_tick() -> None:
         _log('carb-co2', f"notify {service}: {'ok' if ok else 'mislukt'}", level=logging.ERROR)
 
 
+def _vergisting_stap_loop(interval: float = 300.0) -> None:
+    """Achtergrondloop: stuur een HA-melding zodra een vergistingsstap zijn
+    geplande duur (in dagen) heeft bereikt, zodat de brouwer kan controleren en
+    doorschakelen naar de volgende stap. Draait ook als de browser dicht is; de
+    scherm-banner in de app rekent zelf, deze loop verzorgt alleen de push.
+    Dag-precisie, dus elke paar minuten is ruim voldoende."""
+    time.sleep(30)  # kort wachten zodat de server volledig opgestart is
+    while True:
+        try:
+            _vergisting_stap_tick()
+        except Exception as exc:
+            _log('verg-stap', f'error: {exc}', level=logging.ERROR)
+        time.sleep(interval)
+
+
+def _vergisting_stap_dagen(stap: dict) -> float | None:
+    """Geplande duur van een stap in dagen, of None wanneer niet (zinvol)
+    ingevuld. Spiegelt stapDoelDagen in src/utils/vergisting.ts."""
+    try:
+        n = float(stap.get('tijd'))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def _vergisting_start_iso(batch: dict) -> str | None:
+    """Startmoment van de huidige stap: het expliciete `vergisting_stap_start`,
+    anders — voor een nog niet doorgeschakelde stap — de tank_historie-entry met
+    status 'Vergisten' (`from`), anders de batchdatum. Spiegelt
+    huidigeStapStartMs/vergistStartMs in src/utils/vergisting.ts."""
+    s = batch.get('vergisting_stap_start')
+    if s:
+        return s
+    hist = batch.get('tank_historie') or []
+    if isinstance(hist, list):
+        for h in hist:
+            if isinstance(h, dict) and h.get('status') == 'Vergisten' and h.get('from'):
+                return h['from']
+    return batch.get('datum')
+
+
+def _iso_naar_epoch(iso: str | None) -> float | None:
+    """ISO-timestamp of dag-datum (YYYY-MM-DD) → epoch-seconden (UTC). Dag-datums
+    worden op middernacht UTC geijkt. None bij een onparseerbare waarde."""
+    if not iso or not isinstance(iso, str):
+        return None
+    s = iso.strip()
+    try:
+        if 'T' in s:
+            dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt.timestamp()
+        d = datetime.date.fromisoformat(s[:10])
+        return datetime.datetime(d.year, d.month, d.day,
+                                 tzinfo=datetime.timezone.utc).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def _vergisting_stap_tick() -> None:
+    """Eén ronde 'stap gereed'-bewaking: voor elke batch die aan het gisten is
+    (niet in een cold-crash) met een vergistingsprofiel, controleer of de huidige
+    stap zijn geplande dagen heeft bereikt. Zo ja en nog niet eerder gemeld voor
+    deze stap-start: stuur eenmalig een HA-melding. Dedup via
+    `vergisting_stap_gemeld_start` op de batch (doorschakelen zet een nieuwe
+    stap-start → opnieuw meldbaar)."""
+    with _data_lock:
+        notif = _read_json('notificatie_instellingen', {}) or {}
+    # De push is de enige serververantwoordelijkheid; zonder notify-service valt
+    # er niets te doen (de scherm-banner rekent client-side).
+    if not notif.get('enabled') or not notif.get('notify_service'):
+        return
+
+    with _data_lock:
+        batches = _read_json('batches', []) or []
+    now = time.time()
+    updates: dict = {}                       # batch-id -> gemeld_start iso
+    notify_jobs: list[tuple[str, str, str]] = []
+
+    for b in batches:
+        if b.get('status') != 'Vergisten' or b.get('cold_crash_datum'):
+            continue
+        profiel = b.get('vergistingsprofiel')
+        if not isinstance(profiel, list) or not profiel:
+            continue
+        try:
+            idx = int(b.get('vergisting_stap_idx') or 0)
+        except (TypeError, ValueError):
+            idx = 0
+        idx = max(0, min(len(profiel) - 1, idx))
+        stap = profiel[idx] if isinstance(profiel[idx], dict) else {}
+        doel = _vergisting_stap_dagen(stap)
+        if doel is None:
+            continue
+        start_iso = _vergisting_start_iso(b)
+        start_epoch = _iso_naar_epoch(start_iso)
+        if start_epoch is None:
+            continue
+        if now - start_epoch < doel * 86400:
+            continue  # stap nog niet gereed
+        if b.get('vergisting_stap_gemeld_start') == start_iso:
+            continue  # al gemeld voor deze stap-start
+
+        naam = b.get('naam') or b.get('biernaam') or f"batch {b.get('id')}"
+        stapnaam = stap.get('type') or f"stap {idx + 1}"
+        dag = int((now - start_epoch) // 86400) + 1
+        titel = 'BrewAdmin — gistingsstap gereed'
+        bericht = (f"{naam}: gistingsstap '{stapnaam}' is gereed (dag {dag}, "
+                   f"gepland {int(doel)} d). Controleer en ga door naar de volgende stap.")
+        notify_jobs.append((notif['notify_service'], titel, bericht))
+        updates[b.get('id')] = start_iso
+
+    if updates:
+        # Her-lees onder lock en merge alleen de dedup-markering terug, zodat we
+        # gelijktijdige UI-schrijfacties niet overschrijven (zoals cold-crash).
+        with _data_lock:
+            current = _read_json('batches', []) or []
+            for b in current:
+                if b.get('id') in updates:
+                    b['vergisting_stap_gemeld_start'] = updates[b['id']]
+            _write_json('batches', current)
+
+    for service, titel, bericht in notify_jobs:
+        ok = _ha_notify(service, titel, bericht)
+        _log('verg-stap', f"notify {service}: {'ok' if ok else 'mislukt'}", level=logging.ERROR)
+
+
 def _auto_metingen_tick() -> None:
     """Eén ronde automatische metingen: check HA-instellingen, lees batches,
     haal temperatuur op voor elke actieve batch met sensor, en sla metingen op."""
@@ -2388,6 +2612,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             body = json.loads(raw)
             gebruiker = str(body.get('username', '')).strip()
             wachtwoord = str(body.get('password', ''))
+            onthoud = bool(body.get('onthoud', False))
         except (json.JSONDecodeError, AttributeError):
             self._json(400, {'error': 'invalid json'})
             return
@@ -2417,14 +2642,16 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 # wachtwoord zodat de gebruiker weet wáár hij moet kijken.
                 self._json(502, {'error': 'auth backend', 'detail': uitkomst})
             return
-        token = _sessie_maak(gebruiker)
+        token = _sessie_maak(gebruiker, lang=onthoud)
         _audit_write('login', '-', ip=ip, gebruiker=gebruiker,
-                     rol=_gebruiker_rol(gebruiker))
+                     rol=_gebruiker_rol(gebruiker), onthoud=onthoud)
         # Secure-vlag zodra de poort HTTPS draait: de browser stuurt de
-        # sessiecookie dan nooit over onversleuteld verkeer mee.
+        # sessiecookie dan nooit over onversleuteld verkeer mee. De cookie-
+        # levensduur volgt de sessieduur ('onthoud mij' = 30 dagen, anders 24 u).
         secure = '; Secure' if getattr(self.server, 'brewadmin_ssl', False) else ''
+        max_age = SESSIE_DUUR_LANG if onthoud else SESSIE_DUUR
         cookie = (f'{SESSIE_COOKIE}={token}; Path=/; HttpOnly; '
-                  f'SameSite=Strict; Max-Age={SESSIE_DUUR}{secure}')
+                  f'SameSite=Strict; Max-Age={max_age}{secure}')
         self._json(200, {'ok': True, 'gebruiker': gebruiker,
                          'rol': _gebruiker_rol(gebruiker)},
                    extra_headers=[('Set-Cookie', cookie)])
@@ -3777,6 +4004,10 @@ if __name__ == '__main__':
 
     _harden_secure_files()
 
+    # Herstel opgeslagen sessies (directe-toegangspoort) zodat een addon-herstart
+    # niet uitlogt; verlopen sessies vallen bij het laden meteen af.
+    _sessies_laad()
+
     # Threadreferenties in _threads zodat /api/health hun status kan melden.
     _threads['backup'] = threading.Thread(target=_backup_loop, daemon=True)
     _threads['backup'].start()
@@ -3796,6 +4027,11 @@ if __name__ == '__main__':
     _threads['carbonatie_co2'] = threading.Thread(target=_carbonatie_co2_loop, daemon=True)
     _threads['carbonatie_co2'].start()
     _log('server', 'Carbonisatie-CO₂-bewakingsthread gestart (elke minuut)')
+
+    # Start background vergistingsstap-melding-thread (every 5 minutes — dag-precisie)
+    _threads['vergisting_stap'] = threading.Thread(target=_vergisting_stap_loop, daemon=True)
+    _threads['vergisting_stap'].start()
+    _log('server', 'Vergistingsstap-melding-thread gestart (elke 5 minuten)')
 
     # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
     # van buitenaf wanneer de gebruiker de poort bewust publiceert in de

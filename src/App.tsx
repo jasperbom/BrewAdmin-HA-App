@@ -10,6 +10,7 @@ import { accijnsCalc, tariefVoorDatum, telThtAlerts } from './utils/calculations
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, btwAangifteBoeking, voegBoekingToe } from './utils/journaal'
 import { periodeKeyLabel, telOpenstaandeBtwPerioden } from './utils/btw'
 import { schoonTakenOp, telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './utils/taken'
+import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { telOpenstaandeBestellingen } from './utils/picking'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
@@ -1068,6 +1069,48 @@ function App() {
       s.status === 'actief' && s.doel_bereikt_op && !carbAcked.includes(s.id))
   }, [carbSessies, carbAcked, notificatieInst?.on_screen])
 
+  // Scherm-melding "vergistingsstap gereed": puur client-side gerekend uit de
+  // batchdata in het geheugen (geen refetch → geen risico op overschrijven van
+  // lopende bewerkingen). De server-tick verzorgt los daarvan de HA-push.
+  // Bevestigen/doorschakelen onthouden we per stap-start zodat een nieuwe stap
+  // de melding opnieuw kan tonen.
+  const [stapAcked, setStapAcked] = React.useState<string[]>([])
+  // Lichte klok-tick zodat de melding vanzelf verschijnt als een stap tijdens
+  // het openstaan van de app zijn dagen bereikt — alleen actief als er batches
+  // zijn die aan het gisten zijn (anders geen onnodige re-renders).
+  const heeftGistendeBatch = React.useMemo(
+    () => (bat || []).some((b: any) => b?.status === 'Vergisten' && !b?.cold_crash_datum
+      && Array.isArray(b?.vergistingsprofiel) && b.vergistingsprofiel.length > 0),
+    [bat]
+  )
+  const [stapNowTick, setStapNowTick] = React.useState(0)
+  React.useEffect(() => {
+    if (!heeftGistendeBatch) return
+    const id = setInterval(() => setStapNowTick(n => n + 1), 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [heeftGistendeBatch])
+  const stapGereedBatches = React.useMemo(() => {
+    if (notificatieInst?.on_screen === false) return []
+    const nu = Date.now()
+    void stapNowTick  // her-evalueer bij de klok-tick
+    return (bat || [])
+      .filter((b: any) => batchStapGereed(b, nu))
+      .map((b: any) => {
+        const start = huidigeStapStartMs(b)
+        const idx = huidigeStapIdx(b)
+        const stap = (b.vergistingsprofiel || [])[idx] || {}
+        const dagen = dagenInStap(start, nu)
+        return {
+          id: b.id as number,
+          ackKey: `${b.id}:${b.vergisting_stap_start || start || ''}`,
+          naam: b.naam || b.biernaam || t('lbl_naamloos'),
+          stap: stap.type || t('lbl_stap_n').replace('{n}', String(idx + 1)),
+          dag: dagen != null ? Math.floor(dagen) + 1 : 1,
+        }
+      })
+      .filter((x: any) => !stapAcked.includes(x.ackKey))
+  }, [bat, stapAcked, notificatieInst?.on_screen, stapNowTick])
+
   const doExport = () => {
     excelExport({
       ingredienten: ing, lots, batches: bat, batch_ingredienten: bi,
@@ -1451,6 +1494,25 @@ function App() {
           })}
         </div>
       )}
+      {stapGereedBatches.length > 0 && (
+        <div className="sticky top-0 z-50 space-y-px">
+          {stapGereedBatches.map((x: any) => (
+            <div key={x.ackKey} className="bg-amber-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                <span>{t('verg_notify_screen').replace('{batch}', x.naam)
+                  .replace('{stap}', x.stap).replace('{dag}', String(x.dag))}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => { setNavBatchId(x.id); setPage('batchflow') }}
+                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
+                <button onClick={() => setStapAcked((p: string[]) => [...p, x.ackKey])}
+                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <nav className="text-white sticky top-0 z-40 shadow-lg border-b" style={navStyle}>
         <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-2 overflow-x-auto">
           <img
@@ -1531,7 +1593,7 @@ function App() {
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} />}
         {page==='batches' && <BatchesPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} bat={bat} setBat={setBat} bi={bi} setBi={setBi} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bfCreds={bfCreds} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} accijnsInst={accijnsInst} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} wcCreds={wcCreds} artikelen={artikelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} hopAddities={hopAddities} setHopAddities={setHopAddities} dryHops={dryHops} setDryHops={setDryHops} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} brouwprocesInst={brouwprocesInst} haInst={haInst} haTankTemps={haTankTemps} planningInst={planningInst} acc={acc} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} capa={haccpCapa} setCapa={setHaccpCapa} recepten={recepten} />}
-        {page==='batchflow' && <BatchFlowPage bat={bat} setBat={setBat} bi={bi} setBi={setBi} ing={ing} lots={lots} setLots={setLots} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} artikelen={artikelen} accijnsInst={accijnsInst} acc={acc} recepten={recepten} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} dryHops={dryHops} setDryHops={setDryHops} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwprocesInst={brouwprocesInst} coldcrashInst={coldcrashInst} haInst={haInst} haTankTemps={haTankTemps} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} />}
+        {page==='batchflow' && <BatchFlowPage bat={bat} setBat={setBat} bi={bi} setBi={setBi} ing={ing} lots={lots} setLots={setLots} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} artikelen={artikelen} accijnsInst={accijnsInst} acc={acc} recepten={recepten} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} dryHops={dryHops} setDryHops={setDryHops} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwprocesInst={brouwprocesInst} coldcrashInst={coldcrashInst} haInst={haInst} haTankTemps={haTankTemps} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} openBatchId={navBatchId} />}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} afboekingen={afboekingen} smtpCreds={smtpCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} />}

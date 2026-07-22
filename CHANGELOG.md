@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.45] — 2026-07-22
+
+### Toegevoegd — Batchflow: 'gistingsstap gereed'-melding + duidelijke verwachting
+
+- **Wens**: in het vergistingsschema op de batch-flow-pagina was niet
+  duidelijk hoe lang elke fermentatiestap duurt en wat de verwachting is.
+  Er kwam ook geen seintje wanneer een stap klaar is om door te schakelen.
+- **Wijziging**:
+  - Het vergistingsschema toont nu per stap de **verwachte einddatum**
+    (cascadeberekening vanaf de start van de huidige stap) en onderaan de
+    totale **"Verwacht klaar op {datum}"**.
+  - Zodra de geplande duur van de huidige stap is bereikt verschijnt een
+    duidelijke **"stap gereed"-oproep** met de knop *Ga door naar volgende
+    stap*; bij de laatste stap een afrondingshint i.p.v. de knop.
+  - Een **scherm-banner** bovenaan de app meldt elke gistende batch waarvan
+    de stap gereed is (client-side gerekend, geen refetch) met *Open batch*.
+  - Een **server-tick** stuurt daarnaast eenmalig een **HA-push** zodra een
+    stap zijn dagen bereikt — werkt ook als de app dicht is. Dedup via
+    `vergisting_stap_gemeld_start`; doorschakelen her-armt de melding.
+    Gebruikt de bestaande meldingsinstellingen (`notificatie_instellingen`).
+  - Pure rekenkern in `src/utils/vergisting.ts` (strict + Vitest), server-tick
+    gedekt in `tests/test_server.py`.
+
+### Toegevoegd — Losse webapp: 'onthoud mij' en sessies die een herstart overleven
+
+- **Wens**: de login op de directe-toegangspoort onthield niets — na elke
+  addon-herstart/update en na 24 uur moest je opnieuw inloggen.
+- **Wijziging**:
+  - **'Onthoud mij'**-optie op de loginpagina: sessie én cookie gaan dan
+    30 dagen mee i.p.v. 24 uur (glijdend verlengd bij gebruik).
+  - Sessies worden nu **0600 op schijf bewaard** (`brewadmin_sessies.json`)
+    en bij het opstarten hersteld, zodat een addon-update je niet uitlogt.
+    Verlopen sessies vallen bij het laden meteen af; wandkloktijd zodat het
+    verlopen ook over een herstart heen klopt.
+  - De gebruikersnaam/wachtwoord zelf worden nog steeds nooit door de app
+    opgeslagen (dat blijft de browser-wachtwoordmanager via `autocomplete`).
+  - Gedekt in `tests/test_server.py` (cookie-duur, persistentie, verlopen).
+
 ## [1.11.44] — 2026-07-20
 
 ### Toegevoegd — Batchflow: volledige carbonisatie bij conditioneren

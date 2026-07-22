@@ -527,8 +527,12 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - CORS: localhost/127.0.0.1/[::1] only
 - Directe-toegangspoort (8098, `config.yaml ports: null` = standaard uit):
   vereist HA-login via de Supervisor-auth-API (`auth_api: true`), geeft een
-  HttpOnly/SameSite=Strict sessiecookie (in-memory, 24 u glijdend; `Secure`
-  zodra de poort HTTPS draait). Addon-optie `ssl: true` = HTTPS met
+  HttpOnly/SameSite=Strict sessiecookie (standaard 24 u glijdend, of 30 dagen
+  met 'onthoud mij' bij het inloggen; `Secure` zodra de poort HTTPS draait).
+  Sessies worden 0600 op schijf bewaard (`brewadmin_sessies.json` in de
+  data-dir, bevat sessietokens — nooit via de data-API of in backups) en bij
+  herstart hersteld, zodat een addon-update niet uitlogt. Addon-optie
+  `ssl: true` = HTTPS met
   certificaten uit `/ssl` (eigen domein via Let's Encrypt-/DuckDNS-addon),
   dagelijks herladen; onbruikbaar certificaat → poort start NIET
   (fail-closed, nooit stil onversleuteld). `/data/options.json` is van de
