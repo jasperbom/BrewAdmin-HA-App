@@ -11,6 +11,7 @@
 # Draaien: python3 -m pytest
 
 import base64
+import datetime
 import hashlib
 import http.client
 import http.server
@@ -1167,3 +1168,189 @@ class TestLogging:
         assert regels[0]['level'] == 'info'
         assert 'ts' in regels[0]
         assert regels[1]['level'] == 'error'
+
+
+class TestVergistingStap:
+    """Server-tick die een HA-push stuurt zodra een vergistingsstap zijn
+    geplande dagen bereikt, met dedup via `vergisting_stap_gemeld_start`."""
+
+    @staticmethod
+    def _iso_dagen_geleden(dagen):
+        dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=dagen)
+        return dt.isoformat()
+
+    @staticmethod
+    def _seed(batches, enabled=True, service='mobile_app_test'):
+        srv._write_json('notificatie_instellingen',
+                        {'enabled': enabled, 'notify_service': service, 'on_screen': True})
+        srv._write_json('batches', batches)
+
+    @staticmethod
+    def _clean():
+        conn = srv._db()
+        with conn:
+            conn.execute("DELETE FROM records WHERE key='batches'")
+            conn.execute("DELETE FROM versies WHERE key='batches'")
+            conn.execute("DELETE FROM kv WHERE key='notificatie_instellingen'")
+
+    def test_meldt_gereed_en_dedupt(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        rijp = {'id': 1, 'naam': 'Tripel', 'status': 'Vergisten',
+                'vergistingsprofiel': [{'type': 'Hoofdgisting', 'temp': 20, 'tijd': 7}],
+                'vergisting_stap_idx': 0,
+                'vergisting_stap_start': self._iso_dagen_geleden(8)}
+        jong = {'id': 2, 'naam': 'Saison', 'status': 'Vergisten',
+                'vergistingsprofiel': [{'type': 'Hoofdgisting', 'temp': 24, 'tijd': 7}],
+                'vergisting_stap_idx': 0,
+                'vergisting_stap_start': self._iso_dagen_geleden(2)}
+        self._seed([rijp, jong])
+        try:
+            srv._vergisting_stap_tick()
+            # Alleen de rijpe batch krijgt een melding.
+            assert len(calls) == 1
+            assert 'Tripel' in calls[0][2]
+            # Dedup-markering is naar de batch geschreven.
+            b1 = next(x for x in srv._read_json('batches') if x['id'] == 1)
+            assert b1.get('vergisting_stap_gemeld_start') == rijp['vergisting_stap_start']
+            # Tweede ronde: geen nieuwe melding (dedup).
+            srv._vergisting_stap_tick()
+            assert len(calls) == 1
+            # Doorschakelen zet een nieuwe stap-start → opnieuw meldbaar.
+            huidig = srv._read_json('batches')
+            for x in huidig:
+                if x['id'] == 1:
+                    x['vergisting_stap_start'] = self._iso_dagen_geleden(10)
+            srv._write_json('batches', huidig)
+            srv._vergisting_stap_tick()
+            assert len(calls) == 2
+        finally:
+            self._clean()
+
+    def test_geen_melding_zonder_notify_service(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(1) or True))
+        rijp = {'id': 5, 'naam': 'X', 'status': 'Vergisten',
+                'vergistingsprofiel': [{'temp': 20, 'tijd': 3}],
+                'vergisting_stap_start': self._iso_dagen_geleden(9)}
+        self._seed([rijp], enabled=False)
+        try:
+            srv._vergisting_stap_tick()
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_cold_crash_en_andere_status_overgeslagen(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(1) or True))
+        cc = {'id': 7, 'status': 'Vergisten', 'cold_crash_datum': self._iso_dagen_geleden(1),
+              'vergistingsprofiel': [{'temp': 20, 'tijd': 3}],
+              'vergisting_stap_start': self._iso_dagen_geleden(9)}
+        cond = {'id': 8, 'status': 'Conditioneren',
+                'vergistingsprofiel': [{'temp': 20, 'tijd': 3}],
+                'vergisting_stap_start': self._iso_dagen_geleden(9)}
+        self._seed([cc, cond])
+        try:
+            srv._vergisting_stap_tick()
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_valt_terug_op_tank_historie_zonder_stap_start(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(1) or True))
+        datum = (datetime.date.today() - datetime.timedelta(days=9)).isoformat()
+        b = {'id': 9, 'naam': 'Stout', 'status': 'Vergisten',
+             'vergistingsprofiel': [{'temp': 18, 'tijd': 5}],
+             'tank_historie': [{'status': 'Vergisten', 'from': datum}]}
+        self._seed([b])
+        try:
+            srv._vergisting_stap_tick()
+            assert len(calls) == 1
+        finally:
+            self._clean()
+
+
+class TestOnthoudSessies:
+    """'Onthoud mij' (langere cookie/sessie) en persistente sessies over een
+    addon-herstart heen (directe-toegangspoort)."""
+
+    def _mock_auth(self):
+        import os as _os
+        echt = srv._ha_auth_check
+        srv._ha_auth_check = lambda u, w: 'ok' if (u, w) == ('jasper', 'geheim') else 'ongeldig'
+        _os.environ['SUPERVISOR_TOKEN'] = 'testtoken'
+        srv._login_pogingen.clear()
+
+        def herstel():
+            srv._ha_auth_check = echt
+            _os.environ.pop('SUPERVISOR_TOKEN', None)
+            srv._login_pogingen.clear()
+        return herstel
+
+    def _opruimen(self):
+        with srv._sessie_lock:
+            srv._sessies.clear()
+        try:
+            srv._sessie_bestand().unlink()
+        except OSError:
+            pass
+
+    def test_onthoud_mij_verlengt_cookie_en_sessie(self, app_direct):
+        herstel = self._mock_auth()
+        try:
+            # Zonder 'onthoud mij': 24 uur.
+            _, _, h = req(app_direct, 'POST', '/api/login',
+                          body={'username': 'jasper', 'password': 'geheim'})
+            assert f'Max-Age={srv.SESSIE_DUUR}' in h.get('Set-Cookie', '')
+            # Met 'onthoud mij': 30 dagen — cookie én sessie dragen de lange duur.
+            srv._login_pogingen.clear()
+            _, _, h2 = req(app_direct, 'POST', '/api/login',
+                           body={'username': 'jasper', 'password': 'geheim', 'onthoud': True})
+            cookie = h2.get('Set-Cookie', '')
+            assert f'Max-Age={srv.SESSIE_DUUR_LANG}' in cookie
+            assert 'HttpOnly' in cookie and 'SameSite=Strict' in cookie
+            token = cookie.split(';')[0].split('=', 1)[1]
+            assert srv._sessies[token]['duur'] == srv.SESSIE_DUUR_LANG
+        finally:
+            self._opruimen()
+            herstel()
+
+    def test_sessies_overleven_herstart(self, app_direct):
+        herstel = self._mock_auth()
+        try:
+            _, _, h = req(app_direct, 'POST', '/api/login',
+                          body={'username': 'jasper', 'password': 'geheim'})
+            cookie = h.get('Set-Cookie', '').split(';')[0]
+            token = cookie.split('=', 1)[1]
+            # Het bestand bestaat en staat op 0600 (bevat het sessietoken).
+            import os as _os
+            import stat as _stat
+            pad = srv._sessie_bestand()
+            assert pad.exists()
+            assert _stat.S_IMODE(_os.stat(pad).st_mode) == 0o600
+            # Simuleer een herstart: in-memory dict leeg → cookie werkt niet meer.
+            with srv._sessie_lock:
+                srv._sessies.clear()
+            assert req(app_direct, 'GET', '/api/whoami', headers={'Cookie': cookie})[0] == 401
+            # Na laden uit het bestand is de sessie terug en werkt de cookie weer.
+            srv._sessies_laad()
+            assert token in srv._sessies
+            status, wie, _ = req(app_direct, 'GET', '/api/whoami', headers={'Cookie': cookie})
+            assert status == 200 and wie['gebruiker'] == 'jasper'
+        finally:
+            self._opruimen()
+            herstel()
+
+    def test_verlopen_sessie_wordt_niet_hersteld(self, app_direct):
+        pad = srv._sessie_bestand()
+        pad.write_text(json.dumps({
+            'tok-verlopen': {'gebruiker': 'x', 'verloopt': 1.0, 'duur': srv.SESSIE_DUUR},
+            'tok-geldig': {'gebruiker': 'y', 'verloopt': 9_999_999_999.0, 'duur': srv.SESSIE_DUUR},
+        }), encoding='utf-8')
+        try:
+            srv._sessies_laad()
+            assert 'tok-verlopen' not in srv._sessies
+            assert srv._sessies.get('tok-geldig', {}).get('gebruiker') == 'y'
+        finally:
+            self._opruimen()

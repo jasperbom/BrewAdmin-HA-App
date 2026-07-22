@@ -14,6 +14,9 @@ import {
   berekenVoorcalcVoorAfvulling, nextBatchNummer,
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
+import {
+  vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap,
+} from '../utils/vergisting'
 import Btn from '../components/ui/Btn'
 import Badge from '../components/ui/Badge'
 import Inp from '../components/ui/Inp'
@@ -57,6 +60,7 @@ interface BatchFlowPageProps {
   auditLog: any[], setAuditLog: any,
   setPage: (p: string) => void,
   setNavBatchId: (id: number | null) => void,
+  openBatchId?: number | null,
 }
 
 interface ChecklistItem {
@@ -323,9 +327,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   koelLogs, setKoelLogs, batchNotities, setBatchNotities,
   batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, haInst, haTankTemps,
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
-  log, setLog, auditLog, setAuditLog, setPage, setNavBatchId,
+  log, setLog, auditLog, setAuditLog, setPage, setNavBatchId, openBatchId,
 }) => {
-  const [sel, setSel] = useState<number | null>(null)
+  const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   const [openFasen, setOpenFasen] = useState<number[]>([])
   // Handmatig open/dicht-geklapte stappen. Zolang een stap hier niet in staat,
   // volgt hij de default (open = niet-afgerond).
@@ -373,6 +377,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setMoveTankTarget('')
     setAvF(emptyAvF)
   }
+  // Binnenkomen via de 'stap gereed'-banner (of andere navigatie): open direct
+  // de betreffende batch op zijn actieve fase.
+  React.useEffect(() => {
+    if (openBatchId) openBatch(openBatchId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openBatchId])
   // Eén fase tegelijk: een stap in de tijdlijn selecteren deselecteert de
   // vorige; nogmaals klikken klapt de geselecteerde fase weer dicht.
   const toggleFase = (i: number) =>
@@ -1682,20 +1692,51 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         </div>
       )
     }
-    const stapStart = selB.vergisting_stap_start || (vergistStartTs ? new Date(vergistStartTs).toISOString() : null)
-    const dagenInStap = stapStart ? Math.max(0, (Date.now() - new Date(stapStart).getTime()) / 86400000) : null
-    const stapDoelDagen = Number(profiel[stapIdx]?.tijd) || null
+    // Afgeleide tijdlijn via de gedeelde util: startmoment huidige stap,
+    // dagen-in-stap, of de stap gereed is, en de geprojecteerde einddatums.
+    const nu = Date.now()
+    const stapStartMs = huidigeStapStartMs(selB)
+    const doelDagen = stapDoelDagen(profiel[stapIdx])
+    const dagen = dagenInStap(stapStartMs, nu)
+    const gereed = stapIsGereed(stapStartMs, doelDagen, nu)
+    const proj = vergistProjectie(profiel, stapIdx, stapStartMs)
+    const laatsteStap = stapIdx >= profiel.length - 1
+    const fmtMs = (ms: number | null): string => ms != null ? fmtD(new Date(ms).toISOString()) : ''
+    const stapNaam = profiel[stapIdx]?.type || t('lbl_stap_n').replace('{n}', String(stapIdx + 1))
     return (
       <div>
-        {dagenInStap != null && stapDoelDagen != null && (
-          <div className={`text-xs mb-2 ${dagenInStap >= stapDoelDagen ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
-            {t('flow_schema_dag_x').replace('{x}', String(Math.floor(dagenInStap) + 1)).replace('{y}', String(stapDoelDagen))}
+        {/* 'Stap gereed'-oproep: de geplande duur is bereikt, controleer en ga door. */}
+        {gereed && (
+          <div className="mb-3 rounded-lg t-panel p-3">
+            <div className="flex items-center gap-2 text-sm font-semibold" style={{color: 'var(--t-accent)'}}>
+              <span className="inline-block w-2 h-2 rounded-full animate-pulse" style={{backgroundColor: 'var(--t-accent)'}}></span>
+              {t('flow_stap_gereed_titel').replace('{stap}', stapNaam)}
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              {laatsteStap
+                ? t('flow_stap_gereed_laatste')
+                : t('flow_stap_gereed_tekst').replace('{dagen}', String(doelDagen))}
+            </div>
+            {!laatsteStap && (
+              <div className="mt-2">
+                <Btn s="sm" onClick={() => gaNaarStap(stapIdx + 1)}>{t('flow_stap_gereed_knop')} →</Btn>
+              </div>
+            )}
+          </div>
+        )}
+        {dagen != null && doelDagen != null && (
+          <div className={`text-xs mb-2 ${gereed ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
+            {t('flow_schema_dag_x').replace('{x}', String(Math.floor(dagen) + 1)).replace('{y}', String(doelDagen))}
+            {proj.stappen[stapIdx]?.eindMs != null && (
+              <span> · {t('flow_schema_stap_verwacht').replace('{datum}', fmtMs(proj.stappen[stapIdx].eindMs))}</span>
+            )}
           </div>
         )}
         <div className="space-y-1">
           {profiel.map((s: any, i: number) => {
             const actief = i === stapIdx
             const gedaan = i < stapIdx
+            const eindMs = proj.stappen[i]?.eindMs ?? null
             return (
               <div key={i} className={`flex items-center gap-2 px-2 py-1.5 rounded border text-sm ${
                 actief ? 't-panel border-transparent font-medium' : gedaan ? 'bg-gray-50 border-gray-100 text-gray-400' : 'bg-white border-gray-100 text-gray-600'}`}>
@@ -1706,11 +1747,19 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 </span>
                 <span className="flex-1">{s.type || t('lbl_stap_n').replace('{n}', String(i + 1))}</span>
                 <span className="text-xs whitespace-nowrap">{s.temp !== '' && s.temp != null ? `${s.temp}°C` : '—'}</span>
-                <span className="text-xs text-gray-400 whitespace-nowrap">{s.tijd ? `${s.tijd} d` : ''}{s.ramp ? ` · ${s.ramp} u` : ''}</span>
+                <span className="text-xs text-gray-400 whitespace-nowrap text-right">
+                  <span>{s.tijd ? `${s.tijd} d` : ''}{s.ramp ? ` · ${s.ramp} u` : ''}</span>
+                  {eindMs != null && <span className="block text-[10px] text-gray-300">→ {fmtMs(eindMs)}</span>}
+                </span>
               </div>
             )
           })}
         </div>
+        {proj.verwachtKlaarMs != null && (
+          <div className="text-xs text-gray-500 mt-2">
+            {t('flow_schema_verwacht_klaar').replace('{datum}', fmtMs(proj.verwachtKlaarMs))}
+          </div>
+        )}
         <div className="flex items-center gap-2 mt-2">
           {stapIdx > 0 && (
             <Btn v="secondary" s="sm" onClick={() => gaNaarStap(stapIdx - 1)}>← {t('flow_schema_vorige')}</Btn>

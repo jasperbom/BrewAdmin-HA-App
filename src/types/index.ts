@@ -72,6 +72,10 @@ export interface Batch {
   // het Dashboard, en worden ze door de Volgende-stap-knop bijgehouden.
   vergisting_stap_idx?: number
   vergisting_stap_start?: string  // ISO timestamp
+  // Dedup-ijkpunt voor de 'stap gereed'-melding: het `vergisting_stap_start`
+  // waarvoor de server-tick al een push stuurde. Verschilt dit van de huidige
+  // stap-start, dan mag opnieuw gemeld worden (nieuwe stap doorgeschakeld).
+  vergisting_stap_gemeld_start?: string  // ISO timestamp
   // Cold-crash metadata: timestamp van start + gebruikte target en ramp.
   // `cold_crash_laatste_stap` wordt door de backend-loop opgehoogd elk uur
   // dat er een stap naar beneden is gezet, totdat het target is bereikt.
