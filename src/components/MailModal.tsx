@@ -10,9 +10,18 @@
 import React from 'react'
 import Modal from './ui/Modal'
 import Btn from './ui/Btn'
-import { mailSendApi, MailAttachment, MailInlineImage } from '../utils/api'
+import { mailSendApi, mollieCreatePayment, MailAttachment, MailInlineImage } from '../utils/api'
 import { buildMailHtml, dataUriToInlineImage, MailBrewery } from '../utils/mailTemplate'
 import { t } from '../i18n'
+
+/** Context om een Mollie-betaallink aan de mail toe te voegen. Aanwezig
+ *  wanneer een (openstaande) verkoopfactuur wordt gemaild én Mollie aanstaat. */
+export interface MollieMailContext {
+  amountCent: number
+  description: string
+  redirectUrl: string
+  factuurnummer?: string
+}
 
 interface Props {
   title: string
@@ -26,6 +35,9 @@ interface Props {
   logoDataUri?: string | null
   replyTo?: string
   smtpReady: boolean
+  /** Optionele Mollie-betaalcontext; als aanwezig verschijnt een checkbox
+   *  "betaallink toevoegen" die vóór verzenden een Mollie-betaling aanmaakt. */
+  mollie?: MollieMailContext | null
   onClose: () => void
   onSent?: () => void
 }
@@ -34,7 +46,7 @@ const LOGO_CID = 'brewadmin-logo'
 
 export default function MailModal({
   title, initialTo, initialSubject, initialText, attachments,
-  brewery, logoDataUri, replyTo, smtpReady, onClose, onSent,
+  brewery, logoDataUri, replyTo, smtpReady, mollie, onClose, onSent,
 }: Props) {
   const [to, setTo] = React.useState(initialTo || '')
   const [subject, setSubject] = React.useState(initialSubject || '')
@@ -42,6 +54,12 @@ export default function MailModal({
   const [showPreview, setShowPreview] = React.useState(true)
   const [sending, setSending] = React.useState(false)
   const [status, setStatus] = React.useState<{type:'ok'|'err', msg:string} | null>(null)
+  const [addMollie, setAddMollie] = React.useState(true)
+
+  // Betaallink alleen mogelijk als er een geldige redirect-URL is (Mollie
+  // vereist die). Zonder URL blijft de checkbox uitgeschakeld met een hint.
+  const mollieRedirectOk = !!mollie?.redirectUrl
+  const wantMollie = !!mollie && addMollie && mollieRedirectOk
 
   // Logo wordt — indien aanwezig — als CID-inline attachment meegestuurd zodat
   // het in elk mailclient (Gmail, Outlook, Apple Mail) wordt gerenderd.
@@ -53,9 +71,14 @@ export default function MailModal({
     return dataUriToInlineImage(logoDataUri, LOGO_CID, `logo.${ext}`)
   }, [logoDataUri])
 
+  // Voor de preview tonen we de betaalknop met een dummy-link (#); de echte
+  // Mollie-checkout-URL wordt pas bij het verzenden aangemaakt.
   const htmlBody = React.useMemo(
-    () => buildMailHtml(text, brewery || {}, {logoCid: inlineLogo ? LOGO_CID : undefined}),
-    [text, brewery, inlineLogo],
+    () => buildMailHtml(text, brewery || {}, {
+      logoCid: inlineLogo ? LOGO_CID : undefined,
+      payButton: wantMollie ? {url: '#', label: t('mollie_pay_button')} : undefined,
+    }),
+    [text, brewery, inlineLogo, wantMollie],
   )
   // Voor de iframe-preview gebruiken we een variant met data:-URI logo, omdat
   // `cid:`-verwijzingen in een browser-iframe niet werken.
@@ -74,11 +97,35 @@ export default function MailModal({
     if (!subject.trim()) { setStatus({type:'err', msg: t('mail_no_subject')}); return }
     setSending(true); setStatus(null)
     try {
+      // Optioneel eerst een Mollie-betaling aanmaken en de checkout-URL in de
+      // mail verwerken. Mislukt dit, dan niet verzenden (de link is de bedoeling).
+      let payUrl = ''
+      if (wantMollie && mollie) {
+        try {
+          const res = await mollieCreatePayment({
+            amountCent: mollie.amountCent,
+            description: mollie.description,
+            redirectUrl: mollie.redirectUrl,
+            metadata: mollie.factuurnummer ? {factuurnummer: mollie.factuurnummer} : undefined,
+          })
+          payUrl = res.checkoutUrl
+        } catch (e: any) {
+          setStatus({type:'err', msg: `${t('mollie_link_failed')}: ${e?.message || ''}`})
+          setSending(false)
+          return
+        }
+      }
+      // In de HTML komt een nette knop; in de platte tekst de kale link.
+      const finalText = payUrl ? `${text}\n\n${t('mollie_pay_line')}\n${payUrl}` : text
+      const finalHtml = buildMailHtml(text, brewery || {}, {
+        logoCid: inlineLogo ? LOGO_CID : undefined,
+        payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
+      })
       await mailSendApi({
         to: to.split(/[,;]/).map(s => s.trim()).filter(Boolean),
         subject,
-        text,
-        html: htmlBody,
+        text: finalText,
+        html: finalHtml,
         replyTo,
         attachments,
         inlineImages: inlineLogo ? [inlineLogo] : undefined,
@@ -121,6 +168,30 @@ export default function MailModal({
             <span className="font-semibold uppercase tracking-wide">{t('mail_attachments')}: </span>
             {attachments.map(a => a.filename).join(', ')}
           </div>
+        )}
+
+        {mollie && (
+          <label
+            className={`flex items-start gap-2 text-sm rounded px-3 py-2 border ${
+              mollieRedirectOk
+                ? 'border-gray-200 bg-gray-50 cursor-pointer'
+                : 'border-orange-200 bg-orange-50 cursor-not-allowed'}`}
+            title={mollieRedirectOk ? '' : t('mollie_no_redirect')}
+          >
+            <input
+              type="checkbox"
+              className="t-checkbox mt-0.5"
+              checked={wantMollie}
+              disabled={!mollieRedirectOk}
+              onChange={e => setAddMollie(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-gray-700">{t('mollie_add_link')}</span>
+              <span className="block text-xs text-gray-500">
+                {mollieRedirectOk ? t('mollie_add_link_hint') : t('mollie_no_redirect')}
+              </span>
+            </span>
+          </label>
         )}
 
         <div>

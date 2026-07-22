@@ -19,7 +19,7 @@ import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, onInitialTabConsumed=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, onInitialTabConsumed=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -931,6 +931,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     text: string
     attachments?: {filename: string, contentBase64: string, mimeType: string}[]
     factuurId?: number
+    mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState<number | null>(null)
 
@@ -971,6 +972,27 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         brouwerij: inst.naam || appName || '',
       }
       const ontvanger = klant?.email || resolved.klant_email || ''
+      // Mollie-betaallink: alleen aanbieden voor openstaande (niet-betaalde,
+      // niet-credit) facturen met een positief bedrag, én als Mollie aanstaat.
+      // Redirect-URL uit de Mollie-instelling, met de brouwerij-website als
+      // fallback; leeg → de modal toont de checkbox uitgeschakeld met een hint.
+      const normUrl = (u: string) => {
+        const s = (u || '').trim()
+        return s && !/^https?:\/\//i.test(s) ? `https://${s}` : s
+      }
+      const amountCent = Number.isFinite(factuur.bruto_cent)
+        ? Math.round(factuur.bruto_cent)
+        : Math.round((factuur.bruto || 0) * 100)
+      const mollieAan = !!(mollieCreds as any)?.enabled
+      const mollieCtx = (mollieAan && amountCent > 0
+        && factuur.status !== 'credit' && factuur.status !== 'betaald')
+        ? {
+            amountCent,
+            description: `${t('mollie_desc_factuur')} ${factuurNr}${inst.naam ? ' · ' + inst.naam : ''}`,
+            redirectUrl: normUrl((mollieCreds as any)?.redirectUrl || inst.website || ''),
+            factuurnummer: factuurNr,
+          }
+        : null
       setMailModal({
         title: t('mail_modal_title_factuur'),
         to: ontvanger,
@@ -978,6 +1000,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         text: interpolate(tplOrDefault('factuur', 'body'), vars),
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         factuurId: factuur.id,
+        mollie: mollieCtx,
       })
     } catch (e: any) {
       alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
@@ -3970,6 +3993,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           logoDataUri={factuurLogo || logo}
           replyTo={(breweryDetails as any)?.email}
           smtpReady={!!smtpCreds?.enabled}
+          mollie={mailModal.mollie}
           onClose={() => setMailModal(null)}
           onSent={() => {
             if (mailModal.factuurId) {

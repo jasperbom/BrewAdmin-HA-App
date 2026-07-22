@@ -511,6 +511,69 @@ class TestSecureKeysHttp:
         assert any(r.get('key') == 'recepten' for r in regels)
 
 
+class TestMollie:
+    """Mollie-betaalproxy: bedrag-formattering, secrets-maskering en de
+    validatie-/creds-gates die vóór de upstream-call worden geraakt (geen
+    netwerk nodig — de echte betaal-call wordt niet getest)."""
+
+    def test_amount_formattering(self):
+        assert srv._mollie_amount(1050) == '10.50'
+        assert srv._mollie_amount(5) == '0.05'
+        assert srv._mollie_amount(100_000) == '1000.00'
+        # Ongeldig: nul/negatief, booleans, niet-numeriek, absurd groot.
+        assert srv._mollie_amount(0) is None
+        assert srv._mollie_amount(-100) is None
+        assert srv._mollie_amount(True) is None
+        assert srv._mollie_amount('abc') is None
+        assert srv._mollie_amount(200_000_000) is None
+
+    def test_mask_verbergt_apikey(self):
+        masked = srv._mask_secrets(
+            'mollie_creds',
+            {'apiKey': 'live_geheim', 'enabled': True, 'redirectUrl': 'https://x.nl'})
+        assert masked['apiKey'] == srv._SECRET_SENTINEL
+        assert masked['enabled'] is True
+        assert masked['redirectUrl'] == 'https://x.nl'
+
+    def test_load_creds_weigert_ongeldige_key(self, app):
+        req(app, 'POST', '/api/data/mollie_creds',
+            body={'apiKey': 'zomaarwat', 'enabled': True, 'redirectUrl': ''})
+        assert srv._load_mollie_creds() is None
+
+    def test_payment_zonder_creds_401(self, app):
+        req(app, 'POST', '/api/data/mollie_creds',
+            body={'apiKey': '', 'enabled': False, 'redirectUrl': ''})
+        st, _, _ = req(app, 'POST', '/api/mollie/payment',
+                       body={'amountCent': 1000, 'description': 'x', 'redirectUrl': 'https://x.nl'})
+        assert st == 401
+
+    def test_payment_niet_ingeschakeld_403(self, app):
+        req(app, 'POST', '/api/data/mollie_creds',
+            body={'apiKey': 'test_abc', 'enabled': False, 'redirectUrl': 'https://x.nl'})
+        st, _, _ = req(app, 'POST', '/api/mollie/payment',
+                       body={'amountCent': 1000, 'description': 'x', 'redirectUrl': 'https://x.nl'})
+        assert st == 403
+
+    def test_payment_ongeldig_bedrag_400(self, app):
+        req(app, 'POST', '/api/data/mollie_creds',
+            body={'apiKey': 'test_abc', 'enabled': True, 'redirectUrl': 'https://x.nl'})
+        st, _, _ = req(app, 'POST', '/api/mollie/payment',
+                       body={'amountCent': 0, 'description': 'x', 'redirectUrl': 'https://x.nl'})
+        assert st == 400
+
+    def test_payment_ongeldige_redirect_400(self, app):
+        req(app, 'POST', '/api/data/mollie_creds',
+            body={'apiKey': 'test_abc', 'enabled': True, 'redirectUrl': 'https://x.nl'})
+        st, _, _ = req(app, 'POST', '/api/mollie/payment',
+                       body={'amountCent': 1000, 'description': 'x', 'redirectUrl': 'ftp://x'})
+        assert st == 400
+
+    def test_test_endpoint_weigert_verkeerd_keyformaat(self, app):
+        # Geen netwerk: een key zonder test_/live_-prefix wordt lokaal geweigerd.
+        st, body, _ = req(app, 'POST', '/api/mollie/test', body={'apiKey': 'nope'})
+        assert st == 200 and body.get('ok') is False and body.get('detail') == 'format'
+
+
 class TestSqliteOpslag:
     """SQLite-opslaglaag (ERP-plan 4.1): WAL, migratie, versies, backup."""
 

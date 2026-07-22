@@ -842,6 +842,57 @@ export const callClaudeProxy = async (body: any) => {
   return r.json()
 }
 
+// ── Mollie (betaallink op facturen) ──────────────────────────────────────
+// De API-key blijft server-side; hier gaan alleen de key-test en het
+// aanmaken van een betaling langs de proxy.
+
+// Test een Mollie API-key zonder iets op te slaan. `apiKey` mag de sentinel
+// `__SECRET__` zijn — dan test de server de opgeslagen key.
+export const mollieTestApi = async (apiKey: string): Promise<{ok: boolean, detail?: string}> => {
+  try {
+    const r = await fetch(`${ADDON_BASE}api/mollie/test`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({apiKey}),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) return {ok: false, detail: (d as any).error || `HTTP ${r.status}`}
+    return {ok: (d as any).ok === true, detail: (d as any).detail}
+  } catch (e: any) {
+    return {ok: false, detail: e?.message || 'network'}
+  }
+}
+
+export interface MolliePaymentBody {
+  amountCent: number
+  description: string
+  redirectUrl: string
+  metadata?: Record<string, string | number>
+}
+
+export interface MolliePaymentResult {
+  checkoutUrl: string
+  id?: string
+  status?: string
+  expiresAt?: string
+}
+
+// Maak een Mollie-betaling aan en krijg de checkout-URL terug. Throwt bij een
+// niet-OK response; caller toont een nette foutmelding via t().
+export const mollieCreatePayment = async (body: MolliePaymentBody): Promise<MolliePaymentResult> => {
+  const r = await _fetchWithRetry(`${ADDON_BASE}api/mollie/payment`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  }, 1)
+  if (r.status === 429) throw _rateLimitError('Mollie', r)
+  const d: any = await r.json().catch(() => ({}))
+  if (!r.ok || !d?.checkoutUrl) {
+    throw new Error(d?.detail || d?.error || `HTTP ${r.status}`)
+  }
+  return {checkoutUrl: d.checkoutUrl, id: d.id, status: d.status, expiresAt: d.expiresAt}
+}
+
 // Normaliseert Brewfather's hop-use waarden naar onze interne 4 categorieën.
 // Brewfather levert "Boil", "Aroma", "Whirlpool", "Hopstand", "Dry Hop",
 // "First Wort", "Mash". "Aroma" en "Hopstand" zijn beide flame-out / na de
