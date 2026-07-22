@@ -4,6 +4,47 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.47] — 2026-07-22
+
+### Toegevoegd — Batch-flow: snelkoppeling-banners, duidelijker tegels en zoeken
+
+- **Snelkoppeling-banners** bovenaan de app voor een batch die aandacht vraagt,
+  met een knop om direct naar die batch te gaan:
+  - **blauw** wanneer een batch aan het **brouwen** is (brouwdag bezig);
+  - **paars** wanneer een batch tijdens het **conditioneren wordt
+    gecarboniseerd** (actieve sessie die z'n doel nog niet bereikt heeft — de
+    bestaande groene "doel bereikt"-banner blijft het voltooien dekken).
+  - Beide zijn te sluiten en volgen dezelfde meldingsinstelling (`on_screen`)
+    als de bestaande banners.
+- **Batchtegels** tonen nu als titel de **productnaam** (met het **recept** klein
+  eronder) als die er is, anders de **receptnaam**; het **batchnummer** staat
+  prominenter in beeld (vet, in de themakleur).
+- **Zoekbalk** bij de **gesloten batches** op de batch-flow-pagina (zoekt op
+  naam, product, recept, batchnummer en stijl), met een lege-resultaat-melding.
+
+## [1.11.46] — 2026-07-22
+
+### Gewijzigd — Brouwplanning samengevoegd met de batch-flow + tijdpad naar verpakken
+
+- **Wens**: de losse Brouwplanning- en Batchflow-landingspagina's combineren,
+  en een duidelijker tijdpad zodat je aan de hand van het vergistingsschema
+  plus de conditioneringstijd ziet wanneer het bier verwacht gereed is voor
+  verpakking.
+- **Wijziging**:
+  - De **planning-tijdlijn zit nu als inklapbaar blok** bovenaan de
+    batch-flow-pagina; de losse **"Planning"-navigatie is vervallen**
+    (`PlanningPage` wordt ingebed via een `embedded`-modus zonder eigen kop).
+  - Nieuwe pure functie **`verpakProjectie`** (`utils/vergisting.ts`, met
+    Vitest): giststart + som van het vergistingsschema + conditioneringstijd
+    → **verwachte verpakdatum**. Consistent met `berekenTanktijd`; een
+    handmatige `tank_dagen` blijft leidend.
+  - De **verwachte verpakdatum** staat nu op elke **batchkaart** en in de
+    **flow-detail** (met de uitsplitsing "X d gisten + Y d conditioneren").
+  - De **planning-gantt** gebruikt dit tijdpad voor de barlengte (i.p.v. een
+    platte 14-dagen-schatting), toont de verwachte verpakdatum in de tooltip
+    en een subtiele scheiding tussen de gist- en conditioneerfase. De
+    conditioneringstijd (`conditioneren_dagen`) wordt nu daadwerkelijk gebruikt.
+
 ## [1.11.45] — 2026-07-22
 
 ### Toegevoegd — Batchflow: 'gistingsstap gereed'-melding + duidelijke verwachting

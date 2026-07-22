@@ -7,6 +7,7 @@ import {
   ReceptCategorie,
   VoorraadVergelijking,
 } from '../utils/calculations'
+import { verpakProjectie } from '../utils/vergisting'
 import SectionHeader from '../components/ui/SectionHeader'
 import Btn from '../components/ui/Btn'
 import BestellijstModal from '../components/BestellijstModal'
@@ -23,6 +24,9 @@ interface PlanningPageProps {
   planningInst?: {conditioneren_dagen: number}
   preselectBatchId?: number | null
   onPreselectConsumed?: () => void
+  // Ingebed in de batch-flow-landingspagina: verberg de eigen hoofd-header
+  // (de inklapbare 'Tijdlijn'-kop van de flow-pagina neemt die rol over).
+  embedded?: boolean
 }
 
 const CATEGORIE_LABEL_KEY: Record<ReceptCategorie, string> = {
@@ -55,10 +59,12 @@ function PlanningPage({
   lots,
   producten,
   tanks,
-  planningInst: _planningInst,
+  planningInst,
   preselectBatchId,
   onPreselectConsumed,
+  embedded = false,
 }: PlanningPageProps) {
+  const conditionerenDagen = Math.max(0, Number(planningInst?.conditioneren_dagen ?? 14) || 0)
   // Update een batch-veld en persist via setBat (no-op als setBat ontbreekt).
   const updateBatch = (id: number, patch: Record<string, any>) => {
     if (!setBat) return
@@ -144,9 +150,10 @@ function PlanningPage({
   type TankBar = {
     batch: any
     van: Date
-    tot: Date
-    dagen: number
-    geschat: boolean   // true als tot is afgeleid van een default (geen tank_dagen)
+    tot: Date              // verwachte verpakdatum (einde tankbezetting)
+    dagen: number          // totale tankdagen (gisten + conditioneren)
+    fermentEind: Date | null  // einde vergistingsschema (grens gisten/conditioneren)
+    geschat: boolean       // true als tot berekend is (geen expliciete tank_dagen)
     tankId: string
   }
 
@@ -158,21 +165,30 @@ function PlanningPage({
       if (!vanIso) continue
       const van = new Date(vanIso)
       if (isNaN(van.getTime())) continue
-      const dagenRaw = Number(b.tank_dagen || 0)
-      const dagen = dagenRaw > 0 ? dagenRaw : 14 // default voor visualisatie
+      // Tijdpad uit het vergistingsschema + conditioneringstijd (of een
+      // handmatige tank_dagen). Bepaalt de barlengte én de verwachte verpakdatum.
+      const proj = verpakProjectie(b, conditionerenDagen)
+      const dagen = proj.totaalDagen > 0 ? proj.totaalDagen : 14
       const tot = new Date(van)
       tot.setDate(tot.getDate() + dagen)
+      // Grens gisten→conditioneren, relatief aan de barstart (van).
+      let fermentEind: Date | null = null
+      if (proj.fermentDagen > 0) {
+        fermentEind = new Date(van)
+        fermentEind.setDate(fermentEind.getDate() + Math.ceil(proj.fermentDagen))
+      }
       bars.push({
         batch: b,
         van,
         tot,
-        dagen: dagenRaw,
-        geschat: dagenRaw <= 0,
+        dagen,
+        fermentEind,
+        geschat: proj.geschat,
         tankId: b.tank ? String(b.tank) : UNASSIGNED,
       })
     }
     return bars
-  }, [bat])
+  }, [bat, conditionerenDagen])
 
   // Rij-structuur voor de tijdlijn: 'Nog geen tank' bovenaan (alleen tonen als
   // er bars in zitten), daarna alle bekende tanks, daarna onbekende ids.
@@ -326,13 +342,15 @@ function PlanningPage({
 
   return (
     <div className="space-y-6">
-      {/* ── Hoofd-header ───────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-card overflow-hidden">
-        <SectionHeader
-          title={t('plan_title')}
-          info={<span>{geplandeBatches.length} {t('plan_geplande_brouwsels')}</span>}
-        />
-      </div>
+      {/* ── Hoofd-header (verborgen wanneer ingebed in de batch-flow) ────── */}
+      {!embedded && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-card overflow-hidden">
+          <SectionHeader
+            title={t('plan_title')}
+            info={<span>{geplandeBatches.length} {t('plan_geplande_brouwsels')}</span>}
+          />
+        </div>
+      )}
 
       {/* ── Agenda: tank-tijdlijn (sleep- & klikbaar) ─────────────────── */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-card overflow-hidden">
@@ -443,8 +461,12 @@ function PlanningPage({
                           const isDragging = dragInfo?.id === bar.batch.id
                           const isPlanned = bar.batch.status === 'Gepland'
                           const draggable = sleepbaarBeschikbaar && isPlanned
-                          const tipDagen = bar.dagen > 0 ? `${bar.dagen} ${t('plan_dagen')}` : t('plan_tank_schatting')
-                          const titleTekst = `${label} · ${bar.batch.status} · ${fmtD(bar.van.toISOString().slice(0,10))} → ${fmtD(bar.tot.toISOString().slice(0,10))} · ${tipDagen}${draggable ? ` · ${t('plan_agenda_sleep_tip')}` : ''}`
+                          const tipDagen = `${bar.dagen} ${t('plan_dagen')}${bar.geschat ? ` (${t('plan_tank_schatting')})` : ''}`
+                          const titleTekst = `${label} · ${bar.batch.status} · ${fmtD(bar.van.toISOString().slice(0,10))} → ${t('plan_verwacht_verpakken')} ${fmtD(bar.tot.toISOString().slice(0,10))} · ${tipDagen}${draggable ? ` · ${t('plan_agenda_sleep_tip')}` : ''}`
+                          // Grens gisten→conditioneren als fractie binnen de bar (subtiele deler).
+                          const fermentFrac = bar.fermentEind && bar.tot > bar.van
+                            ? Math.min(1, Math.max(0, (bar.fermentEind.getTime() - bar.van.getTime()) / (bar.tot.getTime() - bar.van.getTime())))
+                            : null
                           return (
                             <div
                               key={bar.batch.id}
@@ -464,6 +486,10 @@ function PlanningPage({
                               }}
                               title={titleTekst}
                             >
+                              {fermentFrac != null && fermentFrac > 0.02 && fermentFrac < 0.98 && (
+                                <span aria-hidden className="absolute top-0 bottom-0 w-px bg-black/25 pointer-events-none"
+                                  style={{ left: `${fermentFrac * 100}%` }} />
+                              )}
                               <span className="truncate">{label}</span>
                             </div>
                           )

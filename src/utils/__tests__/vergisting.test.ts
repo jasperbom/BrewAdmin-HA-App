@@ -8,6 +8,7 @@ import {
   dagenInStap,
   stapIsGereed,
   vergistProjectie,
+  verpakProjectie,
   batchStapGereed,
 } from '../vergisting'
 
@@ -137,6 +138,51 @@ describe('vergistProjectie', () => {
 
   it('geeft lege projectie zonder profiel', () => {
     expect(vergistProjectie([], 0, 123)).toEqual({ stappen: [], verwachtKlaarMs: null })
+  })
+})
+
+describe('verpakProjectie', () => {
+  // profiel = 7 + 2 + 14 = 23 gistdagen
+  it('berekent verpakdatum = start + gistschema + conditioneren', () => {
+    const start = middernacht('2026-07-01')
+    const p = verpakProjectie({ datum: '2026-07-01', vergistingsprofiel: profiel }, 14)
+    expect(p.startMs).toBe(start)
+    expect(p.fermentDagen).toBe(23)
+    expect(p.fermentEindMs).toBe(start + 23 * DAG_MS)
+    expect(p.condDagen).toBe(14)
+    expect(p.totaalDagen).toBe(37)          // 23 + 14
+    expect(p.verpakkenMs).toBe(start + 37 * DAG_MS)
+    expect(p.geschat).toBe(true)            // geen expliciete tank_dagen
+  })
+
+  it('respecteert een handmatige tank_dagen', () => {
+    const start = middernacht('2026-07-01')
+    const p = verpakProjectie({ datum: '2026-07-01', vergistingsprofiel: profiel, tank_dagen: 30 }, 14)
+    expect(p.totaalDagen).toBe(30)
+    expect(p.verpakkenMs).toBe(start + 30 * DAG_MS)
+    expect(p.geschat).toBe(false)
+  })
+
+  it('gebruikt de giststart uit tank_historie voor een gistende batch', () => {
+    const b = { tank_historie: [{ status: 'Vergisten', from: '2026-07-05' }], vergistingsprofiel: profiel }
+    const p = verpakProjectie(b, 10)
+    expect(p.startMs).toBe(middernacht('2026-07-05'))
+    expect(p.verpakkenMs).toBe(middernacht('2026-07-05') + 33 * DAG_MS)  // 23 + 10
+  })
+
+  it('zonder profiel telt alleen de conditioneringstijd', () => {
+    const start = middernacht('2026-07-01')
+    const p = verpakProjectie({ datum: '2026-07-01' }, 14)
+    expect(p.fermentDagen).toBe(0)
+    expect(p.fermentEindMs).toBeNull()
+    expect(p.totaalDagen).toBe(14)
+    expect(p.verpakkenMs).toBe(start + 14 * DAG_MS)
+  })
+
+  it('geeft null-datum zonder start', () => {
+    const p = verpakProjectie({ vergistingsprofiel: profiel }, 14)
+    expect(p.startMs).toBeNull()
+    expect(p.verpakkenMs).toBeNull()
   })
 })
 
