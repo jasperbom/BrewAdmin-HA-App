@@ -419,6 +419,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials (nooit in backup) |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
+| `mollie_creds` *(secure)* | object | Mollie API-key + `enabled` + `redirectUrl` voor de online betaallink op verkoopfacturen (nooit in backup); server-side proxy voegt de key toe |
 
 ---
 
@@ -504,6 +505,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/delta/<key>` | Delta-sync per record (ERP 4.3): `{upsert:[records], delete:[ids]}` met verplichte `X-Data-Version`; client valt bij 400/404 automatisch terug op de volledige POST |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
+| POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
+| POST | `/api/mollie/payment` | Maak een Mollie-betaling aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl, metadata?}` → `{checkoutUrl, id, status}`. Key wordt server-side toegevoegd |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
@@ -566,6 +569,14 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - API key stored in `instellingen` (`claudeKey`)
 - Server proxies the request, adding the API key server-side
 - Response expected as JSON: `{ supplier, date, invoice_number, lines: [{description, quantity, unit_price, vat_rate, total}] }`
+
+### Mollie (betaallink op facturen)
+
+- Used for: online betaallink (iDEAL, creditcard, Bancontact …) op **verkoop­facturen** die per mail worden verstuurd
+- API-key + `enabled` + `redirectUrl` in de secure key `mollie_creds`; server voegt de key server-side toe (proxy — key nooit naar de browser)
+- Flow: `mailVerkoopFactuur` (BoekhoudingPage) bouwt de Mollie-context (bedrag in centen, omschrijving, redirect-URL) → `MailModal` toont een checkbox **"Mollie betaallink toevoegen"** → bij verzenden roept `mollieCreatePayment` (`POST /api/mollie/payment`) de checkout-URL op → knop in de HTML-mail (`buildMailHtml` `payButton`) + kale link in de platte tekst
+- Redirect-URL valt terug op `brewery_details.website`; zonder een geldige URL blijft de checkbox uitgeschakeld (Mollie vereist een `redirectUrl`)
+- Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar
 
 ### Home Assistant
 

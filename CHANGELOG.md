@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.50] — 2026-07-22
+
+### Toegevoegd — Mollie-betaallink op verkoopfacturen
+
+- Bij het **mailen van een verkoopfactuur** kan nu een **online betaallink**
+  (iDEAL, creditcard, Bancontact e.a.) worden toegevoegd. In het mailvenster
+  verschijnt een checkbox **"Mollie betaallink toevoegen"**; die bepaal je
+  **per factuur, vlak vóór het versturen**. Staat de checkbox aan, dan wordt
+  een Mollie-betaling voor het openstaande bedrag aangemaakt en als nette
+  **"Betaal online"-knop** in de mail gezet (plus een kale link in de
+  platte-tekstversie).
+- De betaallink wordt alleen aangeboden voor **openstaande** facturen
+  (niet voor betaalde of creditnota's) met een positief bedrag, en alleen als
+  Mollie is ingeschakeld. Standaard staat de checkbox aan zodra Mollie werkt;
+  je kunt hem per mail uitzetten.
+- **Instellingen → Koppelingen → Mollie**: nieuwe sectie om je **Mollie
+  API-key** in te voeren (test- of live-key), te testen en in/uit te schakelen,
+  met een **redirect-URL** (waar de klant na betaling naartoe gaat; valt terug
+  op de brouwerij-website).
+- De betaling komt daarna gewoon op je bankafschrift; de bestaande
+  **PSP-bankreconciliatie** koppelt een Mollie-uitbetaling automatisch aan de
+  bijbehorende factuur/facturen.
+
+### Technisch
+
+- Nieuwe secure key `mollie_creds` (`{apiKey, enabled, redirectUrl}`) —
+  gemaskeerd via `_SECURE_FIELDS`, beheer-only, nooit in de backup.
+- Server-proxy `POST /api/mollie/test` (key-validatie, beheer) en
+  `POST /api/mollie/payment` (betaling aanmaken → checkout-URL, boekhouding);
+  de API-key blijft server-side. Pure helper `_mollie_amount` (centen →
+  Mollie-bedrag) met pytest-dekking; extra tests voor de creds-/rol-gates.
+- Frontend: `mollieTestApi`/`mollieCreatePayment` (`api.ts`), betaalknop-optie
+  in `buildMailHtml`, checkbox + betaal-flow in `MailModal`, en de
+  Mollie-context in `mailVerkoopFactuur` (BoekhoudingPage).
+- i18n-sleutels `settings_mollie_*` en `mollie_*` in nl/en/de/fr/es.
+
 ## [1.11.49] — 2026-07-22
 
 ### Toegevoegd — Batch-flow: levensloop-tijdlijn bij een gerede batch

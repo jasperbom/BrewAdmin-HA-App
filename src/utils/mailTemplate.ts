@@ -46,7 +46,7 @@ function textToHtml(text: string): string {
 export function buildMailHtml(
   textBody: string,
   brewery: MailBrewery,
-  opts: {logoCid?: string, footerNote?: string} = {},
+  opts: {logoCid?: string, footerNote?: string, payButton?: {url: string, label: string}} = {},
 ): string {
   const naam = brewery?.naam || 'BrewAdmin'
   // Normaliseer website-URL: voeg https:// toe als gebruiker zonder protocol invult,
@@ -80,6 +80,17 @@ export function buildMailHtml(
        </td></tr>`
     : ''
 
+  // Optionele online-betaalknop (Mollie). URL is een https-checkout-link; esc()
+  // maakt hem veilig voor in het href-attribuut.
+  const payBlock = opts.payButton
+    ? `<tr><td style="padding:4px 32px 24px;text-align:center;">
+         <a href="${esc(opts.payButton.url)}" target="_blank" rel="noopener noreferrer"
+            style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;line-height:1;padding:14px 32px;border-radius:6px;">
+           ${esc(opts.payButton.label)}
+         </a>
+       </td></tr>`
+    : ''
+
   const footer = opts.footerNote
     ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;">
          <tr><td style="text-align:center;font-size:11px;color:#9ca3af;padding:12px 0;">${esc(opts.footerNote)}</td></tr>
@@ -102,6 +113,7 @@ export function buildMailHtml(
         <tr><td style="padding:8px 32px 24px;font-size:14px;line-height:1.65;color:${TEXT};">
           ${textToHtml(textBody)}
         </td></tr>
+        ${payBlock}
         ${signature}
       </table>
       ${footer}

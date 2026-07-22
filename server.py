@@ -132,6 +132,13 @@ CLAUDE_PROXY_PREFIX      = '/api/claude/'
 ANTHROPIC_API_BASE       = 'https://api.anthropic.com'
 CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be large
 
+# Mollie-betaalproxy (betaallink op verkoopfacturen). Test-keys beginnen met
+# 'test_', live-keys met 'live_'. De server voegt de key server-side toe zodat
+# de browser hem nooit ziet (net als de Claude-proxy).
+MOLLIE_TEST_PATH         = '/api/mollie/test'
+MOLLIE_PAYMENT_PATH      = '/api/mollie/payment'
+MOLLIE_API_BASE          = 'https://api.mollie.com/v2'
+
 HA_PROXY_PREFIX          = '/api/homeassistant/'
 HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
 
@@ -387,6 +394,38 @@ def _load_claude_creds() -> str | None:
         return key if key.startswith('sk-ant-') else None
     except Exception:
         return None
+
+
+def _load_mollie_creds() -> dict | None:
+    """Read stored Mollie credentials; returns {apiKey, enabled, redirectUrl}
+    of None. Een key is alleen geldig als hij met 'test_' of 'live_' begint."""
+    c = _read_json('mollie_creds')
+    if not isinstance(c, dict):
+        return None
+    key = str(c.get('apiKey', '')).strip()
+    if not (key.startswith('test_') or key.startswith('live_')):
+        return None
+    return {
+        'apiKey':      key,
+        'enabled':     bool(c.get('enabled')),
+        'redirectUrl': str(c.get('redirectUrl', '')).strip(),
+    }
+
+
+def _mollie_amount(cent) -> str | None:
+    """Formatteer een bedrag in hele centen naar Mollie's 2-decimalen-string
+    (bijv. 1050 → '10.50'). Weigert niet-positieve of onwaarschijnlijk grote
+    bedragen (> 1 miljoen euro)."""
+    if isinstance(cent, bool):
+        return None
+    if not isinstance(cent, int):
+        try:
+            cent = int(cent)
+        except (TypeError, ValueError):
+            return None
+    if cent <= 0 or cent > 100_000_000:
+        return None
+    return f'{cent // 100}.{cent % 100:02d}'
 
 
 def _load_bf_creds() -> tuple[str, str] | None:
@@ -1044,6 +1083,7 @@ _KEY_TYPES = {
         'tank_statussen', 'gebruikers_rollen', 'login_instellingen',
         'app_logo_icoon',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
+        'mollie_creds',
     )},
     # scalars
     'app_name':     'string',
@@ -1112,6 +1152,7 @@ _SECURE_FIELDS = {
     'woocommerce_creds': ('consumerKey', 'consumerSecret'),
     'claude_creds':      ('apiKey',),
     'smtp_creds':        ('password',),
+    'mollie_creds':      ('apiKey',),
 }
 
 
@@ -1747,6 +1788,7 @@ _BEHEER_KEYS = frozenset((
     'app_logo', 'factuur_logo', 'app_name', 'nav_theme', 'login_instellingen',
     'app_logo_icoon',
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
+    'mollie_creds',
 ))
 
 # Financiële vastlegging: alleen `boekhouding` (en `beheer`).
@@ -2854,11 +2896,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._rol_geweigerd(rol)
             return
         if rol != 'beheer' and any(p in path for p in (
-                MAIL_TEST_PATH, BF_TEST_PATH, WC_TEST_PATH, BACKUPS_TRIGGER_PATH)):
+                MAIL_TEST_PATH, BF_TEST_PATH, WC_TEST_PATH, MOLLIE_TEST_PATH,
+                BACKUPS_TRIGGER_PATH)):
             self._rol_geweigerd(rol)
             return
         if rol not in ('beheer', 'boekhouding') and any(p in path for p in (
-                NEXTNR_PATH, UPLOAD_PREFIX, DELETE_UPLOAD_PREFIX)):
+                NEXTNR_PATH, UPLOAD_PREFIX, DELETE_UPLOAD_PREFIX, MOLLIE_PAYMENT_PATH)):
             self._rol_geweigerd(rol)
             return
 
@@ -2883,6 +2926,15 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if CLAUDE_PROXY_PREFIX in path:
             self._claude_proxy()
+            return
+
+        # Mollie: key-test (beheer) + betaling aanmaken (boekhouding)
+        if MOLLIE_TEST_PATH in path:
+            self._mollie_test()
+            return
+
+        if MOLLIE_PAYMENT_PATH in path:
+            self._mollie_payment()
             return
 
         if MAIL_TEST_PATH in path:
@@ -3588,6 +3640,127 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self._add_security_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    # ── Mollie (betaallink op facturen) ────────────────────────────────
+
+    def _mollie_test(self):
+        """Test een Mollie API-key uit de POST body (slaat niets op). De key
+        mag de sentinel `__SECRET__` zijn — dan wordt de opgeslagen key
+        gebruikt. Antwoord: {ok, detail?}."""
+        raw = self._read_body(max_len=4 * 1024)
+        if raw is None:
+            return
+        try:
+            body = _unmask_secrets('mollie_creds', json.loads(raw))
+        except Exception:
+            self._json(400, {'error': 'invalid json'})
+            return
+        key = str((body or {}).get('apiKey', '')).strip() if isinstance(body, dict) else ''
+        if not (key.startswith('test_') or key.startswith('live_')):
+            self._json(200, {'ok': False, 'detail': 'format'})
+            return
+        # Lichtgewicht geauthenticeerde call: de betaalmethoden opvragen.
+        req = urllib.request.Request(
+            f'{MOLLIE_API_BASE}/methods',
+            headers={'Authorization': f'Bearer {key}'},
+            method='GET',
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                resp.read()
+                self._json(200, {'ok': resp.status == 200})
+        except urllib.error.HTTPError as e:
+            detail = 'auth' if e.code in (401, 403) else str(e.code)
+            self._json(200, {'ok': False, 'detail': detail})
+        except Exception as e:
+            self._json(200, {'ok': False, 'detail': type(e).__name__})
+
+    def _mollie_payment(self):
+        """Maak een Mollie-betaling aan voor een verkoopfactuur en geef de
+        checkout-URL terug. Body: {amountCent, description, redirectUrl,
+        metadata?}. De API-key wordt server-side toegevoegd."""
+        creds = _load_mollie_creds()
+        if creds is None:
+            self._json(401, {'error': 'no mollie credentials configured'})
+            return
+        if not creds.get('enabled'):
+            self._json(403, {'error': 'mollie not enabled'})
+            return
+        raw = self._read_body(max_len=16 * 1024)
+        if raw is None:
+            return
+        try:
+            body = json.loads(raw)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        if not isinstance(body, dict):
+            self._json(400, {'error': 'body must be a JSON object'})
+            return
+        amount = _mollie_amount(body.get('amountCent'))
+        if amount is None:
+            self._json(400, {'error': 'invalid amount'})
+            return
+        description = str(body.get('description', '')).strip()
+        if not description or len(description) > 255:
+            self._json(400, {'error': 'invalid description'})
+            return
+        redirect_url = str(body.get('redirectUrl', '')).strip()
+        if not redirect_url.startswith(('http://', 'https://')) or len(redirect_url) > 2000:
+            self._json(400, {'error': 'invalid redirectUrl'})
+            return
+        payload = {
+            'amount':      {'currency': 'EUR', 'value': amount},
+            'description': description,
+            'redirectUrl': redirect_url,
+        }
+        # Optionele metadata (factuurnummer/klant) — max 10 eenvoudige velden.
+        meta = body.get('metadata')
+        if isinstance(meta, dict):
+            clean = {}
+            for k, v in list(meta.items())[:10]:
+                if isinstance(k, str) and isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                    clean[k[:64]] = v if isinstance(v, (int, float)) else str(v)[:255]
+            if clean:
+                payload['metadata'] = clean
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            f'{MOLLIE_API_BASE}/payments',
+            data=data,
+            headers={
+                'Authorization': f'Bearer {creds["apiKey"]}',
+                'Content-Type':  'application/json',
+            },
+            method='POST',
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                resp_data = json.loads(resp.read() or b'{}')
+        except urllib.error.HTTPError as e:
+            # Mollie geeft een JSON-foutobject; geef alleen een korte
+            # classificatie terug (geen key, geen volledige body).
+            detail = str(e.code)
+            try:
+                err = json.loads(e.read() or b'{}')
+                detail = str(err.get('detail') or err.get('title') or e.code)[:200]
+            except Exception:
+                pass
+            self._json(502, {'ok': False, 'error': 'mollie_error', 'detail': detail})
+            return
+        except Exception:
+            self._json(502, {'ok': False, 'error': 'upstream request failed'})
+            return
+        checkout = ((resp_data.get('_links') or {}).get('checkout') or {}).get('href')
+        if not checkout:
+            self._json(502, {'ok': False, 'error': 'no checkout url'})
+            return
+        self._json(200, {
+            'ok':          True,
+            'checkoutUrl': checkout,
+            'id':          resp_data.get('id'),
+            'status':      resp_data.get('status'),
+            'expiresAt':   resp_data.get('expiresAt'),
+        })
 
     # ── Mail (SMTP) ────────────────────────────────────────────────────
 

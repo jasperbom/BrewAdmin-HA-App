@@ -4,7 +4,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, mailTestApi, mailSendApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker } from '../utils/api'
+import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
@@ -451,7 +451,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -955,6 +955,45 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Claude AI ${claudeForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setClaudeMsg('✓ Opgeslagen');
     setTimeout(() => setClaudeMsg(''), 2000);
+  };
+
+  // ── Mollie (betaallink op facturen) ────────────────────────────────────
+  const [mollieForm, setMollieForm] = React.useState({
+    apiKey:      mollieCreds?.apiKey || '',
+    enabled:     !!mollieCreds?.enabled,
+    redirectUrl: mollieCreds?.redirectUrl || '',
+  });
+  const mollieFormInit = React.useRef(false);
+  React.useEffect(() => {
+    if (!mollieFormInit.current && (mollieCreds?.apiKey || mollieCreds?.enabled || mollieCreds?.redirectUrl)) {
+      setMollieForm({
+        apiKey:      mollieCreds.apiKey || '',
+        enabled:     !!mollieCreds.enabled,
+        redirectUrl: mollieCreds.redirectUrl || '',
+      });
+      mollieFormInit.current = true;
+    }
+  }, [mollieCreds?.apiKey, mollieCreds?.enabled, mollieCreds?.redirectUrl]);
+  const [mollieMsg, setMollieMsg] = React.useState('');
+  const [mollieTesting, setMollieTesting] = React.useState(false);
+
+  const saveMollie = () => {
+    setMollieCreds((prev: any) => ({...prev, ...mollieForm}));
+    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Mollie ${mollieForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
+    setMollieMsg('✓ ' + t('lbl_saved'));
+    setTimeout(() => setMollieMsg(''), 2000);
+  };
+
+  const testMollie = async () => {
+    setMollieTesting(true); setMollieMsg('');
+    const res = await mollieTestApi(mollieForm.apiKey.trim());
+    if (res.ok) {
+      setMollieMsg('✓ ' + t('settings_mollie_test_ok'));
+    } else {
+      const det = res.detail ? ` (${res.detail})` : '';
+      setMollieMsg('⚠ ' + t('settings_mollie_test_fail') + det);
+    }
+    setMollieTesting(false);
   };
 
   // ── SMTP / e-mailserver ────────────────────────────────────────────────
@@ -2011,6 +2050,49 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
           <p>{t('settings_smtp_hint_app_pw')}</p>
           <p>{t('settings_smtp_hint_ports')}</p>
+        </div>
+      </div>
+
+      {/* MOLLIE — BETAALLINK OP FACTUREN */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_mollie_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_mollie_desc')}</p>
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div className="relative">
+              <input type="checkbox" checked={mollieForm.enabled}
+                onChange={(e: any) => setMollieForm((f: any) => ({...f, enabled: e.target.checked}))}
+                className="sr-only peer" />
+              <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+            </div>
+            <span className="text-sm font-medium text-gray-700">{t('settings_mollie_enable')}</span>
+          </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_mollie_key_label')}</label>
+            <input type="password" value={mollieForm.apiKey} autoComplete="off"
+              onChange={(e: any) => setMollieForm((f: any) => ({...f, apiKey: e.target.value}))}
+              placeholder="live_••••••••••••••••  /  test_••••••••••"
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-sm t-input" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_mollie_redirect_label')}</label>
+            <input type="text" value={mollieForm.redirectUrl}
+              onChange={(e: any) => setMollieForm((f: any) => ({...f, redirectUrl: e.target.value}))}
+              placeholder={(breweryDetails as any)?.website || 'https://brouwerij.nl'}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full max-w-sm t-input" />
+            <p className="text-xs text-gray-400 mt-1">{t('settings_mollie_redirect_hint')}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={saveMollie} className="px-4 py-2 tbtn rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
+            <Btn v="secondary" onClick={testMollie} disabled={mollieTesting || !mollieForm.apiKey.trim()}>
+              {mollieTesting ? t('settings_mollie_testing') : t('settings_mollie_test')}
+            </Btn>
+            {mollieMsg && <span className={`text-sm font-medium ${mollieMsg.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{mollieMsg}</span>}
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
+          <p>{t('settings_mollie_hint_keys')}</p>
+          <p>{t('settings_mollie_hint_send')}</p>
         </div>
       </div>
       </>}
