@@ -10,6 +10,7 @@ import {
   vergistProjectie,
   verpakProjectie,
   batchStapGereed,
+  bouwBatchTijdlijn,
 } from '../vergisting'
 
 // Datums worden op lokale middernacht geijkt; bereken verwachte ms via dezelfde
@@ -220,5 +221,66 @@ describe('batchStapGereed', () => {
     const opStap2 = { ...basis, vergisting_stap_idx: 2 }
     expect(batchStapGereed(opStap2, start + 8 * DAG_MS)).toBe(false)
     expect(batchStapGereed(opStap2, start + 14 * DAG_MS)).toBe(true)
+  })
+})
+
+describe('bouwBatchTijdlijn', () => {
+  it('leest werkelijke fasedatums uit de gedateerde statusovergangen', () => {
+    const batch = {
+      datum: '2026-06-28',
+      cold_crash_datum: '2026-07-12T10:00:00.000Z',
+      vergistingsprofiel: profiel,
+    }
+    const statusLog = [
+      { batch_id: 1, type: 'status', datum: '2026-06-28', referentie: 'Gepland → Brouwen' },
+      { batch_id: 1, type: 'status', datum: '2026-06-29', referentie: 'Brouwen → Vergisten' },
+      { batch_id: 1, type: 'status', datum: '2026-07-13', referentie: 'Vergisten → Conditioneren' },
+      { batch_id: 1, type: 'status', datum: '2026-07-27', referentie: 'Conditioneren → Afgevuld' },
+    ]
+    const afvullingen = [{ datum: '2026-07-27' }, { datum: '2026-07-28' }]
+    const tl = bouwBatchTijdlijn(batch, afvullingen, statusLog)
+    expect(tl.brouwdatum).toBe('2026-06-28')
+    expect(tl.vergistStart).toBe('2026-06-29')
+    // Statusovergang wint van cold_crash_datum (12 juli).
+    expect(tl.conditioneerStart).toBe('2026-07-13')
+    expect(tl.verpaktDatum).toBe('2026-07-27')   // vroegste afvulling
+    expect(tl.vergistDagen).toBe(14)             // 29 jun → 13 jul
+    expect(tl.conditioneerDagen).toBe(14)        // 13 jul → 27 jul
+    expect(tl.totaalDagen).toBe(29)              // 28 jun → 27 jul
+    expect(tl.stappen).toEqual([
+      { temp: 20, type: 'Hoofdgisting', dagen: 7, ramp: null },
+      { temp: 22, type: 'Diacetylrust', dagen: 2, ramp: null },
+      { temp: 3, type: 'Lagering', dagen: 14, ramp: null },
+    ])
+  })
+
+  it('valt zonder statuslog terug op tank_historie, cold_crash en afvullingen', () => {
+    const batch = {
+      datum: '2026-06-28',
+      tank_historie: [{ status: 'Vergisten', from: '2026-06-29' }],
+      cold_crash_datum: '2026-07-12T00:00:00.000Z',
+      vergistingsprofiel: profiel,
+    }
+    const tl = bouwBatchTijdlijn(batch, [{ datum: '2026-07-26' }], [])
+    expect(tl.vergistStart).toBe('2026-06-29')      // tank_historie
+    expect(tl.conditioneerStart).toBe('2026-07-12') // cold_crash_datum
+    expect(tl.verpaktDatum).toBe('2026-07-26')
+    expect(tl.vergistDagen).toBe(13)                // 29 jun → 12 jul
+    expect(tl.conditioneerDagen).toBe(14)           // 12 jul → 26 jul
+    expect(tl.totaalDagen).toBe(28)                 // 28 jun → 26 jul
+  })
+
+  it('degradeert netjes bij ontbrekende data', () => {
+    expect(bouwBatchTijdlijn(null, [], [])).toEqual({
+      brouwdatum: null, vergistStart: null, conditioneerStart: null, verpaktDatum: null,
+      vergistDagen: null, conditioneerDagen: null, totaalDagen: null, stappen: [],
+    })
+    const tl = bouwBatchTijdlijn({ datum: '2026-06-28' }, [], [])
+    expect(tl.brouwdatum).toBe('2026-06-28')
+    expect(tl.vergistStart).toBe('2026-06-28')  // valt terug op de batchdatum
+    expect(tl.conditioneerStart).toBeNull()
+    expect(tl.verpaktDatum).toBeNull()
+    expect(tl.vergistDagen).toBeNull()
+    expect(tl.totaalDagen).toBeNull()
   })
 })

@@ -175,3 +175,102 @@ export function batchStapGereed(batch: VergistBatch, nowMs: number): boolean {
   const start = huidigeStapStartMs(batch)
   return stapIsGereed(start, doel, nowMs)
 }
+
+// ── Batch-levensloop-tijdlijn (Gereed) ──────────────────────────────────────
+// Chronologische tijdlijn van een afgeronde batch voor de Gereed-weergave:
+// brouwdag → vergisten (met de temperatuurstappen uit het profiel) →
+// conditioneren → verpakt. De fase-datums komen zoveel mogelijk uit wat
+// werkelijk is uitgevoerd: eerst de gedateerde statusovergangen (log-regels
+// `type:'status'`, referentie `Oud → Nieuw`), anders de tank_historie, anders
+// `cold_crash_datum` of de batchdatum; de verpakdatum uit de vroegste afvulling.
+// De werkelijke duur per stap wordt nergens apart bewaard, dus de stapdagen
+// komen uit het (gevolgde) vergistingsprofiel — de fase-totalen zijn wél de
+// werkelijk verstreken dagen tussen de fase-datums.
+
+export interface TijdlijnStap {
+  temp: number | string | null
+  type?: string
+  dagen: number | null            // geplande dagen uit het profiel
+  ramp?: number | string | null   // ramp-uren uit het profiel
+}
+
+export interface BatchTijdlijn {
+  brouwdatum: string | null
+  vergistStart: string | null
+  conditioneerStart: string | null
+  verpaktDatum: string | null
+  vergistDagen: number | null      // werkelijk: vergistStart → conditioneerStart|verpakt
+  conditioneerDagen: number | null // werkelijk: conditioneerStart → verpakt
+  totaalDagen: number | null       // werkelijk: brouwdatum → verpakt
+  stappen: TijdlijnStap[]
+}
+
+export interface StatusLogRegel {
+  datum?: string | null
+  referentie?: string | null
+  batch_id?: number | string | null
+  type?: string | null
+}
+
+// Hele dagen tussen twee dag-precieze datums (YYYY-MM-DD), op lokale
+// middernacht geijkt zodat de tijdzone wegvalt. Null als een datum ontbreekt.
+function _dagVerschil(van: string | null, tot: string | null): number | null {
+  if (!van || !tot) return null
+  const a = new Date(`${van}T00:00`).getTime()
+  const b = new Date(`${tot}T00:00`).getTime()
+  if (isNaN(a) || isNaN(b)) return null
+  return Math.max(0, Math.round((b - a) / DAG_MS))
+}
+
+export function bouwBatchTijdlijn(
+  batch: VergistBatch | null | undefined,
+  afvullingen: Array<{ datum?: string | null }> | null | undefined,
+  statusLog: StatusLogRegel[] | null | undefined,
+): BatchTijdlijn {
+  const leeg: BatchTijdlijn = {
+    brouwdatum: null, vergistStart: null, conditioneerStart: null, verpaktDatum: null,
+    vergistDagen: null, conditioneerDagen: null, totaalDagen: null, stappen: [],
+  }
+  if (!batch) return leeg
+
+  // Vroegste gedateerde statusovergang náár `naar` (referentie 'Oud → Nieuw').
+  const overgangNaar = (naar: string): string | null => {
+    const datums = (statusLog || [])
+      .filter(e => {
+        const na = String(e?.referentie || '').split('→')[1]
+        return !!e?.datum && na !== undefined && na.trim() === naar
+      })
+      .map(e => String(e.datum))
+      .sort()
+    return datums.length ? datums[0] : null
+  }
+
+  const hist = Array.isArray(batch.tank_historie) ? batch.tank_historie : []
+  const histFrom = (status: string): string | null =>
+    hist.find(h => h?.status === status)?.from || null
+
+  const brouwdatum = batch.datum || null
+  const vergistStart = overgangNaar('Vergisten') || histFrom('Vergisten') || batch.datum || null
+  const conditioneerStart = overgangNaar('Conditioneren') || histFrom('Conditioneren')
+    || (batch.cold_crash_datum ? String(batch.cold_crash_datum).slice(0, 10) : null)
+  const avDatums = (afvullingen || [])
+    .map(a => a?.datum)
+    .filter((d): d is string => !!d)
+    .sort()
+  const verpaktDatum = (avDatums.length ? avDatums[0] : null)
+    || overgangNaar('Afgevuld') || overgangNaar('Verpakt') || null
+
+  const vergistDagen = _dagVerschil(vergistStart, conditioneerStart || verpaktDatum)
+  const conditioneerDagen = _dagVerschil(conditioneerStart, verpaktDatum)
+  const totaalDagen = _dagVerschil(brouwdatum, verpaktDatum)
+
+  const profiel = Array.isArray(batch.vergistingsprofiel) ? batch.vergistingsprofiel : []
+  const stappen: TijdlijnStap[] = profiel.map(s => ({
+    temp: s?.temp ?? null,
+    type: s?.type,
+    dagen: stapDoelDagen(s),
+    ramp: s?.ramp ?? null,
+  }))
+
+  return { brouwdatum, vergistStart, conditioneerStart, verpaktDatum, vergistDagen, conditioneerDagen, totaalDagen, stappen }
+}

@@ -450,6 +450,26 @@ export const ouderdomsAnalyse = (
   return { rijen, totalen: naarEuro(totalen) }
 }
 
+// ── Batch ↔ product-koppeling ───────────────────────────────────────────────
+// Eén batch kan aan meerdere producten gekoppeld zijn: het primaire
+// `product_id` plus de extra `product_ids`. Deze helper geeft de ontdubbelde
+// lijst product-ids waaraan de batch gekoppeld is (lege/ongeldige waarden weg).
+export const productIdsVoorBatch = (batch: any): number[] => {
+  const ids: number[] = []
+  const push = (v: any) => {
+    if (v == null || v === '') return
+    const n = Number(v)
+    if (!Number.isNaN(n) && !ids.includes(n)) ids.push(n)
+  }
+  push(batch?.product_id)
+  for (const pid of (batch?.product_ids || [])) push(pid)
+  return ids
+}
+
+// Of een batch aan een product gekoppeld is (primair of via de extra koppeling).
+export const batchHoortBijProduct = (batch: any, productId: number): boolean =>
+  productIdsVoorBatch(batch).includes(Number(productId))
+
 export interface ProductKostprijsResult {
   kostprijs_per_liter: number
   totaal_kosten: number
@@ -524,6 +544,14 @@ export const berekenBatchKostprijs = (
   }
 }
 
+// Kostprijs/liter van een product op basis van het afgevulde volume per product
+// (ERP: batch ↔ meerdere producten). Elke afvulling telt tegen de kostprijs/liter
+// van háár batch; welk product de afvulling betreft komt van `afvulling.product_id`,
+// en anders van het primaire `batch.product_id`. Zo wordt het batchvolume verdeeld
+// naar het deel dat werkelijk als dít product is afgevuld — een batch die over
+// meerdere producten is verdeeld (bijv. na een rebrand) belast elk product alleen
+// met zíjn eigen liters. Liters uit batches zonder bekende kostprijs (geen
+// afvullingen of geen kosten) tellen niet mee, net als voorheen.
 export const berekenProductKostprijs = (
   product_id: number,
   batches: any[],
@@ -534,17 +562,30 @@ export const berekenProductKostprijs = (
   onderdelen?: any[],
   accijns?: any[]
 ): ProductKostprijsResult => {
-  const pBatches = (batches||[]).filter((b: any) => b.product_id === product_id)
+  const batchById = new Map((batches||[]).map((b: any) => [b.id, b]))
+  const kplCache = new Map<any, number>()
+  const kplVoorBatch = (b: any): number => {
+    if (kplCache.has(b.id)) return kplCache.get(b.id) as number
+    const kpl = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns).kostprijs_per_liter
+    kplCache.set(b.id, kpl)
+    return kpl
+  }
   let totaal_kosten = 0
   let totaal_liter = 0
 
-  for (const b of pBatches) {
-    const bk = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns)
-    // Batches zonder afvullingen tellen niet mee — anders zou hun volume 0
-    // zijn en zou alleen hun kostpost de uitkomst vertekenen.
-    if (bk.totaal_liter <= 0) continue
-    totaal_kosten += bk.totaal_kosten
-    totaal_liter += bk.totaal_liter
+  for (const a of (afvullingen||[])) {
+    const b = batchById.get(a.batch_id)
+    if (!b) continue
+    // Effectief product van deze afvulling: expliciet op de afvulling, anders
+    // het primaire product van de batch.
+    const effProduct = (a.product_id ?? b.product_id)
+    if (effProduct == null || Number(effProduct) !== Number(product_id)) continue
+    const liters = Number(a.inhoud_per_eenheid ?? a.inhoud_liter ?? 0) * Number(a.hoeveelheid ?? a.aantal ?? 0)
+    if (liters <= 0) continue
+    const kpl = kplVoorBatch(b)
+    if (kpl <= 0) continue
+    totaal_kosten += liters * kpl
+    totaal_liter += liters
   }
 
   return {
