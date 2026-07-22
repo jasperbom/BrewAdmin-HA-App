@@ -16,6 +16,7 @@ import {
 import { logAudit } from '../utils/audit'
 import {
   vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap, verpakProjectie,
+  bouwBatchTijdlijn,
 } from '../utils/vergisting'
 import PlanningPage from './PlanningPage'
 import Btn from '../components/ui/Btn'
@@ -2496,6 +2497,70 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
+  // Tijdlijn (Gereed): chronologische levensloop van de batch — brouwdag,
+  // vergisting (met de temperatuurstappen uit het profiel), conditioneren en de
+  // verpakdag. De fasedatums komen uit wat werkelijk is uitgevoerd (gedateerde
+  // statusovergangen / tank_historie / cold_crash / de vroegste afvulling); de
+  // stapdagen komen uit het gevolgde vergistingsprofiel.
+  const renderTijdlijn = () => {
+    const statusLog = (log || []).filter((l: any) => l.batch_id === selB.id && l.type === 'status')
+    const tl = bouwBatchTijdlijn(selB, mijnAv, statusLog)
+    if (!tl.brouwdatum && !tl.vergistStart && !tl.verpaktDatum) {
+      return (
+        <div className="border border-gray-200 rounded-lg p-3 text-sm">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('flow_tijdlijn_titel')}</div>
+          <div className="text-sm text-gray-400 italic">{t('flow_tijdlijn_geen')}</div>
+        </div>
+      )
+    }
+    const dagenLabel = (n: number | null) => n == null ? null : t('flow_tijdlijn_dagen').replace('{n}', String(n))
+    const nodes: Array<{key: string, kleur: string, titel: string, datum: string | null, dagen: string | null, stappen: any[] | null}> = [
+      {key: 'brouwdag', kleur: 'var(--t-accent)', titel: t('flow_tijdlijn_brouwdag'), datum: tl.brouwdatum, dagen: null, stappen: null},
+      {key: 'vergisten', kleur: '#3b82f6', titel: t('flow_tijdlijn_vergisten'), datum: tl.vergistStart, dagen: dagenLabel(tl.vergistDagen), stappen: tl.stappen},
+      ...((tl.conditioneerStart || tl.conditioneerDagen != null)
+        ? [{key: 'conditioneren', kleur: '#a855f7', titel: t('flow_tijdlijn_conditioneren'), datum: tl.conditioneerStart, dagen: dagenLabel(tl.conditioneerDagen), stappen: null}]
+        : []),
+      {key: 'verpakt', kleur: '#16a34a', titel: t('flow_tijdlijn_verpakt'), datum: tl.verpaktDatum, dagen: null, stappen: null},
+    ]
+    return (
+      <div className="border border-gray-200 rounded-lg p-3 text-sm">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_tijdlijn_titel')}</div>
+        <div>
+          {nodes.map((n, i) => (
+            <div key={n.key} className="flex gap-3">
+              {/* Rail: bolletje + verbindingslijn naar de volgende fase */}
+              <div className="flex flex-col items-center">
+                <div className="w-3 h-3 rounded-full border-2 border-white shadow-sm mt-1 flex-shrink-0" style={{backgroundColor: n.kleur}} />
+                {i < nodes.length - 1 && <div className="w-px flex-1 bg-gray-200 my-1" />}
+              </div>
+              {/* Inhoud van de fase */}
+              <div className={`flex-1 min-w-0 ${i < nodes.length - 1 ? 'pb-3' : ''}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-medium text-gray-800">{n.titel}</span>
+                  <span className="text-xs text-gray-500 whitespace-nowrap">
+                    {n.datum ? fmtD(n.datum) : '—'}{n.dagen ? ` · ${n.dagen}` : ''}
+                  </span>
+                </div>
+                {Array.isArray(n.stappen) && n.stappen.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {n.stappen.map((s: any, j: number) => (
+                      <div key={j} className="flex items-baseline justify-between gap-2 text-xs text-gray-500">
+                        <span className="truncate">
+                          {s.temp != null && s.temp !== '' ? `${s.temp}°C` : '—'}{s.type ? ` · ${s.type}` : ''}
+                        </span>
+                        <span className="whitespace-nowrap">{s.dagen != null ? dagenLabel(s.dagen) : '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   // Numerieke fasevelden (OG/FG/ABV/pH). OG/FG/ABV tonen de verwachte doelwaarde
   // als placeholder — die is géén meting en moet door de gebruiker zelf ingevuld.
   const renderFaseVelden = (faseStatus: string) => FASE_VELDEN[faseStatus] ? (
@@ -2835,6 +2900,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               ))}
             </div>
             {renderFinancieel()}
+            {renderTijdlijn()}
           </>
         )}
 

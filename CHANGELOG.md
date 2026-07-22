@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.49] — 2026-07-22
+
+### Toegevoegd — Batch-flow: levensloop-tijdlijn bij een gerede batch
+
+- Onder het **financieel resultaat** van een **gerede (Gesloten) batch** staat nu
+  een **tijdlijn** die de levensloop toont: **brouwdag → vergisten →
+  conditioneren → verpakt**.
+- Bij **vergisten** worden de **temperatuurstappen** uit het gevolgde profiel
+  uitgesplitst (temperatuur · staptype · dagen); de fase-totalen (aantal dagen
+  vergisten en conditioneren) tonen de **werkelijk verstreken** dagen tussen de
+  fasedatums.
+- Fasedatums komen zoveel mogelijk uit wat werkelijk is uitgevoerd: de
+  gedateerde statusovergangen, anders de tank-historie, `cold_crash_datum` of de
+  batchdatum; de verpakdag komt uit de vroegste afvulling.
+
+### Technisch
+
+- Nieuwe pure helper `bouwBatchTijdlijn` in `src/utils/vergisting.ts` met
+  Vitest-dekking (statusovergangen, fallbacks, ontbrekende data).
+- i18n-sleutels `flow_tijdlijn_*` in nl/en/de/fr/es.
+
 ## [1.11.48] — 2026-07-22
 
 ### Toegevoegd — Batch aan meerdere producten koppelen (kostprijs naar afgevuld volume)
