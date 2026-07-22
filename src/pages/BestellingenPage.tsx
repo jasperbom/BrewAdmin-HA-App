@@ -56,6 +56,7 @@ interface BestellingenPageProps {
   verplaatsingen?: any[]
   afboekingen?: any[]
   smtpCreds?: any
+  mollieCreds?: any
   mailTemplates?: any
   btwTarieven?: (number | string)[]
   btwInst?: any
@@ -89,6 +90,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   producten=[], productArtikelen=[],
   locaties=[], verplaatsingen=[], afboekingen=[],
   smtpCreds={enabled:false},
+  mollieCreds={enabled:false},
   mailTemplates={},
   btwTarieven=[0, 9, 21],
   btwInst={}, btwAangiftes=[], bankKoppelingen={},
@@ -1308,6 +1310,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     /** Type mail — bepaalt het log-bericht en (bij 'bevestiging') een status-
      * overgang van 'nieuw' naar 'bevestigd' na succesvolle verzending. */
     kind?: 'pakbon' | 'factuur' | 'bevestiging'
+    mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
 
@@ -1366,14 +1369,35 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
         } catch { return '' }
       })()
+      const inst = (breweryDetails as any) || {}
       const vars = {
         naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
         nr: factuurNr,
-        bedrag: '€ ' + bedrag,
+        bedrag,
         vervaldatum: verval,
-        iban: (breweryDetails as any)?.iban || '',
-        brouwerij: (breweryDetails as any)?.naam || appName || '',
+        iban: inst.iban || '',
+        brouwerij: inst.naam || appName || '',
       }
+      // Mollie-betaallink: zelfde regels als op de boekhoudingspagina — alleen
+      // voor openstaande (niet-betaalde, niet-credit) facturen met een positief
+      // bedrag, en alleen als Mollie aanstaat. Redirect-URL uit de instelling,
+      // met de brouwerij-website als fallback.
+      const normUrl = (u: string) => {
+        const s = (u || '').trim()
+        return s && !/^https?:\/\//i.test(s) ? `https://${s}` : s
+      }
+      const amountCent = Number.isFinite(factuur.bruto_cent)
+        ? Math.round(factuur.bruto_cent)
+        : Math.round((factuur.bruto || 0) * 100)
+      const mollieCtx = ((mollieCreds as any)?.enabled && amountCent > 0
+        && factuur.status !== 'credit' && factuur.status !== 'betaald')
+        ? {
+            amountCent,
+            description: `${t('mollie_desc_factuur')} ${factuurNr}${inst.naam ? ' · ' + inst.naam : ''}`,
+            redirectUrl: normUrl((mollieCreds as any)?.redirectUrl || inst.website || ''),
+            factuurnummer: factuurNr,
+          }
+        : null
       setMailModal({
         title: t('mail_modal_title_factuur'),
         to: (resolvedSelectedOrder?.klant_email || ''),
@@ -1381,6 +1405,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         text: interpolate(tplOrDefault('factuur', 'body'), vars),
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         kind: 'factuur',
+        mollie: mollieCtx,
       })
     } catch (e: any) {
       alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
@@ -1709,6 +1734,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             logoDataUri={factuurLogo || logo}
             replyTo={(breweryDetails as any)?.email}
             smtpReady={!!smtpCreds?.enabled}
+            mollie={mailModal.mollie}
             onClose={() => setMailModal(null)}
             onSent={() => {
               // Per maild-type een leesbare log-omschrijving — wordt onderaan de

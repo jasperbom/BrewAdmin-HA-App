@@ -966,7 +966,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       const vars = {
         naam: resolved.klant_naam || '',
         nr: factuurNr,
-        bedrag: '€ ' + fmt(factuur.bruto || 0),
+        bedrag: fmt(factuur.bruto || 0),
         vervaldatum: verval,
         iban: inst.iban || '',
         brouwerij: inst.naam || appName || '',
