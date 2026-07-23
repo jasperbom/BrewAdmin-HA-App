@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.60] — 2026-07-23
+
+### Toegevoegd — Ontbrekende Batches-functies overgenomen in de Batchflow
+
+De nieuwe Batches-flow kan nu de belangrijkste dingen die alleen de oude
+pagina had:
+
+- **Batchgegevens bewerken** — nieuw inklapbaar blok in de detail: naam,
+  biernaam, stijl, batchnummer, liters, product-koppeling (vult biernaam/
+  stijl/GN-code) en GN-code direct bewerkbaar.
+- **Overhead-kosten invoeren** — electra/water/schoonmaak/overige kosten zijn
+  nu invulbaar in het financieel-blok (werden alleen opgeteld).
+- **Batch verwijderen** — knop in de detail-header, met dezelfde fiscale guard
+  (blokkeert bij uitleveringen/accijns) en cascade-opschoning als voorheen.
+- **CCP-metingen + CAPA** — meet-taken met kritische grens in de bestaande
+  taken-checklist per fase; een waarde buiten de grens maakt automatisch een
+  CAPA aan.
+- **Afgekeurd bier — Douane-vernietigingsflow** — de 3-staps vernietigingsflow
+  (aangevraagd → toegestaan → uitgevoerd) met PDF-upload en review is als
+  gedeeld component (`VernietigingSection`) beschikbaar in de flow.
+- **GN-code + SKU bij afvullen** — GN-goederencode kiezen en een SKU/EAN
+  koppelen/toevoegen bij een afvulling.
+- **Recept opnieuw toepassen** — knop bij een Geplande batch die velden +
+  ingrediënten opnieuw uit een recept vult.
+- **Logboek** — inklapbaar activiteitenlog per batch onderaan de detail.
+- **Tanktijd automatisch berekenen** — knopje bij de planning dat `tank_dagen`
+  uit het vergistingsschema + conditioneringstijd invult.
+
+---
+
 ## [1.11.59] — 2026-07-23
 
 ### Gewijzigd — Batchflow wordt de hoofd-'Batches'-pagina
