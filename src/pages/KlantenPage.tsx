@@ -743,9 +743,9 @@ const KlantenPage: React.FC<Props> = ({
             replyTo={(breweryDetails as any)?.email}
             smtpReady={!!smtpCreds?.enabled}
             onClose={() => setMailModal(null)}
-            onSent={() => {
+            onSent={(sentTo) => {
               if (selectedId !== null) {
-                logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:selectedId, actie:'gewijzigd', omschrijving:`Mail verstuurd aan ${selected?.email}`})
+                logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:selectedId, actie:'gewijzigd', omschrijving:`Mail verstuurd aan ${sentTo || selected?.email}`})
               }
             }}
           />

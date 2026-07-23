@@ -4,6 +4,81 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.58] — 2026-07-23
+
+### Toegevoegd — Betalingsherinnering per e-mail versturen (met betaallink)
+
+- Bij een openstaande factuur die de betaaltermijn is gepasseerd kun je de
+  **herinnering/aanmaning nu ook per e-mail versturen** (nieuwe ✉-knop naast
+  de bestaande PDF-knop). De herinnering-PDF gaat als bijlage mee.
+- Net als bij de factuur kun je in het verzendvenster de **Mollie-betaallink**
+  aanvinken: die komt als knop in de mail én als **QR-code op de
+  herinnering-PDF**. Zo kan de klant direct online betalen.
+- Bij verzenden wordt de factuurstatus automatisch bijgewerkt
+  (herinnering → 2e herinnering → aanmaning), net als bij de PDF-knop.
+- De herinnering-regeltabel en de PDF-opbouw zijn naar gedeelde helpers
+  verplaatst (`buildHerinneringHTML`), zodat print en mail identiek zijn.
+
+---
+
+## [1.11.57] — 2026-07-23
+
+### Opgelost — Logboek toonde het opgeslagen adres i.p.v. het gemailde adres
+
+- Paste je in het verzendvenster een **ander e-mailadres** dan het adres uit
+  de klantkaart, dan noteerde het logboek toch nog het oude, opgeslagen adres
+  ("Factuur gemaild naar …"). De mail ging wél naar het aangepaste adres.
+- De mailmodal geeft nu het **werkelijk gebruikte adres** terug, zodat het
+  logboek van de bestelling en de klant het juiste adres vastlegt.
+
+---
+
+## [1.11.56] — 2026-07-23
+
+### Gewijzigd — Factuurregels ook op de betalingsherinnering
+
+- De **betalingsherinnering/aanmaning** toont nu dezelfde **factuurregels**
+  (met BTW-overzicht en totalen) als de originele factuur, zodat de klant
+  direct ziet waarvoor het openstaande bedrag is.
+- De regeltabel is naar een gedeelde helper (`factuurRegelsHtml`) verplaatst
+  die zowel de factuur als de herinnering gebruikt — één bron, altijd gelijk.
+
+---
+
+## [1.11.55] — 2026-07-23
+
+### Gewijzigd — Compacte lay-out ook op pakbon en betalingsherinnering
+
+- Dezelfde compacte kop als op de factuur is nu ook toegepast op de **pakbon**
+  en de **betalingsherinnering/aanmaning**: het ontvangeradres (bezorg- resp.
+  factuuradres) staat rechtsboven onder het documentnummer, op dezelfde grootte
+  als de brouwerijgegevens — in plaats van in een groot grijs vak.
+- Het ongebruikte `.kb`-vak (oude adres-box) is uit de gedeelde print-CSS
+  verwijderd.
+- De HACCP-recall en de batch-brief houden hun eigen indeling; dat zijn
+  rapporten zonder brouwerij-/ontvangerkop, waar deze look niet op van
+  toepassing is.
+
+---
+
+## [1.11.54] — 2026-07-23
+
+### Gewijzigd — Compactere factuurlay-out (meer ruimte)
+
+- De **klantgegevens** staan nu rechtsboven op de factuur, direct onder het
+  factuurnummer en op dezelfde grootte als de brouwerijgegevens — in plaats van
+  in een groot grijs vak halverwege de pagina. Dat scheelt flink verticale
+  ruimte, zodat de factuur beter op één pagina past.
+- De **regelafstand naar het ordernummer** in het gegevensblok is kleiner
+  (kleinere `row-gap`), zodat het niet meer los onderaan lijkt te zweven.
+- De **fonts in het betaalinformatie-blok** zijn iets kleiner en compacter; die
+  oogden onnodig groot.
+- Alleen de verkoopfactuur is aangepast; de pakbon en betalingsherinnering
+  houden hun eigen indeling (de herinnering profiteert wel mee van het
+  compactere betaalblok).
+
+---
+
 ## [1.11.53] — 2026-07-23
 
 ### Opgelost — Mollie betaallink verliep en leidde naar de homepagina

@@ -1747,13 +1747,15 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             mollie={mailModal.mollie}
             regenerateAttachments={mailModal.regenerateAttachments}
             onClose={() => setMailModal(null)}
-            onSent={() => {
+            onSent={(sentTo) => {
               // Per maild-type een leesbare log-omschrijving — wordt onderaan de
-              // order in het logboekje getoond.
+              // order in het logboekje getoond. Gebruik het werkelijk gebruikte
+              // adres (in de modal bewerkt), niet het oorspronkelijke klant-adres.
+              const naar = sentTo || mailModal.to
               const omschrijving =
-                mailModal.kind === 'pakbon'      ? `Pakbon gemaild naar ${mailModal.to}` :
-                mailModal.kind === 'factuur'     ? `Factuur gemaild naar ${mailModal.to}` :
-                mailModal.kind === 'bevestiging' ? `Bevestigingsmail verstuurd naar ${mailModal.to}` :
+                mailModal.kind === 'pakbon'      ? `Pakbon gemaild naar ${naar}` :
+                mailModal.kind === 'factuur'     ? `Factuur gemaild naar ${naar}` :
+                mailModal.kind === 'bevestiging' ? `Bevestigingsmail verstuurd naar ${naar}` :
                 `Mail verstuurd: ${mailModal.subject}`
               logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id: selectedOrder.id, actie:'gewijzigd', omschrijving})
               // Status-overgang: een 'nieuw' order wordt 'bevestigd' zodra de

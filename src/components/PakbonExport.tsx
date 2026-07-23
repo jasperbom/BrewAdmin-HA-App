@@ -18,12 +18,14 @@ const CSS = `
   .bi-info { font-size: 9pt; color: #555; line-height: 1.65; margin-top: 1mm; }
   .doc-title { font-size: 22pt; font-weight: bold; color: #111; letter-spacing: 1px; margin-bottom: 1mm; }
   .doc-nr { font-size: 11pt; font-weight: bold; color: #333; }
-  .meta-grid { display: flex; gap: 12mm; flex-wrap: wrap; margin-bottom: 7mm; }
+  .hdr-party { margin-top: 5mm; text-align: right; }
+  .hdr-party .party-label { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 1mm; }
+  .hdr-party .kn { font-size: 9.5pt; font-weight: bold; color: #111; margin-bottom: 1px; }
+  .hdr-party p { font-size: 9pt; line-height: 1.5; color: #444; }
+  .meta-grid { display: flex; column-gap: 12mm; row-gap: 3.5mm; flex-wrap: wrap; margin-bottom: 6mm; }
   .meta-block .ml { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 1px; }
   .meta-block .mv { font-size: 10pt; font-weight: 500; color: #222; }
-  .kb { background: #f8f9fa; border-left: 3px solid #d1d5db; padding: 3.5mm 4.5mm; margin-bottom: 7mm; }
   .kn { font-weight: bold; font-size: 12pt; margin-bottom: 3px; }
-  .kb p { font-size: 10pt; line-height: 1.55; color: #333; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 5mm; }
   th { background: #f3f4f6; color: #374151; padding: 5px 6px; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; }
   th.r { text-align: right; }
@@ -38,8 +40,8 @@ const CSS = `
   .btw-section { display: flex; justify-content: flex-end; margin-bottom: 4mm; }
   .btw-table { width: auto; min-width: 80mm; margin: 0; }
   .btw-table th, .btw-table td { font-size: 9pt; padding: 3px 5px; }
-  .pay-block { background: #f0f7ff; border: 1px solid #cce5ff; padding: 3.5mm 4.5mm; border-radius: 3px; font-size: 9.5pt; line-height: 1.85; }
-  .pay-block .pay-title { font-weight: bold; font-size: 10.5pt; margin-bottom: 2px; }
+  .pay-block { background: #f0f7ff; border: 1px solid #cce5ff; padding: 3mm 4mm; border-radius: 3px; font-size: 8.5pt; line-height: 1.55; }
+  .pay-block .pay-title { font-weight: bold; font-size: 9.5pt; margin-bottom: 1.5px; }
   .footer { margin-top: 8mm; border-top: 1px solid #ccc; padding-top: 4mm; font-size: 9pt; color: #555; display: flex; justify-content: space-between; gap: 10mm; }
   .sign-block { flex: 1; }
   .sign-line { margin-top: 10mm; border-bottom: 1px solid #888; width: 50mm; }
@@ -131,6 +133,88 @@ function klantBlock(order: any): string {
   return `<div class="kn">${first}</div>${rest.map(l => `<p>${l}</p>`).join('')}`
 }
 
+// Regeltabel + BTW-overzicht + totalen van een factuur. Gedeeld door de
+// factuur-PDF en de betalingsherinnering, zodat beide exact dezelfde regels
+// tonen.
+function factuurRegelsHtml(factuur: any): string {
+  const regels: any[] = factuur.regels || []
+
+  // Bereken btw_overzicht uit regels als niet opgeslagen
+  const btwOverzicht: any[] = (() => {
+    if (factuur.btw_overzicht && factuur.btw_overzicht.length > 0) return factuur.btw_overzicht
+    const map: Record<number, {tarief:number,netto:number,btw:number}> = {}
+    regels.forEach((r: any) => {
+      const pct = r.btw_pct ?? 0
+      if (!map[pct]) map[pct] = {tarief:pct, netto:0, btw:0}
+      map[pct].netto += r.netto || 0
+      map[pct].btw += r.btw_bedrag || 0
+    })
+    return Object.values(map).sort((a,b) => a.tarief - b.tarief)
+  })()
+
+  const regelRows = regels.map((r: any) => `<tr>
+    <td>${esc(r.omschrijving || '—')}</td>
+    <td class="r">${fmtQty(r.hoeveelheid)}</td>
+    <td class="r">${fmtEuro(r.prijs_per_stuk)}</td>
+    <td class="r">${esc(r.btw_pct)}%</td>
+    <td class="r">${fmtEuro(r.netto)}</td>
+    <td class="r">${fmtEuro(r.btw_bedrag)}</td>
+    <td class="r">${fmtEuro(r.bruto)}</td>
+  </tr>`).join('')
+
+  const btwRows = btwOverzicht.map((b: any) => `<tr>
+    <td>BTW ${esc(b.tarief)}%</td>
+    <td class="r">${fmtEuro(b.netto)}</td>
+    <td class="r">${fmtEuro(b.btw)}</td>
+    <td class="r">${fmtEuro(b.netto + b.btw)}</td>
+  </tr>`).join('')
+
+  const netto = factuur.netto ?? 0
+  const btw = factuur.btw ?? 0
+  const bruto = factuur.bruto ?? 0
+
+  return `<table>
+      <thead>
+        <tr>
+          <th>Omschrijving</th>
+          <th class="r">Aantal</th>
+          <th class="r">Prijs</th>
+          <th class="r">BTW%</th>
+          <th class="r">${t('lbl_kol_excl_btw')}</th>
+          <th class="r">BTW</th>
+          <th class="r">${t('lbl_kol_incl_btw')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${regelRows || '<tr><td colspan="7" style="text-align:center;color:#888;padding:4mm;">Geen regels</td></tr>'}
+      </tbody>
+    </table>
+
+    ${btwOverzicht.length > 0 ? `
+    <div class="btw-section">
+      <table class="btw-table">
+        <thead>
+          <tr>
+            <th>BTW-tarief</th>
+            <th class="r">${t('lbl_kol_excl_btw')}</th>
+            <th class="r">BTW</th>
+            <th class="r">${t('lbl_kol_incl_btw')}</th>
+          </tr>
+        </thead>
+        <tbody>${btwRows}</tbody>
+      </table>
+    </div>` : ''}
+
+    <div class="totals">
+      <div class="totals-block">
+        <div class="totals-row"><span>${t('lbl_subtotaal_excl')}</span><span>${fmtEuro(netto)}</span></div>
+        <div class="totals-row"><span>BTW</span><span>${fmtEuro(btw)}</span></div>
+        <div class="totals-sep"></div>
+        <div class="totals-row grand-total"><span>${t('lbl_totaal_incl')}</span><span>${fmtEuro(bruto)}</span></div>
+      </div>
+    </div>`
+}
+
 // ─────────────────────────────────────────────
 // PAKBON
 // ─────────────────────────────────────────────
@@ -175,17 +259,16 @@ function buildPakbonBody(
       <div class="hdr-right">
         <div class="doc-title">PAKBON</div>
         <div class="doc-nr">${esc(pakbonNr)}</div>
+        <div class="hdr-party">
+          <div class="party-label">${t('lbl_bezorgadres')}</div>
+          ${klantBlock(order)}
+        </div>
       </div>
     </div>
 
     <div class="meta-grid">
       <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${esc(datum)}</div></div>
       <div class="meta-block"><div class="ml">Order</div><div class="mv">${esc(orderRef)}</div></div>
-    </div>
-
-    <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_bezorgadres')}</div>
-      ${klantBlock(order)}
     </div>
 
     <table>
@@ -281,40 +364,6 @@ function buildFactuurBody(
   })()
   const leveringsdatum = order?.verzend_datum || order?.datum ? fmtDate(order.verzend_datum || order.datum) : null
 
-  const regels: any[] = factuur.regels || []
-
-  // Bereken btw_overzicht uit regels als niet opgeslagen
-  const btwOverzicht: any[] = (() => {
-    if (factuur.btw_overzicht && factuur.btw_overzicht.length > 0) return factuur.btw_overzicht
-    const map: Record<number, {tarief:number,netto:number,btw:number}> = {}
-    regels.forEach((r: any) => {
-      const pct = r.btw_pct ?? 0
-      if (!map[pct]) map[pct] = {tarief:pct, netto:0, btw:0}
-      map[pct].netto += r.netto || 0
-      map[pct].btw += r.btw_bedrag || 0
-    })
-    return Object.values(map).sort((a,b) => a.tarief - b.tarief)
-  })()
-
-  const regelRows = regels.map((r: any) => `<tr>
-    <td>${esc(r.omschrijving || '—')}</td>
-    <td class="r">${fmtQty(r.hoeveelheid)}</td>
-    <td class="r">${fmtEuro(r.prijs_per_stuk)}</td>
-    <td class="r">${esc(r.btw_pct)}%</td>
-    <td class="r">${fmtEuro(r.netto)}</td>
-    <td class="r">${fmtEuro(r.btw_bedrag)}</td>
-    <td class="r">${fmtEuro(r.bruto)}</td>
-  </tr>`).join('')
-
-  const btwRows = btwOverzicht.map((b: any) => `<tr>
-    <td>BTW ${esc(b.tarief)}%</td>
-    <td class="r">${fmtEuro(b.netto)}</td>
-    <td class="r">${fmtEuro(b.btw)}</td>
-    <td class="r">${fmtEuro(b.netto + b.btw)}</td>
-  </tr>`).join('')
-
-  const netto = factuur.netto ?? 0
-  const btw = factuur.btw ?? 0
   const bruto = factuur.bruto ?? 0
   const naam = brewery?.naam || appName || ''
 
@@ -337,6 +386,10 @@ function buildFactuurBody(
         <div class="doc-title">${isCredit ? t('lbl_creditnota_titel') : t('lbl_factuur_titel')}</div>
         <div class="doc-nr">${esc(factuurnummer)}</div>
         ${factuur.status === 'betaald' ? '<div style="margin-top:2mm"><span class="badge badge-green">✓ Betaald</span></div>' : ''}
+        <div class="hdr-party">
+          <div class="party-label">${t('lbl_factuuradres')}</div>
+          ${klantBlock(order)}
+        </div>
       </div>
     </div>
 
@@ -344,51 +397,7 @@ function buildFactuurBody(
       ${metaItems.map(m => `<div class="meta-block"><div class="ml">${esc(m.label)}</div><div class="mv">${esc(m.val)}</div></div>`).join('')}
     </div>
 
-    <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_factuuradres')}</div>
-      ${klantBlock(order)}
-    </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th>Omschrijving</th>
-          <th class="r">Aantal</th>
-          <th class="r">Prijs</th>
-          <th class="r">BTW%</th>
-          <th class="r">${t('lbl_kol_excl_btw')}</th>
-          <th class="r">BTW</th>
-          <th class="r">${t('lbl_kol_incl_btw')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${regelRows || '<tr><td colspan="7" style="text-align:center;color:#888;padding:4mm;">Geen regels</td></tr>'}
-      </tbody>
-    </table>
-
-    ${btwOverzicht.length > 0 ? `
-    <div class="btw-section">
-      <table class="btw-table">
-        <thead>
-          <tr>
-            <th>BTW-tarief</th>
-            <th class="r">${t('lbl_kol_excl_btw')}</th>
-            <th class="r">BTW</th>
-            <th class="r">${t('lbl_kol_incl_btw')}</th>
-          </tr>
-        </thead>
-        <tbody>${btwRows}</tbody>
-      </table>
-    </div>` : ''}
-
-    <div class="totals">
-      <div class="totals-block">
-        <div class="totals-row"><span>${t('lbl_subtotaal_excl')}</span><span>${fmtEuro(netto)}</span></div>
-        <div class="totals-row"><span>BTW</span><span>${fmtEuro(btw)}</span></div>
-        <div class="totals-sep"></div>
-        <div class="totals-row grand-total"><span>${t('lbl_totaal_incl')}</span><span>${fmtEuro(bruto)}</span></div>
-      </div>
-    </div>
+    ${factuurRegelsHtml(factuur)}
 
     ${(brewery?.factuur_velden?.betaalblok !== false) ? `<div class="pay-block">
       <div class="pay-title">${t('lbl_betaalinformatie')}</div>
@@ -441,14 +450,18 @@ export function printFactuur(
 // ─────────────────────────────────────────────
 // BETALINGSHERINNERING / AANMANING
 // ─────────────────────────────────────────────
-export function printHerinnering(
+// Interne helper: bouwt de HTML body-inhoud + bestandsnaam van een
+// herinnering/aanmaning. `payInfo` (optioneel) plaatst onderaan een
+// Mollie-betaallink met QR-code, net als op de factuur.
+function buildHerinneringBody(
   factuur: any,
   brewery: any,
   appName: string,
   factuurLogo: string | null | undefined,
-  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning'
-): void {
-  if (!factuur) return
+  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning',
+  payInfo?: {url: string, qrDataUrl?: string} | null
+): {bodyHtml: string, filename: string} | null {
+  if (!factuur) return null
 
   const fv = brewery?.factuur_velden || {}
   const factuurnummer = factuur.factuurnummer || `F-${factuur.id}`
@@ -517,12 +530,11 @@ export function printHerinnering(
       <div class="hdr-right">
         <div class="doc-title" style="font-size:18pt">${docTitel}</div>
         <div class="doc-nr" style="color:#888">${t('lbl_date')}: ${vandaag}</div>
+        <div class="hdr-party">
+          <div class="party-label">${t('lbl_factuuradres')}</div>
+          ${klantBlock(klantOrder)}
+        </div>
       </div>
-    </div>
-
-    <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_factuuradres')}</div>
-      ${klantBlock(klantOrder)}
     </div>
 
     ${noticeHtml}
@@ -534,6 +546,8 @@ export function printHerinnering(
       <div class="meta-block"><div class="ml">${t('lbl_openstaand_bedrag')}</div><div class="mv" style="font-weight:bold;font-size:13pt">${fmtEuro(bruto)}</div></div>
     </div>
 
+    ${factuurRegelsHtml(factuur)}
+
     ${(fv.betaalblok !== false) ? `<div class="pay-block">
       <div class="pay-title">${t('lbl_betaalinformatie')}</div>
       ${brewery?.iban ? `<div>IBAN: <strong>${esc(brewery.iban)}</strong>${naam ? ` &nbsp;t.n.v. ${esc(naam)}` : ''}</div>` : ''}
@@ -541,7 +555,42 @@ export function printHerinnering(
       <div>${t('lbl_nieuw_vervaldag')}: <strong>${esc(nieuweVerval)}</strong></div>
       <div>o.v.v. factuurnummer <strong>${esc(factuurnummer)}</strong></div>
     </div>` : ''}
+
+    ${payInfo?.qrDataUrl ? `<div style="margin-top:4mm;display:flex;align-items:center;gap:5mm;border:1px solid #e5e7eb;border-radius:2mm;padding:3mm 4mm;">
+      <img src="${payInfo.qrDataUrl}" alt="QR" style="width:26mm;height:26mm;flex:0 0 auto;display:block;" />
+      <div style="font-size:9pt;line-height:1.5;color:#374151;">
+        <div style="font-weight:bold;color:#92400e;font-size:10.5pt;margin-bottom:1mm;">${t('lbl_online_betalen')}</div>
+        <div>${t('lbl_scan_qr')}</div>
+      </div>
+    </div>` : ''}
   </div>`
 
-  openPrint(bodyHtml, `${filenamePrefix}-${factuurnummer}`)
+  return {bodyHtml, filename: `${filenamePrefix}-${factuurnummer}`}
+}
+
+// Volledige standalone HTML (voor de mail-PDF via htmlToPdfBase64).
+export function buildHerinneringHTML(
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined,
+  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning',
+  payInfo?: {url: string, qrDataUrl?: string} | null
+): string {
+  const r = buildHerinneringBody(factuur, brewery, appName, factuurLogo, niveau, payInfo)
+  if (!r) return ''
+  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+}
+
+// Opent printvenster met de herinnering/aanmaning.
+export function printHerinnering(
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined,
+  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning'
+): void {
+  const r = buildHerinneringBody(factuur, brewery, appName, factuurLogo, niveau)
+  if (!r) return
+  openPrint(r.bodyHtml, r.filename)
 }
