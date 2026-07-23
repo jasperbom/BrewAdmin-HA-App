@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.55] — 2026-07-23
+
+### Gewijzigd — Compacte lay-out ook op pakbon en betalingsherinnering
+
+- Dezelfde compacte kop als op de factuur is nu ook toegepast op de **pakbon**
+  en de **betalingsherinnering/aanmaning**: het ontvangeradres (bezorg- resp.
+  factuuradres) staat rechtsboven onder het documentnummer, op dezelfde grootte
+  als de brouwerijgegevens — in plaats van in een groot grijs vak.
+- Het ongebruikte `.kb`-vak (oude adres-box) is uit de gedeelde print-CSS
+  verwijderd.
+- De HACCP-recall en de batch-brief houden hun eigen indeling; dat zijn
+  rapporten zonder brouwerij-/ontvangerkop, waar deze look niet op van
+  toepassing is.
+
+---
+
 ## [1.11.54] — 2026-07-23
 
 ### Gewijzigd — Compactere factuurlay-out (meer ruimte)

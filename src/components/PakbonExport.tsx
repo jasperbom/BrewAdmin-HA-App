@@ -25,9 +25,7 @@ const CSS = `
   .meta-grid { display: flex; column-gap: 12mm; row-gap: 3.5mm; flex-wrap: wrap; margin-bottom: 6mm; }
   .meta-block .ml { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 1px; }
   .meta-block .mv { font-size: 10pt; font-weight: 500; color: #222; }
-  .kb { background: #f8f9fa; border-left: 3px solid #d1d5db; padding: 3.5mm 4.5mm; margin-bottom: 7mm; }
   .kn { font-weight: bold; font-size: 12pt; margin-bottom: 3px; }
-  .kb p { font-size: 10pt; line-height: 1.55; color: #333; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 5mm; }
   th { background: #f3f4f6; color: #374151; padding: 5px 6px; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; }
   th.r { text-align: right; }
@@ -179,17 +177,16 @@ function buildPakbonBody(
       <div class="hdr-right">
         <div class="doc-title">PAKBON</div>
         <div class="doc-nr">${esc(pakbonNr)}</div>
+        <div class="hdr-party">
+          <div class="party-label">${t('lbl_bezorgadres')}</div>
+          ${klantBlock(order)}
+        </div>
       </div>
     </div>
 
     <div class="meta-grid">
       <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${esc(datum)}</div></div>
       <div class="meta-block"><div class="ml">Order</div><div class="mv">${esc(orderRef)}</div></div>
-    </div>
-
-    <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_bezorgadres')}</div>
-      ${klantBlock(order)}
     </div>
 
     <table>
@@ -520,12 +517,11 @@ export function printHerinnering(
       <div class="hdr-right">
         <div class="doc-title" style="font-size:18pt">${docTitel}</div>
         <div class="doc-nr" style="color:#888">${t('lbl_date')}: ${vandaag}</div>
+        <div class="hdr-party">
+          <div class="party-label">${t('lbl_factuuradres')}</div>
+          ${klantBlock(klantOrder)}
+        </div>
       </div>
-    </div>
-
-    <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_factuuradres')}</div>
-      ${klantBlock(klantOrder)}
     </div>
 
     ${noticeHtml}
