@@ -32,6 +32,7 @@ interface ProductieDashboardProps {
   setAuditLog: (updater: any) => void
   setPage: (id: string) => void
   setNavBatchId: (id: number | null) => void
+  setPreNieuwBatch: (v: any) => void
 }
 
 type MetingForm = { sg: string, ph: string, temp: string }
@@ -47,7 +48,7 @@ function ProductieDashboard({
   bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {},
   batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
-  setPage, setNavBatchId,
+  setPage, setNavBatchId, setPreNieuwBatch = () => {},
 }: ProductieDashboardProps) {
   const batchNaam = (b: any) => b?.naam || b?.biernaam || t('lbl_naamloos')
 
@@ -138,7 +139,7 @@ function ProductieDashboard({
       {/* ── Primaire acties ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <Btn s="lg" cls="min-h-[44px]" onClick={openMetingModal}>{t('dash_meting_invoeren')}</Btn>
-        <Btn s="lg" v="secondary" cls="min-h-[44px]" onClick={() => setPage('batches')}>{t('dash_nieuwe_batch')}</Btn>
+        <Btn s="lg" v="secondary" cls="min-h-[44px]" onClick={() => { setNavBatchId(null); setPreNieuwBatch({}); setPage('batchflow') }}>{t('dash_nieuwe_batch')}</Btn>
         <Btn s="lg" v="secondary" cls="min-h-[44px]" onClick={() => setPage('batchflow')}>{t('dash_naar_batchflow')}</Btn>
       </div>
 
@@ -162,7 +163,7 @@ function ProductieDashboard({
 
               return (
                 <div key={tank.id} className="bg-white rounded-xl shadow-sm border t-border p-4 flex-shrink-0" style={{ width: 288 }}>
-                  <div className="flex items-start gap-4 cursor-pointer" onClick={() => { setNavBatchId(batch.id); setPage('batches') }}>
+                  <div className="flex items-start gap-4 cursor-pointer" onClick={() => { setNavBatchId(batch.id); setPage('batchflow') }}>
                     <TankVisualForSoort soort={tank.soort} fillPct={fillPct} status={batch.status} ebc={batch.kleur ? Number(batch.kleur) : undefined} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between mb-1 gap-2">
@@ -221,7 +222,15 @@ function ProductieDashboard({
                         <div className="grid grid-cols-3 gap-2">
                           <Inp label={t('flow_meting_sg')} type="number" step="0.001" value={inlineMetingForm.sg} onChange={(v) => setInlineMetingForm((f) => ({ ...f, sg: v }))} />
                           <Inp label={t('flow_meting_ph')} type="number" step="0.1" value={inlineMetingForm.ph} onChange={(v) => setInlineMetingForm((f) => ({ ...f, ph: v }))} />
-                          <Inp label={t('flow_meting_temp')} type="number" step="0.1" value={inlineMetingForm.temp} onChange={(v) => setInlineMetingForm((f) => ({ ...f, temp: v }))} />
+                          <div>
+                            <Inp label={t('flow_meting_temp')} type="number" step="0.1" value={inlineMetingForm.temp} onChange={(v) => setInlineMetingForm((f) => ({ ...f, temp: v }))} />
+                            {haTankTemps[tank.id] != null && !isNaN(Number(haTankTemps[tank.id])) && (
+                              <button type="button" onClick={() => setInlineMetingForm((f) => ({ ...f, temp: Number(haTankTemps[tank.id]).toFixed(1) }))}
+                                className="mt-1 text-xs hover:underline" style={{ color: 'var(--t-accent)' }} title={t('carb_use_sensor_tooltip')}>
+                                🌡 HA: {Number(haTankTemps[tank.id]).toFixed(1)}°C
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="flex gap-2">
                           <Btn s="sm" onClick={() => { slaMetingOp(batch.id, inlineMetingForm); setInlineMetingBatchId(null) }}>{t('btn_save')}</Btn>
@@ -244,7 +253,7 @@ function ProductieDashboard({
           <div className="divide-y divide-gray-100">
             {takenVandaag.map(({ batch, label }: any) => (
               <div key={batch.id} className="flex items-center justify-between gap-3 px-5 py-3 min-h-[44px] hover:bg-gray-50 cursor-pointer"
-                onClick={() => { setNavBatchId(batch.id); setPage(batch.status === 'Brouwen' ? 'batchflow' : 'batches') }}>
+                onClick={() => { setNavBatchId(batch.id); setPage('batchflow') }}>
                 <div className="min-w-0">
                   <span className="font-medium text-sm text-gray-800">{batchNaam(batch)}</span>
                   <div className="text-xs text-gray-500 mt-0.5">{label}</div>
@@ -292,7 +301,20 @@ function ProductieDashboard({
             <div className="grid grid-cols-3 gap-3">
               <Inp label={t('flow_meting_sg')} type="number" step="0.001" value={metingForm.sg} onChange={(v) => setMetingForm((f) => ({ ...f, sg: v }))} />
               <Inp label={t('flow_meting_ph')} type="number" step="0.01" value={metingForm.ph} onChange={(v) => setMetingForm((f) => ({ ...f, ph: v }))} />
-              <Inp label={t('flow_meting_temp')} type="number" step="0.1" value={metingForm.temp} onChange={(v) => setMetingForm((f) => ({ ...f, temp: v }))} />
+              <div>
+                <Inp label={t('flow_meting_temp')} type="number" step="0.1" value={metingForm.temp} onChange={(v) => setMetingForm((f) => ({ ...f, temp: v }))} />
+                {(() => {
+                  const b = actieveBatches.find((x: any) => String(x.id) === metingBatchId)
+                  const tv = b && b.tank != null ? haTankTemps[b.tank] : undefined
+                  const s = typeof tv === 'number' && !isNaN(tv) ? tv : null
+                  return s != null ? (
+                    <button type="button" onClick={() => setMetingForm((f) => ({ ...f, temp: s.toFixed(1) }))}
+                      className="mt-1 text-xs hover:underline" style={{ color: 'var(--t-accent)' }} title={t('carb_use_sensor_tooltip')}>
+                      🌡 HA: {s.toFixed(1)}°C
+                    </button>
+                  ) : null
+                })()}
+              </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Btn v="secondary" onClick={() => setMetingOpen(false)}>{t('btn_cancel')}</Btn>

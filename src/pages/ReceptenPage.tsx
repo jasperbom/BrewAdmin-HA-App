@@ -563,7 +563,7 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                         ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
                       ],
                     })
-                    setPage('batches')
+                    setPage('batchflow')
                   }}>{t('btn_brouwen')}</Btn>
                 )}
               </div>

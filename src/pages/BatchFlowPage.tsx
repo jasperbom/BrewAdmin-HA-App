@@ -65,6 +65,8 @@ interface BatchFlowPageProps {
   setPage: (p: string) => void,
   setNavBatchId: (id: number | null) => void,
   openBatchId?: number | null,
+  preNieuwBatch?: any,
+  setPreNieuwBatch?: (v: any) => void,
 }
 
 interface ChecklistItem {
@@ -332,6 +334,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, planningInst, haInst, haTankTemps,
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
   log, setLog, auditLog, setAuditLog, setPage, setNavBatchId, openBatchId,
+  preNieuwBatch, setPreNieuwBatch,
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   const [openFasen, setOpenFasen] = useState<number[]>([])
@@ -392,6 +395,23 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (openBatchId) openBatch(openBatchId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openBatchId])
+  // Binnenkomen vanaf Recepten ('Brouwen') of het dashboard ('Nieuwe batch'):
+  // open direct het voorgevulde nieuwe-batch-formulier in het overzicht. Een
+  // meegegeven recept wordt voorgeselecteerd; maakNieuweBatch bouwt daarna de
+  // batch + ingrediëntregels op, net als voorheen op de oude Batches-pagina.
+  React.useEffect(() => {
+    if (!preNieuwBatch) return
+    setSel(null) // forceer het overzicht zodat het formulier zichtbaar is
+    setNieuwForm({
+      recept_id: preNieuwBatch.recept_id != null && preNieuwBatch.recept_id !== '' ? String(preNieuwBatch.recept_id) : '',
+      naam: preNieuwBatch.naam || '',
+      datum: preNieuwBatch.datum || tod(),
+      tank: preNieuwBatch.tank || '',
+    })
+    setNieuwOpen(true)
+    setPreNieuwBatch && setPreNieuwBatch(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preNieuwBatch])
   // Eén fase tegelijk: een stap in de tijdlijn selecteren deselecteert de
   // vorige; nogmaals klikken klapt de geselecteerde fase weer dicht.
   const toggleFase = (i: number) =>
@@ -2574,15 +2594,29 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     </div>
   ) : null
 
-  // Snelle SG-meting (vergisten/conditioneren).
-  const renderMetingForm = () => (
+  // Snelle SG-meting (vergisten/conditioneren). De tanktemperatuur kan met één
+  // tik uit de HA-sensor van de tank worden overgenomen (al automatisch
+  // opgehaald in haTankTemps) — zelfde patroon als de carbonatie-form.
+  const renderMetingForm = () => {
+    const mSensorRaw = selB && selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+    const mSensor = typeof mSensorRaw === 'number' && !isNaN(mSensorRaw) ? mSensorRaw : null
+    return (
     <div className="flex flex-wrap items-end gap-2">
       <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
-      <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder="19.5" cls="w-28" />
+      <div className="flex flex-col">
+        <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder={mSensor != null ? mSensor.toFixed(1) : '19.5'} cls="w-28" />
+        {mSensor != null && (
+          <button type="button" onClick={() => setMForm(f => ({...f, temp: mSensor.toFixed(1)}))}
+            className="mt-1 text-xs hover:underline self-start" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
+            🌡 HA: {mSensor.toFixed(1)}°C
+          </button>
+        )}
+      </div>
       <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
       <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
     </div>
-  )
+    )
+  }
   const renderGrafiek = () => mijnMetingen.length >= 2
     ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
     : <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>

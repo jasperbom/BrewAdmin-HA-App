@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.59] — 2026-07-23
+
+### Gewijzigd — Batchflow wordt de hoofd-'Batches'-pagina
+
+- Het menu-item **Batchflow** heet nu **Batches** en staat vooraan; de
+  oude, uitgebreide batches-pagina is hernoemd naar **Oude batches pagina**
+  en blijft als vangnet bereikbaar in het Productie-menu.
+- Alle knoppen en links die voorheen naar de (oude) batches-pagina of een
+  batch navigeerden gaan nu naar de nieuwe Batches-flow: de
+  carbonatie-melding, de tankkaarten en 'Taken vandaag' op het dashboard,
+  en de product-batchlijst.
+- **Nieuwe batch** (dashboard) en **Brouwen** (recept) openen nu het
+  voorgevulde nieuwe-batch-scherm ín de flow — het recept wordt overgenomen.
+
+### Toegevoegd — Tanktemperatuur van de sensor overnemen bij een meting
+
+- Bij het invoeren van een SG-meting kun je in de **Batchflow** én op het
+  **dashboard** (snelmeting-modal en de inline meting per tankkaart) de
+  actuele **tanktemperatuur uit de Home Assistant-sensor** met één tik
+  overnemen (🌡-knop), net zoals dat al bij de carbonatie-sessie kon.
+
+---
+
 ## [1.11.58] — 2026-07-23
 
 ### Toegevoegd — Betalingsherinnering per e-mail versturen (met betaallink)
