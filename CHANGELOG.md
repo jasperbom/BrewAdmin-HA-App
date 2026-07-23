@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.58] — 2026-07-23
+
+### Toegevoegd — Betalingsherinnering per e-mail versturen (met betaallink)
+
+- Bij een openstaande factuur die de betaaltermijn is gepasseerd kun je de
+  **herinnering/aanmaning nu ook per e-mail versturen** (nieuwe ✉-knop naast
+  de bestaande PDF-knop). De herinnering-PDF gaat als bijlage mee.
+- Net als bij de factuur kun je in het verzendvenster de **Mollie-betaallink**
+  aanvinken: die komt als knop in de mail én als **QR-code op de
+  herinnering-PDF**. Zo kan de klant direct online betalen.
+- Bij verzenden wordt de factuurstatus automatisch bijgewerkt
+  (herinnering → 2e herinnering → aanmaning), net als bij de PDF-knop.
+- De herinnering-regeltabel en de PDF-opbouw zijn naar gedeelde helpers
+  verplaatst (`buildHerinneringHTML`), zodat print en mail identiek zijn.
+
+---
+
 ## [1.11.57] — 2026-07-23
 
 ### Opgelost — Logboek toonde het opgeslagen adres i.p.v. het gemailde adres

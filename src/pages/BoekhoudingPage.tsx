@@ -14,7 +14,7 @@ import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinat
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
-import { printFactuur, buildFactuurHTML, printHerinnering } from '../components/PakbonExport'
+import { printFactuur, buildFactuurHTML, printHerinnering, buildHerinneringHTML } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
@@ -934,6 +934,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     factuurId?: number
     mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
     regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
+    // Extra actie na succesvol verzenden (bijv. de herinnering-status markeren).
+    afterSent?: () => void
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState<number | null>(null)
 
@@ -1011,6 +1013,81 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         factuurId: factuur.id,
         mollie: mollieCtx,
         regenerateAttachments,
+      })
+    } catch (e: any) {
+      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
+    }
+    setMailGenerating(null)
+  }
+
+  // Herinnering/aanmaning per mail versturen (met dezelfde Mollie-betaallink +
+  // QR als de factuur). Markeert bij verzenden de bijbehorende status.
+  const mailHerinnering = async (factuur: any, niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning') => {
+    const inst = (breweryDetails as any) || {}
+    const klant = findLiveKlant(factuur, klanten)
+    const resolved = resolveKlantSnapshot(factuur, klanten)
+    const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
+    const breweryMet = {...inst, betalingstermijn: termijn}
+    setMailGenerating(factuur.id)
+    try {
+      const html = buildHerinneringHTML(resolved, breweryMet, appName, factuurLogo || logo, niveau)
+      const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
+      const prefix = niveau === 'aanmaning' ? 'Aanmaning'
+        : niveau === 'tweede_herinnering' ? '2e-Herinnering' : '1e-Herinnering'
+      const pdfBase64 = await htmlToPdfBase64(html)
+      const verval = (() => {
+        try {
+          const d = new Date(factuur.datum); d.setDate(d.getDate() + Number(termijn))
+          return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
+        } catch { return '' }
+      })()
+      const vars = {
+        naam: resolved.klant_naam || '',
+        nr: factuurNr,
+        bedrag: fmt(factuur.bruto || 0),
+        vervaldatum: verval,
+        iban: inst.iban || '',
+        brouwerij: inst.naam || appName || '',
+      }
+      const ontvanger = klant?.email || resolved.klant_email || ''
+      const normUrl = (u: string) => {
+        const s = (u || '').trim()
+        return s && !/^https?:\/\//i.test(s) ? `https://${s}` : s
+      }
+      const amountCent = Number.isFinite(factuur.bruto_cent)
+        ? Math.round(factuur.bruto_cent)
+        : Math.round((factuur.bruto || 0) * 100)
+      const mollieAan = !!(mollieCreds as any)?.enabled
+      const mollieCtx = (mollieAan && amountCent > 0
+        && factuur.status !== 'credit' && factuur.status !== 'betaald')
+        ? {
+            amountCent,
+            description: `${t('mollie_desc_factuur')} ${factuurNr}${inst.naam ? ' · ' + inst.naam : ''}`,
+            redirectUrl: normUrl((mollieCreds as any)?.redirectUrl || inst.website || ''),
+            factuurnummer: factuurNr,
+          }
+        : null
+      // Bij een Mollie-betaallink de herinnering-PDF opnieuw bouwen mét QR + link.
+      const regenerateAttachments = mollieCtx ? async (payUrl: string) => {
+        const qr = await qrDataUrl(payUrl)
+        const html2 = buildHerinneringHTML(resolved, breweryMet, appName, factuurLogo || logo, niveau, {url: payUrl, qrDataUrl: qr})
+        const pdf2 = await htmlToPdfBase64(html2)
+        return [{filename: `${prefix}-${factuurNr}.pdf`, contentBase64: pdf2, mimeType: 'application/pdf'}]
+      } : undefined
+      setMailModal({
+        title: t('mail_modal_title_herinnering'),
+        to: ontvanger,
+        subject: interpolate(t('mail_herinnering_subject_default'), vars),
+        text: interpolate(t('mail_herinnering_body_default'), vars),
+        attachments: [{filename: `${prefix}-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+        factuurId: factuur.id,
+        mollie: mollieCtx,
+        regenerateAttachments,
+        afterSent: () => {
+          if (niveau === 'herinnering') markeerHerinnering(factuur.id)
+          else if (niveau === 'tweede_herinnering') markeerTweedeHerinnering(factuur.id)
+          else markeerAanmaning(factuur.id)
+        },
       })
     } catch (e: any) {
       alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
@@ -1808,6 +1885,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           {volgendeActie==='aanmaning'?t('btn_aanmaning_pdf'):volgendeActie==='tweede_herinnering'?t('btn_tweede_herinnering_pdf'):t('btn_herinnering_pdf')}
                         </button>
                       )}
+                      {volgendeActie && (
+                        <button onClick={()=>mailHerinnering(f, volgendeActie as any)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
+                          title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_herinnering')}
+                          className={`px-2 py-1 rounded text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${volgendeActie==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volgendeActie==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
+                          {mailGenerating === f.id ? '⏳' : '✉'}
+                        </button>
+                      )}
                       <button onClick={()=>markeerBetaald(f.id)}
                         className="px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded text-xs font-medium border border-green-200 transition-colors">
                         {t('btn_mark_paid')}
@@ -1890,10 +1974,17 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                               : f.status === 'herinnering' ? 'tweede_herinnering' as const
                               : 'herinnering' as const
                             return volg ? (
+                              <>
                               <button onClick={() => genereerEnMarkeer(f, volg)}
                                 className={`px-2 py-0.5 rounded text-xs font-medium border transition-colors ${volg==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volg==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
                                 {volg==='aanmaning'?t('btn_aanmaning_pdf'):volg==='tweede_herinnering'?t('btn_tweede_herinnering_pdf'):t('btn_herinnering_pdf')}
                               </button>
+                              <button onClick={() => mailHerinnering(f, volg)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
+                                title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_herinnering')}
+                                className={`px-2 py-0.5 rounded text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${volg==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volg==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
+                                {mailGenerating === f.id ? '⏳' : '✉'}
+                              </button>
+                              </>
                             ) : null
                           })()}
                           {f.status !== 'betaald' && (
@@ -2238,10 +2329,17 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 : f.status === 'herinnering' ? 'tweede_herinnering' as const
                                 : 'herinnering' as const
                               return volg ? (
+                                <>
                                 <button onClick={()=>genereerEnMarkeer(f, volg)}
                                   className={`text-xs px-2 py-0.5 rounded border transition-colors mr-1 ${volg==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volg==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
                                   {volg==='aanmaning'?t('btn_aanmaning_pdf'):volg==='tweede_herinnering'?t('btn_tweede_herinnering_pdf'):t('btn_herinnering_pdf')}
                                 </button>
+                                <button onClick={()=>mailHerinnering(f, volg)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
+                                  title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_herinnering')}
+                                  className={`text-xs px-2 py-0.5 rounded border transition-colors mr-1 disabled:opacity-40 disabled:cursor-not-allowed ${volg==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volg==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
+                                  {mailGenerating === f.id ? '⏳' : '✉'}
+                                </button>
+                                </>
                               ) : null
                             })()}
                             {f.status !== 'betaald' && (
@@ -4006,10 +4104,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           mollie={mailModal.mollie}
           regenerateAttachments={mailModal.regenerateAttachments}
           onClose={() => setMailModal(null)}
-          onSent={() => {
+          onSent={(sentTo) => {
             if (mailModal.factuurId) {
-              logAudit(auditLog, setAuditLog, {entiteit:'VerkoopFactuur', entiteit_id: mailModal.factuurId, actie:'gewijzigd', omschrijving: `Mail verstuurd: ${mailModal.subject}`})
+              logAudit(auditLog, setAuditLog, {entiteit:'VerkoopFactuur', entiteit_id: mailModal.factuurId, actie:'gewijzigd', omschrijving: `Mail verstuurd: ${mailModal.subject}${sentTo ? ` (${sentTo})` : ''}`})
             }
+            mailModal.afterSent?.()
           }}
         />
       )}

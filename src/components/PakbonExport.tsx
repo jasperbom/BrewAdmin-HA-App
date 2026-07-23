@@ -450,14 +450,18 @@ export function printFactuur(
 // ─────────────────────────────────────────────
 // BETALINGSHERINNERING / AANMANING
 // ─────────────────────────────────────────────
-export function printHerinnering(
+// Interne helper: bouwt de HTML body-inhoud + bestandsnaam van een
+// herinnering/aanmaning. `payInfo` (optioneel) plaatst onderaan een
+// Mollie-betaallink met QR-code, net als op de factuur.
+function buildHerinneringBody(
   factuur: any,
   brewery: any,
   appName: string,
   factuurLogo: string | null | undefined,
-  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning'
-): void {
-  if (!factuur) return
+  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning',
+  payInfo?: {url: string, qrDataUrl?: string} | null
+): {bodyHtml: string, filename: string} | null {
+  if (!factuur) return null
 
   const fv = brewery?.factuur_velden || {}
   const factuurnummer = factuur.factuurnummer || `F-${factuur.id}`
@@ -551,7 +555,42 @@ export function printHerinnering(
       <div>${t('lbl_nieuw_vervaldag')}: <strong>${esc(nieuweVerval)}</strong></div>
       <div>o.v.v. factuurnummer <strong>${esc(factuurnummer)}</strong></div>
     </div>` : ''}
+
+    ${payInfo?.qrDataUrl ? `<div style="margin-top:4mm;display:flex;align-items:center;gap:5mm;border:1px solid #e5e7eb;border-radius:2mm;padding:3mm 4mm;">
+      <img src="${payInfo.qrDataUrl}" alt="QR" style="width:26mm;height:26mm;flex:0 0 auto;display:block;" />
+      <div style="font-size:9pt;line-height:1.5;color:#374151;">
+        <div style="font-weight:bold;color:#92400e;font-size:10.5pt;margin-bottom:1mm;">${t('lbl_online_betalen')}</div>
+        <div>${t('lbl_scan_qr')}</div>
+      </div>
+    </div>` : ''}
   </div>`
 
-  openPrint(bodyHtml, `${filenamePrefix}-${factuurnummer}`)
+  return {bodyHtml, filename: `${filenamePrefix}-${factuurnummer}`}
+}
+
+// Volledige standalone HTML (voor de mail-PDF via htmlToPdfBase64).
+export function buildHerinneringHTML(
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined,
+  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning',
+  payInfo?: {url: string, qrDataUrl?: string} | null
+): string {
+  const r = buildHerinneringBody(factuur, brewery, appName, factuurLogo, niveau, payInfo)
+  if (!r) return ''
+  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+}
+
+// Opent printvenster met de herinnering/aanmaning.
+export function printHerinnering(
+  factuur: any,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined,
+  niveau: 'herinnering' | 'tweede_herinnering' | 'aanmaning'
+): void {
+  const r = buildHerinneringBody(factuur, brewery, appName, factuurLogo, niveau)
+  if (!r) return
+  openPrint(r.bodyHtml, r.filename)
 }
