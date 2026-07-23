@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.54] — 2026-07-23
+
+### Gewijzigd — Compactere factuurlay-out (meer ruimte)
+
+- De **klantgegevens** staan nu rechtsboven op de factuur, direct onder het
+  factuurnummer en op dezelfde grootte als de brouwerijgegevens — in plaats van
+  in een groot grijs vak halverwege de pagina. Dat scheelt flink verticale
+  ruimte, zodat de factuur beter op één pagina past.
+- De **regelafstand naar het ordernummer** in het gegevensblok is kleiner
+  (kleinere `row-gap`), zodat het niet meer los onderaan lijkt te zweven.
+- De **fonts in het betaalinformatie-blok** zijn iets kleiner en compacter; die
+  oogden onnodig groot.
+- Alleen de verkoopfactuur is aangepast; de pakbon en betalingsherinnering
+  houden hun eigen indeling (de herinnering profiteert wel mee van het
+  compactere betaalblok).
+
+---
+
 ## [1.11.53] — 2026-07-23
 
 ### Opgelost — Mollie betaallink verliep en leidde naar de homepagina

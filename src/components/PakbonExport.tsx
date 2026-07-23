@@ -18,7 +18,11 @@ const CSS = `
   .bi-info { font-size: 9pt; color: #555; line-height: 1.65; margin-top: 1mm; }
   .doc-title { font-size: 22pt; font-weight: bold; color: #111; letter-spacing: 1px; margin-bottom: 1mm; }
   .doc-nr { font-size: 11pt; font-weight: bold; color: #333; }
-  .meta-grid { display: flex; gap: 12mm; flex-wrap: wrap; margin-bottom: 7mm; }
+  .hdr-party { margin-top: 5mm; text-align: right; }
+  .hdr-party .party-label { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 1mm; }
+  .hdr-party .kn { font-size: 9.5pt; font-weight: bold; color: #111; margin-bottom: 1px; }
+  .hdr-party p { font-size: 9pt; line-height: 1.5; color: #444; }
+  .meta-grid { display: flex; column-gap: 12mm; row-gap: 3.5mm; flex-wrap: wrap; margin-bottom: 6mm; }
   .meta-block .ml { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 1px; }
   .meta-block .mv { font-size: 10pt; font-weight: 500; color: #222; }
   .kb { background: #f8f9fa; border-left: 3px solid #d1d5db; padding: 3.5mm 4.5mm; margin-bottom: 7mm; }
@@ -38,8 +42,8 @@ const CSS = `
   .btw-section { display: flex; justify-content: flex-end; margin-bottom: 4mm; }
   .btw-table { width: auto; min-width: 80mm; margin: 0; }
   .btw-table th, .btw-table td { font-size: 9pt; padding: 3px 5px; }
-  .pay-block { background: #f0f7ff; border: 1px solid #cce5ff; padding: 3.5mm 4.5mm; border-radius: 3px; font-size: 9.5pt; line-height: 1.85; }
-  .pay-block .pay-title { font-weight: bold; font-size: 10.5pt; margin-bottom: 2px; }
+  .pay-block { background: #f0f7ff; border: 1px solid #cce5ff; padding: 3mm 4mm; border-radius: 3px; font-size: 8.5pt; line-height: 1.55; }
+  .pay-block .pay-title { font-weight: bold; font-size: 9.5pt; margin-bottom: 1.5px; }
   .footer { margin-top: 8mm; border-top: 1px solid #ccc; padding-top: 4mm; font-size: 9pt; color: #555; display: flex; justify-content: space-between; gap: 10mm; }
   .sign-block { flex: 1; }
   .sign-line { margin-top: 10mm; border-bottom: 1px solid #888; width: 50mm; }
@@ -337,16 +341,15 @@ function buildFactuurBody(
         <div class="doc-title">${isCredit ? t('lbl_creditnota_titel') : t('lbl_factuur_titel')}</div>
         <div class="doc-nr">${esc(factuurnummer)}</div>
         ${factuur.status === 'betaald' ? '<div style="margin-top:2mm"><span class="badge badge-green">✓ Betaald</span></div>' : ''}
+        <div class="hdr-party">
+          <div class="party-label">${t('lbl_factuuradres')}</div>
+          ${klantBlock(order)}
+        </div>
       </div>
     </div>
 
     <div class="meta-grid">
       ${metaItems.map(m => `<div class="meta-block"><div class="ml">${esc(m.label)}</div><div class="mv">${esc(m.val)}</div></div>`).join('')}
-    </div>
-
-    <div class="kb">
-      <div class="ml" style="font-size:8pt;text-transform:uppercase;color:#888;letter-spacing:0.5px;margin-bottom:2px">${t('lbl_factuuradres')}</div>
-      ${klantBlock(order)}
     </div>
 
     <table>
