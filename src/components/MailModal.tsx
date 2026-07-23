@@ -43,7 +43,10 @@ interface Props {
    *  aangemaakt; faalt dit, dan wordt de oorspronkelijke PDF verstuurd. */
   regenerateAttachments?: (payUrl: string) => Promise<MailAttachment[] | null>
   onClose: () => void
-  onSent?: () => void
+  /** Aangeroepen na succesvol verzenden, met het werkelijk gebruikte
+   *  ontvanger-adres (zoals in de modal bewerkt) — zodat de aanroeper het
+   *  juiste adres logt en niet het oorspronkelijke klant-adres. */
+  onSent?: (to: string) => void
 }
 
 const LOGO_CID = 'brewadmin-logo'
@@ -144,7 +147,7 @@ export default function MailModal({
         inlineImages: inlineLogo ? [inlineLogo] : undefined,
       })
       setStatus({type:'ok', msg: t('mail_send_success')})
-      if (onSent) onSent()
+      if (onSent) onSent(to.trim())
       setTimeout(() => onClose(), 1200)
     } catch (e: any) {
       setStatus({type:'err', msg: `${t('mail_send_failed')}: ${e?.message || ''}`})

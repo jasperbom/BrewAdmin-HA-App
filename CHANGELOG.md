@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.57] — 2026-07-23
+
+### Opgelost — Logboek toonde het opgeslagen adres i.p.v. het gemailde adres
+
+- Paste je in het verzendvenster een **ander e-mailadres** dan het adres uit
+  de klantkaart, dan noteerde het logboek toch nog het oude, opgeslagen adres
+  ("Factuur gemaild naar …"). De mail ging wél naar het aangepaste adres.
+- De mailmodal geeft nu het **werkelijk gebruikte adres** terug, zodat het
+  logboek van de bestelling en de klant het juiste adres vastlegt.
+
+---
+
 ## [1.11.56] — 2026-07-23
 
 ### Gewijzigd — Factuurregels ook op de betalingsherinnering
