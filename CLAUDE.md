@@ -506,7 +506,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
-| POST | `/api/mollie/payment` | Maak een Mollie-betaling aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl, metadata?}` → `{checkoutUrl, id, status}`. Key wordt server-side toegevoegd |
+| POST | `/api/mollie/payment` | Maak een Mollie **betaallink** (Payment Links API, `/v2/payment-links`) aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl}` → `{checkoutUrl, id, expiresAt}`. Key wordt server-side toegevoegd. Bewust géén Payments API: die levert een kortlevende checkout die na verlopen naar de website doorstuurt |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
@@ -574,7 +574,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 
 - Used for: online betaallink (iDEAL, creditcard, Bancontact …) op **verkoop­facturen** die per mail worden verstuurd
 - API-key + `enabled` + `redirectUrl` in de secure key `mollie_creds`; server voegt de key server-side toe (proxy — key nooit naar de browser)
-- Flow: `mailVerkoopFactuur` (BoekhoudingPage) bouwt de Mollie-context (bedrag in centen, omschrijving, redirect-URL) → `MailModal` toont een checkbox **"Mollie betaallink toevoegen"** → bij verzenden roept `mollieCreatePayment` (`POST /api/mollie/payment`) de checkout-URL op → knop in de HTML-mail (`buildMailHtml` `payButton`) + kale link in de platte tekst
+- Flow: `mailVerkoopFactuur` (BoekhoudingPage) bouwt de Mollie-context (bedrag in centen, omschrijving, redirect-URL) → `MailModal` toont een checkbox **"Mollie betaallink toevoegen"** → bij verzenden roept `mollieCreatePayment` (`POST /api/mollie/payment`) de betaal-URL op → knop in de HTML-mail (`buildMailHtml` `payButton`) + kale link in de platte tekst
+- Server gebruikt de **Payment Links API** (`/v2/payment-links`), niet de Payments API: een betaallink **verloopt standaard niet** en blijft geldig tot de klant betaalt. De deelbare URL komt uit `_links.paymentLink.href` (pure helper `_mollie_link_url`). Een Payments-checkout zou kortlevend zijn en na verlopen naar de `redirectUrl` (de website/homepagina) leiden
 - Redirect-URL valt terug op `brewery_details.website`; zonder een geldige URL blijft de checkbox uitgeschakeld (Mollie vereist een `redirectUrl`)
 - Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar
 

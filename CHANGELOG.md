@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.53] — 2026-07-23
+
+### Opgelost — Mollie betaallink verliep en leidde naar de homepagina
+
+- De betaallink op een verkoopfactuur werd aangemaakt via Mollie's **Payments
+  API**. Zo'n checkout-link is *kortlevend*: zodra de betaling verliep, stuurde
+  Mollie iedereen die de link opende door naar de `redirectUrl` — de
+  brouwerij-website. Klanten kwamen dan op de **homepagina** in plaats van op
+  een betaalscherm.
+- De link loopt nu via Mollie's **Payment Links API** (`/v2/payment-links`),
+  die hier precies voor bedoeld is ("attach to an unpaid invoice"). Een
+  betaallink **verloopt standaard niet** en blijft geldig tot de klant betaalt.
+- Geen wijziging aan de UI of de flow: de checkbox **"Mollie betaallink
+  toevoegen"**, de knop in de mail, de QR op de PDF en de
+  PSP-bankreconciliatie werken onveranderd. Bestaande, al verstuurde links uit
+  de oude Payments-API blijven verlopen — nieuw verstuurde facturen krijgen de
+  duurzame link.
+
+---
+
 ## [1.11.52] — 2026-07-22
 
 ### Toegevoegd — Betaallink met QR-code op de factuur-PDF

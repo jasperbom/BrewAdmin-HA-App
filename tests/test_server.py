@@ -527,6 +527,24 @@ class TestMollie:
         assert srv._mollie_amount('abc') is None
         assert srv._mollie_amount(200_000_000) is None
 
+    def test_gebruikt_payment_links_endpoint(self):
+        # De betaallink loopt via de Payment Links API (verloopt standaard niet),
+        # niet via de kortlevende Payments API die na verlopen naar de website
+        # (homepagina) doorstuurt.
+        assert srv.MOLLIE_PAYMENT_LINKS_URL == 'https://api.mollie.com/v2/payment-links'
+
+    def test_link_url_uit_response(self):
+        # De deelbare URL komt uit _links.paymentLink.href (Payment Links API),
+        # niet uit _links.checkout.href (Payments API).
+        resp = {'id': 'pl_abc',
+                '_links': {'paymentLink': {'href': 'https://useplink.com/payment/abc'}}}
+        assert srv._mollie_link_url(resp) == 'https://useplink.com/payment/abc'
+        # Ontbrekend/leeg/verkeerd veld of niet-http → None (caller geeft 502).
+        assert srv._mollie_link_url({}) is None
+        assert srv._mollie_link_url({'_links': {'checkout': {'href': 'https://x'}}}) is None
+        assert srv._mollie_link_url({'_links': {'paymentLink': {'href': 'ftp://x'}}}) is None
+        assert srv._mollie_link_url('nope') is None
+
     def test_mask_verbergt_apikey(self):
         masked = srv._mask_secrets(
             'mollie_creds',

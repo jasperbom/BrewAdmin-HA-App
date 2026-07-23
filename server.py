@@ -135,9 +135,15 @@ CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be lar
 # Mollie-betaalproxy (betaallink op verkoopfacturen). Test-keys beginnen met
 # 'test_', live-keys met 'live_'. De server voegt de key server-side toe zodat
 # de browser hem nooit ziet (net als de Claude-proxy).
+#
+# De betaallink loopt bewust via de Payment Links API (/payment-links) en niet
+# via de Payments API (/payments): een Payments-checkout is kortlevend en leidt
+# na het verlopen naar de redirectUrl (de website) — op een factuur wil je juist
+# een link die niet verloopt. Een betaallink verloopt standaard niet.
 MOLLIE_TEST_PATH         = '/api/mollie/test'
 MOLLIE_PAYMENT_PATH      = '/api/mollie/payment'
 MOLLIE_API_BASE          = 'https://api.mollie.com/v2'
+MOLLIE_PAYMENT_LINKS_URL = f'{MOLLIE_API_BASE}/payment-links'
 
 HA_PROXY_PREFIX          = '/api/homeassistant/'
 HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
@@ -426,6 +432,18 @@ def _mollie_amount(cent) -> str | None:
     if cent <= 0 or cent > 100_000_000:
         return None
     return f'{cent // 100}.{cent % 100:02d}'
+
+
+def _mollie_link_url(resp_data) -> str | None:
+    """Haal de deelbare betaal-URL uit een Mollie payment-links-response
+    (`_links.paymentLink.href`). Geeft None als het veld ontbreekt of geen
+    http(s)-URL is — de caller antwoordt dan met een nette 502."""
+    if not isinstance(resp_data, dict):
+        return None
+    link = ((resp_data.get('_links') or {}).get('paymentLink') or {}).get('href')
+    if isinstance(link, str) and link.startswith(('http://', 'https://')):
+        return link
+    return None
 
 
 def _load_bf_creds() -> tuple[str, str] | None:
@@ -3676,9 +3694,15 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'ok': False, 'detail': type(e).__name__})
 
     def _mollie_payment(self):
-        """Maak een Mollie-betaling aan voor een verkoopfactuur en geef de
-        checkout-URL terug. Body: {amountCent, description, redirectUrl,
-        metadata?}. De API-key wordt server-side toegevoegd."""
+        """Maak een Mollie **betaallink** (Payment Links API) aan voor een
+        verkoopfactuur en geef de deelbare betaal-URL terug. Body:
+        {amountCent, description, redirectUrl}. De API-key wordt server-side
+        toegevoegd.
+
+        Bewust de Payment Links API en niet de Payments API: een
+        Payments-checkout is kortlevend en leidt na het verlopen naar de
+        redirectUrl (de website). Een betaallink verloopt standaard niet en
+        blijft geldig tot de klant betaalt."""
         creds = _load_mollie_creds()
         if creds is None:
             self._json(401, {'error': 'no mollie credentials configured'})
@@ -3714,18 +3738,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             'description': description,
             'redirectUrl': redirect_url,
         }
-        # Optionele metadata (factuurnummer/klant) — max 10 eenvoudige velden.
-        meta = body.get('metadata')
-        if isinstance(meta, dict):
-            clean = {}
-            for k, v in list(meta.items())[:10]:
-                if isinstance(k, str) and isinstance(v, (str, int, float)) and not isinstance(v, bool):
-                    clean[k[:64]] = v if isinstance(v, (int, float)) else str(v)[:255]
-            if clean:
-                payload['metadata'] = clean
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
-            f'{MOLLIE_API_BASE}/payments',
+            MOLLIE_PAYMENT_LINKS_URL,
             data=data,
             headers={
                 'Authorization': f'Bearer {creds["apiKey"]}',
@@ -3750,7 +3765,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             self._json(502, {'ok': False, 'error': 'upstream request failed'})
             return
-        checkout = ((resp_data.get('_links') or {}).get('checkout') or {}).get('href')
+        checkout = _mollie_link_url(resp_data)
         if not checkout:
             self._json(502, {'ok': False, 'error': 'no checkout url'})
             return
@@ -3758,7 +3773,6 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             'ok':          True,
             'checkoutUrl': checkout,
             'id':          resp_data.get('id'),
-            'status':      resp_data.get('status'),
             'expiresAt':   resp_data.get('expiresAt'),
         })
 
