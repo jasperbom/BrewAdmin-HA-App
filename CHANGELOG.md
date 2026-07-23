@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.56] — 2026-07-23
+
+### Gewijzigd — Factuurregels ook op de betalingsherinnering
+
+- De **betalingsherinnering/aanmaning** toont nu dezelfde **factuurregels**
+  (met BTW-overzicht en totalen) als de originele factuur, zodat de klant
+  direct ziet waarvoor het openstaande bedrag is.
+- De regeltabel is naar een gedeelde helper (`factuurRegelsHtml`) verplaatst
+  die zowel de factuur als de herinnering gebruikt — één bron, altijd gelijk.
+
+---
+
 ## [1.11.55] — 2026-07-23
 
 ### Gewijzigd — Compacte lay-out ook op pakbon en betalingsherinnering

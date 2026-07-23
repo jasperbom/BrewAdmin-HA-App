@@ -133,6 +133,88 @@ function klantBlock(order: any): string {
   return `<div class="kn">${first}</div>${rest.map(l => `<p>${l}</p>`).join('')}`
 }
 
+// Regeltabel + BTW-overzicht + totalen van een factuur. Gedeeld door de
+// factuur-PDF en de betalingsherinnering, zodat beide exact dezelfde regels
+// tonen.
+function factuurRegelsHtml(factuur: any): string {
+  const regels: any[] = factuur.regels || []
+
+  // Bereken btw_overzicht uit regels als niet opgeslagen
+  const btwOverzicht: any[] = (() => {
+    if (factuur.btw_overzicht && factuur.btw_overzicht.length > 0) return factuur.btw_overzicht
+    const map: Record<number, {tarief:number,netto:number,btw:number}> = {}
+    regels.forEach((r: any) => {
+      const pct = r.btw_pct ?? 0
+      if (!map[pct]) map[pct] = {tarief:pct, netto:0, btw:0}
+      map[pct].netto += r.netto || 0
+      map[pct].btw += r.btw_bedrag || 0
+    })
+    return Object.values(map).sort((a,b) => a.tarief - b.tarief)
+  })()
+
+  const regelRows = regels.map((r: any) => `<tr>
+    <td>${esc(r.omschrijving || '—')}</td>
+    <td class="r">${fmtQty(r.hoeveelheid)}</td>
+    <td class="r">${fmtEuro(r.prijs_per_stuk)}</td>
+    <td class="r">${esc(r.btw_pct)}%</td>
+    <td class="r">${fmtEuro(r.netto)}</td>
+    <td class="r">${fmtEuro(r.btw_bedrag)}</td>
+    <td class="r">${fmtEuro(r.bruto)}</td>
+  </tr>`).join('')
+
+  const btwRows = btwOverzicht.map((b: any) => `<tr>
+    <td>BTW ${esc(b.tarief)}%</td>
+    <td class="r">${fmtEuro(b.netto)}</td>
+    <td class="r">${fmtEuro(b.btw)}</td>
+    <td class="r">${fmtEuro(b.netto + b.btw)}</td>
+  </tr>`).join('')
+
+  const netto = factuur.netto ?? 0
+  const btw = factuur.btw ?? 0
+  const bruto = factuur.bruto ?? 0
+
+  return `<table>
+      <thead>
+        <tr>
+          <th>Omschrijving</th>
+          <th class="r">Aantal</th>
+          <th class="r">Prijs</th>
+          <th class="r">BTW%</th>
+          <th class="r">${t('lbl_kol_excl_btw')}</th>
+          <th class="r">BTW</th>
+          <th class="r">${t('lbl_kol_incl_btw')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${regelRows || '<tr><td colspan="7" style="text-align:center;color:#888;padding:4mm;">Geen regels</td></tr>'}
+      </tbody>
+    </table>
+
+    ${btwOverzicht.length > 0 ? `
+    <div class="btw-section">
+      <table class="btw-table">
+        <thead>
+          <tr>
+            <th>BTW-tarief</th>
+            <th class="r">${t('lbl_kol_excl_btw')}</th>
+            <th class="r">BTW</th>
+            <th class="r">${t('lbl_kol_incl_btw')}</th>
+          </tr>
+        </thead>
+        <tbody>${btwRows}</tbody>
+      </table>
+    </div>` : ''}
+
+    <div class="totals">
+      <div class="totals-block">
+        <div class="totals-row"><span>${t('lbl_subtotaal_excl')}</span><span>${fmtEuro(netto)}</span></div>
+        <div class="totals-row"><span>BTW</span><span>${fmtEuro(btw)}</span></div>
+        <div class="totals-sep"></div>
+        <div class="totals-row grand-total"><span>${t('lbl_totaal_incl')}</span><span>${fmtEuro(bruto)}</span></div>
+      </div>
+    </div>`
+}
+
 // ─────────────────────────────────────────────
 // PAKBON
 // ─────────────────────────────────────────────
@@ -282,40 +364,6 @@ function buildFactuurBody(
   })()
   const leveringsdatum = order?.verzend_datum || order?.datum ? fmtDate(order.verzend_datum || order.datum) : null
 
-  const regels: any[] = factuur.regels || []
-
-  // Bereken btw_overzicht uit regels als niet opgeslagen
-  const btwOverzicht: any[] = (() => {
-    if (factuur.btw_overzicht && factuur.btw_overzicht.length > 0) return factuur.btw_overzicht
-    const map: Record<number, {tarief:number,netto:number,btw:number}> = {}
-    regels.forEach((r: any) => {
-      const pct = r.btw_pct ?? 0
-      if (!map[pct]) map[pct] = {tarief:pct, netto:0, btw:0}
-      map[pct].netto += r.netto || 0
-      map[pct].btw += r.btw_bedrag || 0
-    })
-    return Object.values(map).sort((a,b) => a.tarief - b.tarief)
-  })()
-
-  const regelRows = regels.map((r: any) => `<tr>
-    <td>${esc(r.omschrijving || '—')}</td>
-    <td class="r">${fmtQty(r.hoeveelheid)}</td>
-    <td class="r">${fmtEuro(r.prijs_per_stuk)}</td>
-    <td class="r">${esc(r.btw_pct)}%</td>
-    <td class="r">${fmtEuro(r.netto)}</td>
-    <td class="r">${fmtEuro(r.btw_bedrag)}</td>
-    <td class="r">${fmtEuro(r.bruto)}</td>
-  </tr>`).join('')
-
-  const btwRows = btwOverzicht.map((b: any) => `<tr>
-    <td>BTW ${esc(b.tarief)}%</td>
-    <td class="r">${fmtEuro(b.netto)}</td>
-    <td class="r">${fmtEuro(b.btw)}</td>
-    <td class="r">${fmtEuro(b.netto + b.btw)}</td>
-  </tr>`).join('')
-
-  const netto = factuur.netto ?? 0
-  const btw = factuur.btw ?? 0
   const bruto = factuur.bruto ?? 0
   const naam = brewery?.naam || appName || ''
 
@@ -349,46 +397,7 @@ function buildFactuurBody(
       ${metaItems.map(m => `<div class="meta-block"><div class="ml">${esc(m.label)}</div><div class="mv">${esc(m.val)}</div></div>`).join('')}
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Omschrijving</th>
-          <th class="r">Aantal</th>
-          <th class="r">Prijs</th>
-          <th class="r">BTW%</th>
-          <th class="r">${t('lbl_kol_excl_btw')}</th>
-          <th class="r">BTW</th>
-          <th class="r">${t('lbl_kol_incl_btw')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${regelRows || '<tr><td colspan="7" style="text-align:center;color:#888;padding:4mm;">Geen regels</td></tr>'}
-      </tbody>
-    </table>
-
-    ${btwOverzicht.length > 0 ? `
-    <div class="btw-section">
-      <table class="btw-table">
-        <thead>
-          <tr>
-            <th>BTW-tarief</th>
-            <th class="r">${t('lbl_kol_excl_btw')}</th>
-            <th class="r">BTW</th>
-            <th class="r">${t('lbl_kol_incl_btw')}</th>
-          </tr>
-        </thead>
-        <tbody>${btwRows}</tbody>
-      </table>
-    </div>` : ''}
-
-    <div class="totals">
-      <div class="totals-block">
-        <div class="totals-row"><span>${t('lbl_subtotaal_excl')}</span><span>${fmtEuro(netto)}</span></div>
-        <div class="totals-row"><span>BTW</span><span>${fmtEuro(btw)}</span></div>
-        <div class="totals-sep"></div>
-        <div class="totals-row grand-total"><span>${t('lbl_totaal_incl')}</span><span>${fmtEuro(bruto)}</span></div>
-      </div>
-    </div>
+    ${factuurRegelsHtml(factuur)}
 
     ${(brewery?.factuur_velden?.betaalblok !== false) ? `<div class="pay-block">
       <div class="pay-title">${t('lbl_betaalinformatie')}</div>
@@ -532,6 +541,8 @@ export function printHerinnering(
       <div class="meta-block"><div class="ml">${t('lbl_vervaldatum').replace('{n}',String(betalingstermijn))}</div><div class="mv">${origVerval}</div></div>
       <div class="meta-block"><div class="ml">${t('lbl_openstaand_bedrag')}</div><div class="mv" style="font-weight:bold;font-size:13pt">${fmtEuro(bruto)}</div></div>
     </div>
+
+    ${factuurRegelsHtml(factuur)}
 
     ${(fv.betaalblok !== false) ? `<div class="pay-block">
       <div class="pay-title">${t('lbl_betaalinformatie')}</div>
