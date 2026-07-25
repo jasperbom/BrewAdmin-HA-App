@@ -2964,5 +2964,6 @@
   "haccp_bron_ccp3_etiket": "Etiketcontrole (CCP 3)",
   "haccp_bron_sessie_start": "Sessie starten",
   "haccp_bron_sessie_afsluiten": "Sessie afsluiten",
-  "haccp_bron_fase_afvullen": "Overgang naar afvullen"
+  "haccp_bron_fase_afvullen": "Overgang naar afvullen",
+  "haccp_trace_batch_of_lotcode": "Batchnaam of lotcode (L2431-B1)"
 }

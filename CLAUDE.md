@@ -37,6 +37,8 @@ BrewAdmin-HA-App/
 │   │   ├── calculations.ts # Business logic calculations
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
+│   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
+│   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
@@ -126,13 +128,16 @@ docker build -t brewadmin .
 De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 `src/utils/__tests__/`: accijns, BTW-rollover en grondslag-BTW, centen,
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
-ouderdom, COGS en de Excel-backup-round-trip.
+ouderdom, COGS, de Excel-backup-round-trip en de HACCP-beheerspunten
+(risicoclassificatie, stabiliteit, vrijgave-oordeel, sluitcontrole,
+allergenenvergelijking, lotcode en THT).
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
 optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
 onder parallelle clients), rate-limiting (429), secrets-maskering, de
-server-audit en de SQLite-opslaglaag (WAL, JSON-migratie, backup-export).
+server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export) en de
+HACCP-sluitcontrole-herinnering.
 De suite start de echte handler op een efemere poort met een tijdelijke
 DATA_DIR.
 

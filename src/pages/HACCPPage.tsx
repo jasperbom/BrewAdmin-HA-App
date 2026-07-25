@@ -965,7 +965,7 @@ function KritischTab({bat, av, producten, vrijgaven, sessies, sluitcontroles,
   )
 }
 
-function TraceTab({lots, bat, bi, av, uit, ing}: any) {
+function TraceTab({lots, bat, bi, av, uit, ing, sessies}: any) {
   const {useState, useMemo} = React
   const [mode, setMode] = useState<'forward'|'backward'>('forward')
   const [q, setQ] = useState('')
@@ -988,14 +988,35 @@ function TraceTab({lots, bat, bi, av, uit, ing}: any) {
 
   const traceBackward = () => {
     if(!q.trim()) return
-    const matchedBat = (bat||[]).filter((b:any)=>(b.naam||'').toLowerCase().includes(q.toLowerCase()) || String(b.id)===q)
+    const zoek = q.trim().toLowerCase()
+    // Bij een recall heb je een verpakking in handen met een lotcode erop
+    // (L2431-B1). Die moet dus net zo goed als ingang werken als de batchnaam.
+    const matchedSessies = (sessies||[]).filter((x:any)=>(x.lotcode||'').toLowerCase().includes(zoek))
+    const viaLotcode = new Set(matchedSessies.map((x:any)=>x.batch_id))
+    const matchedBat = (bat||[]).filter((b:any)=>
+      viaLotcode.has(b.id)
+      || (b.naam||'').toLowerCase().includes(zoek)
+      || (b.batch_nummer||'').toLowerCase().includes(zoek)
+      || String(b.id)===q.trim())
     if(!matchedBat.length) { setResults({empty:true}); return }
     const batchIds = new Set(matchedBat.map((b:any)=>b.id))
     const matchedBi = (bi||[]).filter((b:any)=>batchIds.has(b.batch_id))
     const lotIds = new Set(matchedBi.map((b:any)=>b.lot_id).filter(Boolean))
     const matchedLots = (lots||[]).filter((l:any)=>lotIds.has(l.id) || lotIds.has(String(l.id)))
     const leveranciers = [...new Set(matchedLots.map((l:any)=>l.leverancier).filter(Boolean))]
-    setResults({batches:matchedBat, lots:matchedLots, leveranciers})
+    // Alleen de sessies die bij de gevonden batches horen; zoek je op één
+    // lotcode, dan blijft de omvang beperkt tot die ene afvulsessie.
+    const eigenSessies = matchedSessies.length
+      ? matchedSessies
+      : (sessies||[]).filter((x:any)=>batchIds.has(x.batch_id))
+    const sessieIds = new Set(eigenSessies.map((x:any)=>x.id))
+    const matchedAv = (av||[]).filter((a:any)=>
+      matchedSessies.length ? sessieIds.has(a.sessie_id) : batchIds.has(a.batch_id))
+    const avIds = new Set(matchedAv.map((a:any)=>a.id))
+    const matchedUit = (uit||[]).filter((u:any)=>avIds.has(u.afvulling_id)
+      || (!matchedSessies.length && batchIds.has(u.batch_id)))
+    setResults({batches:matchedBat, lots:matchedLots, leveranciers,
+                sessies:eigenSessies, afvullingen:matchedAv, uitleveringen:matchedUit})
   }
 
   const doSearch = () => mode==='forward' ? traceForward() : traceBackward()
@@ -1008,6 +1029,7 @@ function TraceTab({lots, bat, bi, av, uit, ing}: any) {
     <h1>${t('haccp_trace_mock_recall_titel')}</h1><p>${new Date().toLocaleString()}</p>
     ${results.lots?.length?`<h2>${t('haccp_trace_lots')}</h2><table><tr><th>Lot</th><th>${t('nav_ingredienten')}</th><th>Leverancier</th></tr>${results.lots.map((l:any)=>`<tr><td>${l.lotnr}</td><td>${(ing||[]).find((i:any)=>i.id===l.ingredient_id)?.naam||''}</td><td>${l.leverancier||''}</td></tr>`).join('')}</table>`:''}
     ${results.batches?.length?`<h2>${t('haccp_trace_batches')}</h2><table><tr><th>Batch</th><th>Status</th><th>Datum</th></tr>${results.batches.map((b:any)=>`<tr><td>${b.naam}</td><td>${b.status}</td><td>${b.datum||''}</td></tr>`).join('')}</table>`:''}
+    ${results.sessies?.length?`<h2>${t('haccp_sessie_titel')}</h2><table><tr><th>${t('haccp_sessie_lotcode')}</th><th>${t('lbl_datum')}</th><th>${t('haccp_sessie_tht')}</th></tr>${results.sessies.map((x:any)=>`<tr><td>${x.lotcode||''}</td><td>${String(x.start||'').slice(0,10)}</td><td>${x.tht||''}</td></tr>`).join('')}</table>`:''}
     ${results.afvullingen?.length?`<h2>${t('haccp_trace_afvullingen')}</h2><table><tr><th>Verpakking</th><th>Aantal</th><th>THT</th></tr>${results.afvullingen.map((a:any)=>`<tr><td>${a.verpakking_naam||''}</td><td>${a.aantal}</td><td>${a.tht||''}</td></tr>`).join('')}</table>`:''}
     ${results.uitleveringen?.length?`<h2>${t('haccp_trace_klanten')}</h2><table><tr><th>Bestemming</th><th>Datum</th><th>Aantal</th></tr>${results.uitleveringen.map((u:any)=>`<tr><td>${u.bestemming_naam||''}</td><td>${u.datum||''}</td><td>${u.aantal}</td></tr>`).join('')}</table>`:''}
     </body></html>`
@@ -1023,7 +1045,7 @@ function TraceTab({lots, bat, bi, av, uit, ing}: any) {
           <button onClick={()=>{setMode('backward');setResults(null)}} className={`px-3 py-1 rounded text-xs font-medium ${mode==='backward'?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>{t('haccp_trace_backward')}</button>
         </div>
         <div className="flex gap-2 mb-4">
-          <SearchInput value={q} onChange={setQ} placeholder={mode==='forward'?t('haccp_trace_lotnr'):t('haccp_trace_batch')} cls="flex-1" onKeyDown={e=>e.key==='Enter'&&doSearch()} />
+          <SearchInput value={q} onChange={setQ} placeholder={mode==='forward'?t('haccp_trace_lotnr'):t('haccp_trace_batch_of_lotcode')} cls="flex-1" onKeyDown={e=>e.key==='Enter'&&doSearch()} />
           <Btn s="sm" onClick={doSearch}>{t('haccp_trace_zoek')}</Btn>
         </div>
 

@@ -2964,5 +2964,6 @@
   "haccp_bron_ccp3_etiket": "Contrôle d’étiquette (CCP 3)",
   "haccp_bron_sessie_start": "Début de session",
   "haccp_bron_sessie_afsluiten": "Clôture de session",
-  "haccp_bron_fase_afvullen": "Passage au conditionnement"
+  "haccp_bron_fase_afvullen": "Passage au conditionnement",
+  "haccp_trace_batch_of_lotcode": "Nom du lot ou code de lot (L2431-B1)"
 }

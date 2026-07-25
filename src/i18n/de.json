@@ -2964,5 +2964,6 @@
   "haccp_bron_ccp3_etiket": "Etikettenkontrolle (CCP 3)",
   "haccp_bron_sessie_start": "Sessionbeginn",
   "haccp_bron_sessie_afsluiten": "Sessionabschluss",
-  "haccp_bron_fase_afvullen": "Wechsel zur Abfüllung"
+  "haccp_bron_fase_afvullen": "Wechsel zur Abfüllung",
+  "haccp_trace_batch_of_lotcode": "Sudname oder Loscode (L2431-B1)"
 }

@@ -2964,5 +2964,6 @@
   "haccp_bron_ccp3_etiket": "Label check (CCP 3)",
   "haccp_bron_sessie_start": "Session start",
   "haccp_bron_sessie_afsluiten": "Session close",
-  "haccp_bron_fase_afvullen": "Move to packaging"
+  "haccp_bron_fase_afvullen": "Move to packaging",
+  "haccp_trace_batch_of_lotcode": "Batch name or lot code (L2431-B1)"
 }

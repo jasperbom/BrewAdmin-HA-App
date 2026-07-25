@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.65] — 2026-07-25
+
+### Toegevoegd — Traceerbaarheid op lotcode
+
+- Bij een terugroepactie heb je een verpakking in handen met een lotcode erop.
+  De traceerbaarheidszoekfunctie accepteert die lotcode nu als ingang, naast de
+  batchnaam en het batchnummer. Zoek je op één lotcode, dan blijft de omvang
+  beperkt tot die ene afvulsessie in plaats van de hele batch — precies het
+  verschil waarvoor de sessie-aanduiding is ingevoerd.
+- Het recall-rapport vermeldt de betrokken afvulsessies met hun lotcode en
+  houdbaarheidsdatum.
+
 ## [1.11.64] — 2026-07-25
 
 ### Toegevoegd — Halfuur-melding op de telefoon en instelbare kritische grenzen

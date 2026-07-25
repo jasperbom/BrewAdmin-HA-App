@@ -2964,5 +2964,6 @@
   "haccp_bron_ccp3_etiket": "Control de etiqueta (PCC 3)",
   "haccp_bron_sessie_start": "Inicio de sesión",
   "haccp_bron_sessie_afsluiten": "Cierre de sesión",
-  "haccp_bron_fase_afvullen": "Paso al envasado"
+  "haccp_bron_fase_afvullen": "Paso al envasado",
+  "haccp_trace_batch_of_lotcode": "Nombre del lote o código (L2431-B1)"
 }
