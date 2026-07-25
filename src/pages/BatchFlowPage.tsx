@@ -31,6 +31,11 @@ import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
+import VrijgaveSectie from '../components/batch/VrijgaveSectie'
+import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
+import { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
+import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
+import { openSessieVoorBatch, magAfvullingRegistreren } from '../utils/afvulsessie'
 
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
@@ -64,6 +69,15 @@ interface BatchFlowPageProps {
   tankLog: any[], setTankLog: any,
   log: any[], setLog: any,
   auditLog: any[], setAuditLog: any,
+  // HACCP — kritische beheerspunten
+  haccpVrijgaven: any[], setHaccpVrijgaven: any,
+  afvulSessies: any[], setAfvulSessies: any,
+  haccpSluitcontroles: any[], setHaccpSluitcontroles: any,
+  haccpEtiketcontroles: any[], setHaccpEtiketcontroles: any,
+  haccpAfwijkingen: any[], setHaccpAfwijkingen: any,
+  haccpInst: any,
+  capa: any[], setCapa: any,
+  whoami: {gebruiker?: string, rol?: string} | null,
   setPage: (p: string) => void,
   setNavBatchId: (id: number | null) => void,
   openBatchId?: number | null,
@@ -336,7 +350,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   koelLogs, setKoelLogs, batchNotities, setBatchNotities,
   batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, planningInst, haInst, haTankTemps,
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
-  log, setLog, auditLog, setAuditLog, setPage, setNavBatchId, openBatchId,
+  log, setLog, auditLog, setAuditLog,
+  haccpVrijgaven, setHaccpVrijgaven, afvulSessies, setAfvulSessies,
+  haccpSluitcontroles, setHaccpSluitcontroles,
+  haccpEtiketcontroles, setHaccpEtiketcontroles,
+  haccpAfwijkingen, setHaccpAfwijkingen, haccpInst, capa, setCapa, whoami,
+  setPage, setNavBatchId, openBatchId,
   preNieuwBatch, setPreNieuwBatch,
   ccpMetingen, setCcpMetingen,
 }) => {
@@ -839,11 +858,25 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     if (fase === 'Conditioneren') {
       const carbKlaar = mijnCarb.some((c: any) => c.status === 'voltooid')
+      // CCP 1 sluit de conditioneerfase af: zonder vrijgave kan er niet
+      // afgevuld worden.
+      const vrijgave = actueleVrijgave(haccpVrijgaven || [], selB.id)
       const items: (ChecklistItem | null)[] = [
         {key: 'carb', label: t('flow_chk_carb'), done: carbKlaar,
          detail: mijnCarb.length ? String(mijnCarb.length) : undefined},
         {key: 'abv', label: t('flow_chk_abv'), done: !!selB.abv_definitief,
          detail: Number(selB.ABV) > 0 ? `${selB.ABV}%` : undefined},
+        // Een vrijgave die onder afwijking is doorgedrukt mag niet als een
+        // gewone "vrijgegeven" wegvallen zodra de stap dichtklapt — juist die
+        // zichtbaarheid is het punt van de afwijkingsregistratie.
+        {key: 'vrijgave', label: t('haccp_chk_vrijgave'),
+         done: vrijgave?.oordeel === 'vrijgegeven',
+         detail: vrijgave
+           ? (vrijgave.afwijking_id != null
+               ? `${t('haccp_ccp1_vrijgegeven')} · ${t('haccp_afw_kort')}`
+               : t(vrijgave.oordeel === 'vrijgegeven'
+                   ? 'haccp_ccp1_vrijgegeven' : 'haccp_ccp1_niet_vrijgegeven'))
+           : undefined},
         takenItem('taken', 'flow_chk_taken'),
       ]
       return items.filter(Boolean) as ChecklistItem[]
@@ -852,8 +885,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       const rest = tankRestVolume(selB, mijnAv as any, mijnVerlies as any)
       const afgevuldL = mijnAv.reduce((s: number, a: any) =>
         s + (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0), 0)
+      const mijnSessies = (afvulSessies || []).filter((s: any) => s.batch_id === selB.id)
+      const openSessie = mijnSessies.find((s: any) => s.status === 'open')
+      const afgeslotenSessies = mijnSessies.filter((s: any) => s.status === 'afgesloten')
       const items: (ChecklistItem | null)[] = [
         takenItem('taken', 'flow_chk_hygiene'),
+        {key: 'sessie', label: t('haccp_chk_sessie'),
+         done: mijnSessies.length > 0 && !openSessie,
+         detail: openSessie
+           ? `${openSessie.lotcode} · ${t('haccp_sessie_open')}`
+           : afgeslotenSessies.length
+             ? afgeslotenSessies.map((s: any) => s.lotcode).join(', ')
+             : undefined},
         {key: 'afvulling', label: t('flow_chk_afvulling'), done: mijnAv.length > 0,
          detail: mijnAv.length ? `${mijnAv.length} — ${afgevuldL.toFixed(1)} L` : undefined},
         {key: 'restvolume', label: t('flow_chk_restvolume'), done: rest <= 0.5,
@@ -885,6 +928,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       if (st && st !== 'Ontsmet') {
         const stLabel = t(TANK_REINIGING_LABEL_KEY[st] || '') || st
         if (!confirm(t('flow_confirm_tank_ontsmet').replace('{tank}', selB.tank).replace('{status}', stLabel))) return
+      }
+    }
+    // CCP 1 — de belangrijkste blokkade van het systeem: zodra het bier in een
+    // gesloten verpakking zit kan nagisting niet meer tegengehouden worden.
+    // Anders dan de ontsmet-check hierboven is dit géén confirm die je kunt
+    // wegklikken; doorgaan kan alleen via een vastgelegde afwijking op het
+    // vrijgaveformulier zelf.
+    if (nieuweStatus === 'Afgevuld' && nieuweIdx > faseIndex(oudeStatus)) {
+      const blok = magAfvullen(selB.id, haccpVrijgaven || [])
+      if (!blok.toegestaan && !isLegacyBatch(selB.id, av || [])) {
+        alert(`${t('haccp_ccp1_titel')}\n\n${blokkadeSamenvatting(blok)}`)
+        return
       }
     }
     const leegtTank = ['Afgevuld', 'Gesloten'].includes(nieuweStatus)
@@ -1431,6 +1486,22 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   const doAfvullen = () => {
     if (!selB) return
+    // CCP 1 — geen verpakking zonder vrijgave. Batches die al afgevuld waren
+    // vóór de invoering van dit systeem vallen buiten de blokkade.
+    const legacy = isLegacyBatch(selB.id, av || [])
+    const vrijgaveBlok = magAfvullen(selB.id, haccpVrijgaven || [])
+    if (!vrijgaveBlok.toegestaan && !legacy) {
+      alert(`${t('haccp_ccp1_titel')}\n\n${blokkadeSamenvatting(vrijgaveBlok)}`)
+      return
+    }
+    // Verpakken gebeurt binnen een sessie: die draagt de lotcode en de
+    // sluitcontroles waaraan de verpakkingen straks te koppelen zijn.
+    const sessie = openSessieVoorBatch(afvulSessies || [], selB.id)
+    const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [])
+    if (!sessieBlok.toegestaan && !legacy) {
+      alert(`${t('haccp_sessie_titel')}\n\n${blokkadeSamenvatting(sessieBlok)}`)
+      return
+    }
     if (!avF.product_id) { alert(t('err_select_product')); return }
     if (!avF.verpakking_id || !avF.hoeveelheid) { alert(t('err_select_packaging_qty')); return }
     const n = Number(avF.hoeveelheid)
@@ -1480,10 +1551,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       selB,
       accijnsInst
     )
+    const nuTijd = new Date().toTimeString().slice(0, 5)
     setAv((prev: any[]) => [...(prev || []), {
       id: avId,
       batch_id: selB.id,
       ...avF,
+      // Sessie, lotcode en tijdstip: nodig om bij een afgekeurde sluitcontrole
+      // te bepalen welke verpakkingen sinds de laatste goedkeuring gemaakt zijn.
+      sessie_id: sessie?.id,
+      lotcode: sessie?.lotcode,
+      tijd: nuTijd,
+      tht: sessie?.tht ?? avF.tht,
       product_id: prodId,
       artikel_sku: avArt?.artikelnummer || null,
       verpakking_id: Number(avF.verpakking_id),
@@ -2638,7 +2716,28 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </div>
           <Inp label={t('batch_filling_units')} type="number" value={avF.hoeveelheid} onChange={(v: string) => setAvF((f: any) => ({...f, hoeveelheid: v}))} placeholder="1" />
           <Inp label={t('batch_filling_date')} type="date" value={avF.datum} onChange={(v: string) => setAvF((f: any) => ({...f, datum: v}))} />
-          <Inp label={t('batch_filling_tht')} type="date" value={avF.tht} onChange={(v: string) => setAvF((f: any) => ({...f, tht: v}))} />
+          {/* Loopt er een sessie, dan bepaalt die de THT (berekend uit
+              producttype en alcoholgehalte, of handmatig met reden). Twee
+              plekken waar je hem los kunt zetten zou het hele punt van de
+              berekening ondergraven. */}
+          {(() => {
+            const s = openSessieVoorBatch(afvulSessies || [], selB.id)
+            if (!s) return (
+              <Inp label={t('batch_filling_tht')} type="date" value={avF.tht}
+                onChange={(v: string) => setAvF((f: any) => ({...f, tht: v}))} />
+            )
+            return (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  {t('batch_filling_tht')}
+                </label>
+                <div className="text-sm text-gray-700 py-2">
+                  {s.tht ? fmtD(s.tht) : t('haccp_sessie_bewaaradvies_tekst')}
+                  <span className="text-gray-400 ml-1">({s.lotcode})</span>
+                </div>
+              </div>
+            )
+          })()}
         </div>
         {/* GN-code + SKU-koppeling (overgenomen van de Batches-pagina) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
@@ -2711,11 +2810,23 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               const liters = (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0)
               const prod = (producten || []).find((p: any) => p.id === a.product_id)
               return (
-                <div key={a.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-gray-50 border border-gray-100 text-xs text-gray-600">
-                  <span className="text-gray-400">{a.datum ? fmtD(a.datum) : '—'}</span>
+                <div key={a.id} className={`flex items-center gap-2 px-2 py-1.5 rounded border text-xs ${
+                  a.geblokkeerd
+                    ? 'bg-red-50 border-red-200 text-red-700'
+                    : 'bg-gray-50 border-gray-100 text-gray-600'}`}>
+                  <span className={a.geblokkeerd ? 'text-red-400' : 'text-gray-400'}>{a.datum ? fmtD(a.datum) : '—'}</span>
                   <span className="font-medium">{prod?.naam ? `${prod.naam} · ` : ''}{a.verpakking_naam || a.verpakking_type}</span>
                   <span>{a.hoeveelheid}× — {liters.toFixed(1)} L</span>
-                  {a.tht && <span className="text-gray-400">THT {fmtD(a.tht)}</span>}
+                  {a.lotcode && <span className="font-mono">{a.lotcode}</span>}
+                  {a.tht && <span className={a.geblokkeerd ? 'text-red-400' : 'text-gray-400'}>THT {fmtD(a.tht)}</span>}
+                  {/* Geblokkeerd bier blijft zichtbaar en telt door in de
+                      accijnsvoorraad — het is niet verkoopbaar, wel aanwezig. */}
+                  {a.geblokkeerd && (
+                    <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium"
+                      title={t('haccp_geblokkeerd_uitleg')}>
+                      {t('haccp_geblokkeerd')}
+                    </span>
+                  )}
                   <button onClick={() => delAv(a.id)} className="ml-auto text-gray-300 hover:text-red-500">✕</button>
                 </div>
               )
@@ -3190,6 +3301,19 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               {renderMetingForm()}
               {renderGrafiek()}
             </FlowStap>
+            {/* CCP 1 — sluitstuk van de conditioneerfase: zonder vrijgave gaat
+                de batch niet naar Afgevuld. */}
+            <FlowStap title={t('haccp_ccp1_titel')} done={!!clMap.vrijgave?.done}
+              detail={clMap.vrijgave?.detail} {...so('vrijgave', !!clMap.vrijgave?.done)}>
+              <VrijgaveSectie
+                batch={selB} bi={bi} ing={ing} gistMetingen={gistMetingen}
+                vrijgaven={haccpVrijgaven} setVrijgaven={setHaccpVrijgaven}
+                capa={capa} setCapa={setCapa}
+                afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
+                haccpInstellingen={haccpInst} whoami={whoami}
+                auditLog={auditLog} setAuditLog={setAuditLog}
+              />
+            </FlowStap>
           </>
         )}
 
@@ -3201,6 +3325,23 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 {renderTaken('Afgevuld')}
               </FlowStap>
             )}
+            {/* De sessie draagt de lotcode en is het anker voor CCP 2 en 3;
+                afvullen kan pas als hij loopt. */}
+            <FlowStap title={t('haccp_sessie_titel')} done={!!clMap.sessie?.done}
+              detail={clMap.sessie?.detail} {...so('sessie', !!clMap.sessie?.done)}>
+              <AfvulSessieSectie
+                batch={selB} bi={bi} ing={ing} av={av} setAv={setAv}
+                producten={producten} verpakkingen={verpakkingen}
+                vrijgaven={haccpVrijgaven}
+                sessies={afvulSessies} setSessies={setAfvulSessies}
+                sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}
+                etiketcontroles={haccpEtiketcontroles} setEtiketcontroles={setHaccpEtiketcontroles}
+                capa={capa} setCapa={setCapa}
+                afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
+                haccpInstellingen={haccpInst} whoami={whoami}
+                auditLog={auditLog} setAuditLog={setAuditLog}
+              />
+            </FlowStap>
             <FlowStap title={t('flow_sectie_afvullen')} done={!!clMap.afvulling?.done} detail={clMap.afvulling?.detail} {...so('afvullen', !!clMap.afvulling?.done)}>
               {renderAfvullen()}
             </FlowStap>

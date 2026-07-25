@@ -272,7 +272,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const getAvailableAfvullingen = (regelBierNaam: string, regelVerpakking: string, excludeBestellingId?: number, _unused?: any, regelArtikelKey?: string, regelSku?: string) => {
     // Bepaal SKU: direct uit regel, of via artikel_key lookup
     const orderSku = regelSku || (regelArtikelKey ? (artikelen||[]).find((a: any) => a.key === regelArtikelKey)?.artikelnummer : null) || null
-    const filtered = (av||[]).filter((a: any) => beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
+    // Geblokkeerd na een afgekeurde sluitcontrole (CCP 2): niet leverbaar
+    // tot de afwijking is afgehandeld. Het bier blijft wel fysiek aanwezig
+    // en telt dus door in de accijnsvoorraad.
+    const filtered = (av||[]).filter((a: any) => !a.geblokkeerd && beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
     return matchAfvullingenVoorRegel(filtered, regelBierNaam, regelVerpakking, orderSku,
       {bat, artikelen, producten, productArtikelen, verpakkingen})
   }

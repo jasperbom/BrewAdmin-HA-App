@@ -102,6 +102,15 @@ class TestValidatie:
         assert not srv._payload_geldig('app_name', 1)
         assert srv._payload_geldig('app_logo', None)
         assert srv._payload_geldig('journaal', [])
+        # HACCP-registraties zijn arrays, de kritische grenzen een object
+        assert srv._payload_geldig('haccp_vrijgaven', [])
+        assert not srv._payload_geldig('haccp_vrijgaven', {})
+        assert srv._payload_geldig('afvul_sessies', [])
+        assert srv._payload_geldig('haccp_sluitcontroles', [])
+        assert srv._payload_geldig('haccp_etiketcontroles', [])
+        assert srv._payload_geldig('haccp_afwijkingen', [])
+        assert srv._payload_geldig('haccp_instellingen', {})
+        assert not srv._payload_geldig('haccp_instellingen', [])
         # Onbekende keys blijven vrij (voorwaartse compatibiliteit)
         assert srv._payload_geldig('onbekende_toekomstige_key', 123)
 
@@ -147,6 +156,45 @@ class TestAppendOnly:
 
     def test_ontbrekende_key_blokkeert_niet(self, app):
         assert srv._append_only_ok('journaal', [{'id': 1}])
+
+    def test_ccp_registraties_zijn_append_only(self, app):
+        """De drie kritische beheerspunten uit het HACCP-handboek zijn bewijs
+        richting de NVWA: een opgeslagen registratie mag nooit overschreven
+        worden (bijlage A.1). Een correctie is een nieuw record."""
+        keys = ('haccp_vrijgaven', 'haccp_sluitcontroles',
+                'haccp_etiketcontroles', 'haccp_afwijkingen')
+        for key in keys:
+            assert key in srv._APPEND_ONLY, key
+            srv._write_json(key, [{'id': 1, 'paraaf': {'gebruiker': 'jasper'}}])
+            try:
+                # Een nieuwe registratie toevoegen mag altijd.
+                assert srv._append_only_ok(
+                    key, [{'id': 1, 'paraaf': {'gebruiker': 'jasper'}}, {'id': 2}])
+                # De paraaf vervalsen, de registratie wijzigen of hem laten
+                # verdwijnen mag geen van drieën.
+                assert not srv._append_only_ok(
+                    key, [{'id': 1, 'paraaf': {'gebruiker': 'iemand_anders'}}])
+                assert not srv._append_only_ok(key, [{'id': 2}])
+                assert not srv._append_only_ok(key, [])
+            finally:
+                conn = srv._db()
+                with conn:
+                    conn.execute('DELETE FROM records WHERE key=?', (key,))
+                    conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    def test_afvulsessies_zijn_niet_append_only(self, app):
+        """Een sessie wordt na het starten afgesloten (eindtijd + status), dus
+        die moet wel muteerbaar blijven."""
+        assert 'afvul_sessies' not in srv._APPEND_ONLY
+        srv._write_json('afvul_sessies', [{'id': 1, 'status': 'open'}])
+        try:
+            assert srv._append_only_ok('afvul_sessies',
+                                       [{'id': 1, 'status': 'afgesloten'}])
+        finally:
+            conn = srv._db()
+            with conn:
+                conn.execute("DELETE FROM records WHERE key='afvul_sessies'")
+                conn.execute("DELETE FROM versies WHERE key='afvul_sessies'")
 
 
 class TestSecretsMaskering:
@@ -831,6 +879,13 @@ class TestRollen:
             piet = {'X-Remote-User-Name': 'piet'}
             assert req(app, 'POST', '/api/data/water_addities', body=[],
                        headers=piet)[0] == 200
+            # De brouwer vult de CCP-registraties zelf in, maar de kritische
+            # grenzen erachter zijn beleid en dus beheer-only.
+            assert req(app, 'POST', '/api/data/afvul_sessies', body=[],
+                       headers=piet)[0] == 200
+            status, body, _ = req(app, 'POST', '/api/data/haccp_instellingen',
+                                  body={'ff_marge_sg': 0.05}, headers=piet)
+            assert status == 403 and body['reden'] == 'rol'
             assert req(app, 'POST', '/api/data/verkoop_facturen', body=[],
                        headers=piet)[0] == 403
             assert req(app, 'POST', '/api/nextnr',
@@ -1249,6 +1304,97 @@ class TestLogging:
         assert regels[0]['level'] == 'info'
         assert 'ts' in regels[0]
         assert regels[1]['level'] == 'error'
+
+
+class TestSluitcontroleHerinnering:
+    """Server-tick die tijdens een open afvulsessie om de halfuurcontrole van
+    CCP 2 vraagt, met dedup zolang er geen nieuwe controle is."""
+
+    @staticmethod
+    def _iso_min_geleden(minuten):
+        dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=minuten)
+        return dt.isoformat()
+
+    @staticmethod
+    def _clean():
+        conn = srv._db()
+        with conn:
+            for key in ('afvul_sessies', 'haccp_sluitcontroles'):
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+            conn.execute("DELETE FROM kv WHERE key='notificatie_instellingen'")
+            conn.execute("DELETE FROM kv WHERE key='haccp_instellingen'")
+
+    def _seed(self, sessies, controles=(), enabled=True):
+        srv._write_json('notificatie_instellingen',
+                        {'enabled': enabled, 'notify_service': 'mobile_app_test'})
+        srv._write_json('afvul_sessies', sessies)
+        srv._write_json('haccp_sluitcontroles', list(controles))
+
+    def test_meldt_na_interval_en_dedupt(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        laatste = self._iso_min_geleden(40)
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L2431-B1', 'status': 'open',
+              'start': self._iso_min_geleden(90)}],
+            [{'id': 5, 'sessie_id': 1, 'aanleiding': 'start', 'resultaat': 'goedgekeurd',
+              'paraaf': {'gebruiker': 'jasper', 'tijdstip': laatste}}])
+        try:
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1
+            assert 'L2431-B1' in calls[0][2]
+            # Zonder nieuwe controle blijft het bij die ene melding.
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1
+            # Een verse controle geeft de herinnering weer vrij.
+            srv._write_json('haccp_sluitcontroles', [
+                {'id': 5, 'sessie_id': 1, 'aanleiding': 'start', 'resultaat': 'goedgekeurd',
+                 'paraaf': {'gebruiker': 'jasper', 'tijdstip': laatste}},
+                {'id': 6, 'sessie_id': 1, 'aanleiding': 'halfuur', 'resultaat': 'goedgekeurd',
+                 'paraaf': {'gebruiker': 'jasper', 'tijdstip': self._iso_min_geleden(35)}}])
+            srv._sluitcontrole_tick()
+            assert len(calls) == 2
+        finally:
+            self._clean()
+
+    def test_zwijgt_binnen_interval_en_bij_gesloten_sessie(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L1-B1', 'status': 'open',
+              'start': self._iso_min_geleden(20)},
+             {'id': 2, 'batch_id': 2, 'lotcode': 'L2-B1', 'status': 'afgesloten',
+              'start': self._iso_min_geleden(500)}])
+        try:
+            srv._sluitcontrole_tick()
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_zwijgt_zonder_notify_service(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L1-B1', 'status': 'open',
+              'start': self._iso_min_geleden(120)}], enabled=False)
+        try:
+            srv._sluitcontrole_tick()
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_respecteert_ingesteld_interval(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed([{'id': 1, 'batch_id': 1, 'lotcode': 'L1-B1', 'status': 'open',
+                     'start': self._iso_min_geleden(20)}])
+        srv._write_json('haccp_instellingen', {'sluitcontrole_interval_min': 15})
+        try:
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1
+        finally:
+            self._clean()
 
 
 class TestVergistingStap:

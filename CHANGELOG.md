@@ -4,55 +4,202 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.11.60] — 2026-07-23
-
-### Toegevoegd — Ontbrekende Batches-functies overgenomen in de Batchflow
-
-De nieuwe Batches-flow kan nu de belangrijkste dingen die alleen de oude
-pagina had:
-
-- **Batchgegevens bewerken** — nieuw inklapbaar blok in de detail: naam,
-  biernaam, stijl, batchnummer, liters, product-koppeling (vult biernaam/
-  stijl/GN-code) en GN-code direct bewerkbaar.
-- **Overhead-kosten invoeren** — electra/water/schoonmaak/overige kosten zijn
-  nu invulbaar in het financieel-blok (werden alleen opgeteld).
-- **Batch verwijderen** — knop in de detail-header, met dezelfde fiscale guard
-  (blokkeert bij uitleveringen/accijns) en cascade-opschoning als voorheen.
-- **Afgekeurd bier — Douane-vernietigingsflow** — de 3-staps vernietigingsflow
-  (aangevraagd → toegestaan → uitgevoerd) met PDF-upload en review is als
-  gedeeld component (`VernietigingSection`) beschikbaar in de flow.
-- **GN-code + SKU bij afvullen** — GN-goederencode kiezen en een SKU/EAN
-  koppelen/toevoegen bij een afvulling.
-- **Recept opnieuw toepassen** — knop bij een Geplande batch die velden +
-  ingrediënten opnieuw uit een recept vult.
-- **Logboek** — inklapbaar activiteitenlog per batch onderaan de detail.
-- **Tanktijd automatisch berekenen** — knopje bij de planning dat `tank_dagen`
-  uit het vergistingsschema + conditioneringstijd invult.
-
----
-
-## [1.11.59] — 2026-07-23
+## [1.11.66] — 2026-07-25
 
 ### Gewijzigd — Batchflow wordt de hoofd-'Batches'-pagina
 
-- Het menu-item **Batchflow** heet nu **Batches** en staat vooraan; de
-  oude, uitgebreide batches-pagina is hernoemd naar **Oude batches pagina**
-  en blijft als vangnet bereikbaar in het Productie-menu.
-- Alle knoppen en links die voorheen naar de (oude) batches-pagina of een
-  batch navigeerden gaan nu naar de nieuwe Batches-flow: de
-  carbonatie-melding, de tankkaarten en 'Taken vandaag' op het dashboard,
-  en de product-batchlijst.
-- **Nieuwe batch** (dashboard) en **Brouwen** (recept) openen nu het
-  voorgevulde nieuwe-batch-scherm ín de flow — het recept wordt overgenomen.
+- Het menu-item **Batchflow** heet nu **Batches** en staat vooraan; de oude,
+  uitgebreide batches-pagina is hernoemd naar **Oude batches pagina** en blijft
+  als vangnet bereikbaar in het Productie-menu.
+- Alle knoppen/links die voorheen naar de (oude) batches-pagina of een batch
+  navigeerden gaan nu naar de nieuwe Batches-flow (carbonatie-melding, de
+  tankkaarten en 'Taken vandaag' op het dashboard, de product-batchlijst).
+- **Nieuwe batch** (dashboard) en **Brouwen** (recept) openen nu het voorgevulde
+  nieuwe-batch-scherm ín de flow.
 
 ### Toegevoegd — Tanktemperatuur van de sensor overnemen bij een meting
 
-- Bij het invoeren van een SG-meting kun je in de **Batchflow** én op het
-  **dashboard** (snelmeting-modal en de inline meting per tankkaart) de
+- Bij een SG-meting kun je in de **Batchflow** én op het **dashboard** de
   actuele **tanktemperatuur uit de Home Assistant-sensor** met één tik
-  overnemen (🌡-knop), net zoals dat al bij de carbonatie-sessie kon.
+  overnemen (🌡-knop).
+
+### Toegevoegd — Ontbrekende Batches-functies overgenomen in de Batchflow
+
+- **Batchgegevens bewerken**, **overhead-kosten invoeren**, **batch verwijderen**
+  (met fiscale guard + cascade), **GN-code + SKU bij afvullen**, **recept opnieuw
+  toepassen**, **logboek** en **tanktijd automatisch berekenen**.
+- **Afgekeurd bier — Douane-vernietigingsflow** als gedeeld component
+  (`VernietigingSection`) in de flow.
+- CCP-metingen lopen via het aparte HACCP-systeem (bewust niet in de flow-taken).
 
 ---
+
+## [1.11.65] — 2026-07-25
+
+### Toegevoegd — Traceerbaarheid op lotcode
+
+- Bij een terugroepactie heb je een verpakking in handen met een lotcode erop.
+  De traceerbaarheidszoekfunctie accepteert die lotcode nu als ingang, naast de
+  batchnaam en het batchnummer. Zoek je op één lotcode, dan blijft de omvang
+  beperkt tot die ene afvulsessie in plaats van de hele batch — precies het
+  verschil waarvoor de sessie-aanduiding is ingevoerd.
+- Het recall-rapport vermeldt de betrokken afvulsessies met hun lotcode en
+  houdbaarheidsdatum.
+
+## [1.11.64] — 2026-07-25
+
+### Toegevoegd — Halfuur-melding op de telefoon en instelbare kritische grenzen
+
+- **Pushmelding sluitcontrole.** Tijdens een open afvulsessie stuurt de server
+  een melding via Home Assistant zodra er langer dan het ingestelde interval
+  geen sluitcontrole is geweest. Tijdens het afvullen sta je zelden bij het
+  scherm; de teller in de app blijft daarnaast gewoon meelopen. Er volgt één
+  melding per gemist moment, geen herhaling tot er een nieuwe controle is.
+- **Kritische grenzen instelbaar.** Onder Instellingen → Brouwproces staan nu de
+  waarden uit het voedselveiligheidsplan: stabiliteitsdagen per risicoklasse,
+  de meetnauwkeurigheid en de forced-fermentation-marge, de houdbaarheids-
+  termijnen, de alcoholgrens waarboven geen THT nodig is, en het interval van de
+  sluitcontrole. Ook de standaardmarkering per ingrediënttype staat hier.
+  Beheer-only — de server weigert een wijziging door een andere rol.
+
+## [1.11.63] — 2026-07-25
+
+### Toegevoegd — HACCP-dashboard, registers en inspectie-export
+
+- **Dashboard.** Vier kaarten erbij: batches die op vrijgave wachten, open
+  afvulsessies, geblokkeerde verpakkingen en afwijkingen deze maand. Elke kaart
+  brengt je naar het bijbehorende register.
+- **Register "Kritische punten".** Alle vrijgaven, afvulsessies (met hun
+  sluit- en etiketcontroles) en afwijkingen, te filteren op periode. Alleen
+  lezen — registreren gebeurt in de batchflow, op het moment zelf.
+- **Inspectie-export.** Eén afdruk met alle registraties van de gekozen periode,
+  in de drie secties die het handboek noemt. Bij een controle is de vraag niet
+  of de brouwer weet hoe het moet, maar of aantoonbaar is dat het ook zo gedaan
+  is.
+- **Allergenenbeheer uitgebreid.** Per ingrediënt is nu vast te leggen of het een
+  ongekookte of gepasteuriseerde toevoeging is; dat stuurt de risicoklasse en de
+  houdbaarheid. Daarnaast een tabel met de allergenen zoals ze op het etiket van
+  elk product staan — de bron waartegen de etiketcontrole vergelijkt. Producten
+  waarvoor dat nog niet is vastgelegd zijn oranje gemarkeerd.
+
+### Opgelost
+
+- De notitieregel bij batch-allergenen was alleen-lezen en sloeg niets op.
+
+## [1.11.62] — 2026-07-25
+
+### Toegevoegd — Afvulsessie met lotcode, CCP 2 en CCP 3
+
+- **Afvulsessie.** Afvullen gebeurt voortaan binnen een sessie met een eigen
+  lotcode (`L2431-B1`). Starten kan alleen met een vrijgegeven batch en een
+  bevestigde reiniging van de afvuller. De houdbaarheidsdatum wordt berekend
+  uit producttype en alcoholgehalte en is overschrijfbaar met een verplichte
+  reden; het THT-veld in het afvulformulier volgt de sessie.
+- **CCP 2 — sluitcontrole.** Visuele beoordeling en omkeerproef (verplicht bij
+  blik), met de aanleiding erbij. Na een verstelling van de canner moet de
+  rolinstelling vastgelegd worden. Een teller vraagt elk halfuur om een
+  controle.
+- **Blokkade bij afkeur.** Wordt een controle afgekeurd, dan worden alle
+  verpakkingen sinds de laatste goedkeuring geblokkeerd en komt er een
+  openstaande maatregel bij. Geblokkeerd bier verdwijnt uit de webshopvoorraad
+  en uit de orderpicking, maar blijft staan in de accijnsvoorraad — het is niet
+  verkoopbaar, maar wel fysiek aanwezig.
+- **CCP 3 — etiketcontrole.** Vergelijkt de allergenen uit de receptuur met die
+  op het etiket van het gekozen product. Elk verschil blokkeert het vastleggen;
+  doorgaan kan alleen via een afwijking met onderbouwing. Een product waarvan
+  de allergenen nog niet zijn vastgelegd geeft een eigen melding in plaats van
+  een valse allergeenfout.
+- **Sessie afsluiten** kan pas met een sluitcontrole bij start én einde, geen
+  openstaande afkeuring en minstens één etiketcontrole.
+
+## [1.11.61] — 2026-07-25
+
+### Toegevoegd — CCP 1: vrijgave voor afvullen, met harde blokkade
+
+De eerste van de drie kritische beheerspunten is nu zichtbaar in de batchflow,
+als sluitstuk van de conditioneerfase.
+
+- **Automatisch bepaald, niet te vergeten.** Het vrijgaveblok toont zelf of de
+  batch standaard of verhoogd risico is en waarom ("verhoogd risico door: verse
+  aardbei"), hoeveel dagen de dichtheid stabiel is en hoeveel er vereist zijn.
+  Bij verhoogd risico verschijnt de drukcontrole op het 30 °C-monster erbij.
+- **Voorgesteld oordeel.** Het systeem stelt vrijgave voor of niet, met de
+  redenen erbij. Je kunt het oordeel omzetten, maar naar "vrijgegeven" alleen
+  via een afwijkingsregistratie met onderbouwing van minimaal 20 tekens. Die
+  levert automatisch een openstaande maatregel op.
+- **Harde blokkade.** Zonder vrijgegeven registratie kan de batch niet naar de
+  fase Afvullen en kan er niet afgevuld worden — op de Batchflow-pagina én op
+  de Batches-pagina. Anders dan de bestaande waarschuwingen is dit geen
+  bevestiging die je kunt wegklikken.
+- **Zichtbaar blijven.** Een vrijgave die onder afwijking is doorgedrukt toont
+  dat ook wanneer de stap dichtklapt, zodat hij niet als een gewone vrijgave
+  wegvalt.
+- **Paraaf.** Wie en wanneer worden automatisch vastgelegd uit de door de
+  server bevestigde gebruiker; die velden zijn niet handmatig invulbaar.
+- Batches die al afgevuld waren vóór deze versie worden nooit geblokkeerd.
+- 159 vertaalsleutels toegevoegd in alle vijf talen.
+
+## [1.11.60] — 2026-07-25
+
+### Toegevoegd — HACCP: de beslislogica achter de drie beheerspunten
+
+Pure, geteste logica in `src/utils/haccp.ts` en `src/utils/afvulsessie.ts`.
+Nog niet zichtbaar in de app; de schermen volgen hierna.
+
+- **Risicoklasse per batch.** Vers fruit, hout en ongekookte adjuncten zetten
+  een batch op verhoogd risico (7 dagen stabiel in plaats van 3). Dry-hop met
+  gedroogde hop telt bewust niet mee — anders viel vrijwel elke gehopte batch
+  in het zware regime.
+- **Stabiliteit.** Telt hoeveel dagen de dichtheid onveranderd is; een daling
+  buiten de meetnauwkeurigheid zet de teller terug op nul.
+- **Vrijgave-oordeel (CCP 1).** Toetst stabiliteit, forced fermentation en —
+  bij verhoogd risico — de drukcontrole op het 30 °C-monster, en stelt op grond
+  daarvan vrijgave voor of niet.
+- **Sluitcontrole (CCP 2).** Visuele beoordeling en omkeerproef; de omkeerproef
+  is verplicht bij blik. Bij afkeur wordt bepaald welke verpakkingen sinds de
+  laatste goedkeuring gemaakt zijn — bij twijfel ruimer dan krapper.
+- **Etiketcontrole (CCP 3).** Vergelijkt de allergenen uit de receptuur met die
+  op het etiket. Elk verschil blokkeert. Een product waarvan de allergenen nog
+  niet zijn vastgelegd geeft een aparte melding, geen valse allergeenfout.
+- **Lotcode en houdbaarheid.** `L2431-B1` per afvulsessie, en de THT volgens
+  hoofdstuk 3.3: 9 maanden standaard, 6 met gepasteuriseerde purée, 3 met vers
+  fruit of hout, geen THT vanaf 10 % vol. Maandeinden worden geklemd, zodat
+  30 november plus 3 maanden eind februari wordt.
+- **Afwijkingsregistratie.** De enige weg langs een blokkade: een onderbouwing
+  van minimaal 20 tekens, met automatisch een openstaande maatregel erbij.
+
+86 nieuwe tests.
+
+## [1.11.59] — 2026-07-25
+
+### Toegevoegd — HACCP kritische beheerspunten: datamodel en opslag
+
+Eerste stap in het verweven van de drie kritische beheerspunten uit het
+HACCP-handboek (Verordening (EG) 852/2004) in de operationele workflow:
+CCP 1 vrijgave voor afvullen, CCP 2 sluitcontrole en CCP 3 etiketcontrole,
+plus de afvulsessie met lotcode `L2431-B1`.
+
+- Nieuwe datatypen: `HaccpVrijgave`, `AfvulSessie`, `SluitControle`,
+  `EtiketControle`, `HaccpAfwijking`, `Paraaf`, `HaccpBijlage` en `HaccpInst`.
+- Nieuwe datasleutels `haccp_vrijgaven`, `afvul_sessies`,
+  `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen` en
+  `haccp_instellingen`, inclusief plek in de Excel-back-up.
+- De vier registratiesleutels zijn **server-side append-only**: een opgeslagen
+  CCP-registratie is bewijs richting de NVWA en kan niet meer gewijzigd of
+  verwijderd worden. Een correctie is een nieuwe registratie die naar de oude
+  verwijst. `afvul_sessies` blijft muteerbaar, want een sessie wordt afgesloten.
+- De kritische grenzen (`haccp_instellingen`) zijn beheer-only: de brouwer vult
+  de registraties in, maar verschuift de grenzen niet.
+- Ingrediënten kunnen gemarkeerd worden als toevoeging ná de kook
+  (`ongekookt` of `gepasteuriseerd`); dat stuurt straks de risicoklasse van de
+  batch en de houdbaarheidsdatum. Dry-hop met gedroogde hop telt bewust niet mee.
+- Producten krijgen een eigen allergenenlijst en etiketversie als bron voor de
+  etiketcontrole.
+- Afvullingen krijgen een koppeling aan sessie en lotcode en kunnen geblokkeerd
+  worden na een afgekeurde sluitcontrole. Geblokkeerd bier blijft meetellen in
+  de accijnsvoorraad — het is niet verkoopbaar, maar wel fysiek aanwezig.
+
+Nog geen zichtbare wijziging in de app; de schermen volgen in de volgende stappen.
 
 ## [1.11.58] — 2026-07-23
 

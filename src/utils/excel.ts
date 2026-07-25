@@ -140,6 +140,11 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('HACCPWaterkwaliteit',  data.haccp_waterkwaliteit)
     addSheet('HACCPOngedierte',      data.haccp_ongedierte)
     addSheet('HACCPOpleidingen',     data.haccp_opleidingen)
+    addSheet('HACCPVrijgaven',       data.haccp_vrijgaven)
+    addSheet('AfvulSessies',         data.afvul_sessies)
+    addSheet('HACCPSluitcontroles',  data.haccp_sluitcontroles)
+    addSheet('HACCPEtiketcontroles', data.haccp_etiketcontroles)
+    addSheet('HACCPAfwijkingen',     data.haccp_afwijkingen)
     addSheet('Locaties',             data.locaties)
     addSheet('Verplaatsingen',       data.verplaatsingen)
 
@@ -154,7 +159,7 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     // groter dan de Excel-cel-limiet (~32767 chars) wordt de string opgesplitst
     // in chunks (`key__0`, `key__1`, …) die bij import weer worden samengevoegd.
     const inst: {sleutel: string, waarde: any}[] = [
-      {sleutel: '_versie',              waarde: 3},
+      {sleutel: '_versie',              waarde: 4},
       {sleutel: '_datum',               waarde: new Date().toISOString()},
       {sleutel: 'accijns_instellingen', waarde: JSON.stringify(data.accijns_instellingen ?? {})},
       {sleutel: 'btw_instellingen',     waarde: JSON.stringify(data.btw_instellingen     ?? {})},
@@ -169,6 +174,7 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
       {sleutel: 'coldcrash_instellingen', waarde: JSON.stringify(data.coldcrash_instellingen ?? {})},
       {sleutel: 'planning_instellingen',  waarde: JSON.stringify(data.planning_instellingen  ?? {})},
       {sleutel: 'brouwproces_instellingen', waarde: JSON.stringify(data.brouwproces_instellingen ?? {})},
+      {sleutel: 'haccp_instellingen',   waarde: JSON.stringify(data.haccp_instellingen   ?? {})},
       {sleutel: 'bank_koppelingen',     waarde: JSON.stringify(data.bank_koppelingen     ?? {})},
       {sleutel: 'bank_saldi',           waarde: JSON.stringify(data.bank_saldi           ?? {})},
       {sleutel: 'app_name',             waarde: data.app_name  ?? ''},
@@ -329,6 +335,11 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         haccp_waterkwaliteit:         parse('HACCPWaterkwaliteit'),
         haccp_ongedierte:             parse('HACCPOngedierte'),
         haccp_opleidingen:            parse('HACCPOpleidingen'),
+        haccp_vrijgaven:              parse('HACCPVrijgaven'),
+        afvul_sessies:                parse('AfvulSessies'),
+        haccp_sluitcontroles:         parse('HACCPSluitcontroles'),
+        haccp_etiketcontroles:        parse('HACCPEtiketcontroles'),
+        haccp_afwijkingen:            parse('HACCPAfwijkingen'),
         locaties:                     parse('Locaties'),
         verplaatsingen:               parse('Verplaatsingen'),
 
@@ -352,6 +363,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         coldcrash_instellingen: parseInst('coldcrash_instellingen'),
         planning_instellingen:  parseInst('planning_instellingen'),
         brouwproces_instellingen: parseInst('brouwproces_instellingen'),
+        haccp_instellingen:       parseInst('haccp_instellingen'),
         bank_koppelingen:     parseInst('bank_koppelingen'),
         bank_saldi:           parseInst('bank_saldi'),
         app_name:             instMap['app_name'] != null ? String(instMap['app_name']) : undefined,
