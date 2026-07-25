@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.60] — 2026-07-25
+
+### Toegevoegd — HACCP: de beslislogica achter de drie beheerspunten
+
+Pure, geteste logica in `src/utils/haccp.ts` en `src/utils/afvulsessie.ts`.
+Nog niet zichtbaar in de app; de schermen volgen hierna.
+
+- **Risicoklasse per batch.** Vers fruit, hout en ongekookte adjuncten zetten
+  een batch op verhoogd risico (7 dagen stabiel in plaats van 3). Dry-hop met
+  gedroogde hop telt bewust niet mee — anders viel vrijwel elke gehopte batch
+  in het zware regime.
+- **Stabiliteit.** Telt hoeveel dagen de dichtheid onveranderd is; een daling
+  buiten de meetnauwkeurigheid zet de teller terug op nul.
+- **Vrijgave-oordeel (CCP 1).** Toetst stabiliteit, forced fermentation en —
+  bij verhoogd risico — de drukcontrole op het 30 °C-monster, en stelt op grond
+  daarvan vrijgave voor of niet.
+- **Sluitcontrole (CCP 2).** Visuele beoordeling en omkeerproef; de omkeerproef
+  is verplicht bij blik. Bij afkeur wordt bepaald welke verpakkingen sinds de
+  laatste goedkeuring gemaakt zijn — bij twijfel ruimer dan krapper.
+- **Etiketcontrole (CCP 3).** Vergelijkt de allergenen uit de receptuur met die
+  op het etiket. Elk verschil blokkeert. Een product waarvan de allergenen nog
+  niet zijn vastgelegd geeft een aparte melding, geen valse allergeenfout.
+- **Lotcode en houdbaarheid.** `L2431-B1` per afvulsessie, en de THT volgens
+  hoofdstuk 3.3: 9 maanden standaard, 6 met gepasteuriseerde purée, 3 met vers
+  fruit of hout, geen THT vanaf 10 % vol. Maandeinden worden geklemd, zodat
+  30 november plus 3 maanden eind februari wordt.
+- **Afwijkingsregistratie.** De enige weg langs een blokkade: een onderbouwing
+  van minimaal 20 tekens, met automatisch een openstaande maatregel erbij.
+
+86 nieuwe tests.
+
 ## [1.11.59] — 2026-07-25
 
 ### Toegevoegd — HACCP kritische beheerspunten: datamodel en opslag
