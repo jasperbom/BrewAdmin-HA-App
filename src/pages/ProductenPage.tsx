@@ -1519,7 +1519,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             {/* Batches */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <SectionHeader
-                onToggle={() => setPage && setPage('batches')}
+                onToggle={() => setPage && setPage('batchflow')}
                 title={t('lbl_product_batches')}
                 info={selBatches.length}
               />

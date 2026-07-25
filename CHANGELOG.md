@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.66] — 2026-07-25
+
+### Gewijzigd — Batchflow wordt de hoofd-'Batches'-pagina
+
+- Het menu-item **Batchflow** heet nu **Batches** en staat vooraan; de oude,
+  uitgebreide batches-pagina is hernoemd naar **Oude batches pagina** en blijft
+  als vangnet bereikbaar in het Productie-menu.
+- Alle knoppen/links die voorheen naar de (oude) batches-pagina of een batch
+  navigeerden gaan nu naar de nieuwe Batches-flow (carbonatie-melding, de
+  tankkaarten en 'Taken vandaag' op het dashboard, de product-batchlijst).
+- **Nieuwe batch** (dashboard) en **Brouwen** (recept) openen nu het voorgevulde
+  nieuwe-batch-scherm ín de flow.
+
+### Toegevoegd — Tanktemperatuur van de sensor overnemen bij een meting
+
+- Bij een SG-meting kun je in de **Batchflow** én op het **dashboard** de
+  actuele **tanktemperatuur uit de Home Assistant-sensor** met één tik
+  overnemen (🌡-knop).
+
+### Toegevoegd — Ontbrekende Batches-functies overgenomen in de Batchflow
+
+- **Batchgegevens bewerken**, **overhead-kosten invoeren**, **batch verwijderen**
+  (met fiscale guard + cascade), **GN-code + SKU bij afvullen**, **recept opnieuw
+  toepassen**, **logboek** en **tanktijd automatisch berekenen**.
+- **Afgekeurd bier — Douane-vernietigingsflow** als gedeeld component
+  (`VernietigingSection`) in de flow.
+- CCP-metingen lopen via het aparte HACCP-systeem (bewust niet in de flow-taken).
+
+---
+
 ## [1.11.65] — 2026-07-25
 
 ### Toegevoegd — Traceerbaarheid op lotcode

@@ -11,7 +11,7 @@ import {
   markTankVuilBijVertrek, fgStabiel, tankRestVolume, appendTankHistorie,
   carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols,
   carbRangeForStyle, CARB_STYLE_OPTIONS,
-  berekenVoorcalcVoorAfvulling, nextBatchNummer,
+  berekenVoorcalcVoorAfvulling, nextBatchNummer, berekenTanktijd, sumVergistingDagen,
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import {
@@ -23,9 +23,11 @@ import Btn from '../components/ui/Btn'
 import Badge from '../components/ui/Badge'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
+import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
+import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
@@ -45,7 +47,7 @@ interface BatchFlowPageProps {
   verpakkingen: any[], setVerpakkingen: any,
   onderdelen: any[], setOnderdelen: any,
   producten: any[], setProducten: any,
-  productArtikelen: any[],
+  productArtikelen: any[], setProductArtikelen?: any,
   artikelen: any[],
   accijnsInst: any,
   acc: any[],
@@ -79,6 +81,9 @@ interface BatchFlowPageProps {
   setPage: (p: string) => void,
   setNavBatchId: (id: number | null) => void,
   openBatchId?: number | null,
+  preNieuwBatch?: any,
+  setPreNieuwBatch?: (v: any) => void,
+  ccpMetingen?: any[], setCcpMetingen?: any,
 }
 
 interface ChecklistItem {
@@ -338,7 +343,7 @@ const TempControl: React.FC<{
 const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   bat, setBat, bi, setBi, ing, lots, setLots, av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen, setOnderdelen,
-  producten, setProducten, productArtikelen, artikelen, accijnsInst, acc,
+  producten, setProducten, productArtikelen, setProductArtikelen, artikelen, accijnsInst, acc,
   recepten, gistMetingen, setGistMetingen, carbSessies, setCarbSessies,
   verliesRegistraties, setVerliesRegistraties, dryHops, setDryHops,
   brouwdagStappen, setBrouwdagStappen, waterAddities, setWaterAddities,
@@ -351,6 +356,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpEtiketcontroles, setHaccpEtiketcontroles,
   haccpAfwijkingen, setHaccpAfwijkingen, haccpInst, capa, setCapa, whoami,
   setPage, setNavBatchId, openBatchId,
+  preNieuwBatch, setPreNieuwBatch,
+  ccpMetingen, setCcpMetingen,
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   const [openFasen, setOpenFasen] = useState<number[]>([])
@@ -359,6 +366,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [openStappen, setOpenStappen] = useState<Record<string, boolean>>({})
   const [geslotenOpen, setGeslotenOpen] = useState(false)
   const [notitiesOpen, setNotitiesOpen] = useState(false)
+  // Inklapbaar batch-gegevens-bewerkblok (naam/stijl/liters/product/gn-code),
+  // het logboek en de recept-opnieuw-picker in de detail — overgenomen van de
+  // oude Batches-pagina.
+  const [gegevensOpen, setGegevensOpen] = useState(false)
+  const [logIngeklapt, setLogIngeklapt] = useState(true)
+  const [receptPickerOpen, setReceptPickerOpen] = useState(false)
   // Inklapbare planning-tijdlijn bovenaan het overzicht (samengevoegd met de
   // vroegere losse Planning-pagina). Standaard ingeklapt.
   const [tijdlijnOpen, setTijdlijnOpen] = useState(false)
@@ -379,10 +392,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   React.useEffect(() => { setCarbStyleOverride('') }, [sel])
   const [carbHistIngeklapt, setCarbHistIngeklapt] = useState(true)
   // Afvullen
-  const emptyAvF = {product_id: '', verpakking_id: '', verpakking_type: '', inhoud_per_eenheid: '', hoeveelheid: '', datum: tod(), tht: ''}
+  const emptyAvF = {product_id: '', verpakking_id: '', verpakking_type: '', inhoud_per_eenheid: '', hoeveelheid: '', datum: tod(), tht: '', gn_code: ''}
   const [avF, setAvF] = useState<any>(emptyAvF)
   const [nieuwProductNaam, setNieuwProductNaam] = useState('')
   const [toonNieuwProduct, setToonNieuwProduct] = useState(false)
+  // SKU-toevoegen-formulier bij een afvulling (productArtikelen), overgenomen
+  // van de Batches-pagina.
+  const [avSkuForm, setAvSkuForm] = useState<any>(null)
   // Tankverplaatsing
   const [moveTankTarget, setMoveTankTarget] = useState('')
   // Rij-id van de batch-ingredient waarvan de koppel-picker openstaat (afboek-tabel).
@@ -411,6 +427,23 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (openBatchId) openBatch(openBatchId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openBatchId])
+  // Binnenkomen vanaf Recepten ('Brouwen') of het dashboard ('Nieuwe batch'):
+  // open direct het voorgevulde nieuwe-batch-formulier in het overzicht. Een
+  // meegegeven recept wordt voorgeselecteerd; maakNieuweBatch bouwt daarna de
+  // batch + ingrediëntregels op, net als voorheen op de oude Batches-pagina.
+  React.useEffect(() => {
+    if (!preNieuwBatch) return
+    setSel(null) // forceer het overzicht zodat het formulier zichtbaar is
+    setNieuwForm({
+      recept_id: preNieuwBatch.recept_id != null && preNieuwBatch.recept_id !== '' ? String(preNieuwBatch.recept_id) : '',
+      naam: preNieuwBatch.naam || '',
+      datum: preNieuwBatch.datum || tod(),
+      tank: preNieuwBatch.tank || '',
+    })
+    setNieuwOpen(true)
+    setPreNieuwBatch && setPreNieuwBatch(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preNieuwBatch])
   // Eén fase tegelijk: een stap in de tijdlijn selecteren deselecteert de
   // vorige; nogmaals klikken klapt de geselecteerde fase weer dicht.
   const toggleFase = (i: number) =>
@@ -970,6 +1003,85 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setPage('batches')
   }
 
+  // Batch verwijderen — 1-op-1 overgenomen van de oude Batches-pagina, incl.
+  // de fiscale integriteitsguard (blokkeert bij uitleveringen/accijns) en de
+  // cascade-cleanup van alle gekoppelde records (anders plakken verweesde
+  // records via hergebruikte id's aan een volgende batch).
+  const removeBatch = (id: number) => {
+    if ((uit || []).some((u: any) => u.batch_id === id) || (acc || []).some((a: any) => a.batch_id === id)) {
+      alert(t('err_batch_delete_fiscaal'))
+      return
+    }
+    if (confirm(t('error_confirm_delete_batch'))) {
+      const naam = bat.find((b: any) => b.id === id)?.naam || ''
+      logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: id, actie: 'verwijderd', omschrijving: naam })
+      setBat((prev: any[]) => prev.filter((b: any) => b.id !== id))
+      setBi((prev: any[]) => prev.filter((x: any) => x.batch_id !== id))
+      setAv((prev: any[]) => (prev || []).filter((x: any) => x.batch_id !== id))
+      setGistMetingen((prev: any[]) => (prev || []).filter((m: any) => m.batch_id !== id))
+      setCarbSessies((prev: any[]) => (prev || []).filter((s: any) => s.batch_id !== id))
+      setVerliesRegistraties((prev: any[]) => (prev || []).filter((r: any) => r.batch_id !== id))
+      setCcpMetingen && setCcpMetingen((prev: any[]) => (prev || []).filter((m: any) => m.batch_id !== id))
+      setLog((prev: any[]) => (prev || []).filter((l: any) => l.batch_id !== id))
+      setSel(null)
+    }
+  }
+
+  // Recept opnieuw toepassen op een geplande batch — vervangt velden +
+  // ingrediëntregels (1-op-1 van de Batches-pagina). Alleen bij status Gepland.
+  const applyReceptToBatch = (r: any) => {
+    if (!selB || !r) return
+    if (selB.status !== 'Gepland') { alert(t('batch_sync_recept_not_planned')); return }
+    if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', r.naam || ''))) return
+    const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
+    const abv2 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 100) / 100
+    const patch: any = {
+      recept_id: r.id, naam: r.naam || selB.naam, stijl: r.stijl || '',
+      OG: '', FG: '', ABV: '',
+      verwacht_og: sg3(r.OG), verwacht_fg: sg3(r.FG), verwacht_abv: abv2(r.ABV),
+      liter_vergist: r.batch_size || '', kleur: r.kleur || '', kooktijd: r.kooktijd || '',
+      kook_volume: r.kook_volume || '', vergistingsprofiel: r.vergistingsprofiel || [], maischprofiel: r.maischprofiel || [],
+    }
+    setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
+    const nieuweIng = [
+      ...(r.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
+      ...(r.hop    || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
+      ...(r.gist   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'pkg', ingredient_id: i.ingredient_id ?? null })),
+      ...(r.overig || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
+    ]
+    setBi((prev: any[]) => {
+      const overig = (prev || []).filter((x: any) => x.batch_id !== selB.id)
+      const startId = overig.length ? Math.max(...overig.map((x: any) => x.id), 0) + 1 : 1
+      const nieuwe = nieuweIng.map((item: any, idx: number) => {
+        const ingMatch = item.ingredient_id
+          ? (ing || []).find((i: any) => i.id === item.ingredient_id)
+          : (ing || []).find((i: any) => i.naam.toLowerCase() === String(item.ingredient_naam || '').toLowerCase())
+        const bfp = ingMatch?.bf_props || {}
+        const tType = String(item.ingredient_type || '').toLowerCase()
+        const isHop = tType === 'hop'
+        const isMout = tType === 'mout' || tType === 'suiker'
+        return {
+          id: startId + idx, batch_id: selB.id,
+          ingredient_id: ingMatch ? ingMatch.id : null,
+          ingredient_naam: item.ingredient_naam, ingredient_type: item.ingredient_type,
+          hoeveelheid: Number(item.hoeveelheid) || 0,
+          ...(isMout && { extract_pct: item.extract_pct != null && item.extract_pct !== '' ? Number(item.extract_pct) : (bfp.yield != null ? Number(bfp.yield) : '') }),
+          ...(isHop && {
+            alpha_pct: item.alpha_pct != null && item.alpha_pct !== '' ? Number(item.alpha_pct) : (bfp.alpha != null ? Number(bfp.alpha) : ''),
+            tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== '' ? Number(item.tijdstip_min) : '',
+            gebruik: String(item.gebruik || 'boil').toLowerCase(),
+            temp_c: item.temp_c != null && item.temp_c !== '' ? Number(item.temp_c) : '',
+          }),
+          eenheid: item.eenheid, lot_id: null, kosten: null, afgeboekt: false,
+        }
+      })
+      return [...overig, ...nieuwe]
+    })
+    addLog({type: 'gewijzigd', batch_id: selB.id, referentie: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
+    setReceptPickerOpen(false)
+  }
+
   // Schrijf een veld direct naar de batch. Numerieke waarden worden als getal
   // opgeslagen, lege strings blijven leeg (zodat checklist-checks weer afgaan).
   const updateBatch = (patch: any) => {
@@ -998,6 +1110,153 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), type: 'abv_definitief', batch_id: selB.id, referentie: `${val.toFixed(2)}%`}])
   }
   const bewerkAbv = () => updateBatch({ abv_definitief: false })
+
+  // GN-goederencodes (accijns) — zelfde 4 codes als de afvul-registratie op de
+  // oude pagina, herbruikt voor zowel het batch-gegevens-veld als het afvullen.
+  const GN_OPTIES = [
+    {v: '2203 00 01', l: t('gn_2203_00_01')},
+    {v: '2203 00 09', l: t('gn_2203_00_09')},
+    {v: '2206', l: t('gn_2206')},
+    {v: '2202 91 00', l: t('gn_2202_91_00')},
+  ]
+
+  // ── Batch-gegevens bewerken (inline in de detail) ──────────────────────────
+  // Overgenomen van de oude Batches-pagina: naam/biernaam/stijl/nummer/liters/
+  // product-koppeling/GN-code direct bewerkbaar. Product kiezen vult biernaam/
+  // stijl/GN-code automatisch, net als in het oude formulier.
+  const renderBatchGegevens = () => {
+    if (!selB) return null
+    return (
+      <div className="bg-white rounded-xl shadow-card overflow-hidden">
+        <SectionHeader open={gegevensOpen} onToggle={() => setGegevensOpen(o => !o)}
+          rounded={gegevensOpen ? 'top' : 'full'} title={t('flow_batchgegevens')} />
+        {gegevensOpen && (
+          <div className="p-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Inp label={t('lbl_batch_number')} value={selB.batch_nummer || ''} onChange={(v: string) => updateBatch({ batch_nummer: v })} placeholder="B-2025-001" />
+              <Inp label={t('lbl_name')} value={selB.naam || ''} onChange={(v: string) => updateBatch({ naam: v })} placeholder={t('ph_beer_name')} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('nav_producten')}</label>
+              <div className="flex gap-1">
+                <select value={selB.product_id || ''} onChange={e => {
+                  const pid = e.target.value ? Number(e.target.value) : ''
+                  const prod = (producten || []).find((p: any) => p.id === pid)
+                  updateBatch({ product_id: pid || '', biernaam: prod?.naam || selB.biernaam, stijl: prod?.stijl || selB.stijl, gn_code: prod?.gn_code || selB.gn_code })
+                }} className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+                  <option value="">{t('ph_biernaam_koppeling')}</option>
+                  {(producten || []).filter((p: any) => p.status !== 'gearchiveerd').slice().sort((a: any, b: any) => (a.naam || '').localeCompare(b.naam || '')).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.naam}{p.stijl ? ` (${p.stijl})` : ''}</option>
+                  ))}
+                </select>
+                {selB.product_id && (
+                  <button type="button" onClick={() => updateBatch({ product_id: '', biernaam: '' })}
+                    className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Inp label={t('lbl_biernaam')} value={selB.biernaam || ''} onChange={(v: string) => updateBatch({ biernaam: v })} />
+              <Inp label={t('lbl_style')} value={selB.stijl || ''} onChange={(v: string) => updateBatch({ stijl: v })} placeholder={t('ph_beer_style')} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Inp label={t('lbl_liters_fermented')} type="number" value={selB.liter_vergist ?? ''} onChange={commitNum('liter_vergist')} placeholder="0" />
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_gn_code')}</label>
+                <select value={selB.gn_code || ''} onChange={e => updateBatch({ gn_code: e.target.value })}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+                  <option value="">—</option>
+                  {GN_OPTIES.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Logboek (activiteitenlog per batch) — overgenomen van de Batches-pagina ─
+  const renderLogboek = () => {
+    if (!selB) return null
+    const TYPE: Record<string, any> = {
+      gebruik:      {icon: '📦', label: t('batch_log_ingredient'),   cls: 'text-blue-700 bg-blue-50'},
+      terugboeking: {icon: '↩',  label: t('batch_log_type_return'),  cls: 'text-orange-700 bg-orange-50'},
+      afvullen:     {icon: '🍺', label: t('log_type_afvullen'),      cls: 'text-green-700 bg-green-50'},
+      uitslaan:     {icon: '🚛', label: t('log_type_uitslaan'),      cls: 'text-purple-700 bg-purple-50'},
+      afboeking:    {icon: '🗑️', label: t('log_type_afboeking'),     cls: 'text-red-700 bg-red-50'},
+      rebrand:      {icon: '↪',  label: t('log_type_rebrand'),       cls: 'text-blue-700 bg-blue-50'},
+      status:       {icon: '🔄', label: t('lbl_status'),             cls: 'text-gray-700 bg-gray-100'},
+      aangemaakt:   {icon: '✨', label: t('batch_log_type_created'), cls: 'text-indigo-700 bg-indigo-50'},
+      gewijzigd:    {icon: '✏️', label: t('batch_log_type_changed'), cls: 'text-amber-700 bg-amber-50'},
+      hygiene:      {icon: '🧹', label: t('batch_log_type_hygiene'), cls: 'text-teal-700 bg-teal-50'},
+      ccp:          {icon: '🎯', label: 'CCP',                        cls: 'text-blue-700 bg-blue-50'},
+    }
+    const bLog = (log || []).filter((l: any) => l.batch_id === selB.id).slice().reverse()
+    if (!bLog.length) return null
+    return (
+      <div className={`bg-white rounded-xl shadow-card ${logIngeklapt ? '' : 'overflow-hidden'}`}>
+        <SectionHeader open={!logIngeklapt} onToggle={() => setLogIngeklapt(v => !v)}
+          rounded={logIngeklapt ? 'full' : 'top'} title={t('batch_log')} info={bLog.length} />
+        {!logIngeklapt && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-gray-500 bg-gray-50">
+                <tr>
+                  <th className="px-3 py-1.5 text-left">{t('lbl_date')}</th>
+                  <th className="px-3 py-1.5 text-left">{t('lbl_type')}</th>
+                  <th className="px-3 py-1.5 text-left">{t('batch_log_description')}</th>
+                  <th className="px-3 py-1.5 text-right">{t('lbl_quantity')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {bLog.map((l: any) => {
+                  const typeInfo = TYPE[l.type] || {icon: '•', label: l.type || '—', cls: 'text-gray-600 bg-gray-100'}
+                  const omschr = l.ingredient_naam
+                    ? l.ingredient_naam + (l.lotnummer ? ` · lot: ${l.lotnummer}` : '')
+                    : l.verpakking_type || l.referentie || '—'
+                  const qty = l.hoeveelheid != null
+                    ? `${fmt(l.hoeveelheid)} ${l.eenheid || ''}${l.referentie && l.type !== 'gebruik' ? ` (${l.referentie})` : ''}`.trim()
+                    : '—'
+                  return (
+                    <tr key={l.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{l.datum || '—'}</td>
+                      <td className="px-3 py-1.5">
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${typeInfo.cls}`}>
+                          {typeInfo.icon} {typeInfo.label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5 text-xs">{omschr}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-xs text-gray-700">{qty}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Recept opnieuw toepassen (picker-modal) ────────────────────────────────
+  const renderReceptPicker = () => {
+    if (!receptPickerOpen) return null
+    return (
+      <Modal title={t('batch_sync_recept')} onClose={() => setReceptPickerOpen(false)}>
+        <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+          {beschikbareRecepten.length === 0 && <div className="text-sm text-gray-400 italic p-2">{t('flow_geen_recepten')}</div>}
+          {beschikbareRecepten.map((r: any) => (
+            <button key={r.id} type="button" onClick={() => applyReceptToBatch(r)}
+              className="w-full text-left px-3 py-2 rounded hover:bg-gray-50 border border-gray-100 flex items-center justify-between gap-2">
+              <span className="text-sm text-gray-700">{r.naam}</span>
+              {r.stijl && <span className="text-xs text-gray-400">{r.stijl}</span>}
+            </button>
+          ))}
+        </div>
+      </Modal>
+    )
+  }
 
   // ── Vergistingsschema: stap-navigatie (zelfde gedrag als Dashboard) ────────
   const batchClimate = selB?.tank && haInst?.enabled && haInst?.climates_enabled
@@ -2480,6 +2739,57 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             )
           })()}
         </div>
+        {/* GN-code + SKU-koppeling (overgenomen van de Batches-pagina) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_gn_code')}</label>
+            <select value={avF.gn_code || ''} onChange={e => setAvF((f: any) => ({...f, gn_code: e.target.value}))}
+              className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
+              <option value="">—</option>
+              {GN_OPTIES.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+            </select>
+          </div>
+          {avF.product_id && avF.verpakking_id && (() => {
+            const matchedArt = (productArtikelen || []).find((a: any) => a.product_id === Number(avF.product_id) && a.verpakking_id === Number(avF.verpakking_id))
+            if (matchedArt?.artikelnummer) {
+              return (
+                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-green-50 border border-green-200 rounded text-sm">
+                  <span className="font-medium text-green-700">SKU:</span>
+                  <span className="font-mono text-green-800">{matchedArt.artikelnummer}</span>
+                  {matchedArt.ean && <span className="text-green-600 text-xs ml-2">EAN: {matchedArt.ean}</span>}
+                </div>
+              )
+            }
+            if (avSkuForm) {
+              return (
+                <div className="px-2.5 py-2 bg-amber-50 border border-amber-200 rounded space-y-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <input type="text" value={avSkuForm.artikelnummer || ''} onChange={e => setAvSkuForm((f: any) => ({...f, artikelnummer: e.target.value}))} placeholder={t('ph_artikelnummer')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
+                    <input type="text" value={avSkuForm.ean || ''} onChange={e => setAvSkuForm((f: any) => ({...f, ean: e.target.value}))} placeholder={t('ph_ean_optioneel')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
+                    <div className="flex gap-1">
+                      <Btn s="sm" onClick={() => {
+                        if (!avSkuForm.artikelnummer?.trim()) return
+                        const vp = (verpakkingen || []).find((v: any) => v.id === Number(avF.verpakking_id))
+                        const newArt = {...avSkuForm, artikelnummer: avSkuForm.artikelnummer.trim(), ean: avSkuForm.ean?.trim() || '', verpakking_naam: vp?.naam || '', verpakking_type: vp?.type || vp?.naam || '', inhoud_liter: vp?.inhoud_liter || ''}
+                        setProductArtikelen && setProductArtikelen((prev: any[]) => [...(prev || []), newArt])
+                        setAvSkuForm(null)
+                      }}>{t('btn_sku_opslaan')}</Btn>
+                      <button type="button" onClick={() => setAvSkuForm(null)} className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+            return (
+              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-sm">
+                <span className="text-amber-700">{t('lbl_geen_sku')}</span>
+                <button type="button" onClick={() => {
+                  setAvSkuForm({id: newId(productArtikelen || []), product_id: Number(avF.product_id), verpakking_id: Number(avF.verpakking_id), artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: '', gn_code: avF.gn_code || ''})
+                }} className="text-xs font-medium underline" style={{color: 'var(--t-accent)'}}>{t('btn_sku_toevoegen')}</button>
+              </div>
+            )
+          })()}
+        </div>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="text-sm text-gray-500">
             {avF.inhoud_per_eenheid && avF.hoeveelheid && (
@@ -2569,6 +2879,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return (
       <div className="border border-gray-200 rounded-lg p-3 space-y-2 text-sm">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_fin_titel')}</div>
+        {/* Overhead-kosten invoeren (overgenomen van de Batches-pagina) — direct
+            bewerkbaar; worden meegeteld in de brouwkost hieronder. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Inp label={`${t('batch_costs_electricity')} (€)`} type="number" value={selB.electra_kosten ?? ''} onChange={commitNum('electra_kosten')} placeholder="0" />
+          <Inp label={`${t('batch_costs_water')} (€)`} type="number" value={selB.water_kosten ?? ''} onChange={commitNum('water_kosten')} placeholder="0" />
+          <Inp label={`${t('batch_costs_cleaning')} (€)`} type="number" value={selB.schoonmaak_kosten ?? ''} onChange={commitNum('schoonmaak_kosten')} placeholder="0" />
+          <Inp label={`${t('batch_costs_other')} (€)`} type="number" value={selB.overige_kosten ?? ''} onChange={commitNum('overige_kosten')} placeholder="0" />
+        </div>
         {mijnAv.length === 0 ? (
           <div className="text-sm text-gray-400 italic">{t('flow_fin_geen_afvullingen')}</div>
         ) : (
@@ -2685,15 +3003,29 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     </div>
   ) : null
 
-  // Snelle SG-meting (vergisten/conditioneren).
-  const renderMetingForm = () => (
+  // Snelle SG-meting (vergisten/conditioneren). De tanktemperatuur kan met één
+  // tik uit de HA-sensor van de tank worden overgenomen (al automatisch
+  // opgehaald in haTankTemps) — zelfde patroon als de carbonatie-form.
+  const renderMetingForm = () => {
+    const mSensorRaw = selB && selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+    const mSensor = typeof mSensorRaw === 'number' && !isNaN(mSensorRaw) ? mSensorRaw : null
+    return (
     <div className="flex flex-wrap items-end gap-2">
       <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
-      <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder="19.5" cls="w-28" />
+      <div className="flex flex-col">
+        <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder={mSensor != null ? mSensor.toFixed(1) : '19.5'} cls="w-28" />
+        {mSensor != null && (
+          <button type="button" onClick={() => setMForm(f => ({...f, temp: mSensor.toFixed(1)}))}
+            className="mt-1 text-xs hover:underline self-start" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
+            🌡 HA: {mSensor.toFixed(1)}°C
+          </button>
+        )}
+      </div>
       <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
       <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
     </div>
-  )
+    )
+  }
   const renderGrafiek = () => mijnMetingen.length >= 2
     ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
     : <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
@@ -2781,6 +3113,28 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
                     <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+                  </div>
+                  {/* Tanktijd + auto-bereken (overgenomen van de Batches-pagina) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('plan_tank_tijd')}</label>
+                    <div className="flex items-center gap-1">
+                      <input type="number" value={String(selB.tank_dagen ?? '')}
+                        onChange={e => updateBatch({ tank_dagen: e.target.value === '' ? '' : Number(e.target.value) })}
+                        placeholder={String(berekenTanktijd(selB.vergistingsprofiel, Number(planningInst?.conditioneren_dagen ?? 14)) || 14)}
+                        className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24 bg-white t-input outline-none shadow-sm" />
+                      {(() => {
+                        const profiel = selB.vergistingsprofiel
+                        const berekend = berekenTanktijd(profiel, Number(planningInst?.conditioneren_dagen ?? 14))
+                        const tooltip = `${t('plan_tanktijd_tooltip')}: ${sumVergistingDagen(profiel)}d + ${planningInst?.conditioneren_dagen ?? 14}d = ${berekend}d`
+                        return (
+                          <button type="button" onClick={() => updateBatch({ tank_dagen: berekend })}
+                            disabled={!Array.isArray(profiel) || profiel.length === 0} title={tooltip}
+                            className="text-xs px-2 py-1.5 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                            🔢 {t('plan_tanktijd_bereken')}
+                          </button>
+                        )
+                      })()}
+                    </div>
                   </div>
                 </div>
                 {selB.tank && tankStatussen?.[selB.tank]?.status && tankStatussen[selB.tank].status !== 'Ontsmet' && (
@@ -3085,7 +3439,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <Badge s={selB.status} />
               {selB.stijl && <span className="text-xs text-gray-500">{selB.stijl}</span>}
             </div>
-            <Btn v="secondary" s="sm" onClick={openInBatches}>{t('flow_open_batches')}</Btn>
+            <div className="flex items-center gap-2">
+              {selB.status === 'Gepland' && (
+                <Btn v="secondary" s="sm" onClick={() => setReceptPickerOpen(true)}>{t('batch_sync_recept')}</Btn>
+              )}
+              <Btn v="danger" s="sm" onClick={() => removeBatch(selB.id)}>{t('btn_delete')}</Btn>
+              <Btn v="secondary" s="sm" onClick={openInBatches}>{t('flow_open_batches')}</Btn>
+            </div>
           </div>
 
           {/* Stepper — klikken klapt de bijbehorende fasekaart open/dicht.
@@ -3129,6 +3489,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         </div>
       </div>
 
+      {/* Batch-gegevens bewerken (naam/stijl/liters/product/GN-code) */}
+      {renderBatchGegevens()}
+
       {/* Alleen de in de tijdlijn geselecteerde fase(n) — de stepper hierboven
           is de selector, dus een eigen (inklap)header per fase is overbodig. */}
       {STATUSSEN.map((s, i) => openFasen.includes(i) && (
@@ -3145,6 +3508,21 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         open={notitiesOpen}
         onToggle={() => setNotitiesOpen(o => !o)}
       />
+
+      {/* Afgekeurd bier — Douane-vernietigingsflow (gedeeld component) */}
+      <VernietigingSection
+        batch={selB}
+        verliesRegistraties={verliesRegistraties}
+        setVerliesRegistraties={setVerliesRegistraties}
+        auditLog={auditLog}
+        setAuditLog={setAuditLog}
+      />
+
+      {/* Logboek (activiteitenlog) — overgenomen van de Batches-pagina */}
+      {renderLogboek()}
+
+      {/* Recept opnieuw toepassen (picker-modal) */}
+      {renderReceptPicker()}
     </div>
   )
 }
