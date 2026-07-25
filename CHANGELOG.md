@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.64] — 2026-07-25
+
+### Toegevoegd — Halfuur-melding op de telefoon en instelbare kritische grenzen
+
+- **Pushmelding sluitcontrole.** Tijdens een open afvulsessie stuurt de server
+  een melding via Home Assistant zodra er langer dan het ingestelde interval
+  geen sluitcontrole is geweest. Tijdens het afvullen sta je zelden bij het
+  scherm; de teller in de app blijft daarnaast gewoon meelopen. Er volgt één
+  melding per gemist moment, geen herhaling tot er een nieuwe controle is.
+- **Kritische grenzen instelbaar.** Onder Instellingen → Brouwproces staan nu de
+  waarden uit het voedselveiligheidsplan: stabiliteitsdagen per risicoklasse,
+  de meetnauwkeurigheid en de forced-fermentation-marge, de houdbaarheids-
+  termijnen, de alcoholgrens waarboven geen THT nodig is, en het interval van de
+  sluitcontrole. Ook de standaardmarkering per ingrediënttype staat hier.
+  Beheer-only — de server weigert een wijziging door een andere rol.
+
 ## [1.11.63] — 2026-07-25
 
 ### Toegevoegd — HACCP-dashboard, registers en inspectie-export

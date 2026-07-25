@@ -2283,6 +2283,85 @@ def _iso_naar_epoch(iso: str | None) -> float | None:
         return None
 
 
+def _sluitcontrole_loop(interval: float = 120.0) -> None:
+    """Achtergrondloop voor de halfuur-herinnering van CCP 2. De teller in de
+    app rekent zelf; deze loop verzorgt alleen de push, want tijdens het
+    afvullen staat de brouwer zelden bij het scherm."""
+    time.sleep(45)  # kort wachten zodat de server volledig opgestart is
+    while True:
+        try:
+            _sluitcontrole_tick()
+        except Exception as exc:
+            _log('sluitcontrole', f'error: {exc}', level=logging.ERROR)
+        time.sleep(interval)
+
+
+def _sluitcontrole_tick() -> None:
+    """Eén ronde herinnering-bewaking voor open afvulsessies: is er langer dan
+    het ingestelde interval geen sluitcontrole geweest, stuur dan eenmalig een
+    melding. Dedup via `herinnerd_na` op de sessie — die bevat het tijdstip
+    waarnaar gemeten is, zodat een nieuwe controle de melding weer vrijgeeft.
+
+    Het handboek vraagt om een controle bij de start van elke afvulsessie,
+    daarna elk halfuur, en na elke verstelling van de machine (CCP 2)."""
+    with _data_lock:
+        notif = _read_json('notificatie_instellingen', {}) or {}
+    # Zonder notify-service valt er niets te doen; de app-teller rekent zelf.
+    if not notif.get('enabled') or not notif.get('notify_service'):
+        return
+
+    with _data_lock:
+        sessies = _read_json('afvul_sessies', []) or []
+        open_sessies = [s for s in sessies if s.get('status') == 'open']
+        if not open_sessies:
+            return
+        controles = _read_json('haccp_sluitcontroles', []) or []
+        inst = _read_json('haccp_instellingen', {}) or {}
+
+    try:
+        interval_min = float(inst.get('sluitcontrole_interval_min') or 30)
+    except (TypeError, ValueError):
+        interval_min = 30.0
+    now = time.time()
+    notify_jobs: list[tuple[str, str, str]] = []
+    updates: dict = {}
+
+    for sessie in open_sessies:
+        eigen = [c for c in controles if c.get('sessie_id') == sessie.get('id')]
+        tijdstippen = [
+            (c.get('paraaf') or {}).get('tijdstip') for c in eigen
+        ]
+        laatste_iso = max([x for x in tijdstippen if x], default=None) or sessie.get('start')
+        laatste = _iso_naar_epoch(laatste_iso)
+        if laatste is None:
+            continue
+        if (now - laatste) < interval_min * 60:
+            continue
+        # Al gemeld voor precies dit ijkpunt? Dan niet opnieuw.
+        if sessie.get('herinnerd_na') == laatste_iso:
+            continue
+        minuten = int((now - laatste) // 60)
+        titel = 'BrewAdmin — sluitcontrole'
+        bericht = (f"{sessie.get('lotcode') or 'afvulsessie'}: al {minuten} min geen "
+                   f"sluitcontrole. Controleer de sluiting (CCP 2).")
+        notify_jobs.append((notif['notify_service'], titel, bericht))
+        updates[sessie.get('id')] = laatste_iso
+
+    if updates:
+        # Her-lees onder lock en merge alleen de dedup-markering terug, zodat
+        # gelijktijdige UI-schrijfacties (afsluiten) niet overschreven worden.
+        with _data_lock:
+            current = _read_json('afvul_sessies', []) or []
+            for s in current:
+                if s.get('id') in updates:
+                    s['herinnerd_na'] = updates[s['id']]
+            _write_json('afvul_sessies', current)
+
+    for service, titel, bericht in notify_jobs:
+        ok = _ha_notify(service, titel, bericht)
+        _log('sluitcontrole', f'melding verstuurd: {ok}')
+
+
 def _vergisting_stap_tick() -> None:
     """Eén ronde 'stap gereed'-bewaking: voor elke batch die aan het gisten is
     (niet in een cold-crash) met een vergistingsprofiel, controleer of de huidige
@@ -4235,6 +4314,11 @@ if __name__ == '__main__':
     _threads['vergisting_stap'] = threading.Thread(target=_vergisting_stap_loop, daemon=True)
     _threads['vergisting_stap'].start()
     _log('server', 'Vergistingsstap-melding-thread gestart (elke 5 minuten)')
+
+    # Start background sluitcontrole-herinnering-thread (CCP 2, elke 2 minuten)
+    _threads['sluitcontrole'] = threading.Thread(target=_sluitcontrole_loop, daemon=True)
+    _threads['sluitcontrole'].start()
+    _log('server', 'Sluitcontrole-herinnering-thread gestart (elke 2 minuten)')
 
     # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
     # van buitenaf wanneer de gebruiker de poort bewust publiceert in de

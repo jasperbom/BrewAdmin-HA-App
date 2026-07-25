@@ -1306,6 +1306,97 @@ class TestLogging:
         assert regels[1]['level'] == 'error'
 
 
+class TestSluitcontroleHerinnering:
+    """Server-tick die tijdens een open afvulsessie om de halfuurcontrole van
+    CCP 2 vraagt, met dedup zolang er geen nieuwe controle is."""
+
+    @staticmethod
+    def _iso_min_geleden(minuten):
+        dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=minuten)
+        return dt.isoformat()
+
+    @staticmethod
+    def _clean():
+        conn = srv._db()
+        with conn:
+            for key in ('afvul_sessies', 'haccp_sluitcontroles'):
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+            conn.execute("DELETE FROM kv WHERE key='notificatie_instellingen'")
+            conn.execute("DELETE FROM kv WHERE key='haccp_instellingen'")
+
+    def _seed(self, sessies, controles=(), enabled=True):
+        srv._write_json('notificatie_instellingen',
+                        {'enabled': enabled, 'notify_service': 'mobile_app_test'})
+        srv._write_json('afvul_sessies', sessies)
+        srv._write_json('haccp_sluitcontroles', list(controles))
+
+    def test_meldt_na_interval_en_dedupt(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        laatste = self._iso_min_geleden(40)
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L2431-B1', 'status': 'open',
+              'start': self._iso_min_geleden(90)}],
+            [{'id': 5, 'sessie_id': 1, 'aanleiding': 'start', 'resultaat': 'goedgekeurd',
+              'paraaf': {'gebruiker': 'jasper', 'tijdstip': laatste}}])
+        try:
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1
+            assert 'L2431-B1' in calls[0][2]
+            # Zonder nieuwe controle blijft het bij die ene melding.
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1
+            # Een verse controle geeft de herinnering weer vrij.
+            srv._write_json('haccp_sluitcontroles', [
+                {'id': 5, 'sessie_id': 1, 'aanleiding': 'start', 'resultaat': 'goedgekeurd',
+                 'paraaf': {'gebruiker': 'jasper', 'tijdstip': laatste}},
+                {'id': 6, 'sessie_id': 1, 'aanleiding': 'halfuur', 'resultaat': 'goedgekeurd',
+                 'paraaf': {'gebruiker': 'jasper', 'tijdstip': self._iso_min_geleden(35)}}])
+            srv._sluitcontrole_tick()
+            assert len(calls) == 2
+        finally:
+            self._clean()
+
+    def test_zwijgt_binnen_interval_en_bij_gesloten_sessie(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L1-B1', 'status': 'open',
+              'start': self._iso_min_geleden(20)},
+             {'id': 2, 'batch_id': 2, 'lotcode': 'L2-B1', 'status': 'afgesloten',
+              'start': self._iso_min_geleden(500)}])
+        try:
+            srv._sluitcontrole_tick()
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_zwijgt_zonder_notify_service(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L1-B1', 'status': 'open',
+              'start': self._iso_min_geleden(120)}], enabled=False)
+        try:
+            srv._sluitcontrole_tick()
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_respecteert_ingesteld_interval(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed([{'id': 1, 'batch_id': 1, 'lotcode': 'L1-B1', 'status': 'open',
+                     'start': self._iso_min_geleden(20)}])
+        srv._write_json('haccp_instellingen', {'sluitcontrole_interval_min': 15})
+        try:
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1
+        finally:
+            self._clean()
+
+
 class TestVergistingStap:
     """Server-tick die een HA-push stuurt zodra een vergistingsstap zijn
     geplande dagen bereikt, met dedup via `vergisting_stap_gemeld_start`."""
