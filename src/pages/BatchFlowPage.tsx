@@ -70,7 +70,6 @@ interface BatchFlowPageProps {
   preNieuwBatch?: any,
   setPreNieuwBatch?: (v: any) => void,
   ccpMetingen?: any[], setCcpMetingen?: any,
-  capa?: any[], setCapa?: any,
 }
 
 interface ChecklistItem {
@@ -339,7 +338,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
   log, setLog, auditLog, setAuditLog, setPage, setNavBatchId, openBatchId,
   preNieuwBatch, setPreNieuwBatch,
-  ccpMetingen, setCcpMetingen, capa, setCapa,
+  ccpMetingen, setCcpMetingen,
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   const [openFasen, setOpenFasen] = useState<number[]>([])
@@ -354,8 +353,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [gegevensOpen, setGegevensOpen] = useState(false)
   const [logIngeklapt, setLogIngeklapt] = useState(true)
   const [receptPickerOpen, setReceptPickerOpen] = useState(false)
-  // CCP-meting-invoer (per batch): het item waarvoor het meetformulier openstaat.
-  const [ccpMetingForm, setCcpMetingForm] = useState<any>(null)
   // Inklapbare planning-tijdlijn bovenaan het overzicht (samengevoegd met de
   // vroegere losse Planning-pagina). Standaard ingeklapt.
   const [tijdlijnOpen, setTijdlijnOpen] = useState(false)
@@ -652,39 +649,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const label = groep ? `${groep.naam} — ${taakLabel(item)}` : taakLabel(item) || `item ${itemId}`
     addLog({type: 'hygiene', batch_id: selB.id, referentie: `${aan ? '✓ Afgevinkt' : '✗ Ongedaan'}: ${label}`})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: `Taken ${aan ? 'afgevinkt' : 'ongedaan'}: ${label}`})
-  }
-
-  // ── CCP-metingen + CAPA (overgenomen van de Batches-pagina) ────────────────
-  // Meet-taken (type 'meting') horen niet in de gewone afvink-checklist maar
-  // krijgen een waarde met kritische grens; een waarde buiten de grens maakt
-  // automatisch een CAPA (corrigerende actie) aan.
-  const metingItemsVoorFase = (fase: string) => {
-    const groepIds = groepenVoorFase(fase).map((g: any) => g.id)
-    return takenItems.filter((it: any) => it.type === 'meting' && groepIds.includes(it.group_id))
-  }
-  const faseHeeftTaken = (fase: string) => takenVoorFase(fase).length > 0 || metingItemsVoorFase(fase).length > 0
-  const checkLimiet = (it: any, waarde: number) => {
-    if (it.grens_min != null && waarde < it.grens_min) return false
-    if (it.grens_max != null && waarde > it.grens_max) return false
-    return true
-  }
-  const batchCcpMetingen = selB ? (ccpMetingen || []).filter((m: any) => m.batch_id === selB.id) : []
-  const saveTaakMeting = () => {
-    if (!selB || !ccpMetingForm?.taak_id || ccpMetingForm.waarde === '' || ccpMetingForm.waarde == null) return
-    const taak = takenItems.find((d: any) => d.id === ccpMetingForm.taak_id)
-    const binnen = taak ? checkLimiet(taak, Number(ccpMetingForm.waarde)) : true
-    const id = newId(ccpMetingen || [])
-    const meting = {id, taak_id: ccpMetingForm.taak_id, ccp_id: ccpMetingForm.taak_id, batch_id: selB.id, datum: ccpMetingForm.datum || tod(), waarde: Number(ccpMetingForm.waarde), eenheid: taak?.eenheid, binnen_limiet: binnen, uitgevoerd_door: ccpMetingForm.uitgevoerd_door || '', opmerking: ccpMetingForm.opmerking || ''}
-    setCcpMetingen && setCcpMetingen((prev: any[]) => [...(prev || []), meting])
-    const naam = taak ? taakLabel(taak) : '?'
-    addLog({type: 'ccp', batch_id: selB.id, referentie: `${naam}: ${ccpMetingForm.waarde} ${taak?.eenheid || ''} ${binnen ? 'OK' : 'AFWIJKING'}`})
-    logAudit(auditLog, setAuditLog, {entiteit: 'CCPMeting', entiteit_id: id, actie: 'aangemaakt', omschrijving: `${naam}: ${ccpMetingForm.waarde} ${taak?.eenheid || ''} ${binnen ? 'OK' : 'AFWIJKING'}`})
-    if (!binnen && taak) {
-      const capaId = newId(capa || [])
-      setCapa && setCapa((prev: any[]) => [...(prev || []), {id: capaId, datum: tod(), omschrijving: `${naam} = ${ccpMetingForm.waarde} ${taak.eenheid || ''} (${taak.kritische_grens || ''})`, oorzaak: '', actie: taak.corrigerende_actie || '', verantwoordelijke: ccpMetingForm.uitgevoerd_door || '', status: 'open', batch_id: selB.id, ccp_meting_id: id}])
-      logAudit(auditLog, setAuditLog, {entiteit: 'CAPA', entiteit_id: capaId, actie: 'aangemaakt', omschrijving: t('haccp_ccp_afwijking_capa')})
-    }
-    setCcpMetingForm(null)
   }
 
   // Beschikbare voorraad (alle lots samen) voor een batch-ingredient-regel,
@@ -1752,78 +1716,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   // ── Render-helpers per sectie ─────────────────────────────────────────────
 
-  // Render één meet-taak (CCP): toont de laatste meting + status en een
-  // inklapbaar invoerformulier (waarde/datum/uitvoerder). Overgenomen van de
-  // Batches-pagina.
-  const renderMetingItem = (item: any) => {
-    const latest = batchCcpMetingen.filter((m: any) => (m.taak_id ?? m.ccp_id) === item.id).sort((a: any, b: any) => (b.id || 0) - (a.id || 0))[0]
-    const isAfwijking = latest && !latest.binnen_limiet
-    const formActive = ccpMetingForm?.taak_id === item.id
-    const eenheid = item.eenheid || ''
-    const grensTxt = item.kritische_grens
-      ? String(item.kritische_grens)
-      : (item.grens_min != null || item.grens_max != null
-        ? (item.grens_min != null && item.grens_max != null
-          ? `${item.grens_min}–${item.grens_max}${eenheid ? ' ' + eenheid : ''}`
-          : item.grens_min != null
-            ? `≥ ${item.grens_min}${eenheid ? ' ' + eenheid : ''}`
-            : `≤ ${item.grens_max}${eenheid ? ' ' + eenheid : ''}`)
-        : '')
-    const waardeLabel = `${t('haccp_ccp_waarde')}${eenheid ? ` (${eenheid})` : ''}`
-    const placeholder = eenheid
-      ? t('haccp_ccp_waarde_ph').replace('{eenheid}', eenheid)
-      : t('haccp_ccp_waarde_ph_geen_eenheid')
-    return (
-      <div key={item.id} className={`rounded border ${isAfwijking ? 'border-red-200 bg-red-50' : latest ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'}`}>
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <div className="flex-1 min-w-0">
-            <div className="text-sm text-gray-700 truncate">{taakLabel(item)}{item.kritische_grens ? <span className="ml-1 text-xs text-gray-400">({item.kritische_grens})</span> : null}</div>
-            {latest && (
-              <div className="text-xs mt-0.5">
-                <span className="font-mono">{latest.waarde} {latest.eenheid || item.eenheid || ''}</span>
-                <span className={`ml-2 px-1.5 py-0.5 rounded ${latest.binnen_limiet ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`}>
-                  {latest.binnen_limiet ? 'OK' : t('haccp_ccp_buiten_limiet')}
-                </span>
-                <span className="ml-2 text-gray-500">{fmtD(latest.datum)}{latest.uitgevoerd_door ? ` · ${latest.uitgevoerd_door}` : ''}</span>
-              </div>
-            )}
-          </div>
-          <button onClick={() => setCcpMetingForm(formActive ? null : {taak_id: item.id, datum: tod(), waarde: '', uitgevoerd_door: '', opmerking: ''})}
-            className="text-xs font-medium px-2 py-1 rounded tbtn text-white flex-shrink-0">
-            {formActive ? t('btn_cancel') : t('haccp_ccp_meting_nieuw')}
-          </button>
-        </div>
-        {formActive && (
-          <div className="bg-gray-50 rounded-b p-2 space-y-2 border-t">
-            {grensTxt && (
-              <div className="text-xs text-gray-500">
-                <span className="font-semibold">{t('haccp_ccp_kritische_grens')}:</span> {grensTxt}
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <Inp label={waardeLabel} type="number" placeholder={placeholder} value={ccpMetingForm.waarde ?? ''} onChange={(v: string) => setCcpMetingForm({...ccpMetingForm, waarde: v})} />
-              <Inp label={t('lbl_datum')} type="date" value={ccpMetingForm.datum || tod()} onChange={(v: string) => setCcpMetingForm({...ccpMetingForm, datum: v})} />
-            </div>
-            <Inp label={t('lbl_uitgevoerd_door')} value={ccpMetingForm.uitgevoerd_door || ''} onChange={(v: string) => setCcpMetingForm({...ccpMetingForm, uitgevoerd_door: v})} />
-            <div className="flex gap-2 justify-end">
-              <Btn s="sm" onClick={saveTaakMeting}>{t('btn_save')}</Btn>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   const renderTaken = (fase: string) => {
-    const checkItems = takenVoorFase(fase)
-    const metingen = metingItemsVoorFase(fase)
-    const allItems = [...checkItems, ...metingen]
-    if (!allItems.length) return null
+    const items = takenVoorFase(fase)
+    if (!items.length) return null
     const checks = selB.taken_checks || {}
     const perGroep = groepenVoorFase(fase)
       .map((groep: any) => ({
         groep,
-        items: allItems.filter((i: any) => i.group_id === groep.id).sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0)),
+        items: items.filter((i: any) => i.group_id === groep.id).sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0)),
       }))
       .filter(g => g.items.length > 0)
     return (
@@ -1834,9 +1734,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{groep.naam}</div>
               )}
               <div className="space-y-1">
-                {gItems.map((item: any) => item.type === 'meting'
-                  ? renderMetingItem(item)
-                  : (
+                {gItems.map((item: any) => (
                   <label key={item.id} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 cursor-pointer text-sm">
                     <input type="checkbox" checked={!!checks[item.id]} onChange={() => toggleCheck(item.id)} className="t-checkbox" />
                     <span className={checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}>{taakLabel(item)}</span>
@@ -3134,7 +3032,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   </div>
                 )}
               </FlowStap>
-              {faseHeeftTaken('Gepland') && (
+              {takenVoorFase('Gepland').length > 0 && (
                 <FlowStap title={t('flow_chk_voorbereiding')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
                   {renderTaken('Gepland')}
                 </FlowStap>
@@ -3162,7 +3060,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   <div className="p-4">{renderAfboekTabel(brouwBi, true)}</div>
                 </div>
               } />
-            {faseHeeftTaken('Brouwen') && (
+            {takenVoorFase('Brouwen').length > 0 && (
               <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
                 {renderTaken('Brouwen')}
               </FlowStap>
@@ -3212,7 +3110,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     {...so('verlies', true)}>
                     {renderVerlies('monster')}
                   </FlowStap>
-                  {faseHeeftTaken('Vergisten') && (
+                  {takenVoorFase('Vergisten').length > 0 && (
                     <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
                       {renderTaken('Vergisten')}
                     </FlowStap>
@@ -3280,7 +3178,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 <FlowStap title={t('flow_sectie_tankmove')} optional done={false} {...so('tankmove', true)}>
                   {renderTankMove()}
                 </FlowStap>
-                {faseHeeftTaken('Conditioneren') && (
+                {takenVoorFase('Conditioneren').length > 0 && (
                   <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
                     {renderTaken('Conditioneren')}
                   </FlowStap>
@@ -3298,7 +3196,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         {/* ── Afvullen ─────────────────────────────────────────────────────── */}
         {faseStatus === 'Afgevuld' && (
           <>
-            {faseHeeftTaken('Afgevuld') && (
+            {takenVoorFase('Afgevuld').length > 0 && (
               <FlowStap title={t('flow_chk_hygiene')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
                 {renderTaken('Afgevuld')}
               </FlowStap>
@@ -3314,7 +3212,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         )}
 
         {/* ── Gereed: afsluitende taken ────────────────────────────────────── */}
-        {faseStatus === 'Gesloten' && faseHeeftTaken('Gesloten') && (
+        {faseStatus === 'Gesloten' && takenVoorFase('Gesloten').length > 0 && (
           <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
             {renderTaken('Gesloten')}
           </FlowStap>

@@ -18,9 +18,6 @@ pagina had:
   nu invulbaar in het financieel-blok (werden alleen opgeteld).
 - **Batch verwijderen** — knop in de detail-header, met dezelfde fiscale guard
   (blokkeert bij uitleveringen/accijns) en cascade-opschoning als voorheen.
-- **CCP-metingen + CAPA** — meet-taken met kritische grens in de bestaande
-  taken-checklist per fase; een waarde buiten de grens maakt automatisch een
-  CAPA aan.
 - **Afgekeurd bier — Douane-vernietigingsflow** — de 3-staps vernietigingsflow
   (aangevraagd → toegestaan → uitgevoerd) met PDF-upload en review is als
   gedeeld component (`VernietigingSection`) beschikbaar in de flow.
