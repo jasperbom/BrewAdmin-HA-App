@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.62] — 2026-07-25
+
+### Toegevoegd — Afvulsessie met lotcode, CCP 2 en CCP 3
+
+- **Afvulsessie.** Afvullen gebeurt voortaan binnen een sessie met een eigen
+  lotcode (`L2431-B1`). Starten kan alleen met een vrijgegeven batch en een
+  bevestigde reiniging van de afvuller. De houdbaarheidsdatum wordt berekend
+  uit producttype en alcoholgehalte en is overschrijfbaar met een verplichte
+  reden; het THT-veld in het afvulformulier volgt de sessie.
+- **CCP 2 — sluitcontrole.** Visuele beoordeling en omkeerproef (verplicht bij
+  blik), met de aanleiding erbij. Na een verstelling van de canner moet de
+  rolinstelling vastgelegd worden. Een teller vraagt elk halfuur om een
+  controle.
+- **Blokkade bij afkeur.** Wordt een controle afgekeurd, dan worden alle
+  verpakkingen sinds de laatste goedkeuring geblokkeerd en komt er een
+  openstaande maatregel bij. Geblokkeerd bier verdwijnt uit de webshopvoorraad
+  en uit de orderpicking, maar blijft staan in de accijnsvoorraad — het is niet
+  verkoopbaar, maar wel fysiek aanwezig.
+- **CCP 3 — etiketcontrole.** Vergelijkt de allergenen uit de receptuur met die
+  op het etiket van het gekozen product. Elk verschil blokkeert het vastleggen;
+  doorgaan kan alleen via een afwijking met onderbouwing. Een product waarvan
+  de allergenen nog niet zijn vastgelegd geeft een eigen melding in plaats van
+  een valse allergeenfout.
+- **Sessie afsluiten** kan pas met een sluitcontrole bij start én einde, geen
+  openstaande afkeuring en minstens één etiketcontrole.
+
 ## [1.11.61] — 2026-07-25
 
 ### Toegevoegd — CCP 1: vrijgave voor afvullen, met harde blokkade
