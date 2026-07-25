@@ -176,8 +176,11 @@ export const dagenStabiel = (
 // warm en met overmaat gist laten doorgisten. Blijft het bier in de tank op
 // die waarde staan, dan is nagisting door de brouwersgist uitgesloten.
 
+// Afgerond op vier decimalen: dichtheden worden op drie decimalen gemeten en
+// het verschil belandt onafgerond in een registratie die bewijs moet zijn.
+// Drijvende-komma-ruis als 0.001000000000000112 hoort daar niet in.
 export const ffVerschil = (dichtheidTank: number, dichtheidFf: number): number =>
-  Math.abs(Number(dichtheidTank) - Number(dichtheidFf))
+  Math.round(Math.abs(Number(dichtheidTank) - Number(dichtheidFf)) * 10000) / 10000
 
 export const ffBinnenMarge = (verschil: number, marge: number): boolean =>
   verschil <= marge + 1e-9

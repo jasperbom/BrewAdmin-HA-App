@@ -18,6 +18,8 @@ import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
 import KoelLogSection from '../components/batch/KoelLogSection'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
+import { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
+import { magAfvullen, isLegacyBatch } from '../utils/haccp'
 import WaterAdditieSection from '../components/batch/WaterAdditieSection'
 import PrimingSugarCalc from '../components/batch/PrimingSugarCalc'
 import StatusSuggestion from '../components/batch/StatusSuggestion'
@@ -132,6 +134,9 @@ interface BatchesPageProps {
   setBatchNotities?: any
   setKoelLogs?: any
   brouwprocesInst?: {hop_storage?: string; priming_sugar_enabled?: boolean}
+  // CCP 1 — alleen lezen: de blokkade op afvullen wordt hier getoond, de
+  // vrijgave zelf registreer je in de Batchflow.
+  haccpVrijgaven?: any[]
 }
 
 
@@ -203,7 +208,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   dryHops=[], setDryHops=()=>{},
   koelLogs=[], setKoelLogs=()=>{},
   batchNotities=[], setBatchNotities=()=>{},
-  brouwprocesInst={hop_storage:'vacuum_koel'}
+  brouwprocesInst={hop_storage:'vacuum_koel'},
+  // CCP 1 — alleen om de blokkade te kunnen tonen; registreren gaat via de
+  // Batchflow-pagina.
+  haccpVrijgaven=[]
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
   // Actieve tab per batch — gekoppeld aan batch-status zodat we automatisch
@@ -1213,6 +1221,15 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   }
 
   const doAfvullen = () => {
+    // CCP 1 — dezelfde blokkade als in de Batchflow. Registreren van de
+    // vrijgave gebeurt daar; hier alleen tegenhouden.
+    if (sel) {
+      const vrijgaveBlok = magAfvullen(sel, haccpVrijgaven || [])
+      if (!vrijgaveBlok.toegestaan && !isLegacyBatch(sel, av || [])) {
+        alert(`${t('haccp_ccp1_titel')}\n\n${blokkadeSamenvatting(vrijgaveBlok)}\n\n${t('haccp_blok_ga_naar_flow')}`)
+        return
+      }
+    }
     if (!avF.product_id) { alert(t('err_select_product')); return }
     if (!avF.verpakking_id || !avF.hoeveelheid) { alert(t('err_select_packaging_qty')); return }
     const n = Number(avF.hoeveelheid)

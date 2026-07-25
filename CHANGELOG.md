@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.61] — 2026-07-25
+
+### Toegevoegd — CCP 1: vrijgave voor afvullen, met harde blokkade
+
+De eerste van de drie kritische beheerspunten is nu zichtbaar in de batchflow,
+als sluitstuk van de conditioneerfase.
+
+- **Automatisch bepaald, niet te vergeten.** Het vrijgaveblok toont zelf of de
+  batch standaard of verhoogd risico is en waarom ("verhoogd risico door: verse
+  aardbei"), hoeveel dagen de dichtheid stabiel is en hoeveel er vereist zijn.
+  Bij verhoogd risico verschijnt de drukcontrole op het 30 °C-monster erbij.
+- **Voorgesteld oordeel.** Het systeem stelt vrijgave voor of niet, met de
+  redenen erbij. Je kunt het oordeel omzetten, maar naar "vrijgegeven" alleen
+  via een afwijkingsregistratie met onderbouwing van minimaal 20 tekens. Die
+  levert automatisch een openstaande maatregel op.
+- **Harde blokkade.** Zonder vrijgegeven registratie kan de batch niet naar de
+  fase Afvullen en kan er niet afgevuld worden — op de Batchflow-pagina én op
+  de Batches-pagina. Anders dan de bestaande waarschuwingen is dit geen
+  bevestiging die je kunt wegklikken.
+- **Zichtbaar blijven.** Een vrijgave die onder afwijking is doorgedrukt toont
+  dat ook wanneer de stap dichtklapt, zodat hij niet als een gewone vrijgave
+  wegvalt.
+- **Paraaf.** Wie en wanneer worden automatisch vastgelegd uit de door de
+  server bevestigde gebruiker; die velden zijn niet handmatig invulbaar.
+- Batches die al afgevuld waren vóór deze versie worden nooit geblokkeerd.
+- 159 vertaalsleutels toegevoegd in alle vijf talen.
+
 ## [1.11.60] — 2026-07-25
 
 ### Toegevoegd — HACCP: de beslislogica achter de drie beheerspunten

@@ -154,6 +154,12 @@ describe('forced fermentation', () => {
     expect(ffBinnenMarge(0.002, 0.002)).toBe(true)
     expect(ffBinnenMarge(0.003, 0.002)).toBe(false)
   })
+
+  it('rondt af zodat er geen drijvende-komma-ruis in het bewijsstuk komt', () => {
+    // 1.012 - 1.011 levert in IEEE-754 0.001000000000000112 op.
+    expect(ffVerschil(1.012, 1.011)).toBe(0.001)
+    expect(ffVerschil(1.055, 1.0123)).toBe(0.0427)
+  })
 })
 
 describe('beoordeelVrijgave (CCP 1)', () => {
