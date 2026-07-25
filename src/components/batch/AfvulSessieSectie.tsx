@@ -26,6 +26,11 @@ import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
 // eigen lotcode (L2431-B1), zodat bij een sluitprobleem alleen die sessie
 // teruggehaald hoeft te worden in plaats van de hele batch.
+//
+// Sessie en afvulregistratie zitten in één blok: het is één handeling aan de
+// afvuller. De registratie (`registratie`) verschijnt daarom binnen de lopende
+// sessie — die levert de lotcode, de verpakking en de THT — en de lijst met
+// afvullingen (`lijst`) staat er los onder, ook zonder open sessie.
 
 interface Props {
   batch: any
@@ -50,7 +55,35 @@ interface Props {
   whoami: {gebruiker?: string; rol?: string} | null
   auditLog: any[]
   setAuditLog: (fn: any) => void
+  /** Afvulregistratieformulier — alleen zinvol binnen een lopende sessie. */
+  registratie?: React.ReactNode
+  /** Toon de registratie óók zonder open sessie. Alleen voor legacy-batches:
+   *  die zijn begonnen vóór het sessiesysteem en kennen de blokkade niet. */
+  registratieZonderSessie?: boolean
+  /** Lijst met geregistreerde afvullingen; altijd zichtbaar. */
+  lijst?: React.ReactNode
 }
+
+// Inklapbaar deelblok binnen de sessie. Zelfde vormtaal als de FlowStap-kaarten
+// eromheen, zodat de sessie niet als een tweede soort pagina aanvoelt.
+const Paneel: React.FC<{
+  titel: React.ReactNode
+  info?: React.ReactNode
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}> = ({titel, info, open, onToggle, children}) => (
+  <div className="rounded-lg border border-gray-200 overflow-hidden">
+    <button type="button" onClick={onToggle}
+      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors">
+      <span className="text-sm font-semibold text-gray-700 flex-1 min-w-0">{titel}</span>
+      {info}
+      <span className={`text-gray-300 text-[10px] flex-shrink-0 transition-transform ${
+        open ? 'rotate-90' : ''}`}>▶</span>
+    </button>
+    {open && <div className="px-3 pb-3 pt-1 border-t border-gray-100 space-y-2">{children}</div>}
+  </div>
+)
 
 const AfvulSessieSectie: React.FC<Props> = (p) => {
   const inst = haccpInst(p.haccpInstellingen)
@@ -58,6 +91,13 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const eigenSessies = (p.sessies || []).filter(s => s.batch_id === p.batch?.id)
   const [nu, setNu] = React.useState(() => new Date())
   const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any} | null>(null)
+  // Tijdens het afvullen is de registratie de handeling die je herhaalt; de
+  // CCP-panelen klappen daarom vanzelf dicht zodra hun startcontrole er staat.
+  // De sleutel bevat het sessie-id, zodat een nieuwe sessie weer opengaat.
+  const [paneelHand, setPaneelHand] = React.useState<Record<string, boolean>>({})
+  const paneelOpen = (id: string, auto: boolean) => paneelHand[id] ?? auto
+  const togglePaneel = (id: string, auto: boolean) =>
+    setPaneelHand(h => ({...h, [id]: !(h[id] ?? auto)}))
 
   // Klok voor de halfuur-herinnering tijdens een lopende sessie.
   React.useEffect(() => {
@@ -313,7 +353,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         )}
 
         <div className="grid sm:grid-cols-2 gap-2">
-          <Sel label={t('flow_afvullen_verpakking')} value={String(start.verpakking_id)}
+          <Sel label={t('lbl_packaging')} value={String(start.verpakking_id)}
             onChange={(v: string) => setStart({...start, verpakking_id: v})}
             opts={[{v: '', l: '—'}, ...(p.verpakkingen || []).map((v: any) => ({v: String(v.id), l: v.naam}))]} />
           <div>
@@ -366,12 +406,27 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
             {t('haccp_sessie_starten')}
           </Btn>
         </div>
+
+        {/* Afvullen kan alleen binnen een sessie; alleen legacy-batches vullen
+            hier nog los af. Verder staat er alleen wat al geregistreerd is. */}
+        {p.registratie && p.registratieZonderSessie && (
+          <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+            <span className="text-sm font-semibold text-gray-700">{t('flow_sectie_afvullen')}</span>
+            {p.registratie}
+          </div>
+        )}
+        {p.lijst && <div className="pt-2 border-t border-gray-100">{p.lijst}</div>}
       </div>
     )
   }
 
   // ── Open sessie ──────────────────────────────────────────────────────────
   const aantalVerpakt = (p.av || []).filter((a: any) => a.sessie_id === sessie.id).length
+  // Zolang de startcontroles ontbreken staan die panelen open — dat zijn de
+  // stappen die het afvullen op dat moment blokkeren.
+  const ccp2Auto = !eigenControles.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')
+    || !!herinnering?.due
+  const ccp3Auto = eigenEtiket.length === 0
 
   return (
     <div className="space-y-4">
@@ -401,22 +456,35 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           {t('haccp_sessie_tht')}: {sessie.tht ? fmtD(sessie.tht) : t('haccp_sessie_bewaaradvies_tekst')}
           {sessie.tht_reden && <span className="text-orange-600 ml-1">· {sessie.tht_reden}</span>}
         </div>
-        {!afsluitBlok.toegestaan && <div className="mt-2"><BlokkadeKaart blok={afsluitBlok} compact /></div>}
+        {/* Wat het afsluiten tegenhoudt is pas nieuws als er iets in de sessie
+            zit; direct na het starten is die lijst alleen maar ruis boven de
+            blokkade van de registratie zelf. */}
+        {!afsluitBlok.toegestaan && (aantalVerpakt > 0 || eigenControles.length > 0) && (
+          <div className="mt-2"><BlokkadeKaart blok={afsluitBlok} compact /></div>
+        )}
       </div>
 
-      {/* CCP 2 — sluitcontrole */}
-      <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <span className="text-sm font-semibold text-gray-700">{t('haccp_ccp2_titel')}</span>
-          {herinnering && (
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-              herinnering.due ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
-              {herinnering.due
-                ? t('haccp_ccp2_due').replace('{minuten}', String(herinnering.minutenSinds))
-                : t('haccp_ccp2_volgende').replace('{minuten}', String(herinnering.volgendeOverMin))}
-            </span>
-          )}
+      {/* Afvulregistratie — de handeling zelf, binnen de lopende sessie */}
+      {p.registratie && (
+        <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+          <span className="text-sm font-semibold text-gray-700">{t('flow_sectie_afvullen')}</span>
+          {p.registratie}
         </div>
+      )}
+
+      {/* CCP 2 — sluitcontrole */}
+      <Paneel
+        titel={t('haccp_ccp2_titel')}
+        open={paneelOpen(`${sessie.id}:ccp2`, ccp2Auto)}
+        onToggle={() => togglePaneel(`${sessie.id}:ccp2`, ccp2Auto)}
+        info={herinnering && (
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+            herinnering.due ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
+            {herinnering.due
+              ? t('haccp_ccp2_due').replace('{minuten}', String(herinnering.minutenSinds))
+              : t('haccp_ccp2_volgende').replace('{minuten}', String(herinnering.volgendeOverMin))}
+          </span>
+        )}>
 
         <Sel label={t('haccp_ccp2_aanleiding')} value={sc.aanleiding}
           onChange={(v: string) => setSc({...sc, aanleiding: v as SluitControle['aanleiding']})}
@@ -477,11 +545,16 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         ) : (
           <div className="text-xs text-gray-400 italic">{t('haccp_ccp2_geen')}</div>
         )}
-      </div>
+      </Paneel>
 
       {/* CCP 3 — etiketcontrole */}
-      <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-        <span className="text-sm font-semibold text-gray-700">{t('haccp_ccp3_titel')}</span>
+      <Paneel
+        titel={t('haccp_ccp3_titel')}
+        open={paneelOpen(`${sessie.id}:ccp3`, ccp3Auto)}
+        onToggle={() => togglePaneel(`${sessie.id}:ccp3`, ccp3Auto)}
+        info={eigenEtiket.length > 0 && (
+          <span className="text-xs text-gray-400 flex-shrink-0">{eigenEtiket.length}×</span>
+        )}>
 
         <div className="grid sm:grid-cols-2 gap-2">
           <Sel label={t('nav_producten')} value={String(ec.product_id)}
@@ -585,7 +658,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         ) : (
           <div className="text-xs text-gray-400 italic">{t('haccp_ccp3_geen')}</div>
         )}
-      </div>
+      </Paneel>
+
+      {p.lijst}
 
       {afwijking && (
         <AfwijkingModal blok={afwijking.blok} titel={afwijking.titel}

@@ -33,7 +33,7 @@ import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
 import VrijgaveSectie from '../components/batch/VrijgaveSectie'
 import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
-import { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
+import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { openSessieVoorBatch, magAfvullingRegistreren } from '../utils/afvulsessie'
 
@@ -467,6 +467,21 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   const selB = bat.find((b: any) => b.id === sel) || null
   const huidigeFase = selB ? faseIndex(selB.status) : 0
+
+  // De open afvulsessie bepaalt de verpakking: één sessie = één verpakkings-
+  // type, want de sluitcontrole (omkeerproef, rolinstelling) hoort bij dat ene
+  // type. Het formulier volgt de sessie dus in plaats van hem opnieuw te
+  // vragen — net als bij de THT.
+  const openAvSessie = selB ? openSessieVoorBatch(afvulSessies || [], selB.id) : null
+  React.useEffect(() => {
+    if (!openAvSessie?.verpakking_id) return
+    const vp = (verpakkingen || []).find((v: any) => v.id === Number(openAvSessie.verpakking_id))
+    if (!vp) return
+    setAvF((f: any) => Number(f.verpakking_id) === vp.id ? f : ({
+      ...f, verpakking_id: String(vp.id), verpakking_type: vp.naam || '',
+      inhoud_per_eenheid: vp.inhoud_liter || '',
+    }))
+  }, [openAvSessie?.id, openAvSessie?.verpakking_id, verpakkingen])
 
   const actieveBatches = useMemo(() =>
     (bat || []).filter((b: any) => b.status !== 'Gesloten')
@@ -1577,7 +1592,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       referentie: `${(n * Number(avF.inhoud_per_eenheid || 0)).toFixed(1)}L`,
       omschrijving: `${selB?.naam || ''} — ${prod?.naam ? prod.naam + ' · ' : ''}${vp.naam || avF.verpakking_type || ''} × ${n} (${Number(avF.inhoud_per_eenheid || 0).toFixed(1)}L)`})
     logAudit(auditLog, setAuditLog, {entiteit: 'Afvulling', entiteit_id: avId, actie: 'aangemaakt', omschrijving: `${selB?.naam || ''}: ${n}× ${vp.naam || avF.verpakking_type || ''}`})
-    setAvF({...emptyAvF, product_id: avF.product_id})
+    // Binnen een sessie blijft de verpakking staan: die komt uit de sessie en
+    // wordt niet per afvulling opnieuw gekozen.
+    setAvF({...emptyAvF, product_id: avF.product_id, ...(sessie ? {
+      verpakking_id: avF.verpakking_id, verpakking_type: avF.verpakking_type,
+      inhoud_per_eenheid: avF.inhoud_per_eenheid,
+    } : {})})
   }
 
   const delAv = (id: number) => {
@@ -2639,14 +2659,21 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     </div>
   )
 
-  // Afvulregistratie + lijst
-  const renderAfvullen = () => {
+  // Afvulregistratie — het formulier draait binnen de open sessie (die de
+  // lotcode, de verpakking en de THT levert); de lijst eronder staat los, zodat
+  // hij ook zichtbaar blijft als er geen sessie loopt.
+  const renderAfvulForm = () => {
     const rest = tankRestVolume(selB, mijnAv as any, mijnVerlies as any)
     const voorcalcPreview = avF.inhoud_per_eenheid && Number(avF.hoeveelheid) > 0
       ? berekenVoorcalcVoorAfvulling(
           { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: Number(avF.hoeveelheid), aantal: Number(avF.hoeveelheid) },
           selB, accijnsInst)
       : null
+    // Legacy-batches (afgevuld vóór dit systeem) mogen zonder sessie door.
+    const legacy = isLegacyBatch(selB.id, av || [])
+    const sessie = openSessieVoorBatch(afvulSessies || [], selB.id)
+    const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [])
+    const geblokkeerd = !sessieBlok.toegestaan && !legacy
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-end">
@@ -2689,9 +2716,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {/* De verpakking komt uit de sessie: één sessie vult één verpakkings-
+              type, want de sluitcontrole hoort bij dat type. Zonder sessie
+              (legacy-batch) blijft de keuze gewoon beschikbaar. */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_packaging')} <span className="text-red-500">*</span></label>
-            {(verpakkingen || []).length === 0
+            {sessie
+              ? <div className="text-sm text-gray-700 py-2">
+                  {sessie.verpakking_naam || sessie.verpakking_type || t('lbl_onbekend')}
+                </div>
+              : (verpakkingen || []).length === 0
               ? <div className="border border-dashed border-orange-300 bg-orange-50 rounded px-2 py-1.5 text-xs text-orange-600">{t('batch_add_packaging_hint')}</div>
               : <select value={avF.verpakking_id}
                   onChange={e => {
@@ -2720,24 +2754,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               producttype en alcoholgehalte, of handmatig met reden). Twee
               plekken waar je hem los kunt zetten zou het hele punt van de
               berekening ondergraven. */}
-          {(() => {
-            const s = openSessieVoorBatch(afvulSessies || [], selB.id)
-            if (!s) return (
-              <Inp label={t('batch_filling_tht')} type="date" value={avF.tht}
-                onChange={(v: string) => setAvF((f: any) => ({...f, tht: v}))} />
-            )
-            return (
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                  {t('batch_filling_tht')}
-                </label>
-                <div className="text-sm text-gray-700 py-2">
-                  {s.tht ? fmtD(s.tht) : t('haccp_sessie_bewaaradvies_tekst')}
-                  <span className="text-gray-400 ml-1">({s.lotcode})</span>
-                </div>
+          {!sessie ? (
+            <Inp label={t('batch_filling_tht')} type="date" value={avF.tht}
+              onChange={(v: string) => setAvF((f: any) => ({...f, tht: v}))} />
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                {t('batch_filling_tht')}
+              </label>
+              <div className="text-sm text-gray-700 py-2">
+                {sessie.tht ? fmtD(sessie.tht) : t('haccp_sessie_bewaaradvies_tekst')}
+                <span className="text-gray-400 ml-1">({sessie.lotcode})</span>
               </div>
-            )
-          })()}
+            </div>
+          )}
         </div>
         {/* GN-code + SKU-koppeling (overgenomen van de Batches-pagina) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
@@ -2799,9 +2829,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <span className="ml-2 text-xs text-gray-400">{t('nav_accijns')}: {fmt(voorcalcPreview.totaal)}</span>
             )}
           </div>
-          <Btn s="sm" onClick={doAfvullen}>{t('batch_filling_register_btn')}</Btn>
+          <Btn s="sm" disabled={geblokkeerd} onClick={doAfvullen}>{t('batch_filling_register_btn')}</Btn>
         </div>
-        {/* Lijst */}
+        {geblokkeerd && <BlokkadeKaart blok={sessieBlok} compact />}
+      </div>
+    )
+  }
+
+  // Geregistreerde afvullingen van deze batch — staat los van het formulier,
+  // zodat de lijst ook zichtbaar blijft zonder lopende sessie.
+  const renderAfvulLijst = () => {
+    return (
+      <div className="space-y-3">
         {mijnAv.length === 0 ? (
           <div className="text-sm text-gray-400 italic">{t('flow_afvul_geen')}</div>
         ) : (
@@ -3325,26 +3364,34 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 {renderTaken('Afgevuld')}
               </FlowStap>
             )}
-            {/* De sessie draagt de lotcode en is het anker voor CCP 2 en 3;
-                afvullen kan pas als hij loopt. */}
-            <FlowStap title={t('haccp_sessie_titel')} done={!!clMap.sessie?.done}
-              detail={clMap.sessie?.detail} {...so('sessie', !!clMap.sessie?.done)}>
-              <AfvulSessieSectie
-                batch={selB} bi={bi} ing={ing} av={av} setAv={setAv}
-                producten={producten} verpakkingen={verpakkingen}
-                vrijgaven={haccpVrijgaven}
-                sessies={afvulSessies} setSessies={setAfvulSessies}
-                sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}
-                etiketcontroles={haccpEtiketcontroles} setEtiketcontroles={setHaccpEtiketcontroles}
-                capa={capa} setCapa={setCapa}
-                afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
-                haccpInstellingen={haccpInst} whoami={whoami}
-                auditLog={auditLog} setAuditLog={setAuditLog}
-              />
-            </FlowStap>
-            <FlowStap title={t('flow_sectie_afvullen')} done={!!clMap.afvulling?.done} detail={clMap.afvulling?.detail} {...so('afvullen', !!clMap.afvulling?.done)}>
-              {renderAfvullen()}
-            </FlowStap>
+            {/* Sessie en registratie zijn één stap: de sessie draagt de lotcode,
+                de verpakking en de THT, en is het anker voor CCP 2 en 3 — het
+                afvullen zelf gebeurt erbinnen. */}
+            {(() => {
+              const afvulDone = !!clMap.sessie?.done && !!clMap.afvulling?.done
+              const detail = [clMap.sessie?.detail, clMap.afvulling?.detail]
+                .filter(Boolean).join(' · ')
+              return (
+                <FlowStap title={t('flow_fase_afvullen')} done={afvulDone}
+                  detail={detail || undefined} {...so('afvullen', afvulDone)}>
+                  <AfvulSessieSectie
+                    batch={selB} bi={bi} ing={ing} av={av} setAv={setAv}
+                    producten={producten} verpakkingen={verpakkingen}
+                    vrijgaven={haccpVrijgaven}
+                    sessies={afvulSessies} setSessies={setAfvulSessies}
+                    sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}
+                    etiketcontroles={haccpEtiketcontroles} setEtiketcontroles={setHaccpEtiketcontroles}
+                    capa={capa} setCapa={setCapa}
+                    afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
+                    haccpInstellingen={haccpInst} whoami={whoami}
+                    auditLog={auditLog} setAuditLog={setAuditLog}
+                    registratie={renderAfvulForm()}
+                    registratieZonderSessie={isLegacyBatch(selB.id, av || [])}
+                    lijst={renderAfvulLijst()}
+                  />
+                </FlowStap>
+              )
+            })()}
             <FlowStap title={t('flow_sectie_verlies')} optional done={!!clMap.restvolume?.done}
               detail={clMap.restvolume?.detail} {...so('verlies', true)}>
               {renderVerlies('tankrest')}
