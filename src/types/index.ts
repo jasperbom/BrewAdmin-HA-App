@@ -11,6 +11,10 @@ export interface Ingredient {
   brewfather_cat?: string
   bf_props?: Record<string, any>
   allergenen?: Allergeen[]
+  // HACCP: markeert dit ingrediënt als toevoeging ná de afdodingsstap. Stuurt
+  // de risicoklasse van de batch (CCP 1) en de THT. Leeg = valt terug op de
+  // default van het ingrediënttype uit HaccpInst.
+  haccp_toevoeging?: ToevoegingSoort
 }
 
 export interface Lot {
@@ -102,6 +106,10 @@ export interface Batch {
   botteldag_checks?: Record<number, boolean>   // @deprecated: gemigreerd naar taken_checks
   taken_checks?: Record<number, boolean>       // Unified batch-takensysteem (check-type items)
   allergeen_notities?: string
+  // HACCP: handmatige correctie op de automatisch afgeleide risicoklasse van
+  // CCP 1. Altijd met motivatie — de afleiding uit de ingrediënten is leidend.
+  risico_override?: RisicoKlasse
+  risico_override_reden?: string
   // Id van het recept waarvan deze batch is aangemaakt. Wordt gezet bij het
   // klikken op "Brouwen" in de Recepten-pagina en blijft staan zodat een
   // geplande batch later via "Sync recept" opnieuw kan worden bijgewerkt.
@@ -307,6 +315,21 @@ export interface Afvulling {
   rebrand_van_product_id?: number
   rebrand_datum?: string
   rebrand_opmerking?: string
+  // HACCP: koppeling aan de afvulsessie en haar lotcode. Ontbreekt op
+  // afvullingen van vóór de invoering van de sessies — die blijven geldig en
+  // worden nooit geblokkeerd (overgangsregeling).
+  sessie_id?: number
+  lotcode?: string
+  // Tijdstip van registreren (HH:MM). Nodig om bij een afgekeurde
+  // sluitcontrole te bepalen welke verpakkingen sinds de laatste goedkeuring
+  // gemaakt zijn; `datum` alleen is daarvoor te grof.
+  tijd?: string
+  // Geblokkeerd door een afgekeurde sluitcontrole: niet verkoopbaar, maar wél
+  // fysiek aanwezig — blijft dus meetellen in de accijnsvoorraad.
+  geblokkeerd?: boolean
+  geblokkeerd_reden?: string
+  geblokkeerd_controle_id?: number
+  deblokkeerd_op?: string
 }
 
 export interface VoorraadLog {
@@ -353,6 +376,14 @@ export interface Product {
   ebc?: number | string
   ibu?: number | string
   created_at?: string
+  // HACCP CCP 3: de allergenen zoals ze op het etiket van dit product vermeld
+  // staan. Ontbrekend (undefined) betekent "nog niet vastgelegd" en is iets
+  // anders dan een lege lijst ("etiket vermeldt geen allergenen") — de
+  // etiketcontrole moet die twee onderscheiden.
+  allergenen?: Allergeen[]
+  etiket_artikel?: string
+  etiket_versie?: string
+  etiket_bijgewerkt?: string
 }
 
 export interface ProductArtikel {
@@ -1300,6 +1331,14 @@ export interface CorrigierendeActie {
   afgerond_datum?: string
   batch_id?: number
   ccp_meting_id?: number
+  // Herkomst, zodat de rapportage onderscheid kan maken tussen een gewone
+  // CCP-meting en de drie kritische beheerspunten.
+  bron?: 'meting' | 'ccp1' | 'ccp2' | 'ccp3' | 'afwijking'
+  afwijking_id?: number
+  sessie_id?: number
+  vrijgave_id?: number
+  sluitcontrole_id?: number
+  etiketcontrole_id?: number
 }
 
 export interface WaterkwaliteitTest {
@@ -1332,6 +1371,241 @@ export interface Opleiding {
   geldig_tot?: string
   certificaat?: string
   opmerking?: string
+}
+
+// ── HACCP kritische beheerspunten (handboek hoofdstuk 9 + bijlage A) ────────
+// De drie CCP's uit het voedselveiligheidsplan, verweven in de batch-workflow:
+//   CCP 1 = vrijgave voor afvullen (nagisting/overdruk in de verpakking)
+//   CCP 2 = sluiten van de verpakking (lekdichtheid)
+//   CCP 3 = etiketcontrole (allergenendeclaratie)
+// Alle drie zijn server-side append-only: een opgeslagen registratie is bewijs
+// en wordt nooit overschreven. Een correctie is een nieuwe registratie die via
+// `vervangt_id` naar de oude verwijst.
+
+// Automatisch vastgelegde ondertekening. Nooit handmatig invulbaar — een
+// registratie met een door de gebruiker gekozen tijdstip is waardeloos als
+// bewijs (bijlage A.1).
+export interface Paraaf {
+  gebruiker: string
+  rol?: string
+  // ISO-timestamp, gezet op het moment van vastleggen.
+  tijdstip: string
+  // Herkomst van de gebruikersnaam: 'whoami' = server bevestigde de
+  // ingress-/sessiegebruiker, 'onbekend' = buiten HA zonder gebruiker.
+  bron: 'whoami' | 'onbekend'
+}
+
+// Foto of document bij een CCP-registratie (via POST /api/upload). Een foto van
+// een afwijkende sluiting of een verkeerd etiket is achteraf het beste bewijs.
+export interface HaccpBijlage {
+  naam: string
+  bestand: string
+  type?: string
+  rol?: 'sluiting' | 'etiket' | 'afwijking' | 'overig'
+  geupload_op?: string
+}
+
+export type RisicoKlasse = 'standaard' | 'verhoogd'
+
+// Markering per ingrediënt (of als default per ingrediënttype):
+//   'ongekookt'       vers fruit, hout, ongekookte adjunct — komt ná de
+//                     afdodingsstap in het bier en brengt eigen microflora mee.
+//                     → verhoogd risico (7 dagen stabiel) én THT 3 maanden.
+//   'gepasteuriseerd' purée in aseptische verpakking — beheerste
+//                     microbiologische status. → standaard risico, THT 6 maanden.
+//   undefined         geen bijzondere toevoeging. Dry-hop met gedroogde hop
+//                     valt hier bewust onder: hop is antimicrobieel en anders
+//                     zou vrijwel elke gehopte batch in het zware regime vallen.
+export type ToevoegingSoort = 'ongekookt' | 'gepasteuriseerd'
+
+export type VrijgaveOordeel = 'vrijgegeven' | 'niet_vrijgegeven'
+
+// CCP 1 — vrijgave voor afvullen. Het belangrijkste formulier van het systeem:
+// zodra het bier in een gesloten verpakking zit is er geen stap meer die
+// nagisting kan tegenhouden.
+export interface HaccpVrijgave {
+  id: number
+  batch_id: number
+  datum: string
+  // Automatisch afgeleid en als snapshot bevroren, zodat een latere wijziging
+  // aan een ingrediënt de historische registratie niet verandert.
+  risico_klasse: RisicoKlasse
+  risico_redenen?: string[]
+  vereiste_dagen_stabiel: number
+  dagen_stabiel: number
+  stabiel_ok: boolean
+  // Forced fermentation test: standaardmethode om de werkelijke eindvergisting
+  // te bepalen. Verplicht uitgevoerd.
+  ff_uitgevoerd: boolean
+  ff_dichtheid_tank?: number
+  ff_dichtheid_ff?: number
+  ff_verschil?: number
+  ff_marge?: number
+  ff_ok?: boolean
+  // Alleen bij verhoogd risico: 30 °C-monster op drukopbouw beoordeeld.
+  druk30_uitgevoerd?: boolean
+  druk30_waarneming?: string
+  druk30_ok?: boolean
+  sensorisch: string
+  sensorisch_ok: boolean
+  oordeel: VrijgaveOordeel
+  // Wat het systeem voorstelde op grond van de criteria. Wijkt `oordeel`
+  // hiervan af, dan hoort er een afwijkingsregistratie bij.
+  oordeel_voorgesteld: VrijgaveOordeel
+  afwijking_id?: number
+  herbeoordeling_datum?: string
+  vervangt_id?: number
+  opmerking?: string
+  bijlagen?: HaccpBijlage[]
+  paraaf: Paraaf
+}
+
+export type AfvulSessieStatus = 'open' | 'afgesloten' | 'afgebroken'
+
+// THT-klasse volgens hoofdstuk 3.3 van het handboek.
+export type ThtKlasse = 'geen' | 'm3' | 'm6' | 'm9'
+
+// Eén afvulmoment binnen een batch, met eigen lotcode. Eén tank wordt vaak in
+// meerdere sessies afgevuld; zonder sessie-aanduiding moet bij een
+// sluitprobleem de hele batch terug in plaats van alleen de betrokken sessie.
+export interface AfvulSessie {
+  id: number
+  batch_id: number
+  sessie_nr: number
+  // L<batchnummer>-B<n>, bijvoorbeeld L2431-B1.
+  lotcode: string
+  // Verplichte koppeling: geen sessie zonder vrijgegeven CCP 1.
+  vrijgave_id: number
+  verpakking_id?: number
+  verpakking_naam?: string
+  verpakking_type?: string
+  start: string
+  eind?: string
+  status: AfvulSessieStatus
+  // Verplicht bevestigd voordat de sessie kan starten.
+  reiniging_bevestigd: boolean
+  // Automatisch berekend en bevroren; null = geen THT (≥ 10 % vol).
+  tht?: string | null
+  tht_maanden?: number | null
+  tht_klasse?: ThtKlasse
+  tht_handmatig?: boolean
+  // Verplicht wanneer de berekende THT handmatig is overschreven.
+  tht_reden?: string
+  start_paraaf: Paraaf
+  afgesloten_paraaf?: Paraaf
+  opmerking?: string
+}
+
+export type SluitAanleiding = 'start' | 'halfuur' | 'na_verstelling' | 'einde'
+export type ControleResultaat = 'goedgekeurd' | 'afgekeurd'
+
+// Voorbereid voor de felsnaadmicrometer (handboek actiepunt 3, nog niet
+// aangeschaft). Bewust een open lijst met vrije `key`, zodat naadhoogte,
+// naaddikte, body hook, cover hook en overlap later toegevoegd kunnen worden
+// zonder migratie of nieuwe velden op SluitControle.
+export interface SluitMeting {
+  key: string
+  waarde: number
+  eenheid?: string
+  grens_min?: number
+  grens_max?: number
+  binnen_limiet?: boolean
+}
+
+// CCP 2 — sluitcontrole. Na het sluiten wordt niet meer gecontroleerd of de
+// verpakking dicht is; dit is het laatste moment.
+export interface SluitControle {
+  id: number
+  sessie_id: number
+  batch_id: number
+  aanleiding: SluitAanleiding
+  visueel_ok: boolean
+  // Verplicht bij blik; null/undefined bij fles en fust.
+  omkeerproef_ok?: boolean | null
+  // Verplicht vast te leggen bij aanleiding 'na_verstelling'.
+  rolinstelling?: string
+  resultaat: ControleResultaat
+  metingen?: SluitMeting[]
+  // Afvullingen die door deze afkeuring geblokkeerd zijn.
+  geblokkeerde_afvulling_ids?: number[]
+  capa_id?: number
+  opmerking?: string
+  bijlagen?: HaccpBijlage[]
+  paraaf: Paraaf
+}
+
+export type EtiketAanleiding = 'start' | 'rolwissel'
+
+// CCP 3 — etiketcontrole. Het etiket is het laatste en enige moment waarop een
+// consument met een allergie gewaarschuwd wordt.
+export interface EtiketControle {
+  id: number
+  sessie_id: number
+  batch_id: number
+  product_id: number
+  etiket_artikel?: string
+  etiket_versie?: string
+  aanleiding: EtiketAanleiding
+  // Snapshots op moment van controle — de vergelijking moet achteraf
+  // reproduceerbaar zijn, ook als recept of etiket later wijzigt.
+  allergenen_recept: Allergeen[]
+  allergenen_etiket: Allergeen[]
+  allergenen_gelijk: boolean
+  lotcode_ok: boolean
+  tht_ok: boolean
+  alcohol_ok: boolean
+  resultaat: ControleResultaat
+  afwijking_id?: number
+  capa_id?: number
+  opmerking?: string
+  bijlagen?: HaccpBijlage[]
+  paraaf: Paraaf
+}
+
+// Waar in de workflow een blokkade is omzeild.
+export type AfwijkingBron =
+  | 'ccp1_vrijgave' | 'ccp2_sluitcontrole' | 'ccp3_etiket'
+  | 'sessie_start' | 'sessie_afsluiten' | 'fase_afvullen'
+
+// Expliciete afwijkingsregistratie: de enige manier om langs een harde
+// blokkade te komen. Het moet mogelijk zijn — er kan een goede reden zijn —
+// maar het mag nooit onzichtbaar gebeuren (handboek A.6).
+export interface HaccpAfwijking {
+  id: number
+  datum: string
+  bron: AfwijkingBron
+  // Machineleesbare codes uit de blokkadecontrole, plus de gerenderde tekst
+  // zoals die op dat moment aan de gebruiker getoond is.
+  blokkade_codes: string[]
+  blokkade_omschrijving: string
+  batch_id?: number
+  sessie_id?: number
+  onderbouwing: string
+  bijlagen?: HaccpBijlage[]
+  capa_id?: number
+  paraaf: Paraaf
+}
+
+// Marges en beleid achter de CCP-beoordelingen. Beheer-only: dit zijn de
+// kritische grenzen uit het handboek, geen dagelijkse werkinstellingen.
+export interface HaccpInst {
+  stabiel_dagen_standaard: number
+  stabiel_dagen_verhoogd: number
+  // Meetnauwkeurigheid waarbinnen twee dichtheden als gelijk gelden (SG).
+  stabiel_tolerantie_sg: number
+  ff_marge_sg: number
+  tht_maanden_standaard: number
+  tht_maanden_gepasteuriseerd: number
+  tht_maanden_ongekookt: number
+  // Vanaf dit alcoholpercentage vervalt de THT-plicht (bijlage X van
+  // Verordening (EU) 1169/2011).
+  tht_abv_grens_geen: number
+  sluitcontrole_interval_min: number
+  // Default-markering per ingrediënttype; per ingrediënt overschreven door
+  // Ingredient.haccp_toevoeging.
+  toevoeging_per_ing_type?: Record<string, ToevoegingSoort>
+  // Verpakkingstypen waarbij de omkeerproef verplicht is (standaard blik).
+  omkeerproef_verplicht_types?: string[]
 }
 
 export type BtwAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'

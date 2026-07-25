@@ -1088,7 +1088,10 @@ _KEY_TYPES = {
         'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
         'haccp_schoonmaak_log', 'haccp_ccp_definities', 'haccp_ccp_metingen',
         'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
-        'haccp_opleidingen', 'locaties', 'verplaatsingen', 'btw_tarieven',
+        'haccp_opleidingen',
+        'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
+        'haccp_etiketcontroles', 'haccp_afwijkingen',
+        'locaties', 'verplaatsingen', 'btw_tarieven',
         'ing_types', 'kosten_soorten', 'gn_codes',
     )},
     # objecten (instellingen/koppeltabellen)
@@ -1098,6 +1101,7 @@ _KEY_TYPES = {
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
+        'haccp_instellingen',
         'tank_statussen', 'gebruikers_rollen', 'login_instellingen',
         'app_logo_icoon',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
@@ -1134,8 +1138,19 @@ def _payload_geldig(key: str, parsed) -> bool:
 # gaan via storno-regels). De server dwingt dat af: een POST/commit die een
 # bestaande regel mist of wijzigt wordt met 422 geweigerd. Aanroepen onder
 # _data_lock (leest de huidige inhoud uit de database).
+#
+# Dezelfde eis geldt voor de HACCP-registraties van de drie kritische
+# beheerspunten (handboek bijlage A.1): een opgeslagen CCP-registratie is
+# bewijs richting de NVWA en mag nooit overschreven worden. Een correctie is
+# een nieuwe registratie die via `vervangt_id` naar de oude verwijst.
+# `afvul_sessies` staat er bewust NIET bij: een sessie wordt na het starten
+# afgesloten (eindtijd + status), dus die muteert per definitie.
 
-_APPEND_ONLY = ('journaal',)
+_APPEND_ONLY = (
+    'journaal',
+    'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles',
+    'haccp_afwijkingen',
+)
 
 
 def _append_only_ok(key: str, parsed) -> bool:
@@ -1802,7 +1817,8 @@ ROLLEN = ('beheer', 'boekhouding', 'productie', 'alleen_lezen')
 _BEHEER_KEYS = frozenset((
     'gebruikers_rollen', 'ha_instellingen', 'notificatie_instellingen',
     'coldcrash_instellingen', 'planning_instellingen',
-    'brouwproces_instellingen', 'brewery_details', 'mail_templates',
+    'brouwproces_instellingen', 'haccp_instellingen',
+    'brewery_details', 'mail_templates',
     'app_logo', 'factuur_logo', 'app_name', 'nav_theme', 'login_instellingen',
     'app_logo_icoon',
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
@@ -2265,6 +2281,85 @@ def _iso_naar_epoch(iso: str | None) -> float | None:
                                  tzinfo=datetime.timezone.utc).timestamp()
     except (ValueError, TypeError):
         return None
+
+
+def _sluitcontrole_loop(interval: float = 120.0) -> None:
+    """Achtergrondloop voor de halfuur-herinnering van CCP 2. De teller in de
+    app rekent zelf; deze loop verzorgt alleen de push, want tijdens het
+    afvullen staat de brouwer zelden bij het scherm."""
+    time.sleep(45)  # kort wachten zodat de server volledig opgestart is
+    while True:
+        try:
+            _sluitcontrole_tick()
+        except Exception as exc:
+            _log('sluitcontrole', f'error: {exc}', level=logging.ERROR)
+        time.sleep(interval)
+
+
+def _sluitcontrole_tick() -> None:
+    """Eén ronde herinnering-bewaking voor open afvulsessies: is er langer dan
+    het ingestelde interval geen sluitcontrole geweest, stuur dan eenmalig een
+    melding. Dedup via `herinnerd_na` op de sessie — die bevat het tijdstip
+    waarnaar gemeten is, zodat een nieuwe controle de melding weer vrijgeeft.
+
+    Het handboek vraagt om een controle bij de start van elke afvulsessie,
+    daarna elk halfuur, en na elke verstelling van de machine (CCP 2)."""
+    with _data_lock:
+        notif = _read_json('notificatie_instellingen', {}) or {}
+    # Zonder notify-service valt er niets te doen; de app-teller rekent zelf.
+    if not notif.get('enabled') or not notif.get('notify_service'):
+        return
+
+    with _data_lock:
+        sessies = _read_json('afvul_sessies', []) or []
+        open_sessies = [s for s in sessies if s.get('status') == 'open']
+        if not open_sessies:
+            return
+        controles = _read_json('haccp_sluitcontroles', []) or []
+        inst = _read_json('haccp_instellingen', {}) or {}
+
+    try:
+        interval_min = float(inst.get('sluitcontrole_interval_min') or 30)
+    except (TypeError, ValueError):
+        interval_min = 30.0
+    now = time.time()
+    notify_jobs: list[tuple[str, str, str]] = []
+    updates: dict = {}
+
+    for sessie in open_sessies:
+        eigen = [c for c in controles if c.get('sessie_id') == sessie.get('id')]
+        tijdstippen = [
+            (c.get('paraaf') or {}).get('tijdstip') for c in eigen
+        ]
+        laatste_iso = max([x for x in tijdstippen if x], default=None) or sessie.get('start')
+        laatste = _iso_naar_epoch(laatste_iso)
+        if laatste is None:
+            continue
+        if (now - laatste) < interval_min * 60:
+            continue
+        # Al gemeld voor precies dit ijkpunt? Dan niet opnieuw.
+        if sessie.get('herinnerd_na') == laatste_iso:
+            continue
+        minuten = int((now - laatste) // 60)
+        titel = 'BrewAdmin — sluitcontrole'
+        bericht = (f"{sessie.get('lotcode') or 'afvulsessie'}: al {minuten} min geen "
+                   f"sluitcontrole. Controleer de sluiting (CCP 2).")
+        notify_jobs.append((notif['notify_service'], titel, bericht))
+        updates[sessie.get('id')] = laatste_iso
+
+    if updates:
+        # Her-lees onder lock en merge alleen de dedup-markering terug, zodat
+        # gelijktijdige UI-schrijfacties (afsluiten) niet overschreven worden.
+        with _data_lock:
+            current = _read_json('afvul_sessies', []) or []
+            for s in current:
+                if s.get('id') in updates:
+                    s['herinnerd_na'] = updates[s['id']]
+            _write_json('afvul_sessies', current)
+
+    for service, titel, bericht in notify_jobs:
+        ok = _ha_notify(service, titel, bericht)
+        _log('sluitcontrole', f'melding verstuurd: {ok}')
 
 
 def _vergisting_stap_tick() -> None:
@@ -4219,6 +4314,11 @@ if __name__ == '__main__':
     _threads['vergisting_stap'] = threading.Thread(target=_vergisting_stap_loop, daemon=True)
     _threads['vergisting_stap'].start()
     _log('server', 'Vergistingsstap-melding-thread gestart (elke 5 minuten)')
+
+    # Start background sluitcontrole-herinnering-thread (CCP 2, elke 2 minuten)
+    _threads['sluitcontrole'] = threading.Thread(target=_sluitcontrole_loop, daemon=True)
+    _threads['sluitcontrole'].start()
+    _log('server', 'Sluitcontrole-herinnering-thread gestart (elke 2 minuten)')
 
     # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
     # van buitenaf wanneer de gebruiker de poort bewust publiceert in de

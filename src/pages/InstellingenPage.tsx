@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
-import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
+import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker } from '../utils/api'
 import Modal from '../components/ui/Modal'
@@ -451,7 +451,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -1358,6 +1358,66 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <span className="text-sm font-medium text-gray-700">{t('settings_priming_sugar')}</span>
           </label>
           <p className="mt-1 text-xs text-gray-400">{t('settings_priming_sugar_hint')}</p>
+        </div>
+      </div>
+
+      {/* Kritische grenzen uit het voedselveiligheidsplan. Beheer-only: dit is
+          beleid, geen dagelijkse werkinstelling. De server weigert een
+          wijziging door een andere rol. */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('haccp_inst_titel')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('haccp_inst_uitleg')}</p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {([
+            ['stabiel_dagen_standaard', 'haccp_inst_dagen_standaard', 1, DEFAULT_HACCP_INST.stabiel_dagen_standaard],
+            ['stabiel_dagen_verhoogd', 'haccp_inst_dagen_verhoogd', 1, DEFAULT_HACCP_INST.stabiel_dagen_verhoogd],
+            ['stabiel_tolerantie_sg', 'haccp_inst_tolerantie', 0.001, DEFAULT_HACCP_INST.stabiel_tolerantie_sg],
+            ['ff_marge_sg', 'haccp_inst_ff_marge', 0.001, DEFAULT_HACCP_INST.ff_marge_sg],
+            ['tht_maanden_standaard', 'haccp_inst_tht_standaard', 1, DEFAULT_HACCP_INST.tht_maanden_standaard],
+            ['tht_maanden_gepasteuriseerd', 'haccp_inst_tht_gepast', 1, DEFAULT_HACCP_INST.tht_maanden_gepasteuriseerd],
+            ['tht_maanden_ongekookt', 'haccp_inst_tht_ongekookt', 1, DEFAULT_HACCP_INST.tht_maanden_ongekookt],
+            ['tht_abv_grens_geen', 'haccp_inst_abv_grens', 0.1, DEFAULT_HACCP_INST.tht_abv_grens_geen],
+            ['sluitcontrole_interval_min', 'haccp_inst_interval', 1, DEFAULT_HACCP_INST.sluitcontrole_interval_min],
+          ] as const).map(([veld, labelKey, stap, standaard]) => (
+            <div key={veld}>
+              <label className="block text-xs font-medium text-gray-500 mb-0.5">{t(labelKey)}</label>
+              <input type="number" step={stap} min={0}
+                value={(haccpInst as any)?.[veld] ?? standaard}
+                onChange={(e: any) => {
+                  const v = e.target.value === '' ? standaard : Number(e.target.value)
+                  setHaccpInst((prev: any) => ({...DEFAULT_HACCP_INST, ...(prev || {}), [veld]: v}))
+                  logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `HACCP ${veld} → ${v}`})
+                }}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+            </div>
+          ))}
+        </div>
+        {/* Per ingrediënttype een default; per ingrediënt kan het overschreven
+            worden op de HACCP-allergenenpagina. */}
+        <div className="mt-4 pt-4 border-t">
+          <label className="block text-xs font-medium text-gray-500 mb-1">{t('haccp_inst_toevoeging_type')}</label>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {(ingTypes || []).map((typ: string) => (
+              <div key={typ} className="flex items-center gap-2">
+                <span className="text-sm text-gray-600 w-32 truncate">{typ}</span>
+                <select
+                  value={(haccpInst?.toevoeging_per_ing_type || {})[typ] || ''}
+                  onChange={(e: any) => {
+                    const v = e.target.value
+                    setHaccpInst((prev: any) => {
+                      const map = {...((prev || {}).toevoeging_per_ing_type || {})}
+                      if (v) map[typ] = v; else delete map[typ]
+                      return {...DEFAULT_HACCP_INST, ...(prev || {}), toevoeging_per_ing_type: map}
+                    })
+                  }}
+                  className="border border-gray-300 rounded px-2 py-1 text-xs flex-1 t-input">
+                  <option value="">{t('haccp_toevoeging_geen')}</option>
+                  {TOEVOEGING_SOORTEN.map(x => <option key={x.key} value={x.key}>{t(x.label)}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-400">{t('haccp_ing_toevoeging_uitleg')}</p>
         </div>
       </div>
 

@@ -813,6 +813,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         (v.type || '').toLowerCase() === artVt && (v.naam || '').toLowerCase() === avVt);
     };
     const fysiek = (av||[]).filter((a: any) => {
+      // Geblokkeerd na een afgekeurde sluitcontrole (CCP 2) mag nooit in de
+      // webshop te koop staan.
+      if (a.geblokkeerd) return false;
       // Tier 1: afvulling met artikel-SKU matcht uitsluitend op die SKU
       if (a.artikel_sku) return a.artikel_sku === art.artikelnummer;
       // Tier 2: product op de afvulling zelf
