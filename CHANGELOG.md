@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.59] — 2026-07-25
+
+### Toegevoegd — HACCP kritische beheerspunten: datamodel en opslag
+
+Eerste stap in het verweven van de drie kritische beheerspunten uit het
+HACCP-handboek (Verordening (EG) 852/2004) in de operationele workflow:
+CCP 1 vrijgave voor afvullen, CCP 2 sluitcontrole en CCP 3 etiketcontrole,
+plus de afvulsessie met lotcode `L2431-B1`.
+
+- Nieuwe datatypen: `HaccpVrijgave`, `AfvulSessie`, `SluitControle`,
+  `EtiketControle`, `HaccpAfwijking`, `Paraaf`, `HaccpBijlage` en `HaccpInst`.
+- Nieuwe datasleutels `haccp_vrijgaven`, `afvul_sessies`,
+  `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen` en
+  `haccp_instellingen`, inclusief plek in de Excel-back-up.
+- De vier registratiesleutels zijn **server-side append-only**: een opgeslagen
+  CCP-registratie is bewijs richting de NVWA en kan niet meer gewijzigd of
+  verwijderd worden. Een correctie is een nieuwe registratie die naar de oude
+  verwijst. `afvul_sessies` blijft muteerbaar, want een sessie wordt afgesloten.
+- De kritische grenzen (`haccp_instellingen`) zijn beheer-only: de brouwer vult
+  de registraties in, maar verschuift de grenzen niet.
+- Ingrediënten kunnen gemarkeerd worden als toevoeging ná de kook
+  (`ongekookt` of `gepasteuriseerd`); dat stuurt straks de risicoklasse van de
+  batch en de houdbaarheidsdatum. Dry-hop met gedroogde hop telt bewust niet mee.
+- Producten krijgen een eigen allergenenlijst en etiketversie als bron voor de
+  etiketcontrole.
+- Afvullingen krijgen een koppeling aan sessie en lotcode en kunnen geblokkeerd
+  worden na een afgekeurde sluitcontrole. Geblokkeerd bier blijft meetellen in
+  de accijnsvoorraad — het is niet verkoopbaar, maar wel fysiek aanwezig.
+
+Nog geen zichtbare wijziging in de app; de schermen volgen in de volgende stappen.
+
 ## [1.11.58] — 2026-07-23
 
 ### Toegevoegd — Betalingsherinnering per e-mail versturen (met betaallink)

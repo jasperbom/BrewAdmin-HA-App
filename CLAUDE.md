@@ -377,8 +377,22 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `recepten_gesloten_groepen` | array | Ingeklapte receptgroepen |
 | `tanks` | array | Tanks / fermentoren |
 | `artikelen` | array | WooCommerce-artikelen (SKU-mapping) |
-| `hygiene_items` | array | Hygiëne-controleitems |
-| `hygiene_groups` | array | Hygiëne-groepen |
+| `hygiene_items` | array | *(legacy)* Hygiëne-controleitems — gemigreerd naar `batch_taken_items` |
+| `hygiene_groups` | array | *(legacy)* Hygiëne-groepen — gemigreerd naar `batch_taken_groepen` |
+| `haccp_schoonmaak_taken` | array | Schoonmaakschema (object, frequentie, middel) |
+| `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie |
+| `haccp_ccp_definities` | array | *(legacy)* CCP-definities — komen nu uit `batch_taken_items` (`type: 'meting'`) |
+| `haccp_ccp_metingen` | array | CCP-metingen met limietcheck; buiten de grens → automatisch een CAPA |
+| `haccp_capa` | array | Corrigerende en preventieve maatregelen |
+| `haccp_waterkwaliteit` | array | Watermonsters tappunt brouwerij |
+| `haccp_ongedierte` | array | Ongediertecontroles en -waarnemingen |
+| `haccp_opleidingen` | array | Opleidings- en instructieregister |
+| `haccp_vrijgaven` | array | **CCP 1** — vrijgave voor afvullen per batch: stabiliteitstoets, forced fermentation, sensorisch oordeel. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
+| `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>-B<n>` (bijv. `L2431-B1`) en berekende THT; anker voor CCP 2 en CCP 3. Bewust **niet** append-only: een sessie wordt afgesloten |
+| `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
+| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket. Append-only |
+| `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
+| `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen |
 | `scan_correcties` | array | Handmatige herclassificaties van factuurscan-regels ({tekst, soort}) — sturen volgende scans |
 | `verkoop_facturen` | array | Verkoopfacturen |
@@ -523,7 +537,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
-- Append-only keys: `_APPEND_ONLY` (o.a. `journaal`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno-regels. Nooit omzeilen
+- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
 - Gebruikers & rollen (ERP 4.2): mutaties worden per rol afgedwongen (`_rol_mag_key` + endpoint-gates in do_GET/do_POST, 403 met `reden: rol` + audit). Nieuwe financiële key? Voeg hem toe aan `_FINANCIELE_KEYS`; nieuwe instellingen-key aan `_BEHEER_KEYS`. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy

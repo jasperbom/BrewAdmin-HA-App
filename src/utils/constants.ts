@@ -322,6 +322,62 @@ export const SCHOONMAAK_FREQUENTIES = [
   {key:'anders',      label:'haccp_freq_anders'},
 ]
 
+// ── HACCP kritische beheerspunten (CCP 1/2/3) ───────────────────────────────
+// Toevoegingen ná de afdodingsstap (de kook). Bepalen de risicoklasse van de
+// batch bij de vrijgave en daarmee de THT. Gedroogde dry-hop staat hier
+// bewust niet bij: hop is antimicrobieel en anders zou vrijwel elke gehopte
+// batch in het zware 7-dagenregime vallen.
+export const TOEVOEGING_SOORTEN = [
+  {key:'ongekookt',       label:'haccp_toevoeging_ongekookt'},
+  {key:'gepasteuriseerd', label:'haccp_toevoeging_gepasteuriseerd'},
+]
+
+// Aanleidingen voor een sluitcontrole (CCP 2), conform het handboek: eerste
+// verpakking van elke sessie, daarna elk halfuur, altijd direct na een
+// verstelling van de machine, en bij het afsluiten.
+export const SLUIT_AANLEIDINGEN = [
+  {key:'start',          label:'haccp_sluit_aanleiding_start'},
+  {key:'halfuur',        label:'haccp_sluit_aanleiding_halfuur'},
+  {key:'na_verstelling', label:'haccp_sluit_aanleiding_verstelling'},
+  {key:'einde',          label:'haccp_sluit_aanleiding_einde'},
+]
+
+// Aanleidingen voor een etiketcontrole (CCP 3).
+export const ETIKET_AANLEIDINGEN = [
+  {key:'start',     label:'haccp_etiket_aanleiding_start'},
+  {key:'rolwissel', label:'haccp_etiket_aanleiding_rolwissel'},
+]
+
+// Houdbaarheidsklassen uit hoofdstuk 3.3 van het handboek.
+export const THT_KLASSE_LABEL_KEY: Record<string, string> = {
+  geen: 'haccp_tht_klasse_geen',
+  m3:   'haccp_tht_klasse_m3',
+  m6:   'haccp_tht_klasse_m6',
+  m9:   'haccp_tht_klasse_m9',
+}
+
+// Kritische grenzen en marges achter de CCP-beoordelingen. Beheer-only: dit is
+// beleid uit het voedselveiligheidsplan, geen dagelijkse werkinstelling.
+export const DEFAULT_HACCP_INST = {
+  // Stabiele dichtheid over 3 opeenvolgende dagen bij standaardbier, 7 dagen
+  // bij vers fruit/hout — wilde gist vergist traag en een korte
+  // stabiliteitsperiode geeft daar een vals-positief resultaat.
+  stabiel_dagen_standaard: 3,
+  stabiel_dagen_verhoogd: 7,
+  // Meetnauwkeurigheid waarbinnen twee dichtheden als gelijk gelden.
+  stabiel_tolerantie_sg: 0.001,
+  // Toegestaan verschil tussen tankdichtheid en de forced fermentation test.
+  ff_marge_sg: 0.002,
+  tht_maanden_standaard: 9,
+  tht_maanden_gepasteuriseerd: 6,
+  tht_maanden_ongekookt: 3,
+  // Vanaf 10 % vol vervalt de THT-plicht (bijlage X, Verordening 1169/2011).
+  tht_abv_grens_geen: 10,
+  sluitcontrole_interval_min: 30,
+  toevoeging_per_ing_type: {} as Record<string, string>,
+  omkeerproef_verplicht_types: ['blik'],
+}
+
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────
 // Zuurmiddelen voor het verlagen van de pH van water/wort/maisch. Het model is
 // volume-gebaseerd: `ml_per_liter_per_01` is de hoeveelheid middel (mL) die de

@@ -12,7 +12,7 @@ import { periodeKeyLabel, telOpenstaandeBtwPerioden } from './utils/btw'
 import { schoonTakenOp, telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { telOpenstaandeBestellingen } from './utils/picking'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
 import SyncDot from './components/ui/SyncDot'
 import ProductieDashboard from './pages/ProductieDashboard'
@@ -198,6 +198,14 @@ function App() {
   const [haccpWaterkwaliteit, setHaccpWaterkwaliteit] = useStore('haccp_waterkwaliteit', []);
   const [haccpOngedierte, setHaccpOngedierte] = useStore('haccp_ongedierte', []);
   const [haccpOpleidingen, setHaccpOpleidingen] = useStore('haccp_opleidingen', []);
+  // Kritische beheerspunten (CCP 1/2/3) en de afvulsessies waar CCP 2 en 3 aan
+  // hangen. De drie registratie-keys zijn server-side append-only.
+  const [haccpVrijgaven, setHaccpVrijgaven] = useStore('haccp_vrijgaven', []);
+  const [afvulSessies, setAfvulSessies] = useStore('afvul_sessies', []);
+  const [haccpSluitcontroles, setHaccpSluitcontroles] = useStore('haccp_sluitcontroles', []);
+  const [haccpEtiketcontroles, setHaccpEtiketcontroles] = useStore('haccp_etiketcontroles', []);
+  const [haccpAfwijkingen, setHaccpAfwijkingen] = useStore('haccp_afwijkingen', []);
+  const [haccpInst, setHaccpInst] = useStore('haccp_instellingen', DEFAULT_HACCP_INST);
 
   // Sync lang to i18n module on each render (equivalent to _lang = lang in source)
   i18nSetLang(lang);
@@ -1185,6 +1193,10 @@ function App() {
       haccp_ccp_definities: haccpCcpDefinities, haccp_ccp_metingen: haccpCcpMetingen,
       haccp_capa: haccpCapa, haccp_waterkwaliteit: haccpWaterkwaliteit,
       haccp_ongedierte: haccpOngedierte, haccp_opleidingen: haccpOpleidingen,
+      haccp_vrijgaven: haccpVrijgaven, afvul_sessies: afvulSessies,
+      haccp_sluitcontroles: haccpSluitcontroles,
+      haccp_etiketcontroles: haccpEtiketcontroles,
+      haccp_afwijkingen: haccpAfwijkingen, haccp_instellingen: haccpInst,
       brewery_details: breweryDetails, factuur_counter: factuurCounter,
       mail_templates: mailTemplates,
       gebruikers_rollen: gebruikersRollen,
@@ -1275,6 +1287,12 @@ function App() {
       if (Array.isArray(d.haccp_waterkwaliteit)) setHaccpWaterkwaliteit(d.haccp_waterkwaliteit);
       if (Array.isArray(d.haccp_ongedierte)) setHaccpOngedierte(d.haccp_ongedierte);
       if (Array.isArray(d.haccp_opleidingen)) setHaccpOpleidingen(d.haccp_opleidingen);
+      if (Array.isArray(d.haccp_vrijgaven)) setHaccpVrijgaven(d.haccp_vrijgaven);
+      if (Array.isArray(d.afvul_sessies)) setAfvulSessies(d.afvul_sessies);
+      if (Array.isArray(d.haccp_sluitcontroles)) setHaccpSluitcontroles(d.haccp_sluitcontroles);
+      if (Array.isArray(d.haccp_etiketcontroles)) setHaccpEtiketcontroles(d.haccp_etiketcontroles);
+      if (Array.isArray(d.haccp_afwijkingen)) setHaccpAfwijkingen(d.haccp_afwijkingen);
+      if (d.haccp_instellingen) setHaccpInst(d.haccp_instellingen);
       if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
       if (Array.isArray(d.btw_tarieven) && d.btw_tarieven.length) setBtwTarieven(d.btw_tarieven);
       if (Array.isArray(d.ing_types) && d.ing_types.length) setIngTypes(d.ing_types);
@@ -1341,6 +1359,10 @@ function App() {
     // Het journaal wordt bewust NIET gewist: het is de onveranderlijke
     // financiële vastlegging (fiscale bewaarplicht) en de server weigert
     // verwijdering sowieso (append-only, ERP-plan 2.1).
+    // Om dezelfde reden blijven de CCP-registraties (haccp_vrijgaven,
+    // haccp_sluitcontroles, haccp_etiketcontroles, haccp_afwijkingen) en de
+    // afvulsessies staan: bewaartermijn THT + 1 jaar, advies 5 jaar
+    // (HACCP-handboek §11.4). De server weigert verwijdering ook hier.
   };
 
   const openAcc = acc.filter((a: any)=>!a.betaald).reduce((s: any,a: any)=>s+Number(a.accijns??a.totaal_accijns??0),0);

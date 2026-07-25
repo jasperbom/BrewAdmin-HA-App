@@ -102,6 +102,15 @@ class TestValidatie:
         assert not srv._payload_geldig('app_name', 1)
         assert srv._payload_geldig('app_logo', None)
         assert srv._payload_geldig('journaal', [])
+        # HACCP-registraties zijn arrays, de kritische grenzen een object
+        assert srv._payload_geldig('haccp_vrijgaven', [])
+        assert not srv._payload_geldig('haccp_vrijgaven', {})
+        assert srv._payload_geldig('afvul_sessies', [])
+        assert srv._payload_geldig('haccp_sluitcontroles', [])
+        assert srv._payload_geldig('haccp_etiketcontroles', [])
+        assert srv._payload_geldig('haccp_afwijkingen', [])
+        assert srv._payload_geldig('haccp_instellingen', {})
+        assert not srv._payload_geldig('haccp_instellingen', [])
         # Onbekende keys blijven vrij (voorwaartse compatibiliteit)
         assert srv._payload_geldig('onbekende_toekomstige_key', 123)
 
@@ -147,6 +156,45 @@ class TestAppendOnly:
 
     def test_ontbrekende_key_blokkeert_niet(self, app):
         assert srv._append_only_ok('journaal', [{'id': 1}])
+
+    def test_ccp_registraties_zijn_append_only(self, app):
+        """De drie kritische beheerspunten uit het HACCP-handboek zijn bewijs
+        richting de NVWA: een opgeslagen registratie mag nooit overschreven
+        worden (bijlage A.1). Een correctie is een nieuw record."""
+        keys = ('haccp_vrijgaven', 'haccp_sluitcontroles',
+                'haccp_etiketcontroles', 'haccp_afwijkingen')
+        for key in keys:
+            assert key in srv._APPEND_ONLY, key
+            srv._write_json(key, [{'id': 1, 'paraaf': {'gebruiker': 'jasper'}}])
+            try:
+                # Een nieuwe registratie toevoegen mag altijd.
+                assert srv._append_only_ok(
+                    key, [{'id': 1, 'paraaf': {'gebruiker': 'jasper'}}, {'id': 2}])
+                # De paraaf vervalsen, de registratie wijzigen of hem laten
+                # verdwijnen mag geen van drieën.
+                assert not srv._append_only_ok(
+                    key, [{'id': 1, 'paraaf': {'gebruiker': 'iemand_anders'}}])
+                assert not srv._append_only_ok(key, [{'id': 2}])
+                assert not srv._append_only_ok(key, [])
+            finally:
+                conn = srv._db()
+                with conn:
+                    conn.execute('DELETE FROM records WHERE key=?', (key,))
+                    conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    def test_afvulsessies_zijn_niet_append_only(self, app):
+        """Een sessie wordt na het starten afgesloten (eindtijd + status), dus
+        die moet wel muteerbaar blijven."""
+        assert 'afvul_sessies' not in srv._APPEND_ONLY
+        srv._write_json('afvul_sessies', [{'id': 1, 'status': 'open'}])
+        try:
+            assert srv._append_only_ok('afvul_sessies',
+                                       [{'id': 1, 'status': 'afgesloten'}])
+        finally:
+            conn = srv._db()
+            with conn:
+                conn.execute("DELETE FROM records WHERE key='afvul_sessies'")
+                conn.execute("DELETE FROM versies WHERE key='afvul_sessies'")
 
 
 class TestSecretsMaskering:
@@ -831,6 +879,13 @@ class TestRollen:
             piet = {'X-Remote-User-Name': 'piet'}
             assert req(app, 'POST', '/api/data/water_addities', body=[],
                        headers=piet)[0] == 200
+            # De brouwer vult de CCP-registraties zelf in, maar de kritische
+            # grenzen erachter zijn beleid en dus beheer-only.
+            assert req(app, 'POST', '/api/data/afvul_sessies', body=[],
+                       headers=piet)[0] == 200
+            status, body, _ = req(app, 'POST', '/api/data/haccp_instellingen',
+                                  body={'ff_marge_sg': 0.05}, headers=piet)
+            assert status == 403 and body['reden'] == 'rol'
             assert req(app, 'POST', '/api/data/verkoop_facturen', body=[],
                        headers=piet)[0] == 403
             assert req(app, 'POST', '/api/nextnr',

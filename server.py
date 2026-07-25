@@ -1088,7 +1088,10 @@ _KEY_TYPES = {
         'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
         'haccp_schoonmaak_log', 'haccp_ccp_definities', 'haccp_ccp_metingen',
         'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
-        'haccp_opleidingen', 'locaties', 'verplaatsingen', 'btw_tarieven',
+        'haccp_opleidingen',
+        'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
+        'haccp_etiketcontroles', 'haccp_afwijkingen',
+        'locaties', 'verplaatsingen', 'btw_tarieven',
         'ing_types', 'kosten_soorten', 'gn_codes',
     )},
     # objecten (instellingen/koppeltabellen)
@@ -1098,6 +1101,7 @@ _KEY_TYPES = {
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
+        'haccp_instellingen',
         'tank_statussen', 'gebruikers_rollen', 'login_instellingen',
         'app_logo_icoon',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
@@ -1134,8 +1138,19 @@ def _payload_geldig(key: str, parsed) -> bool:
 # gaan via storno-regels). De server dwingt dat af: een POST/commit die een
 # bestaande regel mist of wijzigt wordt met 422 geweigerd. Aanroepen onder
 # _data_lock (leest de huidige inhoud uit de database).
+#
+# Dezelfde eis geldt voor de HACCP-registraties van de drie kritische
+# beheerspunten (handboek bijlage A.1): een opgeslagen CCP-registratie is
+# bewijs richting de NVWA en mag nooit overschreven worden. Een correctie is
+# een nieuwe registratie die via `vervangt_id` naar de oude verwijst.
+# `afvul_sessies` staat er bewust NIET bij: een sessie wordt na het starten
+# afgesloten (eindtijd + status), dus die muteert per definitie.
 
-_APPEND_ONLY = ('journaal',)
+_APPEND_ONLY = (
+    'journaal',
+    'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles',
+    'haccp_afwijkingen',
+)
 
 
 def _append_only_ok(key: str, parsed) -> bool:
@@ -1802,7 +1817,8 @@ ROLLEN = ('beheer', 'boekhouding', 'productie', 'alleen_lezen')
 _BEHEER_KEYS = frozenset((
     'gebruikers_rollen', 'ha_instellingen', 'notificatie_instellingen',
     'coldcrash_instellingen', 'planning_instellingen',
-    'brouwproces_instellingen', 'brewery_details', 'mail_templates',
+    'brouwproces_instellingen', 'haccp_instellingen',
+    'brewery_details', 'mail_templates',
     'app_logo', 'factuur_logo', 'app_name', 'nav_theme', 'login_instellingen',
     'app_logo_icoon',
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
