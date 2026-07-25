@@ -2950,5 +2950,19 @@
   "haccp_foto_toevoegen": "Ajouter une photo",
   "haccp_geblokkeerd": "Bloqué",
   "haccp_geblokkeerd_uitleg": "Non vendable tant que l’écart n’est pas traité. Reste compté dans le stock d’accises.",
-  "haccp_afw_kort": "sous écart"
+  "haccp_afw_kort": "sous écart",
+  "haccp_tab_kritisch": "Points critiques",
+  "haccp_rap_titel": "Aperçu des enregistrements HACCP",
+  "haccp_rap_periode": "Période",
+  "haccp_rap_alle_data": "tous les enregistrements",
+  "haccp_rap_geen": "Aucun enregistrement sur cette période",
+  "haccp_rap_bron": "Où",
+  "haccp_rap_export": "Export pour inspection",
+  "haccp_rap_status": "Statut",
+  "haccp_bron_ccp1_vrijgave": "Libération (CCP 1)",
+  "haccp_bron_ccp2_sluitcontrole": "Contrôle de fermeture (CCP 2)",
+  "haccp_bron_ccp3_etiket": "Contrôle d’étiquette (CCP 3)",
+  "haccp_bron_sessie_start": "Début de session",
+  "haccp_bron_sessie_afsluiten": "Clôture de session",
+  "haccp_bron_fase_afvullen": "Passage au conditionnement"
 }

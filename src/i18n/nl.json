@@ -2950,5 +2950,19 @@
   "haccp_foto_toevoegen": "Foto toevoegen",
   "haccp_geblokkeerd": "Geblokkeerd",
   "haccp_geblokkeerd_uitleg": "Niet verkoopbaar tot de afwijking is afgehandeld. Blijft wel meetellen in de accijnsvoorraad.",
-  "haccp_afw_kort": "onder afwijking"
+  "haccp_afw_kort": "onder afwijking",
+  "haccp_tab_kritisch": "Kritische punten",
+  "haccp_rap_titel": "HACCP-registratieoverzicht",
+  "haccp_rap_periode": "Periode",
+  "haccp_rap_alle_data": "alle registraties",
+  "haccp_rap_geen": "Geen registraties in deze periode",
+  "haccp_rap_bron": "Waar",
+  "haccp_rap_export": "Inspectie-export",
+  "haccp_rap_status": "Status",
+  "haccp_bron_ccp1_vrijgave": "Vrijgave (CCP 1)",
+  "haccp_bron_ccp2_sluitcontrole": "Sluitcontrole (CCP 2)",
+  "haccp_bron_ccp3_etiket": "Etiketcontrole (CCP 3)",
+  "haccp_bron_sessie_start": "Sessie starten",
+  "haccp_bron_sessie_afsluiten": "Sessie afsluiten",
+  "haccp_bron_fase_afvullen": "Overgang naar afvullen"
 }

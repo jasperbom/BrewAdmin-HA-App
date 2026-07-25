@@ -2950,5 +2950,19 @@
   "haccp_foto_toevoegen": "Añadir foto",
   "haccp_geblokkeerd": "Bloqueado",
   "haccp_geblokkeerd_uitleg": "No vendible hasta resolver la desviación. Sigue contando en el stock de impuestos.",
-  "haccp_afw_kort": "bajo desviación"
+  "haccp_afw_kort": "bajo desviación",
+  "haccp_tab_kritisch": "Puntos críticos",
+  "haccp_rap_titel": "Resumen de registros HACCP",
+  "haccp_rap_periode": "Periodo",
+  "haccp_rap_alle_data": "todos los registros",
+  "haccp_rap_geen": "Sin registros en este periodo",
+  "haccp_rap_bron": "Dónde",
+  "haccp_rap_export": "Exportar para inspección",
+  "haccp_rap_status": "Estado",
+  "haccp_bron_ccp1_vrijgave": "Liberación (PCC 1)",
+  "haccp_bron_ccp2_sluitcontrole": "Control de cierre (PCC 2)",
+  "haccp_bron_ccp3_etiket": "Control de etiqueta (PCC 3)",
+  "haccp_bron_sessie_start": "Inicio de sesión",
+  "haccp_bron_sessie_afsluiten": "Cierre de sesión",
+  "haccp_bron_fase_afvullen": "Paso al envasado"
 }

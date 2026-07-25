@@ -2950,5 +2950,19 @@
   "haccp_foto_toevoegen": "Foto hinzufügen",
   "haccp_geblokkeerd": "Gesperrt",
   "haccp_geblokkeerd_uitleg": "Nicht verkäuflich, bis die Abweichung geklärt ist. Zählt weiter zum Verbrauchsteuerbestand.",
-  "haccp_afw_kort": "unter Abweichung"
+  "haccp_afw_kort": "unter Abweichung",
+  "haccp_tab_kritisch": "Kritische Punkte",
+  "haccp_rap_titel": "HACCP-Aufzeichnungsübersicht",
+  "haccp_rap_periode": "Zeitraum",
+  "haccp_rap_alle_data": "alle Aufzeichnungen",
+  "haccp_rap_geen": "Keine Aufzeichnungen in diesem Zeitraum",
+  "haccp_rap_bron": "Wo",
+  "haccp_rap_export": "Inspektions-Export",
+  "haccp_rap_status": "Status",
+  "haccp_bron_ccp1_vrijgave": "Freigabe (CCP 1)",
+  "haccp_bron_ccp2_sluitcontrole": "Verschlusskontrolle (CCP 2)",
+  "haccp_bron_ccp3_etiket": "Etikettenkontrolle (CCP 3)",
+  "haccp_bron_sessie_start": "Sessionbeginn",
+  "haccp_bron_sessie_afsluiten": "Sessionabschluss",
+  "haccp_bron_fase_afvullen": "Wechsel zur Abfüllung"
 }

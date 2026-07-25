@@ -2950,5 +2950,19 @@
   "haccp_foto_toevoegen": "Add photo",
   "haccp_geblokkeerd": "Blocked",
   "haccp_geblokkeerd_uitleg": "Not sellable until the deviation is resolved. Still counts towards excise stock.",
-  "haccp_afw_kort": "under deviation"
+  "haccp_afw_kort": "under deviation",
+  "haccp_tab_kritisch": "Critical points",
+  "haccp_rap_titel": "HACCP records overview",
+  "haccp_rap_periode": "Period",
+  "haccp_rap_alle_data": "all records",
+  "haccp_rap_geen": "No records in this period",
+  "haccp_rap_bron": "Where",
+  "haccp_rap_export": "Inspection export",
+  "haccp_rap_status": "Status",
+  "haccp_bron_ccp1_vrijgave": "Release (CCP 1)",
+  "haccp_bron_ccp2_sluitcontrole": "Seam check (CCP 2)",
+  "haccp_bron_ccp3_etiket": "Label check (CCP 3)",
+  "haccp_bron_sessie_start": "Session start",
+  "haccp_bron_sessie_afsluiten": "Session close",
+  "haccp_bron_fase_afvullen": "Move to packaging"
 }

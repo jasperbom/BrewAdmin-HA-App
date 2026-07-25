@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.63] — 2026-07-25
+
+### Toegevoegd — HACCP-dashboard, registers en inspectie-export
+
+- **Dashboard.** Vier kaarten erbij: batches die op vrijgave wachten, open
+  afvulsessies, geblokkeerde verpakkingen en afwijkingen deze maand. Elke kaart
+  brengt je naar het bijbehorende register.
+- **Register "Kritische punten".** Alle vrijgaven, afvulsessies (met hun
+  sluit- en etiketcontroles) en afwijkingen, te filteren op periode. Alleen
+  lezen — registreren gebeurt in de batchflow, op het moment zelf.
+- **Inspectie-export.** Eén afdruk met alle registraties van de gekozen periode,
+  in de drie secties die het handboek noemt. Bij een controle is de vraag niet
+  of de brouwer weet hoe het moet, maar of aantoonbaar is dat het ook zo gedaan
+  is.
+- **Allergenenbeheer uitgebreid.** Per ingrediënt is nu vast te leggen of het een
+  ongekookte of gepasteuriseerde toevoeging is; dat stuurt de risicoklasse en de
+  houdbaarheid. Daarnaast een tabel met de allergenen zoals ze op het etiket van
+  elk product staan — de bron waartegen de etiketcontrole vergelijkt. Producten
+  waarvoor dat nog niet is vastgelegd zijn oranje gemarkeerd.
+
+### Opgelost
+
+- De notitieregel bij batch-allergenen was alleen-lezen en sloeg niets op.
+
 ## [1.11.62] — 2026-07-25
 
 ### Toegevoegd — Afvulsessie met lotcode, CCP 2 en CCP 3
