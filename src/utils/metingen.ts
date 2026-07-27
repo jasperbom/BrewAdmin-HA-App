@@ -40,3 +40,59 @@ export function metingWaarden(metingen: unknown[] | null | undefined, veld: stri
   }
   return uit
 }
+
+// ── FG als meting ───────────────────────────────────────────────────────────
+// De FG die je in de vergistingsfase invult ís een SG-meting. Voorheen telde
+// dat veld níét mee in de metingenreeks: de grafiek en de stabiliteitstoets
+// (fgStabiel) keken alleen naar `gist_metingen`, dus moest je hetzelfde getal
+// twee keer invoeren voordat de fase compleet werd.
+//
+// `metingenMetFg` houdt daarom precies één meting per batch met `bron: 'fg'`
+// synchroon met het FG-veld: invullen zet hem neer, wijzigen werkt hem bij,
+// leegmaken haalt hem weg. Bestaat er al een handmatige meting met hetzelfde
+// SG op dezelfde dag, dan komt er géén tweede punt bij (anders zou wie het wél
+// netjes dubbel invoerde een dubbel meetpunt in de grafiek krijgen).
+
+export interface FgMetingCtx {
+  batchId: number
+  fg: number | null   // null = FG (nog) niet ingevuld
+  datum: string       // YYYY-MM-DD
+  tijd: string        // HH:MM
+  nieuwId: number     // id voor een nieuw aan te maken meting
+}
+
+// Zelfde SG? SG's worden op 3 decimalen genoteerd; vergelijk met een marge die
+// ruim onder die stap ligt zodat 1.012 en 1.0120 gelijk zijn.
+const zelfdeSg = (a: number, b: number): boolean => Math.abs(a - b) < 0.0005
+
+export function metingenMetFg<T extends Record<string, unknown>>(
+  metingen: T[] | null | undefined,
+  ctx: FgMetingCtx
+): T[] {
+  const alle = (metingen || []).slice()
+  const vanBatch = (m: T): boolean => Number(m?.batch_id) === Number(ctx.batchId)
+  const isFgRij = (m: T): boolean => vanBatch(m) && m?.bron === 'fg'
+
+  // FG leeggemaakt → de afgeleide meting verdwijnt mee.
+  if (ctx.fg == null) return alle.filter(m => !isFgRij(m))
+
+  const bestaand = alle.find(isFgRij)
+  if (bestaand) {
+    return alle.map(m => m === bestaand
+      ? {...m, sg: ctx.fg, datum: ctx.datum, tijd: ctx.tijd} as T
+      : m)
+  }
+
+  // Al handmatig als meting vastgelegd vandaag? Dan niets toevoegen.
+  const alGemeten = alle.some(m => {
+    if (!vanBatch(m) || m?.auto) return false
+    const sg = metingWaarde(m?.sg)
+    return sg != null && zelfdeSg(sg, ctx.fg as number) && String(m?.datum || '') === ctx.datum
+  })
+  if (alGemeten) return alle
+
+  return [...alle, {
+    id: ctx.nieuwId, batch_id: ctx.batchId, datum: ctx.datum, tijd: ctx.tijd,
+    sg: ctx.fg, bron: 'fg',
+  } as unknown as T]
+}
