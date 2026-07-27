@@ -1,5 +1,6 @@
 import React from 'react'
 import { t } from '../../i18n'
+import { metingWaarde, metingWaarden } from '../../utils/metingen'
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
 // Guarantees the curve never overshoots between data points (Fritsch-Carlson)
@@ -158,22 +159,24 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
   const toX = (ts: number) => PAD.l + ((ts-viewMin)/viewRange)*CW
   const mkTs = (m: any) => new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()
 
+  // Waarden altijd via metingWaarde(): een niet-ingevuld veld ('' of null) is
+  // een gat in de lijn, geen meetpunt op 0.
   // SG — left axis, filled area
-  const sgVals = sorted.map(m=>m.sg).filter((v): v is number => v!=null)
+  const sgVals = metingWaarden(sorted, 'sg')
   const sgMin = sgVals.length ? Math.min(...sgVals)-0.004 : 0.990
   const sgMax = sgVals.length ? Math.max(...sgVals)+0.004 : 1.100
   const sgRange = sgMax-sgMin || 0.001
   const toYsg = (v: number) => PAD.t+CH-((v-sgMin)/sgRange)*CH
 
   // pH — dashed blue line
-  const phVals = sorted.map(m=>m.ph).filter((v): v is number => v!=null)
+  const phVals = metingWaarden(sorted, 'ph')
   const phMin = phVals.length ? Math.min(...phVals)-0.3 : 2
   const phMax = phVals.length ? Math.max(...phVals)+0.3 : 8
   const phRange = phMax-phMin || 0.1
   const toYph = (v: number) => PAD.t+CH-((v-phMin)/phRange)*CH
 
   // Temp — right axis, solid red line
-  const tempVals = sorted.map(m=>m.temp).filter((v): v is number => v!=null)
+  const tempVals = metingWaarden(sorted, 'temp')
   const tempMin = tempVals.length ? Math.min(...tempVals)-2 : 0
   const tempMax = tempVals.length ? Math.max(...tempVals)+2 : 40
   const tempRange = tempMax-tempMin || 1
@@ -183,14 +186,23 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
     const ts = mkTs(m)
     return ts >= viewMin-viewRange*0.1 && ts <= viewMax+viewRange*0.1
   })
-  const sgPts:   [number,number][] = inView.filter(m=>m.sg!=null).map(m=>[toX(mkTs(m)), toYsg(m.sg)])
-  const phPts:   [number,number][] = inView.filter(m=>m.ph!=null).map(m=>[toX(mkTs(m)), toYph(m.ph)])
-  const tempPts: [number,number][] = inView.filter(m=>m.temp!=null).map(m=>[toX(mkTs(m)), toYtemp(m.temp)])
+  // Bouw de puntenreeks per veld: alleen metingen met een echte waarde.
+  const punten = (bron: any[], veld: string, toY: (v: number) => number): [number,number][] => {
+    const pts: [number,number][] = []
+    for (const m of bron) {
+      const v = metingWaarde(m?.[veld])
+      if (v != null) pts.push([toX(mkTs(m)), toY(v)])
+    }
+    return pts
+  }
+  const sgPts   = punten(inView, 'sg',   toYsg)
+  const phPts   = punten(inView, 'ph',   toYph)
+  const tempPts = punten(inView, 'temp', toYtemp)
   // Punten alleen voor handmatige metingen (auto-metingen tonen alleen de lijn)
   const manual = inView.filter(m => !m.auto)
-  const sgDots:   [number,number][] = manual.filter(m=>m.sg!=null).map(m=>[toX(mkTs(m)), toYsg(m.sg)])
-  const phDots:   [number,number][] = manual.filter(m=>m.ph!=null).map(m=>[toX(mkTs(m)), toYph(m.ph)])
-  const tempDots: [number,number][] = manual.filter(m=>m.temp!=null).map(m=>[toX(mkTs(m)), toYtemp(m.temp)])
+  const sgDots   = punten(manual, 'sg',   toYsg)
+  const phDots   = punten(manual, 'ph',   toYph)
+  const tempDots = punten(manual, 'temp', toYtemp)
 
   const sgLinePath   = sgPts.length   >= 2 ? catmullRomPath(sgPts)   : ''
   const sgAreaPath   = sgLinePath ? sgLinePath + ` L ${sgPts[sgPts.length-1][0]},${PAD.t+CH} L ${sgPts[0][0]},${PAD.t+CH} Z` : ''
@@ -291,11 +303,12 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
         {/* Hover tooltip */}
         {tooltip && (() => {
           const m = tooltip.m
+          const vSg = metingWaarde(m.sg), vPh = metingWaarde(m.ph), vTemp = metingWaarde(m.temp)
           const rows: {t:string, c:string}[] = [{t:`${m.datum}${m.tijd?' '+m.tijd:''}`, c:'#6b7280'}]
-          if (m.sg!=null)   rows.push({t:`SG: ${Number(m.sg).toFixed(3)}`,       c:'#d97706'})
-          if (m.ph!=null)   rows.push({t:`pH: ${Number(m.ph).toFixed(1)}`,       c:'#3b82f6'})
-          if (m.temp!=null) rows.push({t:`${Number(m.temp).toFixed(1)}°C`,       c:'#ef4444'})
-          if (m.opmerking)  rows.push({t:m.opmerking,                             c:'#374151'})
+          if (vSg!=null)   rows.push({t:`SG: ${vSg.toFixed(3)}`, c:'#d97706'})
+          if (vPh!=null)   rows.push({t:`pH: ${vPh.toFixed(1)}`, c:'#3b82f6'})
+          if (vTemp!=null) rows.push({t:`${vTemp.toFixed(1)}°C`, c:'#ef4444'})
+          if (m.opmerking) rows.push({t:m.opmerking,             c:'#374151'})
           const bw=114, bh=rows.length*14+10
           const bx = tooltip.x+10+bw > PAD.l+CW ? tooltip.x-bw-10 : tooltip.x+10
           return <g>

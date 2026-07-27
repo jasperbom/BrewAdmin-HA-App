@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.67] — 2026-07-27
+
+### Opgelost — Lege meetwaarde belandde als 0 in de fermentatiegrafiek
+
+- Een meting in de batchflow waarbij je pH (of temperatuur) leeg liet werd als
+  lege waarde opgeslagen en door de grafiek als **0** getekend: de pH-lijn dook
+  naar de bodem en trok de as-schaal mee. Niet-ingevulde velden worden nu
+  weggelaten en de grafiek toont er een gat in de lijn.
+- De grafiek negeert ook bestaande metingen met zo'n lege waarde, dus reeds
+  opgeslagen metingen worden meteen goed getekend — de tooltip laat die velden
+  weg in plaats van `0` te tonen.
+- Nieuwe pure helper `src/utils/metingen.ts` (`metingWaarde`, `heeftWaarde`,
+  `metingWaarden`) met eigen testdekking als enige waarheidsbron voor
+  "is dit meetveld ingevuld?".
+
+---
+
 ## [1.11.66] — 2026-07-25
 
 ### Gewijzigd — Batchflow wordt de hoofd-'Batches'-pagina

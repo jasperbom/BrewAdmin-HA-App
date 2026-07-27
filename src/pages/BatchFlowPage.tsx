@@ -36,6 +36,7 @@ import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
 import { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { openSessieVoorBatch, magAfvullingRegistreren } from '../utils/afvulsessie'
+import { metingWaarde } from '../utils/metingen'
 
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
@@ -983,14 +984,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const sg = parseFloat(mForm.sg)
     if (isNaN(sg)) return
     const now = new Date()
+    // Niet ingevulde velden blijven undefined (dus afwezig in de opslag) — een
+    // lege string werd elders naar 0 gecoerceerd en dook als meetpunt op in de
+    // fermentatiegrafiek.
     const nieuw = {
       id: newId(gistMetingen || []),
       batch_id: selB.id,
       datum: tod(),
       tijd: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
       sg,
-      ph: mForm.ph !== '' ? parseFloat(mForm.ph) : '',
-      temp: mForm.temp !== '' ? parseFloat(mForm.temp) : '',
+      ph: metingWaarde(mForm.ph) ?? undefined,
+      temp: metingWaarde(mForm.temp) ?? undefined,
       opmerking: '',
     }
     setGistMetingen((prev: any[]) => [...(prev || []), nieuw])
@@ -2207,9 +2211,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const sensorTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
     const sensorTemp = typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw) ? sensorTempRaw : null
     const laatsteTemp = (() => {
-      const ms = mijnMetingen.filter((m: any) => m.temp !== '' && m.temp != null && !isNaN(Number(m.temp)))
+      const ms = mijnMetingen.filter((m: any) => metingWaarde(m.temp) != null)
         .sort((a: any, b: any) => (String(b.datum || '') + 'T' + String(b.tijd || '00:00')).localeCompare(String(a.datum || '') + 'T' + String(a.tijd || '00:00')))
-      return ms.length ? Number(ms[0].temp) : null
+      return ms.length ? metingWaarde(ms[0].temp) : null
     })()
     const temp = sensorTemp ?? laatsteTemp
     const pct = (og > 1 && fgDoel != null && huidige != null && og > fgDoel)
