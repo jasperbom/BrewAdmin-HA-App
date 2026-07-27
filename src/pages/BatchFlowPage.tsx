@@ -3014,19 +3014,24 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const mSensorRaw = selB && selB.tank != null ? haTankTemps?.[selB.tank] : undefined
     const mSensor = typeof mSensorRaw === 'number' && !isNaN(mSensorRaw) ? mSensorRaw : null
     return (
-    <div className="flex flex-wrap items-end gap-2">
-      <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
-      <div className="flex flex-col">
-        <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder={mSensor != null ? mSensor.toFixed(1) : '19.5'} cls="w-28" />
-        {mSensor != null && (
-          <button type="button" onClick={() => setMForm(f => ({...f, temp: mSensor.toFixed(1)}))}
-            className="mt-1 text-xs hover:underline self-start" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
-            🌡 HA: {mSensor.toFixed(1)}°C
-          </button>
-        )}
+    <div className="space-y-2">
+      {/* Op mobiel drie gelijke kolommen zodat de labels en velden op één lijn
+          staan; vanaf sm weer een flexrij met vaste veldbreedtes. De
+          HA-sensorknop hangt ónder het tempveld en verschuift de rij niet. */}
+      <div className="grid grid-cols-3 gap-2 items-start sm:flex sm:flex-wrap sm:gap-3">
+        <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="min-w-0 sm:w-28" />
+        <div className="min-w-0 sm:w-28">
+          <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder={mSensor != null ? mSensor.toFixed(1) : '19.5'} />
+          {mSensor != null && (
+            <button type="button" onClick={() => setMForm(f => ({...f, temp: mSensor.toFixed(1)}))}
+              className="mt-1 text-xs hover:underline block truncate max-w-full text-left" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
+              🌡 HA: {mSensor.toFixed(1)}°C
+            </button>
+          )}
+        </div>
+        <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="min-w-0 sm:w-28" />
       </div>
-      <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
-      <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
+      <Btn s="sm" cls="w-full sm:w-auto" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
     </div>
     )
   }
@@ -3300,7 +3305,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 )}
               </div>
             </div>
-            <FlowStap title={t('flow_meting_snel')} optional done={mijnMetingen.length >= 2}
+            <FlowStap title={t('flow_stap_metingen')} optional done={mijnMetingen.length >= 2}
               detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined} {...so('meting', true)}>
               {renderMetingForm()}
               {renderGrafiek()}

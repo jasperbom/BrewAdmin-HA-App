@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.68] — 2026-07-27
+
+### Gewijzigd — Metingen in de batchflow netter uitgelijnd op mobiel
+
+- Het invulblok voor een meting (SG, temperatuur, pH) stond op een smal scherm
+  rommelig door elkaar: het tempveld zakte weg onder de andere velden en de
+  knop **Meting toevoegen** kwam naast het pH-veld te staan. De drie velden
+  staan nu in drie gelijke kolommen met de labels op één lijn, de HA-sensorknop
+  hangt netjes onder het tempveld en de knop staat op volle breedte eronder.
+  Vanaf tabletbreedte blijft de bestaande flexrij met vaste veldbreedtes.
+- De sectie heet in beide fases voortaan gewoon **Metingen** — bij vergisten
+  heette hij nog "SG-metingen" en bij conditioneren "Snelle meting".
+
+---
+
 ## [1.11.67] — 2026-07-27
 
 ### Opgelost — Lege meetwaarde belandde als 0 in de fermentatiegrafiek
