@@ -36,7 +36,7 @@ import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
 import { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { openSessieVoorBatch, magAfvullingRegistreren } from '../utils/afvulsessie'
-import { metingWaarde } from '../utils/metingen'
+import { metingWaarde, metingenMetFg } from '../utils/metingen'
 
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
@@ -1103,6 +1103,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       patch.platogehalte = String(Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og) * 10) / 10)
     }
     updateBatch(patch)
+    // De FG ís een SG-meting: leg hem meteen vast in de metingenreeks, zodat de
+    // grafiek en de stabiliteitstoets hem meenemen en je hetzelfde getal niet
+    // twee keer hoeft in te tikken.
+    if (key === 'FG') syncFgMeting(typeof val === 'number' && val > 0 ? val : null)
+  }
+
+  // Houdt de van de FG afgeleide meting (bron: 'fg') synchroon met het veld.
+  const syncFgMeting = (fg: number | null) => {
+    if (!selB) return
+    const now = new Date()
+    const tijd = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    setGistMetingen((prev: any[]) => metingenMetFg(prev || [], {
+      batchId: selB.id, fg, datum: tod(), tijd, nieuwId: newId(prev || []),
+    }))
   }
 
   // ABV definitief markeren/vrijgeven — zelfde gedrag en log als BatchesPage.
@@ -3371,12 +3385,24 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
         {/* ── Vergisten: FG-meting als sluitstuk (volle breedte, onderaan) ──── */}
         {faseStatus === 'Vergisten' && (() => {
-          const fgDone = !!clMap.fg?.done && !!clMap.fg_stabiel?.done
+          // De stap is afgevinkt zodra de FG is ingevuld. De stabiliteitstoets
+          // is een aparte, zichtbare controle (eigen checklistpunt + regel
+          // hieronder) en niet langer een verborgen extra eis op deze stap.
+          const fgIngevuld = !!clMap.fg?.done
+          const stabiel = !!clMap.fg_stabiel?.done
+          const detail = [
+            clMap.fg?.detail,
+            fgIngevuld ? t(stabiel ? 'flow_fg_stabiel_badge' : 'flow_fg_nog_niet_stabiel') : null,
+          ].filter(Boolean).join(' · ')
           return (
-            <FlowStap title={t('flow_stap_fg')} done={fgDone} detail={clMap.fg?.detail} {...so('fg', fgDone)}>
+            <FlowStap title={t('flow_stap_fg')} done={fgIngevuld} detail={detail || undefined}
+              {...so('fg', fgIngevuld && stabiel)}>
               {renderFaseVelden('Vergisten')}
-              <div className={`text-xs mt-1 ${clMap.fg_stabiel?.done ? 'text-green-600' : 'text-gray-400'}`}>
-                {clMap.fg_stabiel?.done ? t('flow_fg_stabiel_klaar') : t('flow_fg_stabiel_hint')}
+              <div className="space-y-0.5">
+                <div className={`text-xs ${stabiel ? 'text-green-600' : 'text-gray-500'}`}>
+                  {stabiel ? t('flow_fg_stabiel_klaar') : t('flow_fg_stabiel_hint')}
+                </div>
+                <div className="text-xs text-gray-400">{t('flow_fg_auto_meting')}</div>
               </div>
             </FlowStap>
           )

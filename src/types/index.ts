@@ -1008,6 +1008,9 @@ export interface GistMeting {
   temp?: number
   opmerking?: string
   auto?: boolean
+  // 'fg' = afgeleid van het FG-veld in de vergistingsfase (zie
+  // utils/metingen.ts → metingenMetFg); blijft synchroon met dat veld.
+  bron?: 'fg'
 }
 
 // Carbonisatie-sessie per batch. Meerdere sessies per batch mogelijk (bv.
