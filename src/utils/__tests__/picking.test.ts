@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch, telOpenstaandeBestellingen, bestellingenOmTePicken } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -115,6 +115,52 @@ describe('diagnosePickMatch — tijdelijke diagnose', () => {
     const av = [{ id: 21, batch_id: 99, product_id: 999, artikel_sku: 'XX-1', verpakking_type: '033 fles' }]
     const diag = diagnosePickMatch(av, 'Tripel Phase', '033 fles', 'TAFL033-1', data)
     expect(diag.regels[0].gerelateerd).toBe(false)
+  })
+})
+
+describe('afvullingHoortBijBierNaam — catalogus/voorraadweergave (kassa)', () => {
+  // Twee producten; batch 10 is oorspronkelijk "Blond" (product 1) en is voor
+  // een deel gerebrand naar "Tripel" (product 2). De batch houdt zijn primaire
+  // product_id=1 en naam/biernaam "Blond".
+  const producten = [{ id: 1, naam: 'Blond' }, { id: 2, naam: 'Tripel' }]
+  const bat = [{ id: 10, naam: 'Blond', biernaam: 'Blond', product_id: 1 }]
+
+  it('toont een gerebrande afvulling alleen bij het NIEUWE product, niet bij het oude', () => {
+    const av = { id: 100, batch_id: 10, product_id: 2 }
+    // De bug: dit stuk verscheen vroeger óók onder "Blond" (dubbele voorraad).
+    expect(afvullingHoortBijBierNaam(av, 'Blond', producten, bat)).toBe(false)
+    expect(afvullingHoortBijBierNaam(av, 'Tripel', producten, bat)).toBe(true)
+  })
+
+  it('een afvulling die bij het oude product blijft, toont alleen bij het oude product', () => {
+    const av = { id: 101, batch_id: 10, product_id: 1 }
+    expect(afvullingHoortBijBierNaam(av, 'Blond', producten, bat)).toBe(true)
+    expect(afvullingHoortBijBierNaam(av, 'Tripel', producten, bat)).toBe(false)
+  })
+
+  it('valt zonder product_id terug op batchnaam/biernaam (legacy voorraad)', () => {
+    const av = { id: 102, batch_id: 10 }
+    expect(afvullingHoortBijBierNaam(av, 'Blond', producten, bat)).toBe(true)
+    expect(afvullingHoortBijBierNaam(av, 'Tripel', producten, bat)).toBe(false)
+  })
+
+  it('valt zonder product_id terug op het batch-product_id', () => {
+    const batZonderNaam = [{ id: 10, naam: 'B-24', biernaam: '', product_id: 1 }]
+    const av = { id: 103, batch_id: 10 }
+    expect(afvullingHoortBijBierNaam(av, 'Blond', producten, batZonderNaam)).toBe(true)
+  })
+
+  it('behandelt product_id 0 / lege string als "niet gezet"', () => {
+    expect(afvullingHoortBijBierNaam({ id: 104, batch_id: 10, product_id: 0 }, 'Blond', producten, bat)).toBe(true)
+    expect(afvullingHoortBijBierNaam({ id: 105, batch_id: 10, product_id: '' }, 'Blond', producten, bat)).toBe(true)
+  })
+
+  it('is niet hoofdlettergevoelig op de biernaam', () => {
+    expect(afvullingHoortBijBierNaam({ id: 106, batch_id: 10, product_id: 2 }, 'tripel', producten, bat)).toBe(true)
+  })
+
+  it('geeft false als de batch niet gevonden wordt en er geen product_id is', () => {
+    expect(afvullingHoortBijBierNaam({ id: 107, batch_id: 999 }, 'Blond', producten, bat)).toBe(false)
   })
 })
 

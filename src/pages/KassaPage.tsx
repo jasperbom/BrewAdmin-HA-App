@@ -14,6 +14,7 @@ import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels } from '../utils/centen'
+import { afvullingHoortBijBierNaam } from '../utils/picking'
 
 interface KassaPageProps {
   bat: any[]
@@ -172,7 +173,16 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
   // Afvullingen die bij een catalogus-item horen (SKU eerst, dan bier+verpakking)
   const matchendeAfvullingen = (bierNaam: string, verpakkingType: string, sku?: string | null) => {
-    const filtered = (av || []).filter((a: any) => beschikbaarVoorAfvulling(a) > 0)
+    // Expliciet product_id op een afvulling is autoritatief (rebrand): een
+    // afvulling die aan een ánder product is gekoppeld hoort hier nooit bij —
+    // ook niet via een (stale) SKU-tier. Zo toont de kassa geen dubbele
+    // voorraad onder de oude biernaam nadat een bier is omgehangen/hernoemd.
+    const prodVoorNaam = (producten || []).find((p: any) => p.naam.toLowerCase() === bierNaam.toLowerCase())
+    const filtered = (av || []).filter((a: any) => {
+      if (beschikbaarVoorAfvulling(a) <= 0) return false
+      if (a.product_id) return !!prodVoorNaam && a.product_id === prodVoorNaam.id
+      return true
+    })
     if (sku) {
       const skuMatches = filtered.filter((a: any) => a.artikel_sku === sku)
       if (skuMatches.length > 0) return skuMatches.sort(fefo)
@@ -189,7 +199,6 @@ const KassaPage: React.FC<KassaPageProps> = ({
       }).sort(fefo)
       if (legacy.length > 0) return legacy
     }
-    const prod = (producten || []).find((p: any) => p.naam.toLowerCase() === bierNaam.toLowerCase())
     const vpNamenVoorType = (verpakkingen || [])
       .filter((v: any) => v.type?.toLowerCase() === verpakkingType.toLowerCase())
       .map((v: any) => v.naam?.toLowerCase())
@@ -201,12 +210,10 @@ const KassaPage: React.FC<KassaPageProps> = ({
           || vpNamenVoorType.includes(avpLower)
           || vpNamenVoorType.some((n: string) => avpLower.includes(n) || n.includes(avpLower))
         if (!matchVerpakking) return false
-        const batch = (bat || []).find((b: any) => b.id === a.batch_id)
-        if (!batch) return false
-        if (batch.naam.toLowerCase() === bierNaam.toLowerCase()) return true
-        if (batch.biernaam && batch.biernaam.toLowerCase() === bierNaam.toLowerCase()) return true
-        if (prod && (a.product_id === prod.id || batch.product_id === prod.id)) return true
-        return false
+        // Een gerebrande afvulling hangt onder precies één product (expliciet
+        // product_id); niet meer terugvallen op de oude batchnaam/product zodat
+        // de kassa geen dubbele voorraad toont bij hernoemde/omgehangen bieren.
+        return afvullingHoortBijBierNaam(a, bierNaam, producten || [], bat || [])
       })
       .sort(fefo)
   }
