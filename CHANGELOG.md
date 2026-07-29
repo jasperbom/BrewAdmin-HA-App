@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.70] — 2026-07-29
+
+### Opgelost — kassa toonde dubbele voorraad bij hernoemde/omgehangen bieren
+
+- Als je (een deel van) de voorraad van een afvulling naar een ander product
+  omhing (rebrand), bleef diezelfde voorraad in de kassa óók onder de oude
+  biernaam staan. Het leek daardoor alsof je dubbele voorraad had. De kassa
+  koppelde de afvulling namelijk nog steeds aan het oude product via de
+  batchnaam en het oorspronkelijke product van de batch.
+- De kassa volgt nu dezelfde regel als de Producten-pagina: een afvulling met
+  een expliciet product hoort bij precies dát product. Voorraad die is omgehangen
+  verschijnt alleen nog onder het nieuwe bier — geen dubbeltelling meer. Voorraad
+  zónder gekoppeld product blijft (net als voorheen) op batchnaam matchen.
+
+---
+
 ## [1.11.69] — 2026-07-27
 
 ### Opgelost — FG invullen telde niet mee als meting

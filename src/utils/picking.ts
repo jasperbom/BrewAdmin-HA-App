@@ -130,6 +130,36 @@ export const matchAfvullingenVoorRegel = (
     .sort(fefo)
 }
 
+// Catalogus-/voorraadweergave (POS, Producten): hoort deze afvulling bij het
+// bier met naam `bierNaam`? Anders dan het pícken (fulfillment) is een
+// EXPLICIET `product_id` op de afvulling hier autoritatief: na een rebrand
+// hangt de voorraad onder precies één product en mag hij niet meer via de
+// oude batchnaam/biernaam of het oude batch-product_id terugvallen op het
+// oude product. Zonder deze regel telt gerebrande voorraad dubbel — onder de
+// oude én de nieuwe biernaam (kassa toont schijnbaar dubbele voorraad).
+//
+// Zelfde semantiek als ProductenPage's productStats (`a.product_id === p.id`
+// of, alleen als de afvulling géén product_id draagt, via de batch). Een leeg/
+// nul `product_id` telt als "niet gezet" (afvullen zet 0 bij geen product).
+export const afvullingHoortBijBierNaam = (
+  a: any,
+  bierNaam: string,
+  producten: any[],
+  bat: any[],
+): boolean => {
+  const prod = (producten || []).find((p: any) => lower(p.naam) === lower(bierNaam))
+  if (a && a.product_id) {
+    // Rebrand: expliciet product_id wint. Alleen bij dat product tonen.
+    return !!prod && a.product_id === prod.id
+  }
+  const batch = (bat || []).find((b: any) => b.id === a?.batch_id)
+  if (!batch) return false
+  if (lower(batch.naam) === lower(bierNaam)) return true
+  if (batch.biernaam && lower(batch.biernaam) === lower(bierNaam)) return true
+  if (prod && batch.product_id === prod.id) return true
+  return false
+}
+
 // ── Tijdelijke diagnose (bieren-picken-visibility) ──────────────────────────
 // Legt per afvulling uit waarom hij wél/niet aan een orderregel koppelt. Puur,
 // zodat de UI er alleen een leesbare dump van hoeft te tonen. Bedoeld om de
