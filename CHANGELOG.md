@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.71] — 2026-07-29
+
+### Gewijzigd — kassa houdt voorraad vrij voor open bestellingen en toont AGP-voorraad
+
+- De kassa rekende voorraad die al voor open (nog niet gepickte) bestellingen
+  gereserveerd is nog gewoon mee als verkoopbaar. Daardoor kon je aan de kassa
+  bier aanslaan dat eigenlijk al beloofd was aan een openstaande bestelling. De
+  kassa trekt die zachte reservering nu af — dezelfde regel als de
+  Producten-pagina hanteert (bestellingen met status *nieuw*/*bevestigd*, het
+  nog niet gepickte deel).
+- Daarnaast toont elke productkaart bij een privé-/balieverkoop nu hoeveel er
+  nog in de AGP (accijnsgoederenplaats) staat, als losse inforegel
+  ("+N in AGP"). Die voorraad is niet verkoopbaar aan een privéklant — puur ter
+  info. Bij een zakelijke klant telt de AGP-voorraad gewoon mee in het
+  verkoopbare aantal, dus dan verdwijnt de aparte inforegel.
+
+---
+
 ## [1.11.70] — 2026-07-29
 
 ### Opgelost — kassa toonde dubbele voorraad bij hernoemde/omgehangen bieren

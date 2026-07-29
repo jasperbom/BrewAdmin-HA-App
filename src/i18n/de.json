@@ -2645,6 +2645,8 @@
   "pos_geen_producten": "Keine verkäuflichen Produkte gefunden. Fügen Sie Artikel mit Verkaufspreis unter Produkte hinzu.",
   "pos_voorraad": "auf Lager",
   "pos_geen_voorraad": "nicht vorrätig",
+  "pos_agp_info": "+{n} im AGP",
+  "pos_agp_info_tip": "Noch {n} unter Steueraussetzung im AGP — nicht an Privat-/Thekenkunden verkäuflich, nur zur Info.",
   "pos_bon": "Bon",
   "pos_bon_leeg": "Noch nichts erfasst — tippen Sie auf ein Produkt",
   "pos_vrije_regel": "Freie Position",

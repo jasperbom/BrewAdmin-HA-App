@@ -2645,6 +2645,8 @@
   "pos_geen_producten": "Aucun produit vendable trouvé. Ajoutez des articles avec un prix de vente sous Produits.",
   "pos_voorraad": "en stock",
   "pos_geen_voorraad": "rupture de stock",
+  "pos_agp_info": "+{n} en AGP",
+  "pos_agp_info_tip": "Encore {n} sous suspension de droits en AGP — non vendable à un client particulier/au comptoir, à titre informatif.",
   "pos_bon": "Ticket",
   "pos_bon_leeg": "Rien encore enregistré — appuyez sur un produit",
   "pos_vrije_regel": "Ligne libre",

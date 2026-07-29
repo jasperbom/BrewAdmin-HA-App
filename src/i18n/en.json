@@ -2645,6 +2645,8 @@
   "pos_geen_producten": "No sellable products found. Add articles with a sales price under Products.",
   "pos_voorraad": "in stock",
   "pos_geen_voorraad": "out of stock",
+  "pos_agp_info": "+{n} in AGP",
+  "pos_agp_info_tip": "Still {n} under duty suspension in the AGP — not sellable to a private/counter customer, for info only.",
   "pos_bon": "Receipt",
   "pos_bon_leeg": "Nothing rung up yet — tap a product",
   "pos_vrije_regel": "Custom line",

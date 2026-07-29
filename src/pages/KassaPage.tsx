@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { t } from '../i18n'
 import { newId, volgendFactuurNummer } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
+import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, openBestellingReserveringen, gereserveerdVoorArtikel } from '../utils/calculations'
+import { kassaVoorraadNaReservering } from '../utils/kassa'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -220,6 +221,15 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
   // ── Catalogus: verkoopbare bier+verpakking-combinaties met prijs en voorraad ─
 
+  // Zachte reserveringen uit open bestellingen (status nieuw/bevestigd, nog niet
+  // gepickt). Net als in WooCommerce/ProductenPage telt een binnengekomen
+  // bestelling direct als gereserveerde voorraad: de kassa mag dat deel niet
+  // opnieuw verkopen. De harde picks zitten al in beschikbaarVoorAfvulling.
+  const openReserveringen = useMemo(
+    () => openBestellingReserveringen(bestellingen || [], bestellingPicks || []),
+    [bestellingen, bestellingPicks]
+  )
+
   const artikelVoorKeuze = (biernaam: string, verpakking: string) => {
     const prod = (producten || []).find((p: any) => p.naam === biernaam)
     if (prod) {
@@ -247,11 +257,15 @@ const KassaPage: React.FC<KassaPageProps> = ({
         const art = artikelVoorKeuze(bier, vp)
         const sku = art?.artikelnummer || null
         const afvs = matchendeAfvullingen(bier, vp, sku)
-        let voorraad = 0, buitenAgp = 0
+        let voorraadBruto = 0, buitenAgpBruto = 0
         for (const a of afvs) {
-          voorraad += beschikbaarVoorAfvulling(a)
-          buitenAgp += Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a))
+          voorraadBruto += beschikbaarVoorAfvulling(a)
+          buitenAgpBruto += Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a))
         }
+        // Zachte reservering van open bestellingen aftrekken (nog niet gepickt),
+        // en de netto AGP-voorraad afleiden voor de info-weergave.
+        const gereserveerd = gereserveerdVoorArtikel(openReserveringen, {artikelnummer: sku, biernaam: bier, verpakking_type: vp})
+        const {voorraad, buitenAgp, agp} = kassaVoorraadNaReservering(voorraadBruto, buitenAgpBruto, gereserveerd)
         items.push({
           key: `${bier}|${vp}`,
           bier_naam: bier,
@@ -264,12 +278,13 @@ const KassaPage: React.FC<KassaPageProps> = ({
           btw_pct: art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : 9,
           voorraad,
           buitenAgp,
+          agp,
         })
       }
     }
     return items.sort((a, b) => a.bier_naam.localeCompare(b.bier_naam) || a.verpakking_type.localeCompare(b.verpakking_type))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [av, uit, verplaatsingen, afboekingen, bestellingPicks, bestellingen, producten, productArtikelen, artikelen, verpakkingen, locaties, bat])
+  }, [av, uit, verplaatsingen, afboekingen, bestellingPicks, bestellingen, openReserveringen, producten, productArtikelen, artikelen, verpakkingen, locaties, bat])
 
   const catalogusGefilterd = catalogus.filter((c: any) =>
     !productZoek.trim() ||
@@ -1043,6 +1058,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
                   const uitverkocht = max <= 0
                   const {prijs, prijsType} = prijsVoorItem(item)
                   const prijsToon = toonInclBtw ? rnd2(prijs * (1 + Number(item.btw_pct || 0) / 100)) : prijs
+                  // AGP-voorraad is voor privé/balie niet verkoopbaar — puur ter info tonen.
+                  const agpInfo = isPrive ? Number(item.agp || 0) : 0
                   return (
                     <button key={item.key} onClick={() => addToCart(item)} disabled={uitverkocht}
                       className={`relative text-left rounded-xl border p-3 transition-all duration-150 ${uitverkocht
@@ -1063,6 +1080,12 @@ const KassaPage: React.FC<KassaPageProps> = ({
                           {uitverkocht ? t('pos_geen_voorraad') : `${max} ${t('pos_voorraad')}`}
                         </span>
                       </div>
+                      {agpInfo > 0 && (
+                        <div className="text-[10px] text-gray-400 mt-0.5 text-right"
+                          title={t('pos_agp_info_tip').replace('{n}', String(agpInfo))}>
+                          {t('pos_agp_info').replace('{n}', String(agpInfo))}
+                        </div>
+                      )}
                     </button>
                   )
                 })}

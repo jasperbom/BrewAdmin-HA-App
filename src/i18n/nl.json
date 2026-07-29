@@ -2645,6 +2645,8 @@
   "pos_geen_producten": "Geen verkoopbare producten gevonden. Voeg artikelen met een verkoopprijs toe onder Producten.",
   "pos_voorraad": "op voorraad",
   "pos_geen_voorraad": "geen voorraad",
+  "pos_agp_info": "+{n} in AGP",
+  "pos_agp_info_tip": "Nog {n} onder schorsing in de AGP — niet verkoopbaar aan een privé-/balieklant, alleen ter info.",
   "pos_bon": "Bon",
   "pos_bon_leeg": "Nog niets aangeslagen — tik op een product",
   "pos_vrije_regel": "Vrije regel",
