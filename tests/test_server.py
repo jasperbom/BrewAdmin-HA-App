@@ -162,7 +162,10 @@ class TestAppendOnly:
         richting de NVWA: een opgeslagen registratie mag nooit overschreven
         worden (bijlage A.1). Een correctie is een nieuw record."""
         keys = ('haccp_vrijgaven', 'haccp_sluitcontroles',
-                'haccp_etiketcontroles', 'haccp_afwijkingen')
+                'haccp_etiketcontroles', 'haccp_afwijkingen',
+                # Hoofdstuk 11: een traceeroefening die tegenviel mag niet
+                # achteraf worden bijgesteld.
+                'haccp_trace_oefeningen')
         for key in keys:
             assert key in srv._APPEND_ONLY, key
             srv._write_json(key, [{'id': 1, 'paraaf': {'gebruiker': 'jasper'}}])

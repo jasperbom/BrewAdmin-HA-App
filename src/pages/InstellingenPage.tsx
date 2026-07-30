@@ -1378,6 +1378,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             ['tht_maanden_ongekookt', 'haccp_inst_tht_ongekookt', 1, DEFAULT_HACCP_INST.tht_maanden_ongekookt],
             ['tht_abv_grens_geen', 'haccp_inst_abv_grens', 0.1, DEFAULT_HACCP_INST.tht_abv_grens_geen],
             ['sluitcontrole_interval_min', 'haccp_inst_interval', 1, DEFAULT_HACCP_INST.sluitcontrole_interval_min],
+            ['trace_oefening_maanden', 'haccp_inst_trace_oefening_maanden', 1, DEFAULT_HACCP_INST.trace_oefening_maanden],
+            ['trace_max_duur_minuten', 'haccp_inst_trace_max_duur', 1, DEFAULT_HACCP_INST.trace_max_duur_minuten],
+            ['trace_min_verantwoord_pct', 'haccp_inst_trace_min_verantwoord', 1, DEFAULT_HACCP_INST.trace_min_verantwoord_pct],
           ] as const).map(([veld, labelKey, stap, standaard]) => (
             <div key={veld}>
               <label className="block text-xs font-medium text-gray-500 mb-0.5">{t(labelKey)}</label>

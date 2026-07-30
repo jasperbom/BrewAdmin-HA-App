@@ -20,12 +20,20 @@ export interface Ingredient {
 export interface Lot {
   id: number
   ingredient_id: number
-  lotnr: string
+  // Het lotnummer van de leverancier — de ingang van "één stap terug"
+  // (Verordening (EG) 178/2002 art. 18). Historisch bestaan beide
+  // schrijfwijzen: de inkoopflow schrijft `lotnummer`, oudere/geïmporteerde
+  // records `lotnr`. Lees altijd via `lotNummer()` uit `utils/trace.ts`.
+  lotnummer?: string
+  lotnr?: string
   hoeveelheid: number
   eenheid: string
+  // Idem: de inkoopflow schrijft `aankoop_datum`, oudere records `aankoopdatum`.
+  aankoop_datum?: string
   aankoopdatum?: string
   houdbaarheid?: string
   leverancier?: string
+  factuur_nummer?: string
   prijs_per_eenheid?: number
   beschikbaar?: boolean
   gn_code?: string
@@ -1336,12 +1344,13 @@ export interface CorrigierendeActie {
   ccp_meting_id?: number
   // Herkomst, zodat de rapportage onderscheid kan maken tussen een gewone
   // CCP-meting en de drie kritische beheerspunten.
-  bron?: 'meting' | 'ccp1' | 'ccp2' | 'ccp3' | 'afwijking'
+  bron?: 'meting' | 'ccp1' | 'ccp2' | 'ccp3' | 'afwijking' | 'trace'
   afwijking_id?: number
   sessie_id?: number
   vrijgave_id?: number
   sluitcontrole_id?: number
   etiketcontrole_id?: number
+  trace_oefening_id?: number
 }
 
 export interface WaterkwaliteitTest {
@@ -1589,6 +1598,46 @@ export interface HaccpAfwijking {
   paraaf: Paraaf
 }
 
+// ── Traceerbaarheid en recall (handboek hoofdstuk 11) ───────────────────────
+// Traceerbaarheid is geen zoekfunctie maar een aantoonbaar beheerste
+// procedure: het handboek vraagt om een periodieke traceeroefening waarvan
+// vastligt wanneer hij is gedaan, door wie, welke partij is gevolgd, hoeveel
+// van die partij verantwoord kon worden en wat de conclusie was.
+
+export type TraceRichting = 'vooruit' | 'terug'
+
+// Vastgelegde traceeroefening (mock recall). Append-only: het is bewijs
+// richting de NVWA. Een correctie is een nieuwe registratie met `vervangt_id`.
+export interface TraceOefening {
+  id: number
+  datum: string
+  richting: TraceRichting
+  // Waarop is gezocht: leverancierslotnummer (vooruit) of batch/lotcode (terug).
+  zoekterm: string
+  // Snapshot van de omvang op het moment van de oefening. Bevroren, zodat een
+  // latere uitlevering de historische registratie niet verandert.
+  aantal_batches: number
+  aantal_lots: number
+  aantal_lotcodes: number
+  aantal_afnemers: number
+  lotcodes?: string[]
+  // Massabalans: verantwoorde eenheden ten opzichte van het afgevulde aantal.
+  geproduceerd: number
+  verantwoord: number
+  verantwoord_pct: number
+  // Traceergaten die bij deze oefening zichtbaar waren (i18n-sleutels +
+  // aantallen), zodat achteraf blijkt dat ze bekend waren.
+  gaten?: {code: string; aantal: number}[]
+  // Doorlooptijd van de oefening in minuten — het handboek stelt een
+  // maximum aan hoe lang traceren mag duren.
+  duur_minuten?: number
+  conclusie: string
+  // Openstaande maatregel wanneer de oefening niet volledig was.
+  capa_id?: number
+  vervangt_id?: number
+  paraaf: Paraaf
+}
+
 // Marges en beleid achter de CCP-beoordelingen. Beheer-only: dit zijn de
 // kritische grenzen uit het handboek, geen dagelijkse werkinstellingen.
 export interface HaccpInst {
@@ -1604,6 +1653,14 @@ export interface HaccpInst {
   // Verordening (EU) 1169/2011).
   tht_abv_grens_geen: number
   sluitcontrole_interval_min: number
+  // Traceerbaarheid (hoofdstuk 11): hoe vaak de traceeroefening minimaal
+  // herhaald moet worden, en binnen hoeveel tijd een partij terug te vinden
+  // moet zijn.
+  trace_oefening_maanden: number
+  trace_max_duur_minuten: number
+  // Ondergrens voor de massabalans: hieronder geldt de oefening als niet
+  // geslaagd en hoort er een maatregel bij.
+  trace_min_verantwoord_pct: number
   // Default-markering per ingrediënttype; per ingrediënt overschreven door
   // Ingredient.haccp_toevoeging.
   toevoeging_per_ing_type?: Record<string, ToevoegingSoort>

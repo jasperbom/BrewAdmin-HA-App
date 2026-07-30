@@ -4,6 +4,56 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.73] — 2026-07-30
+
+### Opgelost — Traceerbaarheid vooruit vond nooit iets
+
+- De traceerfunctie zocht op een veld (`lotnr`) dat de app helemaal niet
+  vult: lots die via een inkoopfactuur binnenkomen krijgen `lotnummer`.
+  Zoeken op het lotnummer van je leverancier gaf daardoor **altijd** "geen
+  resultaten", en in de lijst en het recallrapport bleef de lotkolom leeg.
+  Beide schrijfwijzen worden nu gelezen; staat er helemaal geen
+  leverancierslotnummer, dan valt de aanduiding terug op het interne nummer.
+
+### Toegevoegd — Traceerbaarheid & recall volgens hoofdstuk 11
+
+Traceerbaarheid is geen zoekfunctie maar een aantoonbaar beheerste procedure.
+De tab deed tot nu toe alleen het zoeken; de verantwoording eromheen ontbrak.
+
+- **Lotcodes in beide richtingen.** Zoeken op een ingrediëntlot liep vooruit
+  niet verder dan de batch. Bij een terugroepactie heb je dan niets om aan je
+  afnemers door te geven — de code staat immers op de verpakking. Beide
+  richtingen komen nu uit bij dezelfde lotcodes (`L2431-B1`), afnemers en
+  massabalans; dat is precies wat artikel 18 van Verordening (EG) 178/2002
+  met "één stap terug en één stap vooruit" bedoelt.
+- **Massabalans.** Per gevonden partij: afgevuld, geleverd aan bekende
+  afnemers, geleverd zonder afnemer (toonbank), eigen gebruik, afgeboekt,
+  nog op voorraad, geblokkeerd — en het percentage dat daarmee verantwoord
+  is. Wat niet verantwoord is, ligt bij een onbekende afnemer in de handel.
+- **Traceergaten worden gemeld.** Ingrediëntregels zonder lotkoppeling, lots
+  zonder leverancierslotnummer, afvullingen zonder lotcode en uitleveringen
+  zonder afnemer komen als expliciete regel terug. Een rapport dat zijn eigen
+  gaten verzwijgt is gevaarlijker dan geen rapport.
+- **Afnemers met contactgegevens.** De afnemerslijst bevat nu e-mailadres,
+  telefoonnummer en adres uit de klantkaart, samengevoegd per afnemer, met de
+  lotcodes die hij in huis heeft. Eigen gebruik telt niet als afnemer.
+- **Traceeroefening vastleggen.** Een mock recall was tot nu toe alleen een
+  afdruk; er bleef niets van staan. De oefening wordt nu vastgelegd met de
+  bevroren omvang, de massabalans, de gaten, de doorlooptijd, de conclusie en
+  een automatische paraaf. Slaagt hij niet — minder dan 100 % verantwoord,
+  een traceergat of langer dan vier uur — dan komt er een openstaande
+  maatregel bij. De registraties zijn server-side append-only.
+- **Herinnering op het dashboard.** Een kaart toont de laatste oefening en de
+  uiterste datum voor de volgende (standaard jaarlijks); is die verstreken,
+  dan kleurt hij oranje. De inspectie-export heeft er een vierde sectie bij.
+- **Kritische grenzen instelbaar** (beheer-only): interval van de oefening,
+  maximale traceerduur en het minimaal te verantwoorden percentage.
+- Het recallrapport begint nu met de terug te roepen lotcodes en bevat de
+  massabalans, de traceergaten en de contactgegevens van de afnemers.
+- 39 nieuwe tests; 55 vertaalsleutels in alle vijf talen.
+
+---
+
 ## [1.11.72] — 2026-07-30
 
 ### Gewijzigd — Afvulsessie en afvulregistratie zijn één stap

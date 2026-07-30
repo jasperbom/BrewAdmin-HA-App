@@ -39,6 +39,7 @@ BrewAdmin-HA-App/
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
+│   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
 │   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
@@ -130,7 +131,8 @@ De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
 ouderdom, COGS, de Excel-backup-round-trip en de HACCP-beheerspunten
 (risicoclassificatie, stabiliteit, vrijgave-oordeel, sluitcontrole,
-allergenenvergelijking, lotcode en THT).
+allergenenvergelijking, lotcode en THT) en de traceerbaarheid
+(één stap terug/vooruit, massabalans, traceergaten, oefeningstatus).
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
@@ -397,7 +399,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
 | `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket. Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
-| `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole. **Beheer-only** — beleid, geen werkinstelling |
+| `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
+| `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen |
 | `scan_correcties` | array | Handmatige herclassificaties van factuurscan-regels ({tekst, soort}) — sturen volgende scans |
 | `verkoop_facturen` | array | Verkoopfacturen |
@@ -542,7 +545,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
-- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
+- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`, `haccp_trace_oefeningen`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
 - Gebruikers & rollen (ERP 4.2): mutaties worden per rol afgedwongen (`_rol_mag_key` + endpoint-gates in do_GET/do_POST, 403 met `reden: rol` + audit). Nieuwe financiële key? Voeg hem toe aan `_FINANCIELE_KEYS`; nieuwe instellingen-key aan `_BEHEER_KEYS`. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
