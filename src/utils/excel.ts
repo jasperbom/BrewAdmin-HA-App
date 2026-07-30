@@ -145,6 +145,7 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('HACCPSluitcontroles',  data.haccp_sluitcontroles)
     addSheet('HACCPEtiketcontroles', data.haccp_etiketcontroles)
     addSheet('HACCPAfwijkingen',     data.haccp_afwijkingen)
+    addSheet('HACCPTraceOefening',   data.haccp_trace_oefeningen)
     addSheet('Locaties',             data.locaties)
     addSheet('Verplaatsingen',       data.verplaatsingen)
 
@@ -340,6 +341,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         haccp_sluitcontroles:         parse('HACCPSluitcontroles'),
         haccp_etiketcontroles:        parse('HACCPEtiketcontroles'),
         haccp_afwijkingen:            parse('HACCPAfwijkingen'),
+        haccp_trace_oefeningen:       parse('HACCPTraceOefening'),
         locaties:                     parse('Locaties'),
         verplaatsingen:               parse('Verplaatsingen'),
 

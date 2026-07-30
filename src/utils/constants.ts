@@ -374,6 +374,13 @@ export const DEFAULT_HACCP_INST = {
   // Vanaf 10 % vol vervalt de THT-plicht (bijlage X, Verordening 1169/2011).
   tht_abv_grens_geen: 10,
   sluitcontrole_interval_min: 30,
+  // Traceerbaarheid (hoofdstuk 11): de oefening wordt jaarlijks herhaald en
+  // een partij moet binnen vier uur terug te vinden zijn — de termijn die de
+  // NVWA bij een terugroepactie aanhoudt. 100 % verantwoord is de norm:
+  // elke niet-teruggevonden verpakking is er één die in de handel blijft.
+  trace_oefening_maanden: 12,
+  trace_max_duur_minuten: 240,
+  trace_min_verantwoord_pct: 100,
   toevoeging_per_ing_type: {} as Record<string, string>,
   omkeerproef_verplicht_types: ['blik'],
 }

@@ -1090,7 +1090,7 @@ _KEY_TYPES = {
         'haccp_capa', 'haccp_waterkwaliteit', 'haccp_ongedierte',
         'haccp_opleidingen',
         'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
-        'haccp_etiketcontroles', 'haccp_afwijkingen',
+        'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
         'locaties', 'verplaatsingen', 'btw_tarieven',
         'ing_types', 'kosten_soorten', 'gn_codes',
     )},
@@ -1145,11 +1145,16 @@ def _payload_geldig(key: str, parsed) -> bool:
 # een nieuwe registratie die via `vervangt_id` naar de oude verwijst.
 # `afvul_sessies` staat er bewust NIET bij: een sessie wordt na het starten
 # afgesloten (eindtijd + status), dus die muteert per definitie.
+#
+# `haccp_trace_oefeningen` valt onder dezelfde regel (handboek hoofdstuk 11):
+# een vastgelegde traceeroefening toont aan dát er geoefend is en met welke
+# uitkomst. Een oefening die tegenviel mag nooit achteraf worden bijgesteld —
+# een correctie is een nieuwe registratie met `vervangt_id`.
 
 _APPEND_ONLY = (
     'journaal',
     'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles',
-    'haccp_afwijkingen',
+    'haccp_afwijkingen', 'haccp_trace_oefeningen',
 )
 
 

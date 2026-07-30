@@ -9,6 +9,8 @@ import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
+import TraceTab from '../components/haccp/TraceTab'
+import { oefeningStatus, geldigeOefeningen, oefeningenNieuwsteEerst } from '../utils/trace'
 
 type Tab = 'dashboard'|'schoonmaak'|'tankreiniging'|'ccp'|'kritisch'|'allergenen'|'traceerbaarheid'|'capa'|'water'|'ongedierte'|'opleidingen'
 
@@ -87,7 +89,7 @@ function HACCPPage(props: any) {
 }
 
 // Placeholder sub-components - will be filled in
-function DashTab({schoonmaakTaken, schoonmaakLog, ccpMetingen, capa, ing, waterkwaliteit, ongedierte, opleidingen, bat, av, vrijgaven, sessies, afwijkingen, setTab}: any) {
+function DashTab({schoonmaakTaken, schoonmaakLog, ccpMetingen, capa, ing, waterkwaliteit, ongedierte, opleidingen, bat, av, vrijgaven, sessies, afwijkingen, traceOefeningen, haccpInst, setTab}: any) {
   const today = new Date(); today.setHours(0,0,0,0)
   const mAgo = (d:string,days:number) => { const dt=new Date(d); dt.setHours(0,0,0,0); return (today.getTime()-dt.getTime())/86400000 > days }
   const freqDays: Record<string,number> = {dagelijks:1,wekelijks:7,maandelijks:30,per_batch:30,anders:30}
@@ -125,6 +127,9 @@ function DashTab({schoonmaakTaken, schoonmaakLog, ccpMetingen, capa, ing, waterk
   const openSessies = (sessies||[]).filter((x:any)=>x.status==='open').length
   const geblokkeerd = (av||[]).filter((a:any)=>a.geblokkeerd).length
   const afwMaand = (afwijkingen||[]).filter((a:any)=>(a.datum||'').slice(0,7)===maand).length
+  // Traceerbaarheid is pas aantoonbaar als de oefening periodiek herhaald is
+  // (handboek hoofdstuk 11) — daarom staat de vervaldatum op het dashboard.
+  const traceStatus = oefeningStatus(traceOefeningen||[], haccpInst, today)
 
   const Card = ({label,value,color,sub,onClick}:{label:string,value:string|number,color:string,sub?:string,onClick?:()=>void}) => (
     <div onClick={onClick} className={`rounded-xl border-l-4 p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition-shadow ${color}`}>
@@ -154,6 +159,10 @@ function DashTab({schoonmaakTaken, schoonmaakLog, ccpMetingen, capa, ing, waterk
       <Card label={t('haccp_dash_allergenen')} value={`${ingMetAll}/${ingTot}`} color={ingTot&&!ingMetAll?'border-orange-500':'border-green-500'} sub={t('haccp_dash_ingevuld')} onClick={()=>setTab('allergenen')} />
       <Card label={t('haccp_dash_water')} value={lastWater?fmtD(lastWater.datum):'-'} color={waterOud?'border-orange-500':'border-green-500'} sub={lastWater?t('haccp_dash_laatste_test'):t('haccp_dash_geen_tests')} onClick={()=>setTab('water')} />
       <Card label={t('haccp_dash_ongedierte')} value={lastOngd?fmtD(lastOngd.datum):'-'} color={ongdOud?'border-orange-500':'border-green-500'} sub={lastOngd?t('haccp_dash_laatste_controle'):t('haccp_dash_geen_controles')} onClick={()=>setTab('ongedierte')} />
+      <Card label={t('haccp_dash_trace')} value={traceStatus.laatste?fmtD(traceStatus.laatste.datum):'-'}
+        color={traceStatus.verlopen?'border-orange-500':'border-green-500'}
+        sub={traceStatus.verlopen?t('haccp_trace_oefening_verlopen'):t('haccp_trace_oefening_volgende').split('{d}').join(fmtD(traceStatus.volgende_voor||''))}
+        onClick={()=>setTab('traceerbaarheid')} />
       <Card label={t('haccp_dash_opleidingen')} value={verlopen} color={verlopen?'border-red-500':'border-green-500'} sub={verlopen?t('haccp_dash_verlopen'):t('haccp_dash_actueel')} onClick={()=>setTab('opleidingen')} />
     </div>
   )
@@ -771,7 +780,7 @@ function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, a
 // hun sluit- en etiketcontroles, en de afwijkingen. Read-only — registreren
 // gebeurt in de batchflow, op het moment dat de handeling plaatsvindt.
 function KritischTab({bat, av, producten, vrijgaven, sessies, sluitcontroles,
-                      etiketcontroles, afwijkingen, breweryDetails}: any) {
+                      etiketcontroles, afwijkingen, traceOefeningen, breweryDetails}: any) {
   const {useState, useMemo} = React
   const [sub, setSub] = useState<'vrijgaven'|'sessies'|'afwijkingen'>('vrijgaven')
   const [fVan, setFVan] = useState('')
@@ -797,6 +806,12 @@ function KritischTab({bat, av, producten, vrijgaven, sessies, sluitcontroles,
     .filter((a:any)=>inPeriode(a.datum))
     .slice().sort((a:any,b:any)=>String(b.datum||'').localeCompare(String(a.datum||''))),
     [afwijkingen, fVan, fTot])
+
+  // De traceeroefeningen horen bij dezelfde bewijslast: bij een controle is de
+  // vraag of aantoonbaar is dát er periodiek getraceerd is (hoofdstuk 11).
+  const oefeningen = useMemo(() => oefeningenNieuwsteEerst(
+    geldigeOefeningen(traceOefeningen||[]).filter((o:any)=>inPeriode(o.datum))),
+    [traceOefeningen, fVan, fTot])
 
   // Inspectie-export: alles van de gekozen periode in één afdruk. Bij een
   // controle is de vraag niet of de brouwer weet hoe het moet, maar of
@@ -834,6 +849,15 @@ function KritischTab({bat, av, producten, vrijgaven, sessies, sluitcontroles,
       <td>${esc(a.blokkade_omschrijving)}</td>
       <td>${esc(a.onderbouwing)}</td>
       <td>${esc(a.paraaf?.gebruiker||'')}</td></tr>`).join('')
+    const rijenOef = oefeningen.map((o:any)=>`<tr>
+      <td>${esc(fmtD(o.datum))}</td>
+      <td>${esc(t(o.richting==='vooruit'?'haccp_trace_richting_vooruit':'haccp_trace_richting_terug'))}</td>
+      <td>${esc(o.zoekterm)}</td>
+      <td>${esc((o.lotcodes||[]).join(', '))}</td>
+      <td class="${o.verantwoord_pct>=100?'ok':'nok'}">${esc(o.verantwoord)}/${esc(o.geproduceerd)} (${esc(o.verantwoord_pct)}%)</td>
+      <td>${o.duur_minuten?esc(o.duur_minuten):'—'}</td>
+      <td>${esc(o.conclusie)}</td>
+      <td>${esc(o.paraaf?.gebruiker||'')}</td></tr>`).join('')
     w.document.write(`<html><head><title>${esc(t('haccp_rap_titel'))}</title><style>
       body{font-family:sans-serif;padding:24px;color:#222}
       h1{font-size:18px;margin:0 0 4px} h2{font-size:14px;margin:18px 0 6px}
@@ -852,6 +876,8 @@ function KritischTab({bat, av, producten, vrijgaven, sessies, sluitcontroles,
       ${sess.length?`<table><tr><th>${esc(t('haccp_sessie_lotcode'))}</th><th>Batch</th><th>${esc(t('haccp_sessie_gestart'))}</th><th>${esc(t('haccp_sessie_afgesloten'))}</th><th>${esc(t('haccp_sessie_tht'))}</th><th>${esc(t('haccp_ccp2_titel'))}</th><th>${esc(t('haccp_ccp3_titel'))}</th><th>${esc(t('haccp_rap_status'))}</th></tr>${rijenSess}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_tab_afwijkingen'))}</h2>
       ${afw.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>${esc(t('haccp_rap_bron'))}</th><th>Batch</th><th>${esc(t('haccp_afw_geblokkeerd_omdat'))}</th><th>${esc(t('haccp_afw_onderbouwing'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenAfw}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
+      <h2>${esc(t('haccp_trace_oefening_titel'))}</h2>
+      ${oefeningen.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>${esc(t('haccp_rap_bron'))}</th><th>${esc(t('haccp_trace_zoekterm'))}</th><th>${esc(t('haccp_trace_lotcodes'))}</th><th>${esc(t('haccp_trace_balans_verantwoord'))}</th><th>${esc(t('haccp_trace_oefening_duur'))}</th><th>${esc(t('haccp_trace_oefening_conclusie'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenOef}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
     </body></html>`)
     w.document.close()
     setTimeout(()=>w.print(), 400)
@@ -965,134 +991,6 @@ function KritischTab({bat, av, producten, vrijgaven, sessies, sluitcontroles,
   )
 }
 
-function TraceTab({lots, bat, bi, av, uit, ing, sessies}: any) {
-  const {useState, useMemo} = React
-  const [mode, setMode] = useState<'forward'|'backward'>('forward')
-  const [q, setQ] = useState('')
-  const [results, setResults] = useState<any>(null)
-
-  const traceForward = () => {
-    if(!q.trim()) return
-    const matchedLots = (lots||[]).filter((l:any)=>(l.lotnr||'').toLowerCase().includes(q.toLowerCase()))
-    if(!matchedLots.length) { setResults({empty:true}); return }
-    const lotIds = new Set(matchedLots.map((l:any)=>l.id))
-    const ingIds = new Set(matchedLots.map((l:any)=>l.ingredient_id))
-    const matchedBi = (bi||[]).filter((b:any)=>lotIds.has(b.lot_id) || lotIds.has(Number(b.lot_id)))
-    const batchIds = new Set(matchedBi.map((b:any)=>b.batch_id))
-    const matchedBat = (bat||[]).filter((b:any)=>batchIds.has(b.id))
-    const matchedAv = (av||[]).filter((a:any)=>batchIds.has(a.batch_id))
-    const avIds = new Set(matchedAv.map((a:any)=>a.id))
-    const matchedUit = (uit||[]).filter((u:any)=>batchIds.has(u.batch_id) || avIds.has(u.afvulling_id))
-    setResults({lots:matchedLots, batches:matchedBat, afvullingen:matchedAv, uitleveringen:matchedUit})
-  }
-
-  const traceBackward = () => {
-    if(!q.trim()) return
-    const zoek = q.trim().toLowerCase()
-    // Bij een recall heb je een verpakking in handen met een lotcode erop
-    // (L2431-B1). Die moet dus net zo goed als ingang werken als de batchnaam.
-    const matchedSessies = (sessies||[]).filter((x:any)=>(x.lotcode||'').toLowerCase().includes(zoek))
-    const viaLotcode = new Set(matchedSessies.map((x:any)=>x.batch_id))
-    const matchedBat = (bat||[]).filter((b:any)=>
-      viaLotcode.has(b.id)
-      || (b.naam||'').toLowerCase().includes(zoek)
-      || (b.batch_nummer||'').toLowerCase().includes(zoek)
-      || String(b.id)===q.trim())
-    if(!matchedBat.length) { setResults({empty:true}); return }
-    const batchIds = new Set(matchedBat.map((b:any)=>b.id))
-    const matchedBi = (bi||[]).filter((b:any)=>batchIds.has(b.batch_id))
-    const lotIds = new Set(matchedBi.map((b:any)=>b.lot_id).filter(Boolean))
-    const matchedLots = (lots||[]).filter((l:any)=>lotIds.has(l.id) || lotIds.has(String(l.id)))
-    const leveranciers = [...new Set(matchedLots.map((l:any)=>l.leverancier).filter(Boolean))]
-    // Alleen de sessies die bij de gevonden batches horen; zoek je op één
-    // lotcode, dan blijft de omvang beperkt tot die ene afvulsessie.
-    const eigenSessies = matchedSessies.length
-      ? matchedSessies
-      : (sessies||[]).filter((x:any)=>batchIds.has(x.batch_id))
-    const sessieIds = new Set(eigenSessies.map((x:any)=>x.id))
-    const matchedAv = (av||[]).filter((a:any)=>
-      matchedSessies.length ? sessieIds.has(a.sessie_id) : batchIds.has(a.batch_id))
-    const avIds = new Set(matchedAv.map((a:any)=>a.id))
-    const matchedUit = (uit||[]).filter((u:any)=>avIds.has(u.afvulling_id)
-      || (!matchedSessies.length && batchIds.has(u.batch_id)))
-    setResults({batches:matchedBat, lots:matchedLots, leveranciers,
-                sessies:eigenSessies, afvullingen:matchedAv, uitleveringen:matchedUit})
-  }
-
-  const doSearch = () => mode==='forward' ? traceForward() : traceBackward()
-
-  const printRecall = () => {
-    if(!results || results.empty) return
-    const w = window.open('','_blank')
-    if(!w) return
-    const html = `<html><head><title>${t('haccp_trace_mock_recall_titel')}</title><style>body{font-family:sans-serif;padding:20px}table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px}th{background:#f5f5f5}h1{font-size:18px}h2{font-size:14px;margin-top:16px}</style></head><body>
-    <h1>${t('haccp_trace_mock_recall_titel')}</h1><p>${new Date().toLocaleString()}</p>
-    ${results.lots?.length?`<h2>${t('haccp_trace_lots')}</h2><table><tr><th>Lot</th><th>${t('nav_ingredienten')}</th><th>Leverancier</th></tr>${results.lots.map((l:any)=>`<tr><td>${l.lotnr}</td><td>${(ing||[]).find((i:any)=>i.id===l.ingredient_id)?.naam||''}</td><td>${l.leverancier||''}</td></tr>`).join('')}</table>`:''}
-    ${results.batches?.length?`<h2>${t('haccp_trace_batches')}</h2><table><tr><th>Batch</th><th>Status</th><th>Datum</th></tr>${results.batches.map((b:any)=>`<tr><td>${b.naam}</td><td>${b.status}</td><td>${b.datum||''}</td></tr>`).join('')}</table>`:''}
-    ${results.sessies?.length?`<h2>${t('haccp_sessie_titel')}</h2><table><tr><th>${t('haccp_sessie_lotcode')}</th><th>${t('lbl_datum')}</th><th>${t('haccp_sessie_tht')}</th></tr>${results.sessies.map((x:any)=>`<tr><td>${x.lotcode||''}</td><td>${String(x.start||'').slice(0,10)}</td><td>${x.tht||''}</td></tr>`).join('')}</table>`:''}
-    ${results.afvullingen?.length?`<h2>${t('haccp_trace_afvullingen')}</h2><table><tr><th>Verpakking</th><th>Aantal</th><th>THT</th></tr>${results.afvullingen.map((a:any)=>`<tr><td>${a.verpakking_naam||''}</td><td>${a.aantal}</td><td>${a.tht||''}</td></tr>`).join('')}</table>`:''}
-    ${results.uitleveringen?.length?`<h2>${t('haccp_trace_klanten')}</h2><table><tr><th>Bestemming</th><th>Datum</th><th>Aantal</th></tr>${results.uitleveringen.map((u:any)=>`<tr><td>${u.bestemming_naam||''}</td><td>${u.datum||''}</td><td>${u.aantal}</td></tr>`).join('')}</table>`:''}
-    </body></html>`
-    w.document.write(html); w.document.close(); w.print()
-  }
-
-  return (
-    <div>
-      <SectionHeader title={t('haccp_trace_titel')} />
-      <div className="bg-white rounded-b-lg shadow-sm p-4">
-        <div className="flex gap-2 mb-3">
-          <button onClick={()=>{setMode('forward');setResults(null)}} className={`px-3 py-1 rounded text-xs font-medium ${mode==='forward'?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>{t('haccp_trace_forward')}</button>
-          <button onClick={()=>{setMode('backward');setResults(null)}} className={`px-3 py-1 rounded text-xs font-medium ${mode==='backward'?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>{t('haccp_trace_backward')}</button>
-        </div>
-        <div className="flex gap-2 mb-4">
-          <SearchInput value={q} onChange={setQ} placeholder={mode==='forward'?t('haccp_trace_lotnr'):t('haccp_trace_batch_of_lotcode')} cls="flex-1" onKeyDown={e=>e.key==='Enter'&&doSearch()} />
-          <Btn s="sm" onClick={doSearch}>{t('haccp_trace_zoek')}</Btn>
-        </div>
-
-        {results?.empty && <p className="text-sm text-gray-500 italic">{t('haccp_trace_geen_resultaat')}</p>}
-        {results && !results.empty && (
-          <div className="space-y-4">
-            {results.lots?.length>0 && <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{mode==='forward'?t('haccp_trace_lots'):t('haccp_trace_lots')}</h4>
-              <div className="space-y-1">{results.lots.map((l:any)=>(
-                <div key={l.id} className="text-sm bg-gray-50 rounded p-2">
-                  <span className="font-mono font-medium">{l.lotnr}</span>
-                  <span className="text-gray-500 ml-2">{(ing||[]).find((i:any)=>i.id===l.ingredient_id)?.naam||''}</span>
-                  <span className="text-gray-400 ml-2">{l.leverancier||''}</span>
-                </div>
-              ))}</div>
-            </div>}
-            {results.batches?.length>0 && <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_trace_batches')}</h4>
-              <div className="space-y-1">{results.batches.map((b:any)=>(
-                <div key={b.id} className="text-sm bg-gray-50 rounded p-2">{b.naam} <span className="text-gray-500">({b.status})</span></div>
-              ))}</div>
-            </div>}
-            {results.afvullingen?.length>0 && <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_trace_afvullingen')}</h4>
-              <div className="space-y-1">{results.afvullingen.map((a:any)=>(
-                <div key={a.id} className="text-sm bg-gray-50 rounded p-2">{a.verpakking_naam} x{a.aantal} <span className="text-gray-400">THT: {a.tht||'-'}</span></div>
-              ))}</div>
-            </div>}
-            {results.uitleveringen?.length>0 && <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_trace_klanten')}</h4>
-              <div className="space-y-1">{results.uitleveringen.map((u:any)=>(
-                <div key={u.id} className="text-sm bg-gray-50 rounded p-2">{u.bestemming_naam||'?'} <span className="text-gray-500">{fmtD(u.datum)} x{u.aantal}</span></div>
-              ))}</div>
-            </div>}
-            {results.leveranciers?.length>0 && <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_trace_leveranciers')}</h4>
-              <div className="space-y-1">{results.leveranciers.map((l:string,i:number)=>(
-                <div key={i} className="text-sm bg-gray-50 rounded p-2">{l}</div>
-              ))}</div>
-            </div>}
-            <Btn s="sm" v="secondary" onClick={printRecall}>{t('haccp_trace_mock_recall')}</Btn>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 function CAPATab({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
   const {useState} = React
   const [fStatus, setFStatus] = useState('')
