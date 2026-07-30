@@ -107,14 +107,37 @@ export const berekenTht = (
 
 // ── Blokkades rond de sessie ────────────────────────────────────────────────
 
+/** Alle lopende sessies van een batch. Eén tank gaat vaak in twee verpakkingen
+ *  tegelijk de deur uit (fust én fles); elk verpakkingstype heeft zijn eigen
+ *  sluitcontrole en dus zijn eigen sessie met eigen lotcode. Ze lopen daarom
+ *  naast elkaar in plaats van na elkaar. */
+export const openSessiesVoorBatch = (
+  sessies: AfvulSessie[],
+  batchId: number
+): AfvulSessie[] =>
+  (sessies || []).filter(s => s.batch_id === batchId && s.status === 'open')
+
 export const openSessieVoorBatch = (
   sessies: AfvulSessie[],
   batchId: number
-): AfvulSessie | null =>
-  (sessies || []).find(s => s.batch_id === batchId && s.status === 'open') || null
+): AfvulSessie | null => openSessiesVoorBatch(sessies, batchId)[0] || null
+
+/** De sessie waarin nú geregistreerd wordt: de gekozen sessie zolang die
+ *  openstaat, anders de eerst lopende. Zo blijft er altijd een sessie
+ *  geselecteerd, ook nadat de gekozen sessie is afgesloten. */
+export const actieveSessie = (
+  sessies: AfvulSessie[],
+  batchId: number,
+  actiefId?: number | null
+): AfvulSessie | null => {
+  const open = openSessiesVoorBatch(sessies, batchId)
+  return open.find(s => s.id === actiefId) || open[0] || null
+}
 
 /** Een sessie kan niet gestart worden zonder vrijgave (CCP 1) en zonder
- *  bevestigde reiniging en desinfectie van de afvuller. */
+ *  bevestigde reiniging en desinfectie van de afvuller. Per verpakkingstype
+ *  loopt er hooguit één sessie: twee open sessies op hetzelfde type maken
+ *  onnavolgbaar bij welke lotcode een sluitcontrole hoort. */
 export const magSessieStarten = (
   batchId: number,
   vrijgaven: HaccpVrijgave[],
@@ -127,9 +150,9 @@ export const magSessieStarten = (
   }
   if (!invoer.verpakking_id) {
     redenen.push({code: 'geen_verpakking', i18nKey: 'haccp_blok_geen_verpakking'})
-  }
-  if (openSessieVoorBatch(sessies, batchId)) {
-    redenen.push({code: 'sessie_al_open', i18nKey: 'haccp_blok_sessie_al_open'})
+  } else if (openSessiesVoorBatch(sessies, batchId)
+      .some(s => Number(s.verpakking_id) === Number(invoer.verpakking_id))) {
+    redenen.push({code: 'verpakking_al_open', i18nKey: 'haccp_blok_verpakking_al_open'})
   }
   return blokkade(redenen)
 }
