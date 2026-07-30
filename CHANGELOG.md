@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.75] — 2026-07-30
+
+### Opgelost — Twee verpakkingstypen tegelijk afvullen op de batchpagina
+
+- Een afvulsessie draagt één verpakkingstype (de sluitcontrole hoort bij dat
+  type), maar er kon per batch slechts **één** sessie tegelijk openstaan. Wie
+  dezelfde tank in fust én blik afvulde moest de eerste sessie eerst helemaal
+  afsluiten — inclusief eindcontrole en etiketcontrole — voordat het tweede
+  formaat aan de beurt was. In de praktijk staat de canner naast de fustvuller
+  en loopt dat door elkaar; het tweede verpakkingstype kon dus feitelijk niet
+  geregistreerd worden.
+- **Nu:** per verpakkingstype loopt een eigen sessie, en die sessies staan
+  naast elkaar open. Boven het afvulblok staat een rij met de lopende sessies
+  (lotcode + verpakking + aantal registraties); de gekozen sessie bepaalt het
+  afvulformulier, de lotcode, de THT en de CCP 2-/CCP 3-panelen. Met
+  **Andere verpakking afvullen** start je er eentje bij.
+- Geblokkeerd blijft alleen wat niet herleidbaar is: een **tweede open sessie
+  op hetzelfde verpakkingstype**. Elk verpakkingstype houdt zo zijn eigen
+  lotcode en zijn eigen sluitcontroles.
+- Bij het wisselen van sessie beginnen de controleformulieren weer bij de
+  **startcontrole**, zodat de nieuwe sessie niet per ongeluk als halfuur-
+  controle wordt vastgelegd (en het afvullen daar geblokkeerd blijft).
+- De stap **Afvullen** is pas afgerond als álle sessies van de batch afgesloten
+  zijn; de checklist toont de lotcodes van alle lopende sessies.
+
 ## [1.11.74] — 2026-07-30
 
 ### Opgelost — Traceerbaarheid vond de afnemer van webshop- en handmatige orders niet

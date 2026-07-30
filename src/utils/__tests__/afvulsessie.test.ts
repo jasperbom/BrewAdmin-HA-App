@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   volgendSessieNr, lotcodeVoorSessie, lotcodeIsUniek, thtKlasseVoorBatch,
   thtMaanden, datumPlusMaanden, berekenTht, openSessieVoorBatch,
-  magSessieStarten, magAfvullingRegistreren, vrijgegevenBatches,
+  openSessiesVoorBatch, actieveSessie, magSessieStarten,
+  magAfvullingRegistreren, vrijgegevenBatches,
 } from '../afvulsessie'
 
 const codes = (r: {redenen: Array<{code: string}>}) => r.redenen.map(x => x.code)
@@ -12,9 +13,10 @@ const vrijgave = (id: number, batch_id: number, oordeel: any = 'vrijgegeven') =>
   ({id, batch_id, oordeel, datum: '2026-07-24',
     paraaf: paraaf('2026-07-24T10:00:00Z')}) as any
 
-const sessie = (id: number, batch_id: number, sessie_nr: number, status: any = 'open') =>
+const sessie = (id: number, batch_id: number, sessie_nr: number, status: any = 'open',
+                verpakking_id = 3) =>
   ({id, batch_id, sessie_nr, status, lotcode: `L${batch_id}-B${sessie_nr}`,
-    vrijgave_id: 1, start: '2026-07-25T09:00:00Z', reiniging_bevestigd: true,
+    vrijgave_id: 1, verpakking_id, start: '2026-07-25T09:00:00Z', reiniging_bevestigd: true,
     start_paraaf: paraaf('2026-07-25T09:00:00Z')}) as any
 
 const geen = {ongekookt: [], gepasteuriseerd: []}
@@ -134,9 +136,16 @@ describe('magSessieStarten', () => {
     expect(codes(r)).toContain('geen_verpakking')
   })
 
-  it('blokkeert een tweede sessie zolang er nog een openstaat', () => {
-    const r = magSessieStarten(1, [vrijgave(1, 1)], geldig, [sessie(1, 1, 1)])
-    expect(codes(r)).toContain('sessie_al_open')
+  it('blokkeert een tweede sessie op dezelfde verpakking', () => {
+    const r = magSessieStarten(1, [vrijgave(1, 1)], geldig, [sessie(1, 1, 1, 'open', 3)])
+    expect(codes(r)).toContain('verpakking_al_open')
+  })
+
+  it('staat een sessie op een ander verpakkingstype ernaast toe', () => {
+    // Fust én fles uit dezelfde tank: twee sessies, twee lotcodes, elk met een
+    // eigen sluitcontrole.
+    const r = magSessieStarten(1, [vrijgave(1, 1)], geldig, [sessie(1, 1, 1, 'open', 7)])
+    expect(r.toegestaan).toBe(true)
   })
 
   it('staat een nieuwe sessie toe zodra de vorige is afgesloten', () => {
@@ -188,6 +197,21 @@ describe('hulpfuncties', () => {
     const lijst = [sessie(1, 1, 1, 'afgesloten'), sessie(2, 1, 2)]
     expect(openSessieVoorBatch(lijst, 1)?.id).toBe(2)
     expect(openSessieVoorBatch(lijst, 9)).toBeNull()
+  })
+
+  it('geeft alle lopende sessies van een batch', () => {
+    const lijst = [sessie(1, 1, 1, 'open', 3), sessie(2, 1, 2, 'open', 7),
+                   sessie(3, 1, 3, 'afgesloten'), sessie(4, 2, 1)]
+    expect(openSessiesVoorBatch(lijst, 1).map(s => s.id)).toEqual([1, 2])
+  })
+
+  it('kiest de gevraagde sessie en valt terug op de eerst lopende', () => {
+    const lijst = [sessie(1, 1, 1, 'open', 3), sessie(2, 1, 2, 'open', 7)]
+    expect(actieveSessie(lijst, 1, 2)?.id).toBe(2)
+    expect(actieveSessie(lijst, 1, null)?.id).toBe(1)
+    // Een afgesloten of onbekende keuze valt terug in plaats van leeg te blijven.
+    expect(actieveSessie(lijst, 1, 99)?.id).toBe(1)
+    expect(actieveSessie([sessie(1, 1, 1, 'afgesloten')], 1, 1)).toBeNull()
   })
 
   it('filtert batches op een geldige vrijgave', () => {

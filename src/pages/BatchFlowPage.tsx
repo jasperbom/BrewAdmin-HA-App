@@ -35,7 +35,7 @@ import VrijgaveSectie from '../components/batch/VrijgaveSectie'
 import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
-import { openSessieVoorBatch, magAfvullingRegistreren } from '../utils/afvulsessie'
+import { actieveSessie, magAfvullingRegistreren } from '../utils/afvulsessie'
 import { metingWaarde, metingenMetFg } from '../utils/metingen'
 
 interface BatchFlowPageProps {
@@ -395,6 +395,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Afvullen
   const emptyAvF = {product_id: '', verpakking_id: '', verpakking_type: '', inhoud_per_eenheid: '', hoeveelheid: '', datum: tod(), tht: '', gn_code: ''}
   const [avF, setAvF] = useState<any>(emptyAvF)
+  // Er kunnen meerdere afvulsessies tegelijk openstaan (één per verpakkings-
+  // type); dit is de sessie waarin nu geregistreerd wordt. Null = de eerst
+  // lopende sessie.
+  const [actieveSessieId, setActieveSessieId] = useState<number | null>(null)
   const [nieuwProductNaam, setNieuwProductNaam] = useState('')
   const [toonNieuwProduct, setToonNieuwProduct] = useState(false)
   // SKU-toevoegen-formulier bij een afvulling (productArtikelen), overgenomen
@@ -421,6 +425,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setNotitiesOpen(false)
     setMoveTankTarget('')
     setAvF(emptyAvF)
+    setActieveSessieId(null)
   }
   // Binnenkomen via de 'stap gereed'-banner (of andere navigatie): open direct
   // de betreffende batch op zijn actieve fase.
@@ -469,11 +474,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const selB = bat.find((b: any) => b.id === sel) || null
   const huidigeFase = selB ? faseIndex(selB.status) : 0
 
-  // De open afvulsessie bepaalt de verpakking: één sessie = één verpakkings-
+  // De actieve afvulsessie bepaalt de verpakking: één sessie = één verpakkings-
   // type, want de sluitcontrole (omkeerproef, rolinstelling) hoort bij dat ene
   // type. Het formulier volgt de sessie dus in plaats van hem opnieuw te
-  // vragen — net als bij de THT.
-  const openAvSessie = selB ? openSessieVoorBatch(afvulSessies || [], selB.id) : null
+  // vragen — net als bij de THT. Wil je twee verpakkingen tegelijk afvullen,
+  // dan lopen er twee sessies naast elkaar en wisselt deze keuze ertussen.
+  const openAvSessie = selB ? actieveSessie(afvulSessies || [], selB.id, actieveSessieId) : null
   React.useEffect(() => {
     if (!openAvSessie?.verpakking_id) return
     const vp = (verpakkingen || []).find((v: any) => v.id === Number(openAvSessie.verpakking_id))
@@ -902,14 +908,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       const afgevuldL = mijnAv.reduce((s: number, a: any) =>
         s + (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0), 0)
       const mijnSessies = (afvulSessies || []).filter((s: any) => s.batch_id === selB.id)
-      const openSessie = mijnSessies.find((s: any) => s.status === 'open')
+      // Meerdere verpakkingstypes = meerdere sessies naast elkaar; de stap is
+      // pas klaar als ze allemaal afgesloten zijn.
+      const openSessiesB = mijnSessies.filter((s: any) => s.status === 'open')
       const afgeslotenSessies = mijnSessies.filter((s: any) => s.status === 'afgesloten')
       const items: (ChecklistItem | null)[] = [
         takenItem('taken', 'flow_chk_hygiene'),
         {key: 'sessie', label: t('haccp_chk_sessie'),
-         done: mijnSessies.length > 0 && !openSessie,
-         detail: openSessie
-           ? `${openSessie.lotcode} · ${t('haccp_sessie_open')}`
+         done: mijnSessies.length > 0 && openSessiesB.length === 0,
+         detail: openSessiesB.length
+           ? `${openSessiesB.map((s: any) => s.lotcode).join(', ')} · ${t('haccp_sessie_open')}`
            : afgeslotenSessies.length
              ? afgeslotenSessies.map((s: any) => s.lotcode).join(', ')
              : undefined},
@@ -1529,7 +1537,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     // Verpakken gebeurt binnen een sessie: die draagt de lotcode en de
     // sluitcontroles waaraan de verpakkingen straks te koppelen zijn.
-    const sessie = openSessieVoorBatch(afvulSessies || [], selB.id)
+    const sessie = actieveSessie(afvulSessies || [], selB.id, actieveSessieId)
     const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [])
     if (!sessieBlok.toegestaan && !legacy) {
       alert(`${t('haccp_sessie_titel')}\n\n${blokkadeSamenvatting(sessieBlok)}`)
@@ -2689,7 +2697,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       : null
     // Legacy-batches (afgevuld vóór dit systeem) mogen zonder sessie door.
     const legacy = isLegacyBatch(selB.id, av || [])
-    const sessie = openSessieVoorBatch(afvulSessies || [], selB.id)
+    const sessie = actieveSessie(afvulSessies || [], selB.id, actieveSessieId)
     const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [])
     const geblokkeerd = !sessieBlok.toegestaan && !legacy
     return (
@@ -3408,6 +3416,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
                     haccpInstellingen={haccpInst} whoami={whoami}
                     auditLog={auditLog} setAuditLog={setAuditLog}
+                    actieveSessieId={actieveSessieId} setActieveSessieId={setActieveSessieId}
                     registratie={renderAfvulForm()}
                     registratieZonderSessie={isLegacyBatch(selB.id, av || [])}
                     lijst={renderAfvulLijst()}

@@ -19,13 +19,18 @@ import {
 } from '../../utils/haccp'
 import {
   volgendSessieNr, lotcodeVoorSessie, lotcodeIsUniek, thtKlasseVoorBatch,
-  berekenTht, openSessieVoorBatch, magSessieStarten,
+  berekenTht, openSessiesVoorBatch, actieveSessie, magSessieStarten,
 } from '../../utils/afvulsessie'
 import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
 // eigen lotcode (L2431-B1), zodat bij een sluitprobleem alleen die sessie
 // teruggehaald hoeft te worden in plaats van de hele batch.
+//
+// Eén sessie dekt één verpakkingstype (de sluitcontrole hoort bij dat type),
+// maar een tank gaat vaak in twee formaten tegelijk de deur uit. Er kunnen
+// daarom meerdere sessies naast elkaar openstaan — één per verpakking — en de
+// gebruiker kiest met de sessieknoppen in welke hij op dat moment afvult.
 //
 // Sessie en afvulregistratie zitten in één blok: het is één handeling aan de
 // afvuller. De registratie (`registratie`) verschijnt daarom binnen de lopende
@@ -55,6 +60,10 @@ interface Props {
   whoami: {gebruiker?: string; rol?: string} | null
   auditLog: any[]
   setAuditLog: (fn: any) => void
+  /** Sessie waarin op dit moment geregistreerd wordt; de pagina houdt de keuze
+   *  bij omdat het afvulformulier (`registratie`) er ook op stuurt. */
+  actieveSessieId?: number | null
+  setActieveSessieId?: (id: number | null) => void
   /** Afvulregistratieformulier — alleen zinvol binnen een lopende sessie. */
   registratie?: React.ReactNode
   /** Toon de registratie óók zonder open sessie. Alleen voor legacy-batches:
@@ -87,8 +96,11 @@ const Paneel: React.FC<{
 
 const AfvulSessieSectie: React.FC<Props> = (p) => {
   const inst = haccpInst(p.haccpInstellingen)
-  const sessie = openSessieVoorBatch(p.sessies || [], p.batch?.id)
+  const openSessies = openSessiesVoorBatch(p.sessies || [], p.batch?.id)
+  const sessie = actieveSessie(p.sessies || [], p.batch?.id, p.actieveSessieId)
   const eigenSessies = (p.sessies || []).filter(s => s.batch_id === p.batch?.id)
+  // Startformulier voor een extra verpakking naast de lopende sessie(s).
+  const [startOpen, setStartOpen] = React.useState(false)
   const [nu, setNu] = React.useState(() => new Date())
   const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any} | null>(null)
   // Tijdens het afvullen is de registratie de handeling die je herhaalt; de
@@ -164,6 +176,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       entiteit: 'AfvulSessie', entiteit_id: id, actie: 'aangemaakt',
       omschrijving: `${p.batch?.naam || ''}: ${code}`,
     })
+    // De net gestarte sessie is de sessie waarin je gaat afvullen.
+    p.setActieveSessieId?.(id)
+    setStartOpen(false)
     setStart({verpakking_id: '', reiniging_bevestigd: false, tht_handmatig: false, tht: '', tht_reden: ''})
   }
 
@@ -288,6 +303,19 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
                  alcohol_ok: false, opmerking: ''}))
   }
 
+  // Wisselen van sessie betekent wisselen van afvuller-opstelling: de controle-
+  // formulieren beginnen dan opnieuw bij de startcontrole. Zonder deze reset
+  // zou de tweede sessie een 'halfuur'-controle krijgen (de stand die na de
+  // vorige registratie bleef staan) en blijft het afvullen daar geblokkeerd.
+  React.useEffect(() => {
+    if (!sessie) return
+    setSc({aanleiding: 'start', visueel_ok: true, omkeerproef_ok: true,
+           rolinstelling: '', opmerking: ''})
+    setEc(e => ({...e, aanleiding: 'start', etiket_versie: '', lotcode_ok: false,
+                 tht_ok: false, alcohol_ok: false, opmerking: ''}))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessie?.id])
+
   // ── Sessie afsluiten ─────────────────────────────────────────────────────
   const afsluitBlok = sessie
     ? magSessieAfsluiten(sessie, eigenControles, eigenEtiket, p.capa || [])
@@ -335,27 +363,21 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{children}</div>
   )
 
-  // ── Geen open sessie: startformulier ─────────────────────────────────────
-  if (!sessie) {
-    return (
-      <div className="space-y-3">
-        {eigenSessies.length > 0 && (
-          <div className="space-y-1">
-            {eigenSessies.map(s => (
-              <div key={s.id} className="text-xs text-gray-500 flex items-center gap-2">
-                <span className="font-mono font-medium text-gray-700">{s.lotcode}</span>
-                <span>{t(`haccp_sessie_${s.status}`)}</span>
-                {s.tht && <span>· {t('haccp_sessie_tht')} {fmtD(s.tht)}</span>}
-                <span>· {(p.av || []).filter((a: any) => a.sessie_id === s.id).length} {t('haccp_sessie_verpakkingen')}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
+  // ── Startformulier ───────────────────────────────────────────────────────
+  // Zowel voor de eerste sessie als voor een extra verpakking naast een sessie
+  // die al loopt; het formulier is in beide gevallen hetzelfde.
+  const startFormulier = (
+    <div className="space-y-3">
         <div className="grid sm:grid-cols-2 gap-2">
+          {/* Een verpakking waarvoor al een sessie loopt is herkenbaar in de
+              lijst; kiezen kan wel, maar de blokkade legt uit waarom niet. */}
           <Sel label={t('lbl_packaging')} value={String(start.verpakking_id)}
             onChange={(v: string) => setStart({...start, verpakking_id: v})}
-            opts={[{v: '', l: '—'}, ...(p.verpakkingen || []).map((v: any) => ({v: String(v.id), l: v.naam}))]} />
+            opts={[{v: '', l: '—'}, ...(p.verpakkingen || []).map((v: any) => ({
+              v: String(v.id),
+              l: openSessies.some(s => Number(s.verpakking_id) === Number(v.id))
+                ? `${v.naam} — ${t('haccp_sessie_open')}` : v.naam,
+            }))]} />
           <div>
             <Label>{t('haccp_sessie_lotcode')}</Label>
             <div className="font-mono text-sm text-gray-800 py-2">
@@ -406,6 +428,57 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
             {t('haccp_sessie_starten')}
           </Btn>
         </div>
+    </div>
+  )
+
+  // ── Sessiekiezer ─────────────────────────────────────────────────────────
+  // Loopt er meer dan één sessie (fust én fles), dan bepaalt deze rij in welke
+  // sessie het afvulformulier en de CCP-panelen hieronder werken.
+  const sessieKnoppen = (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {openSessies.map(s => {
+        const actief = s.id === sessie?.id
+        return (
+          <button key={s.id} type="button" onClick={() => p.setActieveSessieId?.(s.id)}
+            title={actief ? t('haccp_sessie_actief') : t('haccp_sessie_kies')}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+              actief ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+            style={actief ? {background: 'var(--t-accent)'} : undefined}>
+            <span className="font-mono">{s.lotcode}</span>
+            <span className="ml-1 opacity-80">
+              {s.verpakking_naam || s.verpakking_type || t('lbl_onbekend')}
+              {' · '}
+              {(p.av || []).filter((a: any) => a.sessie_id === s.id).length}×
+            </span>
+          </button>
+        )
+      })}
+      <button type="button" onClick={() => setStartOpen(o => !o)}
+        className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 transition-colors">
+        {startOpen ? t('btn_cancel') : `+ ${t('haccp_sessie_extra_verpakking')}`}
+      </button>
+    </div>
+  )
+
+  // ── Geen open sessie: alleen het startformulier ──────────────────────────
+  if (!sessie) {
+    return (
+      <div className="space-y-3">
+        {eigenSessies.length > 0 && (
+          <div className="space-y-1">
+            {eigenSessies.map(s => (
+              <div key={s.id} className="text-xs text-gray-500 flex items-center gap-2">
+                <span className="font-mono font-medium text-gray-700">{s.lotcode}</span>
+                <span>{t(`haccp_sessie_${s.status}`)}</span>
+                {s.verpakking_naam && <span>· {s.verpakking_naam}</span>}
+                {s.tht && <span>· {t('haccp_sessie_tht')} {fmtD(s.tht)}</span>}
+                <span>· {(p.av || []).filter((a: any) => a.sessie_id === s.id).length} {t('haccp_sessie_verpakkingen')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {startFormulier}
 
         {/* Afvullen kan alleen binnen een sessie; alleen legacy-batches vullen
             hier nog los af. Verder staat er alleen wat al geregistreerd is. */}
@@ -430,11 +503,23 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
 
   return (
     <div className="space-y-4">
+      {/* Welke sessie is actief, en een extra verpakking erbij starten */}
+      {sessieKnoppen}
+      {startOpen && (
+        <div className="rounded-lg border border-dashed border-gray-300 p-3 space-y-2">
+          <span className="text-sm font-semibold text-gray-700">{t('haccp_sessie_extra_verpakking')}</span>
+          {startFormulier}
+        </div>
+      )}
+
       {/* Kop met lotcode */}
       <div className="rounded-lg border-l-4 border-green-500 bg-white shadow-sm p-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="font-mono font-bold text-gray-800">{sessie.lotcode}</span>
+            <span className="text-xs font-medium text-gray-600">
+              {sessie.verpakking_naam || sessie.verpakking_type || t('lbl_onbekend')}
+            </span>
             <span className="text-xs text-gray-500">
               {t('haccp_sessie_gestart')} {new Date(sessie.start).toLocaleTimeString()}
             </span>
