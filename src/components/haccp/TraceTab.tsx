@@ -43,6 +43,7 @@ const esc = (v: unknown): string => String(v ?? '')
 const TraceTab: React.FC<any> = (p) => {
   const {useState, useMemo} = React
   const {lots, ing, bat, bi, av, uit, sessies, afboekingen, klanten,
+    bestellingen, bestellingPicks,
     capa, setCapa, traceOefeningen, setTraceOefeningen, haccpInst, whoami,
     auditLog, setAuditLog} = p
 
@@ -57,7 +58,9 @@ const TraceTab: React.FC<any> = (p) => {
   const data = useMemo(() => ({
     lots, ingredienten: ing, batches: bat, batchIngredienten: bi,
     afvullingen: av, sessies, uitleveringen: uit, afboekingen, klanten,
-  }), [lots, ing, bat, bi, av, uit, sessies, afboekingen, klanten])
+    bestellingen, bestellingPicks,
+  }), [lots, ing, bat, bi, av, uit, sessies, afboekingen, klanten,
+    bestellingen, bestellingPicks])
 
   const status = useMemo(
     () => oefeningStatus(traceOefeningen || [], haccpInst),

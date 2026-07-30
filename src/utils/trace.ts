@@ -21,9 +21,9 @@
 // Net als `haccp.ts` geeft deze module i18n-sleutels terug, geen tekst.
 
 import type {
-  Afboeking, Afvulling, AfvulSessie, Batch, BatchIngredient,
-  CorrigierendeActie, HaccpInst, Ingredient, Klant, Lot, TraceOefening,
-  TraceRichting, Uitlevering,
+  Afboeking, Afvulling, AfvulSessie, Batch, BatchIngredient, Bestelling,
+  BestellingPick, CorrigierendeActie, HaccpInst, Ingredient, Klant, Lot,
+  TraceOefening, TraceRichting, Uitlevering,
 } from '../types'
 import { haccpInst } from './haccp'
 
@@ -115,14 +115,74 @@ const legeBalans = (): Massabalans => ({
   verantwoord: 0, verantwoord_pct: 0,
 })
 
-/** Een uitlevering telt als traceerbaar zodra er een afnemer bij staat. */
-export const heeftAfnemer = (u: Partial<Uitlevering> | null | undefined): boolean =>
-  !!String(u?.bestemming_naam || '').trim()
+// ── Wie kreeg deze uitlevering? ─────────────────────────────────────────────
+// `bestemming_naam` op de uitlevering is de bron van waarheid, maar orders
+// vulden dat veld lang niet: het kwam uit een invulveld dat bij een
+// binnenlandse levering niet eens getoond werd. Bij zo'n uitlevering is de
+// afnemer wél bekend — via de pickregel hangt hij aan de bestelling. Die
+// omweg wordt hier gemaakt, zodat ook al geboekte leveringen (webshop en
+// handmatige orders) bij een terugroepactie gewoon terugkomen.
+
+export interface AfnemerGegevens {
+  naam: string
+  adres?: string
+  email?: string
+  telefoon?: string
+}
+
+const uitBestelling = (b: Bestelling | undefined): AfnemerGegevens | null => {
+  if (!b) return null
+  const naam = String(b.klant_bedrijf || b.klant_naam || '').trim()
+  if (!naam) return null
+  return {
+    naam,
+    adres: [b.klant_straat, b.klant_huisnummer, b.klant_postcode, b.klant_stad]
+      .filter(Boolean).join(' ') || undefined,
+    email: b.klant_email || undefined,
+  }
+}
+
+export const afnemerVanUitlevering = (
+  u: Partial<Uitlevering> | null | undefined,
+  picks: BestellingPick[] = [],
+  bestellingen: Bestelling[] = []
+): AfnemerGegevens | null => {
+  const direct = String(u?.bestemming_naam || '').trim()
+  if (direct) {
+    return {
+      naam: direct,
+      adres: String(u?.bestemming_adres || '') || undefined,
+    }
+  }
+  if (u?.id == null) return null
+  const pick = (picks || []).find(p =>
+    p.uitlevering_id === u.id || (p.uitlevering_ids || []).includes(u.id as number))
+  if (!pick) return null
+  return uitBestelling((bestellingen || []).find(b => b.id === pick.bestelling_id))
+}
+
+/** Resolver-functie voor één traceeractie, zodat de pickregels maar één keer
+ *  doorzocht hoeven te worden. */
+export type AfnemerResolver = (u: Uitlevering) => AfnemerGegevens | null
+
+export const maakAfnemerResolver = (
+  picks: BestellingPick[] = [],
+  bestellingen: Bestelling[] = []
+): AfnemerResolver => u => afnemerVanUitlevering(u, picks, bestellingen)
+
+/** Een uitlevering telt als traceerbaar zodra er een afnemer bij te vinden is. */
+export const heeftAfnemer = (
+  u: Partial<Uitlevering> | null | undefined,
+  resolver?: AfnemerResolver
+): boolean => resolver
+  ? !!resolver(u as Uitlevering)?.naam
+  : !!String(u?.bestemming_naam || '').trim()
 
 export const berekenMassabalans = (
   afvullingen: Afvulling[],
   uitleveringen: Uitlevering[],
-  afboekingen: Afboeking[]
+  afboekingen: Afboeking[],
+  resolver?: AfnemerResolver
 ): Massabalans => {
   const b = legeBalans()
   const avIds = new Set((afvullingen || []).map(a => a.id))
@@ -134,7 +194,7 @@ export const berekenMassabalans = (
     if (!avIds.has(u.afvulling_id as number)) continue
     const n = Number(u.aantal || 0) || 0
     if (u.type_uitlevering === 'intern') b.intern += n
-    else if (heeftAfnemer(u)) b.uitgeleverd_traceerbaar += n
+    else if (heeftAfnemer(u, resolver)) b.uitgeleverd_traceerbaar += n
     else b.uitgeleverd_anoniem += n
   }
   for (const a of (afboekingen || [])) {
@@ -164,6 +224,9 @@ export interface TraceData {
   uitleveringen?: Uitlevering[]
   afboekingen?: Afboeking[]
   klanten?: Klant[]
+  // Nodig om de afnemer van een uitlevering uit een order te herleiden.
+  bestellingPicks?: BestellingPick[]
+  bestellingen?: Bestelling[]
 }
 
 /** Eén afnemer met alles wat nodig is om hem te bellen, plus de lotcodes die
@@ -225,24 +288,29 @@ const lotRegel = (lot: Lot, ingredienten: Ingredient[]): TraceLotRegel => ({
 const bouwAfnemers = (
   uitleveringen: Uitlevering[],
   lotcodePerAfvulling: Map<number, string>,
-  klanten: Klant[]
+  klanten: Klant[],
+  resolver: AfnemerResolver
 ): TraceAfnemer[] => {
   const perNaam = new Map<string, TraceAfnemer>()
   for (const u of uitleveringen) {
     // Eigen gebruik is geen afnemer: bij een terugroepactie hoeft de brouwer
     // zichzelf niet te bellen, en het zou de afnemerslijst vervuilen.
     if (u.type_uitlevering === 'intern') continue
-    const naam = String(u.bestemming_naam || '').trim()
+    const gevonden = resolver(u)
+    const naam = gevonden?.naam || ''
     if (!naam) continue
-    const klant = (klanten || []).find(k => norm(k.naam) === norm(naam))
+    const klant = (klanten || []).find(k =>
+      norm(k.naam) === norm(naam) || (!!k.email && norm(k.email) === norm(gevonden?.email)))
     const bestaand = perNaam.get(norm(naam))
     const code = lotcodePerAfvulling.get(u.afvulling_id as number) || ''
     const regel: TraceAfnemer = bestaand || {
       naam,
-      adres: String(u.bestemming_adres || '')
-        || [klant?.straat, klant?.postcode, klant?.stad].filter(Boolean).join(' '),
+      // Klantkaart eerst: die is actueel, het adres op de uitlevering is een
+      // momentopname van toen.
+      adres: [klant?.straat, klant?.postcode, klant?.stad].filter(Boolean).join(' ')
+        || gevonden?.adres || '',
       land: u.bestemming_land || undefined,
-      email: klant?.email,
+      email: klant?.email || gevonden?.email,
       telefoon: klant?.telefoon,
       aantal: 0,
       laatste_datum: '',
@@ -298,8 +366,9 @@ const bouwResultaat = (
     || (!beperkt && u.afvulling_id == null && batchIds.has(u.batch_id)))
   const afboekingen = (d.afboekingen || []).filter(a => avIds.has(a.afvulling_id))
 
-  const afnemers = bouwAfnemers(uitleveringen, lotcodePerAfvulling, d.klanten || [])
-  const balans = berekenMassabalans(afvullingen, uitleveringen, afboekingen)
+  const resolver = maakAfnemerResolver(d.bestellingPicks || [], d.bestellingen || [])
+  const afnemers = bouwAfnemers(uitleveringen, lotcodePerAfvulling, d.klanten || [], resolver)
+  const balans = berekenMassabalans(afvullingen, uitleveringen, afboekingen, resolver)
 
   // ── Traceergaten binnen deze omvang ──
   const biInScope = (d.batchIngredienten || []).filter(b => batchIds.has(b.batch_id))
@@ -312,7 +381,7 @@ const bouwResultaat = (
   push('lot_zonder_leverancier', lotRegels.filter(r => !r.leverancier).length)
   push('afvulling_zonder_lotcode', afvullingen.filter(a => !lotcodePerAfvulling.get(a.id)).length)
   push('uitlevering_zonder_afnemer',
-    uitleveringen.filter(u => u.type_uitlevering !== 'intern' && !heeftAfnemer(u)).length)
+    uitleveringen.filter(u => u.type_uitlevering !== 'intern' && !heeftAfnemer(u, resolver)).length)
 
   return {
     gevonden: true, richting, zoekterm,

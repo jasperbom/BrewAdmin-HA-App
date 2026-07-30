@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   lotNummer, lotAankoopDatum, lotLabel, heeftAfnemer, berekenMassabalans,
   traceVooruit, traceTerug, traceZoek, geldigeOefeningen, oefeningStatus,
-  beoordeelOefening, oefeningVanResultaat,
+  beoordeelOefening, oefeningVanResultaat, afnemerVanUitlevering,
+  maakAfnemerResolver,
 } from '../trace'
 
 const paraaf = (tijdstip: string) => ({gebruiker: 'jasper', tijdstip, bron: 'whoami' as const})
@@ -284,6 +285,70 @@ describe('trace terug — van lotcode naar leverancier', () => {
       sessies: []}
     const r = traceTerug('Herfstbok', zonder)
     expect(r.gaten.map(g => g.code)).toContain('afvulling_zonder_lotcode')
+  })
+})
+
+// Uitleveringen uit een order kregen historisch geen `bestemming_naam`: dat
+// veld kwam uit een invulveld dat bij een binnenlandse levering niet eens
+// zichtbaar was. De afnemer is dan wél bekend via de pickregel → bestelling.
+describe('afnemer via de pickketen (webshop- en handmatige orders)', () => {
+  const zonderNaam = [
+    {id: 300, batch_id: 1, afvulling_id: 200, aantal: 60, datum: '2026-03-10',
+     bestemming_naam: '', type_uitlevering: 'binnenland'},
+  ] as any[]
+  const picks = [
+    {id: 1, bestelling_id: 900, regel_id: 1, afvulling_id: 200, batch_id: 1,
+     aantal: 60, uitlevering_id: 300},
+  ] as any[]
+  const orders = [
+    {id: 900, status: 'afgerond', datum: '2026-03-10', klant_naam: 'Jan Jansen',
+     klant_bedrijf: 'Café De Kroon', klant_email: 'kroon@example.nl',
+     klant_straat: 'Markt', klant_huisnummer: '1', klant_postcode: '1234 AB',
+     klant_stad: 'Utrecht', regels: [], wc_order_id: 4711},
+  ] as any[]
+  const metOrder = {...data, uitleveringen: zonderNaam, bestellingPicks: picks,
+    bestellingen: orders}
+
+  it('vindt de afnemer die alleen in de bestelling staat', () => {
+    expect(afnemerVanUitlevering(zonderNaam[0], picks, orders)?.naam).toBe('Café De Kroon')
+  })
+
+  it('houdt de bestemming op de uitlevering aan als die er wél staat', () => {
+    const eigen = {...zonderNaam[0], bestemming_naam: 'Afwijkend afleveradres'}
+    expect(afnemerVanUitlevering(eigen, picks, orders)?.naam).toBe('Afwijkend afleveradres')
+  })
+
+  it('geeft niets terug zonder pickregel of zonder order', () => {
+    expect(afnemerVanUitlevering(zonderNaam[0], [], orders)).toBeNull()
+    expect(afnemerVanUitlevering(zonderNaam[0], picks, [])).toBeNull()
+  })
+
+  it('volgt ook een pick die over meerdere locaties gesplitst is', () => {
+    const gesplitst = [{...picks[0], uitlevering_id: 299, uitlevering_ids: [299, 300]}] as any[]
+    expect(afnemerVanUitlevering(zonderNaam[0], gesplitst, orders)?.naam).toBe('Café De Kroon')
+  })
+
+  it('telt zo een levering als traceerbaar in de massabalans', () => {
+    const zonder = berekenMassabalans([afvullingen[0]], zonderNaam, [])
+    expect(zonder.uitgeleverd_anoniem).toBe(60)
+    const met = berekenMassabalans([afvullingen[0]], zonderNaam, [],
+      maakAfnemerResolver(picks, orders))
+    expect(met.uitgeleverd_traceerbaar).toBe(60)
+    expect(met.uitgeleverd_anoniem).toBe(0)
+  })
+
+  it('zet de afnemer in de tracelijst met contactgegevens uit de klantkaart', () => {
+    const r = traceTerug('L2431-B1', metOrder)
+    expect(r.afnemers.map(a => a.naam)).toEqual(['Café De Kroon'])
+    expect(r.afnemers[0].email).toBe('kroon@example.nl')
+    expect(r.afnemers[0].telefoon).toBe('030-1234567')
+    expect(r.gaten.map(g => g.code)).not.toContain('uitlevering_zonder_afnemer')
+  })
+
+  it('meldt hem nog steeds als gat wanneer er geen order achter zit', () => {
+    const r = traceTerug('L2431-B1', {...data, uitleveringen: zonderNaam})
+    expect(r.afnemers).toHaveLength(0)
+    expect(r.gaten.map(g => g.code)).toContain('uitlevering_zonder_afnemer')
   })
 })
 
