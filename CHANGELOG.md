@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.11.67] — 2026-07-25
+## [1.11.72] — 2026-07-30
 
 ### Gewijzigd — Afvulsessie en afvulregistratie zijn één stap
 
@@ -27,6 +27,94 @@ All notable changes to this project are documented here.
   zichtbaar.
 - Opgelost: het label boven de verpakkingskeuze bij het starten van een sessie
   toonde de onvertaalde sleutel `FLOW_AFVULLEN_VERPAKKING`.
+
+---
+
+## [1.11.71] — 2026-07-29
+
+### Gewijzigd — kassa houdt voorraad vrij voor open bestellingen en toont AGP-voorraad
+
+- De kassa rekende voorraad die al voor open (nog niet gepickte) bestellingen
+  gereserveerd is nog gewoon mee als verkoopbaar. Daardoor kon je aan de kassa
+  bier aanslaan dat eigenlijk al beloofd was aan een openstaande bestelling. De
+  kassa trekt die zachte reservering nu af — dezelfde regel als de
+  Producten-pagina hanteert (bestellingen met status *nieuw*/*bevestigd*, het
+  nog niet gepickte deel).
+- Daarnaast toont elke productkaart bij een privé-/balieverkoop nu hoeveel er
+  nog in de AGP (accijnsgoederenplaats) staat, als losse inforegel
+  ("+N in AGP"). Die voorraad is niet verkoopbaar aan een privéklant — puur ter
+  info. Bij een zakelijke klant telt de AGP-voorraad gewoon mee in het
+  verkoopbare aantal, dus dan verdwijnt de aparte inforegel.
+
+---
+
+## [1.11.70] — 2026-07-29
+
+### Opgelost — kassa toonde dubbele voorraad bij hernoemde/omgehangen bieren
+
+- Als je (een deel van) de voorraad van een afvulling naar een ander product
+  omhing (rebrand), bleef diezelfde voorraad in de kassa óók onder de oude
+  biernaam staan. Het leek daardoor alsof je dubbele voorraad had. De kassa
+  koppelde de afvulling namelijk nog steeds aan het oude product via de
+  batchnaam en het oorspronkelijke product van de batch.
+- De kassa volgt nu dezelfde regel als de Producten-pagina: een afvulling met
+  een expliciet product hoort bij precies dát product. Voorraad die is omgehangen
+  verschijnt alleen nog onder het nieuwe bier — geen dubbeltelling meer. Voorraad
+  zónder gekoppeld product blijft (net als voorheen) op batchnaam matchen.
+
+---
+
+## [1.11.69] — 2026-07-27
+
+### Opgelost — FG invullen telde niet mee als meting
+
+- De FG die je in de vergistingsfase invulde bleef buiten de metingenreeks: de
+  grafiek liet hem weg en de stabiliteitstoets (3 metingen binnen 0.001 over
+  minimaal 48 uur) keek er niet naar. Je moest hetzelfde getal dus nóg een keer
+  onder **Metingen** invoeren voordat de fase compleet werd. De FG wordt nu
+  automatisch als SG-meting vastgelegd (`bron: 'fg'`): wijzigen werkt die
+  meting bij, leegmaken haalt hem weg, en stond dezelfde meting vandaag al
+  handmatig in de lijst dan komt er geen dubbel punt bij.
+- De stap **FG-meting** vinkt nu af zodra de FG is ingevuld. De
+  stabiliteitstoets was een verborgen tweede eis op diezelfde stap en is nu een
+  zichtbaar eigen punt: de stapregel toont "SG stabiel" of "nog niet stabiel"
+  en de stap blijft openstaan zolang de vergisting niet stabiel is.
+- De hint onder het FG-veld noemde een niet-bestaande regel ("2 gelijke
+  metingen") en beschrijft nu de echte drempel, plus dat je de FG niet apart
+  hoeft in te voeren.
+- Nieuwe pure helper `metingenMetFg` in `src/utils/metingen.ts` met testdekking.
+
+---
+
+## [1.11.68] — 2026-07-27
+
+### Gewijzigd — Metingen in de batchflow netter uitgelijnd op mobiel
+
+- Het invulblok voor een meting (SG, temperatuur, pH) stond op een smal scherm
+  rommelig door elkaar: het tempveld zakte weg onder de andere velden en de
+  knop **Meting toevoegen** kwam naast het pH-veld te staan. De drie velden
+  staan nu in drie gelijke kolommen met de labels op één lijn, de HA-sensorknop
+  hangt netjes onder het tempveld en de knop staat op volle breedte eronder.
+  Vanaf tabletbreedte blijft de bestaande flexrij met vaste veldbreedtes.
+- De sectie heet in beide fases voortaan gewoon **Metingen** — bij vergisten
+  heette hij nog "SG-metingen" en bij conditioneren "Snelle meting".
+
+---
+
+## [1.11.67] — 2026-07-27
+
+### Opgelost — Lege meetwaarde belandde als 0 in de fermentatiegrafiek
+
+- Een meting in de batchflow waarbij je pH (of temperatuur) leeg liet werd als
+  lege waarde opgeslagen en door de grafiek als **0** getekend: de pH-lijn dook
+  naar de bodem en trok de as-schaal mee. Niet-ingevulde velden worden nu
+  weggelaten en de grafiek toont er een gat in de lijn.
+- De grafiek negeert ook bestaande metingen met zo'n lege waarde, dus reeds
+  opgeslagen metingen worden meteen goed getekend — de tooltip laat die velden
+  weg in plaats van `0` te tonen.
+- Nieuwe pure helper `src/utils/metingen.ts` (`metingWaarde`, `heeftWaarde`,
+  `metingWaarden`) met eigen testdekking als enige waarheidsbron voor
+  "is dit meetveld ingevuld?".
 
 ---
 

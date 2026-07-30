@@ -36,6 +36,7 @@ import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { openSessieVoorBatch, magAfvullingRegistreren } from '../utils/afvulsessie'
+import { metingWaarde, metingenMetFg } from '../utils/metingen'
 
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
@@ -998,14 +999,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const sg = parseFloat(mForm.sg)
     if (isNaN(sg)) return
     const now = new Date()
+    // Niet ingevulde velden blijven undefined (dus afwezig in de opslag) — een
+    // lege string werd elders naar 0 gecoerceerd en dook als meetpunt op in de
+    // fermentatiegrafiek.
     const nieuw = {
       id: newId(gistMetingen || []),
       batch_id: selB.id,
       datum: tod(),
       tijd: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
       sg,
-      ph: mForm.ph !== '' ? parseFloat(mForm.ph) : '',
-      temp: mForm.temp !== '' ? parseFloat(mForm.temp) : '',
+      ph: metingWaarde(mForm.ph) ?? undefined,
+      temp: metingWaarde(mForm.temp) ?? undefined,
       opmerking: '',
     }
     setGistMetingen((prev: any[]) => [...(prev || []), nieuw])
@@ -1114,6 +1118,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       patch.platogehalte = String(Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og) * 10) / 10)
     }
     updateBatch(patch)
+    // De FG ís een SG-meting: leg hem meteen vast in de metingenreeks, zodat de
+    // grafiek en de stabiliteitstoets hem meenemen en je hetzelfde getal niet
+    // twee keer hoeft in te tikken.
+    if (key === 'FG') syncFgMeting(typeof val === 'number' && val > 0 ? val : null)
+  }
+
+  // Houdt de van de FG afgeleide meting (bron: 'fg') synchroon met het veld.
+  const syncFgMeting = (fg: number | null) => {
+    if (!selB) return
+    const now = new Date()
+    const tijd = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    setGistMetingen((prev: any[]) => metingenMetFg(prev || [], {
+      batchId: selB.id, fg, datum: tod(), tijd, nieuwId: newId(prev || []),
+    }))
   }
 
   // ABV definitief markeren/vrijgeven — zelfde gedrag en log als BatchesPage.
@@ -2227,9 +2245,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const sensorTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
     const sensorTemp = typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw) ? sensorTempRaw : null
     const laatsteTemp = (() => {
-      const ms = mijnMetingen.filter((m: any) => m.temp !== '' && m.temp != null && !isNaN(Number(m.temp)))
+      const ms = mijnMetingen.filter((m: any) => metingWaarde(m.temp) != null)
         .sort((a: any, b: any) => (String(b.datum || '') + 'T' + String(b.tijd || '00:00')).localeCompare(String(a.datum || '') + 'T' + String(a.tijd || '00:00')))
-      return ms.length ? Number(ms[0].temp) : null
+      return ms.length ? metingWaarde(ms[0].temp) : null
     })()
     const temp = sensorTemp ?? laatsteTemp
     const pct = (og > 1 && fgDoel != null && huidige != null && og > fgDoel)
@@ -3049,19 +3067,24 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const mSensorRaw = selB && selB.tank != null ? haTankTemps?.[selB.tank] : undefined
     const mSensor = typeof mSensorRaw === 'number' && !isNaN(mSensorRaw) ? mSensorRaw : null
     return (
-    <div className="flex flex-wrap items-end gap-2">
-      <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="w-28" />
-      <div className="flex flex-col">
-        <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder={mSensor != null ? mSensor.toFixed(1) : '19.5'} cls="w-28" />
-        {mSensor != null && (
-          <button type="button" onClick={() => setMForm(f => ({...f, temp: mSensor.toFixed(1)}))}
-            className="mt-1 text-xs hover:underline self-start" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
-            🌡 HA: {mSensor.toFixed(1)}°C
-          </button>
-        )}
+    <div className="space-y-2">
+      {/* Op mobiel drie gelijke kolommen zodat de labels en velden op één lijn
+          staan; vanaf sm weer een flexrij met vaste veldbreedtes. De
+          HA-sensorknop hangt ónder het tempveld en verschuift de rij niet. */}
+      <div className="grid grid-cols-3 gap-2 items-start sm:flex sm:flex-wrap sm:gap-3">
+        <Inp label={t('flow_meting_sg')} value={mForm.sg} onChange={v => setMForm(f => ({...f, sg: v}))} type="number" step="0.001" placeholder="1.012" cls="min-w-0 sm:w-28" />
+        <div className="min-w-0 sm:w-28">
+          <Inp label={t('flow_meting_temp')} value={mForm.temp} onChange={v => setMForm(f => ({...f, temp: v}))} type="number" step="0.1" placeholder={mSensor != null ? mSensor.toFixed(1) : '19.5'} />
+          {mSensor != null && (
+            <button type="button" onClick={() => setMForm(f => ({...f, temp: mSensor.toFixed(1)}))}
+              className="mt-1 text-xs hover:underline block truncate max-w-full text-left" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
+              🌡 HA: {mSensor.toFixed(1)}°C
+            </button>
+          )}
+        </div>
+        <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="min-w-0 sm:w-28" />
       </div>
-      <Inp label={t('flow_meting_ph')} value={mForm.ph} onChange={v => setMForm(f => ({...f, ph: v}))} type="number" step="0.1" placeholder="4.4" cls="w-28" />
-      <Btn s="sm" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
+      <Btn s="sm" cls="w-full sm:w-auto" onClick={addMeting} disabled={mForm.sg === ''}>{t('flow_meting_add')}</Btn>
     </div>
     )
   }
@@ -3335,7 +3358,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 )}
               </div>
             </div>
-            <FlowStap title={t('flow_meting_snel')} optional done={mijnMetingen.length >= 2}
+            <FlowStap title={t('flow_stap_metingen')} optional done={mijnMetingen.length >= 2}
               detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined} {...so('meting', true)}>
               {renderMetingForm()}
               {renderGrafiek()}
@@ -3409,12 +3432,24 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
         {/* ── Vergisten: FG-meting als sluitstuk (volle breedte, onderaan) ──── */}
         {faseStatus === 'Vergisten' && (() => {
-          const fgDone = !!clMap.fg?.done && !!clMap.fg_stabiel?.done
+          // De stap is afgevinkt zodra de FG is ingevuld. De stabiliteitstoets
+          // is een aparte, zichtbare controle (eigen checklistpunt + regel
+          // hieronder) en niet langer een verborgen extra eis op deze stap.
+          const fgIngevuld = !!clMap.fg?.done
+          const stabiel = !!clMap.fg_stabiel?.done
+          const detail = [
+            clMap.fg?.detail,
+            fgIngevuld ? t(stabiel ? 'flow_fg_stabiel_badge' : 'flow_fg_nog_niet_stabiel') : null,
+          ].filter(Boolean).join(' · ')
           return (
-            <FlowStap title={t('flow_stap_fg')} done={fgDone} detail={clMap.fg?.detail} {...so('fg', fgDone)}>
+            <FlowStap title={t('flow_stap_fg')} done={fgIngevuld} detail={detail || undefined}
+              {...so('fg', fgIngevuld && stabiel)}>
               {renderFaseVelden('Vergisten')}
-              <div className={`text-xs mt-1 ${clMap.fg_stabiel?.done ? 'text-green-600' : 'text-gray-400'}`}>
-                {clMap.fg_stabiel?.done ? t('flow_fg_stabiel_klaar') : t('flow_fg_stabiel_hint')}
+              <div className="space-y-0.5">
+                <div className={`text-xs ${stabiel ? 'text-green-600' : 'text-gray-500'}`}>
+                  {stabiel ? t('flow_fg_stabiel_klaar') : t('flow_fg_stabiel_hint')}
+                </div>
+                <div className="text-xs text-gray-400">{t('flow_fg_auto_meting')}</div>
               </div>
             </FlowStap>
           )
