@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.77] — 2026-07-30
+
+### Gewijzigd — De afvulfase is één checklist geworden
+
+- De fase **Afvullen** bestond uit drie stapkaarten met daarin nog eens losse
+  panelen: hygiënelijst, sessieblok met sessiekop, afvulformulier, CCP 2, CCP 3,
+  afvullijst en verliesregistratie — allemaal tegelijk in beeld voor een
+  handeling die neerkomt op "zoveel stuks van dit bier".
+- **Nu:** één checklist met zes gelijkwaardige regels, waarvan er één tegelijk
+  openstaat:
+
+  ```
+  ○ Hygiëne                    0/9
+  ○ Afvulsessie met lotcode    L2431-B1, L2431-B2
+  ✓ Sluitcontrole (CCP 2)      21:17 · volgende over 30 min
+  ○ Etiketcontrole (CCP 3)
+  ✓ Afvullingen geregistreerd  4 — 299,6 L
+  ✓ Tank leeg                  0,0 L
+  ```
+
+- De CCP's zijn dus gewoon regels in dezelfde lijst in plaats van aparte
+  panelen; ze verschijnen zodra er een sessie loopt en tonen in hun regel wat
+  er te melden valt (laatste controle, herinnering, aantal).
+- Zonder eigen keuze staat de regel open die aan de beurt is: draait er een
+  sessie met controles op orde, dan is dat het afvullen zelf — de handeling die
+  je herhaalt. Anders de eerste regel die nog niet af is.
+- De afvulfase staat nu over de volle breedte in plaats van in een kolom van de
+  halve breedte.
+- Niets verandert aan wat er wordt vastgelegd: dezelfde registraties, dezelfde
+  append-only opslag, dezelfde blokkades.
+
 ## [1.11.76] — 2026-07-30
 
 ### Toegevoegd — Vinkje "gecontroleerd" bij de etiketallergenen per product

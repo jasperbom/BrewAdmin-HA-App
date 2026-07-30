@@ -3156,7 +3156,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             eigen vaste tweekoloms-indeling (zie hieronder) en staan hier dus in
             één verticale stroom — hun metingen/grafiek-kaarten krijgen een eigen
             volle-breedte band i.p.v. dwars door een masonry-kolom te snijden. */}
-        <div className={['Brouwen', 'Vergisten', 'Conditioneren'].includes(faseStatus)
+        {/* Afvullen is sinds de checklist één kaart: die hoort over de volle
+            breedte, niet in een masonry-kolom van de halve breedte. */}
+        <div className={['Brouwen', 'Vergisten', 'Conditioneren', 'Afgevuld'].includes(faseStatus)
           ? 'space-y-3'
           : 'lg:columns-2 lg:gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid'}>
 
@@ -3388,47 +3390,30 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         )}
 
         {/* ── Afvullen ─────────────────────────────────────────────────────── */}
+        {/* De hele fase is één checklist: hygiëne, sessie, de twee CCP's, het
+            afvullen zelf en het restvolume staan als gelijkwaardige regels
+            onder elkaar in plaats van als losse stapkaarten met panelen erin. */}
         {faseStatus === 'Afgevuld' && (
-          <>
-            {takenVoorFase('Afgevuld').length > 0 && (
-              <FlowStap title={t('flow_chk_hygiene')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
-                {renderTaken('Afgevuld')}
-              </FlowStap>
-            )}
-            {/* Sessie en registratie zijn één stap: de sessie draagt de lotcode,
-                de verpakking en de THT, en is het anker voor CCP 2 en 3 — het
-                afvullen zelf gebeurt erbinnen. */}
-            {(() => {
-              const afvulDone = !!clMap.sessie?.done && !!clMap.afvulling?.done
-              const detail = [clMap.sessie?.detail, clMap.afvulling?.detail]
-                .filter(Boolean).join(' · ')
-              return (
-                <FlowStap title={t('flow_fase_afvullen')} done={afvulDone}
-                  detail={detail || undefined} {...so('afvullen', afvulDone)}>
-                  <AfvulSessieSectie
-                    batch={selB} bi={bi} ing={ing} av={av} setAv={setAv}
-                    producten={producten} verpakkingen={verpakkingen}
-                    vrijgaven={haccpVrijgaven}
-                    sessies={afvulSessies} setSessies={setAfvulSessies}
-                    sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}
-                    etiketcontroles={haccpEtiketcontroles} setEtiketcontroles={setHaccpEtiketcontroles}
-                    capa={capa} setCapa={setCapa}
-                    afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
-                    haccpInstellingen={haccpInst} whoami={whoami}
-                    auditLog={auditLog} setAuditLog={setAuditLog}
-                    actieveSessieId={actieveSessieId} setActieveSessieId={setActieveSessieId}
-                    registratie={renderAfvulForm()}
-                    registratieZonderSessie={isLegacyBatch(selB.id, av || [])}
-                    lijst={renderAfvulLijst()}
-                  />
-                </FlowStap>
-              )
-            })()}
-            <FlowStap title={t('flow_sectie_verlies')} optional done={!!clMap.restvolume?.done}
-              detail={clMap.restvolume?.detail} {...so('verlies', true)}>
-              {renderVerlies('tankrest')}
-            </FlowStap>
-          </>
+          <AfvulSessieSectie
+            batch={selB} bi={bi} ing={ing} av={av} setAv={setAv}
+            producten={producten} verpakkingen={verpakkingen}
+            vrijgaven={haccpVrijgaven}
+            sessies={afvulSessies} setSessies={setAfvulSessies}
+            sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}
+            etiketcontroles={haccpEtiketcontroles} setEtiketcontroles={setHaccpEtiketcontroles}
+            capa={capa} setCapa={setCapa}
+            afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
+            haccpInstellingen={haccpInst} whoami={whoami}
+            auditLog={auditLog} setAuditLog={setAuditLog}
+            actieveSessieId={actieveSessieId} setActieveSessieId={setActieveSessieId}
+            registratie={renderAfvulForm()}
+            registratieZonderSessie={isLegacyBatch(selB.id, av || [])}
+            lijst={renderAfvulLijst()}
+            taken={takenVoorFase('Afgevuld').length > 0 ? renderTaken('Afgevuld') : null}
+            takenDone={!!clMap.taken?.done} takenDetail={clMap.taken?.detail}
+            verlies={renderVerlies('tankrest')}
+            verliesDone={!!clMap.restvolume?.done} verliesDetail={clMap.restvolume?.detail}
+          />
         )}
 
         {/* ── Gereed: afsluitende taken ────────────────────────────────────── */}

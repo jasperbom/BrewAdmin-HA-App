@@ -71,22 +71,43 @@ interface Props {
   registratieZonderSessie?: boolean
   /** Lijst met geregistreerde afvullingen; altijd zichtbaar. */
   lijst?: React.ReactNode
+  /** Hygiënetaken van de fase — als regel in dezelfde checklist. */
+  taken?: React.ReactNode
+  takenDone?: boolean
+  takenDetail?: React.ReactNode
+  /** Verlies-/restvolumeformulier — als laatste regel in dezelfde checklist. */
+  verlies?: React.ReactNode
+  verliesDone?: boolean
+  verliesDetail?: React.ReactNode
 }
 
-// Inklapbaar deelblok binnen de sessie. Zelfde vormtaal als de FlowStap-kaarten
-// eromheen, zodat de sessie niet als een tweede soort pagina aanvoelt.
-const Paneel: React.FC<{
+type RegelStatus = 'done' | 'open' | 'optioneel'
+
+// Eén regel van de afvulchecklist. De hele fase is één lijst: hygiëne, sessie,
+// de twee CCP's, het afvullen zelf en het restvolume staan als gelijkwaardige
+// regels onder elkaar. Wat je nodig hebt klap je open; de rest is één regel.
+// Zelfde vormtaal als FlowStap op de pagina eromheen.
+const Regel: React.FC<{
   titel: React.ReactNode
-  info?: React.ReactNode
+  status: RegelStatus
+  detail?: React.ReactNode
   open: boolean
   onToggle: () => void
   children: React.ReactNode
-}> = ({titel, info, open, onToggle, children}) => (
-  <div className="rounded-lg border border-gray-200 overflow-hidden">
+}> = ({titel, status, detail, open, onToggle, children}) => (
+  <div>
     <button type="button" onClick={onToggle}
-      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors">
+      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors">
+      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+        status === 'done' ? 'bg-green-100 text-green-700 ring-1 ring-green-200'
+          : status === 'optioneel' ? 'bg-gray-100 text-gray-400'
+          : 'bg-orange-100 text-orange-600 ring-1 ring-orange-200'}`}>
+        {status === 'done' ? '✓' : status === 'optioneel' ? '·' : '○'}
+      </span>
       <span className="text-sm font-semibold text-gray-700 flex-1 min-w-0">{titel}</span>
-      {info}
+      {detail != null && detail !== '' && (
+        <span className="text-xs text-gray-400 flex-shrink-0">{detail}</span>
+      )}
       <span className={`text-gray-300 text-[10px] flex-shrink-0 transition-transform ${
         open ? 'rotate-90' : ''}`}>▶</span>
     </button>
@@ -103,13 +124,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const [startOpen, setStartOpen] = React.useState(false)
   const [nu, setNu] = React.useState(() => new Date())
   const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any} | null>(null)
-  // Tijdens het afvullen is de registratie de handeling die je herhaalt; de
-  // CCP-panelen klappen daarom vanzelf dicht zodra hun startcontrole er staat.
-  // De sleutel bevat het sessie-id, zodat een nieuwe sessie weer opengaat.
-  const [paneelHand, setPaneelHand] = React.useState<Record<string, boolean>>({})
-  const paneelOpen = (id: string, auto: boolean) => paneelHand[id] ?? auto
-  const togglePaneel = (id: string, auto: boolean) =>
-    setPaneelHand(h => ({...h, [id]: !(h[id] ?? auto)}))
+  // Eén regel tegelijk open. Zonder eigen keuze staat de regel open die aan de
+  // beurt is (zie `autoRegel` hieronder); '' betekent: alles dicht.
+  const [openRegel, setOpenRegel] = React.useState<string | null>(null)
 
   // Klok voor de halfuur-herinnering tijdens een lopende sessie.
   React.useEffect(() => {
@@ -460,117 +477,70 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     </div>
   )
 
-  // ── Geen open sessie: alleen het startformulier ──────────────────────────
-  if (!sessie) {
-    return (
-      <div className="space-y-3">
-        {eigenSessies.length > 0 && (
-          <div className="space-y-1">
-            {eigenSessies.map(s => (
-              <div key={s.id} className="text-xs text-gray-500 flex items-center gap-2">
-                <span className="font-mono font-medium text-gray-700">{s.lotcode}</span>
-                <span>{t(`haccp_sessie_${s.status}`)}</span>
-                {s.verpakking_naam && <span>· {s.verpakking_naam}</span>}
-                {s.tht && <span>· {t('haccp_sessie_tht')} {fmtD(s.tht)}</span>}
-                <span>· {(p.av || []).filter((a: any) => a.sessie_id === s.id).length} {t('haccp_sessie_verpakkingen')}</span>
-              </div>
-            ))}
+  // ── Inhoud van de sessieregel ────────────────────────────────────────────
+  const aantalVerpakt = sessie
+    ? (p.av || []).filter((a: any) => a.sessie_id === sessie.id).length : 0
+  const geslotenSessies = eigenSessies.filter(s => s.status !== 'open')
+
+  const sessieInhoud = (
+    <div className="space-y-3">
+      {openSessies.length > 0 && sessieKnoppen}
+
+      {sessie && (
+        <div className="rounded-lg border-l-4 border-green-500 bg-gray-50 p-2.5 space-y-1">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-xs text-gray-500 flex items-baseline gap-2 flex-wrap">
+              <span className="font-mono font-bold text-sm text-gray-800">{sessie.lotcode}</span>
+              <span className="font-medium text-gray-600">
+                {sessie.verpakking_naam || sessie.verpakking_type || t('lbl_onbekend')}
+              </span>
+              <span>{t('haccp_sessie_gestart')} {new Date(sessie.start).toLocaleTimeString()}</span>
+              <span>· {t('haccp_sessie_tht')} {sessie.tht ? fmtD(sessie.tht) : t('haccp_sessie_bewaaradvies_tekst')}</span>
+              {sessie.tht_reden && <span className="text-orange-600">· {sessie.tht_reden}</span>}
+            </div>
+            <div className="flex gap-2">
+              <Btn s="sm" v="ghost" onClick={breekAf}>{t('haccp_sessie_afbreken')}</Btn>
+              <Btn s="sm" disabled={!afsluitBlok.toegestaan} onClick={sluitSessie}>
+                {t('haccp_sessie_afsluiten')}
+              </Btn>
+            </div>
           </div>
-        )}
-
-        {startFormulier}
-
-        {/* Afvullen kan alleen binnen een sessie; alleen legacy-batches vullen
-            hier nog los af. Verder staat er alleen wat al geregistreerd is. */}
-        {p.registratie && p.registratieZonderSessie && (
-          <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-            <span className="text-sm font-semibold text-gray-700">{t('flow_sectie_afvullen')}</span>
-            {p.registratie}
-          </div>
-        )}
-        {p.lijst && <div className="pt-2 border-t border-gray-100">{p.lijst}</div>}
-      </div>
-    )
-  }
-
-  // ── Open sessie ──────────────────────────────────────────────────────────
-  const aantalVerpakt = (p.av || []).filter((a: any) => a.sessie_id === sessie.id).length
-  // Zolang de startcontroles ontbreken staan die panelen open — dat zijn de
-  // stappen die het afvullen op dat moment blokkeren.
-  const ccp2Auto = !eigenControles.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')
-    || !!herinnering?.due
-  const ccp3Auto = eigenEtiket.length === 0
-
-  return (
-    <div className="space-y-4">
-      {/* Welke sessie is actief, en een extra verpakking erbij starten */}
-      {sessieKnoppen}
-      {startOpen && (
-        <div className="rounded-lg border border-dashed border-gray-300 p-3 space-y-2">
-          <span className="text-sm font-semibold text-gray-700">{t('haccp_sessie_extra_verpakking')}</span>
-          {startFormulier}
+          {/* Wat het afsluiten tegenhoudt is pas nieuws als er iets in de sessie
+              zit; direct na het starten is die lijst alleen maar ruis. */}
+          {!afsluitBlok.toegestaan && (aantalVerpakt > 0 || eigenControles.length > 0) && (
+            <BlokkadeKaart blok={afsluitBlok} compact />
+          )}
         </div>
       )}
 
-      {/* Kop met lotcode */}
-      <div className="rounded-lg border-l-4 border-green-500 bg-white shadow-sm p-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="font-mono font-bold text-gray-800">{sessie.lotcode}</span>
-            <span className="text-xs font-medium text-gray-600">
-              {sessie.verpakking_naam || sessie.verpakking_type || t('lbl_onbekend')}
-            </span>
-            <span className="text-xs text-gray-500">
-              {t('haccp_sessie_gestart')} {new Date(sessie.start).toLocaleTimeString()}
-            </span>
-            <span className="text-xs text-gray-500">
-              · {eigenControles.length} {t('haccp_sessie_controles')}
-            </span>
-            <span className="text-xs text-gray-500">
-              · {aantalVerpakt} {t('haccp_sessie_verpakkingen')}
-            </span>
+      {(!openSessies.length || startOpen) && (
+        openSessies.length ? (
+          <div className="rounded-lg border border-dashed border-gray-300 p-3 space-y-2">
+            <span className="text-sm font-semibold text-gray-700">{t('haccp_sessie_extra_verpakking')}</span>
+            {startFormulier}
           </div>
-          <div className="flex gap-2">
-            <Btn s="sm" v="ghost" onClick={breekAf}>{t('haccp_sessie_afbreken')}</Btn>
-            <Btn s="sm" disabled={!afsluitBlok.toegestaan} onClick={sluitSessie}>
-              {t('haccp_sessie_afsluiten')}
-            </Btn>
-          </div>
-        </div>
-        <div className="mt-1 text-xs text-gray-500">
-          {t('haccp_sessie_tht')}: {sessie.tht ? fmtD(sessie.tht) : t('haccp_sessie_bewaaradvies_tekst')}
-          {sessie.tht_reden && <span className="text-orange-600 ml-1">· {sessie.tht_reden}</span>}
-        </div>
-        {/* Wat het afsluiten tegenhoudt is pas nieuws als er iets in de sessie
-            zit; direct na het starten is die lijst alleen maar ruis boven de
-            blokkade van de registratie zelf. */}
-        {!afsluitBlok.toegestaan && (aantalVerpakt > 0 || eigenControles.length > 0) && (
-          <div className="mt-2"><BlokkadeKaart blok={afsluitBlok} compact /></div>
-        )}
-      </div>
-
-      {/* Afvulregistratie — de handeling zelf, binnen de lopende sessie */}
-      {p.registratie && (
-        <div className="rounded-lg border border-gray-200 p-3 space-y-2">
-          <span className="text-sm font-semibold text-gray-700">{t('flow_sectie_afvullen')}</span>
-          {p.registratie}
-        </div>
+        ) : startFormulier
       )}
 
-      {/* CCP 2 — sluitcontrole */}
-      <Paneel
-        titel={t('haccp_ccp2_titel')}
-        open={paneelOpen(`${sessie.id}:ccp2`, ccp2Auto)}
-        onToggle={() => togglePaneel(`${sessie.id}:ccp2`, ccp2Auto)}
-        info={herinnering && (
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
-            herinnering.due ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
-            {herinnering.due
-              ? t('haccp_ccp2_due').replace('{minuten}', String(herinnering.minutenSinds))
-              : t('haccp_ccp2_volgende').replace('{minuten}', String(herinnering.volgendeOverMin))}
-          </span>
-        )}>
+      {geslotenSessies.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-gray-100">
+          {geslotenSessies.map(s => (
+            <div key={s.id} className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+              <span className="font-mono font-medium text-gray-700">{s.lotcode}</span>
+              <span>{t(`haccp_sessie_${s.status}`)}</span>
+              {s.verpakking_naam && <span>· {s.verpakking_naam}</span>}
+              {s.tht && <span>· {t('haccp_sessie_tht')} {fmtD(s.tht)}</span>}
+              <span>· {(p.av || []).filter((a: any) => a.sessie_id === s.id).length} {t('haccp_sessie_verpakkingen')}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 
+  // ── CCP 2 — sluitcontrole ────────────────────────────────────────────────
+  const ccp2Inhoud = (
+    <>
         <Sel label={t('haccp_ccp2_aanleiding')} value={sc.aanleiding}
           onChange={(v: string) => setSc({...sc, aanleiding: v as SluitControle['aanleiding']})}
           opts={SLUIT_AANLEIDINGEN.map(a => ({v: a.key, l: t(a.label)}))} />
@@ -630,17 +600,12 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         ) : (
           <div className="text-xs text-gray-400 italic">{t('haccp_ccp2_geen')}</div>
         )}
-      </Paneel>
+    </>
+  )
 
-      {/* CCP 3 — etiketcontrole */}
-      <Paneel
-        titel={t('haccp_ccp3_titel')}
-        open={paneelOpen(`${sessie.id}:ccp3`, ccp3Auto)}
-        onToggle={() => togglePaneel(`${sessie.id}:ccp3`, ccp3Auto)}
-        info={eigenEtiket.length > 0 && (
-          <span className="text-xs text-gray-400 flex-shrink-0">{eigenEtiket.length}×</span>
-        )}>
-
+  // ── CCP 3 — etiketcontrole ───────────────────────────────────────────────
+  const ccp3Inhoud = (
+    <>
         <div className="grid sm:grid-cols-2 gap-2">
           <Sel label={t('nav_producten')} value={String(ec.product_id)}
             onChange={(v: string) => setEc({...ec, product_id: v})}
@@ -743,9 +708,87 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         ) : (
           <div className="text-xs text-gray-400 italic">{t('haccp_ccp3_geen')}</div>
         )}
-      </Paneel>
+    </>
+  )
 
-      {p.lijst}
+  // ── De checklist ─────────────────────────────────────────────────────────
+  // Alles wat bij afvullen hoort staat als één lijst onder elkaar: de CCP's
+  // zijn regels, geen aparte blokken. Ze verschijnen zodra er een sessie loopt
+  // — zonder sessie valt er niets te controleren.
+  const mijnAv = (p.av || []).filter((a: any) => a.batch_id === p.batch?.id)
+  const avLiter = mijnAv.reduce((s: number, a: any) =>
+    s + (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0), 0)
+  const ccp2Ok = eigenControles.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')
+    && !herinnering?.due
+  const laatsteControle = eigenControles.length
+    ? new Date(eigenControles[eigenControles.length - 1].paraaf.tijdstip).toLocaleTimeString()
+    : null
+
+  const regels: Array<{
+    key: string; titel: string; status: RegelStatus; detail?: React.ReactNode; inhoud: React.ReactNode
+  } | null> = [
+    p.taken ? {
+      key: 'taken', titel: t('flow_chk_hygiene'),
+      status: p.takenDone ? 'done' : 'open', detail: p.takenDetail, inhoud: p.taken,
+    } : null,
+    {
+      key: 'sessie', titel: t('haccp_chk_sessie'),
+      status: openSessies.length ? 'open' : eigenSessies.length ? 'done' : 'open',
+      detail: openSessies.length
+        ? openSessies.map(s => s.lotcode).join(', ')
+        : geslotenSessies.map(s => s.lotcode).join(', ') || undefined,
+      inhoud: sessieInhoud,
+    },
+    sessie ? {
+      key: 'ccp2', titel: t('haccp_ccp2_titel'),
+      status: ccp2Ok ? 'done' : 'open',
+      detail: herinnering?.due
+        ? t('haccp_ccp2_due').replace('{minuten}', String(herinnering.minutenSinds))
+        : laatsteControle
+          ? `${laatsteControle} · ${t('haccp_ccp2_volgende').replace('{minuten}', String(herinnering?.volgendeOverMin ?? 0))}`
+          : undefined,
+      inhoud: ccp2Inhoud,
+    } : null,
+    sessie ? {
+      key: 'ccp3', titel: t('haccp_ccp3_titel'),
+      status: eigenEtiket.length ? 'done' : 'open',
+      detail: eigenEtiket.length ? `${eigenEtiket.length}×` : undefined,
+      inhoud: ccp3Inhoud,
+    } : null,
+    {
+      key: 'afvullen', titel: t('flow_chk_afvulling'),
+      status: mijnAv.length ? 'done' : 'open',
+      detail: mijnAv.length ? `${mijnAv.length} — ${avLiter.toFixed(1)} L` : undefined,
+      inhoud: (
+        <div className="space-y-3">
+          {p.registratie && (sessie || p.registratieZonderSessie) && p.registratie}
+          {p.lijst}
+        </div>
+      ),
+    },
+    p.verlies ? {
+      key: 'verlies', titel: t('flow_chk_restvolume'),
+      status: p.verliesDone ? 'done' : 'optioneel', detail: p.verliesDetail, inhoud: p.verlies,
+    } : null,
+  ]
+  const zichtbaar = regels.filter(Boolean) as Exclude<(typeof regels)[number], null>[]
+
+  // Welke regel staat open zonder eigen keuze: draait er een sessie waarvan de
+  // controles staan, dan is afvullen de handeling die je herhaalt. Anders de
+  // eerste regel die nog niet af is.
+  const autoRegel = sessie && ccp2Ok && eigenEtiket.length
+    ? 'afvullen'
+    : zichtbaar.find(r => r.status === 'open')?.key || ''
+
+  return (
+    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
+      {zichtbaar.map(r => (
+        <Regel key={r.key} titel={r.titel} status={r.status} detail={r.detail}
+          open={(openRegel ?? autoRegel) === r.key}
+          onToggle={() => setOpenRegel(k => (k ?? autoRegel) === r.key ? '' : r.key)}>
+          {r.inhoud}
+        </Regel>
+      ))}
 
       {afwijking && (
         <AfwijkingModal blok={afwijking.blok} titel={afwijking.titel}
