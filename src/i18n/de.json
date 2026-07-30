@@ -3006,6 +3006,8 @@
   "haccp_inst_toevoeging_type": "Standardzugabe je Zutatentyp",
   "haccp_ing_toevoeging": "HACCP-Zugabe",
   "haccp_ing_toevoeging_uitleg": "Zugaben nach dem Kochen bestimmen Risikoklasse und Haltbarkeit.",
+  "haccp_product_allergen_gecontroleerd": "Geprüft",
+  "haccp_product_allergen_gecontroleerd_tip": "Allergene auf dem Etikett geprüft — ankreuzen, wenn das Etikett keine Allergene nennt",
   "haccp_product_allergenen": "Allergene auf dem Etikett",
   "haccp_product_allergenen_uitleg": "Diese Liste wird beim Etikettieren mit der Rezeptur verglichen (CCP 3).",
   "haccp_product_allergenen_vastleggen": "Allergenliste erfassen",

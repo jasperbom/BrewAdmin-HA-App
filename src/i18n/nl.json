@@ -3006,6 +3006,8 @@
   "haccp_inst_toevoeging_type": "Standaard toevoeging per ingrediënttype",
   "haccp_ing_toevoeging": "HACCP-toevoeging",
   "haccp_ing_toevoeging_uitleg": "Toevoegingen ná de kook bepalen de risicoklasse en de houdbaarheid.",
+  "haccp_product_allergen_gecontroleerd": "Gecontroleerd",
+  "haccp_product_allergen_gecontroleerd_tip": "Allergenen op het etiket gecontroleerd — vink dit aan als het etiket geen allergenen vermeldt",
   "haccp_product_allergenen": "Allergenen op het etiket",
   "haccp_product_allergenen_uitleg": "Deze lijst wordt bij het etiketteren vergeleken met de receptuur van de batch (CCP 3).",
   "haccp_product_allergenen_vastleggen": "Allergenenlijst vastleggen",

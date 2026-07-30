@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.76] — 2026-07-30
+
+### Toegevoegd — Vinkje "gecontroleerd" bij de etiketallergenen per product
+
+- HACCP → Allergenen → *Allergenen op het etiket* heeft er een kolom
+  **Gecontroleerd** bij. Vermeldt een etiket geen allergenen, dan leg je dat nu
+  met één vinkje vast; voorheen moest je een willekeurig allergeen aan- en weer
+  uitzetten om de lijst als "gecontroleerd, leeg" op te slaan.
+- Het vinkje weer uitzetten maakt het product opnieuw onbekend (inclusief de
+  aangevinkte allergenen) — dan blokkeert de etiketcontrole weer met "etiket
+  onbekend" in plaats van met een valse allergeenfout.
+
 ## [1.11.75] — 2026-07-30
 
 ### Opgelost — Twee verpakkingstypen tegelijk afvullen op de batchpagina

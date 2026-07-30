@@ -696,6 +696,7 @@ function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, a
             <table className="w-full text-xs">
               <thead><tr className="border-b">
                 <th className="text-left p-2 font-semibold text-gray-600">{t('nav_producten')}</th>
+                <th className="p-2 text-center font-semibold text-gray-600 whitespace-nowrap">{t('haccp_product_allergen_gecontroleerd')}</th>
                 {ALLERGENEN_LIJST.map(a=><th key={a.key} className="p-2 text-center font-semibold text-gray-600 whitespace-nowrap">{t(a.label)}</th>)}
                 <th className="text-left p-2 font-semibold text-gray-600 whitespace-nowrap">{t('haccp_ccp3_etiket_versie')}</th>
               </tr></thead>
@@ -703,13 +704,33 @@ function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, a
                 {(producten||[]).filter((pr:any)=>pr.status!=='gearchiveerd').map((pr:any)=>{
                   // Ontbrekende lijst is iets anders dan een lege lijst: zolang
                   // hij niet is vastgelegd blokkeert de etiketcontrole met een
-                  // eigen melding in plaats van een valse allergeenfout.
+                  // eigen melding in plaats van een valse allergeenfout. Het
+                  // vinkje hiernaast is de manier om "gecontroleerd, geen
+                  // allergenen" vast te leggen zonder eerst een hokje aan en
+                  // weer uit te zetten.
                   const gezet = Array.isArray(pr.allergenen)
                   return (
                     <tr key={pr.id} className={`border-b hover:bg-gray-50 ${gezet?'':'bg-orange-50'}`}>
                       <td className="p-2 font-medium text-gray-800">
                         {pr.naam}
                         {!gezet && <span className="ml-1 text-orange-600">·</span>}
+                      </td>
+                      <td className="p-2 text-center">
+                        <input type="checkbox" className="t-checkbox" checked={gezet}
+                          title={t('haccp_product_allergen_gecontroleerd_tip')}
+                          onChange={e=>{
+                            const aan = e.target.checked
+                            setProducten((prev:any[])=>prev.map((x:any)=>{
+                              if(x.id!==pr.id) return x
+                              if(aan) return {...x, allergenen: x.allergenen||[], etiket_bijgewerkt: tod()}
+                              // Uitzetten maakt het weer onbekend: de aangevinkte
+                              // allergenen verdwijnen mee, anders zou er een lijst
+                              // blijven staan die niemand gecontroleerd heeft.
+                              const {allergenen, ...rest} = x
+                              return rest
+                            }))
+                            logAudit(auditLog,setAuditLog,{entiteit:'Product',entiteit_id:pr.id,actie:'gewijzigd',omschrijving:`Etiket-allergenen ${aan?'gecontroleerd':'onbekend'}: ${pr.naam}`})
+                          }} />
                       </td>
                       {ALLERGENEN_LIJST.map(a=>(
                         <td key={a.key} className="p-2 text-center">

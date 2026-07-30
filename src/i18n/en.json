@@ -3006,6 +3006,8 @@
   "haccp_inst_toevoeging_type": "Default addition per ingredient type",
   "haccp_ing_toevoeging": "HACCP addition",
   "haccp_ing_toevoeging_uitleg": "Additions after the boil determine the risk class and shelf life.",
+  "haccp_product_allergen_gecontroleerd": "Checked",
+  "haccp_product_allergen_gecontroleerd_tip": "Label allergens checked — tick this if the label lists no allergens",
   "haccp_product_allergenen": "Allergens on the label",
   "haccp_product_allergenen_uitleg": "This list is compared with the batch recipe during labelling (CCP 3).",
   "haccp_product_allergenen_vastleggen": "Record allergen list",

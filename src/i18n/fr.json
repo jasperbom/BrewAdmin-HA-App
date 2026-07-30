@@ -3006,6 +3006,8 @@
   "haccp_inst_toevoeging_type": "Ajout par défaut par type d’ingrédient",
   "haccp_ing_toevoeging": "Ajout HACCP",
   "haccp_ing_toevoeging_uitleg": "Les ajouts après ébullition déterminent la classe de risque et la DDM.",
+  "haccp_product_allergen_gecontroleerd": "Vérifié",
+  "haccp_product_allergen_gecontroleerd_tip": "Allergènes sur l'étiquette vérifiés — cochez si l'étiquette ne mentionne aucun allergène",
   "haccp_product_allergenen": "Allergènes sur l’étiquette",
   "haccp_product_allergenen_uitleg": "Cette liste est comparée à la recette du lot lors de l’étiquetage (CCP 3).",
   "haccp_product_allergenen_vastleggen": "Enregistrer la liste des allergènes",

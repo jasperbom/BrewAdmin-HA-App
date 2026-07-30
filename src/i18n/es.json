@@ -3006,6 +3006,8 @@
   "haccp_inst_toevoeging_type": "Adición predeterminada por tipo",
   "haccp_ing_toevoeging": "Adición HACCP",
   "haccp_ing_toevoeging_uitleg": "Las adiciones tras la cocción determinan la clase de riesgo y la caducidad.",
+  "haccp_product_allergen_gecontroleerd": "Comprobado",
+  "haccp_product_allergen_gecontroleerd_tip": "Alérgenos de la etiqueta comprobados — marca si la etiqueta no indica alérgenos",
   "haccp_product_allergenen": "Alérgenos en la etiqueta",
   "haccp_product_allergenen_uitleg": "Esta lista se compara con la receta del lote al etiquetar (PCC 3).",
   "haccp_product_allergenen_vastleggen": "Registrar lista de alérgenos",
