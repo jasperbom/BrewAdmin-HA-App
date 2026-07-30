@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.74] — 2026-07-30
+
+### Opgelost — Traceerbaarheid vond de afnemer van webshop- en handmatige orders niet
+
+- Een uitlevering kreeg zijn afnemer uit het veld **Bestemming** in het
+  pick-/afrondscherm. Dat veld werd alleen getoond bij **export** — bij een
+  binnenlandse levering was het niet eens zichtbaar, dus bleef het leeg. Elke
+  geleverde webshop- of handmatige order kwam daardoor in de traceerbaarheid
+  terecht als "geleverd zonder afnemer": niet in de afnemerslijst, en als gat
+  in de massabalans. Alleen kassaverkopen kwamen er wél in, omdat de kassa de
+  klantnaam zelf meegaf.
+- **Bij de bron:** blijft het bestemmingsveld leeg, dan wordt nu de klant van
+  de order vastgelegd (bedrijfsnaam, anders de naam) plus het adres uit de
+  live klantkaart. Bij export wint een ingevulde afwijkende geadresseerde,
+  zoals voorheen. Bij een binnenlandse levering toont het scherm welke afnemer
+  wordt vastgelegd.
+- **Bij het lezen:** de traceerfunctie leidt de afnemer nu ook af via de
+  pickregel → bestelling wanneer hij niet op de uitlevering staat. Zo komen
+  ook de al geboekte leveringen van vóór deze versie gewoon terug bij een
+  terugroepactie — met contactgegevens uit de klantkaart. Een uitlevering die
+  aan geen enkele order hangt (toonbank, proeverij) blijft terecht als gat
+  gemeld.
+- Het bestemmingsformulier wordt voortaan leeggemaakt bij het wisselen van
+  order; een geadresseerde van een vorige exportorder kon anders blijven
+  hangen en de volgende uitlevering op de verkeerde afnemer boeken.
+- 8 nieuwe tests.
+
+---
+
 ## [1.11.73] — 2026-07-30
 
 ### Opgelost — Traceerbaarheid vooruit vond nooit iets

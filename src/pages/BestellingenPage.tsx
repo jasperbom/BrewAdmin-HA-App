@@ -121,7 +121,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [showManualModal, setShowManualModal] = useState(false)
   const [showPickModal, setShowPickModal] = useState(false)
   const [showAfrondModal, setShowAfrondModal] = useState(false)
-  const [uitleveringForm, setUitleveringForm] = useState({type_uitlevering: 'binnenland' as string, bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: ''})
+  // Leeg = "neem de klant van de order over" (zie bouwUitslagRecords). Het
+  // formulier wordt bij het wisselen van order teruggezet: een geadresseerde
+  // die bij een exportorder is ingevuld mag niet blijven hangen en de volgende
+  // uitlevering op de verkeerde afnemer boeken.
+  const emptyUitleveringForm = {type_uitlevering: 'binnenland' as string, bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: ''}
+  const [uitleveringForm, setUitleveringForm] = useState(emptyUitleveringForm)
   const [showAnnuleerModal, setShowAnnuleerModal] = useState(false)
   const [showVrijeRegelModal, setShowVrijeRegelModal] = useState(false)
   const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
@@ -147,12 +152,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const selectedOrder = (bestellingen||[]).find((b: any) => b.id === selectedId)
 
+  React.useEffect(() => { setUitleveringForm(emptyUitleveringForm) }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Snapshot van de bestelling met overschreven klant_*-velden uit de live
   // klantkaart. Reeds gegenereerde PDF's blijven hun historische snapshot
   // houden — alleen rendering en mailing volgen de actuele klantkaart.
   const resolvedSelectedOrder = selectedOrder
     ? resolveKlantSnapshot(selectedOrder, klanten)
     : null
+
+  // Afnemer die op de uitlevering komt te staan wanneer het bestemmingsveld
+  // leeg blijft. Zonder afnemer is een geleverde partij bij een terugroepactie
+  // niet naar een klant te herleiden (handboek hoofdstuk 11).
+  const afnemerVanOrder = String(resolvedSelectedOrder?.klant_bedrijf
+    || resolvedSelectedOrder?.klant_naam || selectedOrder?.klant_naam || '').trim()
+  const adresVanOrder = [resolvedSelectedOrder?.klant_straat,
+    resolvedSelectedOrder?.klant_huisnummer, resolvedSelectedOrder?.klant_postcode,
+    resolvedSelectedOrder?.klant_stad].filter(Boolean).join(' ')
 
   // Gefilterde en gesorteerde lijst
   const filtered = [...(bestellingen||[])]
@@ -569,6 +585,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const lokaleUitleveringen: any[] = [...lokaleUitleveringenStart]
     const agpLocLocal = getAgpLocatie(locaties as any)
     const vandaag = tod()
+    // Bestemming: het invulveld wint (bij export vult de gebruiker een
+    // afwijkende geadresseerde in), maar bij een binnenlandse levering is dat
+    // veld niet eens zichtbaar. Val dan terug op de klant van de order —
+    // die is bekend, en zonder afnemer op de uitlevering is de partij bij een
+    // terugroepactie niet naar een klant te herleiden (handboek hoofdstuk 11).
+    const orderAfnemer = afnemerVanOrder
+    const orderAdres = adresVanOrder
 
     for (const pick of picksIn) {
       const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
@@ -621,8 +644,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           tht: avItem.tht||null,
           accijns_betaald: !isAgp,
           type_uitlevering: formData.type_uitlevering || 'binnenland',
-          bestemming_naam: formData.bestemming_naam || '',
-          bestemming_adres: formData.bestemming_adres || '',
+          bestemming_naam: String(formData.bestemming_naam || '').trim() || orderAfnemer,
+          bestemming_adres: String(formData.bestemming_adres || '').trim() || orderAdres,
           bestemming_land: formData.bestemming_land || '',
           vervoerder: formData.vervoerder || '',
           created_at: new Date().toISOString(),
@@ -1801,6 +1824,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_vervoerder')} value={uitleveringForm.vervoerder} onChange={e => setUitleveringForm(f => ({...f, vervoerder: e.target.value}))} />
                   </div>
                 </div>
+                {uitleveringForm.type_uitlevering === 'binnenland' && (
+                  <div className="text-xs text-gray-500">
+                    {t('lbl_bestemming_naam')}: <span className="font-medium text-gray-700">{afnemerVanOrder || t('lbl_onbekend')}</span>
+                  </div>
+                )}
                 {uitleveringForm.type_uitlevering !== 'binnenland' && (
                   <>
                     <div className="grid grid-cols-2 gap-3">
@@ -2014,6 +2042,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   value={uitleveringForm.vervoerder}
                   onChange={e => setUitleveringForm(f => ({...f, vervoerder: e.target.value}))} />
               </div>
+              {uitleveringForm.type_uitlevering === 'binnenland' && (
+                <div className="text-xs text-gray-500">
+                  {t('lbl_bestemming_naam')}: <span className="font-medium text-gray-700">{afnemerVanOrder || t('lbl_onbekend')}</span>
+                </div>
+              )}
               {uitleveringForm.type_uitlevering !== 'binnenland' && (
                 <div className="grid grid-cols-2 gap-3">
                   <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_naam')} value={uitleveringForm.bestemming_naam} onChange={e => setUitleveringForm(f => ({...f, bestemming_naam: e.target.value}))} />
