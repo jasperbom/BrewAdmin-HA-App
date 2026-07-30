@@ -339,6 +339,19 @@ describe('afvullingenSindsLaatsteGoedkeuring', () => {
       sessie, afvullingen, [], '2026-07-25T10:00:00Z')
     expect(geraakt).toEqual([10])
   })
+
+  it('rekent met het moment van uitvoeren, niet van vastleggen', () => {
+    // Een achteraf vastgelegde sessie: de paraaf staat op het invoermoment
+    // ('s avonds), maar de controle zelf was om 09:30.
+    const controles = [{
+      ...ctrl(1, 'goedgekeurd', '2026-07-25T20:00:00Z', 'start'),
+      uitgevoerd_op: '2026-07-25T09:30:00Z',
+    }]
+    const afvullingen = [av(10, '09:15'), av(11, '09:45')]
+    const geraakt = afvullingenSindsLaatsteGoedkeuring(
+      sessie, afvullingen, controles, '2026-07-25T10:00:00Z')
+    expect(geraakt).toEqual([11])
+  })
 })
 
 describe('magSessieAfsluiten', () => {

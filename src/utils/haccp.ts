@@ -377,8 +377,12 @@ export const beoordeelSluitcontrole = (
   return {resultaat: afgekeurd ? 'afgekeurd' : 'goedgekeurd', onvolledig}
 }
 
+/** Het moment waarop de controle is gedáán. Wordt een sessie achteraf
+ *  vastgelegd, dan is dat niet hetzelfde als het moment van vastleggen: de
+ *  blokkade-vensters en de halfuurherinnering moeten op de werkelijke tijd
+ *  rekenen, niet op het invoermoment. */
 const controleTs = (c: SluitControle): number =>
-  new Date(c.paraaf?.tijdstip || 0).getTime()
+  new Date(c.uitgevoerd_op || c.paraaf?.tijdstip || 0).getTime()
 
 /** Bij een afgekeurde sluitcontrole zijn alle verpakkingen verdacht die
  *  gemaakt zijn sinds de laatste goedgekeurde controle. Bij twijfel over de

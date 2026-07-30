@@ -71,6 +71,9 @@ interface Props {
   registratieZonderSessie?: boolean
   /** Lijst met geregistreerde afvullingen; altijd zichtbaar. */
   lijst?: React.ReactNode
+  /** Schrijft één afvulling weg binnen de meegegeven sessie (voorraad, accijns-
+   *  voorcalculatie, logregels). Gebruikt door het achteraf vastleggen. */
+  onAchterafAfvullen?: (velden: any, sessie: AfvulSessie) => boolean
   /** Hygiënetaken van de fase — als regel in dezelfde checklist. */
   taken?: React.ReactNode
   takenDone?: boolean
@@ -82,6 +85,26 @@ interface Props {
 }
 
 type RegelStatus = 'done' | 'open' | 'optioneel'
+
+// Beginstand van het achteraf-formulier. De controlevinkjes staan bewust úít:
+// aanvinken is de verklaring dat de controle gedaan is, dus dat moet een
+// handeling blijven.
+const leegNa = {
+  product_id: '' as string | number,
+  verpakking_id: '' as string | number,
+  hoeveelheid: '',
+  datum: '',
+  van: '',
+  tot: '',
+  reiniging_bevestigd: false,
+  visueel_ok: false,
+  omkeerproef_ok: false,
+  lotcode_ok: false,
+  tht_ok: false,
+  alcohol_ok: false,
+  etiket_versie: '',
+  opmerking: '',
+}
 
 // Eén regel van de afvulchecklist. De hele fase is één lijst: hygiëne, sessie,
 // de twee CCP's, het afvullen zelf en het restvolume staan als gelijkwaardige
@@ -122,6 +145,10 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const eigenSessies = (p.sessies || []).filter(s => s.batch_id === p.batch?.id)
   // Startformulier voor een extra verpakking naast de lopende sessie(s).
   const [startOpen, setStartOpen] = React.useState(false)
+  // Achteraf vastleggen is de normale gang van zaken — tijdens het afvullen
+  // heb je je handen vol. Live meelopen kan, maar is de tweede keuze.
+  const [modus, setModus] = React.useState<'achteraf' | 'live'>('achteraf')
+  const [na, setNa] = React.useState({...leegNa, datum: tod()})
   const [nu, setNu] = React.useState(() => new Date())
   const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any} | null>(null)
   // Eén regel tegelijk open. Zonder eigen keuze staat de regel open die aan de
@@ -390,11 +417,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               lijst; kiezen kan wel, maar de blokkade legt uit waarom niet. */}
           <Sel label={t('lbl_packaging')} value={String(start.verpakking_id)}
             onChange={(v: string) => setStart({...start, verpakking_id: v})}
-            opts={[{v: '', l: '—'}, ...(p.verpakkingen || []).map((v: any) => ({
+            opts={(p.verpakkingen || []).map((v: any) => ({
               v: String(v.id),
               l: openSessies.some(s => Number(s.verpakking_id) === Number(v.id))
                 ? `${v.naam} — ${t('haccp_sessie_open')}` : v.naam,
-            }))]} />
+            }))} />
           <div>
             <Label>{t('haccp_sessie_lotcode')}</Label>
             <div className="font-mono text-sm text-gray-800 py-2">
@@ -445,6 +472,240 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
             {t('haccp_sessie_starten')}
           </Btn>
         </div>
+    </div>
+  )
+
+  // ── Achteraf vastleggen ──────────────────────────────────────────────────
+  // Tijdens het afvullen heb je je handen vol: er wordt niets live ingetikt.
+  // Dit formulier legt de hele sessie in één keer vast — wat er is afgevuld én
+  // de controles die erbij horen — met de tijden waarop het echt gebeurd is.
+  // De paraaf (wie, wanneer vastgelegd) blijft automatisch: achteraf invoeren
+  // mag, de paraaf vervalsen niet.
+  const naVp = (p.verpakkingen || []).find((v: any) => v.id === Number(na.verpakking_id))
+  const naOmkeerNodig = omkeerproefVerplicht(naVp?.type || naVp?.naam, inst)
+  const naProduct = (p.producten || []).find((x: any) => x.id === Number(na.product_id))
+  const naEtiket = allergenenVanProduct(naProduct)
+  const naVergelijking = vergelijkAllergenen(receptAllergenen, naEtiket.allergenen, naEtiket.gezet)
+  const naEtiketBlok = magEtiketterenDoorgaan(naVergelijking)
+  const naBlok = magSessieStarten(p.batch?.id, p.vrijgaven || [], {
+    reiniging_bevestigd: na.reiniging_bevestigd,
+    verpakking_id: na.verpakking_id ? Number(na.verpakking_id) : null,
+  }, p.sessies || [])
+  const naThtKlasse = thtKlasse
+  const naTht = berekenTht(na.datum || tod(), naThtKlasse, inst)
+  const naCompleet = !!na.product_id && Number(na.hoeveelheid) > 0
+    && na.visueel_ok && (!naOmkeerNodig || na.omkeerproef_ok)
+    && na.lotcode_ok && na.tht_ok && na.alcohol_ok
+  const naToegestaan = naBlok.toegestaan && naCompleet && naEtiketBlok.toegestaan
+
+  const legAchterafVast = () => {
+    if (!naToegestaan || !naVp) return
+    const paraaf = maakParaaf(p.whoami)
+    const datum = na.datum || tod()
+    const startMoment = `${datum}T${na.van || '12:00'}:00`
+    const eindMoment = `${datum}T${na.tot || na.van || '12:00'}:00`
+
+    // Sessie — meteen afgesloten: het afvullen is al gebeurd.
+    const nr = volgendSessieNr(p.sessies || [], p.batch.id)
+    let code = lotcodeVoorSessie(p.batch, nr)
+    let extra = nr
+    while (!lotcodeIsUniek(code, p.sessies || [])) {
+      extra += 1
+      code = lotcodeVoorSessie(p.batch, extra)
+    }
+    const sessieId = newId(p.sessies || [])
+    const sessieRec: AfvulSessie = {
+      id: sessieId,
+      batch_id: p.batch.id,
+      sessie_nr: extra,
+      lotcode: code,
+      vrijgave_id: (p.vrijgaven || []).filter((v: any) => v.batch_id === p.batch.id).slice(-1)[0]?.id ?? 0,
+      verpakking_id: Number(na.verpakking_id),
+      verpakking_naam: naVp.naam,
+      verpakking_type: naVp.type || naVp.naam,
+      start: startMoment,
+      eind: eindMoment,
+      status: 'afgesloten',
+      reiniging_bevestigd: true,
+      tht: naTht.tht,
+      tht_maanden: naTht.maanden,
+      tht_klasse: naThtKlasse,
+      start_paraaf: paraaf,
+      afgesloten_paraaf: paraaf,
+      achteraf: true,
+    }
+    p.setSessies((prev: AfvulSessie[]) => [...(prev || []), sessieRec])
+
+    // CCP 2 — start én eind, op de opgegeven tijden.
+    const beoordeling = beoordeelSluitcontrole(
+      {aanleiding: 'start', visueel_ok: na.visueel_ok,
+       omkeerproef_ok: naOmkeerNodig ? na.omkeerproef_ok : null},
+      sessieRec.verpakking_type, inst)
+    const bouwControle = (aanleiding: SluitControle['aanleiding'], moment: string): SluitControle => ({
+      id: newId(p.sluitcontroles || []),
+      sessie_id: sessieId,
+      batch_id: p.batch.id,
+      aanleiding,
+      visueel_ok: na.visueel_ok,
+      omkeerproef_ok: naOmkeerNodig ? na.omkeerproef_ok : null,
+      uitgevoerd_op: moment,
+      resultaat: beoordeling.resultaat,
+      opmerking: na.opmerking.trim() || undefined,
+      paraaf,
+    })
+    p.setSluitcontroles((prev: SluitControle[]) => [...(prev || []),
+      bouwControle('start', startMoment), bouwControle('einde', eindMoment)])
+
+    // CCP 3 — etiketcontrole met dezelfde allergenenvergelijking als live.
+    const etiketId = newId(p.etiketcontroles || [])
+    p.setEtiketcontroles((prev: EtiketControle[]) => [...(prev || []), {
+      id: etiketId,
+      sessie_id: sessieId,
+      batch_id: p.batch.id,
+      product_id: Number(na.product_id),
+      etiket_artikel: naProduct?.etiket_artikel,
+      etiket_versie: na.etiket_versie.trim() || naProduct?.etiket_versie,
+      aanleiding: 'start',
+      uitgevoerd_op: startMoment,
+      allergenen_recept: receptAllergenen,
+      allergenen_etiket: naEtiket.allergenen,
+      allergenen_gelijk: naVergelijking.gelijk,
+      lotcode_ok: na.lotcode_ok,
+      tht_ok: na.tht_ok,
+      alcohol_ok: na.alcohol_ok,
+      resultaat: 'goedgekeurd',
+      opmerking: na.opmerking.trim() || undefined,
+      paraaf,
+    }])
+
+    // De afvulling zelf loopt via de pagina: die kent voorraad, accijns en logs.
+    p.onAchterafAfvullen?.({
+      product_id: Number(na.product_id),
+      verpakking_id: Number(na.verpakking_id),
+      verpakking_type: naVp.naam,
+      inhoud_per_eenheid: Number(naVp.inhoud_liter || 0),
+      hoeveelheid: Number(na.hoeveelheid),
+      datum,
+      tijd: na.tot || na.van || '',
+      tht: naTht.tht,
+      gn_code: '',
+    }, sessieRec)
+    logAudit(p.auditLog, p.setAuditLog, {
+      entiteit: 'AfvulSessie', entiteit_id: sessieId, actie: 'aangemaakt',
+      omschrijving: `${p.batch?.naam || ''}: ${code} — ${t('haccp_achteraf_titel')}`,
+    })
+    setNa({...leegNa, datum: na.datum, product_id: na.product_id})
+  }
+
+  const achterafFormulier = (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-500">{t('haccp_achteraf_uitleg')}</p>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        {/* Sel zet zelf al een lege keuze bovenaan — geen tweede '—' erbij. */}
+        <Sel label={t('lbl_afvulling_product')} value={String(na.product_id)}
+          onChange={(v: string) => setNa({...na, product_id: v})}
+          opts={(p.producten || [])
+            .filter((x: any) => x.status !== 'gearchiveerd')
+            .map((x: any) => ({v: String(x.id), l: x.naam}))} />
+        <Sel label={t('lbl_packaging')} value={String(na.verpakking_id)}
+          onChange={(v: string) => setNa({...na, verpakking_id: v})}
+          opts={(p.verpakkingen || []).map((v: any) => ({v: String(v.id), l: v.naam}))} />
+        <Inp label={t('batch_filling_units')} type="number" value={na.hoeveelheid}
+          onChange={v => setNa({...na, hoeveelheid: v})} />
+        <Inp label={t('batch_filling_date')} type="date" value={na.datum}
+          onChange={v => setNa({...na, datum: v})} />
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <Inp label={t('haccp_achteraf_van')} type="time" value={na.van}
+          onChange={v => setNa({...na, van: v})} />
+        <Inp label={t('haccp_achteraf_tot')} type="time" value={na.tot}
+          onChange={v => setNa({...na, tot: v})} />
+        <div>
+          <Label>{t('haccp_sessie_lotcode')}</Label>
+          <div className="font-mono text-sm text-gray-800 py-2">
+            {lotcodeVoorSessie(p.batch, volgendSessieNr(p.sessies || [], p.batch?.id))}
+          </div>
+        </div>
+        <div>
+          <Label>{t('haccp_sessie_tht')}</Label>
+          <div className="text-sm text-gray-800 py-2">
+            {naTht.tht ? fmtD(naTht.tht) : t('haccp_sessie_bewaaradvies_tekst')}
+          </div>
+        </div>
+      </div>
+
+      {/* De controles die bij de sessie horen — in dezelfde handeling. */}
+      <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1.5">
+        <Label>{t('haccp_achteraf_controles')}</Label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" className="t-checkbox" checked={na.reiniging_bevestigd}
+            onChange={e => setNa({...na, reiniging_bevestigd: e.target.checked})} />
+          {t('haccp_sessie_reiniging')}
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" className="t-checkbox" checked={na.visueel_ok}
+            onChange={e => setNa({...na, visueel_ok: e.target.checked})} />
+          {t('haccp_achteraf_sluit_ok')}
+        </label>
+        {naOmkeerNodig && (
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" className="t-checkbox" checked={na.omkeerproef_ok}
+              onChange={e => setNa({...na, omkeerproef_ok: e.target.checked})} />
+            {t('haccp_ccp2_omkeerproef')}
+          </label>
+        )}
+        {([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
+           ['tht_ok', 'haccp_ccp3_tht_ok'],
+           ['alcohol_ok', 'haccp_ccp3_alcohol_ok']] as const).map(([veld, key]) => (
+          <label key={veld} className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" className="t-checkbox" checked={na[veld]}
+              onChange={e => setNa({...na, [veld]: e.target.checked})} />
+            {t(key)}
+          </label>
+        ))}
+        <div className="grid sm:grid-cols-2 gap-2 pt-1">
+          <Inp label={t('haccp_ccp3_etiket_versie')}
+            value={na.etiket_versie || naProduct?.etiket_versie || ''}
+            onChange={v => setNa({...na, etiket_versie: v})} />
+          <Inp label={t('lbl_opmerking')} value={na.opmerking}
+            onChange={v => setNa({...na, opmerking: v})} />
+        </div>
+      </div>
+
+      {/* Allergenen blijven blokkeren: dat is de reden dat CCP 3 bestaat. */}
+      {na.product_id && !naEtiketBlok.toegestaan && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs space-y-1">
+          <div>
+            <span className="text-gray-500">{t('haccp_ccp3_volgens_recept')}: </span>
+            {receptAllergenen.length
+              ? receptAllergenen.map(allergeenLabel).join(', ')
+              : t('haccp_ccp3_geen_allergenen')}
+          </div>
+          <div>
+            <span className="text-gray-500">{t('haccp_ccp3_volgens_etiket')}: </span>
+            {!naEtiket.gezet ? t('haccp_blok_etiket_onbekend')
+              : naEtiket.allergenen.length
+                ? naEtiket.allergenen.map(allergeenLabel).join(', ')
+                : t('haccp_ccp3_geen_allergenen')}
+          </div>
+          {naEtiketBlok.redenen.map((r, i) => (
+            <div key={i} className="text-red-700 font-medium">✗ {t(r.i18nKey)}</div>
+          ))}
+        </div>
+      )}
+      {/* Pas melden wat er ontbreekt zodra er iets is ingevuld — een leeg
+          formulier (ook net na het vastleggen) hoort niet rood te staan. */}
+      {(na.verpakking_id || na.product_id || na.hoeveelheid) && (
+        <BlokkadeKaart blok={naBlok} compact />
+      )}
+
+      <div className="flex justify-end">
+        <Btn s="sm" disabled={!naToegestaan} onClick={legAchterafVast}>
+          {t('haccp_achteraf_vastleggen')}
+        </Btn>
+      </div>
     </div>
   )
 
@@ -513,14 +774,33 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         </div>
       )}
 
-      {(!openSessies.length || startOpen) && (
-        openSessies.length ? (
+      {(!openSessies.length || startOpen) && (() => {
+        // Twee manieren om een sessie vast te leggen: achteraf in één keer
+        // (de praktijk) of live meelopen. De keuze staat bovenaan het blok.
+        const keuze = (
+          <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit">
+            {(['achteraf', 'live'] as const).map(m => (
+              <button key={m} type="button" onClick={() => setModus(m)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  modus === m ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                {t(m === 'achteraf' ? 'haccp_achteraf_titel' : 'haccp_sessie_live')}
+              </button>
+            ))}
+          </div>
+        )
+        const inhoud = (
+          <div className="space-y-3">
+            {keuze}
+            {modus === 'achteraf' ? achterafFormulier : startFormulier}
+          </div>
+        )
+        return openSessies.length ? (
           <div className="rounded-lg border border-dashed border-gray-300 p-3 space-y-2">
             <span className="text-sm font-semibold text-gray-700">{t('haccp_sessie_extra_verpakking')}</span>
-            {startFormulier}
+            {inhoud}
           </div>
-        ) : startFormulier
-      )}
+        ) : inhoud
+      })()}
 
       {geslotenSessies.length > 0 && (
         <div className="space-y-1 pt-1 border-t border-gray-100">

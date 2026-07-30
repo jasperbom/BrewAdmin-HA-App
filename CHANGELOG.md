@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.78] — 2026-07-30
+
+### Toegevoegd — Een afvulsessie achteraf vastleggen
+
+- Tijdens het afvullen heb je je handen vol: er wordt niets live ingetikt. Het
+  scherm ging er tot nu toe wél van uit dat je meetypte — sessie starten,
+  startcontrole, elk halfuur een controle, per afvulling registreren.
+- **Nu** staat bovenaan het sessieblok de keuze **Achteraf vastleggen** (de
+  standaard) of **Live meelopen**. Achteraf is één formulier: product,
+  verpakking, aantal, datum, begin- en eindtijd, en de vinkjes van de controles
+  die je hebt gedaan. Eén knop schrijft in één keer weg:
+  - de afvulsessie (meteen afgesloten, met lotcode en berekende THT),
+  - de sluitcontrole bij start én eind (CCP 2),
+  - de etiketcontrole met allergenenvergelijking (CCP 3),
+  - de afvulling zelf, inclusief verpakkingsvoorraad, accijns-voorcalculatie en
+    logregels.
+- Controles krijgen een veld **uitgevoerd op**: het moment waarop de controle
+  is gedáán. De blokkadevensters en de halfuurherinnering rekenen daarmee, niet
+  met het invoermoment. De paraaf (wie, wanneer vastgelegd) blijft automatisch
+  — achteraf invoeren mag, de paraaf vervalsen niet.
+- Wat blijft blokkeren: geen vrijgave (CCP 1), geen bevestigde reiniging, en
+  allergenen op het etiket die niet met het recept overeenkomen. Een afgekeurde
+  sluitcontrole vastleggen kan alleen via de live-route, want daar hoort een
+  CAPA en een blokkade van de betrokken verpakkingen bij.
+
 ## [1.11.77] — 2026-07-30
 
 ### Gewijzigd — De afvulfase is één checklist geworden

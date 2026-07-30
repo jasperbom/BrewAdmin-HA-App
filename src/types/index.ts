@@ -1505,6 +1505,9 @@ export interface AfvulSessie {
   tht_reden?: string
   start_paraaf: Paraaf
   afgesloten_paraaf?: Paraaf
+  // In één keer achteraf vastgelegd in plaats van live meegelopen: start, eind
+  // en de controlemomenten zijn dan opgegeven tijden, geen kloktijden.
+  achteraf?: boolean
   opmerking?: string
 }
 
@@ -1536,6 +1539,10 @@ export interface SluitControle {
   omkeerproef_ok?: boolean | null
   // Verplicht vast te leggen bij aanleiding 'na_verstelling'.
   rolinstelling?: string
+  // Wanneer de controle is uitgevoerd. Leeg = op het moment van vastleggen.
+  // Wie en wanneer er is vastgelegd staat in `paraaf` en blijft automatisch:
+  // achteraf invoeren mag, de paraaf vervalsen niet.
+  uitgevoerd_op?: string
   resultaat: ControleResultaat
   metingen?: SluitMeting[]
   // Afvullingen die door deze afkeuring geblokkeerd zijn.
@@ -1558,6 +1565,8 @@ export interface EtiketControle {
   etiket_artikel?: string
   etiket_versie?: string
   aanleiding: EtiketAanleiding
+  // Wanneer de controle is uitgevoerd; leeg = op het moment van vastleggen.
+  uitgevoerd_op?: string
   // Snapshots op moment van controle — de vergelijking moet achteraf
   // reproduceerbaar zijn, ook als recept of etiket later wijzigt.
   allergenen_recept: Allergeen[]

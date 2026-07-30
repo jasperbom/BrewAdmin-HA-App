@@ -1525,6 +1525,91 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return stocks.length ? Math.min(...stocks) : 0
   }
 
+  /** Schrijft één afvulling weg: verpakkingsvoorraad af, accijns-voorcalculatie
+   *  bevriezen, log- en auditregels. Gedeeld door de live-registratie en het
+   *  achteraf vastleggen van een hele sessie — die laatste levert zijn eigen
+   *  sessie, datum en tijd aan, want dan is het afvullen al gebeurd.
+   *  Geeft false terug als er niets is weggeschreven. */
+  const schrijfAfvulling = (velden: any, sessie: any): boolean => {
+    if (!selB) return false
+    if (!velden.product_id) { alert(t('err_select_product')); return false }
+    if (!velden.verpakking_id || !velden.hoeveelheid) { alert(t('err_select_packaging_qty')); return false }
+    const n = Number(velden.hoeveelheid)
+    const vp = (verpakkingen || []).find((v: any) => v.id === Number(velden.verpakking_id))
+    if (!vp) { alert(t('err_invalid_packaging')); return false }
+    const avail = vpVoorraad(vp)
+    if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}', String(avail))); return false }
+    // Tankvolume-guard (ERP-plan 0.7) — zelfde controle als BatchesPage.doAfvullen.
+    const tankLiter = Number(selB?.liter_vergist || 0)
+    if (tankLiter > 0) {
+      const batchAv = (av||[]).filter((a: any) => a.batch_id === selB.id)
+      const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
+      const totVerlies = (verliesRegistraties||[]).filter((r: any) => r.batch_id === selB.id).reduce((s: number, r: any) => s + Number(r.liter||0), 0)
+      const rest = tankLiter - totVerlies - totLiterVerpakt
+      const nieuwLiter = n * Number(velden.inhoud_per_eenheid || 0)
+      if (nieuwLiter > rest + 0.001) {
+        if (!confirm(t('warn_afvullen_tankvolume')
+          .replace('{liters}', nieuwLiter.toFixed(1))
+          .replace('{rest}', Math.max(0, rest).toFixed(1)))) return false
+      }
+    }
+    const abvVal = Number(selB?.ABV || 0)
+    if (abvVal <= 0) {
+      if (!confirm(t('warn_afvullen_no_abv'))) return false
+    } else if (!selB?.abv_definitief) {
+      const heeftFg = Number(selB?.FG || 0) > 0
+      const heeftSgMeting = (gistMetingen || []).some((m: any) => m.batch_id === selB?.id && Number(m.sg) > 0)
+      if (!heeftFg && !heeftSgMeting) {
+        if (!confirm(t('warn_afvullen_abv_estimate').replace('{abv}', abvVal.toFixed(1)))) return false
+      }
+    }
+    if (Array.isArray(vp.onderdelen) && vp.onderdelen.length) {
+      setOnderdelen((prev: any[]) => prev.map((od: any) => {
+        const usage = vp.onderdelen.find((o: any) => o.onderdeel_id === od.id)
+        return usage ? {...od, voorraad: Math.max(0, Number(od.voorraad || 0) - n * Number(usage.aantal || 1))} : od
+      }))
+    } else {
+      setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === Number(velden.verpakking_id) ? {...v, voorraad: Number(v.voorraad || 0) - n} : v))
+    }
+    const avId = newId(av || [])
+    const prodId = Number(velden.product_id)
+    const pArt = prodId ? (productArtikelen || []).find((a: any) => a.product_id === prodId && a.verpakking_id === Number(velden.verpakking_id)) : null
+    const avArtKey = `${selB?.biernaam || selB?.naam || ''}|||${vp.naam || velden.verpakking_type || ''}`.toLowerCase()
+    const avArt = pArt || (artikelen || []).find((a: any) => a.key?.toLowerCase() === avArtKey)
+    const voorcalc = berekenVoorcalcVoorAfvulling(
+      { inhoud_per_eenheid: Number(velden.inhoud_per_eenheid), hoeveelheid: n, aantal: n },
+      selB,
+      accijnsInst
+    )
+    setAv((prev: any[]) => [...(prev || []), {
+      id: avId,
+      batch_id: selB.id,
+      ...velden,
+      // Sessie, lotcode en tijdstip: nodig om bij een afgekeurde sluitcontrole
+      // te bepalen welke verpakkingen sinds de laatste goedkeuring gemaakt zijn.
+      sessie_id: sessie?.id,
+      lotcode: sessie?.lotcode,
+      // Achteraf vastleggen levert het werkelijke tijdstip aan; live is dat nu.
+      tijd: velden.tijd || new Date().toTimeString().slice(0, 5),
+      tht: sessie?.tht ?? velden.tht,
+      product_id: prodId,
+      artikel_sku: avArt?.artikelnummer || null,
+      verpakking_id: Number(velden.verpakking_id),
+      inhoud_per_eenheid: Number(velden.inhoud_per_eenheid),
+      hoeveelheid: n,
+      voorcalc_accijns_per_eenheid: voorcalc.perEenheid,
+      voorcalc_accijns_totaal: voorcalc.totaal,
+      voorcalc_tarief_snapshot: voorcalc.snapshot,
+    }])
+    const prod = (producten || []).find((p: any) => p.id === prodId)
+    addLog({type: 'afvullen', batch_id: selB.id, batch_naam: selB?.naam || '', afvulling_id: avId,
+      verpakking_type: vp.naam || velden.verpakking_type, hoeveelheid: n, eenheid: 'stuks',
+      referentie: `${(n * Number(velden.inhoud_per_eenheid || 0)).toFixed(1)}L`,
+      omschrijving: `${selB?.naam || ''} — ${prod?.naam ? prod.naam + ' · ' : ''}${vp.naam || velden.verpakking_type || ''} × ${n} (${Number(velden.inhoud_per_eenheid || 0).toFixed(1)}L)`})
+    logAudit(auditLog, setAuditLog, {entiteit: 'Afvulling', entiteit_id: avId, actie: 'aangemaakt', omschrijving: `${selB?.naam || ''}: ${n}× ${vp.naam || velden.verpakking_type || ''}`})
+    return true
+  }
+
   const doAfvullen = () => {
     if (!selB) return
     // CCP 1 — geen verpakking zonder vrijgave. Batches die al afgevuld waren
@@ -1543,81 +1628,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       alert(`${t('haccp_sessie_titel')}\n\n${blokkadeSamenvatting(sessieBlok)}`)
       return
     }
-    if (!avF.product_id) { alert(t('err_select_product')); return }
-    if (!avF.verpakking_id || !avF.hoeveelheid) { alert(t('err_select_packaging_qty')); return }
-    const n = Number(avF.hoeveelheid)
-    const vp = (verpakkingen || []).find((v: any) => v.id === Number(avF.verpakking_id))
-    if (!vp) { alert(t('err_invalid_packaging')); return }
-    const avail = vpVoorraad(vp)
-    if (avail < n) { alert(t('err_insufficient_packaging_n').replace('{n}', String(avail))); return }
-    // Tankvolume-guard (ERP-plan 0.7) — zelfde controle als BatchesPage.doAfvullen.
-    const tankLiter = Number(selB?.liter_vergist || 0)
-    if (tankLiter > 0) {
-      const batchAv = (av||[]).filter((a: any) => a.batch_id === selB.id)
-      const totLiterVerpakt = batchAv.reduce((s: number, a: any) => s + Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
-      const totVerlies = (verliesRegistraties||[]).filter((r: any) => r.batch_id === selB.id).reduce((s: number, r: any) => s + Number(r.liter||0), 0)
-      const rest = tankLiter - totVerlies - totLiterVerpakt
-      const nieuwLiter = n * Number(avF.inhoud_per_eenheid || 0)
-      if (nieuwLiter > rest + 0.001) {
-        if (!confirm(t('warn_afvullen_tankvolume')
-          .replace('{liters}', nieuwLiter.toFixed(1))
-          .replace('{rest}', Math.max(0, rest).toFixed(1)))) return
-      }
-    }
-    const abvVal = Number(selB?.ABV || 0)
-    if (abvVal <= 0) {
-      if (!confirm(t('warn_afvullen_no_abv'))) return
-    } else if (!selB?.abv_definitief) {
-      const heeftFg = Number(selB?.FG || 0) > 0
-      const heeftSgMeting = (gistMetingen || []).some((m: any) => m.batch_id === selB?.id && Number(m.sg) > 0)
-      if (!heeftFg && !heeftSgMeting) {
-        if (!confirm(t('warn_afvullen_abv_estimate').replace('{abv}', abvVal.toFixed(1)))) return
-      }
-    }
-    if (Array.isArray(vp.onderdelen) && vp.onderdelen.length) {
-      setOnderdelen((prev: any[]) => prev.map((od: any) => {
-        const usage = vp.onderdelen.find((o: any) => o.onderdeel_id === od.id)
-        return usage ? {...od, voorraad: Math.max(0, Number(od.voorraad || 0) - n * Number(usage.aantal || 1))} : od
-      }))
-    } else {
-      setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === Number(avF.verpakking_id) ? {...v, voorraad: Number(v.voorraad || 0) - n} : v))
-    }
-    const avId = newId(av || [])
-    const prodId = Number(avF.product_id)
-    const pArt = prodId ? (productArtikelen || []).find((a: any) => a.product_id === prodId && a.verpakking_id === Number(avF.verpakking_id)) : null
-    const avArtKey = `${selB?.biernaam || selB?.naam || ''}|||${vp.naam || avF.verpakking_type || ''}`.toLowerCase()
-    const avArt = pArt || (artikelen || []).find((a: any) => a.key?.toLowerCase() === avArtKey)
-    const voorcalc = berekenVoorcalcVoorAfvulling(
-      { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: n, aantal: n },
-      selB,
-      accijnsInst
-    )
-    const nuTijd = new Date().toTimeString().slice(0, 5)
-    setAv((prev: any[]) => [...(prev || []), {
-      id: avId,
-      batch_id: selB.id,
-      ...avF,
-      // Sessie, lotcode en tijdstip: nodig om bij een afgekeurde sluitcontrole
-      // te bepalen welke verpakkingen sinds de laatste goedkeuring gemaakt zijn.
-      sessie_id: sessie?.id,
-      lotcode: sessie?.lotcode,
-      tijd: nuTijd,
-      tht: sessie?.tht ?? avF.tht,
-      product_id: prodId,
-      artikel_sku: avArt?.artikelnummer || null,
-      verpakking_id: Number(avF.verpakking_id),
-      inhoud_per_eenheid: Number(avF.inhoud_per_eenheid),
-      hoeveelheid: n,
-      voorcalc_accijns_per_eenheid: voorcalc.perEenheid,
-      voorcalc_accijns_totaal: voorcalc.totaal,
-      voorcalc_tarief_snapshot: voorcalc.snapshot,
-    }])
-    const prod = (producten || []).find((p: any) => p.id === prodId)
-    addLog({type: 'afvullen', batch_id: selB.id, batch_naam: selB?.naam || '', afvulling_id: avId,
-      verpakking_type: vp.naam || avF.verpakking_type, hoeveelheid: n, eenheid: 'stuks',
-      referentie: `${(n * Number(avF.inhoud_per_eenheid || 0)).toFixed(1)}L`,
-      omschrijving: `${selB?.naam || ''} — ${prod?.naam ? prod.naam + ' · ' : ''}${vp.naam || avF.verpakking_type || ''} × ${n} (${Number(avF.inhoud_per_eenheid || 0).toFixed(1)}L)`})
-    logAudit(auditLog, setAuditLog, {entiteit: 'Afvulling', entiteit_id: avId, actie: 'aangemaakt', omschrijving: `${selB?.naam || ''}: ${n}× ${vp.naam || avF.verpakking_type || ''}`})
+    if (!schrijfAfvulling(avF, sessie)) return
     // Binnen een sessie blijft de verpakking staan: die komt uit de sessie en
     // wordt niet per afvulling opnieuw gekozen.
     setAvF({...emptyAvF, product_id: avF.product_id, ...(sessie ? {
@@ -3406,6 +3417,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             haccpInstellingen={haccpInst} whoami={whoami}
             auditLog={auditLog} setAuditLog={setAuditLog}
             actieveSessieId={actieveSessieId} setActieveSessieId={setActieveSessieId}
+            onAchterafAfvullen={schrijfAfvulling}
             registratie={renderAfvulForm()}
             registratieZonderSessie={isLegacyBatch(selB.id, av || [])}
             lijst={renderAfvulLijst()}
