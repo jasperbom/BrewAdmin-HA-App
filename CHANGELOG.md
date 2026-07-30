@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.11.72] — 2026-07-30
+## [1.11.73] — 2026-07-30
 
 ### Opgelost — Traceerbaarheid vooruit vond nooit iets
 
@@ -51,6 +51,32 @@ De tab deed tot nu toe alleen het zoeken; de verantwoording eromheen ontbrak.
 - Het recallrapport begint nu met de terug te roepen lotcodes en bevat de
   massabalans, de traceergaten en de contactgegevens van de afnemers.
 - 39 nieuwe tests; 55 vertaalsleutels in alle vijf talen.
+
+---
+
+## [1.11.72] — 2026-07-30
+
+### Gewijzigd — Afvulsessie en afvulregistratie zijn één stap
+
+- In de fase **Afvullen** stonden de **Afvulsessie** (lotcode, CCP 2, CCP 3) en de
+  **Afvulregistratie** als twee losse stappen naast elkaar, terwijl het aan de
+  afvuller één handeling is. Ze zitten nu in één stap **Afvullen**: het
+  registratieformulier staat binnen de lopende sessie, direct onder de lotcode.
+- De **verpakking** komt voortaan uit de sessie in plaats van dat je hem per
+  afvulling opnieuw kiest — één sessie vult één verpakkingstype, want de
+  sluitcontrole (omkeerproef, rolinstelling) hoort bij dát type. Net als de THT
+  wordt hij alleen nog getoond. Zonder sessie (legacy-batch) blijft de keuze
+  gewoon beschikbaar.
+- **CCP 2** en **CCP 3** klappen vanzelf dicht zodra hun startcontrole er staat,
+  zodat het registreren van afvullingen niet elke keer langs twee volle
+  formulieren scrolt. De halfuur-herinnering blijft in de ingeklapte kop staan.
+- De knop **Registreren** is nu zichtbaar geblokkeerd (met de reden erbij) zolang
+  er geen sessie loopt of de startcontrole ontbreekt, in plaats van pas bij het
+  klikken een melding te geven.
+- De lijst met geregistreerde afvullingen blijft ook zonder lopende sessie
+  zichtbaar.
+- Opgelost: het label boven de verpakkingskeuze bij het starten van een sessie
+  toonde de onvertaalde sleutel `FLOW_AFVULLEN_VERPAKKING`.
 
 ---
 
