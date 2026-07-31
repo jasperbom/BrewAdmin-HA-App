@@ -3,6 +3,7 @@ import {
   maakParaaf, toevoegingVoorRegel, risicoVoorBatch, vereisteStabiliteitsdagen,
   dagenStabiel, ffVerschil, ffBinnenMarge, beoordeelVrijgave, actueleVrijgave,
   magAfvullen, isLegacyBatch, omkeerproefVerplicht, beoordeelSluitcontrole,
+  kroonkurkVerplicht, kroondiameterGrens, kroondiameterMeting,
   afvullingenSindsLaatsteGoedkeuring, magSessieAfsluiten, sluitcontroleHerinnering,
   allergenenUitBatch, allergenenVanProduct, vergelijkAllergenen,
   magEtiketterenDoorgaan, onderbouwingGeldig, bouwAfwijking, capaUitAfwijking,
@@ -305,6 +306,62 @@ describe('beoordeelSluitcontrole (CCP 2)', () => {
     const r = beoordeelSluitcontrole(
       {aanleiding: 'na_verstelling', visueel_ok: true, omkeerproef_ok: true}, 'blik')
     expect(r.onvolledig.map(x => x.code)).toContain('rolinstelling_ontbreekt')
+  })
+})
+
+describe('CCP 2 bij kroonkurk', () => {
+  const inst = {kroondiameter_min: 29.8, kroondiameter_max: 30.2}
+  const goed = {visueel_ok: true, flesmond_ok: true, draaitest_ok: true}
+
+  it('geldt bij fles en niet bij blik of fust', () => {
+    expect(kroonkurkVerplicht('fles')).toBe(true)
+    expect(kroonkurkVerplicht('Fles 33cl')).toBe(true)
+    expect(kroonkurkVerplicht('blik')).toBe(false)
+    expect(kroonkurkVerplicht('fust')).toBe(false)
+  })
+
+  it('eist flesmond en draaitest bij fles', () => {
+    const r = beoordeelSluitcontrole({visueel_ok: true}, 'fles')
+    expect(r.onvolledig.map(x => x.code))
+      .toEqual(['flesmond_ontbreekt', 'draaitest_ontbreekt'])
+  })
+
+  it('keurt af bij een beschadigde flesmond of een meedraaiende kurk', () => {
+    expect(beoordeelSluitcontrole({...goed, flesmond_ok: false}, 'fles').resultaat)
+      .toBe('afgekeurd')
+    expect(beoordeelSluitcontrole({...goed, draaitest_ok: false}, 'fles').resultaat)
+      .toBe('afgekeurd')
+  })
+
+  it('vraagt de kroondiameter pas zodra de leverancierspecificatie bekend is', () => {
+    // Zonder grens zegt een getal niets — dan is de meting niet verplicht.
+    expect(beoordeelSluitcontrole(goed, 'fles').onvolledig).toEqual([])
+    const r = beoordeelSluitcontrole(goed, 'fles', inst)
+    expect(r.onvolledig.map(x => x.code)).toEqual(['kroondiameter_ontbreekt'])
+  })
+
+  it('keurt af buiten de grens en goed erbinnen', () => {
+    expect(beoordeelSluitcontrole({...goed, kroondiameter_mm: 30.0}, 'fles', inst).resultaat)
+      .toBe('goedgekeurd')
+    expect(beoordeelSluitcontrole({...goed, kroondiameter_mm: 30.5}, 'fles', inst).resultaat)
+      .toBe('afgekeurd')
+    expect(beoordeelSluitcontrole({...goed, kroondiameter_mm: 29.5}, 'fles', inst).resultaat)
+      .toBe('afgekeurd')
+  })
+
+  it('legt de grens vast bij de meting, zodat het oordeel reproduceerbaar blijft', () => {
+    expect(kroondiameterMeting(30.05, inst)).toEqual({
+      key: 'kroondiameter', waarde: 30.05, eenheid: 'mm',
+      grens_min: 29.8, grens_max: 30.2, binnen_limiet: true,
+    })
+    expect(kroondiameterMeting('', inst)).toBeNull()
+    // Zonder ingestelde grens wordt er niets geoordeeld.
+    expect(kroondiameterMeting(30.05)?.binnen_limiet).toBeUndefined()
+  })
+
+  it('negeert een onbruikbare grens uit de instellingen', () => {
+    expect(kroondiameterGrens({kroondiameter_min: 30.2, kroondiameter_max: 29.8})).toBeNull()
+    expect(kroondiameterGrens({kroondiameter_min: 29.8})).toBeNull()
   })
 })
 

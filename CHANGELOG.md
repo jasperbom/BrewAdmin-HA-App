@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.79] — 2026-07-31
+
+### Opgelost — CCP 2 was op blik gemodelleerd, terwijl er op fles wordt afgevuld
+
+Het HACCP-handboek (§9.2 en bijlage A.8) beperkt de reikwijdte tot glazen fles
+en fust; blik valt er expliciet buiten. De sluitcontrole vroeg tot nu toe alleen
+een visuele beoordeling plus een omkeerproef — een blikcontrole. Daarmee waren
+juist de twee fouten onbeheerst die bij kroonkurk níét vanzelf opvallen.
+
+- De sluitcontrole vraagt bij fles nu ook: **flesmond gaaf** (een schilfer maakt
+  een gasdichte sluiting onmogelijk én levert glas in het product op),
+  **draaitest** (kurk draait met de hand niet mee) en de **kroondiameter na
+  aankrullen** in mm.
+- De kroondiameter wordt getoetst aan een **kritische grens** die je in
+  Instellingen → HACCP invult, uit de specificatie van je kroonkurkleverancier.
+  Buiten de grens = afgekeurd, met dezelfde blokkade van alle verpakkingen sinds
+  de laatste goedkeuring. Zolang de grens niet is ingevuld meldt het formulier
+  dat, en blijft de meting optioneel — een getal zonder specificatie geeft
+  schijnzekerheid.
+- De meting wordt vastgelegd mét de grens waaraan getoetst is, zodat een latere
+  kroonkurkpartij met andere maten het oordeel van toen niet verandert.
+- Welke verpakkingstypen als kroonkurk gelden staat in de instellingen
+  (standaard alles met "fles"), net als bij de omkeerproef.
+
+### Toegevoegd — Tussencontroles bij het achteraf vastleggen
+
+- Het achteraf-formulier schreef alleen een start- en een eindcontrole weg,
+  terwijl het handboek elk halfuur een sluitcontrole vraagt. Je kunt nu per
+  tussencontrole een tijdstip toevoegen; die worden als losse registraties
+  vastgelegd, elk met hun eigen moment.
+- Komt het aantal niet uit op het halfuurritme van de sessie, dan meldt het
+  formulier hoeveel controles er bij die sessieduur horen. Het vult ze
+  **niet** zelf aan: controles verzinnen die niemand gedaan heeft is het
+  tegenovergestelde van bewijs.
+- Een afgekeurde controle kan niet achteraf worden vastgelegd — daar horen een
+  corrigerende maatregel en een blokkade bij, en die lopen via de gewone
+  sluitcontrole. Het formulier zegt dat nu ook.
+
 ## [1.11.78] — 2026-07-30
 
 ### Toegevoegd — Een afvulsessie achteraf vastleggen

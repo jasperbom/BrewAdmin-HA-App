@@ -13,6 +13,7 @@ import BlokkadeKaart, { blokkadeSamenvatting } from '../haccp/BlokkadeKaart'
 import AfwijkingModal from '../haccp/AfwijkingModal'
 import {
   maakParaaf, haccpInst, risicoVoorBatch, omkeerproefVerplicht,
+  kroonkurkVerplicht, kroondiameterGrens, kroondiameterMeting,
   beoordeelSluitcontrole, afvullingenSindsLaatsteGoedkeuring, magSessieAfsluiten,
   sluitcontroleHerinnering, allergenenUitBatch, allergenenVanProduct,
   vergelijkAllergenen, magEtiketterenDoorgaan, bouwAfwijking, capaUitAfwijking,
@@ -20,8 +21,9 @@ import {
 import {
   volgendSessieNr, lotcodeVoorSessie, lotcodeIsUniek, thtKlasseVoorBatch,
   berekenTht, openSessiesVoorBatch, actieveSessie, magSessieStarten,
+  verwachteControleMomenten, controleDekking,
 } from '../../utils/afvulsessie'
-import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
+import type { AfvulSessie, SluitControle, SluitMeting, EtiketControle } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
 // eigen lotcode (L2431-B1), zodat bij een sluitprobleem alleen die sessie
@@ -99,11 +101,18 @@ const leegNa = {
   reiniging_bevestigd: false,
   visueel_ok: false,
   omkeerproef_ok: false,
+  flesmond_ok: false,
+  draaitest_ok: false,
+  kroondiameter_mm: '',
   lotcode_ok: false,
   tht_ok: false,
   alcohol_ok: false,
   etiket_versie: '',
   opmerking: '',
+  // Tijdstippen van de controles tussen start en eind. Leeg laten mag; het
+  // formulier meldt dan hoeveel er volgens het halfuurritme ontbreken. Zelf
+  // aanvullen zou controles verzinnen die niemand heeft gedaan.
+  tussen: [] as string[],
 }
 
 // Eén regel van de afvulchecklist. De hele fase is één lijst: hygiëne, sessie,
@@ -232,13 +241,21 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     aanleiding: 'start' as SluitControle['aanleiding'],
     visueel_ok: true,
     omkeerproef_ok: true,
+    flesmond_ok: true,
+    draaitest_ok: true,
+    kroondiameter_mm: '',
     rolinstelling: '',
     opmerking: '',
   })
   const omkeerNodig = omkeerproefVerplicht(sessie?.verpakking_type, inst)
-  const scBeoordeling = beoordeelSluitcontrole(
-    {...sc, omkeerproef_ok: omkeerNodig ? sc.omkeerproef_ok : null},
-    sessie?.verpakking_type, inst)
+  const kroonNodig = kroonkurkVerplicht(sessie?.verpakking_type, inst)
+  const kroonGrens = kroondiameterGrens(inst)
+  const scBeoordeling = beoordeelSluitcontrole({
+    ...sc,
+    omkeerproef_ok: omkeerNodig ? sc.omkeerproef_ok : null,
+    flesmond_ok: kroonNodig ? sc.flesmond_ok : null,
+    draaitest_ok: kroonNodig ? sc.draaitest_ok : null,
+  }, sessie?.verpakking_type, inst)
   const herinnering = sessie ? sluitcontroleHerinnering(sessie, eigenControles, nu, inst) : null
 
   const slaSluitcontroleOp = () => {
@@ -259,6 +276,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       aanleiding: sc.aanleiding,
       visueel_ok: sc.visueel_ok,
       omkeerproef_ok: omkeerNodig ? sc.omkeerproef_ok : null,
+      flesmond_ok: kroonNodig ? sc.flesmond_ok : null,
+      draaitest_ok: kroonNodig ? sc.draaitest_ok : null,
+      metingen: kroonNodig
+        ? [kroondiameterMeting(sc.kroondiameter_mm, inst)].filter(Boolean) as SluitMeting[]
+        : undefined,
       rolinstelling: sc.rolinstelling.trim() || undefined,
       resultaat: scBeoordeling.resultaat,
       geblokkeerde_afvulling_ids: geraakt.length ? geraakt : undefined,
@@ -289,6 +311,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       omschrijving: `${sessie.lotcode}: ${t(afgekeurd ? 'haccp_ccp2_afgekeurd' : 'haccp_ccp2_goedgekeurd')}`,
     })
     setSc(s => ({...s, aanleiding: 'halfuur', visueel_ok: true, omkeerproef_ok: true,
+                 flesmond_ok: true, draaitest_ok: true, kroondiameter_mm: '',
                  rolinstelling: '', opmerking: ''}))
     setNu(new Date())
   }
@@ -354,6 +377,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   React.useEffect(() => {
     if (!sessie) return
     setSc({aanleiding: 'start', visueel_ok: true, omkeerproef_ok: true,
+           flesmond_ok: true, draaitest_ok: true, kroondiameter_mm: '',
            rolinstelling: '', opmerking: ''})
     setEc(e => ({...e, aanleiding: 'start', etiket_versie: '', lotcode_ok: false,
                  tht_ok: false, alcohol_ok: false, opmerking: ''}))
@@ -483,6 +507,20 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // mag, de paraaf vervalsen niet.
   const naVp = (p.verpakkingen || []).find((v: any) => v.id === Number(na.verpakking_id))
   const naOmkeerNodig = omkeerproefVerplicht(naVp?.type || naVp?.naam, inst)
+  const naKroonNodig = kroonkurkVerplicht(naVp?.type || naVp?.naam, inst)
+  const naBeoordeling = beoordeelSluitcontrole({
+    aanleiding: 'start',
+    visueel_ok: na.visueel_ok,
+    omkeerproef_ok: naOmkeerNodig ? na.omkeerproef_ok : null,
+    flesmond_ok: naKroonNodig ? na.flesmond_ok : null,
+    draaitest_ok: naKroonNodig ? na.draaitest_ok : null,
+    kroondiameter_mm: na.kroondiameter_mm,
+  }, naVp?.type || naVp?.naam, inst)
+  // Volgens het handboek hoort er bij de start, elk halfuur en aan het eind
+  // een sluitcontrole. Wat de gebruiker invult telt; het verschil met dat
+  // ritme wordt gemeld, niet stilzwijgend aangevuld.
+  const naDekking = controleDekking(na.van, na.tot,
+    2 + na.tussen.filter(Boolean).length, inst.sluitcontrole_interval_min)
   const naProduct = (p.producten || []).find((x: any) => x.id === Number(na.product_id))
   const naEtiket = allergenenVanProduct(naProduct)
   const naVergelijking = vergelijkAllergenen(receptAllergenen, naEtiket.allergenen, naEtiket.gezet)
@@ -495,6 +533,12 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const naTht = berekenTht(na.datum || tod(), naThtKlasse, inst)
   const naCompleet = !!na.product_id && Number(na.hoeveelheid) > 0
     && na.visueel_ok && (!naOmkeerNodig || na.omkeerproef_ok)
+    && (!naKroonNodig || (na.flesmond_ok && na.draaitest_ok))
+    && naBeoordeling.onvolledig.length === 0
+    // Een afkeuring hoort niet achteraf en losstaand: daar horen een
+    // corrigerende maatregel en een blokkade van de betrokken verpakkingen
+    // bij, en die lopen via de gewone sluitcontrole.
+    && naBeoordeling.resultaat === 'goedgekeurd'
     && na.lotcode_ok && na.tht_ok && na.alcohol_ok
   const naToegestaan = naBlok.toegestaan && naCompleet && naEtiketBlok.toegestaan
 
@@ -536,11 +580,10 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     }
     p.setSessies((prev: AfvulSessie[]) => [...(prev || []), sessieRec])
 
-    // CCP 2 — start én eind, op de opgegeven tijden.
-    const beoordeling = beoordeelSluitcontrole(
-      {aanleiding: 'start', visueel_ok: na.visueel_ok,
-       omkeerproef_ok: naOmkeerNodig ? na.omkeerproef_ok : null},
-      sessieRec.verpakking_type, inst)
+    // CCP 2 — start, de opgegeven tussencontroles, en het eind. Elke controle
+    // is een eigen registratie met een eigen tijdstip: bij een afkeuring moet
+    // te bepalen zijn vanaf welk moment er geblokkeerd wordt.
+    const meting = naKroonNodig ? kroondiameterMeting(na.kroondiameter_mm, inst) : null
     const bouwControle = (aanleiding: SluitControle['aanleiding'], moment: string): SluitControle => ({
       id: newId(p.sluitcontroles || []),
       sessie_id: sessieId,
@@ -548,13 +591,20 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       aanleiding,
       visueel_ok: na.visueel_ok,
       omkeerproef_ok: naOmkeerNodig ? na.omkeerproef_ok : null,
+      flesmond_ok: naKroonNodig ? na.flesmond_ok : null,
+      draaitest_ok: naKroonNodig ? na.draaitest_ok : null,
+      metingen: meting ? [meting] : undefined,
       uitgevoerd_op: moment,
-      resultaat: beoordeling.resultaat,
+      resultaat: naBeoordeling.resultaat,
       opmerking: na.opmerking.trim() || undefined,
       paraaf,
     })
+    const tussenControles = na.tussen
+      .filter(Boolean)
+      .map(tijd => bouwControle('halfuur', `${datum}T${tijd}:00`))
     p.setSluitcontroles((prev: SluitControle[]) => [...(prev || []),
-      bouwControle('start', startMoment), bouwControle('einde', eindMoment)])
+      bouwControle('start', startMoment), ...tussenControles,
+      bouwControle('einde', eindMoment)])
 
     // CCP 3 — etiketcontrole met dezelfde allergenenvergelijking als live.
     const etiketId = newId(p.etiketcontroles || [])
@@ -655,6 +705,78 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               onChange={e => setNa({...na, omkeerproef_ok: e.target.checked})} />
             {t('haccp_ccp2_omkeerproef')}
           </label>
+        )}
+        {naKroonNodig && (
+          <>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="t-checkbox" checked={na.flesmond_ok}
+                onChange={e => setNa({...na, flesmond_ok: e.target.checked})} />
+              {t('haccp_ccp2_flesmond')}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="t-checkbox" checked={na.draaitest_ok}
+                onChange={e => setNa({...na, draaitest_ok: e.target.checked})} />
+              {t('haccp_ccp2_draaitest')}
+            </label>
+            <div className="sm:w-64 pt-1">
+              <Inp label={kroonGrens
+                  ? `${t('haccp_ccp2_kroondiameter')} (${kroonGrens.min}–${kroonGrens.max} mm)`
+                  : t('haccp_ccp2_kroondiameter')}
+                type="number" step="0.01" value={na.kroondiameter_mm}
+                onChange={v => setNa({...na, kroondiameter_mm: v})} />
+              {!kroonGrens && (
+                <div className="text-xs text-orange-600 mt-1">
+                  {t('haccp_ccp2_kroondiameter_geen_grens')}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Tussencontroles: de start en het eind zitten er automatisch in, de
+            halfuurcontroles vul je zelf in met hun tijdstip. */}
+        <div className="pt-2 space-y-1.5">
+          <Label>{t('haccp_achteraf_tussen')}</Label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {na.tussen.map((tijd, i) => (
+              <span key={i} className="flex items-center gap-1">
+                <input type="time" value={tijd}
+                  onChange={e => setNa({...na, tussen: na.tussen.map((x, j) => j === i ? e.target.value : x)})}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white t-input shadow-sm" />
+                <button type="button" title={t('btn_delete')}
+                  onClick={() => setNa({...na, tussen: na.tussen.filter((_, j) => j !== i)})}
+                  className="px-1.5 py-1 text-gray-400 hover:text-red-500">✕</button>
+              </span>
+            ))}
+            <button type="button"
+              onClick={() => {
+                // Het eerstvolgende halfuurmoment na de laatste die er al staat
+                // wordt voorgesteld; wat je niet gedaan hebt, haal je weg.
+                const momenten = verwachteControleMomenten(na.van, na.tot, inst.sluitcontrole_interval_min)
+                const gebruikt = new Set([na.van, na.tot, ...na.tussen])
+                const volgende = momenten.find(m => !gebruikt.has(m)) || ''
+                setNa({...na, tussen: [...na.tussen, volgende]})
+              }}
+              className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50">
+              + {t('haccp_achteraf_tussen_toevoegen')}
+            </button>
+          </div>
+          {naDekking.tekort > 0 && (
+            <div className="text-xs text-orange-600">
+              {t('haccp_achteraf_tussen_tekort')
+                .replace('{verwacht}', String(naDekking.verwacht))
+                .replace('{vastgelegd}', String(naDekking.vastgelegd))}
+            </div>
+          )}
+        </div>
+
+        {/* Een afkeuring hoort bij een corrigerende maatregel en een blokkade
+            van wat er sinds de laatste goedkeuring is gemaakt — dat gaat via
+            de gewone sluitcontrole, niet via dit formulier. */}
+        {naBeoordeling.resultaat === 'afgekeurd' && (
+          <div className="text-xs text-red-700 font-medium">
+            {t('haccp_achteraf_afgekeurd')}
+          </div>
         )}
         {([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
            ['tht_ok', 'haccp_ccp3_tht_ok'],
@@ -836,6 +958,31 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               onChange={e => setSc({...sc, omkeerproef_ok: e.target.checked})} />
             {t('haccp_ccp2_omkeerproef')}
           </label>
+        )}
+        {/* Kroonkurk: de twee fouten die niet vanzelf opvallen — een
+            beschadigde flesmond en een systematisch te ruime of te strakke
+            aankrulling — plus de maat die dat laatste aantoont. */}
+        {kroonNodig && (
+          <>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="t-checkbox" checked={sc.flesmond_ok}
+                onChange={e => setSc({...sc, flesmond_ok: e.target.checked})} />
+              {t('haccp_ccp2_flesmond')}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="t-checkbox" checked={sc.draaitest_ok}
+                onChange={e => setSc({...sc, draaitest_ok: e.target.checked})} />
+              {t('haccp_ccp2_draaitest')}
+            </label>
+            <Inp label={kroonGrens
+                ? `${t('haccp_ccp2_kroondiameter')} (${kroonGrens.min}–${kroonGrens.max} mm)`
+                : t('haccp_ccp2_kroondiameter')}
+              type="number" step="0.01" value={sc.kroondiameter_mm}
+              onChange={v => setSc({...sc, kroondiameter_mm: v})} />
+            {!kroonGrens && (
+              <div className="text-xs text-orange-600">{t('haccp_ccp2_kroondiameter_geen_grens')}</div>
+            )}
+          </>
         )}
         {sc.aanleiding === 'na_verstelling' && (
           <Inp label={t('haccp_ccp2_rolinstelling')} value={sc.rolinstelling}

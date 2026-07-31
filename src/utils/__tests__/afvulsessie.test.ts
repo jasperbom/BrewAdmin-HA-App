@@ -4,6 +4,7 @@ import {
   thtMaanden, datumPlusMaanden, berekenTht, openSessieVoorBatch,
   openSessiesVoorBatch, actieveSessie, magSessieStarten,
   magAfvullingRegistreren, vrijgegevenBatches,
+  verwachteControleMomenten, controleDekking,
 } from '../afvulsessie'
 
 const codes = (r: {redenen: Array<{code: string}>}) => r.redenen.map(x => x.code)
@@ -189,6 +190,33 @@ describe('magAfvullingRegistreren', () => {
       ctrl(3, 'na_verstelling', 'goedgekeurd', '2026-07-25T09:50:00Z'),
     ]
     expect(magAfvullingRegistreren(sessie(1, 1, 1), controles).toegestaan).toBe(true)
+  })
+})
+
+describe('dekking van de sluitcontroles', () => {
+  it('rekent start, elk halfuur en het eind mee', () => {
+    expect(verwachteControleMomenten('09:00', '10:30', 30))
+      .toEqual(['09:00', '09:30', '10:00', '10:30'])
+  })
+
+  it('neemt het eindmoment mee als het niet op een heel interval valt', () => {
+    expect(verwachteControleMomenten('09:00', '10:10', 30))
+      .toEqual(['09:00', '09:30', '10:00', '10:10'])
+  })
+
+  it('geeft één moment bij een sessie zonder duur en niets bij onzin', () => {
+    expect(verwachteControleMomenten('09:00', '09:00', 30)).toEqual(['09:00'])
+    expect(verwachteControleMomenten('10:00', '09:00', 30)).toEqual([])
+    expect(verwachteControleMomenten('', '', 30)).toEqual([])
+  })
+
+  it('meldt hoeveel controles er tekortkomen', () => {
+    // Een sessie van 09:00 tot 12:30 vraagt om acht controles; wie er twee
+    // vastlegt, mist er zes. Waarschuwen — niet zelf aanvullen.
+    expect(controleDekking('09:00', '12:30', 2, 30))
+      .toEqual({verwacht: 8, vastgelegd: 2, tekort: 6})
+    expect(controleDekking('09:00', '09:30', 5, 30))
+      .toEqual({verwacht: 2, vastgelegd: 5, tekort: 0})
   })
 })
 

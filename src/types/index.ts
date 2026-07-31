@@ -1537,6 +1537,12 @@ export interface SluitControle {
   visueel_ok: boolean
   // Verplicht bij blik; null/undefined bij fles en fust.
   omkeerproef_ok?: boolean | null
+  // Kroonkurk (fles). De flesmond wordt vóór het kurken beoordeeld: een
+  // schilfer of haarscheurtje maakt een gasdichte sluiting onmogelijk én
+  // levert glas in het product op. De draaitest toetst of het schort ver
+  // genoeg onder de kraag is getrokken.
+  flesmond_ok?: boolean | null
+  draaitest_ok?: boolean | null
   // Verplicht vast te leggen bij aanleiding 'na_verstelling'.
   rolinstelling?: string
   // Wanneer de controle is uitgevoerd. Leeg = op het moment van vastleggen.
@@ -1675,6 +1681,13 @@ export interface HaccpInst {
   toevoeging_per_ing_type?: Record<string, ToevoegingSoort>
   // Verpakkingstypen waarbij de omkeerproef verplicht is (standaard blik).
   omkeerproef_verplicht_types?: string[]
+  // Verpakkingstypen met een kroonkurksluiting (standaard fles): daar gelden
+  // de flesmond-, draai- en kroondiametercontrole van CCP 2.
+  kroonkurk_verplicht_types?: string[]
+  // Kritische grens voor de kroondiameter na aankrullen, in mm, uit de
+  // specificatie van de kroonkurkleverancier. Null = nog niet opgevraagd.
+  kroondiameter_min?: number | null
+  kroondiameter_max?: number | null
 }
 
 export type BtwAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
