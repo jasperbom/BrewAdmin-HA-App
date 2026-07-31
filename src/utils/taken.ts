@@ -148,5 +148,35 @@ export const telAchterstalligeSchoonmaakTaken = (
 ): number =>
   (schoonmaakTaken || []).filter((tk: any) => isSchoonmaakTaakAchterstallig(tk, schoonmaakLog, vandaag)).length
 
+// ── Achterhaalde CCP-definities (opschoning v4) ─────────────────────────────
+// De eerste HACCP-opzet kende vier generieke "CCP-definities" als
+// meting-taken: kooktemperatuur, koelsnelheid, vergistingstemperatuur en pH
+// wort na koelen. Sinds het handboek geïmplementeerd is zijn de kritische
+// beheerspunten CCP 1 (vrijgave), CCP 2 (sluitcontrole) en CCP 3
+// (etiketcontrole) — en die vier waarden worden al vastgelegd in de
+// brouwdagstappen (kook, koelen, pH) en de gistmetingen (temperatuur, pH).
+// Ze worden uitgezet, niet verwijderd: de historie in haccp_ccp_metingen
+// blijft staan en wie ze toch wil gebruiken zet ze in Instellingen →
+// Batchtaken weer aan.
+export const STANDAARD_METING_LABELS: readonly string[] = [
+  'Kooktemperatuur',
+  'Koelsnelheid',
+  'Vergistingstemperatuur',
+  'pH wort na koelen',
+]
+
+export const deactiveerStandaardMetingen = (
+  items: any[],
+): { items: any[]; gewijzigd: boolean } => {
+  let gewijzigd = false
+  const nieuwe = (items || []).map((it: any) => {
+    if (!it || it.actief === false || it.type !== 'meting') return it
+    if (!STANDAARD_METING_LABELS.includes(String(it.label || ''))) return it
+    gewijzigd = true
+    return { ...it, actief: false }
+  })
+  return { items: nieuwe, gewijzigd }
+}
+
 // Her-export voor gemak van de aanroeper (App.tsx gebruikt beide).
 export { groepFase }

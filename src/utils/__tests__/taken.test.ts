@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   faseUitInhoud, schoonTakenOp, DUBBELE_BROUWDAG_CHECK_KEYS,
   telOpenstaandeBatchTaken, isSchoonmaakTaakAchterstallig, telAchterstalligeSchoonmaakTaken,
+  deactiveerStandaardMetingen, STANDAARD_METING_LABELS,
 } from '../taken'
 
 // Nagebouwd migratie-scenario: installatie met twee eigen hygiëne-groepen,
@@ -186,5 +187,46 @@ describe('isSchoonmaakTaakAchterstallig / telAchterstalligeSchoonmaakTaken', () 
     ]
     const logs = [{ taak_id: 1, datum: '2026-07-18' }] // taak 1 recent, taak 2 heeft geen log
     expect(telAchterstalligeSchoonmaakTaken(taken, logs, vandaag)).toBe(1)
+  })
+})
+
+describe('deactiveerStandaardMetingen', () => {
+  it('zet de vier standaard CCP-definities uit', () => {
+    const res = deactiveerStandaardMetingen([
+      { id: 1, type: 'meting', label: 'Kooktemperatuur', actief: true },
+      { id: 2, type: 'meting', label: 'Koelsnelheid', actief: true },
+      { id: 3, type: 'meting', label: 'Vergistingstemperatuur', actief: true },
+      { id: 4, type: 'meting', label: 'pH wort na koelen', actief: true },
+    ])
+    expect(res.gewijzigd).toBe(true)
+    expect(res.items.every((i: any) => i.actief === false)).toBe(true)
+    expect(STANDAARD_METING_LABELS).toHaveLength(4)
+  })
+
+  it('laat eigen metingen en gewone checks met rust', () => {
+    const invoer = [
+      { id: 1, type: 'meting', label: 'Kooktemperatuur', actief: true },
+      { id: 2, type: 'meting', label: 'Chloordioxide restgehalte', actief: true },
+      { id: 3, type: 'check', label: 'Kooktemperatuur', actief: true },
+    ]
+    const res = deactiveerStandaardMetingen(invoer)
+    expect(res.items[0].actief).toBe(false)
+    expect(res.items[1].actief).toBe(true)
+    expect(res.items[2].actief).toBe(true)
+  })
+
+  it('meldt niets gewijzigd als er niets uit te zetten valt', () => {
+    const invoer = [
+      { id: 1, type: 'meting', label: 'Kooktemperatuur', actief: false },
+      { id: 2, type: 'check', labelKey: 'brouwdag_check_1_water', actief: true },
+    ]
+    const res = deactiveerStandaardMetingen(invoer)
+    expect(res.gewijzigd).toBe(false)
+    expect(res.items).toEqual(invoer)
+  })
+
+  it('overleeft lege en rommelige invoer', () => {
+    expect(deactiveerStandaardMetingen([]).gewijzigd).toBe(false)
+    expect(deactiveerStandaardMetingen([null as any]).items).toEqual([null])
   })
 })

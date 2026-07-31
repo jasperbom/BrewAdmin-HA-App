@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
 import { fmtD, fmtQty, tod } from '../utils/format'
-import { TANK_STATUSSEN, telThtAlerts, resolveTankHistorie, tankRestVolume, effectiefOG, effectiefFG } from '../utils/calculations'
+import { TANK_STATUSSEN, telThtAlerts, resolveTankHistorie, tankRestVolume, effectiefOG, effectiefFG, vrijeTanksMetStatus } from '../utils/calculations'
+import { TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { telOpenstaandeBatchTaken } from '../utils/taken'
 import { volgendeBrouwdagStap } from '../utils/brouwdag'
 import { newId } from '../utils/api'
@@ -21,6 +22,7 @@ interface ProductieDashboardProps {
   av: any[]
   verliesRegistraties: any[]
   haTankTemps: Record<string, number>
+  tankStatussen: Record<string, { status?: string, sinds?: string }>
   batchTakenItems: any[]
   batchTakenGroepen: any[]
   brouwdagStappen: any[]
@@ -45,7 +47,7 @@ const LEGE_METING: MetingForm = { sg: '', ph: '', temp: '' }
 // waardevolle, dagelijks gebruikte info, geen "rijke tankbediening". Climate-
 // control en cold-crash-bediening blijven wél op Batches/Batchflow.
 function ProductieDashboard({
-  bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {},
+  bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {}, tankStatussen = {},
   batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
   setPage, setNavBatchId, setPreNieuwBatch = () => {},
@@ -87,6 +89,15 @@ function ProductieDashboard({
   const actieveTanks = useMemo(() => tanks
     .map((tk: any) => ({ tank: tk, batch: bat.find((b: any) => b.tank === tk.id && TANK_STATUSSEN.includes(b.status)) }))
     .filter((x: any) => x.batch), [tanks, bat])
+
+  // Lege tanks blijven zichtbaar, mét reinigingsstatus: een tank die net leeg
+  // is gekomen staat op Vuil en moet gereinigd worden vóór de volgende brouw.
+  const vrijeTanks = useMemo(() => vrijeTanksMetStatus(tanks, bat, tankStatussen), [tanks, bat, tankStatussen])
+  const statusKleur: Record<string, string> = {
+    Vuil: 'bg-red-100 text-red-700',
+    Schoon: 'bg-blue-100 text-blue-700',
+    Ontsmet: 'bg-green-100 text-green-700',
+  }
 
   // Inline meting-form per tankkaart — één tegelijk open, zelfde patroon als
   // voorheen op het gedeelde dashboard (metingBatchId op paginaniveau).
@@ -242,6 +253,25 @@ function ProductieDashboard({
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Vrije tanks + reinigingsstatus ───────────────────────────────── */}
+      {vrijeTanks.length > 0 && (
+        <div className="mb-6">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">{t('dash_vrije_tanks')}</div>
+          <div className="flex flex-wrap gap-2">
+            {vrijeTanks.map(({ tank, status, sinds }: any) => (
+              <div key={tank.id} className="bg-white rounded-lg border border-gray-200 shadow-sm px-3 py-2 flex items-center gap-2 min-h-[44px]">
+                <span className="text-sm font-medium text-gray-700">{tank.naam || tank.id}</span>
+                {tank.soort && <span className="text-xs text-gray-400">{tank.soort}</span>}
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${status ? statusKleur[status] || 'bg-gray-100 text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
+                  {status ? t(TANK_REINIGING_LABEL_KEY[status] || '') : t('dash_tank_status_onbekend')}
+                </span>
+                {sinds && <span className="text-xs text-gray-400">{fmtD(sinds)}</span>}
+              </div>
+            ))}
           </div>
         </div>
       )}

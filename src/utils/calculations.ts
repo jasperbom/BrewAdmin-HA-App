@@ -995,6 +995,39 @@ export const nextBatchNummer = (batches: any[]): string => {
 // Let op: het echte gistingsstatus-label in de app is 'Vergisten' (niet 'Gisten').
 export const TANK_STATUSSEN = ['Brouwen', 'Vergisten', 'Conditioneren']
 
+// ── Lege tanks + hun reinigingsstatus ───────────────────────────────────────
+// Het dashboard toonde alleen tanks met een batch erin, waardoor een tank
+// verdween zodra hij leeg was — precies het moment waarop de vraag "is hij
+// al schoon?" gaat spelen. Deze helper levert de lege tanks mét hun
+// reinigingsstatus, gesorteerd op wat aandacht vraagt: eerst vuil, dan
+// onbekend (nooit geregistreerd = niet aantoonbaar schoon), dan schoon en
+// tenslotte ontsmet.
+export interface VrijeTank {
+  tank: any
+  status: string | null
+  sinds?: string
+}
+
+const VRIJE_TANK_VOLGORDE: Record<string, number> = { Vuil: 0, Schoon: 2, Ontsmet: 3 }
+
+export const vrijeTanksMetStatus = (
+  tanks: any[],
+  batches: any[],
+  statussen: Record<string, { status?: string, sinds?: string }> | undefined | null,
+): VrijeTank[] => (tanks || [])
+  .filter((tk: any) => tk && !(batches || []).some((b: any) =>
+    b?.tank === tk.id && TANK_STATUSSEN.includes(String(b?.status))))
+  .map((tk: any) => {
+    const entry = (statussen || {})[tk.id]
+    return { tank: tk, status: entry?.status || null, sinds: entry?.sinds }
+  })
+  .sort((a: VrijeTank, b: VrijeTank) => {
+    const va = a.status ? (VRIJE_TANK_VOLGORDE[a.status] ?? 1) : 1
+    const vb = b.status ? (VRIJE_TANK_VOLGORDE[b.status] ?? 1) : 1
+    if (va !== vb) return va - vb
+    return String(a.tank?.naam || a.tank?.id || '').localeCompare(String(b.tank?.naam || b.tank?.id || ''))
+  })
+
 // Helpers voor uniforme veld-toegang op afvullingen (oude data kan
 // `aantal`/`inhoud_liter` gebruiken, nieuwe `hoeveelheid`/`inhoud_per_eenheid`).
 const afvAantal = (a: any): number =>

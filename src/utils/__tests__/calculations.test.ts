@@ -3,7 +3,7 @@ import {
   accijnsCalc, tariefVoorDatum, accijnsMaandGesloten, berekenWinstVerlies,
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
   berekenProductKostprijs, berekenCogs, telThtAlerts, laatsteOpenAccijnsMaand,
-  productIdsVoorBatch, batchHoortBijProduct,
+  productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -263,5 +263,42 @@ describe('laatsteOpenAccijnsMaand', () => {
   it('kijkt alleen naar de vorige kalendermaand, niet naar oudere openstaande maanden', () => {
     const acc = [{ datum: '2026-01-15' }] // januari, niet de vorige maand (juni)
     expect(laatsteOpenAccijnsMaand([], acc, vandaag)).toBeNull()
+  })
+})
+
+
+describe('vrijeTanksMetStatus', () => {
+  const tanks = [
+    { id: 'T1', naam: 'Unitank 1' },
+    { id: 'T2', naam: 'Unitank 2' },
+    { id: 'T3', naam: 'Bright tank' },
+    { id: 'T4', naam: 'Lagertank' },
+  ]
+  const batches = [{ id: 1, tank: 'T1', status: 'Vergisten' }, { id: 2, tank: 'T4', status: 'Gesloten' }]
+  const statussen = {
+    T2: { status: 'Ontsmet', sinds: '2026-07-01' },
+    T3: { status: 'Vuil', sinds: '2026-07-20' },
+  }
+
+  it('laat tanks met bier erin weg en lege tanks staan', () => {
+    const res = vrijeTanksMetStatus(tanks, batches, statussen)
+    expect(res.map(r => r.tank.id)).toEqual(['T3', 'T4', 'T2'])
+  })
+
+  it('zet vuil bovenaan, dan onbekend, dan schoon/ontsmet', () => {
+    const res = vrijeTanksMetStatus(tanks, batches, statussen)
+    expect(res[0].status).toBe('Vuil')
+    expect(res[1].status).toBeNull()   // T4: nooit geregistreerd
+    expect(res[2].status).toBe('Ontsmet')
+  })
+
+  it('geeft de datum sinds wanneer de status geldt mee', () => {
+    const res = vrijeTanksMetStatus(tanks, batches, statussen)
+    expect(res[0].sinds).toBe('2026-07-20')
+  })
+
+  it('is robuust voor lege input', () => {
+    expect(vrijeTanksMetStatus([], [], null)).toEqual([])
+    expect(vrijeTanksMetStatus(tanks, [], undefined)).toHaveLength(4)
   })
 })

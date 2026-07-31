@@ -4,6 +4,47 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.81] — 2026-07-31
+
+### Gewijzigd — HACCP-pagina afgeslankt van elf naar zes tabbladen
+
+De pagina is een register: registreren gebeurt daar waar de handeling
+plaatsvindt (vrijgave, sluit- en etiketcontrole in de batchflow, tankreiniging
+bij de tank). De indeling volgde nog de datasleutels in plaats van de vraag die
+je stelt.
+
+- **Tab "CCP Monitoring" is weg.** De vier generieke CCP-definities
+  (kooktemperatuur, koelsnelheid, vergistingstemperatuur, pH wort na koelen)
+  waren van vóór het handboek: dat kent CCP 1 (vrijgave), CCP 2 (sluitcontrole)
+  en CCP 3 (etiketcontrole), en die vier waarden staan al in de brouwdagstappen
+  en de gistmetingen. Twee tabbladen die allebei "CCP" heetten met een
+  verschillende betekenis is er nu één: **Kritische punten**.
+- De definities worden bij het opstarten éénmalig **uitgezet, niet verwijderd**
+  (opschoning v4): bestaande metingen blijven in de data en wie ze toch wil
+  gebruiken zet ze in Instellingen → Batchtaken weer aan. Daarmee vervalt ook de
+  tweede definitie-editor, die bij elke opslag de hele batch-takenlijst
+  herschikte en de vertaalsleutel van standaardtaken wiste.
+- **Schoonmaak + Tankreiniging → Reiniging** (schoonmaaktaken / logboek /
+  tankreiniging) en **Waterkwaliteit + Ongedierte + Opleidingen → Registers**.
+  CAPA is een sublijst onder Kritische punten geworden, want elke afgekeurde
+  controle en elke afwijking komt daar terecht. Er verdwijnt geen registratie —
+  alleen de tabbalk die op mobiel over twee regels brak.
+- **Dashboard toont wat aandacht vraagt.** In plaats van twaalf kaarten waarvan
+  er meestal elf groen zijn: kaarten voor de punten die openstaan, de rest als
+  één rij "in orde"-chips. Staat alles goed, dan zegt het scherm dat in één
+  regel.
+- Het verwijderen van een schoonmaaktaak vroeg om bevestiging met een
+  hardgecodeerde Nederlandse tekst; die loopt nu via i18n.
+
+### Toegevoegd — Lege tanks blijven op het productiedashboard staan
+
+- Een tank verdween van het dashboard zodra hij leeg was — precies het moment
+  waarop de vraag "is hij al schoon?" gaat spelen. Onder **Actieve tanks** staat
+  nu **Vrije tanks**, met per tank de reinigingsstatus (vuil / schoon / ontsmet)
+  en sinds wanneer die geldt. Een tank die nooit geregistreerd is toont
+  *status onbekend* — niet aantoonbaar schoon is geen schoon.
+- Vuile tanks staan vooraan, daarna onbekend, dan schoon en ontsmet.
+
 ## [1.11.80] — 2026-07-31
 
 ### Gewijzigd — Geen kroondiameter-meting in de sluitcontrole
