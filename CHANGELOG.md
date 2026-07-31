@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.82] — 2026-07-31
+
+### Toegevoegd — Tankreiniging vastleggen (dat kon nergens)
+
+De reinigingsstatus van een tank ging automatisch naar **Vuil** zodra een batch
+hem verliet, maar geen enkel scherm zette hem ooit terug op Schoon of Ontsmet.
+Een tank die één keer leeg was gekomen bleef dus voor altijd vuil, terwijl de
+batchflow bij het starten van de vergisting wél waarschuwt dat de tank niet
+ontsmet is. Hoofdstuk 6 van het handboek vraagt om aantoonbare reiniging —
+zonder registratiescherm is daar niets van aan te tonen.
+
+- De vrije-tankkaart op het productiedashboard heeft **+ Reiniging vastleggen**:
+  status (ontsmet / schoon / vuil), datum, uitvoerder, middel, CIP-vinkje en een
+  opmerking. Zonder uitvoerder kan er niet opgeslagen worden — een regel zonder
+  naam is bij een controle niets waard.
+- De registratie schrijft naast de status ook de **log-entry** die in
+  HACCP → Reiniging → Tankreiniging het bewijs vormt, met oorzaak *handmatig*
+  naast de bestaande automatische *batch verliet tank*-regels.
+
+### Gewijzigd — Volledige tankkaart voor vrije tanks
+
+- Vrije tanks stonden als smalle pil onder de actieve tanks; ze hebben nu
+  dezelfde kaart als een tank met bier erin: tankvisual, naam, status, soort,
+  inhoud en sinds wanneer de status geldt.
+- Onder de status staat de laatste reiniging (datum, wie, welk middel), zodat je
+  aan de kaart ziet of "ontsmet" van gisteren of van maart is.
+- Het tankreinigingslogboek had "Alle statussen" als kolomkop staan; dat is nu
+  gewoon *Status*.
+
 ## [1.11.81] — 2026-07-31
 
 ### Gewijzigd — HACCP-pagina afgeslankt van elf naar zes tabbladen
