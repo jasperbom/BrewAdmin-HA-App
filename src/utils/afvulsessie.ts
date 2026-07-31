@@ -179,6 +179,51 @@ export const magAfvullingRegistreren = (
   return blokkade(redenen)
 }
 
+// ── Dekking van de sluitcontroles (handboek §9.2) ───────────────────────────
+
+/** De momenten waarop er tijdens een sessie een sluitcontrole hoort te zijn:
+ *  bij de start, daarna elk halfuur, en aan het eind. Puur rekenwerk over de
+ *  klok — het zegt niets over wat er werkelijk gedaan is. */
+export const verwachteControleMomenten = (
+  startTijd: string,
+  eindTijd: string,
+  intervalMin: number
+): string[] => {
+  const naarMin = (hhmm: string): number | null => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim())
+    if (!m) return null
+    const u = Number(m[1]); const min = Number(m[2])
+    return u >= 0 && u < 24 && min >= 0 && min < 60 ? u * 60 + min : null
+  }
+  const van = naarMin(startTijd)
+  const tot = naarMin(eindTijd)
+  const stap = Math.max(1, Math.round(intervalMin) || 30)
+  if (van == null || tot == null || tot < van) return []
+  const uit: string[] = []
+  for (let m = van; m <= tot; m += stap) {
+    uit.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
+  }
+  // Het eindmoment hoort er altijd bij, ook als het niet op een heel interval
+  // valt: de laatste verpakking van de sessie moet gecontroleerd zijn.
+  const laatste = `${String(Math.floor(tot / 60)).padStart(2, '0')}:${String(tot % 60).padStart(2, '0')}`
+  if (uit[uit.length - 1] !== laatste) uit.push(laatste)
+  return uit
+}
+
+/** Hoeveel controles er bij deze sessieduur horen tegenover hoeveel er zijn
+ *  vastgelegd. Bedoeld om te waarschuwen, niet om te blokkeren: ontbrekende
+ *  controles achteraf bijmaken zou het bewijs juist waardeloos maken. */
+export const controleDekking = (
+  startTijd: string,
+  eindTijd: string,
+  aantalVastgelegd: number,
+  intervalMin: number
+): {verwacht: number; vastgelegd: number; tekort: number} => {
+  const verwacht = verwachteControleMomenten(startTijd, eindTijd, intervalMin).length
+  const vastgelegd = Math.max(0, Number(aantalVastgelegd) || 0)
+  return {verwacht, vastgelegd, tekort: Math.max(0, verwacht - vastgelegd)}
+}
+
 /** Batches die geselecteerd mogen worden voor een nieuwe afvulsessie. */
 export const vrijgegevenBatches = (
   batches: Batch[],

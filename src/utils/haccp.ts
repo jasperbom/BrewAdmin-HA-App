@@ -351,10 +351,26 @@ export const omkeerproefVerplicht = (
   return types.some(x => t.includes(String(x).toLowerCase()))
 }
 
+/** Een kroonkurksluiting is visueel te beoordelen, op twee fouten na: een
+ *  kroonkurker die systematisch te ruim of te strak aankrult (alleen met een
+ *  maat te vinden) en een beschadigde flesmond. Vandaar de extra velden bij
+ *  fles — bij fust volstaat de visuele beoordeling van de aansluiting. */
+export const kroonkurkVerplicht = (
+  verpakkingType: string | undefined | null,
+  instRaw?: Partial<HaccpInst> | null
+): boolean => {
+  const inst = haccpInst(instRaw)
+  const types = inst.kroonkurk_verplicht_types || []
+  const tp = String(verpakkingType || '').toLowerCase()
+  return types.some(x => tp.includes(String(x).toLowerCase()))
+}
+
 export interface SluitcontroleInvoer {
   aanleiding?: string
   visueel_ok?: boolean
   omkeerproef_ok?: boolean | null
+  flesmond_ok?: boolean | null
+  draaitest_ok?: boolean | null
   rolinstelling?: string
 }
 
@@ -368,17 +384,32 @@ export const beoordeelSluitcontrole = (
   if (omkeerNodig && inv.omkeerproef_ok == null) {
     onvolledig.push({code: 'omkeerproef_ontbreekt', i18nKey: 'haccp_blok_omkeerproef'})
   }
+  const kroonNodig = kroonkurkVerplicht(verpakkingType, instRaw)
+  if (kroonNodig) {
+    if (inv.flesmond_ok == null) {
+      onvolledig.push({code: 'flesmond_ontbreekt', i18nKey: 'haccp_blok_flesmond'})
+    }
+    if (inv.draaitest_ok == null) {
+      onvolledig.push({code: 'draaitest_ontbreekt', i18nKey: 'haccp_blok_draaitest'})
+    }
+  }
   // Een verstelling van de canner moet herleidbaar zijn; zonder vastgelegde
   // rolinstelling is niet na te gaan wat er veranderd is.
   if (inv.aanleiding === 'na_verstelling' && !(inv.rolinstelling || '').trim()) {
     onvolledig.push({code: 'rolinstelling_ontbreekt', i18nKey: 'haccp_blok_rolinstelling'})
   }
-  const afgekeurd = inv.visueel_ok === false || (omkeerNodig && inv.omkeerproef_ok === false)
+  const afgekeurd = inv.visueel_ok === false
+    || (omkeerNodig && inv.omkeerproef_ok === false)
+    || (kroonNodig && (inv.flesmond_ok === false || inv.draaitest_ok === false))
   return {resultaat: afgekeurd ? 'afgekeurd' : 'goedgekeurd', onvolledig}
 }
 
+/** Het moment waarop de controle is gedáán. Wordt een sessie achteraf
+ *  vastgelegd, dan is dat niet hetzelfde als het moment van vastleggen: de
+ *  blokkade-vensters en de halfuurherinnering moeten op de werkelijke tijd
+ *  rekenen, niet op het invoermoment. */
 const controleTs = (c: SluitControle): number =>
-  new Date(c.paraaf?.tijdstip || 0).getTime()
+  new Date(c.uitgevoerd_op || c.paraaf?.tijdstip || 0).getTime()
 
 /** Bij een afgekeurde sluitcontrole zijn alle verpakkingen verdacht die
  *  gemaakt zijn sinds de laatste goedgekeurde controle. Bij twijfel over de

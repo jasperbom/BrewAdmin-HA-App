@@ -4,6 +4,112 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.80] — 2026-07-31
+
+### Gewijzigd — Geen kroondiameter-meting in de sluitcontrole
+
+- De meting van de kroondiameter na aankrullen (mm, met een kritische grens uit
+  de leverancierspecificatie) is er weer uit, inclusief het instellingenveld
+  ervoor. Hij vroeg om een schuifmaat en een opgevraagde specificatie voordat je
+  een sluitcontrole kon vastleggen.
+- De sluitcontrole bij fles houdt de twee controles die niets kosten:
+  **flesmond gaaf** en de **draaitest**. Beide keuren de controle af als ze niet
+  in orde zijn, met dezelfde blokkade van alles sinds de laatste goedkeuring.
+
+## [1.11.79] — 2026-07-31
+
+### Opgelost — CCP 2 was op blik gemodelleerd, terwijl er op fles wordt afgevuld
+
+Het HACCP-handboek (§9.2 en bijlage A.8) beperkt de reikwijdte tot glazen fles
+en fust; blik valt er expliciet buiten. De sluitcontrole vroeg tot nu toe alleen
+een visuele beoordeling plus een omkeerproef — een blikcontrole. Daarmee waren
+juist de twee fouten onbeheerst die bij kroonkurk níét vanzelf opvallen.
+
+- De sluitcontrole vraagt bij fles nu ook: **flesmond gaaf** (een schilfer maakt
+  een gasdichte sluiting onmogelijk én levert glas in het product op),
+  **draaitest** (kurk draait met de hand niet mee) en de **kroondiameter na
+  aankrullen** in mm.
+- De kroondiameter wordt getoetst aan een **kritische grens** die je in
+  Instellingen → HACCP invult, uit de specificatie van je kroonkurkleverancier.
+  Buiten de grens = afgekeurd, met dezelfde blokkade van alle verpakkingen sinds
+  de laatste goedkeuring. Zolang de grens niet is ingevuld meldt het formulier
+  dat, en blijft de meting optioneel — een getal zonder specificatie geeft
+  schijnzekerheid.
+- De meting wordt vastgelegd mét de grens waaraan getoetst is, zodat een latere
+  kroonkurkpartij met andere maten het oordeel van toen niet verandert.
+- Welke verpakkingstypen als kroonkurk gelden staat in de instellingen
+  (standaard alles met "fles"), net als bij de omkeerproef.
+
+### Toegevoegd — Tussencontroles bij het achteraf vastleggen
+
+- Het achteraf-formulier schreef alleen een start- en een eindcontrole weg,
+  terwijl het handboek elk halfuur een sluitcontrole vraagt. Je kunt nu per
+  tussencontrole een tijdstip toevoegen; die worden als losse registraties
+  vastgelegd, elk met hun eigen moment.
+- Komt het aantal niet uit op het halfuurritme van de sessie, dan meldt het
+  formulier hoeveel controles er bij die sessieduur horen. Het vult ze
+  **niet** zelf aan: controles verzinnen die niemand gedaan heeft is het
+  tegenovergestelde van bewijs.
+- Een afgekeurde controle kan niet achteraf worden vastgelegd — daar horen een
+  corrigerende maatregel en een blokkade bij, en die lopen via de gewone
+  sluitcontrole. Het formulier zegt dat nu ook.
+
+## [1.11.78] — 2026-07-30
+
+### Toegevoegd — Een afvulsessie achteraf vastleggen
+
+- Tijdens het afvullen heb je je handen vol: er wordt niets live ingetikt. Het
+  scherm ging er tot nu toe wél van uit dat je meetypte — sessie starten,
+  startcontrole, elk halfuur een controle, per afvulling registreren.
+- **Nu** staat bovenaan het sessieblok de keuze **Achteraf vastleggen** (de
+  standaard) of **Live meelopen**. Achteraf is één formulier: product,
+  verpakking, aantal, datum, begin- en eindtijd, en de vinkjes van de controles
+  die je hebt gedaan. Eén knop schrijft in één keer weg:
+  - de afvulsessie (meteen afgesloten, met lotcode en berekende THT),
+  - de sluitcontrole bij start én eind (CCP 2),
+  - de etiketcontrole met allergenenvergelijking (CCP 3),
+  - de afvulling zelf, inclusief verpakkingsvoorraad, accijns-voorcalculatie en
+    logregels.
+- Controles krijgen een veld **uitgevoerd op**: het moment waarop de controle
+  is gedáán. De blokkadevensters en de halfuurherinnering rekenen daarmee, niet
+  met het invoermoment. De paraaf (wie, wanneer vastgelegd) blijft automatisch
+  — achteraf invoeren mag, de paraaf vervalsen niet.
+- Wat blijft blokkeren: geen vrijgave (CCP 1), geen bevestigde reiniging, en
+  allergenen op het etiket die niet met het recept overeenkomen. Een afgekeurde
+  sluitcontrole vastleggen kan alleen via de live-route, want daar hoort een
+  CAPA en een blokkade van de betrokken verpakkingen bij.
+
+## [1.11.77] — 2026-07-30
+
+### Gewijzigd — De afvulfase is één checklist geworden
+
+- De fase **Afvullen** bestond uit drie stapkaarten met daarin nog eens losse
+  panelen: hygiënelijst, sessieblok met sessiekop, afvulformulier, CCP 2, CCP 3,
+  afvullijst en verliesregistratie — allemaal tegelijk in beeld voor een
+  handeling die neerkomt op "zoveel stuks van dit bier".
+- **Nu:** één checklist met zes gelijkwaardige regels, waarvan er één tegelijk
+  openstaat:
+
+  ```
+  ○ Hygiëne                    0/9
+  ○ Afvulsessie met lotcode    L2431-B1, L2431-B2
+  ✓ Sluitcontrole (CCP 2)      21:17 · volgende over 30 min
+  ○ Etiketcontrole (CCP 3)
+  ✓ Afvullingen geregistreerd  4 — 299,6 L
+  ✓ Tank leeg                  0,0 L
+  ```
+
+- De CCP's zijn dus gewoon regels in dezelfde lijst in plaats van aparte
+  panelen; ze verschijnen zodra er een sessie loopt en tonen in hun regel wat
+  er te melden valt (laatste controle, herinnering, aantal).
+- Zonder eigen keuze staat de regel open die aan de beurt is: draait er een
+  sessie met controles op orde, dan is dat het afvullen zelf — de handeling die
+  je herhaalt. Anders de eerste regel die nog niet af is.
+- De afvulfase staat nu over de volle breedte in plaats van in een kolom van de
+  halve breedte.
+- Niets verandert aan wat er wordt vastgelegd: dezelfde registraties, dezelfde
+  append-only opslag, dezelfde blokkades.
+
 ## [1.11.76] — 2026-07-30
 
 ### Toegevoegd — Vinkje "gecontroleerd" bij de etiketallergenen per product

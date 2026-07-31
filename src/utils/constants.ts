@@ -383,6 +383,8 @@ export const DEFAULT_HACCP_INST = {
   trace_min_verantwoord_pct: 100,
   toevoeging_per_ing_type: {} as Record<string, string>,
   omkeerproef_verplicht_types: ['blik'],
+  // CCP 2 bij kroonkurk (handboek §9.2): flesmond gaaf en de draaitest.
+  kroonkurk_verplicht_types: ['fles'],
 }
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────

@@ -3,6 +3,7 @@ import {
   maakParaaf, toevoegingVoorRegel, risicoVoorBatch, vereisteStabiliteitsdagen,
   dagenStabiel, ffVerschil, ffBinnenMarge, beoordeelVrijgave, actueleVrijgave,
   magAfvullen, isLegacyBatch, omkeerproefVerplicht, beoordeelSluitcontrole,
+  kroonkurkVerplicht,
   afvullingenSindsLaatsteGoedkeuring, magSessieAfsluiten, sluitcontroleHerinnering,
   allergenenUitBatch, allergenenVanProduct, vergelijkAllergenen,
   magEtiketterenDoorgaan, onderbouwingGeldig, bouwAfwijking, capaUitAfwijking,
@@ -308,6 +309,36 @@ describe('beoordeelSluitcontrole (CCP 2)', () => {
   })
 })
 
+describe('CCP 2 bij kroonkurk', () => {
+  const goed = {visueel_ok: true, flesmond_ok: true, draaitest_ok: true}
+
+  it('geldt bij fles en niet bij blik of fust', () => {
+    expect(kroonkurkVerplicht('fles')).toBe(true)
+    expect(kroonkurkVerplicht('Fles 33cl')).toBe(true)
+    expect(kroonkurkVerplicht('blik')).toBe(false)
+    expect(kroonkurkVerplicht('fust')).toBe(false)
+  })
+
+  it('eist flesmond en draaitest bij fles', () => {
+    const r = beoordeelSluitcontrole({visueel_ok: true}, 'fles')
+    expect(r.onvolledig.map(x => x.code))
+      .toEqual(['flesmond_ontbreekt', 'draaitest_ontbreekt'])
+  })
+
+  it('keurt af bij een beschadigde flesmond of een meedraaiende kurk', () => {
+    expect(beoordeelSluitcontrole({...goed, flesmond_ok: false}, 'fles').resultaat)
+      .toBe('afgekeurd')
+    expect(beoordeelSluitcontrole({...goed, draaitest_ok: false}, 'fles').resultaat)
+      .toBe('afgekeurd')
+  })
+
+  it('keurt goed bij een gave flesmond en een vaste kurk', () => {
+    const r = beoordeelSluitcontrole(goed, 'fles')
+    expect(r.resultaat).toBe('goedgekeurd')
+    expect(r.onvolledig).toEqual([])
+  })
+})
+
 describe('afvullingenSindsLaatsteGoedkeuring', () => {
   const sessie: any = {id: 1, batch_id: 1, start: '2026-07-25T09:00:00Z'}
   const ctrl = (id: number, resultaat: string, ts: string, aanleiding = 'halfuur') =>
@@ -338,6 +369,19 @@ describe('afvullingenSindsLaatsteGoedkeuring', () => {
     const geraakt = afvullingenSindsLaatsteGoedkeuring(
       sessie, afvullingen, [], '2026-07-25T10:00:00Z')
     expect(geraakt).toEqual([10])
+  })
+
+  it('rekent met het moment van uitvoeren, niet van vastleggen', () => {
+    // Een achteraf vastgelegde sessie: de paraaf staat op het invoermoment
+    // ('s avonds), maar de controle zelf was om 09:30.
+    const controles = [{
+      ...ctrl(1, 'goedgekeurd', '2026-07-25T20:00:00Z', 'start'),
+      uitgevoerd_op: '2026-07-25T09:30:00Z',
+    }]
+    const afvullingen = [av(10, '09:15'), av(11, '09:45')]
+    const geraakt = afvullingenSindsLaatsteGoedkeuring(
+      sessie, afvullingen, controles, '2026-07-25T10:00:00Z')
+    expect(geraakt).toEqual([11])
   })
 })
 
