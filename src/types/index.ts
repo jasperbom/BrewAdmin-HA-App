@@ -1682,12 +1682,8 @@ export interface HaccpInst {
   // Verpakkingstypen waarbij de omkeerproef verplicht is (standaard blik).
   omkeerproef_verplicht_types?: string[]
   // Verpakkingstypen met een kroonkurksluiting (standaard fles): daar gelden
-  // de flesmond-, draai- en kroondiametercontrole van CCP 2.
+  // de flesmond- en draaitestcontrole van CCP 2.
   kroonkurk_verplicht_types?: string[]
-  // Kritische grens voor de kroondiameter na aankrullen, in mm, uit de
-  // specificatie van de kroonkurkleverancier. Null = nog niet opgevraagd.
-  kroondiameter_min?: number | null
-  kroondiameter_max?: number | null
 }
 
 export type BtwAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'

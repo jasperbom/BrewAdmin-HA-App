@@ -1395,29 +1395,6 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </div>
           ))}
         </div>
-        {/* Kroondiameter na aankrullen: de kritische grens van CCP 2 bij fles.
-            Komt uit de specificatie van de kroonkurkleverancier en is per
-            partij anders, dus mag hij leeg blijven tot hij is opgevraagd —
-            zolang dat zo is toetst het sluitcontroleformulier de meting niet
-            en meldt het dat de grens ontbreekt. */}
-        <div className="mt-4 pt-4 border-t">
-          <label className="block text-xs font-medium text-gray-500 mb-1">{t('haccp_inst_kroondiameter')}</label>
-          <div className="flex items-center gap-2">
-            {([['kroondiameter_min', 'lbl_min'], ['kroondiameter_max', 'lbl_max']] as const).map(([veld, lbl]) => (
-              <input key={veld} type="number" step="0.01" min={0} placeholder={t(lbl)}
-                value={(haccpInst as any)?.[veld] ?? ''}
-                onChange={(e: any) => {
-                  const v = e.target.value === '' ? null : Number(e.target.value)
-                  setHaccpInst((prev: any) => ({...DEFAULT_HACCP_INST, ...(prev || {}), [veld]: v}))
-                  logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `HACCP ${veld} → ${v ?? '—'}`})
-                }}
-                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-32 t-input" />
-            ))}
-            <span className="text-sm text-gray-400">mm</span>
-          </div>
-          <p className="mt-1 text-xs text-gray-400">{t('haccp_inst_kroondiameter_uitleg')}</p>
-        </div>
-
         {/* Per ingrediënttype een default; per ingrediënt kan het overschreven
             worden op de HACCP-allergenenpagina. */}
         <div className="mt-4 pt-4 border-t">

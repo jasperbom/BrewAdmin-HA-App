@@ -383,14 +383,8 @@ export const DEFAULT_HACCP_INST = {
   trace_min_verantwoord_pct: 100,
   toevoeging_per_ing_type: {} as Record<string, string>,
   omkeerproef_verplicht_types: ['blik'],
-  // CCP 2 bij kroonkurk (handboek §9.2): flesmond gaaf, aankrulling rondom
-  // gelijkmatig, kurk draait niet mee, en de kroondiameter na aankrullen
-  // binnen de specificatie van de kroonkurkleverancier. Die specificatie is
-  // per partij verschillend, dus staat hij hier leeg tot hij is opgevraagd —
-  // zolang dat niet is gebeurd meldt het formulier dat de grens ontbreekt.
+  // CCP 2 bij kroonkurk (handboek §9.2): flesmond gaaf en de draaitest.
   kroonkurk_verplicht_types: ['fles'],
-  kroondiameter_min: null as number | null,
-  kroondiameter_max: null as number | null,
 }
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────

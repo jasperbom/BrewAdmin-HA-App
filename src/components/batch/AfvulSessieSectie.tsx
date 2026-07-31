@@ -13,7 +13,7 @@ import BlokkadeKaart, { blokkadeSamenvatting } from '../haccp/BlokkadeKaart'
 import AfwijkingModal from '../haccp/AfwijkingModal'
 import {
   maakParaaf, haccpInst, risicoVoorBatch, omkeerproefVerplicht,
-  kroonkurkVerplicht, kroondiameterGrens, kroondiameterMeting,
+  kroonkurkVerplicht,
   beoordeelSluitcontrole, afvullingenSindsLaatsteGoedkeuring, magSessieAfsluiten,
   sluitcontroleHerinnering, allergenenUitBatch, allergenenVanProduct,
   vergelijkAllergenen, magEtiketterenDoorgaan, bouwAfwijking, capaUitAfwijking,
@@ -23,7 +23,7 @@ import {
   berekenTht, openSessiesVoorBatch, actieveSessie, magSessieStarten,
   verwachteControleMomenten, controleDekking,
 } from '../../utils/afvulsessie'
-import type { AfvulSessie, SluitControle, SluitMeting, EtiketControle } from '../../types'
+import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
 // eigen lotcode (L2431-B1), zodat bij een sluitprobleem alleen die sessie
@@ -103,7 +103,6 @@ const leegNa = {
   omkeerproef_ok: false,
   flesmond_ok: false,
   draaitest_ok: false,
-  kroondiameter_mm: '',
   lotcode_ok: false,
   tht_ok: false,
   alcohol_ok: false,
@@ -243,13 +242,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     omkeerproef_ok: true,
     flesmond_ok: true,
     draaitest_ok: true,
-    kroondiameter_mm: '',
     rolinstelling: '',
     opmerking: '',
   })
   const omkeerNodig = omkeerproefVerplicht(sessie?.verpakking_type, inst)
   const kroonNodig = kroonkurkVerplicht(sessie?.verpakking_type, inst)
-  const kroonGrens = kroondiameterGrens(inst)
   const scBeoordeling = beoordeelSluitcontrole({
     ...sc,
     omkeerproef_ok: omkeerNodig ? sc.omkeerproef_ok : null,
@@ -278,9 +275,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       omkeerproef_ok: omkeerNodig ? sc.omkeerproef_ok : null,
       flesmond_ok: kroonNodig ? sc.flesmond_ok : null,
       draaitest_ok: kroonNodig ? sc.draaitest_ok : null,
-      metingen: kroonNodig
-        ? [kroondiameterMeting(sc.kroondiameter_mm, inst)].filter(Boolean) as SluitMeting[]
-        : undefined,
       rolinstelling: sc.rolinstelling.trim() || undefined,
       resultaat: scBeoordeling.resultaat,
       geblokkeerde_afvulling_ids: geraakt.length ? geraakt : undefined,
@@ -311,7 +305,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       omschrijving: `${sessie.lotcode}: ${t(afgekeurd ? 'haccp_ccp2_afgekeurd' : 'haccp_ccp2_goedgekeurd')}`,
     })
     setSc(s => ({...s, aanleiding: 'halfuur', visueel_ok: true, omkeerproef_ok: true,
-                 flesmond_ok: true, draaitest_ok: true, kroondiameter_mm: '',
+                 flesmond_ok: true, draaitest_ok: true,
                  rolinstelling: '', opmerking: ''}))
     setNu(new Date())
   }
@@ -377,7 +371,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   React.useEffect(() => {
     if (!sessie) return
     setSc({aanleiding: 'start', visueel_ok: true, omkeerproef_ok: true,
-           flesmond_ok: true, draaitest_ok: true, kroondiameter_mm: '',
+           flesmond_ok: true, draaitest_ok: true,
            rolinstelling: '', opmerking: ''})
     setEc(e => ({...e, aanleiding: 'start', etiket_versie: '', lotcode_ok: false,
                  tht_ok: false, alcohol_ok: false, opmerking: ''}))
@@ -514,7 +508,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     omkeerproef_ok: naOmkeerNodig ? na.omkeerproef_ok : null,
     flesmond_ok: naKroonNodig ? na.flesmond_ok : null,
     draaitest_ok: naKroonNodig ? na.draaitest_ok : null,
-    kroondiameter_mm: na.kroondiameter_mm,
   }, naVp?.type || naVp?.naam, inst)
   // Volgens het handboek hoort er bij de start, elk halfuur en aan het eind
   // een sluitcontrole. Wat de gebruiker invult telt; het verschil met dat
@@ -583,7 +576,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     // CCP 2 — start, de opgegeven tussencontroles, en het eind. Elke controle
     // is een eigen registratie met een eigen tijdstip: bij een afkeuring moet
     // te bepalen zijn vanaf welk moment er geblokkeerd wordt.
-    const meting = naKroonNodig ? kroondiameterMeting(na.kroondiameter_mm, inst) : null
     const bouwControle = (aanleiding: SluitControle['aanleiding'], moment: string): SluitControle => ({
       id: newId(p.sluitcontroles || []),
       sessie_id: sessieId,
@@ -593,7 +585,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       omkeerproef_ok: naOmkeerNodig ? na.omkeerproef_ok : null,
       flesmond_ok: naKroonNodig ? na.flesmond_ok : null,
       draaitest_ok: naKroonNodig ? na.draaitest_ok : null,
-      metingen: meting ? [meting] : undefined,
       uitgevoerd_op: moment,
       resultaat: naBeoordeling.resultaat,
       opmerking: na.opmerking.trim() || undefined,
@@ -718,18 +709,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
                 onChange={e => setNa({...na, draaitest_ok: e.target.checked})} />
               {t('haccp_ccp2_draaitest')}
             </label>
-            <div className="sm:w-64 pt-1">
-              <Inp label={kroonGrens
-                  ? `${t('haccp_ccp2_kroondiameter')} (${kroonGrens.min}–${kroonGrens.max} mm)`
-                  : t('haccp_ccp2_kroondiameter')}
-                type="number" step="0.01" value={na.kroondiameter_mm}
-                onChange={v => setNa({...na, kroondiameter_mm: v})} />
-              {!kroonGrens && (
-                <div className="text-xs text-orange-600 mt-1">
-                  {t('haccp_ccp2_kroondiameter_geen_grens')}
-                </div>
-              )}
-            </div>
           </>
         )}
 
@@ -974,14 +953,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
                 onChange={e => setSc({...sc, draaitest_ok: e.target.checked})} />
               {t('haccp_ccp2_draaitest')}
             </label>
-            <Inp label={kroonGrens
-                ? `${t('haccp_ccp2_kroondiameter')} (${kroonGrens.min}–${kroonGrens.max} mm)`
-                : t('haccp_ccp2_kroondiameter')}
-              type="number" step="0.01" value={sc.kroondiameter_mm}
-              onChange={v => setSc({...sc, kroondiameter_mm: v})} />
-            {!kroonGrens && (
-              <div className="text-xs text-orange-600">{t('haccp_ccp2_kroondiameter_geen_grens')}</div>
-            )}
           </>
         )}
         {sc.aanleiding === 'na_verstelling' && (

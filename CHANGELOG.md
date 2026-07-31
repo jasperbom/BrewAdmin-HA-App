@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.80] — 2026-07-31
+
+### Gewijzigd — Geen kroondiameter-meting in de sluitcontrole
+
+- De meting van de kroondiameter na aankrullen (mm, met een kritische grens uit
+  de leverancierspecificatie) is er weer uit, inclusief het instellingenveld
+  ervoor. Hij vroeg om een schuifmaat en een opgevraagde specificatie voordat je
+  een sluitcontrole kon vastleggen.
+- De sluitcontrole bij fles houdt de twee controles die niets kosten:
+  **flesmond gaaf** en de **draaitest**. Beide keuren de controle af als ze niet
+  in orde zijn, met dezelfde blokkade van alles sinds de laatste goedkeuring.
+
 ## [1.11.79] — 2026-07-31
 
 ### Opgelost — CCP 2 was op blik gemodelleerd, terwijl er op fles wordt afgevuld

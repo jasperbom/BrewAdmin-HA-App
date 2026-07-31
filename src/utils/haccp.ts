@@ -19,7 +19,7 @@ import type {
   Allergeen, Batch, BatchIngredient, Ingredient, Product,
   HaccpVrijgave, HaccpInst, HaccpAfwijking, AfwijkingBron, Paraaf,
   RisicoKlasse, ToevoegingSoort, VrijgaveOordeel,
-  AfvulSessie, SluitControle, SluitMeting, ControleResultaat, CorrigierendeActie,
+  AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie,
 } from '../types'
 import { DEFAULT_HACCP_INST } from './constants'
 
@@ -365,26 +365,12 @@ export const kroonkurkVerplicht = (
   return types.some(x => tp.includes(String(x).toLowerCase()))
 }
 
-/** De kritische grens uit de leverancierspecificatie. Ontbreekt hij, dan kan
- *  er niet getoetst worden — dat is een tekort in de opzet, geen afkeuring van
- *  de sluiting: het formulier meldt het en de meting blijft optioneel. */
-export const kroondiameterGrens = (
-  instRaw?: Partial<HaccpInst> | null
-): {min: number; max: number} | null => {
-  const inst = haccpInst(instRaw)
-  const min = Number(inst.kroondiameter_min)
-  const max = Number(inst.kroondiameter_max)
-  if (!isFinite(min) || !isFinite(max) || min <= 0 || max <= 0 || max < min) return null
-  return {min, max}
-}
-
 export interface SluitcontroleInvoer {
   aanleiding?: string
   visueel_ok?: boolean
   omkeerproef_ok?: boolean | null
   flesmond_ok?: boolean | null
   draaitest_ok?: boolean | null
-  kroondiameter_mm?: number | string | null
   rolinstelling?: string
 }
 
@@ -399,9 +385,6 @@ export const beoordeelSluitcontrole = (
     onvolledig.push({code: 'omkeerproef_ontbreekt', i18nKey: 'haccp_blok_omkeerproef'})
   }
   const kroonNodig = kroonkurkVerplicht(verpakkingType, instRaw)
-  const grens = kroondiameterGrens(instRaw)
-  const diameter = inv.kroondiameter_mm === '' || inv.kroondiameter_mm == null
-    ? null : Number(inv.kroondiameter_mm)
   if (kroonNodig) {
     if (inv.flesmond_ok == null) {
       onvolledig.push({code: 'flesmond_ontbreekt', i18nKey: 'haccp_blok_flesmond'})
@@ -409,44 +392,16 @@ export const beoordeelSluitcontrole = (
     if (inv.draaitest_ok == null) {
       onvolledig.push({code: 'draaitest_ontbreekt', i18nKey: 'haccp_blok_draaitest'})
     }
-    // Alleen verplicht zodra de grens bekend is: zonder specificatie zegt een
-    // getal niets en zou het invoeren ervan schijnzekerheid geven.
-    if (grens && (diameter == null || !isFinite(diameter))) {
-      onvolledig.push({code: 'kroondiameter_ontbreekt', i18nKey: 'haccp_blok_kroondiameter'})
-    }
   }
   // Een verstelling van de canner moet herleidbaar zijn; zonder vastgelegde
   // rolinstelling is niet na te gaan wat er veranderd is.
   if (inv.aanleiding === 'na_verstelling' && !(inv.rolinstelling || '').trim()) {
     onvolledig.push({code: 'rolinstelling_ontbreekt', i18nKey: 'haccp_blok_rolinstelling'})
   }
-  const diameterBuiten = !!(kroonNodig && grens && diameter != null && isFinite(diameter)
-    && (diameter < grens.min || diameter > grens.max))
   const afgekeurd = inv.visueel_ok === false
     || (omkeerNodig && inv.omkeerproef_ok === false)
     || (kroonNodig && (inv.flesmond_ok === false || inv.draaitest_ok === false))
-    || diameterBuiten
   return {resultaat: afgekeurd ? 'afgekeurd' : 'goedgekeurd', onvolledig}
-}
-
-/** De meting zoals hij op de registratie komt: mét de grens waaraan getoetst
- *  is, zodat achteraf blijkt tegen welke specificatie is gemeten. Een latere
- *  kroonkurkpartij met andere maten verandert het oordeel van toen niet. */
-export const kroondiameterMeting = (
-  waarde: number | string | null | undefined,
-  instRaw?: Partial<HaccpInst> | null
-): SluitMeting | null => {
-  const mm = waarde === '' || waarde == null ? null : Number(waarde)
-  if (mm == null || !isFinite(mm)) return null
-  const grens = kroondiameterGrens(instRaw)
-  return {
-    key: 'kroondiameter',
-    waarde: mm,
-    eenheid: 'mm',
-    grens_min: grens?.min,
-    grens_max: grens?.max,
-    binnen_limiet: grens ? mm >= grens.min && mm <= grens.max : undefined,
-  }
 }
 
 /** Het moment waarop de controle is gedáán. Wordt een sessie achteraf

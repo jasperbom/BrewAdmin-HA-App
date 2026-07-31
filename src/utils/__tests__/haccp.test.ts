@@ -3,7 +3,7 @@ import {
   maakParaaf, toevoegingVoorRegel, risicoVoorBatch, vereisteStabiliteitsdagen,
   dagenStabiel, ffVerschil, ffBinnenMarge, beoordeelVrijgave, actueleVrijgave,
   magAfvullen, isLegacyBatch, omkeerproefVerplicht, beoordeelSluitcontrole,
-  kroonkurkVerplicht, kroondiameterGrens, kroondiameterMeting,
+  kroonkurkVerplicht,
   afvullingenSindsLaatsteGoedkeuring, magSessieAfsluiten, sluitcontroleHerinnering,
   allergenenUitBatch, allergenenVanProduct, vergelijkAllergenen,
   magEtiketterenDoorgaan, onderbouwingGeldig, bouwAfwijking, capaUitAfwijking,
@@ -310,7 +310,6 @@ describe('beoordeelSluitcontrole (CCP 2)', () => {
 })
 
 describe('CCP 2 bij kroonkurk', () => {
-  const inst = {kroondiameter_min: 29.8, kroondiameter_max: 30.2}
   const goed = {visueel_ok: true, flesmond_ok: true, draaitest_ok: true}
 
   it('geldt bij fles en niet bij blik of fust', () => {
@@ -333,35 +332,10 @@ describe('CCP 2 bij kroonkurk', () => {
       .toBe('afgekeurd')
   })
 
-  it('vraagt de kroondiameter pas zodra de leverancierspecificatie bekend is', () => {
-    // Zonder grens zegt een getal niets — dan is de meting niet verplicht.
-    expect(beoordeelSluitcontrole(goed, 'fles').onvolledig).toEqual([])
-    const r = beoordeelSluitcontrole(goed, 'fles', inst)
-    expect(r.onvolledig.map(x => x.code)).toEqual(['kroondiameter_ontbreekt'])
-  })
-
-  it('keurt af buiten de grens en goed erbinnen', () => {
-    expect(beoordeelSluitcontrole({...goed, kroondiameter_mm: 30.0}, 'fles', inst).resultaat)
-      .toBe('goedgekeurd')
-    expect(beoordeelSluitcontrole({...goed, kroondiameter_mm: 30.5}, 'fles', inst).resultaat)
-      .toBe('afgekeurd')
-    expect(beoordeelSluitcontrole({...goed, kroondiameter_mm: 29.5}, 'fles', inst).resultaat)
-      .toBe('afgekeurd')
-  })
-
-  it('legt de grens vast bij de meting, zodat het oordeel reproduceerbaar blijft', () => {
-    expect(kroondiameterMeting(30.05, inst)).toEqual({
-      key: 'kroondiameter', waarde: 30.05, eenheid: 'mm',
-      grens_min: 29.8, grens_max: 30.2, binnen_limiet: true,
-    })
-    expect(kroondiameterMeting('', inst)).toBeNull()
-    // Zonder ingestelde grens wordt er niets geoordeeld.
-    expect(kroondiameterMeting(30.05)?.binnen_limiet).toBeUndefined()
-  })
-
-  it('negeert een onbruikbare grens uit de instellingen', () => {
-    expect(kroondiameterGrens({kroondiameter_min: 30.2, kroondiameter_max: 29.8})).toBeNull()
-    expect(kroondiameterGrens({kroondiameter_min: 29.8})).toBeNull()
+  it('keurt goed bij een gave flesmond en een vaste kurk', () => {
+    const r = beoordeelSluitcontrole(goed, 'fles')
+    expect(r.resultaat).toBe('goedgekeurd')
+    expect(r.onvolledig).toEqual([])
   })
 })
 
