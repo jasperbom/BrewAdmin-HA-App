@@ -388,8 +388,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `hygiene_groups` | array | *(legacy)* Hygiëne-groepen — gemigreerd naar `batch_taken_groepen` |
 | `haccp_schoonmaak_taken` | array | Schoonmaakschema (object, frequentie, middel) |
 | `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie |
-| `haccp_ccp_definities` | array | *(legacy)* CCP-definities — komen nu uit `batch_taken_items` (`type: 'meting'`) |
-| `haccp_ccp_metingen` | array | CCP-metingen met limietcheck; buiten de grens → automatisch een CAPA |
+| `haccp_ccp_definities` | array | *(legacy)* Generieke CCP-definities — gemigreerd naar `batch_taken_items` (`type: 'meting'`) en sinds opschoning v4 uitgezet: de kritische beheerspunten zijn CCP 1/2/3 |
+| `haccp_ccp_metingen` | array | *(legacy)* Metingen op die definities, met limietcheck en automatische CAPA. Alleen nog zichtbaar/registreerbaar op de oude batchpagina |
 | `haccp_capa` | array | Corrigerende en preventieve maatregelen |
 | `haccp_waterkwaliteit` | array | Watermonsters tappunt brouwerij |
 | `haccp_ongedierte` | array | Ongediertecontroles en -waarnemingen |
