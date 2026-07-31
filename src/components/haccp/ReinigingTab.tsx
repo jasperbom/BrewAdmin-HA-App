@@ -275,7 +275,7 @@ function TankReinigingLijst({tanks, tankLog}: any) {
               <tr>
                 <th className="text-left px-3 py-2">{t('lbl_datum')}</th>
                 <th className="text-left px-3 py-2">{t('nav_tanks')}</th>
-                <th className="text-left px-3 py-2">{t('haccp_filter_status')}</th>
+                <th className="text-left px-3 py-2">{t('lbl_status')}</th>
                 <th className="text-left px-3 py-2">{t('lbl_uitvoerder')}</th>
                 <th className="text-left px-3 py-2">{t('lbl_middel')}</th>
                 <th className="text-left px-3 py-2">{t('lbl_methode_cip')}</th>

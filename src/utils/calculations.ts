@@ -1,4 +1,4 @@
-import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog } from '../types'
+import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog, TankReinigingStatus } from '../types'
 import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd } from './format'
 
@@ -964,6 +964,54 @@ export const markTankVuilBijVertrek = (
   lg.push(entry)
   st[oudeTankId] = { status: 'Vuil', sinds: datum, laatste_log_id: newId }
   return { statussen: st, log: lg, changed: true }
+}
+
+// Leg een reiniging/desinfectie van een tank vast: zet de status én schrijft
+// de log-entry die het bewijs vormt (HACCP-handboek hoofdstuk 6 — reiniging
+// moet aantoonbaar zijn, niet alleen gedaan). Tegenhanger van
+// markTankVuilBijVertrek, die alleen de andere kant op kan (Vuil).
+export const registreerTankReiniging = (
+  tankId: string | undefined | null,
+  nieuweStatus: TankReinigingStatus,
+  gegevens: { datum: string, uitgevoerd_door: string, middel?: string, cip?: boolean, opmerking?: string },
+  statussen: TankStatusMap | undefined | null,
+  log: TankReinigingLog[] | undefined | null,
+): { statussen: TankStatusMap, log: TankReinigingLog[], changed: boolean } => {
+  const st: TankStatusMap = { ...(statussen || {}) }
+  const lg: TankReinigingLog[] = Array.isArray(log) ? [...log] : []
+  const door = String(gegevens?.uitgevoerd_door || '').trim()
+  // Zonder tank, datum of uitvoerder is het geen registratie maar een lege
+  // regel in het logboek — die is bij een controle niets waard.
+  if (!tankId || !gegevens?.datum || !door) return { statussen: st, log: lg, changed: false }
+  const newId = lg.reduce((m, e) => Math.max(m, Number(e?.id || 0)), 0) + 1
+  const entry: TankReinigingLog = {
+    id: newId,
+    tank_id: tankId,
+    datum: gegevens.datum,
+    uitgevoerd_door: door,
+    nieuwe_status: nieuweStatus,
+    oorzaak: 'handmatig',
+    ...(gegevens.middel ? { middel: gegevens.middel } : {}),
+    ...(gegevens.cip ? { cip: true } : {}),
+    ...(gegevens.opmerking ? { opmerking: gegevens.opmerking } : {}),
+  }
+  lg.push(entry)
+  st[tankId] = { status: nieuweStatus, sinds: gegevens.datum, laatste_log_id: newId }
+  return { statussen: st, log: lg, changed: true }
+}
+
+// Laatste reinigingsregistratie per tank — wat er op de tankkaart onder de
+// status staat: wanneer, door wie en waarmee.
+export const laatsteTankReiniging = (
+  tankId: string,
+  log: TankReinigingLog[] | undefined | null,
+): TankReinigingLog | null => {
+  const eigen = (log || []).filter((l: any) => l?.tank_id === tankId && l?.nieuwe_status !== 'Vuil')
+  if (!eigen.length) return null
+  return eigen.slice().sort((a: any, b: any) => {
+    const d = String(b?.datum || '').localeCompare(String(a?.datum || ''))
+    return d !== 0 ? d : Number(b?.id || 0) - Number(a?.id || 0)
+  })[0]
 }
 
 // ── Batchnummer-volgorde ────────────────────────────────────────────────────

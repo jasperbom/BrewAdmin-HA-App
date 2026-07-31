@@ -3031,5 +3031,9 @@
   "haccp_dash_in_orde": "En orden",
   "haccp_schoonmaak_taak_verwijderen": "¿Eliminar {naam}?",
   "dash_vrije_tanks": "Tanques libres",
-  "dash_tank_status_onbekend": "Estado desconocido"
+  "dash_tank_status_onbekend": "Estado desconocido",
+  "dash_tank_leeg": "Vacío",
+  "dash_tank_sinds": "desde {d}",
+  "dash_tank_laatste_reiniging": "Última limpieza",
+  "dash_tank_reiniging_vastleggen": "Registrar limpieza"
 }

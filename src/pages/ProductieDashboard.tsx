@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
 import { fmtD, fmtQty, tod } from '../utils/format'
-import { TANK_STATUSSEN, telThtAlerts, resolveTankHistorie, tankRestVolume, effectiefOG, effectiefFG, vrijeTanksMetStatus } from '../utils/calculations'
+import { TANK_STATUSSEN, telThtAlerts, resolveTankHistorie, tankRestVolume, effectiefOG, effectiefFG, vrijeTanksMetStatus, registreerTankReiniging, laatsteTankReiniging } from '../utils/calculations'
 import { TANK_REINIGING_LABEL_KEY } from '../utils/constants'
+import type { TankReinigingStatus, TankStatusMap } from '../types'
 import { telOpenstaandeBatchTaken } from '../utils/taken'
 import { volgendeBrouwdagStap } from '../utils/brouwdag'
 import { newId } from '../utils/api'
@@ -22,7 +23,10 @@ interface ProductieDashboardProps {
   av: any[]
   verliesRegistraties: any[]
   haTankTemps: Record<string, number>
-  tankStatussen: Record<string, { status?: string, sinds?: string }>
+  tankStatussen: TankStatusMap
+  setTankStatussen: (updater: any) => void
+  tankLog: any[]
+  setTankLog: (updater: any) => void
   batchTakenItems: any[]
   batchTakenGroepen: any[]
   brouwdagStappen: any[]
@@ -47,7 +51,8 @@ const LEGE_METING: MetingForm = { sg: '', ph: '', temp: '' }
 // waardevolle, dagelijks gebruikte info, geen "rijke tankbediening". Climate-
 // control en cold-crash-bediening blijven wél op Batches/Batchflow.
 function ProductieDashboard({
-  bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {}, tankStatussen = {},
+  bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {},
+  tankStatussen = {}, setTankStatussen = () => {}, tankLog = [], setTankLog = () => {},
   batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
   setPage, setNavBatchId, setPreNieuwBatch = () => {},
@@ -97,6 +102,29 @@ function ProductieDashboard({
     Vuil: 'bg-red-100 text-red-700',
     Schoon: 'bg-blue-100 text-blue-700',
     Ontsmet: 'bg-green-100 text-green-700',
+  }
+
+  // Reiniging vastleggen op de tankkaart zelf — dit was tot nu toe nergens
+  // mogelijk: een tank ging automatisch op Vuil zodra een batch hem verliet en
+  // kwam daar nooit meer vanaf. De registratie schrijft ook de log-entry die in
+  // HACCP → Reiniging → Tankreiniging het bewijs vormt.
+  const LEGE_REINIGING = { status: 'Ontsmet' as TankReinigingStatus, datum: tod(), uitgevoerd_door: '', middel: '', cip: false, opmerking: '' }
+  const [reinigingTankId, setReinigingTankId] = useState<string | null>(null)
+  const [reinigingForm, setReinigingForm] = useState<any>(LEGE_REINIGING)
+
+  const slaReinigingOp = (tankId: string) => {
+    const res = registreerTankReiniging(tankId, reinigingForm.status, reinigingForm, tankStatussen, tankLog)
+    if (!res.changed) return
+    setTankStatussen(res.statussen)
+    setTankLog(res.log)
+    const tank = tanks.find((tk: any) => tk.id === tankId)
+    const statusLabel = t(TANK_REINIGING_LABEL_KEY[reinigingForm.status] || '') || reinigingForm.status
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Tank', entiteit_id: 0, actie: 'gewijzigd',
+      omschrijving: `${tank?.naam || tankId}: ${statusLabel} — ${reinigingForm.uitgevoerd_door}${reinigingForm.middel ? ` (${reinigingForm.middel})` : ''}`,
+    })
+    setReinigingTankId(null)
+    setReinigingForm(LEGE_REINIGING)
   }
 
   // Inline meting-form per tankkaart — één tegelijk open, zelfde patroon als
@@ -261,17 +289,73 @@ function ProductieDashboard({
       {vrijeTanks.length > 0 && (
         <div className="mb-6">
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">{t('dash_vrije_tanks')}</div>
-          <div className="flex flex-wrap gap-2">
-            {vrijeTanks.map(({ tank, status, sinds }: any) => (
-              <div key={tank.id} className="bg-white rounded-lg border border-gray-200 shadow-sm px-3 py-2 flex items-center gap-2 min-h-[44px]">
-                <span className="text-sm font-medium text-gray-700">{tank.naam || tank.id}</span>
-                {tank.soort && <span className="text-xs text-gray-400">{tank.soort}</span>}
-                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${status ? statusKleur[status] || 'bg-gray-100 text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
-                  {status ? t(TANK_REINIGING_LABEL_KEY[status] || '') : t('dash_tank_status_onbekend')}
-                </span>
-                {sinds && <span className="text-xs text-gray-400">{fmtD(sinds)}</span>}
-              </div>
-            ))}
+          <div className="flex flex-wrap justify-center sm:justify-start gap-4">
+            {vrijeTanks.map(({ tank, status, sinds }: any) => {
+              const laatste = laatsteTankReiniging(tank.id, tankLog)
+              const isFormOpen = reinigingTankId === tank.id
+              return (
+                <div key={tank.id} className="bg-white rounded-xl shadow-sm border t-border p-4 flex-shrink-0" style={{ width: 288 }}>
+                  <div className="flex items-start gap-4">
+                    <TankVisualForSoort soort={tank.soort} fillPct={0} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between mb-1 gap-2">
+                        <span className="text-sm font-bold text-gray-700 truncate">{tank.naam || tank.id}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${status ? statusKleur[status] || 'bg-gray-100 text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
+                          {status ? t(TANK_REINIGING_LABEL_KEY[status] || '') : t('dash_tank_status_onbekend')}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-500">{t('dash_tank_leeg')}</div>
+                      <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                        {tank.soort && <span className="text-xs text-gray-400">{tank.soort}</span>}
+                        {tank.inhoud && <span className="text-xs text-gray-400">{fmtQty(tank.inhoud)}L</span>}
+                        {sinds && <span className="text-xs text-gray-500">{t('dash_tank_sinds').replace('{d}', fmtD(sinds))}</span>}
+                      </div>
+                      {laatste && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          {t('dash_tank_laatste_reiniging')}: {fmtD(laatste.datum)} · {laatste.uitgevoerd_door}
+                          {laatste.middel ? ` · ${laatste.middel}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-2">
+                    {!isFormOpen ? (
+                      <button
+                        onClick={() => { setReinigingTankId(tank.id); setReinigingForm({ ...LEGE_REINIGING }) }}
+                        className="text-xs font-medium hover:underline mt-1 flex items-center gap-1 min-h-[32px]"
+                        style={{ color: 'var(--t-accent)' }}
+                      >
+                        + {t('dash_tank_reiniging_vastleggen')}
+                      </button>
+                    ) : (
+                      <div className="mt-2 border-t border-gray-100 pt-3 space-y-2">
+                        <Sel label={t('lbl_status')} value={reinigingForm.status}
+                          onChange={(v: string) => setReinigingForm((f: any) => ({ ...f, status: v as TankReinigingStatus }))}
+                          opts={[
+                            { v: 'Ontsmet', l: t('tank_status_ontsmet') },
+                            { v: 'Schoon', l: t('tank_status_schoon') },
+                            { v: 'Vuil', l: t('tank_status_vuil') },
+                          ]} />
+                        <Inp label={t('lbl_datum')} type="date" value={reinigingForm.datum} onChange={(v) => setReinigingForm((f: any) => ({ ...f, datum: v }))} />
+                        <Inp label={t('lbl_uitvoerder')} value={reinigingForm.uitgevoerd_door} onChange={(v) => setReinigingForm((f: any) => ({ ...f, uitgevoerd_door: v }))} req />
+                        <Inp label={t('lbl_middel')} value={reinigingForm.middel} onChange={(v) => setReinigingForm((f: any) => ({ ...f, middel: v }))} />
+                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                          <input type="checkbox" className="t-checkbox" checked={!!reinigingForm.cip}
+                            onChange={(e) => setReinigingForm((f: any) => ({ ...f, cip: e.target.checked }))} />
+                          {t('haccp_schoonmaak_cip')}
+                        </label>
+                        <Inp label={t('lbl_opmerking')} value={reinigingForm.opmerking} onChange={(v) => setReinigingForm((f: any) => ({ ...f, opmerking: v }))} />
+                        <div className="flex gap-2">
+                          <Btn s="sm" disabled={!reinigingForm.uitgevoerd_door.trim()} onClick={() => slaReinigingOp(tank.id)}>{t('btn_save')}</Btn>
+                          <Btn s="sm" v="ghost" onClick={() => setReinigingTankId(null)}>{t('btn_cancel')}</Btn>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

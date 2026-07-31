@@ -4,6 +4,7 @@ import {
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
   berekenProductKostprijs, berekenCogs, telThtAlerts, laatsteOpenAccijnsMaand,
   productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
+  registreerTankReiniging, laatsteTankReiniging,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -300,5 +301,58 @@ describe('vrijeTanksMetStatus', () => {
   it('is robuust voor lege input', () => {
     expect(vrijeTanksMetStatus([], [], null)).toEqual([])
     expect(vrijeTanksMetStatus(tanks, [], undefined)).toHaveLength(4)
+  })
+})
+
+
+describe('registreerTankReiniging', () => {
+  const basis = { datum: '2026-07-30', uitgevoerd_door: 'Jasper', middel: 'Chemipro OXI', cip: true }
+
+  it('zet de status en schrijft een handmatige log-entry', () => {
+    const res = registreerTankReiniging('T1', 'Ontsmet', basis, { T1: { status: 'Vuil', sinds: '2026-07-20' } }, [])
+    expect(res.changed).toBe(true)
+    expect(res.statussen.T1).toEqual({ status: 'Ontsmet', sinds: '2026-07-30', laatste_log_id: 1 })
+    expect(res.log).toHaveLength(1)
+    expect(res.log[0]).toMatchObject({
+      tank_id: 'T1', nieuwe_status: 'Ontsmet', uitgevoerd_door: 'Jasper',
+      middel: 'Chemipro OXI', cip: true, oorzaak: 'handmatig',
+    })
+  })
+
+  it('telt het log-id door op bestaande entries', () => {
+    const res = registreerTankReiniging('T2', 'Schoon', basis, {}, [{ id: 7, tank_id: 'T1', datum: '2026-07-01', uitgevoerd_door: 'systeem', nieuwe_status: 'Vuil' }])
+    expect(res.log[1].id).toBe(8)
+    expect(res.statussen.T2.laatste_log_id).toBe(8)
+  })
+
+  it('weigert een registratie zonder tank, datum of uitvoerder', () => {
+    expect(registreerTankReiniging(null, 'Schoon', basis, {}, []).changed).toBe(false)
+    expect(registreerTankReiniging('T1', 'Schoon', { ...basis, datum: '' }, {}, []).changed).toBe(false)
+    expect(registreerTankReiniging('T1', 'Schoon', { ...basis, uitgevoerd_door: '  ' }, {}, []).changed).toBe(false)
+  })
+
+  it('laat lege optionele velden weg in plaats van ze leeg op te slaan', () => {
+    const res = registreerTankReiniging('T1', 'Schoon', { datum: '2026-07-30', uitgevoerd_door: 'Jasper' }, {}, [])
+    expect(res.log[0].middel).toBeUndefined()
+    expect(res.log[0].cip).toBeUndefined()
+    expect(res.log[0].opmerking).toBeUndefined()
+  })
+})
+
+describe('laatsteTankReiniging', () => {
+  const log = [
+    { id: 1, tank_id: 'T1', datum: '2026-07-01', uitgevoerd_door: 'Jasper', nieuwe_status: 'Ontsmet' as const },
+    { id: 2, tank_id: 'T1', datum: '2026-07-20', uitgevoerd_door: 'systeem', nieuwe_status: 'Vuil' as const },
+    { id: 3, tank_id: 'T1', datum: '2026-07-18', uitgevoerd_door: 'Jasper', nieuwe_status: 'Schoon' as const },
+    { id: 4, tank_id: 'T2', datum: '2026-07-25', uitgevoerd_door: 'Jasper', nieuwe_status: 'Ontsmet' as const },
+  ]
+
+  it('geeft de nieuwste reiniging en negeert vuil-meldingen', () => {
+    expect(laatsteTankReiniging('T1', log)?.id).toBe(3)
+  })
+
+  it('geeft null als er nooit gereinigd is', () => {
+    expect(laatsteTankReiniging('T3', log)).toBeNull()
+    expect(laatsteTankReiniging('T1', null)).toBeNull()
   })
 })
