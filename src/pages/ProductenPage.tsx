@@ -8,7 +8,8 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
-import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen } from '../utils/calculations'
+import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
+import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -60,7 +61,7 @@ const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null
   } catch { return null }
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -676,6 +677,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const max = beschikbaarVoorAfvulling(afboekModal);
       if (aantal > max) { setAfboekError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
     }
+    // Periode-lock (ERP-plan 0.4): een vermissing boekt accijns in de lopende
+    // maand — dat mag niet meer als die aangifte al is ingediend of betaald.
+    if (afboekForm.reden === 'vermis' && aantal > 0 && accijnsMaandGesloten(tod(), accijnsAangiftes)) {
+      setAfboekError(t('err_accijns_maand_gesloten_boeking')); return;
+    }
     // Voorcalculatie accijns (Douane v2.4 §7.2.1) — bevroren bedrag per eenheid op afboekmoment
     const isVernietiging = afboekForm.reden === 'vernietiging';
     const perEenheid = Number(afboekModal.voorcalc_accijns_per_eenheid) > 0
@@ -710,10 +716,20 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       nieuw.verklaring_ingediend_op = afboekForm.verklaring_ingediend_op;
       nieuw.bijlagen = afboekForm.bijlagen;
     }
+    // Vermissing = onttrekking aan de schorsingsregeling: de accijns wordt
+    // verschuldigd en hoort dus in de maandaangifte, niet alleen als
+    // voorcalculatie in de kostprijs.
+    const accRecord = bouwAfboekingAccijnsRecord(
+      nieuw, afboekModal, (bat||[]).find((b: any) => b.id === afboekModal.batch_id), accijnsInst, newId(acc||[])
+    );
+    if (accRecord) {
+      nieuw.accijns_record_id = accRecord.id;
+      setAcc((prev: any[]) => [...(prev||[]), accRecord]);
+    }
     if (setAfboekingen) setAfboekingen((prev: any[]) => [...(prev||[]), nieuw]);
     const extraAudit = afboekForm.reden === 'vernietiging'
       ? ` — verklaring ingediend op ${fmtD(afboekForm.verklaring_ingediend_op)}, ${(afboekForm.bijlagen||[]).length} bijlage(n) — status Aangevraagd`
-      : '';
+      : accRecord ? ` — accijns ${fmt(accRecord.accijns||0)} geboekt` : '';
     logAudit(auditLog, setAuditLog, {entiteit: 'Afboeking', entiteit_id: nieuw.id, actie: 'aangemaakt', omschrijving: `Afboeking ${aantal}× ${afboekModal.verpakking_naam || afboekModal.verpakking_type || ''} (${afboekForm.reden})${extraAudit}`});
     const redenLabel = t(AFBOEKING_REDENEN.find(r => r.v === afboekForm.reden)?.lKey || afboekForm.reden);
     const batch = (bat||[]).find((b: any) => b.id === afboekModal.batch_id);
@@ -729,7 +745,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       eenheid: 'stuks',
       reden: afboekForm.reden,
       referentie: redenLabel,
-      omschrijving: `${redenLabel} — ${afboekForm.opmerking.trim()}${totaalVoorcalc>0?` · voorcalc accijns € ${totaalVoorcalc.toFixed(2)}`:''}`,
+      omschrijving: `${redenLabel} — ${afboekForm.opmerking.trim()}${accRecord?` · ${t('log_accijns_geboekt').replace('{bedrag}', fmt(accRecord.accijns||0))}`:totaalVoorcalc>0?` · voorcalc accijns € ${totaalVoorcalc.toFixed(2)}`:''}`,
     }]);
     setAfboekModal(null);
   };

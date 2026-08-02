@@ -5,6 +5,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
 import { accijnsAangifteBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
+import { accijnsMaandKey, groepeerAccijnsPerMaand } from '../utils/afboeking'
 import type { Batch, AccijnsRecord, AccijnsAangifte, AccijnsInst, Uitlevering, Afvulling } from '../types'
 
 // Inline 4-ogen-controleblok (Douane v2.4 §12.2). Reviewer (default Elise Kok) vinkt akkoord
@@ -130,23 +131,17 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
   const getPlato   = (bid: any) => { const p = getBatch(bid)?.platogehalte; return p ? `${p}°P` : '—'; };
 
   const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const currentMonthKey = accijnsMaandKey(now);
 
   const [ingeklapt, setIngeklapt] = useState<any>({});       // {YYYY-MM: bool} = ingeklapt
   const [aangifteView, setAangifteView] = useState(false); // aangifte-view voor lopende maand
 
-  const byMonth = useMemo(() => {
-    const g: any = {};
-    (acc||[]).forEach((a: any) => {
-      const d = new Date(a.datum);
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      if (!g[k]) g[k] = [];
-      g[k].push(a);
-    });
-    return g;
-  }, [acc]);
-
-  const months = Object.keys(byMonth).sort((a,b)=>b.localeCompare(a));
+  // De lopende maand zit er altijd bij, ook zonder boekingen: anders verschijnt
+  // een nieuwe maand pas bij de eerste uitslag en lijkt de reeks te blijven staan.
+  const {byMonth, maanden: months} = useMemo(
+    () => groepeerAccijnsPerMaand<any>(acc, currentMonthKey),
+    [acc, currentMonthKey]
+  );
 
   const fmtMonth = (key: string) => {
     const [y,m] = key.split('-');
@@ -177,11 +172,9 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
   };
 
   const markMonthPaid = (monthKey: string) => {
-    setAcc((prev: any) => prev.map((a: any) => {
-      const d = new Date(a.datum);
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      return k === monthKey && !a.betaald ? {...a, betaald:true, betaal_datum:tod()} : a;
-    }));
+    setAcc((prev: any) => prev.map((a: any) =>
+      accijnsMaandKey(a.datum) === monthKey && !a.betaald ? {...a, betaald:true, betaal_datum:tod()} : a
+    ));
     logAudit(auditLog, setAuditLog, {entiteit:'Accijns', entiteit_id:0, actie:'gewijzigd', omschrijving:`Maand ${monthKey} als betaald gemarkeerd`});
     setIngeklapt((prev: any) => ({...prev, [monthKey]: true}));
   };
@@ -251,12 +244,18 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
   const totOpen = (acc||[]).filter((a: any)=>!a.betaald).reduce((s: any,a: any)=>s+getAccijns(a),0);
   const totPaid = (acc||[]).filter((a: any)=>a.betaald).reduce((s: any,a: any)=>s+getAccijns(a),0);
 
+  /* ── Melding voor een maand zonder boekingen (bijv. een net begonnen maand) ── */
+  const LegeMaand = () => (
+    <div className="py-6 text-center text-sm text-gray-400">{t('excise_no_records_month')}</div>
+  );
+
   /* ── Herbruikbare samenvatting-tabel (aangifte / afgesloten maand) ── */
   const SummaryTable = ({records, monthTotal, allPaid, monthKey}: any) => {
     const rows: any = groupRecords(records);
     const totLiter = rows.reduce((s: any,r: any) => s + r.liter, 0);
     return (
       <div className="overflow-x-auto">
+        {rows.length === 0 ? <LegeMaand /> : (
         <table className="w-full text-sm">
           <thead className="text-xs text-gray-500 bg-gray-50">
             <tr>
@@ -296,6 +295,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
             </tr>
           </tfoot>
         </table>
+        )}
         {monthKey && (() => {
           const aangifte = getAangifte(monthKey)
           const wfStatus = getAangifteStatus(monthKey)
@@ -416,15 +416,10 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
         </div>
       </div>
 
-      {months.length === 0 && (
-        <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">
-          {t('excise_no_recorded')}
-        </div>
-      )}
-
       {months.map((monthKey: string) => {
         const records    = byMonth[monthKey];
         const isCurrent  = monthKey === currentMonthKey;
+        const isLeeg     = records.length === 0;
         const allPaid    = records.every((a: any) => a.betaald);
         const monthTotal = records.reduce((s: any,a: any) => s + getAccijns(a), 0);
         const isOpen     = ingeklapt[monthKey] !== undefined ? !ingeklapt[monthKey] : (!allPaid || isCurrent);
@@ -468,6 +463,8 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
               <div className="p-4">
                 {showSummary ? (
                   <SummaryTable records={records} monthTotal={monthTotal} allPaid={allPaid} monthKey={monthKey} />
+                ) : isLeeg ? (
+                  <LegeMaand />
                 ) : (
                   /* ── Lopende maand: individuele uitslagen (geen betaal per rij — betaling is per maand) ── */
                   (() => {
@@ -498,6 +495,13 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                                 <td className="px-3 py-2 font-medium text-gray-800">
                                   <span className={`inline-block w-2 h-2 rounded-full mr-2 flex-shrink-0 ${a.betaald ? 'bg-green-500' : 'bg-red-500'}`} style={{verticalAlign:'middle'}}></span>
                                   {getNaam(a.batch_id)}
+                                  {/* Alleen afwijkende bronnen labelen; een gewone uitlevering is de norm */}
+                                  {a.bron === 'afboeking' && (
+                                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-medium bg-red-50 text-red-600 align-middle">{t('excise_bron_afboeking')}</span>
+                                  )}
+                                  {a.bron === 'verplaatsing' && (
+                                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-medium bg-blue-50 text-blue-600 align-middle">{t('excise_bron_verplaatsing')}</span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 text-gray-500">{a.batch_nummer?`#${a.batch_nummer}`:'—'}</td>
                                 <td className="px-3 py-2 text-gray-500 text-xs font-mono">{getGnForRecord(a)}</td>

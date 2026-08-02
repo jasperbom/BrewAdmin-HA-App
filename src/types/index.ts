@@ -750,10 +750,12 @@ export interface AccijnsRecord {
   betaal_datum?: string
   uitlevering_id?: number
   // Bron van de boeking: 'uitlevering' (bier verlaat AGP richting klant of
-  // voor intern gebruik) of 'verplaatsing' (bier verlaat AGP naar een andere
-  // voorraadlocatie). Default 'uitlevering' voor oude records.
-  bron?: 'uitlevering' | 'verplaatsing'
+  // voor intern gebruik), 'verplaatsing' (bier verlaat AGP naar een andere
+  // voorraadlocatie) of 'afboeking' (vermissing = onttrekking aan de
+  // schorsingsregeling). Default 'uitlevering' voor oude records.
+  bron?: 'uitlevering' | 'verplaatsing' | 'afboeking'
   verplaatsing_id?: number
+  afboeking_id?: number
 }
 
 // ── Locaties & AGP-voorraad ──────────────────────────────────────────────────
@@ -1204,6 +1206,9 @@ export interface Afboeking {
   // v2.4: voorcalculatie accijns op moment van afboeking
   voorcalc_accijns_per_eenheid?: number
   voorcalc_accijns_totaal?: number
+  // Bij reden 'vermis' wordt de accijns niet alleen voorgecalculeerd maar ook
+  // echt geboekt: id van het bijbehorende AccijnsRecord (zie utils/afboeking.ts)
+  accijns_record_id?: number
   // v2.4: gedetailleerde vernietigingsflow vanuit schorsingsregeling
   vernietiging_status?: VernietigingStatus
   verklaring_ingediend_op?: string

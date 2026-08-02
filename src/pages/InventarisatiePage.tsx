@@ -7,7 +7,8 @@ import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
-import { berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import { berekenVoorcalcVoorAfvulling, accijnsMaandGesloten } from '../utils/calculations'
+import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 
 interface InventarisatieTelling {
   id: number
@@ -40,6 +41,9 @@ interface InventarisatiePageProps {
   uit: any[]
   afboekingen: any[]
   setAfboekingen?: any
+  acc?: any[]
+  setAcc?: any
+  accijnsAangiftes?: any[]
   bestellingPicks: any[]
   bestellingen: any[]
   inventarisaties: Inventarisatie[]
@@ -53,7 +57,8 @@ interface InventarisatiePageProps {
 }
 
 const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
-  lots, ing, av, bat, uit, afboekingen, setAfboekingen = (() => {}), bestellingPicks, bestellingen,
+  lots, ing, av, bat, uit, afboekingen, setAfboekingen = (() => {}),
+  acc = [], setAcc = (() => {}), accijnsAangiftes = [], bestellingPicks, bestellingen,
   inventarisaties, setInventarisaties, setLots, log, setLog, accijnsInst,
   auditLog = [], setAuditLog = (() => {})
 }) => {
@@ -195,10 +200,21 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
   const afronden = () => {
     if (!selected) return
 
+    // Periode-lock (ERP-plan 0.4): een geteld biertekort boekt accijns in de
+    // lopende maand — geblokkeerd zodra die aangifte is ingediend of betaald.
+    if (correcties
+        && selected.tellingen.some(tel => tel.ref_type === 'afvulling' && tel.verschil < 0)
+        && accijnsMaandGesloten(tod(), accijnsAangiftes)) {
+      alert(t('err_accijns_maand_gesloten_boeking'))
+      return
+    }
+
     // Apply corrections for lots if checked
     if (correcties) {
       const nieuweAfboekingen: any[] = []
+      const nieuweAccijns: any[] = []
       let abId = newId(afboekingen || [])
+      let accId = newId(acc || [])
       for (const tel of selected.tellingen) {
         if (tel.verschil !== 0 && tel.ref_type === 'lot') {
           setLots((prev: any[]) => prev.map((l: any) =>
@@ -218,7 +234,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
         // een overschot een negatieve afboeking (bijboeking, reden overig).
         if (tel.verschil !== 0 && tel.ref_type === 'afvulling') {
           const a = (av || []).find((x: any) => x.id === tel.ref_id)
-          nieuweAfboekingen.push({
+          const afboeking: any = {
             id: abId++,
             afvulling_id: tel.ref_id,
             batch_id: a?.batch_id ?? null,
@@ -233,7 +249,17 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
             created_at: new Date().toISOString(),
             voorcalc_accijns_per_eenheid: tel.voorcalc_accijns_per_eenheid || 0,
             voorcalc_accijns_totaal: Math.round(Math.abs(tel.verschil) * (tel.voorcalc_accijns_per_eenheid || 0) * 100) / 100,
-          })
+          }
+          // Een geteld tekort is een vermissing: accijns wordt verschuldigd en
+          // hoort in de maandaangifte. Een overschot (reden 'overig') niet.
+          const accRecord = bouwAfboekingAccijnsRecord(
+            afboeking, a, (bat || []).find((b: any) => b.id === afboeking.batch_id), accijnsInst, accId++
+          )
+          if (accRecord) {
+            afboeking.accijns_record_id = accRecord.id
+            nieuweAccijns.push(accRecord)
+          }
+          nieuweAfboekingen.push(afboeking)
           addLog({
             type: 'inventarisatie',
             omschrijving: `${tel.naam}: ${tel.administratief} → ${tel.geteld} stuks`,
@@ -245,6 +271,9 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
       }
       if (nieuweAfboekingen.length > 0) {
         setAfboekingen((prev: any[]) => [...(prev || []), ...nieuweAfboekingen])
+      }
+      if (nieuweAccijns.length > 0) {
+        setAcc((prev: any[]) => [...(prev || []), ...nieuweAccijns])
       }
     }
 

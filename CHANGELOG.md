@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.83] — 2026-08-02
+
+### Opgelost — Nieuwe maand kwam niet op de accijnspagina, afboekingen kwamen er nooit
+
+Twee gaten die samen zorgden dat een afboeking nergens in de aangifte terugkwam.
+
+**1. De lopende maand verscheen pas bij de eerste boeking.** De maandkaarten op
+de accijnspagina werden volledig afgeleid uit bestaande accijnsrecords: geen
+record in augustus = geen kaart augustus. In de eerste dagen van een nieuwe
+maand leek de reeks dus stil te staan. De lopende maand staat er nu altijd bij,
+ook zonder boekingen, met de melding *"Nog geen accijnsboekingen in deze maand"*
+— zo kan er ook een nulaangifte doorlopen worden.
+
+**2. Een afboeking met reden 'vermis' boekte geen accijns.** De afboekflow
+berekende de accijns wel, maar bevroor die alleen als voorcalculatie op het
+afboekingsrecord (voor de kostprijs). Er ontstond nooit een accijnsboeking,
+terwijl een vermissing fiscaal een onttrekking aan de schorsingsregeling is.
+Vanaf nu levert `vermis` een echte accijnsboeking op — zowel bij het handmatig
+afboeken op de productpagina als bij een geteld tekort in de inventarisatie.
+`vernietiging` (eigen douaneflow, met toestemming vervalt de schuld) en
+`overig` (o.a. het inventarisatie-overschot) blijven ongemoeid.
+
+- Accijnsregels tonen hun herkomst: een badge **Vermissing** of **Verplaatsing**
+  naast de biernaam; een gewone uitlevering blijft ongelabeld.
+- Periode-lock: een vermissing kan niet meer geboekt worden in een maand
+  waarvan de aangifte al is ingediend of betaald — dat zou de aangiftecijfers
+  stil veranderen.
+- Nieuwe pure logica in `src/utils/afboeking.ts` met tests: welke afboekreden
+  accijnsplichtig is, het bouwen van het accijnsrecord (tarief op de brouwdatum,
+  net als bij een AGP-verplaatsing) en de maandindeling van de accijnspagina.
+- De maandsleutel wordt nu uit de datumstring gesneden in plaats van via
+  `new Date()`, gelijk aan de periode-lock — voorkomt dat weergave en lock in
+  een westelijke tijdzone een maand uit elkaar lopen.
+
+---
+
 ## [1.11.82] — 2026-07-31
 
 ### Toegevoegd — Tankreiniging vastleggen (dat kon nergens)
