@@ -16,6 +16,7 @@ import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels } from '../utils/centen'
 import { afvullingHoortBijBierNaam } from '../utils/picking'
+import { standaardBtwPct } from '../utils/btw'
 
 interface KassaPageProps {
   bat: any[]
@@ -50,6 +51,8 @@ interface KassaPageProps {
   auditLog?: any[]
   setAuditLog?: any
   setJournaal?: any
+  btwInst?: any
+  btwTarieven?: Array<number | string>
 }
 
 // Eén regel op de kassabon. De prijs komt altijd uit het artikel (normaal of
@@ -92,7 +95,10 @@ const KassaPage: React.FC<KassaPageProps> = ({
   locaties = [], verplaatsingen = [], afboekingen = [],
   auditLog = [], setAuditLog = () => {},
   setJournaal = () => {},
+  btwInst = {}, btwTarieven = [0, 9, 21],
 }) => {
+  // Standaard BTW-tarief uit de instellingen (21% tenzij anders ingesteld)
+  const stdBtw = standaardBtwPct(btwInst, btwTarieven)
   const [cart, setCart] = useState<BonRegel[]>([])
   const [selectedKlantId, setSelectedKlantId] = useState<number | null>(null)
   const [klantZoek, setKlantZoek] = useState('')
@@ -104,7 +110,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
   const [showNieuweKlant, setShowNieuweKlant] = useState(false)
   const [nieuweKlantForm, setNieuweKlantForm] = useState({naam: '', klant_type: 'prive', email: '', telefoon: ''})
   const [showVrijeRegel, setShowVrijeRegel] = useState(false)
-  const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
+  const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw)})
   const [bonKorting, setBonKorting] = useState<BonKorting | null>(null)
   const [showKorting, setShowKorting] = useState(false)
   const [kortingForm, setKortingForm] = useState({soort: 'bedrag', waarde: ''})
@@ -275,7 +281,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
           sku,
           prijs: art?.verkoopprijs != null && art.verkoopprijs !== '' ? Number(art.verkoopprijs) : null,
           b2bPrijs: art?.b2b_prijs != null && art.b2b_prijs !== '' ? Number(art.b2b_prijs) : null,
-          btw_pct: art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : 9,
+          btw_pct: art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : stdBtw,
           voorraad,
           buitenAgp,
           agp,
@@ -447,7 +453,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
       btw_pct: Number(vrijeRegelForm.btw_pct) || 0,
       omschrijving: oms,
     }])
-    setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
+    setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw)})
     setShowVrijeRegel(false)
   }
 

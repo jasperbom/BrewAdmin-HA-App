@@ -40,6 +40,7 @@ BrewAdmin-HA-App/
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
+│   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel)
 │   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
@@ -421,7 +422,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
 | `accijns_instellingen` | object | Accijnstarieven |
-| `btw_instellingen` | object | BTW-aangifte-instellingen (periode) |
+| `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, BTW-nr., website (klikbaar logo in mail) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |
@@ -438,7 +439,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
-| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials (nooit in backup) |
+| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
 | `mollie_creds` *(secure)* | object | Mollie API-key + `enabled` + `redirectUrl` voor de online betaallink op verkoopfacturen (nooit in backup); server-side proxy voegt de key toe |
