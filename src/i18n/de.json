@@ -540,6 +540,8 @@
   "settings_btw_tarieven_title": "MwSt.-Sätze",
   "settings_btw_tarieven_desc": "Wählen Sie die MwSt.-Sätze aus, die beim Erstellen von Ausgangsrechnungen und Bestellungen verfügbar sind.",
   "settings_btw_tarieven_hint": "Wählen Sie mindestens einen Satz. Standardmäßig sind 0%, 9% und 21% aktiv.",
+  "settings_btw_standaard_title": "Standard-MwSt.-Satz",
+  "settings_btw_standaard_desc": "Dieser Satz wird bei neuen Artikeln und Verkaufszeilen vorgeschlagen.",
   "settings_hygiene": "Hygiene",
   "settings_checklists": "Checklisten",
   "settings_batch_taken": "Batch-Aufgaben",

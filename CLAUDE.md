@@ -421,7 +421,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
 | `accijns_instellingen` | object | Accijnstarieven |
-| `btw_instellingen` | object | BTW-aangifte-instellingen (periode) |
+| `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, BTW-nr., website (klikbaar logo in mail) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |

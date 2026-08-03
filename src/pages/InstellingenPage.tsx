@@ -10,6 +10,7 @@ import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
 import { checkIntegriteit } from '../utils/integriteit'
 import { fmt, fmtD, tod } from '../utils/format'
+import { standaardBtwPct } from '../utils/btw'
 
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
 // bij zodat de gebruiker waardes kan wijzigen, de impact kan bekijken, en pas
@@ -2833,6 +2834,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           ))}
         </div>
         <p className="text-xs text-gray-400">{t('settings_btw_tarieven_hint')}</p>
+
+        {/* Standaard tarief: wordt voorgesteld bij nieuwe artikelen en verkoopregels */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('settings_btw_standaard_title')}</h3>
+          <p className="text-xs text-gray-500 mb-3">{t('settings_btw_standaard_desc')}</p>
+          <div className="flex flex-wrap gap-2">
+            {(Array.isArray(btwTarieven) && btwTarieven.length ? btwTarieven : [0, 9, 21]).map((pct: number) => (
+              <label key={pct} className="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-100 transition-colors">
+                <input type="radio" name="standaard_btw"
+                  checked={standaardBtwPct(btwInst, btwTarieven) === pct}
+                  onChange={() => {
+                    setBtwInst((prev: any) => ({...prev, standaard_btw: pct}));
+                    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Standaard BTW-tarief → ${pct}%`});
+                  }}
+                  className="w-4 h-4 border-gray-300 t-checkbox" />
+                <span className="text-sm font-medium text-gray-700">{pct}%</span>
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Goederenstroom AGP diagram — volle breedte vanwege horizontale flow */}

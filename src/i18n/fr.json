@@ -540,6 +540,8 @@
   "settings_btw_tarieven_title": "Taux de TVA",
   "settings_btw_tarieven_desc": "Sélectionnez les taux de TVA disponibles lors de la création des factures de vente et des commandes.",
   "settings_btw_tarieven_hint": "Sélectionnez au moins un taux. Par défaut, 0%, 9% et 21% sont actifs.",
+  "settings_btw_standaard_title": "Taux de TVA par défaut",
+  "settings_btw_standaard_desc": "Ce taux est proposé pour les nouveaux articles et lignes de vente.",
   "settings_hygiene": "Hygiène",
   "settings_checklists": "Listes de contrôle",
   "settings_batch_taken": "Tâches du lot",

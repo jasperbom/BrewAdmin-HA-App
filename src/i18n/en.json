@@ -540,6 +540,8 @@
   "settings_btw_tarieven_title": "VAT rates",
   "settings_btw_tarieven_desc": "Select the VAT rates available when creating sales invoices and orders.",
   "settings_btw_tarieven_hint": "Select at least one rate. By default 0%, 9% and 21% are active.",
+  "settings_btw_standaard_title": "Default VAT rate",
+  "settings_btw_standaard_desc": "This rate is pre-filled for new articles and sales lines.",
   "settings_hygiene": "Hygiene",
   "settings_checklists": "Checklists",
   "settings_batch_taken": "Batch tasks",

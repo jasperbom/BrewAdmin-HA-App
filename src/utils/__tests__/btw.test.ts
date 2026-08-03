@@ -3,6 +3,7 @@ import {
   datumToPeriodeKey, periodeKeyLabel, huidigePeriodeKey, isPeriodeGesloten,
   effectievePeriodeKey, geslotenPeriodeSets, magFactuurMuteren, bepaalRollover,
   omzetBtwOpGrondslag, getPeriodes, telOpenstaandeBtwPerioden, laatsteOpenstaandeBtwPeriode,
+  standaardBtwPct,
 } from '../btw'
 
 describe('datumToPeriodeKey / periodeKeyLabel', () => {
@@ -186,5 +187,28 @@ describe('laatsteOpenstaandeBtwPeriode', () => {
 
   it('geeft null voor een jaar zonder activiteit, ook al is er nooit iets ingediend', () => {
     expect(laatsteOpenstaandeBtwPeriode([2025], 'kwartaal', [], {}, facturen, vandaag)).toBeNull()
+  })
+})
+
+describe('standaardBtwPct', () => {
+  it('valt zonder instelling terug op 21%', () => {
+    expect(standaardBtwPct(null, [0, 9, 21])).toBe(21)
+    expect(standaardBtwPct({}, [0, 9, 21])).toBe(21)
+    expect(standaardBtwPct({standaard_btw: ''}, [0, 9, 21])).toBe(21)
+  })
+  it('gebruikt het ingestelde tarief als dat actief is', () => {
+    expect(standaardBtwPct({standaard_btw: 9}, [0, 9, 21])).toBe(9)
+    expect(standaardBtwPct({standaard_btw: '0'}, [0, 9, 21])).toBe(0)
+  })
+  it('negeert een uitgeschakeld tarief', () => {
+    expect(standaardBtwPct({standaard_btw: 6}, [0, 9, 21])).toBe(21)
+    expect(standaardBtwPct({standaard_btw: 21}, [0, 6, 9])).toBe(9)
+  })
+  it('kiest het hoogste actieve tarief als 21% uit staat', () => {
+    expect(standaardBtwPct({}, [0, 6, 9])).toBe(9)
+  })
+  it('accepteert elke waarde als er geen tarievenlijst is', () => {
+    expect(standaardBtwPct({standaard_btw: 6})).toBe(6)
+    expect(standaardBtwPct({}, [])).toBe(21)
   })
 })

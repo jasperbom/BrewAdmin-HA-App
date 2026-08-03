@@ -540,6 +540,8 @@
   "settings_btw_tarieven_title": "BTW-tarieven",
   "settings_btw_tarieven_desc": "Selecteer de BTW-tarieven die beschikbaar zijn bij het aanmaken van verkoopfacturen en bestellingen.",
   "settings_btw_tarieven_hint": "Selecteer minimaal één tarief. Standaard zijn 0%, 9% en 21% actief.",
+  "settings_btw_standaard_title": "Standaard BTW-percentage",
+  "settings_btw_standaard_desc": "Dit tarief wordt voorgesteld bij nieuwe artikelen en verkoopregels.",
   "settings_hygiene": "Hygiëne",
   "settings_checklists": "Checklists",
   "settings_batch_taken": "Batch-taken",

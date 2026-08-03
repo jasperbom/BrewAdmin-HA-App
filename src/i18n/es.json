@@ -540,6 +540,8 @@
   "settings_btw_tarieven_title": "Tipos de IVA",
   "settings_btw_tarieven_desc": "Seleccione los tipos de IVA disponibles al crear facturas de venta y pedidos.",
   "settings_btw_tarieven_hint": "Seleccione al menos un tipo. Por defecto están activos el 0%, 9% y 21%.",
+  "settings_btw_standaard_title": "Tipo de IVA predeterminado",
+  "settings_btw_standaard_desc": "Este tipo se propone para artículos y líneas de venta nuevos.",
   "settings_hygiene": "Higiene",
   "settings_checklists": "Listas de verificación",
   "settings_batch_taken": "Tareas del lote",

@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.84] — 2026-08-03
+
+### Verbeterd — Artikelen op mobiel bewerkbaar + instelbaar standaard BTW-tarief
+
+**Artikelen/SKU's op een telefoon.** De artikelentabel op de productpagina was
+negen kolommen breed; op mobiel liep die buiten de kaart waardoor de bewerk- en
+verwijderknoppen letterlijk onbereikbaar waren. Onder `sm` staat er nu een
+kaartweergave per artikel met dezelfde gegevens en volwaardige *Bewerken*- en
+*Verwijderen*-knoppen. Het artikelformulier staat op mobiel in één kolom met
+ruimere invoervelden, en het BTW-veld is een keuzelijst met de actieve tarieven
+geworden in plaats van een vrij getalveld.
+
+### Toegevoegd — Standaard BTW-percentage in de instellingen
+
+Instellingen → Financieel → BTW-tarieven heeft een keuze **standaard
+BTW-percentage** gekregen (standaard **21%**). Dat tarief wordt voorgesteld bij
+een nieuw artikel, een nieuwe kassabon-/orderregel en bij WooCommerce-orders
+zonder eigen tarief. Een uitgeschakeld tarief wordt nooit voorgesteld.
+
+---
+
 ## [1.11.83] — 2026-08-02
 
 ### Opgelost — Nieuwe maand kwam niet op de accijnspagina, afboekingen kwamen er nooit

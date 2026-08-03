@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
-import { geslotenPeriodeSets, magFactuurMuteren } from '../utils/btw'
+import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
@@ -128,8 +128,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const emptyUitleveringForm = {type_uitlevering: 'binnenland' as string, bestemming_naam: '', bestemming_adres: '', bestemming_land: 'NL', vervoerder: ''}
   const [uitleveringForm, setUitleveringForm] = useState(emptyUitleveringForm)
   const [showAnnuleerModal, setShowAnnuleerModal] = useState(false)
+  // Standaard BTW-tarief uit de instellingen (21% tenzij anders ingesteld)
+  const stdBtw = standaardBtwPct(btwInst, btwTarieven)
   const [showVrijeRegelModal, setShowVrijeRegelModal] = useState(false)
-  const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'})
+  const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw)})
   const [showVerzendkostenModal, setShowVerzendkostenModal] = useState(false)
   const [verzendkostenForm, setVerzendkostenForm] = useState({naam: '', prijs_per_stuk: '', btw_pct: '21'})
 
@@ -146,7 +148,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     regels: [] as any[]
   }
   const [manualForm, setManualForm] = useState<any>(emptyManual)
-  const emptyRegel = {bier_naam: '', verpakking_type: '', aantal: '1', prijs_per_stuk: '', btw_pct: '9', omschrijving: '', prijsType: 'normaal'}
+  const emptyRegel = {bier_naam: '', verpakking_type: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw), omschrijving: '', prijsType: 'normaal'}
   const [regelForm, setRegelForm] = useState<any>(emptyRegel)
   const [manualVerzending, setManualVerzending] = useState({enabled: false, naam: '', prijs: '', btw_pct: '21'})
 
@@ -352,12 +354,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             : (Number(item.quantity||1) > 0 ? parseFloat(item.subtotal||'0') / Number(item.quantity||1) : 0)
           // BTW% bepalen — voorkeur: het geconfigureerde artikel-tarief (`btw_pct`),
           // anders afgeleid uit de WooCommerce-belasting op de regel, anders het
-          // standaardtarief 21% (bier). Let op: het veld heet `btw_pct`, niet `btw`.
+          // ingestelde standaardtarief. Let op: het veld heet `btw_pct`, niet `btw`.
           const artBtw = art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : null
           const lineTotal = parseFloat(item.total || item.subtotal || '0')
           const lineTax = parseFloat(item.total_tax || item.subtotal_tax || '0')
           const afgeleidBtw = lineTotal > 0 && lineTax > 0 ? Math.round((lineTax / lineTotal) * 100) : null
-          const btwPct = artBtw != null ? artBtw : (afgeleidBtw != null ? afgeleidBtw : 21)
+          const btwPct = artBtw != null ? artBtw : (afgeleidBtw != null ? afgeleidBtw : stdBtw)
           return {
             id: i + 1,
             type: 'bier',

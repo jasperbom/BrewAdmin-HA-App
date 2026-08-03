@@ -248,3 +248,30 @@ export function laatsteOpenstaandeBtwPeriode(
     .sort((a, b) => b.to.localeCompare(a.to))
   return open[0] || null
 }
+
+// ---------------------------------------------------------------------------
+// Standaard BTW-percentage (instelling `btw_instellingen.standaard_btw`)
+// ---------------------------------------------------------------------------
+
+// Terugval wanneer er niets is ingesteld: het algemene tarief (bier is in NL
+// 21%). De gebruiker kiest in Instellingen → BTW-tarieven welk actief tarief
+// standaard voorgesteld wordt bij nieuwe artikelen en verkoopregels.
+export const STANDAARD_BTW_FALLBACK = 21
+
+// Het voor te stellen BTW-percentage. Een ingestelde waarde telt alleen zolang
+// dat tarief ook actief is; anders 21% (als dat actief is) en anders het
+// hoogste actieve tarief — zo staat er nooit een uitgeschakeld tarief in een
+// nieuw formulier.
+export function standaardBtwPct(
+  btwInst?: { standaard_btw?: number | string | null } | null,
+  btwTarieven?: Array<number | string> | null,
+): number {
+  const actief = (btwTarieven || []).map(Number).filter(v => Number.isFinite(v))
+  const rauw = btwInst?.standaard_btw
+  const gekozen = rauw === null || rauw === undefined || rauw === '' ? null : Number(rauw)
+  if (gekozen != null && Number.isFinite(gekozen) && (actief.length === 0 || actief.includes(gekozen))) {
+    return gekozen
+  }
+  if (actief.includes(STANDAARD_BTW_FALLBACK) || actief.length === 0) return STANDAARD_BTW_FALLBACK
+  return Math.max(...actief)
+}

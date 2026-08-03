@@ -10,6 +10,7 @@ import SearchInput from '../components/ui/SearchInput'
 import { logAudit } from '../utils/audit'
 import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
+import { standaardBtwPct } from '../utils/btw'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -61,7 +62,7 @@ const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null
   } catch { return null }
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[]}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], btwInst={}, btwTarieven=[0,9,21]}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -439,7 +440,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     if (art) {
       setArtForm({...art});
     } else {
-      setArtForm({id: newId(productArtikelen), product_id: sel, verpakking_id: '', verpakking_naam: '', verpakking_type: '', inhoud_liter: '', artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: '', wc_push: true});
+      // Nieuw artikel krijgt het standaard BTW-tarief uit de instellingen (21% tenzij anders ingesteld).
+      setArtForm({id: newId(productArtikelen), product_id: sel, verpakking_id: '', verpakking_naam: '', verpakking_type: '', inhoud_liter: '', artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: standaardBtwPct(btwInst, btwTarieven), omschrijving: '', wc_push: true});
     }
   };
 
@@ -1339,21 +1341,22 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
               {artForm && (
                 <div className="p-3 bg-gray-50 border-b border-gray-200">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {/* Eén kolom op mobiel: de velden bleven anders te smal om te bewerken */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_verpakking')}</label>
-                      <select value={artForm.verpakking_id||''} onChange={e => setArtForm((f: any) => ({...f, verpakking_id: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input bg-white">
+                      <select value={artForm.verpakking_id||''} onChange={e => setArtForm((f: any) => ({...f, verpakking_id: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
                         <option value="">-</option>
                         {(verpakkingen||[]).map((v: any) => <option key={v.id} value={v.id}>{v.naam} ({v.inhoud_liter}L)</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_sku')}</label>
-                      <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_ean')}</label>
-                      <input type="text" value={artForm.ean||''} onChange={e => setArtForm((f: any) => ({...f, ean: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      <input type="text" value={artForm.ean||''} onChange={e => setArtForm((f: any) => ({...f, ean: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
@@ -1371,7 +1374,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                           {prijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
                         </button>
                       </div>
-                      <input type="number" step="0.01" value={artForm.verkoopprijs||''} onChange={e => setArtForm((f: any) => ({...f, verkoopprijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      <input type="number" step="0.01" value={artForm.verkoopprijs||''} onChange={e => setArtForm((f: any) => ({...f, verkoopprijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
@@ -1389,22 +1392,31 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                           {b2bPrijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
                         </button>
                       </div>
-                      <input type="number" step="0.01" value={artForm.b2b_prijs||''} onChange={e => setArtForm((f: any) => ({...f, b2b_prijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      <input type="number" step="0.01" value={artForm.b2b_prijs||''} onChange={e => setArtForm((f: any) => ({...f, b2b_prijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_btw')}</label>
-                      <input type="number" value={artForm.btw_pct||''} onChange={e => setArtForm((f: any) => ({...f, btw_pct: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      {/* Keuzelijst i.p.v. vrij getal: op mobiel veel makkelijker te
+                          bedienen. Een afwijkend opgeslagen tarief blijft kiesbaar. */}
+                      <select value={artForm.btw_pct ?? ''} onChange={e => setArtForm((f: any) => ({...f, btw_pct: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
+                        <option value="">-</option>
+                        {Array.from(new Set([
+                          ...(Array.isArray(btwTarieven) ? btwTarieven.map(Number) : [0, 9, 21]),
+                          ...(artForm.btw_pct !== '' && artForm.btw_pct != null ? [Number(artForm.btw_pct)] : []),
+                        ].filter((v: number) => Number.isFinite(v)))).sort((a, b) => a - b)
+                          .map((pct: number) => <option key={pct} value={pct}>{pct}%</option>)}
+                      </select>
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_gn_code')}</label>
-                      <select value={artForm.gn_code||''} onChange={e => setArtForm((f: any) => ({...f, gn_code: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input bg-white">
+                      <select value={artForm.gn_code||''} onChange={e => setArtForm((f: any) => ({...f, gn_code: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
                         <option value="">-</option>
                         {(gnCodes||[]).map((gc: any) => <option key={gc.code} value={gc.code}>{gc.code} — {gc.naam}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_omschrijving')}</label>
-                      <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1 text-xs t-input" />
+                      <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
                     </div>
                     <div className="sm:col-span-3">
                       <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none" title={t('tip_artikel_wc_push')}>
@@ -1458,10 +1470,66 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 </div>
               )}
 
-              <div className="p-3">
+              <div className="p-3 overflow-x-auto">
                 {selArtikelen.length === 0 && !artForm && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_product_artikelen')}</div>}
+
+                {/* Mobiel: kaartweergave. De brede tabel liep buiten beeld waardoor
+                    de bewerk-/verwijderknoppen op een telefoon onbereikbaar waren. */}
                 {selArtikelen.length > 0 && (
-                  <table className="w-full text-xs">
+                  <div className="sm:hidden space-y-2">
+                    {selArtikelen.map((a: any) => {
+                      const margeInfo = berekenMarge(a);
+                      const wcPushAan = a.wc_push !== false;
+                      const rij = (label: string, waarde: any) => (
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-500">{label}</span>
+                          <span className="text-right">{waarde}</span>
+                        </div>
+                      );
+                      return (
+                        <div key={a.id} className="border border-gray-200 rounded-lg p-3 text-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-semibold text-gray-800 flex items-center gap-1.5">
+                              <span>{a.verpakking_naam || t('lbl_onbekend')}</span>
+                              {a.artikelnummer && (
+                                <span
+                                  title={wcPushAan ? t('tip_artikel_wc_push_aan') : t('tip_artikel_wc_push_uit')}
+                                  className={`inline-block w-1.5 h-1.5 rounded-full ${wcPushAan ? '' : 'opacity-30'}`}
+                                  style={{backgroundColor: wcPushAan ? '#7f54b3' : '#9ca3af'}}
+                                />
+                              )}
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <Btn onClick={() => startArtEdit(a)} s="sm" v="secondary">{t('btn_edit')}</Btn>
+                              <Btn onClick={() => deleteArtikel(a.id)} s="sm" v="danger">{t('btn_delete')}</Btn>
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {rij(t('lbl_product_sku'), <span className="font-mono">{a.artikelnummer || '-'}</span>)}
+                            {a.gn_code && rij(t('lbl_gn_code'), a.gn_code)}
+                            {rij(t('lbl_product_prijs'), a.verkoopprijs ? fmt(a.verkoopprijs) : '-')}
+                            {rij(t('lbl_product_b2b_prijs'), a.b2b_prijs ? fmt(a.b2b_prijs) : '-')}
+                            {rij(t('lbl_product_btw'), a.btw_pct != null && a.btw_pct !== '' ? `${a.btw_pct}%` : '-')}
+                            {rij(t('lbl_kostprijs_stuk'), margeInfo ? fmt(margeInfo.kostprijsPerEenheid) : '-')}
+                            {margeInfo?.consument && rij(t('lbl_product_marge'), (
+                              <span className={`font-medium ${margeInfo.consument.eur >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                {margeInfo.consument.pct.toFixed(0)}% ({fmt(margeInfo.consument.eur)})
+                              </span>
+                            ))}
+                            {margeInfo?.b2b && rij(`${t('lbl_product_marge')} ${t('lbl_b2b')}`, (
+                              <span className={`font-medium ${margeInfo.b2b.eur >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                {margeInfo.b2b.pct.toFixed(0)}% ({fmt(margeInfo.b2b.eur)})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selArtikelen.length > 0 && (
+                  <table className="w-full text-xs hidden sm:table min-w-[720px] lg:min-w-0">
                     <thead>
                       <tr className="text-gray-500 border-b border-gray-100">
                         <th className="text-left py-1 font-medium">{t('lbl_product_verpakking')}</th>
