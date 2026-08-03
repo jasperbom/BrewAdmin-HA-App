@@ -3056,5 +3056,11 @@
   "dash_tank_leeg": "Empty",
   "dash_tank_sinds": "since {d}",
   "dash_tank_laatste_reiniging": "Last cleaned",
-  "dash_tank_reiniging_vastleggen": "Record cleaning"
+  "dash_tank_reiniging_vastleggen": "Record cleaning",
+  "flow_lot_boek_deel": "📦 Book {n} {unit}",
+  "flow_ing_terugboek_confirm": "Delete line? {n} {unit} will be returned to lot {lot}.",
+  "flow_ing_terugboek_ref": "Removed from batch",
+  "flow_ing_verwijder_title": "Delete line",
+  "flow_ing_lots_verdeeld": "Across {n} lots",
+  "flow_ing_deel_open": "still to book"
 }

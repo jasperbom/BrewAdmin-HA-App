@@ -3056,5 +3056,11 @@
   "dash_tank_leeg": "Vacío",
   "dash_tank_sinds": "desde {d}",
   "dash_tank_laatste_reiniging": "Última limpieza",
-  "dash_tank_reiniging_vastleggen": "Registrar limpieza"
+  "dash_tank_reiniging_vastleggen": "Registrar limpieza",
+  "flow_lot_boek_deel": "📦 Registrar {n} {unit}",
+  "flow_ing_terugboek_confirm": "¿Eliminar la línea? Se devolverán {n} {unit} al lote {lot}.",
+  "flow_ing_terugboek_ref": "Eliminado del lote de producción",
+  "flow_ing_verwijder_title": "Eliminar línea",
+  "flow_ing_lots_verdeeld": "En {n} lotes",
+  "flow_ing_deel_open": "pendiente de registrar"
 }

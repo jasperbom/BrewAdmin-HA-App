@@ -3056,5 +3056,11 @@
   "dash_tank_leeg": "Vide",
   "dash_tank_sinds": "depuis {d}",
   "dash_tank_laatste_reiniging": "Dernier nettoyage",
-  "dash_tank_reiniging_vastleggen": "Enregistrer le nettoyage"
+  "dash_tank_reiniging_vastleggen": "Enregistrer le nettoyage",
+  "flow_lot_boek_deel": "📦 Imputer {n} {unit}",
+  "flow_ing_terugboek_confirm": "Supprimer la ligne ? {n} {unit} seront recrédités sur le lot {lot}.",
+  "flow_ing_terugboek_ref": "Retiré du brassin",
+  "flow_ing_verwijder_title": "Supprimer la ligne",
+  "flow_ing_lots_verdeeld": "Sur {n} lots",
+  "flow_ing_deel_open": "reste à imputer"
 }

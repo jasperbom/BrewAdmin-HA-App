@@ -3056,5 +3056,11 @@
   "dash_tank_leeg": "Leeg",
   "dash_tank_sinds": "sinds {d}",
   "dash_tank_laatste_reiniging": "Laatst gereinigd",
-  "dash_tank_reiniging_vastleggen": "Reiniging vastleggen"
+  "dash_tank_reiniging_vastleggen": "Reiniging vastleggen",
+  "flow_lot_boek_deel": "📦 Boek {n} {unit}",
+  "flow_ing_terugboek_confirm": "Regel verwijderen? {n} {unit} wordt teruggeboekt op lot {lot}.",
+  "flow_ing_terugboek_ref": "Verwijderd uit batch",
+  "flow_ing_verwijder_title": "Regel verwijderen",
+  "flow_ing_lots_verdeeld": "Over {n} lots",
+  "flow_ing_deel_open": "nog te boeken"
 }

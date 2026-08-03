@@ -3056,5 +3056,11 @@
   "dash_tank_leeg": "Leer",
   "dash_tank_sinds": "seit {d}",
   "dash_tank_laatste_reiniging": "Zuletzt gereinigt",
-  "dash_tank_reiniging_vastleggen": "Reinigung erfassen"
+  "dash_tank_reiniging_vastleggen": "Reinigung erfassen",
+  "flow_lot_boek_deel": "📦 {n} {unit} buchen",
+  "flow_ing_terugboek_confirm": "Zeile löschen? {n} {unit} werden auf Charge {lot} zurückgebucht.",
+  "flow_ing_terugboek_ref": "Aus Batch entfernt",
+  "flow_ing_verwijder_title": "Zeile löschen",
+  "flow_ing_lots_verdeeld": "Über {n} Chargen",
+  "flow_ing_deel_open": "noch zu buchen"
 }
