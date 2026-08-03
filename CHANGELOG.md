@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.85] — 2026-08-03
+
+### Opgelost — WooCommerce-import: verzendkosten, afgeronde orders en merch
+
+Drie gaten in de orderimport die samen zorgden dat webshoporders niet klopten.
+
+**1. Verzendkosten en toeslagen ontbraken.** WooCommerce zet die niet in
+`line_items` maar in `shipping_lines` en `fee_lines`; de import keek alleen
+naar `line_items`. Elke geïmporteerde order was dus structureel goedkoper dan
+de order in de winkel en de factuur klopte niet met wat de klant betaalde.
+Verzendkosten komen nu binnen als 🚚-regel en toeslagen als vrije regel, met de
+bedragen die WooCommerce zelf berekende (cent-exact, geen kasverschil).
+
+**2. Afgeronde orders kwamen nooit binnen.** De import vroeg alleen
+`processing` en `pending` op. Merch (en alles wat de webshop direct afrondt)
+staat meteen op `completed` en werd daardoor overgeslagen. Standaard worden nu
+alle vier de statussen opgehaald — instelbaar bij Instellingen → Integraties →
+WooCommerce, met een optionele *"alleen orders vanaf"*-datum om oude historie
+buiten de import te houden. De import pagineert nu ook (100 orders per pagina).
+
+**3. Merch blokkeerde de order.** Elke regel werd als bierregel geïmporteerd en
+moest dus uit de biervoorraad gepickt worden — voor een T-shirt kan dat nooit,
+waardoor zo'n order nooit afgerond kon worden. Regels die niet aan een eigen
+artikel, product of batch te koppelen zijn komen nu binnen als vrije regel
+(wél op de factuur, geen picking) en worden na de import gemeld. Een order
+zonder te picken regels is direct af te ronden. Met de nieuwe ⇄-knop op een
+orderregel wissel je zelf tussen bierregel en vrije regel.
+
+Bijvangst: de artikelherkenning kijkt nu eerst in de productartikelen van de
+productpagina (waar de SKU's tegenwoordig staan) in plaats van alleen in de
+oude artikelenlijst, waardoor verpakking, prijs en BTW-tarief vaker
+automatisch goed staan.
+
+---
+
 ## [1.11.84] — 2026-08-03
 
 ### Verbeterd — Artikelen op mobiel bewerkbaar + instelbaar standaard BTW-tarief

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
+import { mapWcOrderRegels, wcOrdersPad, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
@@ -335,51 +336,49 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // --- WooCommerce import ---
+  // Maximaal 10 pagina's van 100 orders per import; genoeg voor een eerste
+  // volledige haal en tegelijk een rem op een winkel met jaren historie.
+  const WC_PER_PAGE = 100
+  const WC_MAX_PAGINAS = 10
+
   const importWcOrders = async () => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcMsg('⚠ Geen WooCommerce koppeling actief'); return }
     setWcImporting(true); setWcMsg('')
     try {
-      const orders = await wcGet('orders?status=processing,pending&per_page=100')
+      // Alle geconfigureerde statussen ophalen (standaard inclusief `completed`
+      // — merch-orders worden in WooCommerce vaak direct afgerond) en pagineren
+      // tot de winkel niets nieuws meer teruggeeft.
+      const statussen = Array.isArray(wcCreds?.importStatussen) && wcCreds.importStatussen.length
+        ? wcCreds.importStatussen : WC_IMPORT_STATUSSEN_DEFAULT
+      const vanaf = String(wcCreds?.importVanaf || '')
+      const orders: any[] = []
+      for (let page = 1; page <= WC_MAX_PAGINAS; page++) {
+        let pagina: any
+        try {
+          pagina = await wcGet(wcOrdersPad({statussen, vanaf, page, perPage: WC_PER_PAGE}))
+        } catch (e) {
+          // Precies een veelvoud van 100 orders: WooCommerce antwoordt op de
+          // pagina daarna met een fout i.p.v. een lege lijst. Wat we al binnen
+          // hebben blijft dan gewoon geldig; alleen een fout op pagina 1 is
+          // een échte importfout.
+          if (page === 1) throw e
+          break
+        }
+        if (!Array.isArray(pagina) || pagina.length === 0) break
+        orders.push(...pagina)
+        if (pagina.length < WC_PER_PAGE) break
+      }
+      const refs = {artikelen, productArtikelen, producten, bat, standaardBtw: stdBtw, btwTarieven}
       const bestaandeWcIds = new Set((bestellingen||[]).map((b: any) => b.wc_order_id).filter(Boolean))
       let imported = 0
+      let onbekendeRegels = 0
       const nieuw: any[] = []
       for (const o of (orders||[])) {
         if (bestaandeWcIds.has(o.id)) continue
-        const regels = (o.line_items||[]).map((item: any, i: number) => {
-          const art = (artikelen||[]).find((a: any) =>
-            (a.artikelnummer && a.artikelnummer === item.sku) || a.biernaam === item.name
-          )
-          const prijs = art?.verkoopprijs != null
-            ? Number(art.verkoopprijs)
-            : (Number(item.quantity||1) > 0 ? parseFloat(item.subtotal||'0') / Number(item.quantity||1) : 0)
-          // BTW% bepalen — voorkeur: het geconfigureerde artikel-tarief (`btw_pct`),
-          // anders afgeleid uit de WooCommerce-belasting op de regel, anders het
-          // ingestelde standaardtarief. Let op: het veld heet `btw_pct`, niet `btw`.
-          const artBtw = art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : null
-          const lineTotal = parseFloat(item.total || item.subtotal || '0')
-          const lineTax = parseFloat(item.total_tax || item.subtotal_tax || '0')
-          const afgeleidBtw = lineTotal > 0 && lineTax > 0 ? Math.round((lineTax / lineTotal) * 100) : null
-          const btwPct = artBtw != null ? artBtw : (afgeleidBtw != null ? afgeleidBtw : stdBtw)
-          return {
-            id: i + 1,
-            type: 'bier',
-            sku: item.sku || null,
-            artikel_key: art?.key || null,
-            artikel_id: art?.id || null,
-            bier_naam: art?.biernaam || item.name || '',
-            verpakking_type: art?.verpakking_type || '',
-            aantal: Number(item.quantity||1),
-            prijs_per_stuk: prijs,
-            btw_pct: btwPct,
-            omschrijving: item.name || '',
-            // Autoritatieve regelbedragen van WooCommerce bewaren wanneer er
-            // écht BTW is berekend (lineTax > 0). WooCommerce verkoopt op ronde
-            // incl-BTW-prijzen (€2,00); zonder deze waarden reconstrueert de app
-            // het bruto uit een ex-BTW-prijs en ontstaat een cent kasverschil
-            // (2× €2,00 → €4,01 i.p.v. €4,00). Zie utils/orderRegel.ts.
-            ...(lineTax > 0 ? { wc_netto: lineTotal, wc_btw: lineTax } : {}),
-          }
-        })
+        // Productregels + verzendkosten + toeslagen, met autoritatieve
+        // WooCommerce-bedragen. Zie utils/wcImport.ts.
+        const regels = mapWcOrderRegels(o, refs)
+        onbekendeRegels += regels.filter((r: any) => r.wc_onbekend).length
         const company = (o.billing?.company || '').trim()
         // BTW-nummer alléén uit échte BTW-nummervelden (bijv. _billing_vat_number,
         // billing_eu_vat_number, btw_nummer). WooCommerce zet op elke order
@@ -419,7 +418,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         setBestellingen((prev: any[]) => [...(prev||[]), ...nieuw])
         nieuw.forEach((o: any) => logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:o.id, actie:'aangemaakt', omschrijving:`WC import — ${o.klant_naam||'onbekend'}`}))
       }
-      setWcMsg(t('msg_wc_orders_imported').replace('{n}', String(imported)))
+      const melding = t('msg_wc_orders_imported').replace('{n}', String(imported))
+      // Niet-herkende regels expliciet melden: die komen als vrije regel binnen
+      // (geen picking) en horen gecontroleerd te worden.
+      setWcMsg(onbekendeRegels > 0
+        ? `${melding} — ${t('msg_wc_regels_onbekend').replace('{n}', String(onbekendeRegels))}`
+        : melding)
     } catch(e: any) {
       setWcMsg(t('msg_wc_import_failed').replace('{msg}', e.message))
     }
@@ -882,10 +886,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Order afronden (factuur + pakbon, status → afgerond) ---
   // Belastbaar feit is bij savePicks afgehandeld (Douane v2.4 §10.2).
   // Hier alleen de factuur- en pakbongeneratie + status verandering.
+  // Heeft deze order regels die uit de biervoorraad gepickt moeten worden?
+  // Een order met alleen merch/verzendkosten (WooCommerce-webshop) heeft die
+  // niet en mag dus zonder picks afgerond worden — anders blijft zo'n order
+  // eeuwig op 'nieuw' staan.
+  const heeftPickRegels = (order: any): boolean =>
+    (order?.regels || []).some((r: any) => !r.type || r.type === 'bier')
+
   const rondeAf = async () => {
     if (!selectedOrder) return
     const picks = picksVoorOrder(selectedOrder.id)
-    if (!picks.length) { alert(t('err_order_no_picks')); return }
+    if (heeftPickRegels(selectedOrder) && !picks.length) { alert(t('err_order_no_picks')); return }
     const klantType = effectiveKlantType(selectedOrder)
     const isPriveOrder = klantType === 'prive'
     const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51)
@@ -1278,6 +1289,28 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%${selectedOrder.factuur_id != null ? ` (factuur ${selectedOrder.factuur_nummer||selectedOrder.factuur_id} bijgewerkt)` : ''}`})
   }
 
+  // Regelsoort wisselen tussen 'bier' (uit de biervoorraad picken) en 'vrij'
+  // (merch/dienst — alleen op de factuur). De WooCommerce-import raadt dit op
+  // basis van de artikel-/productadministratie; hiermee corrigeert de gebruiker
+  // een verkeerde gok. Al gepickte regels blijven op slot.
+  const updateRegelType = (regelId: number) => {
+    if (!selectedOrder) return
+    const regel = (selectedOrder.regels||[]).find((r: any) => r.id === regelId)
+    if (!regel || (regel.type !== 'bier' && regel.type !== 'vrij')) return
+    if (gepicktVoorRegel(selectedOrder.id, regelId) > 0) { alert(t('err_regel_type_gepickt')); return }
+    const nieuwType = regel.type === 'bier' ? 'vrij' : 'bier'
+    setBestellingen((prev: any[]) => prev.map((b: any) =>
+      b.id === selectedOrder.id
+        ? {...b, regels: (b.regels||[]).map((r: any) => {
+            if (r.id !== regelId) return r
+            const {wc_onbekend, ...rest} = r
+            return {...rest, type: nieuwType}
+          })}
+        : b
+    ))
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Regelsoort gewijzigd: ${regel.bier_naam||regelId} → ${nieuwType}`})
+  }
+
   // Beschikbare BTW-tarieven voor de dropdown (uit instellingen, met fallback).
   const btwOpts = ((btwTarieven && btwTarieven.length ? btwTarieven : [0, 9, 21]))
     .map((p: any) => ({v: String(p), l: `${p}%`}))
@@ -1478,6 +1511,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const picks = picksVoorOrder(selectedOrder.id)
     const totaal = orderTotaal(selectedOrder)
     const allPicked = (selectedOrder.regels||[]).filter((r: any) => r.type === 'bier').every((r: any) => gepicktVoorRegel(selectedOrder.id, r.id) >= r.aantal)
+    // Alleen-merch order: niets te picken, dus direct afrondbaar.
+    const nietsTePicken = !heeftPickRegels(selectedOrder)
+    const magAfronden = (selectedOrder.status === 'gepickt' && allPicked)
+      || (nietsTePicken && (selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd'))
 
     return (
       <div>
@@ -1604,6 +1641,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const volledig = gepickt >= r.aantal
                 const isVrij = r.type === 'vrij' || r.type === 'verzending' || r.type === 'korting'
                 const canDelete = isVrij && selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd'
+                const kanRegelWisselen = selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && gepickt === 0
                 const isBtwCorrectie = selectedOrder.status === 'afgerond' && btwCorrectie === selectedOrder.id
                 const canEditBtw = (selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd') || isBtwCorrectie
                 return (
@@ -1614,6 +1652,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       {r.type === 'verzending' && <span className="ml-1 text-xs text-blue-500">🚚</span>}
                       {r.type === 'vrij' && <span className="ml-1 text-xs text-purple-500">✎</span>}
                       {r.type === 'korting' && <span className="ml-1 text-xs font-semibold text-green-600">%</span>}
+                      {r.wc_onbekend && <span className="ml-1 text-xs font-semibold text-orange-500" title={t('orders_regel_onbekend')}>?</span>}
+                      {kanRegelWisselen && (r.type === 'bier' || r.type === 'vrij') && (
+                        <button
+                          onClick={() => updateRegelType(r.id)}
+                          className="ml-1.5 text-xs text-gray-300 hover:text-gray-600 transition-colors"
+                          title={`${t('orders_regel_type_wissel')} — ${r.type === 'bier' ? t('orders_regel_type_vrij') : t('orders_regel_type_bier')}`}
+                        >⇄</button>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-gray-600">{r.verpakking_type}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.aantal}×</td>
@@ -1684,7 +1730,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Actieknoppen */}
         <div className="flex flex-wrap gap-2">
-          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (
+          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && !nietsTePicken && (
             <Btn v="blue" onClick={openPickModal}>{t('order_pick')}</Btn>
           )}
           {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (<>
@@ -1693,7 +1739,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             </Btn>
             <Btn v="secondary" onClick={addVerzendkosten}>🚚 {t('btn_verzendkosten')}</Btn>
           </>)}
-          {selectedOrder.status === 'gepickt' && allPicked && (<>
+          {magAfronden && (<>
             <Btn v="secondary" onClick={printOrderPakbon}>🖨 {t('order_print_pakbon')}</Btn>
             <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
               {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}

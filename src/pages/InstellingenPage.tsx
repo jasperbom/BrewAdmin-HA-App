@@ -11,6 +11,7 @@ import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '.
 import { checkIntegriteit } from '../utils/integriteit'
 import { fmt, fmtD, tod } from '../utils/format'
 import { standaardBtwPct } from '../utils/btw'
+import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
 
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
 // bij zodat de gebruiker waardes kan wijzigen, de impact kan bekijken, en pas
@@ -640,13 +641,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setBfTesting(false);
   };
 
-  const [wcForm, setWcForm] = React.useState({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false});
+  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || ''});
   const [wcTesting, setWcTesting] = React.useState(false);
   const [wcMsg, setWcMsg] = React.useState('');
   const wcFormInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!wcFormInitialized.current && (wcCreds?.storeUrl || wcCreds?.consumerKey || wcCreds?.enabled)) {
-      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false});
+      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || ''});
       wcFormInitialized.current = true;
     }
   }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
@@ -1950,6 +1951,32 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 placeholder="cs_••••••••••••••••"
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full focus:outline-none focus:border-purple-500" />
             </div>
+          </div>
+          {/* Welke orders opgehaald worden. `completed` staat standaard aan:
+              merch wordt in de webshop vaak direct als afgerond gemarkeerd en
+              kwam daardoor nooit binnen. */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('settings_wc_import_title')}</h3>
+            <p className="text-xs text-gray-500 mb-3">{t('settings_wc_import_desc')}</p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {WC_STATUS_OPTIES.map((st: string) => (
+                <label key={st} className="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-100 transition-colors">
+                  <input type="checkbox"
+                    checked={(wcForm.importStatussen || []).includes(st)}
+                    onChange={(e: any) => setWcForm((f: any) => {
+                      const huidig: string[] = f.importStatussen || []
+                      const next = e.target.checked ? [...huidig, st] : huidig.filter((s: string) => s !== st)
+                      return {...f, importStatussen: next.length ? next : [st]}
+                    })}
+                    className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+                  <span className="text-sm font-medium text-gray-700">{t(`wc_status_${st}`)}</span>
+                </label>
+              ))}
+            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_wc_import_vanaf')}</label>
+            <input type="date" value={wcForm.importVanaf || ''} onChange={(e: any)=>setWcForm((f: any)=>({...f, importVanaf: e.target.value}))}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-purple-500" />
+            <p className="text-xs text-gray-400 mt-1">{t('settings_wc_import_vanaf_hint')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={saveWc} className="wc-btn px-4 py-2 rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
