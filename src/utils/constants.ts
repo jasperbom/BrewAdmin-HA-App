@@ -228,6 +228,15 @@ export const BATCH_TAKEN_LEGACY_FASE: Record<number, string> = {
 export const groepFase = (g: any): string | null =>
   g?.fase !== undefined ? (g.fase || null) : (BATCH_TAKEN_LEGACY_FASE[g?.id] ?? null)
 
+// Legacy-koppeling batchtaak → reinigingsstatus die het vinkje vastlegt, voor
+// items die zijn opgeslagen van vóór het `tank_reiniging`-veld. Een item mét
+// dat veld ('' = bewust geen registratie) gaat altijd voor. Zie
+// utils/ontsmetting.ts — taakReinigingStatus.
+export const BATCH_TAKEN_LEGACY_REINIGING: Record<string, string> = {
+  brouwdag_check_11_fermentor: 'Ontsmet',
+  '111': 'Ontsmet',
+}
+
 // i18n-labels per flow-fase (zelfde actiegerichte labels als de batch flow)
 export const FASE_LABEL_KEYS: Record<string, string> = {
   Gepland: 'status_planning', Brouwen: 'status_brewing', Vergisten: 'status_fermenting',
@@ -252,7 +261,9 @@ export const DEFAULT_BATCH_TAKEN_ITEMS = [
   // Brouwdag (groep 4) — via i18n labelKey zodat alle talen werken
   {id:103, type:'check' as const, labelKey:'brouwdag_check_3_jodiumtest',  group_id:4, volgorde:0, actief:true},
   {id:110, type:'check' as const, labelKey:'brouwdag_check_10_gist',       group_id:4, volgorde:1, actief:true},
-  {id:111, type:'check' as const, labelKey:'brouwdag_check_11_fermentor',  group_id:4, volgorde:2, actief:true},
+  // Dit vinkje legt de ontsmetting van de tank vast (tankstatus +
+  // reinigingslogboek + schoonmaaktaken van die tank) — zie utils/ontsmetting.ts
+  {id:111, type:'check' as const, labelKey:'brouwdag_check_11_fermentor',  group_id:4, volgorde:2, actief:true, tank_reiniging:'Ontsmet'},
   {id:112, type:'check' as const, labelKey:'brouwdag_check_12_waterslot',  group_id:4, volgorde:3, actief:true},
   // Botteldag (groep 5) — via i18n labelKey
   {id:201, type:'check' as const, labelKey:'botteldag_check_1_reiniging',       group_id:5, volgorde:0, actief:true},

@@ -4,6 +4,47 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.87] — 2026-08-04
+
+### Toegevoegd — Reinigingsvinkje op de batch legt de ontsmetting overal vast
+
+"Fermentor voorbereid, gesteriliseerd en gelabeld" aanvinken was tot nu toe
+alleen een vinkje op de batch: de tank bleef in HACCP → Reiniging op zijn oude
+status staan, er kwam geen regel in het tankreinigingslogboek en het
+schoonmaakschema zag de uitvoering niet. Bij een controle is een vinkje op een
+batch geen bewijs van reiniging — de logboeken zijn dat wel.
+
+Zo'n vinkje registreert nu in één keer op alle plekken waar de ontsmetting
+vastgelegd kan worden:
+
+- **Reinigingsstatus van de tank** (`tank_statussen`) — de tank van de batch
+  gaat op Ontsmet, zodat de "tank is niet ontsmet"-blokkade vanzelf opgelost is.
+- **Tankreinigingslogboek** (`tank_reinigingslog`) — regel met datum, uitvoerder,
+  nieuwe status, batch en taak; oorzaak `batch_checklist` (zichtbaar in
+  HACCP → Reiniging → Tankreiniging).
+- **HACCP-schoonmaakschema** (`haccp_schoonmaak_log`) — een uitvoering op elke
+  actieve schoonmaaktaak die aan die tank hangt, plus op een taak die expliciet
+  aan de batchtaak is gekoppeld (bijv. de afvullijn bij een botteldag-vinkje).
+- Daarnaast, zoals voorheen, het batchlogboek en de audittrail.
+
+Details:
+
+- **Instelbaar per batchtaak** (Instellingen → Batch-taken): per check-item kies
+  je of het vinkje *Schoon* of *Ontsmet* vastlegt (of niets) en aan welke
+  HACCP-schoonmaaktaak het gekoppeld is. Het fermentor-item staat standaard op
+  Ontsmet — ook bestaande installaties, via een legacy-koppeling op de labelKey.
+- In de checklist staat een groen label achter zulke taken, en na het aanvinken
+  een melding met precies wat er is vastgelegd.
+- **Geen dubbele registraties:** opnieuw aanvinken van dezelfde taak schrijft
+  niets bij. Uitvinken haalt niets weg — een registratie in een logboek is
+  bewijs en wordt niet stil verwijderd.
+- **Geen registratie zonder uitvoerder:** is er geen gebruiker bekend (HA-ingress
+  of directe login), dan wordt er niets geschreven en volgt een melding. Een
+  logboekregel zonder naam is bij een controle niets waard.
+- Nieuwe pure logica in `src/utils/ontsmetting.ts` met een eigen testsuite.
+
+---
+
 ## [1.11.86] — 2026-08-03
 
 ### Toegevoegd — Ingrediënten afboeken uit meerdere lots in de nieuwe batchflow

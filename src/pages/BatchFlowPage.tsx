@@ -15,6 +15,7 @@ import {
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
+import { registreerOntsmetting, taakReinigingStatus, taakSchoonmaakTaakId } from '../utils/ontsmetting'
 import {
   vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap, verpakProjectie,
   bouwBatchTijdlijn,
@@ -78,6 +79,9 @@ interface BatchFlowPageProps {
   haccpEtiketcontroles: any[], setHaccpEtiketcontroles: any,
   haccpAfwijkingen: any[], setHaccpAfwijkingen: any,
   haccpInst: any,
+  // HACCP-schoonmaakschema: nodig om een reinigingsvinkje op de batch ook als
+  // uitvoering op de bijbehorende schoonmaaktaak te loggen.
+  schoonmaakTaken?: any[], schoonmaakLog?: any[], setSchoonmaakLog?: any,
   capa: any[], setCapa: any,
   whoami: {gebruiker?: string, rol?: string} | null,
   setPage: (p: string) => void,
@@ -356,7 +360,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpVrijgaven, setHaccpVrijgaven, afvulSessies, setAfvulSessies,
   haccpSluitcontroles, setHaccpSluitcontroles,
   haccpEtiketcontroles, setHaccpEtiketcontroles,
-  haccpAfwijkingen, setHaccpAfwijkingen, haccpInst, capa, setCapa, whoami,
+  haccpAfwijkingen, setHaccpAfwijkingen, haccpInst,
+  schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
+  capa, setCapa, whoami,
   setPage, setNavBatchId, openBatchId,
   preNieuwBatch, setPreNieuwBatch,
   ccpMetingen, setCcpMetingen,
@@ -409,6 +415,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [moveTankTarget, setMoveTankTarget] = useState('')
   // Rij-id van de batch-ingredient waarvan de koppel-picker openstaat (afboek-tabel).
   const [koppelRow, setKoppelRow] = useState<number | null>(null)
+  // Terugkoppeling na een reinigingsvinkje: wát er is vastgelegd (tankstatus,
+  // reinigingslogboek, schoonmaaktaken) of waarom niet.
+  const [reinigingMsg, setReinigingMsg] = useState<{soort: 'ok' | 'info' | 'warn', tekst: string} | null>(null)
   // Handmatig een ingredient aan de brouwdag toevoegen (naast het recept).
   const emptyIForm = {ingredient_id: '', ingredient_naam: '', ingredient_type: 'Mout', hoeveelheid: '', eenheid: 'kg'}
   const [iForm, setIForm] = useState<any>(emptyIForm)
@@ -691,6 +700,41 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const label = groep ? `${groep.naam} — ${taakLabel(item)}` : taakLabel(item) || `item ${itemId}`
     addLog({type: 'hygiene', batch_id: selB.id, referentie: `${aan ? '✓ Afgevinkt' : '✗ Ongedaan'}: ${label}`})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: `Taken ${aan ? 'afgevinkt' : 'ongedaan'}: ${label}`})
+    if (aan) registreerReinigingVoorTaak(item)
+  }
+
+  // Een reinigingsvinkje op de batch legt de reiniging/ontsmetting ook vast
+  // waar het bewijs hoort te staan: de reinigingsstatus van de tank, het
+  // tankreinigingslogboek en de bijbehorende HACCP-schoonmaaktaken. Uitvinken
+  // haalt niets weg — een registratie in een logboek is bewijs.
+  const registreerReinigingVoorTaak = (item: any) => {
+    if (!selB) return
+    const status = taakReinigingStatus(item)
+    if (!status) return
+    const res = registreerOntsmetting({
+      status, tankId: selB.tank || null, batchId: selB.id, batchNaam: selB.naam,
+      taakId: item.id, taakLabel: taakLabel(item),
+      schoonmaakTaakId: taakSchoonmaakTaakId(item),
+      datum: tod(), door: (whoami?.gebruiker || '').trim(),
+      statussen: tankStatussen, tankLog,
+      schoonmaakTaken, schoonmaakLog,
+    })
+    if (res.reden === 'geen_uitvoerder') { setReinigingMsg({soort: 'warn', tekst: t('flow_ontsmet_geen_gebruiker')}); return }
+    if (res.reden === 'geen_doel') { setReinigingMsg({soort: 'warn', tekst: t('flow_ontsmet_geen_doel')}); return }
+    if (res.reden === 'al_geregistreerd') { setReinigingMsg({soort: 'info', tekst: t('flow_ontsmet_al_vastgelegd')}); return }
+    if (res.tankGeregistreerd) { setTankStatussen(res.statussen); setTankLog(res.tankLog) }
+    if (res.schoonmaakTaakNamen.length) setSchoonmaakLog(res.schoonmaakLog)
+    const tankNaam = (tanks || []).find((tk: any) => tk.id === selB.tank)?.naam || selB.tank || ''
+    const statusLabel = t(TANK_REINIGING_LABEL_KEY[status] || '') || status
+    const delen = [
+      ...(res.tankGeregistreerd ? [t('flow_ontsmet_deel_tank').replace('{tank}', tankNaam).replace('{status}', statusLabel)] : []),
+      ...(res.schoonmaakTaakNamen.length ? [t('flow_ontsmet_deel_schoonmaak').replace('{taken}', res.schoonmaakTaakNamen.join(', '))] : []),
+    ]
+    setReinigingMsg({soort: 'ok', tekst: `${t('flow_ontsmet_vastgelegd')} ${delen.join(' · ')}`})
+    addLog({type: 'hygiene', batch_id: selB.id,
+      referentie: `${statusLabel}${tankNaam ? ` — ${tankNaam}` : ''}: ${delen.join(' · ')}`})
+    logAudit(auditLog, setAuditLog, {entiteit: 'Tank', entiteit_id: 0, actie: 'gewijzigd',
+      omschrijving: `${tankNaam || '—'}: ${statusLabel} via batch-checklist (${selB.naam}) — ${whoami?.gebruiker || ''}`})
   }
 
   // Catalogus-ingredient bij een batch-regel: expliciet via ingredient_id, of
@@ -1934,20 +1978,42 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         items: items.filter((i: any) => i.group_id === groep.id).sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0)),
       }))
       .filter(g => g.items.length > 0)
+    const msgCls = reinigingMsg?.soort === 'warn'
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : reinigingMsg?.soort === 'info'
+        ? 'bg-gray-50 text-gray-600 border-gray-200'
+        : 'bg-green-50 text-green-700 border-green-200'
     return (
       <div className="space-y-3">
+        {reinigingMsg && (
+          <div className={`text-xs px-2 py-1.5 rounded border flex items-start gap-2 ${msgCls}`}>
+            <span className="flex-1">{reinigingMsg.tekst}</span>
+            <button onClick={() => setReinigingMsg(null)} className="opacity-60 hover:opacity-100">✕</button>
+          </div>
+        )}
         {perGroep.map(({groep, items: gItems}) => (
             <div key={groep?.id}>
               {perGroep.length > 1 && groep && (
                 <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{groep.naam}</div>
               )}
               <div className="space-y-1">
-                {gItems.map((item: any) => (
-                  <label key={item.id} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 cursor-pointer text-sm">
-                    <input type="checkbox" checked={!!checks[item.id]} onChange={() => toggleCheck(item.id)} className="t-checkbox" />
-                    <span className={checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}>{taakLabel(item)}</span>
-                  </label>
-                ))}
+                {gItems.map((item: any) => {
+                  // Legt dit vinkje ook een reiniging vast? Dan tonen we dat,
+                  // zodat duidelijk is dat er in de logboeken wordt geschreven.
+                  const regStatus = taakReinigingStatus(item)
+                  return (
+                    <label key={item.id} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 cursor-pointer text-sm">
+                      <input type="checkbox" checked={!!checks[item.id]} onChange={() => toggleCheck(item.id)} className="t-checkbox" />
+                      <span className={checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}>{taakLabel(item)}</span>
+                      {regStatus && (
+                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 whitespace-nowrap"
+                          title={t('flow_ontsmet_registreert_title')}>
+                          {t('flow_ontsmet_registreert').replace('{status}', t(TANK_REINIGING_LABEL_KEY[regStatus] || '') || regStatus)}
+                        </span>
+                      )}
+                    </label>
+                  )
+                })}
               </div>
             </div>
           ))}
