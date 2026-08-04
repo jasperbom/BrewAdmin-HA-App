@@ -12,6 +12,7 @@ import { checkIntegriteit } from '../utils/integriteit'
 import { fmt, fmtD, tod } from '../utils/format'
 import { standaardBtwPct } from '../utils/btw'
 import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
+import { taakReinigingStatus } from '../utils/ontsmetting'
 
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
 // bij zodat de gebruiker waardes kan wijzigen, de impact kan bekijken, en pas
@@ -453,7 +454,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -3359,6 +3360,31 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                         <button onClick={()=>moveItem(item.id,1)} disabled={idx===items.length-1} className="text-gray-400 hover:text-gray-600 disabled:opacity-20 text-xs px-1">▼</button>
                         <button onClick={()=>removeItem(item.id)} className="text-gray-400 hover:text-red-500 text-xs ml-1">✕</button>
                       </div>
+                      {!isMeting && (
+                        // Reinigingsregistratie: een vinkje kan de tankstatus +
+                        // het reinigingslogboek vastleggen en/of een uitvoering
+                        // op een HACCP-schoonmaaktaak loggen.
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{t('settings_taken_reiniging_label')}</span>
+                          <select value={taakReinigingStatus(item)}
+                            onChange={(e: any)=>setItemField(item.id, 'tank_reiniging', e.target.value)}
+                            title={t('settings_taken_reiniging_hint')}
+                            className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 bg-white t-input">
+                            <option value="">{t('settings_taken_reiniging_geen')}</option>
+                            <option value="Schoon">{t('tank_status_schoon')}</option>
+                            <option value="Ontsmet">{t('tank_status_ontsmet')}</option>
+                          </select>
+                          {(haccpSchoonmaakTaken || []).length > 0 && (
+                            <select value={item.schoonmaak_taak_id || ''}
+                              onChange={(e: any)=>setItemField(item.id, 'schoonmaak_taak_id', e.target.value ? Number(e.target.value) : undefined)}
+                              title={t('settings_taken_schoonmaak_hint')}
+                              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 bg-white t-input max-w-[200px]">
+                              <option value="">{t('settings_taken_schoonmaak_geen')}</option>
+                              {(haccpSchoonmaakTaken || []).map((tk: any)=><option key={tk.id} value={tk.id}>{tk.naam}</option>)}
+                            </select>
+                          )}
+                        </div>
+                      )}
                       {isMeting && (
                         <div className="mt-2 grid grid-cols-4 gap-2">
                           <input type="number" value={item.grens_min ?? ''} onChange={(e: any)=>setItemField(item.id,'grens_min', e.target.value===''?undefined:Number(e.target.value))}

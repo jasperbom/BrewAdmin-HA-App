@@ -4,6 +4,82 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.87] — 2026-08-04
+
+### Toegevoegd — Reinigingsvinkje op de batch legt de ontsmetting overal vast
+
+"Fermentor voorbereid, gesteriliseerd en gelabeld" aanvinken was tot nu toe
+alleen een vinkje op de batch: de tank bleef in HACCP → Reiniging op zijn oude
+status staan, er kwam geen regel in het tankreinigingslogboek en het
+schoonmaakschema zag de uitvoering niet. Bij een controle is een vinkje op een
+batch geen bewijs van reiniging — de logboeken zijn dat wel.
+
+Zo'n vinkje registreert nu in één keer op alle plekken waar de ontsmetting
+vastgelegd kan worden:
+
+- **Reinigingsstatus van de tank** (`tank_statussen`) — de tank van de batch
+  gaat op Ontsmet, zodat de "tank is niet ontsmet"-blokkade vanzelf opgelost is.
+- **Tankreinigingslogboek** (`tank_reinigingslog`) — regel met datum, uitvoerder,
+  nieuwe status, batch en taak; oorzaak `batch_checklist` (zichtbaar in
+  HACCP → Reiniging → Tankreiniging).
+- **HACCP-schoonmaakschema** (`haccp_schoonmaak_log`) — een uitvoering op elke
+  actieve schoonmaaktaak die aan die tank hangt, plus op een taak die expliciet
+  aan de batchtaak is gekoppeld (bijv. de afvullijn bij een botteldag-vinkje).
+- Daarnaast, zoals voorheen, het batchlogboek en de audittrail.
+
+Details:
+
+- **Instelbaar per batchtaak** (Instellingen → Batch-taken): per check-item kies
+  je of het vinkje *Schoon* of *Ontsmet* vastlegt (of niets) en aan welke
+  HACCP-schoonmaaktaak het gekoppeld is. Het fermentor-item staat standaard op
+  Ontsmet — ook bestaande installaties, via een legacy-koppeling op de labelKey.
+- In de checklist staat een groen label achter zulke taken, en na het aanvinken
+  een melding met precies wat er is vastgelegd.
+- **Geen dubbele registraties:** opnieuw aanvinken van dezelfde taak schrijft
+  niets bij. Uitvinken haalt niets weg — een registratie in een logboek is
+  bewijs en wordt niet stil verwijderd.
+- **Geen registratie zonder uitvoerder:** is er geen gebruiker bekend (HA-ingress
+  of directe login), dan wordt er niets geschreven en volgt een melding. Een
+  logboekregel zonder naam is bij een controle niets waard.
+- Nieuwe pure logica in `src/utils/ontsmetting.ts` met een eigen testsuite.
+
+---
+
+## [1.11.86] — 2026-08-03
+
+### Toegevoegd — Ingrediënten afboeken uit meerdere lots in de nieuwe batchflow
+
+De afboek-lijst in de nieuwe batchflow kon per regel wel een lot kiezen, maar
+alles wat het werken met meerdere lots prettig maakte zat nog alleen op de oude
+Batches-pagina. Dat is nu overgezet en op punten verbeterd.
+
+- **Lot-keuze op FEFO** — de lots staan gesorteerd op houdbaarheidsdatum
+  (first-expired-first-out), met de THT en de beschikbare hoeveelheid
+  **omgerekend naar de eenheid van de regel** in de optie. Een lot dat de hele
+  hoeveelheid niet dekt krijgt een `⚠`.
+- **Deelafboeking** — dekt het gekozen lot maar een deel, dan meldt de regel
+  "⚠ slechts {n} beschikbaar" en heet de knop `📦 Boek {n} {eenheid}`. Afboeken
+  boekt dat lot leeg en laat automatisch een restregel achter voor een volgend
+  lot. De restregel neemt de brouwkundige velden (α, tijdstip, temperatuur,
+  extract) mee, zodat het hop-/moutschema blijft kloppen.
+- **Groepering per ingrediënt** — regels die over meerdere lots verdeeld zijn
+  staan samen onder één kop met de totale hoeveelheid, "✓ {n} afgeboekt",
+  "nog {n} te gaan" of "volledig afgeboekt" en de totale kosten.
+- **Recept-afwijking** — wijkt het totaal van een ingrediënt af van het recept,
+  dan staat er subtiel `≠ recept: {n} {eenheid}` bij.
+- **α uit het lot** — bij een hop-regel neemt de lot-keuze het alfazuur van het
+  gekozen lot (of van het ingrediënt) over, zoals op de Batches-pagina.
+- **Regel verwijderen met terugboeking** — een al afgeboekte regel verwijderen
+  boekt de hoeveelheid terug op het lot en legt dat vast in het voorraadlog
+  (na bevestiging, met lotnummer in de vraag).
+- **Ingrediënt direct aanmaken** — een receptregel zonder catalogus-match kan
+  naast koppelen nu ook met één klik als ingrediënt worden aangemaakt, zodat er
+  lots aan gehangen kunnen worden.
+- De voorraadcheck volgt nu ook de naam-match (niet alleen een expliciete
+  koppeling), zodat de chip niet onnodig "niet aan voorraad gekoppeld" meldt.
+
+---
+
 ## [1.11.85] — 2026-08-03
 
 ### Opgelost — WooCommerce-import: verzendkosten, afgeronde orders en merch

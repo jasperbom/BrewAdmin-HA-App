@@ -297,7 +297,11 @@ function TankReinigingLijst({tanks, tankLog}: any) {
                   <td className="px-3 py-2 text-gray-500">{l.middel || '-'}</td>
                   <td className="px-3 py-2 text-gray-500">{l.cip ? t('lbl_ja') : t('lbl_nee')}</td>
                   <td className="px-3 py-2 text-gray-500">
-                    {l.oorzaak === 'automatisch_leeg' ? t('lbl_oorzaak_automatisch') : t('lbl_oorzaak_handmatig')}
+                    {l.oorzaak === 'automatisch_leeg'
+                      ? t('lbl_oorzaak_automatisch')
+                      : l.oorzaak === 'batch_checklist'
+                        ? t('lbl_oorzaak_batch_checklist')
+                        : t('lbl_oorzaak_handmatig')}
                   </td>
                   <td className="px-3 py-2 text-gray-500">{l.opmerking || ''}</td>
                 </tr>

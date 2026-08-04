@@ -2701,7 +2701,9 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                                   <button onClick={()=>haalVanVoorraad(x, ingMatch)}
                                     className={`text-xs border rounded px-1.5 py-0.5 text-left whitespace-nowrap ${
                                       lotTekort ? 't-back' : 'text-green-700 hover:text-green-900 bg-green-50 hover:bg-green-100 border-green-200'}`}>
-                                    {lotTekort ? `📦 Boek ${r3(selLotAvailBi)} ${x.eenheid}` : t('batch_ingredient_book')}
+                                    {lotTekort
+                                      ? t('flow_lot_boek_deel').replace('{n}', String(r3(selLotAvailBi))).replace('{unit}', x.eenheid)
+                                      : t('batch_ingredient_book')}
                                   </button>
                                 )}
                                 {x.afgeboekt && lot && <span className="text-xs text-green-600 font-medium whitespace-nowrap">✓ {lot.lotnummer||'—'}</span>}

@@ -14,6 +14,8 @@ import {
   berekenVoorcalcVoorAfvulling, nextBatchNummer, berekenTanktijd, sumVergistingDagen,
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
+import { getEffectiveBrewProp } from '../utils/brewProps'
+import { registreerOntsmetting, taakReinigingStatus, taakSchoonmaakTaakId } from '../utils/ontsmetting'
 import {
   vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap, verpakProjectie,
   bouwBatchTijdlijn,
@@ -41,7 +43,7 @@ import { metingWaarde, metingenMetFg } from '../utils/metingen'
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
   bi: any[], setBi: any,
-  ing: any[],
+  ing: any[], setIng: any,
   lots: any[], setLots: any,
   av: any[], setAv: any,
   uit: any[],
@@ -77,6 +79,9 @@ interface BatchFlowPageProps {
   haccpEtiketcontroles: any[], setHaccpEtiketcontroles: any,
   haccpAfwijkingen: any[], setHaccpAfwijkingen: any,
   haccpInst: any,
+  // HACCP-schoonmaakschema: nodig om een reinigingsvinkje op de batch ook als
+  // uitvoering op de bijbehorende schoonmaaktaak te loggen.
+  schoonmaakTaken?: any[], schoonmaakLog?: any[], setSchoonmaakLog?: any,
   capa: any[], setCapa: any,
   whoami: {gebruiker?: string, rol?: string} | null,
   setPage: (p: string) => void,
@@ -342,7 +347,7 @@ const TempControl: React.FC<{
 }
 
 const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
-  bat, setBat, bi, setBi, ing, lots, setLots, av, setAv, uit,
+  bat, setBat, bi, setBi, ing, setIng, lots, setLots, av, setAv, uit,
   verpakkingen, setVerpakkingen, onderdelen, setOnderdelen,
   producten, setProducten, productArtikelen, setProductArtikelen, artikelen, accijnsInst, acc,
   recepten, gistMetingen, setGistMetingen, carbSessies, setCarbSessies,
@@ -355,7 +360,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpVrijgaven, setHaccpVrijgaven, afvulSessies, setAfvulSessies,
   haccpSluitcontroles, setHaccpSluitcontroles,
   haccpEtiketcontroles, setHaccpEtiketcontroles,
-  haccpAfwijkingen, setHaccpAfwijkingen, haccpInst, capa, setCapa, whoami,
+  haccpAfwijkingen, setHaccpAfwijkingen, haccpInst,
+  schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
+  capa, setCapa, whoami,
   setPage, setNavBatchId, openBatchId,
   preNieuwBatch, setPreNieuwBatch,
   ccpMetingen, setCcpMetingen,
@@ -408,6 +415,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [moveTankTarget, setMoveTankTarget] = useState('')
   // Rij-id van de batch-ingredient waarvan de koppel-picker openstaat (afboek-tabel).
   const [koppelRow, setKoppelRow] = useState<number | null>(null)
+  // Terugkoppeling na een reinigingsvinkje: wát er is vastgelegd (tankstatus,
+  // reinigingslogboek, schoonmaaktaken) of waarom niet.
+  const [reinigingMsg, setReinigingMsg] = useState<{soort: 'ok' | 'info' | 'warn', tekst: string} | null>(null)
   // Handmatig een ingredient aan de brouwdag toevoegen (naast het recept).
   const emptyIForm = {ingredient_id: '', ingredient_naam: '', ingredient_type: 'Mout', hoeveelheid: '', eenheid: 'kg'}
   const [iForm, setIForm] = useState<any>(emptyIForm)
@@ -690,15 +700,122 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const label = groep ? `${groep.naam} — ${taakLabel(item)}` : taakLabel(item) || `item ${itemId}`
     addLog({type: 'hygiene', batch_id: selB.id, referentie: `${aan ? '✓ Afgevinkt' : '✗ Ongedaan'}: ${label}`})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: `Taken ${aan ? 'afgevinkt' : 'ongedaan'}: ${label}`})
+    if (aan) registreerReinigingVoorTaak(item)
   }
+
+  // Een reinigingsvinkje op de batch legt de reiniging/ontsmetting ook vast
+  // waar het bewijs hoort te staan: de reinigingsstatus van de tank, het
+  // tankreinigingslogboek en de bijbehorende HACCP-schoonmaaktaken. Uitvinken
+  // haalt niets weg — een registratie in een logboek is bewijs.
+  const registreerReinigingVoorTaak = (item: any) => {
+    if (!selB) return
+    const status = taakReinigingStatus(item)
+    if (!status) return
+    const res = registreerOntsmetting({
+      status, tankId: selB.tank || null, batchId: selB.id, batchNaam: selB.naam,
+      taakId: item.id, taakLabel: taakLabel(item),
+      schoonmaakTaakId: taakSchoonmaakTaakId(item),
+      datum: tod(), door: (whoami?.gebruiker || '').trim(),
+      statussen: tankStatussen, tankLog,
+      schoonmaakTaken, schoonmaakLog,
+    })
+    if (res.reden === 'geen_uitvoerder') { setReinigingMsg({soort: 'warn', tekst: t('flow_ontsmet_geen_gebruiker')}); return }
+    if (res.reden === 'geen_doel') { setReinigingMsg({soort: 'warn', tekst: t('flow_ontsmet_geen_doel')}); return }
+    if (res.reden === 'al_geregistreerd') { setReinigingMsg({soort: 'info', tekst: t('flow_ontsmet_al_vastgelegd')}); return }
+    if (res.tankGeregistreerd) { setTankStatussen(res.statussen); setTankLog(res.tankLog) }
+    if (res.schoonmaakTaakNamen.length) setSchoonmaakLog(res.schoonmaakLog)
+    const tankNaam = (tanks || []).find((tk: any) => tk.id === selB.tank)?.naam || selB.tank || ''
+    const statusLabel = t(TANK_REINIGING_LABEL_KEY[status] || '') || status
+    const delen = [
+      ...(res.tankGeregistreerd ? [t('flow_ontsmet_deel_tank').replace('{tank}', tankNaam).replace('{status}', statusLabel)] : []),
+      ...(res.schoonmaakTaakNamen.length ? [t('flow_ontsmet_deel_schoonmaak').replace('{taken}', res.schoonmaakTaakNamen.join(', '))] : []),
+    ]
+    setReinigingMsg({soort: 'ok', tekst: `${t('flow_ontsmet_vastgelegd')} ${delen.join(' · ')}`})
+    addLog({type: 'hygiene', batch_id: selB.id,
+      referentie: `${statusLabel}${tankNaam ? ` — ${tankNaam}` : ''}: ${delen.join(' · ')}`})
+    logAudit(auditLog, setAuditLog, {entiteit: 'Tank', entiteit_id: 0, actie: 'gewijzigd',
+      omschrijving: `${tankNaam || '—'}: ${statusLabel} via batch-checklist (${selB.naam}) — ${whoami?.gebruiker || ''}`})
+  }
+
+  // Catalogus-ingredient bij een batch-regel: expliciet via ingredient_id, of
+  // anders via naam-match (zoals op de Batches-pagina). De voorraadcheck en de
+  // lot-keuze volgen deze match.
+  const ingMatchVoor = (row: any): any => row.ingredient_id
+    ? (ing || []).find((i: any) => i.id === row.ingredient_id)
+    : (ing || []).find((i: any) => String(i.naam).toLowerCase() === String(row.ingredient_naam || '').toLowerCase())
 
   // Beschikbare voorraad (alle lots samen) voor een batch-ingredient-regel,
   // omgerekend naar de eenheid van de regel. null = niet aan voorraad gekoppeld.
   const voorraadVoor = (row: any): number | null => {
-    if (!row.ingredient_id) return null
+    const ingMatch = ingMatchVoor(row)
+    if (!ingMatch) return null
     return (lots || [])
-      .filter((l: any) => l.ingredient_id === row.ingredient_id && l.beschikbaar !== false && Number(l.hoeveelheid || 0) > 0)
+      .filter((l: any) => l.ingredient_id === ingMatch.id && l.beschikbaar !== false && Number(l.hoeveelheid || 0) > 0)
       .reduce((s: number, l: any) => s + (convertEenheid(Number(l.hoeveelheid || 0), l.eenheid, row.eenheid) ?? 0), 0)
+  }
+
+  // FEFO: eerst de lots die het snelst verlopen (THT), daarna op leeftijd (id).
+  const fefoSort = (a: any, b: any) => {
+    if (a.houdbaarheid && b.houdbaarheid) return new Date(a.houdbaarheid).getTime() - new Date(b.houdbaarheid).getTime()
+    if (a.houdbaarheid) return -1
+    if (b.houdbaarheid) return 1
+    return a.id - b.id
+  }
+
+  // Kiesbare lots voor een regel: alle lots van het gekoppelde ingredient met
+  // voorraad (plus het al gekozen lot), FEFO gesorteerd.
+  const lotsVoor = (row: any, ingMatch: any): any[] => ingMatch
+    ? [...(lots || []).filter((l: any) => l.ingredient_id === ingMatch.id
+        && ((l.beschikbaar !== false && Number(l.hoeveelheid || 0) > 0) || l.id === row.lot_id))].sort(fefoSort)
+    : []
+
+  // Lot kiezen op een regel. Voor hop nemen we α over uit het lot (of het
+  // ingredient als het lot geen α heeft) zodat het hop-schema klopt.
+  const kiesLot = (row: any, newLotId: number | null) => {
+    const ingMatch = ingMatchVoor(row)
+    setBi((prev: any[]) => prev.map((x: any) => {
+      if (x.id !== row.id) return x
+      const patch: any = {...x, lot_id: newLotId}
+      if (String(x.ingredient_type).toLowerCase() === 'hop') {
+        const newLot = newLotId ? (lots || []).find((l: any) => l.id === newLotId) : null
+        const alpha = getEffectiveBrewProp(newLot, ingMatch, 'alpha')
+        if (alpha != null && Number(alpha) > 0) patch.alpha_pct = Number(alpha)
+      }
+      return patch
+    }))
+  }
+
+  // Receptregel zonder catalogus-match: maak het ingredient alsnog aan zodat er
+  // lots aan gehangen (en van afgeboekt) kan worden.
+  const addIngFromBatch = (row: any) => {
+    const newIng = {id: newId(ing || []), naam: row.ingredient_naam, type: row.ingredient_type || 'Overig', fabrikant: ''}
+    setIng((prev: any[]) => [...(prev || []), newIng])
+    setBi((prev: any[]) => prev.map((x: any) => x.id === row.id ? {...x, ingredient_id: newIng.id} : x))
+    logAudit(auditLog, setAuditLog, {entiteit: 'Ingredient', entiteit_id: newIng.id, actie: 'aangemaakt', omschrijving: newIng.naam})
+  }
+
+  // Regel verwijderen. Was hij al afgeboekt, dan gaat de hoeveelheid terug naar
+  // het lot (terugboeking in het voorraadlog) — zelfde gedrag als op de
+  // Batches-pagina, zodat een verkeerd lot te herstellen is.
+  const verwijderBi = (row: any) => {
+    const lot = row.lot_id ? (lots || []).find((l: any) => l.id === row.lot_id) : null
+    const qty = Number(row.hoeveelheid || 0)
+    if (row.afgeboekt && row.lot_id) {
+      const vraag = t('flow_ing_terugboek_confirm')
+        .replace('{n}', String(r3(qty))).replace('{unit}', row.eenheid || '')
+        .replace('{lot}', lot?.lotnummer || `#${row.lot_id}`)
+      if (!confirm(vraag)) return
+      const qtyInLot = convertEenheid(qty, row.eenheid, lot?.eenheid || row.eenheid) ?? qty
+      setLots((prev: any[]) => prev.map((l: any) => l.id !== row.lot_id ? l : {...l,
+        hoeveelheid: r3(Number(l.hoeveelheid || 0) + qtyInLot), beschikbaar: true,
+      }))
+      addLog({ingredient_id: ingMatchVoor(row)?.id || null, ingredient_naam: row.ingredient_naam,
+        lot_id: row.lot_id, lotnummer: lot?.lotnummer || '', type: 'terugboeking',
+        batch_id: row.batch_id, hoeveelheid: qty, eenheid: row.eenheid, referentie: t('flow_ing_terugboek_ref')})
+    } else if (!confirm(t('error_confirm_delete'))) return
+    setBi((prev: any[]) => prev.filter((x: any) => x.id !== row.id))
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: row.batch_id, actie: 'gewijzigd',
+      omschrijving: `Ingredient verwijderd: ${row.ingredient_naam} (${qty} ${row.eenheid})`})
   }
 
   // Koppel alle nog niet afgeboekte batch-ingredient-regels in dezelfde groep
@@ -769,7 +886,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (convertEenheid(qty, biRow.eenheid, lot.eenheid) === null) {
       alert(t('err_convert_units').replace('{from}', biRow.eenheid).replace('{to}', lot.eenheid)); return
     }
-    const ingMatch = (ing || []).find((i: any) => i.id === biRow.ingredient_id)
+    const ingMatch = ingMatchVoor(biRow)
     const batchRef = selB ? `Batch: ${selB.naam}` : 'Batch'
     const availEenh = Number(lot.hoeveelheid || 0)
     const availBi = r3(convertEenheid(availEenh, lot.eenheid, biRow.eenheid) ?? availEenh)
@@ -800,9 +917,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             ? {...x, hoeveelheid: useQty, afgeboekt: true,
                 kosten: lot.prijs_per_eenheid ? r3(lot.prijs_per_eenheid * useQty) : x.kosten}
             : x),
-          {id: nextId, batch_id: biRow.batch_id, ingredient_id: biRow.ingredient_id,
-            ingredient_naam: biRow.ingredient_naam, ingredient_type: biRow.ingredient_type,
-            hoeveelheid: remainQ, eenheid: biRow.eenheid, gebruik: biRow.gebruik,
+          // Restregel: neem de brouwkundige velden (α, tijdstip, temp, extract)
+          // mee zodat het hop-/moutschema van de restregel blijft kloppen.
+          {...biRow, id: nextId, hoeveelheid: remainQ,
             lot_id: null, kosten: null, afgevinkt: false, afgeboekt: false},
         ]
       })
@@ -1861,20 +1978,42 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         items: items.filter((i: any) => i.group_id === groep.id).sort((a: any, b: any) => (a.volgorde || 0) - (b.volgorde || 0)),
       }))
       .filter(g => g.items.length > 0)
+    const msgCls = reinigingMsg?.soort === 'warn'
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : reinigingMsg?.soort === 'info'
+        ? 'bg-gray-50 text-gray-600 border-gray-200'
+        : 'bg-green-50 text-green-700 border-green-200'
     return (
       <div className="space-y-3">
+        {reinigingMsg && (
+          <div className={`text-xs px-2 py-1.5 rounded border flex items-start gap-2 ${msgCls}`}>
+            <span className="flex-1">{reinigingMsg.tekst}</span>
+            <button onClick={() => setReinigingMsg(null)} className="opacity-60 hover:opacity-100">✕</button>
+          </div>
+        )}
         {perGroep.map(({groep, items: gItems}) => (
             <div key={groep?.id}>
               {perGroep.length > 1 && groep && (
                 <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{groep.naam}</div>
               )}
               <div className="space-y-1">
-                {gItems.map((item: any) => (
-                  <label key={item.id} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 cursor-pointer text-sm">
-                    <input type="checkbox" checked={!!checks[item.id]} onChange={() => toggleCheck(item.id)} className="t-checkbox" />
-                    <span className={checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}>{taakLabel(item)}</span>
-                  </label>
-                ))}
+                {gItems.map((item: any) => {
+                  // Legt dit vinkje ook een reiniging vast? Dan tonen we dat,
+                  // zodat duidelijk is dat er in de logboeken wordt geschreven.
+                  const regStatus = taakReinigingStatus(item)
+                  return (
+                    <label key={item.id} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 cursor-pointer text-sm">
+                      <input type="checkbox" checked={!!checks[item.id]} onChange={() => toggleCheck(item.id)} className="t-checkbox" />
+                      <span className={checks[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}>{taakLabel(item)}</span>
+                      {regStatus && (
+                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 whitespace-nowrap"
+                          title={t('flow_ontsmet_registreert_title')}>
+                          {t('flow_ontsmet_registreert').replace('{status}', t(TANK_REINIGING_LABEL_KEY[regStatus] || '') || regStatus)}
+                        </span>
+                      )}
+                    </label>
+                  )
+                })}
               </div>
             </div>
           ))}
@@ -1907,12 +2046,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Batches-pagina: koppel een receptregel aan een (alternatief) ingredient uit
   // de catalogus, zodat de voorraadcheck en lot-keuze dat ingredient volgen.
   const renderKoppelPill = (row: any) => {
-    const ingById = row.ingredient_id ? (ing || []).find((i: any) => i.id === row.ingredient_id) : null
-    const ingByName = !ingById
-      ? (ing || []).find((i: any) => String(i.naam).toLowerCase() === String(row.ingredient_naam || '').toLowerCase())
-      : null
-    const match = ingById || ingByName
-    const explicit = !!ingById
+    const explicit = !!row.ingredient_id
+    const match = ingMatchVoor(row)
     if (row.afgeboekt) {
       // Historische regel: alleen tonen wat gekoppeld was, niet meer wijzigen.
       return explicit && match ? (
@@ -1947,11 +2082,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       )
     }
     if (!match) {
+      // Geen catalogus-match: koppelen aan een bestaand ingredient, of het
+      // ingredient direct aanmaken zodat er lots van afgeboekt kunnen worden.
       return (
-        <button onClick={(e: any) => { e.stopPropagation(); setKoppelRow(row.id) }}
-          className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 ml-2 align-middle">
-          {t('recipe_link_none')}
-        </button>
+        <>
+          <button onClick={(e: any) => { e.stopPropagation(); setKoppelRow(row.id) }}
+            className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 ml-2 align-middle">
+            {t('recipe_link_none')}
+          </button>
+          <button onClick={(e: any) => { e.stopPropagation(); addIngFromBatch(row) }}
+            title={t('batch_ingredient_add')}
+            className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 ml-1 align-middle">
+            + {t('batch_ingredient_add')}
+          </button>
+        </>
       )
     }
     return (
@@ -1961,9 +2105,161 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // Afweeg/afboek-lijst: lot kiezen + per regel afboeken van de voorraad.
-  // Compacte twee-regel-rijen i.p.v. een brede tabel, zodat alles ook op
-  // smalle schermen zonder horizontaal scrollen past.
+  // Normaliseer een gebruik-aanduiding ('Dry Hop' / 'dry-hop' → 'dryhop') zodat
+  // recept- en batchregels op gebruik vergeleken kunnen worden.
+  const normGebruik = (v: any) => String(v || '').toLowerCase().replace(/[^a-z]/g, '')
+
+  // Bouw groepen van batch-ingredient-regels: alle regels van hetzelfde
+  // ingredient (en hetzelfde gebruik) horen bij elkaar. Zo blijft een regel die
+  // over meerdere lots is afgeboekt als één ingredient leesbaar.
+  const bouwGroepen = (rows: any[]): any[] => {
+    const groepen: any[] = []
+    const index = new Map<string, any>()
+    for (const x of rows) {
+      const naamLc = String(x.ingredient_naam || '').toLowerCase()
+      const key = `${x.ingredient_id ? `id:${x.ingredient_id}` : `naam:${naamLc}`}|${normGebruik(x.gebruik)}`
+      let g = index.get(key)
+      if (!g) {
+        g = {key, naam: x.ingredient_naam, type: x.ingredient_type, eenheid: x.eenheid,
+          gebruik: x.gebruik, rows: []}
+        index.set(key, g)
+        groepen.push(g)
+      }
+      g.rows.push(x)
+    }
+    return groepen
+  }
+
+  // Recept-hoeveelheid voor een groep (in de eenheid van de groep), zodat een
+  // afwijkende batch-hoeveelheid subtiel zichtbaar wordt.
+  const receptQtyVoorGroep = (g: any): number | null => {
+    if (!batchRecept) return null
+    const items = [
+      ...(batchRecept.mout || []), ...(batchRecept.hop || []),
+      ...(batchRecept.gist || []), ...(batchRecept.overig || []),
+    ]
+    const naamLc = String(g.naam || '').toLowerCase()
+    const ids = new Set(g.rows.map((r: any) => r.ingredient_id).filter(Boolean))
+    const gebruikG = normGebruik(g.gebruik)
+    const match = items.filter((i: any) =>
+      ((i.ingredient_id && ids.has(i.ingredient_id)) || String(i.naam || '').toLowerCase() === naamLc)
+      && normGebruik(i.gebruik) === gebruikG)
+    if (!match.length) return null
+    let sum = 0
+    for (const m of match) {
+      const q = convertEenheid(Number(m.hoeveelheid || 0), m.eenheid || g.eenheid, g.eenheid)
+      if (q === null) return null
+      sum += q
+    }
+    return r3(sum)
+  }
+
+  const receptAfwijking = (afwijkend: boolean, receptQty: number | null, eenheid: string) => {
+    if (!afwijkend || receptQty === null) return null
+    return (
+      <span className="text-[10px] text-amber-600 whitespace-nowrap"
+        title={t('batch_ing_recept_afwijking_title').replace('{n}', String(receptQty)).replace('{unit}', eenheid)}>
+        ≠ {t('batch_ing_recept_afwijking').replace('{n}', String(receptQty)).replace('{unit}', eenheid)}
+      </span>
+    )
+  }
+
+  // Eén regel in de afboek-lijst: lot kiezen, (deels) afboeken en verwijderen.
+  // `multi` = de regel zit in een groep die over meerdere lots verdeeld is; dan
+  // staan naam en totalen al in de groepskop.
+  const renderAfboekRij = (row: any, g: any, multi: boolean, afwijkend: boolean, receptQty: number | null) => {
+    const ingMatch = ingMatchVoor(row)
+    const rowLots = lotsVoor(row, ingMatch)
+    const rowLot = (lots || []).find((l: any) => l.id === row.lot_id)
+    // Kosten: vastgelegde kosten van de regel, of anders de lotprijs ×
+    // hoeveelheid van het gekozen lot — zelfde als op de Batches-pagina.
+    const kosten = row.kosten
+      ? Number(row.kosten)
+      : (rowLot?.prijs_per_eenheid ? rowLot.prijs_per_eenheid * Number(row.hoeveelheid || 0) : null)
+    // Dekt het gekozen lot de hele hoeveelheid? Zo niet: afboeken boekt het lot
+    // leeg en laat een restregel achter voor een volgend lot.
+    const selLotAvailBi = rowLot
+      ? r3(convertEenheid(Number(rowLot.hoeveelheid || 0), rowLot.eenheid, row.eenheid) ?? Number(rowLot.hoeveelheid || 0))
+      : 0
+    const lotTekort = !!row.lot_id && !row.afgeboekt && selLotAvailBi < Number(row.hoeveelheid || 0) - 0.001
+    return (
+      <div key={row.id} className={`px-2 py-1.5 rounded border ${row.afgeboekt ? 'bg-green-50/50 border-green-100' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="flex-1 min-w-0 truncate text-gray-700">
+            {multi ? (
+              <span className="text-xs text-gray-400">↳ {row.afgeboekt ? t('ing_booked_suffix') : t('flow_ing_deel_open')}</span>
+            ) : (
+              <>
+                {row.ingredient_naam}
+                {row.gebruik && <span className="ml-1 text-xs text-gray-400">({row.gebruik})</span>}
+                {renderKoppelPill(row)}
+              </>
+            )}
+          </span>
+          {row.afgeboekt ? (
+            <span className="text-gray-600 text-xs whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</span>
+          ) : (
+            // Hoeveelheid aanpasbaar tot het afboeken (zoals in de batch flow).
+            <span className="whitespace-nowrap text-xs text-gray-600">
+              <input type="number" step="any" min="0" defaultValue={row.hoeveelheid}
+                onBlur={e => commitBiHoeveelheid(row.id, e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                title={t('batch_ing_qty_edit_title')}
+                className="w-16 border border-gray-200 rounded px-1 py-0.5 text-right t-input" /> {row.eenheid}
+            </span>
+          )}
+          {!multi && receptAfwijking(afwijkend, receptQty, g.eenheid)}
+        </div>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          {row.afgeboekt ? (
+            <span className="text-xs text-green-700 font-medium">✓ {rowLot?.lotnummer || (row.lot_id ? `#${row.lot_id}` : '—')}</span>
+          ) : rowLots.length > 0 ? (
+            <select value={row.lot_id || ''}
+              onChange={e => kiesLot(row, e.target.value ? Number(e.target.value) : null)}
+              className={`border rounded px-1.5 py-0.5 text-xs bg-white t-input max-w-[14rem] ${lotTekort ? 'border-amber-300' : 'border-gray-200'}`}>
+              <option value="">{t('ing_choose_lot')}</option>
+              {rowLots.map((l: any) => {
+                const avBi = r3(convertEenheid(Number(l.hoeveelheid || 0), l.eenheid, row.eenheid) ?? Number(l.hoeveelheid || 0))
+                const dekt = avBi >= Number(row.hoeveelheid || 0) - 0.001
+                const thtStr = l.houdbaarheid ? ` · ${t('lbl_tht')} ${l.houdbaarheid}` : ''
+                return (
+                  <option key={l.id} value={l.id}>
+                    {dekt ? '' : '⚠ '}{l.lotnummer || `#${l.id}`} ({avBi} {row.eenheid}{thtStr})
+                  </option>
+                )
+              })}
+            </select>
+          ) : (
+            <span className="text-xs text-gray-400">—</span>
+          )}
+          {!row.afgeboekt && <VoorraadChip row={row} />}
+          {lotTekort && (
+            <span className="text-xs text-amber-600">
+              {t('lot_partial_warning').replace('{n}', String(selLotAvailBi)).replace('{unit}', row.eenheid)}
+            </span>
+          )}
+          <span className="ml-auto text-xs text-gray-600 whitespace-nowrap">{kosten !== null ? fmt(kosten) : ''}</span>
+          {!row.afgeboekt && !!row.lot_id && (
+            <button onClick={() => haalVanVoorraad(row)}
+              className={`text-xs border rounded px-1.5 py-0.5 whitespace-nowrap ${lotTekort
+                ? 't-back'
+                : 'text-green-700 hover:text-green-900 bg-green-50 hover:bg-green-100 border-green-200'}`}>
+              {lotTekort
+                ? t('flow_lot_boek_deel').replace('{n}', String(selLotAvailBi)).replace('{unit}', row.eenheid)
+                : t('batch_ingredient_book')}
+            </button>
+          )}
+          <button onClick={() => verwijderBi(row)} title={t('flow_ing_verwijder_title')}
+            className="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+        </div>
+      </div>
+    )
+  }
+
+  // Afweeg/afboek-lijst: lot kiezen + per regel afboeken van de voorraad, met
+  // groepering per ingredient zodat een over meerdere lots verdeelde regel
+  // (deel-afboeking) als één geheel leesbaar blijft. Compacte twee-regel-rijen
+  // i.p.v. een brede tabel, zodat alles ook op smalle schermen past.
   const renderAfboekTabel = (rows: any[], metToevoegen = false) => {
     // Totaal: som van bekende kosten over de getoonde regels.
     const totaal = rows.reduce((s: number, r: any) => {
@@ -1977,61 +2273,43 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           <div className="text-sm text-gray-400 italic">{t('flow_afboek_geen')}</div>
         ) : (
           <div className="space-y-1.5">
-            {rows.map((row: any) => {
-              const rowLots = row.ingredient_id
-                ? (lots || []).filter((l: any) => l.ingredient_id === row.ingredient_id && (Number(l.hoeveelheid || 0) > 0 || l.id === row.lot_id))
-                : []
-              // Kosten: vastgelegde kosten van de regel, of anders de lotprijs ×
-              // hoeveelheid van het gekozen lot — zelfde als op de Batches-pagina.
-              const rowLot = (lots || []).find((l: any) => l.id === row.lot_id)
-              const kosten = row.kosten
-                ? Number(row.kosten)
-                : (rowLot?.prijs_per_eenheid ? rowLot.prijs_per_eenheid * Number(row.hoeveelheid || 0) : null)
+            {bouwGroepen(rows).map((g: any) => {
+              const totalQty = r3(g.rows.reduce((s: number, r: any) => s + Number(r.hoeveelheid || 0), 0))
+              const receptQty = receptQtyVoorGroep(g)
+              const afwijkend = receptQty !== null && Math.abs(totalQty - receptQty) > 0.001
+              const bookedQty = r3(g.rows.filter((r: any) => r.afgeboekt).reduce((s: number, r: any) => s + Number(r.hoeveelheid || 0), 0))
+              const remainQty = r3(totalQty - bookedQty)
+              const volledig = remainQty <= 0.001
+              const multi = g.rows.length > 1
+              if (!multi) return renderAfboekRij(g.rows[0], g, false, afwijkend, receptQty)
+              const totalKost = g.rows.reduce((s: number, r: any) => {
+                if (r.kosten) return s + Number(r.kosten)
+                const l = (lots || []).find((ll: any) => ll.id === r.lot_id)
+                return s + (l?.prijs_per_eenheid ? l.prijs_per_eenheid * Number(r.hoeveelheid || 0) : 0)
+              }, 0)
               return (
-                <div key={row.id} className={`px-2 py-1.5 rounded border ${row.afgeboekt ? 'bg-green-50/50 border-green-100' : 'bg-white border-gray-200'}`}>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 min-w-0 truncate text-gray-700">
-                      {row.ingredient_naam}
-                      {row.gebruik && <span className="ml-1 text-xs text-gray-400">({row.gebruik})</span>}
-                      {renderKoppelPill(row)}
+                <div key={g.key} className="rounded border border-amber-200 bg-amber-50/50">
+                  <div className="px-2 pt-1.5 flex items-center gap-2 text-sm">
+                    <span className="flex-1 min-w-0 truncate font-medium text-gray-800">
+                      {g.naam}
+                      {g.gebruik && <span className="ml-1 text-xs font-normal text-gray-400">({g.gebruik})</span>}
+                      {renderKoppelPill(g.rows[0])}
                     </span>
-                    {row.afgeboekt ? (
-                      <span className="text-gray-600 text-xs whitespace-nowrap">{row.hoeveelheid} {row.eenheid}</span>
-                    ) : (
-                      // Hoeveelheid aanpasbaar tot het afboeken (zoals in de batch flow).
-                      <span className="whitespace-nowrap text-xs text-gray-600">
-                        <input type="number" step="any" min="0" defaultValue={row.hoeveelheid}
-                          onBlur={e => commitBiHoeveelheid(row.id, e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                          title={t('batch_ing_qty_edit_title')}
-                          className="w-16 border border-gray-200 rounded px-1 py-0.5 text-right t-input" /> {row.eenheid}
-                      </span>
-                    )}
+                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">{totalQty} {g.eenheid}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    {row.afgeboekt ? (
-                      <span className="text-xs text-gray-500">{rowLot?.lotnummer || (row.lot_id ? `#${row.lot_id}` : '—')}</span>
-                    ) : rowLots.length > 0 ? (
-                      <select value={row.lot_id || ''}
-                        onChange={e => setBi((prev: any[]) => prev.map((x: any) => x.id === row.id ? {...x, lot_id: e.target.value ? Number(e.target.value) : ''} : x))}
-                        className="border border-gray-200 rounded px-1.5 py-0.5 text-xs t-input max-w-[12rem]">
-                        <option value="">—</option>
-                        {rowLots.map((l: any) => (
-                          <option key={l.id} value={l.id}>
-                            {(l.lotnummer || `#${l.id}`)} — {l.hoeveelheid} {l.eenheid}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-xs text-gray-400">—</span>
-                    )}
-                    <VoorraadChip row={row} />
-                    <span className="ml-auto text-xs text-gray-600 whitespace-nowrap">{kosten !== null ? fmt(kosten) : ''}</span>
-                    {!row.afgeboekt && (
-                      <Btn s="sm" v="secondary" disabled={!row.lot_id} onClick={() => haalVanVoorraad(row)}>
-                        {t('btn_afboeken')}
-                      </Btn>
-                    )}
+                  <div className="px-2 pb-1.5 pt-0.5 flex items-center gap-2 flex-wrap text-xs">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                      {t('flow_ing_lots_verdeeld').replace('{n}', String(g.rows.length))}
+                    </span>
+                    {bookedQty > 0 && <span className="text-green-700">✓ {bookedQty} {g.eenheid} {t('ing_booked_suffix')}</span>}
+                    {volledig
+                      ? <span className="text-green-600 font-semibold">· {t('batch_ingredient_all_booked')}</span>
+                      : <span className="text-amber-700 font-medium">· {t('batch_ingredient_still_needed')} {remainQty} {g.eenheid} {t('batch_ingredient_still_needed_text')}</span>}
+                    {receptAfwijking(afwijkend, receptQty, g.eenheid)}
+                    <span className="ml-auto font-semibold text-gray-700">{totalKost > 0 ? fmt(totalKost) : ''}</span>
+                  </div>
+                  <div className="px-1 pb-1 space-y-1">
+                    {g.rows.map((row: any) => renderAfboekRij(row, g, true, afwijkend, receptQty))}
                   </div>
                 </div>
               )

@@ -571,7 +571,12 @@ export interface TankReinigingLog {
   middel?: string
   opmerking?: string
   cip?: boolean
-  oorzaak?: 'handmatig' | 'automatisch_leeg'
+  // 'batch_checklist' = automatisch vastgelegd door een vinkje op de batch
+  // (bijv. "fermentor gesteriliseerd") — zie utils/ontsmetting.ts
+  oorzaak?: 'handmatig' | 'automatisch_leeg' | 'batch_checklist'
+  // Herkomst bij oorzaak 'batch_checklist': welke batch en welk checklist-item.
+  batch_id?: number
+  taak_id?: number | string
 }
 
 export interface HygieneItem {
