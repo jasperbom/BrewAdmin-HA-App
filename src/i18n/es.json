@@ -3076,5 +3076,19 @@
   "settings_taken_reiniging_hint": "Pone el tanque del lote en este estado de limpieza y escribe una línea en el registro de limpieza de tanques en cuanto se marca esta casilla.",
   "settings_taken_schoonmaak_geen": "Sin tarea de limpieza",
   "settings_taken_schoonmaak_hint": "Registrar también esta casilla como ejecución de esta tarea de limpieza HACCP (p. ej. la línea de envasado). Las tareas vinculadas al tanque del lote se incluyen automáticamente.",
-  "lbl_oorzaak_batch_checklist": "Lista de comprobación del lote"
+  "lbl_oorzaak_batch_checklist": "Lista de comprobación del lote",
+  "wc_fout_timeout": "WooCommerce no respondió en {n} segundos: la tienda es demasiado lenta o no está disponible",
+  "wc_fout_certificaat": "El certificado SSL de la tienda no es válido o ha caducado",
+  "wc_fout_tls": "Falló la conexión segura con la tienda (TLS)",
+  "wc_fout_dns": "No se encontró la dirección de la tienda: comprueba la URL en Ajustes",
+  "wc_fout_verbinding": "Sin conexión con la tienda: comprueba si está en línea",
+  "wc_fout_netwerk": "Error de red al conectar con la tienda",
+  "wc_fout_auth": "Sin acceso a WooCommerce: comprueba las claves API en Ajustes",
+  "wc_fout_niet_gevonden": "No encontrado en WooCommerce ({status})",
+  "wc_fout_winkel": "WooCommerce devolvió un error de servidor ({status})",
+  "wc_fout_http": "Error de WooCommerce ({status})",
+  "msg_wc_push_result": "{n} producto(s) actualizado(s)",
+  "msg_wc_push_deels": "{n} actualizados, {f} fallidos: {namen}",
+  "msg_wc_push_failed": "⚠ Error al enviar: {msg}",
+  "msg_wc_sku_onbekend": "⚠ SKU «{sku}» no encontrado en WooCommerce ({naam})"
 }

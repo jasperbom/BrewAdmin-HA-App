@@ -3076,5 +3076,19 @@
   "settings_taken_reiniging_hint": "Set the batch's tank to this cleaning status and write an entry in the tank cleaning log as soon as this item is checked.",
   "settings_taken_schoonmaak_geen": "No cleaning task",
   "settings_taken_schoonmaak_hint": "Also log this item as completed on this HACCP cleaning task (e.g. the filling line). Tasks linked to the batch's tank are included automatically.",
-  "lbl_oorzaak_batch_checklist": "Batch checklist"
+  "lbl_oorzaak_batch_checklist": "Batch checklist",
+  "wc_fout_timeout": "WooCommerce did not respond within {n} seconds — the shop is too slow or unreachable",
+  "wc_fout_certificaat": "The shop's SSL certificate is invalid or expired",
+  "wc_fout_tls": "Secure connection to the shop failed (TLS)",
+  "wc_fout_dns": "Shop address not found — check the URL in Settings",
+  "wc_fout_verbinding": "No connection to the shop — check whether the store is online",
+  "wc_fout_netwerk": "Network error while reaching the shop",
+  "wc_fout_auth": "No access to WooCommerce — check the API keys in Settings",
+  "wc_fout_niet_gevonden": "Not found in WooCommerce ({status})",
+  "wc_fout_winkel": "WooCommerce returned a server error ({status})",
+  "wc_fout_http": "WooCommerce error ({status})",
+  "msg_wc_push_result": "{n} product(s) updated",
+  "msg_wc_push_deels": "{n} updated, {f} failed: {namen}",
+  "msg_wc_push_failed": "⚠ Push failed: {msg}",
+  "msg_wc_sku_onbekend": "⚠ SKU \"{sku}\" not found in WooCommerce ({naam})"
 }

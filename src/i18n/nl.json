@@ -3076,5 +3076,19 @@
   "settings_taken_reiniging_hint": "Zet de tank van de batch op deze reinigingsstatus en schrijf een regel in het tankreinigingslogboek zodra dit vinkje wordt aangezet.",
   "settings_taken_schoonmaak_geen": "Geen schoonmaaktaak",
   "settings_taken_schoonmaak_hint": "Log dit vinkje ook als uitvoering op deze HACCP-schoonmaaktaak (bijv. de afvullijn). Taken die aan de tank van de batch hangen worden automatisch meegenomen.",
-  "lbl_oorzaak_batch_checklist": "Batch-checklist"
+  "lbl_oorzaak_batch_checklist": "Batch-checklist",
+  "wc_fout_timeout": "WooCommerce antwoordde niet binnen {n} seconden — de webshop is te traag of onbereikbaar",
+  "wc_fout_certificaat": "Het SSL-certificaat van de webshop is ongeldig of verlopen",
+  "wc_fout_tls": "Beveiligde verbinding met de webshop mislukt (TLS)",
+  "wc_fout_dns": "Webshop-adres niet gevonden — controleer de URL bij Instellingen",
+  "wc_fout_verbinding": "Geen verbinding met de webshop — controleer of de winkel online is",
+  "wc_fout_netwerk": "Netwerkfout richting de webshop",
+  "wc_fout_auth": "Geen toegang tot WooCommerce — controleer de API-sleutels bij Instellingen",
+  "wc_fout_niet_gevonden": "Niet gevonden in WooCommerce ({status})",
+  "wc_fout_winkel": "WooCommerce gaf een serverfout ({status})",
+  "wc_fout_http": "WooCommerce-fout ({status})",
+  "msg_wc_push_result": "{n} product(en) bijgewerkt",
+  "msg_wc_push_deels": "{n} bijgewerkt, {f} mislukt: {namen}",
+  "msg_wc_push_failed": "⚠ Push mislukt: {msg}",
+  "msg_wc_sku_onbekend": "⚠ SKU \"{sku}\" niet gevonden in WooCommerce ({naam})"
 }

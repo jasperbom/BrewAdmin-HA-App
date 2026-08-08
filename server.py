@@ -121,6 +121,12 @@ WC_PROXY_PREFIX = '/api/woocommerce/'
 WC_PING_PATH    = '/api/woocommerce/ping'
 WC_TEST_PATH    = '/api/woocommerce/test'
 WC_PUT_PREFIX   = '/api/woocommerce/put/'
+# WooCommerce op gedeelde hosting doet over een product-PUT regelmatig meer dan
+# 8 seconden (de oude limiet) — dat leverde een kale 502 op terwijl de winkel
+# gewoon traag was. Ruimer wachten + één herkansing bij een tijdelijke storing.
+WC_TIMEOUT      = 20
+WC_POGINGEN     = 2
+WC_RETRY_PAUZE  = 1.0
 
 UPLOAD_PREFIX            = '/api/upload/'
 FILE_PREFIX              = '/api/file/'
@@ -357,8 +363,35 @@ def _load_wc_creds() -> dict | None:
         return None
 
 
+def _wc_oorzaak(exc: BaseException) -> str:
+    """Vertaal een netwerkfout naar een korte, stabiele oorzaakscode die de
+    client naar een vertaalde melding mapt. Zonder deze classificatie ziet de
+    gebruiker alleen 'WC 502' en is niet te zien of de winkel traag is, de
+    naam niet resolvet of het certificaat stuk is."""
+    # urllib verpakt de echte fout in URLError.reason — pak die eerst uit.
+    while isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, BaseException):
+        exc = exc.reason
+    if isinstance(exc, (socket.timeout, TimeoutError)):
+        return 'timeout'
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return 'certificaat'
+    if isinstance(exc, ssl.SSLError):
+        return 'tls'
+    if isinstance(exc, socket.gaierror):
+        return 'dns'
+    if isinstance(exc, (ConnectionError, OSError)):
+        return 'verbinding'
+    return 'netwerk'
+
+
 def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = None) -> tuple[int, bytes]:
-    """Make a GET or PUT request to the WooCommerce REST API."""
+    """Make a GET or PUT request to the WooCommerce REST API.
+
+    Netwerkfouten komen terug met een oorzaakscode (`oorzaak`) i.p.v. een kale
+    502; een timeout krijgt 504. Beide calls zijn idempotent (GET, en een PUT
+    die `stock_quantity` op een absolute waarde zet), dus één herkansing bij
+    een tijdelijke storing is veilig — WooCommerce op gedeelde hosting is
+    regelmatig even traag of weigert kortstondig de verbinding."""
     auth = base64.b64encode(f'{creds["key"]}:{creds["secret"]}'.encode()).decode()
     url  = f'{creds["url"]}{WC_API_PATH}/{subpath}'
     req  = urllib.request.Request(
@@ -371,13 +404,27 @@ def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = Non
         },
         method=method,
     )
-    try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            return resp.status, resp.read()
-    except urllib.error.HTTPError as e:
-        return e.code, e.read() or b'{}'
-    except Exception:
-        return 502, json.dumps({'error': 'upstream request failed'}).encode()
+    oorzaak = 'netwerk'
+    for poging in range(WC_POGINGEN):
+        try:
+            with urllib.request.urlopen(req, timeout=WC_TIMEOUT) as resp:
+                return resp.status, resp.read()
+        except urllib.error.HTTPError as e:
+            # Een echt antwoord van de winkel (401, 404, 500 …) — doorgeven,
+            # niet opnieuw proberen: dat verandert het antwoord niet.
+            return e.code, e.read() or b'{}'
+        except Exception as e:
+            oorzaak = _wc_oorzaak(e)
+            if oorzaak in ('certificaat', 'tls', 'dns') or poging == WC_POGINGEN - 1:
+                break
+            time.sleep(WC_RETRY_PAUZE)
+    _log('woocommerce', f'{method} {subpath.split("?")[0]} mislukt: {oorzaak}')
+    status = 504 if oorzaak == 'timeout' else 502
+    return status, json.dumps({
+        'error':   'upstream request failed',
+        'oorzaak': oorzaak,
+        'timeout': WC_TIMEOUT,
+    }).encode()
 
 
 def extract_key(path: str) -> str | None:

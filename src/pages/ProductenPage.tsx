@@ -1,6 +1,7 @@
 import React from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
+import { wcFoutMelding } from '../utils/wcFout'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
@@ -853,6 +854,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     setWcSyncing(true); setWcSyncMsg('');
     try {
       let bijgewerkt = 0;
+      // Fouten per artikel verzamelen i.p.v. de hele push afbreken: één trage
+      // of ontbrekende SKU mocht niet betekenen dat de artikelen erna hun
+      // voorraad niet meer krijgen (en dat je niet ziet wélke faalde).
+      const mislukt: string[] = [];
       // wc_push === false sluit het artikel uit van de push; ontbrekend geldt
       // als ingeschakeld zodat bestaande artikelen hun gedrag behouden.
       const paWithNames = (productArtikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false).map((pa: any) => {
@@ -861,26 +866,45 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       });
       const combis = paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false);
       for (const art of combis) {
+        const naam = `${art.biernaam} ${art.verpakking_type}`.trim();
         const beschikbaar = wcBeschikbaarVoorArt(art);
-        addWcLog('debug', `🔍 ${art.biernaam} ${art.verpakking_type} → ${beschikbaar}×`, '');
-        const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
-        if (!prods?.length) {
-          // Stil overslaan verbergt configuratiefouten — log het zodat de
-          // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
-          addWcLog('fout', `⚠ SKU "${art.artikelnummer}" niet gevonden in WooCommerce (${art.biernaam} ${art.verpakking_type})`);
-          continue;
+        addWcLog('debug', `🔍 ${naam} → ${beschikbaar}×`, '');
+        try {
+          const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
+          if (!prods?.length) {
+            // Stil overslaan verbergt configuratiefouten — log het zodat de
+            // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
+            addWcLog('fout', t('msg_wc_sku_onbekend').replace('{sku}', art.artikelnummer).replace('{naam}', naam));
+            mislukt.push(naam);
+            continue;
+          }
+          await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
+          bijgewerkt++;
+        } catch(e: any) {
+          mislukt.push(naam);
+          addWcLog('fout', `${naam} — ${wcFoutMelding(e, t)}`, e.message);
         }
-        await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
-        bijgewerkt++;
       }
       setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}));
-      const pushMsg = `${bijgewerkt} product${bijgewerkt!==1?'en':''} bijgewerkt`;
-      setWcSyncMsg(`✓ ${pushMsg}`);
-      addWcLog('push', `↑ Push voorraad — ${pushMsg}`,
-        combis.filter((a: any) => a.artikelnummer).map((a: any) => `${a.biernaam} ${a.verpakking_type}: ${wcBeschikbaarVoorArt(a)}×`).join(', '));
+      const pushMsg = t('msg_wc_push_result').replace('{n}', String(bijgewerkt));
+      // Deels gelukt is geen succes: de melding blijft rood en noemt de
+      // artikelen die WooCommerce niet gehaald hebben.
+      if (mislukt.length) {
+        const foutMsg = t('msg_wc_push_deels')
+          .replace('{n}', String(bijgewerkt))
+          .replace('{f}', String(mislukt.length))
+          .replace('{namen}', mislukt.slice(0, 3).join(', ') + (mislukt.length > 3 ? '…' : ''));
+        setWcSyncMsg(`⚠ ${foutMsg}`);
+        addWcLog('fout', `↑ ${foutMsg}`, mislukt.join(', '));
+      } else {
+        setWcSyncMsg(`✓ ${pushMsg}`);
+        addWcLog('push', `↑ ${pushMsg}`,
+          combis.filter((a: any) => a.artikelnummer).map((a: any) => `${a.biernaam} ${a.verpakking_type}: ${wcBeschikbaarVoorArt(a)}×`).join(', '));
+      }
     } catch(e: any) {
-      setWcSyncMsg(`⚠ Push mislukt: ${e.message}`);
-      addWcLog('fout', `↑ Push mislukt — ${e.message}`);
+      const melding = wcFoutMelding(e, t);
+      setWcSyncMsg(t('msg_wc_push_failed').replace('{msg}', melding));
+      addWcLog('fout', t('msg_wc_push_failed').replace('{msg}', melding), e.message);
     }
     setWcSyncing(false);
     setTimeout(() => setWcSyncMsg(''), 6000);

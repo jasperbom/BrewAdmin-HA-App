@@ -2,6 +2,7 @@ import React from 'react'
 import { t, getLang } from '../i18n'
 import { tod, ymd, r2, r3, fmtD } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
+import { wcFoutMelding } from '../utils/wcFout'
 import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies, ouderdomsAnalyse, berekenCogs } from '../utils/calculations'
@@ -824,7 +825,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       }
       setAangifteOrders(all);
       setAangifteFetched(true);
-    } catch(e: any) { setAangifteError(t('msg_fetch_error') + e.message); }
+    } catch(e: any) { setAangifteError(t('msg_fetch_error') + wcFoutMelding(e, t)); }
     finally { setAangifteLoading(false); }
   };
 
