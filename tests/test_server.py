@@ -15,7 +15,10 @@ import datetime
 import hashlib
 import http.client
 import http.server
+import io
 import json
+import socket
+import ssl
 import threading
 import urllib.error
 import urllib.request
@@ -1584,3 +1587,86 @@ class TestOnthoudSessies:
             assert srv._sessies.get('tok-geldig', {}).get('gebruiker') == 'y'
         finally:
             self._opruimen()
+
+
+class TestWooCommerceProxy:
+    """De voorraadpush toonde bij elke storing hetzelfde 'WC 502' — geen
+    onderscheid tussen een trage winkel, een verkeerde URL of een stuk
+    certificaat. De proxy classificeert de netwerkfout nu en probeert een
+    tijdelijke storing één keer opnieuw."""
+
+    CREDS = {'url': 'https://winkel.example', 'key': 'ck_x', 'secret': 'cs_y'}
+
+    def _urlopen(self, monkeypatch, uitkomsten):
+        """Vervang urlopen door een teller die per aanroep één uitkomst uit
+        `uitkomsten` afwerkt (exception → raisen, anders teruggeven)."""
+        pogingen = []
+
+        class _Resp:
+            def __init__(self, data):
+                self.status, self._data = 200, data
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def read(self):
+                return self._data
+
+        def fake(req, timeout=None):
+            pogingen.append(timeout)
+            uitkomst = uitkomsten[min(len(pogingen) - 1, len(uitkomsten) - 1)]
+            if isinstance(uitkomst, BaseException):
+                raise uitkomst
+            return _Resp(uitkomst)
+
+        monkeypatch.setattr(srv.urllib.request, 'urlopen', fake)
+        monkeypatch.setattr(srv.time, 'sleep', lambda s: None)
+        return pogingen
+
+    def test_oorzaak_classificatie(self):
+        assert srv._wc_oorzaak(TimeoutError()) == 'timeout'
+        assert srv._wc_oorzaak(socket.timeout()) == 'timeout'
+        assert srv._wc_oorzaak(socket.gaierror(-2, 'Name not known')) == 'dns'
+        assert srv._wc_oorzaak(ssl.SSLCertVerificationError()) == 'certificaat'
+        assert srv._wc_oorzaak(ssl.SSLError('handshake')) == 'tls'
+        assert srv._wc_oorzaak(ConnectionRefusedError()) == 'verbinding'
+        assert srv._wc_oorzaak(ValueError('?')) == 'netwerk'
+
+    def test_oorzaak_pakt_urlerror_uit(self):
+        # urllib verpakt de echte fout in URLError.reason.
+        assert srv._wc_oorzaak(urllib.error.URLError(socket.gaierror(-2, 'x'))) == 'dns'
+        assert srv._wc_oorzaak(urllib.error.URLError(TimeoutError())) == 'timeout'
+
+    def test_timeout_geeft_504_met_oorzaak(self, monkeypatch):
+        pogingen = self._urlopen(monkeypatch, [TimeoutError()])
+        status, data = srv._wc_request(self.CREDS, 'GET', 'products?per_page=1')
+        body = json.loads(data)
+        assert status == 504
+        assert body['oorzaak'] == 'timeout'
+        assert body['timeout'] == srv.WC_TIMEOUT
+        # Tijdelijke storing → herkansing, met de ruimere timeout.
+        assert pogingen == [srv.WC_TIMEOUT] * srv.WC_POGINGEN
+
+    def test_herkansing_na_tijdelijke_storing(self, monkeypatch):
+        pogingen = self._urlopen(monkeypatch, [ConnectionResetError(), b'{"id": 7}'])
+        status, data = srv._wc_request(self.CREDS, 'PUT', 'products/7', b'{}')
+        assert (status, json.loads(data)) == (200, {'id': 7})
+        assert len(pogingen) == 2
+
+    def test_dns_fout_wordt_niet_herhaald(self, monkeypatch):
+        # Een verkeerde URL wordt bij een tweede poging niet ineens goed.
+        pogingen = self._urlopen(monkeypatch, [urllib.error.URLError(socket.gaierror(-2, 'x'))])
+        status, data = srv._wc_request(self.CREDS, 'GET', 'products')
+        assert status == 502 and json.loads(data)['oorzaak'] == 'dns'
+        assert len(pogingen) == 1
+
+    def test_http_antwoord_gaat_ongewijzigd_door(self, monkeypatch):
+        fout = urllib.error.HTTPError(
+            'https://winkel.example', 401, 'Unauthorized', {},
+            io.BytesIO(b'{"message": "Sorry, you cannot list resources."}'))
+        pogingen = self._urlopen(monkeypatch, [fout])
+        status, data = srv._wc_request(self.CREDS, 'GET', 'products')
+        # Antwoord van de winkel zelf: doorgeven en niet opnieuw proberen.
+        assert status == 401
+        assert json.loads(data)['message'].startswith('Sorry')
+        assert len(pogingen) == 1

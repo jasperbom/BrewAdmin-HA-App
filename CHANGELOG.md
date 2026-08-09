@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.88] — 2026-08-08
+
+### Opgelost — "Push mislukt: WC 502" vertelt nu wat er misging
+
+De WooCommerce-voorraadpush eindigde bij elke storing in dezelfde kale melding:
+`⚠ Push mislukt: WC 502`. Die 502 kwam niet van de webshop maar van onze eigen
+proxy, die élke netwerkfout — time-out, onbekende hostnaam, stuk certificaat,
+geweigerde verbinding — tot dezelfde status platsloeg. De client las bovendien
+`message` uit het antwoord terwijl de proxy `error` stuurt, waardoor zelfs de
+generieke tekst verdween. Er was dus niet te zien of de winkel traag was, de
+URL fout stond of de API-sleutels niet meer werkten.
+
+- **Oorzaak in de melding.** De proxy classificeert de netwerkfout
+  (`timeout`, `dns`, `tls`, `certificaat`, `verbinding`) en de app vertaalt die
+  naar een melding met een handelingsperspectief — bijvoorbeeld "Webshop-adres
+  niet gevonden — controleer de URL bij Instellingen". Een fouttekst van
+  WooCommerce zelf komt er achter te staan. Een time-out geeft nu 504 in plaats
+  van 502.
+- **Ruimere time-out + herkansing.** Een product-PUT kreeg 8 seconden; op
+  gedeelde hosting haalt WooCommerce dat regelmatig niet. Dat is nu 20 seconden
+  en een tijdelijke storing (time-out, verbroken verbinding) wordt één keer
+  opnieuw geprobeerd. Beide calls zijn idempotent, dus dat is veilig; een echt
+  antwoord van de winkel (401, 404, 500) gaat ongewijzigd door zonder
+  herkansing.
+- **Eén kapotte SKU stopt de push niet meer.** De push liep artikel voor
+  artikel en brak bij de eerste fout af — alle artikelen daarna kregen hun
+  voorraad niet, zonder dat de melding verklapte wélk artikel faalde. Fouten
+  worden nu per artikel opgevangen en gelogd; de melding sluit af met
+  "3 bijgewerkt, 2 mislukt: …" en blijft rood zolang er iets misging.
+- Ook de bestellingenimport en het ophalen van jaaromzet voor de BTW-aangifte
+  tonen de nieuwe melding; drie hardgecodeerde Nederlandse teksten in de
+  pushmelding zijn naar i18n verhuisd (alle 5 talen).
+
+### Technisch
+
+- Nieuw: `src/utils/wcFout.ts` (pure vertaling status + body → melding) met
+  `src/utils/__tests__/wcFout.test.ts`
+- `server.py`: `_wc_oorzaak()` + herkansingslus in `_wc_request()`,
+  constanten `WC_TIMEOUT`/`WC_POGINGEN`/`WC_RETRY_PAUZE`
+- pytest: `TestWooCommerceProxy` (classificatie, herkansing, doorgeven van
+  HTTP-antwoorden)
+
+---
+
 ## [1.11.87] — 2026-08-04
 
 ### Toegevoegd — Reinigingsvinkje op de batch legt de ontsmetting overal vast

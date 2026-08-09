@@ -3076,5 +3076,19 @@
   "settings_taken_reiniging_hint": "Met la cuve du brassin à ce statut de nettoyage et écrit une ligne dans le journal de nettoyage dès que cette case est cochée.",
   "settings_taken_schoonmaak_geen": "Aucune tâche de nettoyage",
   "settings_taken_schoonmaak_hint": "Consigner aussi cette case comme exécution de cette tâche de nettoyage HACCP (p. ex. la ligne de tirage). Les tâches liées à la cuve du brassin sont incluses automatiquement.",
-  "lbl_oorzaak_batch_checklist": "Checklist du brassin"
+  "lbl_oorzaak_batch_checklist": "Checklist du brassin",
+  "wc_fout_timeout": "WooCommerce n'a pas répondu en {n} secondes — la boutique est trop lente ou injoignable",
+  "wc_fout_certificaat": "Le certificat SSL de la boutique est invalide ou expiré",
+  "wc_fout_tls": "Échec de la connexion sécurisée à la boutique (TLS)",
+  "wc_fout_dns": "Adresse de la boutique introuvable — vérifiez l'URL dans les Réglages",
+  "wc_fout_verbinding": "Pas de connexion à la boutique — vérifiez qu'elle est en ligne",
+  "wc_fout_netwerk": "Erreur réseau vers la boutique",
+  "wc_fout_auth": "Accès à WooCommerce refusé — vérifiez les clés API dans les Réglages",
+  "wc_fout_niet_gevonden": "Introuvable dans WooCommerce ({status})",
+  "wc_fout_winkel": "WooCommerce a renvoyé une erreur serveur ({status})",
+  "wc_fout_http": "Erreur WooCommerce ({status})",
+  "msg_wc_push_result": "{n} produit(s) mis à jour",
+  "msg_wc_push_deels": "{n} mis à jour, {f} en échec : {namen}",
+  "msg_wc_push_failed": "⚠ Échec de l'envoi : {msg}",
+  "msg_wc_sku_onbekend": "⚠ SKU « {sku} » introuvable dans WooCommerce ({naam})"
 }

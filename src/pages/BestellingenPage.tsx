@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
+import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
 import { mapWcOrderRegels, wcOrdersPad, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
 import { fmt, fmtD, tod } from '../utils/format'
@@ -342,7 +343,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const WC_MAX_PAGINAS = 10
 
   const importWcOrders = async () => {
-    if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcMsg('⚠ Geen WooCommerce koppeling actief'); return }
+    if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcMsg(t('error_no_woocommerce')); return }
     setWcImporting(true); setWcMsg('')
     try {
       // Alle geconfigureerde statussen ophalen (standaard inclusief `completed`
@@ -425,7 +426,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         ? `${melding} — ${t('msg_wc_regels_onbekend').replace('{n}', String(onbekendeRegels))}`
         : melding)
     } catch(e: any) {
-      setWcMsg(t('msg_wc_import_failed').replace('{msg}', e.message))
+      setWcMsg(t('msg_wc_import_failed').replace('{msg}', wcFoutMelding(e, t)))
     }
     setWcImporting(false)
     setTimeout(() => setWcMsg(''), 8000)

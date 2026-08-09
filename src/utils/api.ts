@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { lsSet, t } from '../i18n'
 import { bouwSyncSnapshot, berekenDelta, deltaIsKleiner, SyncSnapshot } from './delta'
+import { parseWcFout } from './wcFout'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
 // Fallback '/' voor niet-browser-omgevingen (Vitest, fase 3.1): daar worden
@@ -710,10 +711,23 @@ export const volgendFactuurNummer = async (reeks: 'factuur' | 'creditnota' | 'be
 export const volgendBestelNummer = (): Promise<string> => volgendFactuurNummer('bestelling')
 
 // WooCommerce helpers
+//
+// Een mislukte call gooit een Error met de geparste oorzaak in `.wc`; pagina's
+// maken daar met `wcFoutMelding()` een vertaalde melding van. De `message`
+// blijft technisch leesbaar voor logboek en console.
+const _wcError = async (r: Response): Promise<Error> => {
+  const body = await r.json().catch(() => ({}))
+  const fout = parseWcFout(r.status, body)
+  const staart = fout.detail ? `: ${fout.detail}` : ''
+  const err = new Error(`WC ${r.status} (${fout.oorzaak})${staart}`)
+  ;(err as any).wc = fout
+  return err
+}
+
 export const wcGet = async (subpath: string) => {
   const r = await _fetchWithRetry(_WC_PROXY + subpath.replace(/^\//, ''), undefined, 1)
   if (r.status === 429) throw _rateLimitError('WC', r)
-  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).message || `WC ${r.status}`) }
+  if (!r.ok) throw await _wcError(r)
   return r.json()
 }
 
@@ -724,7 +738,7 @@ export const wcPut = async (subpath: string, data: any) => {
     body: JSON.stringify(data),
   }, 1)
   if (r.status === 429) throw _rateLimitError('WC', r)
-  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).message || `WC ${r.status}`) }
+  if (!r.ok) throw await _wcError(r)
   return r.json()
 }
 
