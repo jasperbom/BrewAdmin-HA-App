@@ -4,6 +4,47 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.89] — 2026-08-10
+
+### Verbeterd — handmatige metingen zichtbaar in de batch-flow, SG leesbaar in de grafiek
+
+De batch-flow toonde bij Vergisten en Conditioneren wel de invoervelden en de
+fermentatiegrafiek, maar niet de metingen zelf: je kon niet terugzien wát je
+had ingevoerd, laat staan een verkeerde meting weghalen. Dat kon alleen nog op
+de oude Batches-pagina.
+
+- **Metingenlogje onder de grafiek** in beide fasen, hetzelfde overzicht als op
+  de oude pagina: datum/tijd, SG, pH, °C en opmerking, nieuwste bovenaan, met
+  een kruisje om een meting te verwijderen. De automatische sensormetingen
+  (elke 10 minuten) staan standaard verborgen achter de schakelaar
+  "Automatisch tonen", zodat je eigen metingen niet ondersneeuwen. Bij duizenden
+  auto-metingen worden de nieuwste 250 rijen getoond.
+- **Eén component voor beide pagina's.** De oude Batches-pagina gebruikt
+  hetzelfde logje (`components/batch/MetingLog.tsx`), dus de twee overzichten
+  kunnen niet meer uit elkaar lopen.
+- **Tellingen gaan over handmatige metingen.** De stap "Metingen" telde alle
+  metingen mee en zette daardoor een betekenisloos getal van honderden neer.
+
+### Opgelost — SG bleef onzichtbaar bij hoveren over de fermentatiegrafiek
+
+De grafiek koos onder de cursor simpelweg de dichtstbijzijnde meting. Met een
+automatische temperatuurmeting per 10 minuten tegenover een handmatige
+SG-meting per dag landde je daardoor vrijwel altijd op een temperatuurpunt: de
+tooltip toonde alleen `°C` en het SG was in de praktijk niet af te lezen.
+
+- **SG-metingen trekken de cursor aan.** Ligt er een SG-meting dicht in de
+  buurt, dan wint die van een auto-punt dat toevallig dichterbij staat — je
+  hoeft niet exact op de stip te mikken.
+- **Anders komt het SG als context mee.** Hover je op een temperatuurmeting,
+  dan zet de tooltip de dichtstbijzijnde SG-meting eronder, mét het tijdstip
+  waar hij vandaan komt, en krijgt dat punt een gestippeld ringetje.
+- **Ringetjes op het gehoverde punt** in elke lijn (SG/°C/pH) en een tooltip
+  die meegroeit met de langste regel.
+- De keuzelogica zit als pure functie (`kiesHoverMeting` in
+  `utils/metingen.ts`) onder de Vitest-suite.
+
+---
+
 ## [1.11.88] — 2026-08-08
 
 ### Opgelost — "Push mislukt: WC 502" vertelt nu wat er misging
