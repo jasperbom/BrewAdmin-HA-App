@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { metingWaarde, heeftWaarde, metingWaarden, metingenMetFg } from '../metingen'
+import { metingWaarde, heeftWaarde, metingWaarden, metingenMetFg, kiesHoverMeting } from '../metingen'
+import type { HoverPunt } from '../metingen'
 import { fgStabiel } from '../calculations'
 
 describe('metingWaarde', () => {
@@ -72,6 +73,62 @@ describe('metingWaarden', () => {
     expect(metingWaarden(null, 'ph')).toEqual([])
     expect(metingWaarden(undefined, 'ph')).toEqual([])
     expect(metingWaarden([null, undefined, {}], 'ph')).toEqual([])
+  })
+})
+
+describe('kiesHoverMeting', () => {
+  const MIN = 60_000
+  const SNAP = 30 * MIN
+  // Realistische reeks: elke 10 minuten een automatische temperatuurmeting,
+  // met één handmatige SG-meting op 35 minuten.
+  type Punt = HoverPunt<Record<string, unknown>>
+  const auto: Punt[] = Array.from({length: 13}, (_, i) => ({
+    ts: i * 10 * MIN, m: {id: i + 1, temp: 19, auto: true},
+  }))
+  const sgPunt: Punt = {ts: 35 * MIN, m: {id: 99, sg: 1.014, temp: 19.5}}
+  const punten: Punt[] = [...auto, sgPunt].sort((a, b) => a.ts - b.ts)
+
+  it('geeft de SG-meting voorrang boven een dichterbij liggend auto-punt', () => {
+    // Cursor staat precies op het auto-punt van 30 min; de SG-meting ligt 5 min
+    // verderop en wint — anders zie je het SG bij hoveren nooit.
+    const uit = kiesHoverMeting(punten, 30 * MIN, SNAP)
+    expect(uit.meting).toBe(sgPunt.m)
+    expect(uit.sgMeting).toBeNull()
+  })
+
+  it('toont ver van het SG-punt de dichtstbijzijnde SG-meting als context', () => {
+    const uit = kiesHoverMeting(punten, 0, SNAP)
+    expect(uit.meting).toBe(auto[0].m)
+    expect(uit.sgMeting).toBe(sgPunt.m)
+  })
+
+  it('geeft geen contextregel als het gekozen punt zelf een SG heeft', () => {
+    const uit = kiesHoverMeting(punten, 35 * MIN, SNAP)
+    expect(uit.meting).toBe(sgPunt.m)
+    expect(uit.sgMeting).toBeNull()
+  })
+
+  it('laat de SG-context weg als die te ver weg ligt', () => {
+    const uit = kiesHoverMeting(punten, 120 * MIN, SNAP, {sgContext: 20 * MIN})
+    expect(uit.meting).toBe(auto[12].m)
+    expect(uit.sgMeting).toBeNull()
+  })
+
+  it('kiest niets buiten de snap-afstand', () => {
+    expect(kiesHoverMeting(punten, 600 * MIN, SNAP)).toEqual({meting: null, sgMeting: null})
+  })
+
+  it('telt een leeg SG-veld niet als SG-meting', () => {
+    const leeg: Punt[] = [{ts: 0, m: {id: 1, temp: 19, auto: true}}, {ts: 5 * MIN, m: {id: 2, sg: '', temp: 19}}]
+    const uit = kiesHoverMeting(leeg, 0, SNAP)
+    expect(uit.meting).toBe(leeg[0].m)
+    expect(uit.sgMeting).toBeNull()
+  })
+
+  it('gaat om met lege en onbruikbare invoer', () => {
+    expect(kiesHoverMeting([], 0, SNAP)).toEqual({meting: null, sgMeting: null})
+    expect(kiesHoverMeting(null, 0, SNAP)).toEqual({meting: null, sgMeting: null})
+    expect(kiesHoverMeting([{ts: NaN, m: {sg: 1.01}}], 0, SNAP)).toEqual({meting: null, sgMeting: null})
   })
 })
 

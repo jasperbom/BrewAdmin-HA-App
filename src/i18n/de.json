@@ -461,6 +461,8 @@
   "batch_gist_no_measurements": "Fügen Sie Messungen über die Eingabeleiste oben hinzu.",
   "batch_gist_min_2": "Mindestens 2 Messungen hinzufügen, um das Diagramm anzuzeigen.",
   "batch_gist_log": "Messungen",
+  "batch_gist_geen_handmatig": "Nur automatische Messungen — noch keine manuelle Messung erfasst.",
+  "batch_gist_log_meer": "Es werden nur die letzten {n} von {totaal} Messungen angezeigt.",
   "batch_gist_auto_hide": "Auto ausblenden",
   "batch_gist_auto_show": "Auto einblenden",
   "batch_gist_date_time": "Datum/Zeit",

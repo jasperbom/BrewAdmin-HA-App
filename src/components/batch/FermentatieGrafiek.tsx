@@ -1,6 +1,6 @@
 import React from 'react'
 import { t } from '../../i18n'
-import { metingWaarde, metingWaarden } from '../../utils/metingen'
+import { metingWaarde, metingWaarden, kiesHoverMeting } from '../../utils/metingen'
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
 // Guarantees the curve never overshoots between data points (Fritsch-Carlson)
@@ -57,7 +57,10 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
   const zoomRef = React.useRef<[number,number]>([0,1])
   const dragRef = React.useRef<{startX:number, startZoom:[number,number]}|null>(null)
   const [isDragging, setIsDragging] = React.useState(false)
-  const [tooltip, setTooltip] = React.useState<{x:number, m:any}|null>(null)
+  // `sgM` = de dichtstbijzijnde SG-meting wanneer het punt onder de cursor er
+  // zelf geen heeft (zie kiesHoverMeting): met een auto-temperatuurmeting per
+  // 10 minuten zou het SG anders vrijwel nooit in de tooltip verschijnen.
+  const [tooltip, setTooltip] = React.useState<{x:number, m:any, sgM:any}|null>(null)
 
   const W = 760, H = 280
   const PAD = {l:58, r:56, t:28, b:44}
@@ -110,16 +113,17 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
     return (e.clientX - rect.left) * (W / rect.width)
   }
 
+  // Alle metingen met hun tijdstip — basis voor de hover-selectie.
+  const hoverPunten = React.useMemo(
+    () => sorted.map(m => ({ts: new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime(), m})),
+    [sorted]
+  )
+
   const findNearest = (svgX: number) => {
     const [z0,z1] = zoomRef.current
     const vMin = tsMin+z0*fullRange, vMax = tsMin+z1*fullRange, vRange = vMax-vMin
     const hoverTs = vMin + ((svgX-PAD.l)/CW)*vRange
-    let nearest: any = null, best = Infinity
-    for (const m of sorted) {
-      const dist = Math.abs(new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime() - hoverTs)
-      if (dist < best) { best = dist; nearest = m }
-    }
-    return nearest && best < vRange*0.15 ? nearest : null
+    return kiesHoverMeting(hoverPunten, hoverTs, vRange*0.15)
   }
 
   const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -139,12 +143,12 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
       if (nz1-nz0 === span) { const next: [number,number] = [nz0,nz1]; zoomRef.current = next; setZoom(next) }
     }
     if (svgX >= PAD.l && svgX <= PAD.l+CW) {
-      const m = findNearest(svgX)
+      const {meting: m, sgMeting: sgM} = findNearest(svgX)
       if (m) {
         const ts = new Date(`${m.datum}T${m.tijd||'00:00'}`).getTime()
         const [z0,z1] = zoomRef.current
         const vMin = tsMin+z0*fullRange, vRange = (tsMin+z1*fullRange)-vMin
-        setTooltip({x: PAD.l+((ts-vMin)/vRange)*CW, m})
+        setTooltip({x: PAD.l+((ts-vMin)/vRange)*CW, m, sgM})
       } else setTooltip(null)
     } else setTooltip(null)
   }
@@ -302,17 +306,35 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
 
         {/* Hover tooltip */}
         {tooltip && (() => {
-          const m = tooltip.m
+          const m = tooltip.m, sgM = tooltip.sgM
           const vSg = metingWaarde(m.sg), vPh = metingWaarde(m.ph), vTemp = metingWaarde(m.temp)
           const rows: {t:string, c:string}[] = [{t:`${m.datum}${m.tijd?' '+m.tijd:''}`, c:'#6b7280'}]
           if (vSg!=null)   rows.push({t:`SG: ${vSg.toFixed(3)}`, c:'#d97706'})
           if (vPh!=null)   rows.push({t:`pH: ${vPh.toFixed(1)}`, c:'#3b82f6'})
           if (vTemp!=null) rows.push({t:`${vTemp.toFixed(1)}°C`, c:'#ef4444'})
           if (m.opmerking) rows.push({t:m.opmerking,             c:'#374151'})
-          const bw=114, bh=rows.length*14+10
+          // Staat de cursor op een (auto)meting zonder SG, dan tóch het SG van
+          // de dichtstbijzijnde meting tonen — mét eigen tijdstip, zodat
+          // duidelijk is dat het van een ander moment komt.
+          const vSgCtx = sgM ? metingWaarde(sgM.sg) : null
+          if (vSgCtx != null) {
+            rows.push({t:`SG: ${vSgCtx.toFixed(3)} · ${String(sgM.datum||'').slice(5)}${sgM.tijd?' '+sgM.tijd:''}`, c:'#b45309'})
+          }
+          // Breedte meegroeien met de langste regel (de SG-contextregel en
+          // opmerkingen passen anders niet in de vaste 114 eenheden).
+          const bw = Math.min(230, Math.max(114, ...rows.map(r => r.t.length*5.3+16)))
+          const bh = rows.length*14+10
           const bx = tooltip.x+10+bw > PAD.l+CW ? tooltip.x-bw-10 : tooltip.x+10
+          // Ringetjes op de gehoverde meting: waar zit dit punt in elke lijn?
+          const ring = (v: number|null, toY: (n:number)=>number, kleur: string, ts: number, key: string) =>
+            v == null ? null : <circle key={key} cx={toX(ts)} cy={toY(v)} r="5.5" fill="none" stroke={kleur} strokeWidth="1.5" clipPath="url(#fc)"/>
+          const mTs = mkTs(m)
           return <g>
             <line x1={tooltip.x} y1={PAD.t} x2={tooltip.x} y2={PAD.t+CH} stroke="#9ca3af" strokeWidth="1" strokeDasharray="3 2"/>
+            {ring(vSg, toYsg, '#d97706', mTs, 'sg')}
+            {ring(vTemp, toYtemp, '#ef4444', mTs, 'temp')}
+            {ring(vPh, toYph, '#3b82f6', mTs, 'ph')}
+            {vSgCtx != null && <circle cx={toX(mkTs(sgM))} cy={toYsg(vSgCtx)} r="5.5" fill="none" stroke="#d97706" strokeWidth="1.5" strokeDasharray="2 2" clipPath="url(#fc)"/>}
             <rect x={bx} y={PAD.t+6} width={bw} height={bh} fill="white" rx="4" stroke="#e5e7eb" strokeWidth="1"/>
             {rows.map((r,i) => <text key={i} x={bx+8} y={PAD.t+21+i*14} fontSize="10" fill={r.c}>{r.t}</text>)}
           </g>

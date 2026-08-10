@@ -461,6 +461,8 @@
   "batch_gist_no_measurements": "Add measurements using the input bar above.",
   "batch_gist_min_2": "Add at least 2 measurements to show the chart.",
   "batch_gist_log": "Measurements",
+  "batch_gist_geen_handmatig": "Only automatic measurements — no manual measurement entered yet.",
+  "batch_gist_log_meer": "Only the most recent {n} of {totaal} measurements are shown.",
   "batch_gist_auto_hide": "Hide automatic",
   "batch_gist_auto_show": "Show automatic",
   "batch_gist_date_time": "Date/time",

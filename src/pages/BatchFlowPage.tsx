@@ -31,6 +31,7 @@ import SearchInput from '../components/ui/SearchInput'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
 import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
+import MetingLog from '../components/batch/MetingLog'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
 import VrijgaveSectie from '../components/batch/VrijgaveSectie'
@@ -981,11 +982,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     if (fase === 'Vergisten') {
       const stabiel = fgStabiel(mijnMetingen as any)
+      const handmatig = mijnMetingen.filter((m: any) => !m.auto).length
       const dryHopBi = mijnBi.filter((x: any) => isDryHopRij(x))
       const dhAfgeboekt = dryHopBi.filter((x: any) => x.afgeboekt).length
       const items: (ChecklistItem | null)[] = [
+        // Het detail telt alleen de handmatige metingen: de HA-sensor schrijft
+        // elke 10 minuten een temperatuurmeting weg, dus het totaal zou hier
+        // een betekenisloos getal van honderden neerzetten.
         {key: 'metingen', label: t('flow_chk_metingen'), done: mijnMetingen.length >= 2,
-         detail: String(mijnMetingen.length)},
+         detail: handmatig > 0 ? String(handmatig) : undefined},
         {key: 'fg', label: t('flow_chk_fg'), done: Number(selB.FG) > 0,
          detail: Number(selB.FG) > 0 ? String(selB.FG) : undefined},
         {key: 'fg_stabiel', label: t('flow_chk_fg_stabiel'), done: stabiel},
@@ -1138,7 +1143,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       opmerking: '',
     }
     setGistMetingen((prev: any[]) => [...(prev || []), nieuw])
+    logAudit(auditLog, setAuditLog, {entiteit: 'Gistmeting', entiteit_id: nieuw.id, actie: 'aangemaakt',
+      omschrijving: `Batch ${selB?.naam || ''}: SG=${nieuw.sg} pH=${nieuw.ph ?? '-'} T=${nieuw.temp ?? '-'}°C`})
     setMForm({sg: '', temp: '', ph: ''})
+  }
+
+  const deleteMeting = (id: number) => {
+    logAudit(auditLog, setAuditLog, {entiteit: 'Gistmeting', entiteit_id: id, actie: 'verwijderd',
+      omschrijving: `Batch ${selB?.naam || ''}`})
+    setGistMetingen((prev: any[]) => (prev || []).filter((m: any) => m.id !== id))
   }
 
   const openInBatches = () => {
@@ -1917,6 +1930,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // ── Detail: gedeelde afleidingen ──────────────────────────────────────────
   const mijnBi = (bi || []).filter((x: any) => x.batch_id === selB.id)
   const mijnMetingen = (gistMetingen || []).filter((m: any) => m.batch_id === selB.id)
+  // Tellingen gaan over de metingen die je zélf hebt ingevoerd: de HA-sensor
+  // schrijft elke 10 minuten een temperatuurmeting weg, dus het totaal zegt
+  // niets over hoe vaak er echt gemeten is.
+  const handmatigeMetingen = mijnMetingen.filter((m: any) => !m.auto)
   // Starttijdstip van de vergisting voor de X-as van de grafiek — zelfde
   // afleiding als op de Batches-pagina (tank_historie, anders batch.datum).
   const vergistStartTs: number | null = (() => {
@@ -3389,6 +3406,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
     : <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
 
+  // Grafiek + het logje met de (handmatige) metingen — dezelfde band in zowel
+  // de vergist- als de conditioneerfase.
+  const renderMetingen = () => (
+    <>
+      {renderMetingForm()}
+      {renderGrafiek()}
+      <MetingLog metingen={mijnMetingen} onDelete={deleteMeting} />
+    </>
+  )
+
   // Inhoud van één fasekaart. Elke stap combineert de checklist-status én de
   // velden/acties die nodig zijn om die stap af te ronden in één inklapbaar blok;
   // afgeronde stappen klappen standaard dicht zodat je niet te veel tegelijk ziet.
@@ -3555,8 +3582,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <FlowStap title={t('flow_stap_metingen')} done={!!clMap.metingen?.done}
                 detail={clMap.metingen?.detail ? `${clMap.metingen.detail}×` : undefined}
                 {...so('metingen', !!clMap.metingen?.done)}>
-                {renderMetingForm()}
-                {renderGrafiek()}
+                {renderMetingen()}
               </FlowStap>
               <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start space-y-3 lg:space-y-0">
                 <div className="space-y-3">
@@ -3657,10 +3683,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 )}
               </div>
             </div>
-            <FlowStap title={t('flow_stap_metingen')} optional done={mijnMetingen.length >= 2}
-              detail={mijnMetingen.length ? `${mijnMetingen.length}×` : undefined} {...so('meting', true)}>
-              {renderMetingForm()}
-              {renderGrafiek()}
+            <FlowStap title={t('flow_stap_metingen')} optional done={handmatigeMetingen.length >= 2}
+              detail={handmatigeMetingen.length ? `${handmatigeMetingen.length}×` : undefined} {...so('meting', true)}>
+              {renderMetingen()}
             </FlowStap>
             {/* CCP 1 — sluitstuk van de conditioneerfase: zonder vrijgave gaat
                 de batch niet naar Afgevuld. */}

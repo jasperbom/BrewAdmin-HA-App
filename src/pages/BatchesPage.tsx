@@ -24,6 +24,7 @@ import WaterAdditieSection from '../components/batch/WaterAdditieSection'
 import PrimingSugarCalc from '../components/batch/PrimingSugarCalc'
 import StatusSuggestion from '../components/batch/StatusSuggestion'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
+import MetingLog from '../components/batch/MetingLog'
 
 // ── Vernietigingsflow bij verlies-bron 'afgekeurd' (Douane §7.2.3) ───────────
 // Zelfde 3-staps-flow als bij afgevuld bier (ProductenPage): bier dat tijdens
@@ -271,7 +272,6 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const [grafiekOpen, setGrafiekOpen] = useStore('gist_grafiek_open', {} as Record<string,boolean>)
   const emptyMeting = { datum: tod(), tijd: '', sg: '', ph: '', temp: '', opmerking: '' }
   const [metingForm, setMetingForm] = useState<any>(emptyMeting)
-  const [toonAutoMetingen, setToonAutoMetingen] = useState(false)
   const [haSyncing, setHaSyncing] = useState(false)
   const [bfSyncing, setBfSyncing] = useState(false)
   const [bfMsg, setBfMsg] = useState('')
@@ -1992,52 +1992,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         <FermentatieGrafiek metingen={batchMetingen} startTs={vergistStartTs} />
                       )}
 
-                      {batchMetingen.length > 0 && (
-                        <div>
-                          <div className="flex items-center justify-between cursor-pointer select-none py-1.5 border-t mt-2"
-                            onClick={() => setMetingLogIngeklapt((v: boolean) => !v)}>
-                            <span className="text-xs font-medium text-gray-500">
-                              {metingLogIngeklapt ? '▶' : '▼'} {t('batch_gist_log')} ({batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).length})
-                            </span>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setToonAutoMetingen((v: boolean) => !v) }}
-                              className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${toonAutoMetingen ? 'bg-blue-50 border-blue-300 text-blue-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}
-                            >
-                              {toonAutoMetingen ? t('batch_gist_auto_hide') : t('batch_gist_auto_show')}
-                            </button>
-                          </div>
-                          {!metingLogIngeklapt && (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-xs">
-                                <thead className="bg-gray-50 text-gray-500 border-b">
-                                  <tr>
-                                    <th className="px-2 py-1.5 text-left font-medium">{t('batch_gist_date_time')}</th>
-                                    <th className="px-2 py-1.5 text-right font-medium text-amber-600">SG</th>
-                                    <th className="px-2 py-1.5 text-right font-medium text-blue-600">pH</th>
-                                    <th className="px-2 py-1.5 text-right font-medium text-red-500">°C</th>
-                                    <th className="px-2 py-1.5 text-left font-medium text-gray-400">{t('batch_gist_remark')}</th>
-                                    <th className="px-2 py-1.5"></th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {batchMetingen.filter((m: any) => toonAutoMetingen || !m.auto).map((m: any) => (
-                                    <tr key={m.id} className={`hover:bg-gray-50 ${m.auto ? 'opacity-50' : ''}`}>
-                                      <td className="px-2 py-1.5 text-gray-600">{m.datum}{m.tijd ? ` ${m.tijd}` : ''}{m.auto ? <span className="ml-1 text-gray-400 text-xs italic">auto</span> : ''}</td>
-                                      <td className="px-2 py-1.5 text-right font-mono text-amber-700">{m.sg !== '' && m.sg != null && !isNaN(Number(m.sg)) ? Number(m.sg).toFixed(3) : '—'}</td>
-                                      <td className="px-2 py-1.5 text-right font-mono text-blue-700">{m.ph !== '' && m.ph != null && !isNaN(Number(m.ph)) ? Number(m.ph).toFixed(1) : '—'}</td>
-                                      <td className="px-2 py-1.5 text-right font-mono text-red-500">{m.temp !== '' && m.temp != null && !isNaN(Number(m.temp)) ? `${Number(m.temp)}°` : '—'}</td>
-                                      <td className="px-2 py-1.5 text-gray-400 italic">{m.opmerking || ''}</td>
-                                      <td className="px-2 py-1.5">
-                                        <button onClick={() => deleteMeting(m.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {/* Zelfde metingenlogje als in de batch-flow */}
+                      <MetingLog metingen={batchMetingen} onDelete={deleteMeting}
+                        open={!metingLogIngeklapt}
+                        onToggle={() => setMetingLogIngeklapt((v: boolean) => !v)} />
                     </div>
                   )}
                 </div>

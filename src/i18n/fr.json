@@ -461,6 +461,8 @@
   "batch_gist_no_measurements": "Ajoutez des mesures via la barre de saisie ci-dessus.",
   "batch_gist_min_2": "Ajoutez au moins 2 mesures pour afficher le graphique.",
   "batch_gist_log": "Mesures",
+  "batch_gist_geen_handmatig": "Uniquement des mesures automatiques — aucune mesure manuelle saisie.",
+  "batch_gist_log_meer": "Seules les {n} dernières mesures sur {totaal} sont affichées.",
   "batch_gist_auto_hide": "Masquer auto",
   "batch_gist_auto_show": "Afficher auto",
   "batch_gist_date_time": "Date/heure",

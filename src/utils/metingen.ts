@@ -41,6 +41,59 @@ export function metingWaarden(metingen: unknown[] | null | undefined, veld: stri
   return uit
 }
 
+// ── Hover in de fermentatiegrafiek ──────────────────────────────────────────
+// De server schrijft elke 10 minuten een automatische temperatuurmeting weg
+// (~144 per dag), terwijl het SG hooguit een paar keer per batch handmatig
+// wordt gemeten. Wie simpelweg de dichtstbijzijnde meting onder de cursor
+// pakt, landt daardoor vrijwel altijd op zo'n auto-punt: het SG blijft
+// onzichtbaar. Daarom:
+//   1. een SG-meting binnen `sgVoorkeur` wint van een dichterbij liggend punt
+//      zónder SG — je hoeft niet exact op de dot te mikken;
+//   2. lukt dat niet, dan komt de dichtstbijzijnde SG-meting binnen
+//      `sgContext` mee als extra regel in de tooltip, zodat je altijd ziet
+//      welk SG bij dit moment hoort.
+
+export interface HoverPunt<T> {
+  ts: number   // tijdstip van de meting in ms
+  m: T
+}
+
+export interface HoverKeuze<T> {
+  meting: T | null    // de meting waar de tooltip op staat
+  sgMeting: T | null  // dichtstbijzijnde SG-meting als context (null = niet nodig)
+}
+
+export interface HoverOpties {
+  sgVoorkeur?: number  // radius waarbinnen een SG-meting voorrang krijgt
+  sgContext?: number   // radius waarbinnen een SG-meting nog als context telt
+}
+
+export function kiesHoverMeting<T extends Record<string, unknown>>(
+  punten: HoverPunt<T>[] | null | undefined,
+  hoverTs: number,
+  snap: number,
+  opties: HoverOpties = {}
+): HoverKeuze<T> {
+  const voorkeur = opties.sgVoorkeur ?? snap * 0.35
+  const context = opties.sgContext ?? snap * 4
+
+  let dichtste: HoverPunt<T> | null = null, dBest = Infinity
+  let sgDichtste: HoverPunt<T> | null = null, sgBest = Infinity
+  for (const p of punten || []) {
+    if (!p || !Number.isFinite(p.ts)) continue
+    const d = Math.abs(p.ts - hoverTs)
+    if (d < dBest) { dBest = d; dichtste = p }
+    if (metingWaarde(p.m?.sg) != null && d < sgBest) { sgBest = d; sgDichtste = p }
+  }
+
+  // Vlakbij een SG-meting? Die wint, ook van een auto-punt dat dichterbij ligt.
+  if (sgDichtste && sgBest <= voorkeur && sgBest <= snap) return {meting: sgDichtste.m, sgMeting: null}
+  if (!dichtste || dBest > snap) return {meting: null, sgMeting: null}
+  // Heeft het gekozen punt zelf een SG? Dan is er geen contextregel nodig.
+  if (metingWaarde(dichtste.m?.sg) != null) return {meting: dichtste.m, sgMeting: null}
+  return {meting: dichtste.m, sgMeting: sgDichtste && sgBest <= context ? sgDichtste.m : null}
+}
+
 // ── FG als meting ───────────────────────────────────────────────────────────
 // De FG die je in de vergistingsfase invult ís een SG-meting. Voorheen telde
 // dat veld níét mee in de metingenreeks: de grafiek en de stabiliteitstoets
