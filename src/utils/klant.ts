@@ -76,6 +76,7 @@ export const resolveKlantSnapshot = (snapshot: any, klanten: any[] = []): any =>
     ['huisnummer', 'klant_huisnummer'],
     ['postcode',   'klant_postcode'],
     ['stad',       'klant_stad'],
+    ['land',       'klant_land'],
     ['btw_nummer', 'klant_btw_nummer'],
     ['telefoon',   'klant_telefoon'],
   ]

@@ -4,6 +4,52 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.90] — 2026-08-11
+
+### Toegevoegd — e-factuur (UBL 2.1 / PEPPOL) naast de PDF
+
+Een afnemer die de factuur machineleesbaar wil ontvangen — een gemeente via
+PEPPOL, een Belgische of Duitse afnemer die onder een e-factureringsplicht
+valt — kon tot nu toe alleen een PDF krijgen. Verkoopfacturen zijn nu ook als
+gestructureerde XML te downloaden.
+
+- **Nieuwe knop `XML`** naast `PDF` bij elke verkoopfactuur (op de
+  facturenlijst, het factuuroverzicht en de klantkaart). Levert UBL 2.1 volgens
+  PEPPOL BIS Billing 3.0.
+- **Cent-exact.** De totalen worden uit de regels afgeleid met `utils/centen.ts`,
+  zodat de XML intern consistent is (PEPPOL BR-CO-10 t/m BR-CO-15) en exact
+  overeenkomt met de PDF.
+- **Meerdere BTW-tarieven** in één factuur: één `TaxSubtotal` per combinatie van
+  categorie en tarief, dus een factuur met 21% bier, 9% eten en 0% statiegeld
+  klopt.
+- **Kortingsregels worden documentkortingen** (`AllowanceCharge`) in plaats van
+  regels met een negatieve prijs, die PEPPOL verbiedt (BR-27).
+- **Creditnota's** komen als `CreditNote`-document met typecode 381 en een
+  verwijzing naar de gecrediteerde factuur; negatief opgeslagen bedragen worden
+  omgeklapt naar positief zoals PEPPOL vereist.
+- **Controle vóór de download**: ontbreken er verplichte gegevens (BTW-nummer,
+  land, plaats, PEPPOL-ID), dan meldt de app precies wat er mist. Doorgaan mag —
+  de gebruiker weet zelf of de ontvanger streng valideert.
+
+### Toegevoegd — BTW-categoriecodes en landcode
+
+Een tarief van 0% zegt niets over de reden: binnenlands nultarief,
+intracommunautaire levering, export buiten de EU of verlegde heffing zijn vier
+verschillende dingen, en een e-factuur moet dat onderscheid maken.
+
+- **Landcode op de klantkaart** (keuzelijst met de landnaam in de taal van de
+  gebruiker, leeg = binnenland), ook in het snelle klantformulier op de
+  boekhoudpagina.
+- **Automatische categorie-afleiding**: tarief > 0 → `S`; 0% binnenland → `Z`;
+  0% naar een EU-afnemer mét BTW-nummer → `K` met VATEX-EU-IC; 0% buiten de EU →
+  `G`. Een expliciete categorie op de factuurregel gaat altijd vóór.
+- **Land en PEPPOL-ID van de brouwerij** onder Instellingen → Brouwerij; het
+  PEPPOL-schema wordt uit de vorm van het ID afgeleid (0106 bij KvK, 9944 bij
+  een Nederlands BTW-nummer).
+- Nieuwe pure logica in `utils/btwCategorie.ts` en `utils/ubl.ts`, met 55 tests.
+
+---
+
 ## [1.11.89] — 2026-08-10
 
 ### Verbeterd — handmatige metingen zichtbaar in de batch-flow, SG leesbaar in de grafiek

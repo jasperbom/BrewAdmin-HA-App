@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
+import { landOpties } from '../utils/btwCategorie'
+import { peppolSchemaVoor } from '../utils/ubl'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
@@ -1505,6 +1507,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 placeholder="Amsterdam"
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
             </div>
+            <div>
+              {/* Eigen landcode: referentiepunt voor de BTW-categorie op de
+                  e-factuur (binnenland vs. intracommunautair vs. export). */}
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_land')}</label>
+              <select value={breweryDetails?.land||'NL'} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,land:e.target.value}))}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input">
+                {landOpties(getLang()).map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+              </select>
+            </div>
           </div>
           <div className="border-t pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -1519,6 +1530,23 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <input type="text" value={breweryDetails?.kvk_nummer||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,kvk_nummer:e.target.value}))}
                 placeholder="12345678"
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full font-mono t-input" />
+            </div>
+            <div>
+              {/* PEPPOL-deelnemer-ID (BT-34): waaronder de brouwerij op het
+                  PEPPOL-netwerk bekend is. Meestal het KvK- of BTW-nummer;
+                  het schema wordt uit de vorm afgeleid als het leeg blijft. */}
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_peppol_id')}</label>
+              <input type="text" value={breweryDetails?.peppol_id||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,peppol_id:e.target.value}))}
+                placeholder="12345678"
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full font-mono t-input" />
+              <p className="text-xs text-gray-400 mt-0.5">{t('settings_peppol_id_hint')}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_peppol_schema')}</label>
+              <input type="text" value={breweryDetails?.peppol_schema||''} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,peppol_schema:e.target.value}))}
+                placeholder={peppolSchemaVoor(breweryDetails?.peppol_id) || '0106'}
+                className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full font-mono t-input" />
+              <p className="text-xs text-gray-400 mt-0.5">{t('settings_peppol_schema_hint')}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_iban')}</label>

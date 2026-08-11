@@ -8,12 +8,14 @@
  *   exact dezelfde klantnaam (zie matchOngekoppeldeOrder).
  */
 import React from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { newId } from '../utils/api'
 import { nextKlantnummer } from '../utils/klant'
+import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { fmt, fmtD } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
+import Sel from '../components/ui/Sel'
 import SearchInput from '../components/ui/SearchInput'
 import SectionHeader from '../components/ui/SectionHeader'
 import MailModal from '../components/MailModal'
@@ -49,6 +51,9 @@ const STATUS_COLORS: Record<string, string> = {
 const emptyForm = () => ({
   naam: '', klantnummer: '', klant_type: 'prive' as 'prive'|'zakelijk',
   bedrijf: '', straat: '', huisnummer: '', postcode: '', stad: '',
+  // Landcode (ISO alpha-2). Bepaalt op de e-factuur of een 0%-regel een
+  // intracommunautaire levering of export buiten de EU is.
+  land: '',
   btw_nummer: '', kvk_nummer: '',
   email: '', telefoon: '',
   betalingstermijn: '' as string | number,
@@ -248,7 +253,7 @@ const KlantenPage: React.FC<Props> = ({
       naam: k.naam || '', klantnummer: k.klantnummer || '',
       klant_type: k.klant_type || (k.bedrijf ? 'zakelijk' : 'prive'),
       bedrijf: k.bedrijf || '', straat: k.straat || '', huisnummer: k.huisnummer || '',
-      postcode: k.postcode || '', stad: k.stad || '',
+      postcode: k.postcode || '', stad: k.stad || '', land: k.land || '',
       btw_nummer: k.btw_nummer || '', kvk_nummer: k.kvk_nummer || '',
       email: k.email || '', telefoon: k.telefoon || '',
       betalingstermijn: k.betalingstermijn ?? '',
@@ -284,6 +289,7 @@ const KlantenPage: React.FC<Props> = ({
       huisnummer: synth.huisnummer || '',
       postcode: synth.postcode || '',
       stad: synth.stad || '',
+      land: synth.land || '',
       btw_nummer: '',
       kvk_nummer: '',
       email: synth.email || '',
@@ -324,6 +330,7 @@ const KlantenPage: React.FC<Props> = ({
       huisnummer: form.huisnummer.trim() || undefined,
       postcode: form.postcode.trim() || undefined,
       stad: form.stad.trim() || undefined,
+      land: normaliseerLand(form.land) || undefined,
       btw_nummer: form.btw_nummer.trim() || undefined,
       kvk_nummer: form.kvk_nummer.trim() || undefined,
       email: form.email.trim() || undefined,
@@ -605,6 +612,11 @@ const KlantenPage: React.FC<Props> = ({
               <Inp label={t('lbl_huisnummer')} value={form.huisnummer} onChange={v => update({huisnummer: v})} />
               <Inp label={t('lbl_postcode')} value={form.postcode} onChange={v => update({postcode: v})} />
               <Inp label={t('lbl_stad')} value={form.stad} onChange={v => update({stad: v})} cls="sm:col-span-2" />
+              {/* Land bepaalt op de e-factuur (UBL) of een 0%-regel een
+                  intracommunautaire levering of export buiten de EU is.
+                  Leeg = binnenland. */}
+              <Sel label={t('lbl_land')} value={form.land} onChange={v => update({land: v})}
+                opts={landOpties(getLang())} ph={t('lbl_land_binnenland')} />
               <Inp label={t('lbl_btw_nr')} value={form.btw_nummer} onChange={v => update({btw_nummer: v})} cls="sm:col-span-2" />
               <Inp label={t('lbl_kvk')} value={form.kvk_nummer} onChange={v => update({kvk_nummer: v})} />
             </div>
