@@ -4,6 +4,52 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.91] — 2026-08-11
+
+### Toegevoegd — factuurlayout aanpasbaar zonder release
+
+De layout van de factuur-PDF stond hardgecodeerd in de app: elke wens ("logo
+groter", "die kolom eruit", "eigen voettekst") vroeg een nieuwe versie. De
+layout is nu een template die je zelf kunt aanpassen.
+
+- **Instellingen → Factuur → Factuurlayout**: de HTML en CSS van de factuur in
+  twee tekstvakken, met live controle op fouten, een knop om de standaard als
+  startpunt te laden en een knop om terug te vallen op de standaard. De
+  bestaande voorbeeldknop toont direct het resultaat.
+- **Standaardlayout ongewijzigd.** De ingebouwde template levert exact hetzelfde
+  document als voorheen; dat is per geval nagerekend tegen de oude
+  implementatie (volledige factuur, betaalde factuur, creditnota, factuur zonder
+  regels, uitgezette factuurvelden, Mollie-QR). Enige zichtbare wijziging: de
+  dubbele nadruk op de bedrijfsnaam in het adresblok is weg — die regel was al
+  vetgedrukt.
+- **Kapotte eigen template blokkeert niets.** Bij een fout valt de app stil terug
+  op de standaardlayout; een factuur is dus altijd te printen en te mailen. De
+  foutmelding staat wel in de editor.
+- Opgeslagen in `brewery_details.factuur_template` (`{html, css}`), dus de
+  layout gaat automatisch mee in de Excel-backup.
+
+### Verbeterd — factuur en pakbon volledig via i18n
+
+Bij het omzetten bleek een reeks labels op de factuur, pakbon en herinnering
+hardgecodeerd in het Nederlands ("Omschrijving", "Aantal", "Prijs", "BTW%",
+"Geen regels", "Opmerking", "o.v.v. factuurnummer", "Datum ontvangst" …). Die
+lopen nu allemaal via `t()`, in alle vijf de talen — ook in een zelfgemaakte
+layout, omdat labels als `{{lbl_…}}` uit de context komen en niet als letterlijke
+tekst in de template staan.
+
+### Intern
+
+- Nieuwe `utils/template.ts`: kleine Mustache-subset (`{{waarde}}`,
+  `{{{ruw}}}`, `{{#sectie}}`, `{{^omgekeerd}}`, commentaar, puntpaden) zonder
+  externe dependency, met 26 tests.
+- Nieuwe `utils/factuurTemplate.ts` met de standaardlayout en de contextbouwer,
+  met 25 tests.
+- Documentopmaak (`fmtEuroDoc`, `fmtDatumDoc`) staat nu in `utils/format.ts`,
+  zodat factuur, pakbon, herinnering en template dezelfde bedragen en datums
+  produceren.
+
+---
+
 ## [1.11.90] — 2026-08-11
 
 ### Toegevoegd — e-factuur (UBL 2.1 / PEPPOL) naast de PDF

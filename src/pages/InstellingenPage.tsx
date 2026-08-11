@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { t, getLang } from '../i18n'
 import { landOpties } from '../utils/btwCategorie'
 import { peppolSchemaVoor } from '../utils/ubl'
+import { controleerTemplate } from '../utils/template'
+import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
@@ -1709,6 +1711,70 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             w.focus()
           }
         }}>{t('btn_factuur_voorbeeld')}</Btn>
+      </div>
+
+      {/* Factuurlayout als template (utils/factuurTemplate.ts). Leeg = de
+          ingebouwde standaardlayout; een fout in de eigen template valt bij het
+          renderen automatisch terug op de standaard. */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_factuur_template_title')}</h2>
+        <p className="text-sm text-gray-500 mb-3">{t('settings_factuur_template_desc')}</p>
+        {(() => {
+          const tpl = breweryDetails?.factuur_template || {}
+          const html = String(tpl.html || '')
+          const css = String(tpl.css || '')
+          const fout = html.trim() ? controleerTemplate(html) : null
+          const zetTemplate = (velden: any) => setBreweryDetails((p: any) => ({
+            ...p, factuur_template: {...(p?.factuur_template || {}), ...velden},
+          }))
+          return (
+            <>
+              <div className="mb-3">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${html.trim() ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {html.trim() ? t('settings_factuur_template_eigen') : t('settings_factuur_template_standaard')}
+                </span>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_factuur_template_html')}</label>
+              <textarea value={html} rows={14} spellCheck={false}
+                onChange={(e: any) => zetTemplate({html: e.target.value})}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono t-input" />
+              {html.trim() && (
+                <p className={`text-xs mt-1 ${fout ? 'text-red-600' : 'text-green-600'}`}>
+                  {fout ? `${t('settings_factuur_template_fout')}: ${fout}` : t('settings_factuur_template_ok')}
+                </p>
+              )}
+              <label className="block text-sm font-medium text-gray-700 mb-1 mt-3">{t('settings_factuur_template_css')}</label>
+              <textarea value={css} rows={8} spellCheck={false}
+                onChange={(e: any) => zetTemplate({css: e.target.value})}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono t-input" />
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <Btn v="secondary" onClick={() => zetTemplate({html: FACTUUR_HTML_DEFAULT, css: FACTUUR_CSS_DEFAULT})}>
+                  {t('settings_factuur_template_laad')}
+                </Btn>
+                {(html.trim() || css.trim()) && (
+                  <Btn v="danger" onClick={() => {
+                    if (!confirm(t('settings_factuur_template_reset_confirm'))) return
+                    setBreweryDetails((p: any) => {
+                      const {factuur_template: _weg, ...rest} = p || {}
+                      return rest
+                    })
+                  }}>{t('settings_factuur_template_reset')}</Btn>
+                )}
+              </div>
+              <details className="mt-3">
+                <summary className="text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer">
+                  {t('settings_factuur_template_velden')}
+                </summary>
+                <p className="text-xs text-gray-500 mt-2">{t('settings_factuur_template_velden_hint')}</p>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {FACTUUR_TEMPLATE_VELDEN.map(veld => (
+                    <code key={veld} className="text-xs bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">{`{{${veld}}}`}</code>
+                  ))}
+                </div>
+              </details>
+            </>
+          )
+        })()}
       </div>
 
       {/* Verzendkosten */}
