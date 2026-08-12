@@ -4,6 +4,98 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.91] — 2026-08-11
+
+### Toegevoegd — factuurlayout aanpasbaar zonder release
+
+De layout van de factuur-PDF stond hardgecodeerd in de app: elke wens ("logo
+groter", "die kolom eruit", "eigen voettekst") vroeg een nieuwe versie. De
+layout is nu een template die je zelf kunt aanpassen.
+
+- **Instellingen → Factuur → Factuurlayout**: de HTML en CSS van de factuur in
+  twee tekstvakken, met live controle op fouten, een knop om de standaard als
+  startpunt te laden en een knop om terug te vallen op de standaard. De
+  bestaande voorbeeldknop toont direct het resultaat.
+- **Standaardlayout ongewijzigd.** De ingebouwde template levert exact hetzelfde
+  document als voorheen; dat is per geval nagerekend tegen de oude
+  implementatie (volledige factuur, betaalde factuur, creditnota, factuur zonder
+  regels, uitgezette factuurvelden, Mollie-QR). Enige zichtbare wijziging: de
+  dubbele nadruk op de bedrijfsnaam in het adresblok is weg — die regel was al
+  vetgedrukt.
+- **Kapotte eigen template blokkeert niets.** Bij een fout valt de app stil terug
+  op de standaardlayout; een factuur is dus altijd te printen en te mailen. De
+  foutmelding staat wel in de editor.
+- Opgeslagen in `brewery_details.factuur_template` (`{html, css}`), dus de
+  layout gaat automatisch mee in de Excel-backup.
+
+### Verbeterd — factuur en pakbon volledig via i18n
+
+Bij het omzetten bleek een reeks labels op de factuur, pakbon en herinnering
+hardgecodeerd in het Nederlands ("Omschrijving", "Aantal", "Prijs", "BTW%",
+"Geen regels", "Opmerking", "o.v.v. factuurnummer", "Datum ontvangst" …). Die
+lopen nu allemaal via `t()`, in alle vijf de talen — ook in een zelfgemaakte
+layout, omdat labels als `{{lbl_…}}` uit de context komen en niet als letterlijke
+tekst in de template staan.
+
+### Intern
+
+- Nieuwe `utils/template.ts`: kleine Mustache-subset (`{{waarde}}`,
+  `{{{ruw}}}`, `{{#sectie}}`, `{{^omgekeerd}}`, commentaar, puntpaden) zonder
+  externe dependency, met 26 tests.
+- Nieuwe `utils/factuurTemplate.ts` met de standaardlayout en de contextbouwer,
+  met 25 tests.
+- Documentopmaak (`fmtEuroDoc`, `fmtDatumDoc`) staat nu in `utils/format.ts`,
+  zodat factuur, pakbon, herinnering en template dezelfde bedragen en datums
+  produceren.
+
+---
+
+## [1.11.90] — 2026-08-11
+
+### Toegevoegd — e-factuur (UBL 2.1 / PEPPOL) naast de PDF
+
+Een afnemer die de factuur machineleesbaar wil ontvangen — een gemeente via
+PEPPOL, een Belgische of Duitse afnemer die onder een e-factureringsplicht
+valt — kon tot nu toe alleen een PDF krijgen. Verkoopfacturen zijn nu ook als
+gestructureerde XML te downloaden.
+
+- **Nieuwe knop `XML`** naast `PDF` bij elke verkoopfactuur (op de
+  facturenlijst, het factuuroverzicht en de klantkaart). Levert UBL 2.1 volgens
+  PEPPOL BIS Billing 3.0.
+- **Cent-exact.** De totalen worden uit de regels afgeleid met `utils/centen.ts`,
+  zodat de XML intern consistent is (PEPPOL BR-CO-10 t/m BR-CO-15) en exact
+  overeenkomt met de PDF.
+- **Meerdere BTW-tarieven** in één factuur: één `TaxSubtotal` per combinatie van
+  categorie en tarief, dus een factuur met 21% bier, 9% eten en 0% statiegeld
+  klopt.
+- **Kortingsregels worden documentkortingen** (`AllowanceCharge`) in plaats van
+  regels met een negatieve prijs, die PEPPOL verbiedt (BR-27).
+- **Creditnota's** komen als `CreditNote`-document met typecode 381 en een
+  verwijzing naar de gecrediteerde factuur; negatief opgeslagen bedragen worden
+  omgeklapt naar positief zoals PEPPOL vereist.
+- **Controle vóór de download**: ontbreken er verplichte gegevens (BTW-nummer,
+  land, plaats, PEPPOL-ID), dan meldt de app precies wat er mist. Doorgaan mag —
+  de gebruiker weet zelf of de ontvanger streng valideert.
+
+### Toegevoegd — BTW-categoriecodes en landcode
+
+Een tarief van 0% zegt niets over de reden: binnenlands nultarief,
+intracommunautaire levering, export buiten de EU of verlegde heffing zijn vier
+verschillende dingen, en een e-factuur moet dat onderscheid maken.
+
+- **Landcode op de klantkaart** (keuzelijst met de landnaam in de taal van de
+  gebruiker, leeg = binnenland), ook in het snelle klantformulier op de
+  boekhoudpagina.
+- **Automatische categorie-afleiding**: tarief > 0 → `S`; 0% binnenland → `Z`;
+  0% naar een EU-afnemer mét BTW-nummer → `K` met VATEX-EU-IC; 0% buiten de EU →
+  `G`. Een expliciete categorie op de factuurregel gaat altijd vóór.
+- **Land en PEPPOL-ID van de brouwerij** onder Instellingen → Brouwerij; het
+  PEPPOL-schema wordt uit de vorm van het ID afgeleid (0106 bij KvK, 9944 bij
+  een Nederlands BTW-nummer).
+- Nieuwe pure logica in `utils/btwCategorie.ts` en `utils/ubl.ts`, met 55 tests.
+
+---
+
 ## [1.11.89] — 2026-08-10
 
 ### Verbeterd — handmatige metingen zichtbaar in de batch-flow, SG leesbaar in de grafiek

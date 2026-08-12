@@ -789,6 +789,12 @@ export interface Verplaatsing {
   created_at?: string
 }
 
+/** BTW-categoriecode voor e-facturatie (UNCL5305): `S` standaardtarief,
+ * `Z` nultarief, `E` vrijgesteld, `AE` verlegd, `K` intracommunautair,
+ * `G` export buiten de EU, `O` buiten het BTW-toepassingsgebied.
+ * Helpers en afleiding: `src/utils/btwCategorie.ts`. */
+export type BtwCategorie = 'S' | 'Z' | 'E' | 'AE' | 'K' | 'G' | 'O'
+
 export interface VerkoopFactuurRegel {
   omschrijving: string
   hoeveelheid: number
@@ -801,6 +807,9 @@ export interface VerkoopFactuurRegel {
   statiegeld_soort?: 'snd' | 'fust'
   // Verwijzing naar de Verpakking die de statiegeldregel oplevert
   verpakking_id?: number
+  // BTW-categoriecode voor de e-factuur (UBL/PEPPOL). Leeg = afgeleid uit
+  // tarief + land van de afnemer, zie utils/btwCategorie.ts.
+  btw_categorie?: BtwCategorie
 }
 
 export interface BtwOvzRegel {
@@ -823,6 +832,9 @@ export interface Klant {
   postcode?: string
   stad?: string
   btw_nummer?: string
+  // Landcode (ISO 3166-1 alpha-2, bv. NL/BE/DE). Leeg = binnenland; bepaalt
+  // op de e-factuur of een 0%-regel intracommunautair of export is.
+  land?: string
   email?: string
   telefoon?: string
   betalingstermijn?: number
@@ -915,6 +927,7 @@ export interface VerkoopFactuur {
   klant_postcode?: string
   klant_stad?: string
   klant_btw_nummer?: string
+  klant_land?: string
   regels?: VerkoopFactuurRegel[]
   btw_overzicht?: BtwOvzRegel[]
   status?: 'open' | 'betaald' | 'herinnering' | 'tweede_herinnering' | 'aanmaning' | 'credit'

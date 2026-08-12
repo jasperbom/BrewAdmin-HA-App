@@ -11,6 +11,8 @@ import { datumToPeriodeKey, effectievePeriodeKey, bepaalRollover, periodeKeyLabe
 import { makeZip } from '../utils/zip'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe, berekenWinstVerliesUitJournaal, centNaarEuro } from '../utils/journaal'
 import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
+import { landOpties, normaliseerLand } from '../utils/btwCategorie'
+import { bouwUbl, controleerUbl } from '../utils/ubl'
 import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import Modal from '../components/ui/Modal'
@@ -68,7 +70,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [showKlantModal, setShowKlantModal] = React.useState(false)
   const [editingKlant, setEditingKlant] = React.useState<any>(null)
   const [viewingKlantId, setViewingKlantId] = React.useState<number|null>(null)
-  const emptyKlantForm = () => ({naam:'', straat:'', postcode:'', stad:'', btw_nummer:'', email:'', telefoon:'', betalingstermijn:''})
+  const emptyKlantForm = () => ({naam:'', straat:'', postcode:'', stad:'', land:'', btw_nummer:'', email:'', telefoon:'', betalingstermijn:''})
   const [klantForm, setKlantForm] = React.useState<any>(emptyKlantForm())
 
   // ── Bank tab state ─────────────────────────────────────────────────────────
@@ -925,6 +927,55 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     printFactuur(resolved, factuur, breweryMet, '', factuurLogo)
   }
 
+  // ── E-factuur (UBL 2.1 / PEPPOL BIS Billing 3.0) ───────────────────────────
+  // De gestructureerde tegenhanger van de PDF: nodig zodra een afnemer (of een
+  // overheidsinstantie) de factuur machineleesbaar wil ontvangen. Ontbrekende
+  // gegevens blokkeren de download niet — de gebruiker weet zelf of de
+  // ontvanger streng valideert — maar worden wel eerst gemeld.
+  const downloadUblFactuur = (factuur: any) => {
+    const inst = (breweryDetails as any) || {}
+    const resolved = resolveKlantSnapshot(factuur, klanten)
+    const klant = findLiveKlant(factuur, klanten)
+    const termijn = klant?.betalingstermijn ?? inst.betalingstermijn ?? 14
+    const verkoper = {
+      naam: inst.naam || appName || '',
+      straat: inst.straat, huisnummer: inst.huisnummer,
+      postcode: inst.postcode, stad: inst.stad,
+      land: inst.land || 'NL',
+      btw_nummer: inst.btw_nummer, kvk_nummer: inst.kvk_nummer, iban: inst.iban,
+      email: inst.email, telefoon: inst.telefoon,
+      peppol_id: inst.peppol_id, peppol_schema: inst.peppol_schema,
+    }
+    const koper = {
+      naam: resolved.klant_bedrijf || resolved.klant_naam || '',
+      straat: resolved.klant_straat, huisnummer: resolved.klant_huisnummer,
+      postcode: resolved.klant_postcode, stad: resolved.klant_stad,
+      land: klant?.land || resolved.klant_land || inst.land || 'NL',
+      btw_nummer: resolved.klant_btw_nummer,
+      email: resolved.klant_email, telefoon: resolved.klant_telefoon,
+    }
+    const problemen = controleerUbl(factuur, verkoper, koper)
+    if (problemen.length) {
+      const lijst = problemen.map(k => `• ${t(k)}`).join('\n')
+      if (!confirm(`${t('ubl_warn_intro')}\n\n${lijst}\n\n${t('ubl_warn_doorgaan')}`)) return
+    }
+    // Creditnota's verwijzen naar het nummer van de gecrediteerde factuur.
+    const bron = factuur.credit_van_factuur_id != null
+      ? (verkoopFacturen || []).find((f: any) => f.id === factuur.credit_van_factuur_id)
+      : null
+    const {xml, bestandsnaam} = bouwUbl(
+      {...factuur, credit_van_factuurnummer: bron?.factuurnummer},
+      verkoper, koper,
+      {betalingstermijn: termijn},
+    )
+    const url = URL.createObjectURL(new Blob([xml], {type: 'application/xml;charset=utf-8'}))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = bestandsnaam
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // ── Factuur mailen ────────────────────────────────────────────────────────
   const [mailModal, setMailModal] = React.useState<null | {
     title: string
@@ -1613,7 +1664,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   // ── Klanten CRUD ──────────────────────────────────────────────────────────
   const saveKlant = () => {
-    const form = {...klantForm, betalingstermijn: klantForm.betalingstermijn ? Number(klantForm.betalingstermijn) : undefined}
+    const form = {
+      ...klantForm,
+      land: normaliseerLand(klantForm.land) || undefined,
+      betalingstermijn: klantForm.betalingstermijn ? Number(klantForm.betalingstermijn) : undefined,
+    }
     if (editingKlant) {
       // Geef bestaande klanten zonder nummer alsnog er een tijdens edit.
       const klantnummer = editingKlant.klantnummer || nextKlantnummer(klanten || [])
@@ -1875,6 +1930,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         className="px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
                         {t('btn_pdf')}
                       </button>
+                      <button onClick={()=>downloadUblFactuur(f)} title={t('btn_ubl_titel')}
+                        className="px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
+                        {t('btn_ubl')}
+                      </button>
                       <button onClick={()=>mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                         title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_factuur')}
                         className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-xs font-medium border border-blue-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
@@ -1963,6 +2022,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           <button onClick={() => genereerFactuurPDF(f)}
                             className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
                             {t('btn_pdf')}
+                          </button>
+                          <button onClick={() => downloadUblFactuur(f)} title={t('btn_ubl_titel')}
+                            className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
+                            {t('btn_ubl')}
                           </button>
                           <button onClick={() => mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                             title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_factuur')}
@@ -2271,7 +2334,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         <td className={`py-2 pr-3 text-right font-medium ${openstaand>0?'text-orange-600':'text-gray-400'}`}>{openstaand>0?fmt(openstaand):'—'}</td>
                         <td className="py-2 pr-3 text-right text-green-600">{betaald>0?fmt(betaald):'—'}</td>
                         <td className="py-2 text-right whitespace-nowrap" onClick={(e:any)=>e.stopPropagation()}>
-                          <button onClick={()=>{setEditingKlant(k);setKlantForm({naam:k.naam,straat:k.straat||'',postcode:k.postcode||'',stad:k.stad||'',btw_nummer:k.btw_nummer||'',email:k.email||'',telefoon:k.telefoon||'',betalingstermijn:k.betalingstermijn??''});setShowKlantModal(true)}}
+                          <button onClick={()=>{setEditingKlant(k);setKlantForm({naam:k.naam,straat:k.straat||'',postcode:k.postcode||'',stad:k.stad||'',land:k.land||'',btw_nummer:k.btw_nummer||'',email:k.email||'',telefoon:k.telefoon||'',betalingstermijn:k.betalingstermijn??''});setShowKlantModal(true)}}
                             className="text-xs text-gray-400 hover:text-blue-600 px-2 py-0.5 transition-colors">{t('btn_edit')}</button>
                           <button onClick={()=>deleteKlant(k.id)}
                             className="text-xs text-gray-300 hover:text-red-500 px-1 transition-colors">✕</button>
@@ -2318,6 +2381,10 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                             <button onClick={()=>genereerFactuurPDF(f)}
                               className="text-xs px-2 py-0.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-gray-600 transition-colors mr-1">
                               {t('btn_pdf')}
+                            </button>
+                            <button onClick={()=>downloadUblFactuur(f)} title={t('btn_ubl_titel')}
+                              className="text-xs px-2 py-0.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-gray-600 transition-colors mr-1">
+                              {t('btn_ubl')}
                             </button>
                             <button onClick={()=>mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                               title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_factuur')}
@@ -2384,6 +2451,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_stad')}</label>
                   <input type="text" value={klantForm.stad} onChange={(e:any)=>setKlantForm((f:any)=>({...f,stad:e.target.value}))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none" />
+                </div>
+                <div>
+                  {/* Land: bepaalt op de e-factuur of 0% intracommunautair of
+                      export buiten de EU is. Leeg = binnenland. */}
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_land')}</label>
+                  <select value={klantForm.land} onChange={(e:any)=>setKlantForm((f:any)=>({...f,land:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm t-input focus:outline-none">
+                    <option value="">{t('lbl_land_binnenland')}</option>
+                    {landOpties(getLang()).map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_klant_btw_nummer')}</label>
