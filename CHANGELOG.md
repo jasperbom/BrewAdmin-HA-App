@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.94] — 2026-08-13
+
+### Verbeterd — het getal in de cirkel boven in het menu legt zichzelf uit
+
+De oranje cirkel met een getal op de werkruimte-knoppen (Productie / Verkoop /
+Administratie) toonde alleen een optelsom. Waar dat getal vandaan kwam was
+nergens te zien: je moest zelf alle pagina's van die werkruimte langslopen om
+te raden welke taak, welk lot of welke periode erachter zat.
+
+- **De badge is nu een knop.** Muis erop → een tooltip met de volledige
+  opsomming (`1× Achterstallige schoonmaaktaken · 2× Lots over de THT-datum`).
+- **Klikken opent een uitklap** met per regel het label, het aantal en een pijl;
+  een klik op een regel springt meteen naar de pagina waar je het afhandelt
+  (batchtaken → Batches, schoonmaak → HACCP, THT → Ingrediënten, picken →
+  Bestellingen, BTW → Boekhouding).
+- De badge op **Bestellingen** in de tweede menubalk heeft nu ook een tooltip.
+
+Technisch: de opsplitsing zit als pure logica in `src/utils/attentie.ts`
+(`attentiePosten`, mét test), de header gebruikt de nieuwe
+`components/ui/AttentieBadge`. De tellingen zelf zijn ongewijzigd — ze blijven
+in `taken.ts`, `calculations.ts`, `picking.ts` en `btw.ts` staan.
+
+---
+
 ## [1.11.92] — 2026-08-13
 
 ### Opgelost — 'onthoud mij' hield het niet vol: uitgelogd bij elke herstart
