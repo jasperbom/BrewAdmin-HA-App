@@ -553,7 +553,12 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - SQLite-opslag (ERP 4.1): `/data/brewadmin.db` in WAL-mode met
   `synchronous=FULL`; schrijvers serialiseren onder `_data_lock`, de
   database en WAL/SHM-sidecars staan op 0600 (credentials zitten erin) —
-  nooit rechtstreeks losse JSON-databestanden in `/data/` schrijven
+  nooit rechtstreeks losse JSON-databestanden in `/data/` schrijven. De
+  JSON→SQLite-migratie scant `/data/*.json`: bestanden die géén app-data zijn
+  (`options.json` van de Supervisor, `brewadmin_sessies.json` van de
+  directe-toegangspoort) staan in de uitzonderingslijst van
+  `_migreer_json_bestanden` — een nieuw infrastructuurbestand in `/data/` hoort
+  daar ook bij, anders verhuist het bij de eerstvolgende start
 - Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`

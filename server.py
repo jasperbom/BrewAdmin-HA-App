@@ -970,10 +970,18 @@ def _migreer_json_bestanden(conn: sqlite3.Connection) -> None:
     json_voor_sqlite/ (buiten de data-API en de reguliere backups om).
     Idempotent: een key die al in de database staat wordt niet opnieuw
     geïmporteerd; onleesbare bestanden blijven staan en worden gelogd."""
-    # options.json is van de Supervisor (addon-opties), geen app-data —
-    # nooit migreren of verplaatsen.
+    # Twee bestanden in /data zijn géén app-data en mogen dus nooit
+    # gemigreerd of verplaatst worden:
+    #   - options.json: van de Supervisor (addon-opties);
+    #   - brewadmin_sessies.json: de sessie-opslag van de directe-toegangs-
+    #     poort. Dat bestand wordt bij élke login opnieuw geschreven, dus de
+    #     migratie is voor hem niet eenmalig: zonder deze uitzondering
+    #     verhuisde iedere herstart de sessies naar json_voor_sqlite/ (en
+    #     kwamen de sessietokens in de database terecht), waardoor iedereen
+    #     na een addon-update of HA-herstart opnieuw moest inloggen.
+    negeer = {'options', Path(SESSIE_BESTAND_NAAM).stem}
     bestanden = [f for f in sorted(DATA_DIR.glob('*.json'))
-                 if f.is_file() and _valid_key(f.stem) and f.stem != 'options']
+                 if f.is_file() and _valid_key(f.stem) and f.stem not in negeer]
     if not bestanden:
         return
     doel = DATA_DIR / JSON_MIGRATIE_DIRNAAM
@@ -1318,6 +1326,9 @@ LOGOUT_PATH = '/api/logout'
 SESSIE_COOKIE = 'brewadmin_sessie'
 SESSIE_DUUR = 24 * 3600           # 24 uur, glijdend verlengd bij gebruik
 SESSIE_DUUR_LANG = 30 * 24 * 3600  # 30 dagen — 'onthoud mij' bij het inloggen
+# De cookie krijgt bij gebruik hoogstens eens per dag een verse Max-Age, zodat
+# de browsercookie de glijdende sessie volgt (zie _sessie_cookie_vernieuwing).
+SESSIE_COOKIE_VERVERS = 24 * 3600
 # Sessies overleven een addon-herstart: ze staan naast de in-memory dict ook in
 # een 0600-bestand in DATA_DIR (bevat sessietokens — zelfde gevoeligheid als de
 # db met credentials, dus nooit via de data-API bereikbaar en nooit in backups).
@@ -1370,9 +1381,62 @@ def _sessies_bewaar(force: bool = False) -> None:
         _log('sessie', f'kon sessies niet bewaren: {exc}', level=logging.ERROR)
 
 
+def _sessies_migratiekopieen_op() -> None:
+    """Verwijder sessiekopieën die een oudere versie in json_voor_sqlite/ zette.
+    Het zijn pure sessietokens (geen data om te bewaren) en ze horen niet als
+    veiligheidskopie te blijven rondslingeren."""
+    map_ = DATA_DIR / JSON_MIGRATIE_DIRNAAM
+    if not map_.is_dir():
+        return
+    for f in map_.glob(f'{Path(SESSIE_BESTAND_NAAM).stem}*.json'):
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def _sessies_repareer_migratie() -> None:
+    """Reparatie voor installaties die al door de oude migratiebug zijn geraakt:
+    daar slokte de JSON→SQLite-migratie het sessiebestand op als data-key. Zet
+    de sessies terug op schijf en haal de tokens uit de database — daar horen ze
+    niet, de data-API zou ze anders gewoon uitserveren."""
+    stem = Path(SESSIE_BESTAND_NAAM).stem
+    try:
+        gelezen = _lees_key_bytes(stem)
+    except sqlite3.Error as exc:
+        _log('sessie', f'kon migratie-reparatie niet uitvoeren: {exc}',
+             level=logging.ERROR)
+        return
+    if gelezen is None:
+        _sessies_migratiekopieen_op()
+        return
+    pad = _sessie_bestand()
+    if not pad.exists():
+        try:
+            pad.write_text(gelezen[0].decode('utf-8'), encoding='utf-8')
+            os.chmod(pad, 0o600)
+        except (OSError, UnicodeDecodeError) as exc:
+            _log('sessie', f'kon sessies niet terugzetten: {exc}',
+                 level=logging.ERROR)
+    try:
+        with _data_lock:
+            conn = _db()
+            with conn:
+                conn.execute('DELETE FROM records WHERE key=?', (stem,))
+                conn.execute('DELETE FROM kv WHERE key=?', (stem,))
+                conn.execute('DELETE FROM versies WHERE key=?', (stem,))
+    except sqlite3.Error as exc:
+        _log('sessie', f'kon sessietokens niet uit de database halen: {exc}',
+             level=logging.ERROR)
+        return
+    _log('sessie', 'sessies teruggezet uit de database (oude migratiebug)')
+    _sessies_migratiekopieen_op()
+
+
 def _sessies_laad() -> None:
     """Herstel sessies uit het bestand bij het opstarten; verlopen sessies (op
     wandkloktijd) worden meteen weggelaten. Corrupte inhoud wordt genegeerd."""
+    _sessies_repareer_migratie()
     pad = _sessie_bestand()
     try:
         if not pad.exists():
@@ -1395,7 +1459,11 @@ def _sessies_laad() -> None:
         duur = s.get('duur')
         if not isinstance(duur, (int, float)) or duur <= 0:
             duur = SESSIE_DUUR
-        geldig[tok] = {'gebruiker': gebruiker, 'verloopt': float(verloopt), 'duur': float(duur)}
+        cookie = s.get('cookie')
+        if not isinstance(cookie, (int, float)):
+            cookie = 0.0
+        geldig[tok] = {'gebruiker': gebruiker, 'verloopt': float(verloopt),
+                       'duur': float(duur), 'cookie': float(cookie)}
     with _sessie_lock:
         _sessies.clear()
         _sessies.update(geldig)
@@ -1411,9 +1479,37 @@ def _sessie_maak(gebruiker: str, lang: bool = False) -> str:
     with _sessie_lock:
         _sessies[token] = {'gebruiker': gebruiker,
                            'verloopt': time.time() + duur,
-                           'duur': duur}
+                           'duur': duur,
+                           # wandkloktijd van de laatst uitgegeven cookie
+                           'cookie': time.time()}
     _sessies_bewaar(force=True)
     return token
+
+
+def _sessie_cookie_header(token: str, duur: float, secure: bool) -> str:
+    """Set-Cookie-waarde voor een sessie. Secure zodra de poort HTTPS draait: de
+    browser stuurt de cookie dan nooit over onversleuteld verkeer mee."""
+    return (f'{SESSIE_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; '
+            f'Max-Age={int(duur)}' + ('; Secure' if secure else ''))
+
+
+def _sessie_cookie_vernieuwing(token: str) -> float | None:
+    """Geef de duur terug wanneer de browsercookie een verse Max-Age verdient,
+    anders None. De sessie schuift server-side glijdend mee, maar de cookie zélf
+    verliep op inlogtijd + duur: zonder deze verversing werd je na 24 uur (of 30
+    dagen met 'onthoud mij') tóch uitgelogd, hoe actief je de app ook gebruikte.
+    Hooguit eens per dag, zodat niet elk antwoord een Set-Cookie meesleept."""
+    now = time.time()
+    with _sessie_lock:
+        sessie = _sessies.get(token)
+        if sessie is None:
+            return None
+        if now - sessie.get('cookie', 0.0) < SESSIE_COOKIE_VERVERS:
+            return None
+        sessie['cookie'] = now
+        duur = sessie.get('duur', SESSIE_DUUR)
+    _sessies_bewaar(force=True)
+    return duur
 
 
 def _sessie_gebruiker(token: str) -> str | None:
@@ -2714,6 +2810,13 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', allowed)
             self.send_header('Access-Control-Expose-Headers', 'X-Data-Version, Retry-After')
             self.send_header('Vary', 'Origin')
+        # Verse sessiecookie (glijdende verlenging, hooguit eens per dag).
+        # Hier omdat élk antwoord langs deze headers komt; daarna leegmaken,
+        # want een keep-alive-verbinding hergebruikt dit handler-object.
+        cookie = getattr(self, '_verse_cookie', '')
+        if cookie:
+            self.send_header('Set-Cookie', cookie)
+            self._verse_cookie = ''
 
     def _is_direct(self) -> bool:
         """True wanneer dit request via de directe-toegangspoort binnenkwam
@@ -2773,6 +2876,17 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return False
         return True
 
+    def _vernieuw_sessiecookie(self) -> None:
+        """Zet zo nodig een verse sessiecookie klaar voor dit antwoord, zodat de
+        browsercookie de glijdende sessie volgt (_add_security_headers stuurt
+        hem mee)."""
+        token = self._sessie_token()
+        duur = _sessie_cookie_vernieuwing(token)
+        if duur is None:
+            return
+        self._verse_cookie = _sessie_cookie_header(
+            token, duur, bool(getattr(self.server, 'brewadmin_ssl', False)))
+
     def _direct_auth(self, path: str) -> bool:
         """Poortwachter voor de directe-toegangspoort. True = request mag
         door naar de normale routing; False = er is al geantwoord (login-
@@ -2791,8 +2905,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return False
         if _sessie_gebruiker(self._sessie_token()):
             if LOGOUT_PATH in path:
+                # Geen verse cookie meesturen: die zou de uitlog-cookie
+                # (Max-Age=0) in hetzelfde antwoord weer ongedaan maken.
                 self._handle_logout()
                 return False
+            self._vernieuw_sessiecookie()
             return True
         # Geen (geldige) sessie: API-calls krijgen 401, elke andere GET de
         # loginpagina; mutaties zijn hoe dan ook geblokkeerd.
@@ -2852,13 +2969,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         token = _sessie_maak(gebruiker, lang=onthoud)
         _audit_write('login', '-', ip=ip, gebruiker=gebruiker,
                      rol=_gebruiker_rol(gebruiker), onthoud=onthoud)
-        # Secure-vlag zodra de poort HTTPS draait: de browser stuurt de
-        # sessiecookie dan nooit over onversleuteld verkeer mee. De cookie-
-        # levensduur volgt de sessieduur ('onthoud mij' = 30 dagen, anders 24 u).
-        secure = '; Secure' if getattr(self.server, 'brewadmin_ssl', False) else ''
-        max_age = SESSIE_DUUR_LANG if onthoud else SESSIE_DUUR
-        cookie = (f'{SESSIE_COOKIE}={token}; Path=/; HttpOnly; '
-                  f'SameSite=Strict; Max-Age={max_age}{secure}')
+        # De cookie-levensduur volgt de sessieduur ('onthoud mij' = 30 dagen,
+        # anders 24 uur) en wordt bij gebruik dagelijks ververst.
+        cookie = _sessie_cookie_header(
+            token, SESSIE_DUUR_LANG if onthoud else SESSIE_DUUR,
+            bool(getattr(self.server, 'brewadmin_ssl', False)))
         self._json(200, {'ok': True, 'gebruiker': gebruiker,
                          'rol': _gebruiker_rol(gebruiker)},
                    extra_headers=[('Set-Cookie', cookie)])
