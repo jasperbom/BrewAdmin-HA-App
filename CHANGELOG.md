@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.11.93] — 2026-08-13
+## [1.11.94] — 2026-08-13
 
 ### Verbeterd — het getal in de cirkel boven in het menu legt zichzelf uit
 
@@ -18,7 +18,7 @@ te raden welke taak, welk lot of welke periode erachter zat.
 - **Klikken opent een uitklap** met per regel het label, het aantal en een pijl;
   een klik op een regel springt meteen naar de pagina waar je het afhandelt
   (batchtaken → Batches, schoonmaak → HACCP, THT → Ingrediënten, picken →
-  Bestellingen, BTW → Boekhouding). Onderin staat in één zin wat het getal is.
+  Bestellingen, BTW → Boekhouding).
 - De badge op **Bestellingen** in de tweede menubalk heeft nu ook een tooltip.
 
 Technisch: de opsplitsing zit als pure logica in `src/utils/attentie.ts`

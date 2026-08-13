@@ -970,7 +970,6 @@
   "werkruimte_administratie": "Administration",
   "werkruimte_wissel_label": "Switch workspace",
   "attentie_titel": "Needs attention",
-  "attentie_uitleg": "The number in the circle is the sum of these items. Click a line to go straight there.",
   "attentie_batchtaken": "Open batch tasks",
   "attentie_schoonmaak": "Overdue cleaning tasks",
   "attentie_tht_verlopen": "Lots past their best-before date",

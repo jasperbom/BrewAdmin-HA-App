@@ -65,7 +65,6 @@ const AttentieBadge: React.FC<AttentieBadgeProps> = ({
                   <span className="text-white/40 text-xs">›</span>
                 </button>
               ))}
-              <div className="px-3 py-2 text-[11px] text-white/50 border-t border-white/10">{t('attentie_uitleg')}</div>
             </div>
           </div>
         </>

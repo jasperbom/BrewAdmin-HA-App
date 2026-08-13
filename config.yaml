@@ -1,6 +1,6 @@
 name: "BrewAdmin"
 description: "Brewery administration — batches, ingredients, excise duty, stock and accounting"
-version: "1.11.93"
+version: "1.11.94"
 slug: "brouwerij_admin"
 init: false
 
