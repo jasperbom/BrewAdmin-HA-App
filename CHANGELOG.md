@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.92] — 2026-08-13
+
+### Opgelost — 'onthoud mij' hield het niet vol: uitgelogd bij elke herstart
+
+Wie via de directe-toegangspoort inlogde met **'onthoud mij (30 dagen)'** moest
+in de praktijk veel vaker opnieuw inloggen. Twee oorzaken, allebei verholpen.
+
+- **Elke herstart wiste de sessies.** De JSON→SQLite-migratie scant bij het
+  opstarten `/data/*.json` en nam ook `brewadmin_sessies.json` mee: dat bestand
+  werd als data-key ingelezen en naar `json_voor_sqlite/` verplaatst. Omdat het
+  bij élke login opnieuw wordt geschreven, was die "eenmalige" migratie voor de
+  sessies dus een terugkerend ritueel — na iedere addon-update of HA-herstart
+  was iedereen uitgelogd. Het sessiebestand wordt nu overgeslagen, net als
+  `options.json` van de Supervisor.
+- **Reparatie bij het opstarten.** Zijn de sessies al in de database beland,
+  dan worden ze bij de eerste start na deze update teruggezet en verdwijnen de
+  sessietokens weer uit de database (daar hoorden ze niet: de data-API serveert
+  keys uit) en uit de migratiekopieën.
+- **De cookie volgt nu de sessie.** De sessie schoof server-side glijdend mee,
+  maar de browsercookie verliep op het tijdstip van inloggen + duur. Bij gebruik
+  krijgt de cookie nu hoogstens eens per dag een verse vervaldatum, zodat je bij
+  dagelijks gebruik niet alsnog na 24 uur (of 30 dagen) op de loginpagina staat.
+
+---
+
 ## [1.11.91] — 2026-08-11
 
 ### Toegevoegd — factuurlayout aanpasbaar zonder release

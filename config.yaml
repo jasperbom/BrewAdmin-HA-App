@@ -1,6 +1,6 @@
 name: "BrewAdmin"
 description: "Brewery administration — batches, ingredients, excise duty, stock and accounting"
-version: "1.11.91"
+version: "1.11.92"
 slug: "brouwerij_admin"
 init: false
 
@@ -33,7 +33,7 @@ auth_api: true
 ports:
   8098/tcp: null
 ports_description:
-  8098/tcp: "Directe toegang met HA-login (standaard uit; sessie vervalt na 24 uur inactiviteit of addon-herstart). Zet de optie ssl aan voor HTTPS met je eigen domein"
+  8098/tcp: "Directe toegang met HA-login (standaard uit; sessie vervalt na 24 uur inactiviteit, of 30 dagen met 'onthoud mij', en blijft geldig over een herstart of update heen). Zet de optie ssl aan voor HTTPS met je eigen domein"
 
 ingress: true
 ingress_port: 8099

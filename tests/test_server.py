@@ -1575,6 +1575,90 @@ class TestOnthoudSessies:
             self._opruimen()
             herstel()
 
+    def test_sessiebestand_overleeft_de_json_migratie(self, app_direct):
+        """De JSON→SQLite-migratie scant /data/*.json en verplaatste ook
+        brewadmin_sessies.json — dat bestand wordt bij elke login opnieuw
+        geschreven, dus élke herstart logde iedereen uit."""
+        herstel = self._mock_auth()
+        try:
+            _, _, h = req(app_direct, 'POST', '/api/login',
+                          body={'username': 'jasper', 'password': 'geheim',
+                                'onthoud': True})
+            cookie = h.get('Set-Cookie', '').split(';')[0]
+            token = cookie.split('=', 1)[1]
+            # Herstart met de migratie ervoor (zoals _db() bij het opstarten doet).
+            srv._migreer_json_bestanden(srv._db())
+            assert srv._sessie_bestand().exists()
+            assert srv._db().execute(
+                "SELECT 1 FROM versies WHERE key='brewadmin_sessies'").fetchone() is None
+            with srv._sessie_lock:
+                srv._sessies.clear()
+            srv._sessies_laad()
+            assert token in srv._sessies
+            status, wie, _ = req(app_direct, 'GET', '/api/whoami', headers={'Cookie': cookie})
+            assert status == 200 and wie['gebruiker'] == 'jasper'
+        finally:
+            self._opruimen()
+            herstel()
+
+    def test_reparatie_haalt_sessies_uit_de_database(self, app_direct):
+        """Installaties die al door de bug geraakt zijn: de sessies staan als
+        data-key in de database en het bestand is weg. Bij het opstarten worden
+        ze teruggezet en verdwijnen de tokens uit de database (de data-API zou
+        ze anders uitserveren) en uit de migratiekopieën."""
+        kopie = srv.DATA_DIR / srv.JSON_MIGRATIE_DIRNAAM / 'brewadmin_sessies.json'
+        inhoud = {'tok-gemigreerd': {'gebruiker': 'jasper',
+                                     'verloopt': 9_999_999_999.0,
+                                     'duur': srv.SESSIE_DUUR_LANG}}
+        srv._write_json('brewadmin_sessies', inhoud)
+        kopie.parent.mkdir(parents=True, exist_ok=True)
+        kopie.write_text(json.dumps(inhoud), encoding='utf-8')
+        try:
+            srv._sessies_laad()
+            assert srv._sessies.get('tok-gemigreerd', {}).get('gebruiker') == 'jasper'
+            assert srv._db().execute(
+                "SELECT 1 FROM versies WHERE key='brewadmin_sessies'").fetchone() is None
+            assert req(app_direct, 'GET', '/api/data/brewadmin_sessies',
+                       headers={'Cookie': f'{srv.SESSIE_COOKIE}=tok-gemigreerd'})[0] == 404
+            assert not kopie.exists()
+        finally:
+            self._opruimen()
+
+    def test_cookie_wordt_bij_gebruik_ververst(self, app_direct):
+        """De sessie schuift server-side mee, maar de cookie verliep op inlogtijd
+        + duur. Bij gebruik krijgt de browser hooguit eens per dag een verse
+        Max-Age, zodat actief gebruik niet alsnog uitlogt."""
+        import time as _time
+        herstel = self._mock_auth()
+        try:
+            _, _, h = req(app_direct, 'POST', '/api/login',
+                          body={'username': 'jasper', 'password': 'geheim',
+                                'onthoud': True})
+            cookie = h.get('Set-Cookie', '').split(';')[0]
+            token = cookie.split('=', 1)[1]
+            # Vers ingelogd: geen tweede cookie in het antwoord.
+            _, _, h2 = req(app_direct, 'GET', '/api/whoami', headers={'Cookie': cookie})
+            assert 'Set-Cookie' not in h2
+            # Een dag later wél — met de lange duur van deze sessie.
+            with srv._sessie_lock:
+                srv._sessies[token]['cookie'] = _time.time() - srv.SESSIE_COOKIE_VERVERS - 1
+            _, _, h3 = req(app_direct, 'GET', '/api/whoami', headers={'Cookie': cookie})
+            vers = h3.get('Set-Cookie', '')
+            assert token in vers and f'Max-Age={srv.SESSIE_DUUR_LANG}' in vers
+            assert 'HttpOnly' in vers and 'SameSite=Strict' in vers
+            # Direct daarna niet nog eens.
+            _, _, h4 = req(app_direct, 'GET', '/api/whoami', headers={'Cookie': cookie})
+            assert 'Set-Cookie' not in h4
+            # Uitloggen laat de cookie verlopen (geen verse cookie eroverheen).
+            with srv._sessie_lock:
+                srv._sessies[token]['cookie'] = _time.time() - srv.SESSIE_COOKIE_VERVERS - 1
+            _, _, h5 = req(app_direct, 'POST', '/api/logout', headers={'Cookie': cookie})
+            assert 'Max-Age=0' in h5.get('Set-Cookie', '')
+            assert req(app_direct, 'GET', '/api/whoami', headers={'Cookie': cookie})[0] == 401
+        finally:
+            self._opruimen()
+            herstel()
+
     def test_verlopen_sessie_wordt_niet_hersteld(self, app_direct):
         pad = srv._sessie_bestand()
         pad.write_text(json.dumps({
