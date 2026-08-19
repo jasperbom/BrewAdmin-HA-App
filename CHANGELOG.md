@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.95] — 2026-08-19
+
+### Opgelost — merch-orders uit de webshop bleven eeuwig openstaan
+
+Verkoop je via WooCommerce ook merch die je niet zelf op voorraad hebt (een
+leverancier verstuurt het rechtstreeks — dropshipping), dan kwam die regel als
+een gewone bierregel binnen. Picken kon dus nooit lukken ("geen beschikbare
+voorraad") en afronden vroeg om precies die picks: de order bleef op
+**Nieuw** hangen, zonder factuur.
+
+- **De order wijst nu zelf de uitweg.** Staat er een regel waarvoor geen
+  énkele voorraad in aanmerking komt, dan verschijnt onder de orderregels een
+  uitleg met de knop **Markeer als dropshipping**. Eén klik: de regel gaat van
+  de picking af, blijft gewoon op de factuur staan en de order is af te ronden.
+  Dezelfde knop staat in het pickscherm, precies bij de melding dat er niets
+  te picken valt.
+- **De app onthoudt het artikel.** Gemarkeerde artikelen komen in de nieuwe
+  lijst **Dropship-artikelen** (uitklapper boven de bestellijst, ook met de
+  hand te vullen op SKU of productnaam). Elke volgende WooCommerce-import zet
+  dat artikel meteen als vrije regel neer — mét een paars `Dropshipping`-label
+  en zónder de oranje "niet herkend"-waarschuwing, want het is een bewuste
+  keuze en geen gok.
+- **Oude orders liepen écht vast.** Regels van vóór de merch-splitsing hebben
+  helemaal geen regelsoort. Die telden wél mee voor "er moet gepickt worden",
+  maar niet voor "alles is gepickt" — en het knopje om de regelsoort te
+  wisselen werd er niet eens voor getoond. Zo'n regel geldt nu overal als
+  bierregel en is dus ook om te zetten.
+
+Technisch: nieuwe pure logica in `src/utils/dropship.ts` (mét test), herkenning
+in `utils/wcImport.ts` via `refs.dropship`, nieuwe data-key
+`dropship_artikelen` (in `_KEY_TYPES` en in de Excel-backup). De kleine
+⇄-knop blijft een eenmalige correctie op één order; alleen de expliciete
+dropshipping-knop legt het artikel structureel vast.
+
+---
+
 ## [1.11.94] — 2026-08-13
 
 ### Verbeterd — het getal in de cirkel boven in het menu legt zichzelf uit

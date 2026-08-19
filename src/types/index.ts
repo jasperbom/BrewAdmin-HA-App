@@ -971,13 +971,31 @@ export interface BreweryDetails {
 export interface BestellingRegel {
   id: number
   artikel_id?: number | null
+  artikel_key?: string | null
+  sku?: string | null
   bier_naam: string
   verpakking_type: string
   aantal: number
   prijs_per_stuk: number
   btw_pct: number
   omschrijving?: string
-  type?: 'bier' | 'vrij' | 'verzending'
+  // Ontbrekend type = 'bier' (oude orders): moet uit de biervoorraad gepickt
+  // worden. 'vrij' staat alleen op de factuur — merch, dienst, dropshipping.
+  type?: 'bier' | 'vrij' | 'verzending' | 'korting'
+  /** WooCommerce-regel die niet aan een eigen artikel te koppelen was. */
+  wc_onbekend?: boolean
+  /** Bekend dropship-artikel: nooit picken, alleen factureren. */
+  dropship?: boolean
+  wc_netto?: number
+  wc_btw?: number
+}
+
+/** Zie `src/utils/dropship.ts`. */
+export interface DropshipArtikel {
+  id: number
+  sku?: string | null
+  naam?: string | null
+  toegevoegd?: string
 }
 
 export interface BestellingPick {

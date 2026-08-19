@@ -113,6 +113,24 @@ describe('mapWcOrderRegels', () => {
     expect(r[0].btw_pct).toBe(6)
   })
 
+  it('brengt een bekend dropship-artikel binnen zonder onbekend-vlag', () => {
+    const r = mapWcOrderRegels(order, {...refs, dropship: [{id: 1, sku: 'SHIRT-L', naam: null}]})
+    const merch = r[1]
+    expect(merch.type).toBe('vrij')
+    expect(merch.dropship).toBe(true)
+    expect(merch.wc_onbekend).toBeUndefined()
+    expect(merch.prijs_per_stuk).toBeCloseTo(20.66, 2)
+    // de bierregel blijft gewoon een pickregel
+    expect(r[0].type).toBe('bier')
+  })
+
+  it('laat een als dropship gemarkeerd artikel niet meer aan een eigen artikel koppelen', () => {
+    const r = mapWcOrderRegels(order, {...refs, dropship: [{id: 1, sku: null, naam: 'Witbier 33cl'}]})
+    expect(r[0]).toMatchObject({type: 'vrij', dropship: true, verpakking_type: ''})
+    // prijs komt dan uit WooCommerce zelf, niet uit de eigen prijslijst
+    expect(r[0].prijs_per_stuk).toBeCloseTo(1.71, 2)
+  })
+
   it('geeft een lege lijst voor een order zonder regels', () => {
     expect(mapWcOrderRegels({}, refs)).toEqual([])
     expect(mapWcOrderRegels(null, refs)).toEqual([])
