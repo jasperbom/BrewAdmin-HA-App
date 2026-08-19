@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseMT940, scoreMatch, besteMatch, saldoControle,
-  isPspTransactie, zoekPspCombinatie,
+  isPspTransactie, zoekPspCombinatie, pspKandidaten,
 } from '../bank'
 
 const MT940_FIXTURE = [
@@ -114,5 +114,59 @@ describe('PSP-herkenning en -combinatie', () => {
   })
   it('geeft null wanneer geen combinatie binnen de kostenmarge past', () => {
     expect(zoekPspCombinatie(500, [{id: 1, bruto: 60}])).toBeNull()
+  })
+
+  it('vindt ook een bundel met al betaalde facturen erin', () => {
+    // Precies het geval dat vastliep: één factuur uit de bundel stond al op
+    // betaald. Zolang hij in de kandidatenlijst zit, klopt de som weer.
+    const facturen = [
+      {id: 1, bruto: 60, status: 'open'},
+      {id: 2, bruto: 41, status: 'betaald'},
+      {id: 3, bruto: 25, status: 'open'},
+    ]
+    expect(zoekPspCombinatie(100.2, facturen)?.sort()).toEqual([1, 2])
+  })
+
+  it('vindt een bundel met veel kleine facturen (voorbij de oude grens van 24)', () => {
+    // 40 orders van uiteenlopende bedragen; de uitbetaling is de som minus
+    // €0,30 kosten per order. De oude zoektocht keek maar naar 24 facturen
+    // (de grootste) en vond zo'n bundel nooit.
+    const facturen = Array.from({length: 40}, (_, i) => ({id: i + 1, bruto: 10 + i * 0.55}))
+    const som = facturen.reduce((s, f) => s + f.bruto, 0)
+    const uitbetaald = Math.round((som - 40 * 0.30) * 100) / 100
+    const gevonden = zoekPspCombinatie(uitbetaald, facturen)
+    expect(gevonden).not.toBeNull()
+    expect(gevonden!.length).toBe(40)
+  })
+
+  it('rekent op centen, niet op zwevende komma\'s', () => {
+    const facturen = [{id: 1, bruto: 0.1}, {id: 2, bruto: 0.2}]
+    expect(zoekPspCombinatie(0.3, facturen)?.sort()).toEqual([1, 2])
+  })
+
+  it('geeft null bij een leeg of nul bedrag', () => {
+    expect(zoekPspCombinatie(0, [{id: 1, bruto: 10}])).toBeNull()
+    expect(zoekPspCombinatie(10, [])).toBeNull()
+  })
+})
+
+describe('pspKandidaten', () => {
+  const facturen = [
+    {id: 1, bruto: 60, datum: '2026-08-10', status: 'open'},
+    {id: 2, bruto: 41, datum: '2026-08-12', status: 'betaald'},
+    {id: 3, bruto: 25, datum: '2026-08-13', status: 'credit'},
+    {id: 4, bruto: 0, datum: '2026-08-13', status: 'open'},
+    {id: 5, bruto: 30, datum: '2026-08-20', status: 'open'},   // order pas ná de uitbetaling afgerond
+    {id: 6, bruto: 30, datum: '2025-01-01', status: 'betaald'}, // te oud
+    {id: 7, bruto: 30, datum: '2026-11-01', status: 'open'},    // veel te ver vooruit
+  ]
+  it('houdt open én betaalde facturen over, nieuwste eerst', () => {
+    expect(pspKandidaten(facturen, {datum: '2026-08-15'}).map(f => f.id)).toEqual([5, 2, 1])
+  })
+  it('weert facturen die al aan een andere transactie hangen', () => {
+    expect(pspKandidaten(facturen, {datum: '2026-08-15', alGekoppeld: [2]}).map(f => f.id)).toEqual([5, 1])
+  })
+  it('zonder datum vervalt het datumfilter', () => {
+    expect(pspKandidaten(facturen).map(f => f.id)).toEqual([7, 5, 2, 1, 6])
   })
 })

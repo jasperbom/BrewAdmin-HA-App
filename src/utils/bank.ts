@@ -108,39 +108,132 @@ const PSP_PATROON = /mollie|stripe|adyen|sumup|zettle|paypal|pay\.nl|buckaroo|mu
 export const isPspTransactie = (tx: any): boolean =>
   tx.type === 'C' && PSP_PATROON.test(`${tx.tegenpartij||''} ${tx.omschrijving||''} ${tx.referentie||''}`)
 
-// Zoekt een combinatie open verkoopfacturen waarvan de som overeenkomt met het
-// uitbetaalde bedrag plus aannemelijke PSP-kosten (max ~5% + €0,40 per factuur).
-// Geeft de combinatie met de laagste kosten terug, of null als niets past.
-export function zoekPspCombinatie(bedrag: number, facturen: any[]): number[] | null {
-  const kandidaten = facturen
-    .filter((f: any) => (f.bruto||0) > 0)
-    .sort((a: any, b: any) => (b.bruto||0) - (a.bruto||0))
-    .slice(0, 24)
-  let best: number[] | null = null
-  let bestKosten = Infinity
-  let iteraties = 0
-  const maxKosten = (som: number, aantal: number) => som * 0.05 + aantal * 0.40 + 0.01
-  const dfs = (idx: number, som: number, gekozen: number[]) => {
-    if (iteraties++ > 20000) return
-    if (gekozen.length > 0) {
-      const kosten = som - bedrag
-      if (kosten >= -0.005 && kosten <= maxKosten(som, gekozen.length) && kosten < bestKosten) {
-        bestKosten = kosten
-        best = [...gekozen]
+// Welke verkoopfacturen mogen in een PSP-uitbetaling zitten?
+//
+// Eerder werd hier alleen op ópenstaande facturen gezocht. Dat brak zodra één
+// factuur uit de bundel al op betaald stond — precies wat er gebeurt bij een
+// kassaverkoop, een handmatig "betaald"-vinkje of een eerder gekoppelde
+// losse betaling. De som van de resterende open facturen haalt de uitbetaling
+// dan nooit, dus vond de app hélemaal niets meer: ook de facturen die wél open
+// stonden bleven ongekoppeld.
+//
+// Daarom tellen betaalde facturen gewoon mee. Wat er níét in mag:
+//  - creditnota's en facturen zonder bedrag;
+//  - facturen die al aan een ándere banktransactie hangen (die zijn daar al
+//    verantwoord; meenemen zou de omzet dubbel koppelen);
+//  - facturen die ver buiten het tijdvak van de uitbetaling vallen — dat houdt
+//    de zoekruimte klein en voorkomt dat een toevallige som uit lang vervlogen
+//    facturen "past".
+//
+// Het venster loopt ook een eind vooruit: een PSP betaalt vaak al uit voordat
+// de order in de app is afgerond, en de factuurdatum is de datum van afronden.
+// Zulke facturen zijn dus jonger dan de uitbetaling en horen er wél bij.
+export const PSP_MAX_DAGEN_TERUG = 120
+export const PSP_MAX_DAGEN_VOORUIT = 30
+const DAG_MS = 24 * 60 * 60 * 1000
+
+export interface PspKandidaatOpties {
+  /** Datum van de uitbetaling (yyyy-mm-dd). Leeg = geen datumfilter. */
+  datum?: string
+  /** Factuur-ids die al aan een andere banktransactie gekoppeld zijn. */
+  alGekoppeld?: Set<number> | number[]
+  /** Hoe ver terug facturen mee mogen doen (dagen). */
+  maxDagen?: number
+  /** Hoe ver ná de uitbetaling een factuur nog mee mag doen (dagen). */
+  maxDagenVooruit?: number
+}
+
+export function pspKandidaten(facturen: any[], opties: PspKandidaatOpties = {}): any[] {
+  const bezet = opties.alGekoppeld instanceof Set
+    ? opties.alGekoppeld
+    : new Set(opties.alGekoppeld || [])
+  const uitbetaling = opties.datum ? Date.parse(`${opties.datum}T23:59:59`) : NaN
+  const maxDagen = opties.maxDagen ?? PSP_MAX_DAGEN_TERUG
+  const maxVooruit = opties.maxDagenVooruit ?? PSP_MAX_DAGEN_VOORUIT
+  const vanaf = Number.isFinite(uitbetaling) ? uitbetaling - maxDagen * DAG_MS : NaN
+  const tot = Number.isFinite(uitbetaling) ? uitbetaling + maxVooruit * DAG_MS : NaN
+  return (facturen || [])
+    .filter((f: any) => {
+      if (!f || Number(f.bruto || 0) <= 0) return false
+      if (f.status === 'credit') return false
+      if (bezet.has(f.id)) return false
+      if (Number.isFinite(vanaf)) {
+        const d = Date.parse(`${String(f.datum || '')}T00:00:00`)
+        if (Number.isFinite(d) && (d > tot || d < vanaf)) return false
       }
-    }
-    for (let i = idx; i < kandidaten.length; i++) {
-      const nieuw = som + (kandidaten[i].bruto||0)
-      // Kandidaten staan aflopend gesorteerd: als deze te groot is, kan een
-      // kleinere verderop nog wel passen — daarom continue i.p.v. break.
-      if (nieuw - bedrag > maxKosten(nieuw, gekozen.length + 1)) continue
-      gekozen.push(kandidaten[i].id)
-      dfs(i + 1, nieuw, gekozen)
-      gekozen.pop()
+      return true
+    })
+    .sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || '')))
+}
+
+// Zoekt een combinatie verkoopfacturen waarvan de som overeenkomt met het
+// uitbetaalde bedrag plus aannemelijke PSP-kosten (max ~5% + €0,40 per
+// factuur). Geeft de combinatie met de laagste kosten terug, of null.
+//
+// Exacte deelsom-berekening op centen (DP) in plaats van de vroegere
+// diepte-eerst-zoektocht met een harde grens van 24 facturen en 20.000
+// iteraties: een webshop met veel kleine orders viel daardoor buiten de boot
+// (de kleinste facturen kwamen niet eens in de kandidatenlijst) en juist die
+// zitten in zo'n bundel. Nu telt elke kandidaat mee.
+export const PSP_MAX_KANDIDATEN = 120
+
+export function zoekPspCombinatie(bedrag: number, facturen: any[]): number[] | null {
+  const doel = toCent(bedrag)
+  if (doel <= 0) return null
+  const kandidaten = (facturen || [])
+    .filter((f: any) => Number(f?.bruto || 0) > 0)
+    .slice(0, PSP_MAX_KANDIDATEN)
+    .map((f: any) => ({id: f.id, cent: toCent(f.bruto)}))
+    .filter((k: any) => k.cent > 0)
+  if (!kandidaten.length) return null
+
+  // Bovengrens: kosten ≤ 5% van de som + €0,40 per factuur (+1 cent speling),
+  // dus som ≤ (doel + 40·n + 1) / 0,95.
+  const n = kandidaten.length
+  const maxSom = Math.min(
+    Math.floor((doel + 40 * n + 1) / 0.95),
+    kandidaten.reduce((s: number, k: any) => s + k.cent, 0),
+  )
+  if (maxSom < doel) return null
+
+  // van[s] = index+1 van de factuur waarmee som s bereikt wordt; aantal[s] =
+  // hoeveel facturen in die combinatie zitten. Eenmaal gezet blijft een som
+  // ongewijzigd, zodat de keten bij het teruglopen consistent blijft.
+  const van = new Int32Array(maxSom + 1)
+  const aantal = new Int32Array(maxSom + 1)
+  for (let i = 0; i < n; i++) {
+    const w = kandidaten[i].cent
+    if (w > maxSom) continue
+    for (let som = maxSom; som >= w; som--) {
+      if (van[som]) continue
+      const rest = som - w
+      if (rest !== 0 && !van[rest]) continue
+      van[som] = i + 1
+      aantal[som] = aantal[rest] + 1
     }
   }
-  dfs(0, 0, [])
-  return best
+
+  // De grootste bundel wint, bij gelijk aantal de laagste kosten. Een PSP
+  // betaalt alles van een periode in één keer uit, dus een combinatie die
+  // méér facturen dekt is aannemelijker dan een kleine die toevallig past.
+  let besteSom = -1
+  let besteAantal = -1
+  for (let som = doel; som <= maxSom; som++) {
+    if (!van[som]) continue
+    const kosten = som - doel
+    if (kosten > som * 0.05 + 40 * aantal[som] + 1) continue
+    if (aantal[som] > besteAantal) { besteAantal = aantal[som]; besteSom = som }
+  }
+  if (besteSom < 0) return null
+
+  const ids: number[] = []
+  let rest = besteSom
+  while (rest > 0 && van[rest]) {
+    const idx = van[rest] - 1
+    ids.push(kandidaten[idx].id)
+    rest -= kandidaten[idx].cent
+  }
+  return rest === 0 ? ids : null
 }
 
 export interface MatchKandidaat {

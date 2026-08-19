@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.98] — 2026-08-19
+
+### Opgelost — PSP-uitbetalingen koppelden niet aan orders die al betaald stonden
+
+Een Mollie-uitbetaling bundelt alle betalingen van een periode. De app zocht
+daarbij alleen in **openstaande** verkoopfacturen. Stond er één factuur uit die
+bundel al op betaald — een kassaverkoop, een handmatig gezet vinkje, of een
+eerder gekoppelde losse betaling — dan haalde de som van de rest het
+uitbetaalde bedrag nooit. Resultaat: géén voorstel, ook niet voor de facturen
+die wél openstonden.
+
+- **Al betaalde facturen tellen nu mee** in het voorstel én staan meteen in de
+  lijst (met hun "Betaald"-label). Alleen facturen die al aan een ándere
+  banktransactie hangen blijven buiten de bundel — die zijn daar al
+  verantwoord; ze zijn met het vinkje "toon alle facturen" alsnog op te halen,
+  met een oranje waarschuwing erbij.
+- **Facturen van ná de uitbetaling doen mee.** Een PSP betaalt vaak al uit
+  voordat je de order afrondt, en de factuurdatum is de datum van afronden. Het
+  zoekvenster loopt daarom 30 dagen vooruit en 120 dagen terug.
+- **Geen limiet van 24 facturen meer.** De zoektocht keek naar hooguit 24
+  facturen — de grootste — en gaf het na 20.000 pogingen op. Een webshopdag met
+  veel kleine orders viel daar buiten: juist die kleine facturen zaten in de
+  bundel. De combinatie wordt nu exact op centen berekend (deelsom via
+  dynamisch programmeren), zonder die grens.
+- **Bij gelijke kosten wint de grootste bundel** — een PSP betaalt alles van een
+  periode in één keer uit, dus een combinatie die méér facturen dekt is
+  aannemelijker dan een kleine die toevallig past.
+- Vindt de app niets, dan zegt het venster nu wát je kunt doen in plaats van
+  een lege lijst te tonen.
+
+Technisch: `zoekPspCombinatie` in `src/utils/bank.ts` herschreven (cent-exacte
+DP) en de nieuwe `pspKandidaten` bepaalt welke facturen mee mogen; allebei met
+tests.
+
+---
+
 ## [1.11.97] — 2026-08-19
 
 ### Nieuw — merch die je zélf op voorraad hebt
