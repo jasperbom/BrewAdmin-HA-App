@@ -1131,6 +1131,7 @@ _KEY_TYPES = {
         'recepten', 'recepten_verborgen', 'recepten_gearchiveerde_tags',
         'recepten_tag_volgorde', 'recepten_gesloten_groepen', 'tanks',
         'tank_reinigingslog', 'artikelen', 'merch_artikelen',
+        'merch_voorraad_log',
         'hygiene_items', 'hygiene_groups',
         'brouwdag_checklist', 'botteldag_checklist', 'batch_taken_items',
         'batch_taken_groepen', 'inkoop_facturen', 'scan_correcties',

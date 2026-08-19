@@ -21,7 +21,11 @@ import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../uti
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
 import { regelBedrag, heeftAutoritair } from '../utils/orderRegel'
 import { matchAfvullingenVoorRegel, diagnosePickMatch } from '../utils/picking'
-import { MerchArtikel, merchLabel, onthoudMerch, vergeetMerch, verwijderMerch } from '../utils/merch'
+import {
+  MerchArtikel, MerchMutatie, merchLabel, onthoudMerch, vergeetMerch, verwijderMerch,
+  volgtVoorraad, merchVoorraad, merchVoorraadWaarde, merchLogVoorArtikel,
+  boekMerchMutaties, merchAfboekingenVoorRegels, merchTekorten,
+} from '../utils/merch'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -69,6 +73,26 @@ interface BestellingenPageProps {
   setJournaal?: any
   merchArtikelen?: MerchArtikel[]
   setMerchArtikelen?: any
+  merchVoorraadLog?: MerchMutatie[]
+  setMerchVoorraadLog?: any
+}
+
+// Bedrag-in-tabel: bewerkt lokaal en schrijft pas bij verlaten/Enter weg, zodat
+// een halfgetypt bedrag ("7,") niet elke toetsaanslag door de store gaat.
+const MerchGetal: React.FC<{waarde?: number, onSave: (v: number | undefined) => void}> = ({waarde, onSave}) => {
+  const [draft, setDraft] = React.useState(waarde != null ? String(waarde) : '')
+  React.useEffect(() => { setDraft(waarde != null ? String(waarde) : '') }, [waarde])
+  const bewaar = () => {
+    const tekst = draft.trim().replace(',', '.')
+    onSave(tekst === '' ? undefined : (Number(tekst) || 0))
+  }
+  return (
+    <input type="text" inputMode="decimal" value={draft} placeholder="—"
+      onChange={e => setDraft(e.target.value)}
+      onBlur={bewaar}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      className="w-20 border border-gray-200 rounded px-1.5 py-1 text-sm text-right bg-white t-input outline-none" />
+  )
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -102,6 +126,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   btwInst={}, btwAangiftes=[], bankKoppelingen={},
   setJournaal=()=>{},
   merchArtikelen=[], setMerchArtikelen=()=>{},
+  merchVoorraadLog=[], setMerchVoorraadLog=()=>{},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -151,6 +176,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // Beheerlijstje merch-artikelen (verkoop zonder eigen voorraad)
   const [merchOpen, setMerchOpen] = useState(false)
   const [merchForm, setMerchForm] = useState({sku: '', naam: ''})
+  const [merchLogOpen, setMerchLogOpen] = useState<number | null>(null)
+  const emptyMerchMutatie = {merch_id: 0, reden: 'inkoop' as MerchMutatie['reden'], aantal: '', prijs: '', notitie: ''}
+  const [merchMutatieForm, setMerchMutatieForm] = useState(emptyMerchMutatie)
+  const [showMerchMutatie, setShowMerchMutatie] = useState(false)
 
   // Draft picks state (voor picking modal)
   const [draftPicks, setDraftPicks] = useState<Record<number, Array<{afvulling_id: number, aantal: number, bron_locatie_id?: number | null}>>>({})
@@ -959,6 +988,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         }
       }
     }
+    // Merch met eigen voorraad: waarschuwen zolang er nog niets vastligt.
+    // Blokkeren doen we niet — de klant heeft het al meegekregen; de voorraad
+    // mag negatief worden en wijst dan vanzelf op een gemiste inkoop of telling.
+    const merchMutaties = merchMutatiesVoorOrder(selectedOrder, '')
+    const tekorten = merchTekorten(merchArtikelen, merchMutaties)
+    if (tekorten.length) {
+      const regels = tekorten.map(x => `${merchLabel(x.artikel)}: ${x.gevraagd}× ${t('merch_tekort_gevraagd')}, ${x.voorraad}× ${t('merch_tekort_voorraad')}`).join('\n')
+      if (!confirm(`${t('merch_tekort_waarschuwing')}\n\n${regels}`)) return
+    }
+
     // Factuurnummer pas ná alle validaties server-side ophalen (atomair,
     // ERP-plan 0.2) zodat een afgebroken afronding geen nummer verbruikt.
     let factuurNummer: string
@@ -1106,6 +1145,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
     }
     setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
+    // Merch-voorraad afboeken, met het factuurnummer als referentie.
+    if (merchMutaties.length) {
+      const geboekt = boekMerchMutaties(merchArtikelen, merchVoorraadLog,
+        merchMutaties.map(m => ({...m, referentie: factuurNummer})))
+      setMerchArtikelen(geboekt.artikelen)
+      setMerchVoorraadLog(geboekt.log)
+    }
     // Journaal (ERP-plan 2.1): orderfactuur is bij uitreiken definitief → boeken.
     setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(verkoopFact)))
     setBestellingen((prev: any[]) => prev.map((b: any) => b.id === selectedOrder.id ? {
@@ -1344,6 +1390,53 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Regelsoort gewijzigd: ${regel.bier_naam||regelId} → ${nieuwType}${onthouden && nieuwType === 'vrij' ? ' (merch onthouden)' : ''}`})
   }
+
+  // ── Merch-voorraad ────────────────────────────────────────────────────────
+  // Merch die je zélf op voorraad hebt: een aantal met een mutatielog. Geen
+  // afvullingen, geen accijns, geen AGP — zie utils/merch.ts.
+
+  const wijzigMerch = (id: number, patch: Partial<MerchArtikel>) => {
+    setMerchArtikelen((prev: MerchArtikel[]) => (prev || []).map((m: MerchArtikel) =>
+      m.id === id ? {...m, ...patch} : m))
+  }
+
+  const openMerchMutatie = (m: MerchArtikel) => {
+    setMerchMutatieForm({...emptyMerchMutatie, merch_id: m.id, prijs: m.inkoopprijs != null ? String(m.inkoopprijs) : ''})
+    setShowMerchMutatie(true)
+  }
+
+  const bewaarMerchMutatie = () => {
+    const artikel = (merchArtikelen || []).find((m: MerchArtikel) => m.id === merchMutatieForm.merch_id)
+    if (!artikel) return
+    const ruw = Number(String(merchMutatieForm.aantal).replace(',', '.'))
+    if (!Number.isFinite(ruw)) { alert(t('err_merch_aantal')); return }
+    const reden = merchMutatieForm.reden
+    // Bij inkoop/retour telt het aantal op, bij een afboeking eraf; een telling
+    // en een correctie neemt de gebruiker zoals ingevuld (telling = de stand).
+    const aantal = reden === 'verkoop' ? -Math.abs(ruw) : ruw
+    const prijs = String(merchMutatieForm.prijs).trim().replace(',', '.')
+    const {artikelen, log} = boekMerchMutaties(merchArtikelen, merchVoorraadLog, [{
+      merch_id: artikel.id,
+      aantal,
+      reden,
+      datum: tod(),
+      ...(merchMutatieForm.notitie.trim() ? {omschrijving: merchMutatieForm.notitie.trim()} : {}),
+      ...(reden === 'inkoop' && prijs !== '' ? {prijs_per_stuk: Number(prijs) || 0} : {}),
+    }])
+    setMerchArtikelen(artikelen)
+    setMerchVoorraadLog(log)
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Merch', entiteit_id: artikel.id, actie: 'gewijzigd',
+      omschrijving: `${merchLabel(artikel)} — ${reden} ${aantal > 0 ? '+' : ''}${aantal}`,
+    })
+    setShowMerchMutatie(false)
+    setMerchMutatieForm(emptyMerchMutatie)
+  }
+
+  // Merch-regels van een order afboeken (bij het afronden). Geeft de mutaties
+  // terug zodat de aanroeper vooraf op een tekort kan waarschuwen.
+  const merchMutatiesVoorOrder = (order: any, referentie: string) =>
+    merchAfboekingenVoorRegels(order?.regels, merchArtikelen, {datum: tod(), referentie})
 
   // Beschikbare BTW-tarieven voor de dropdown (uit instellingen, met fallback).
   const btwOpts = ((btwTarieven && btwTarieven.length ? btwTarieven : [0, 9, 21]))
@@ -2316,7 +2409,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             title={t('merch_titel')}
             open={merchOpen}
             onToggle={() => setMerchOpen(o => !o)}
-            info={`${(merchArtikelen||[]).length}`}
+            info={(() => {
+              const waarde = merchVoorraadWaarde(merchArtikelen)
+              return waarde > 0
+                ? `${(merchArtikelen||[]).length} · ${t('merch_voorraadwaarde')} ${fmt(waarde)}`
+                : `${(merchArtikelen||[]).length}`
+            })()}
           />
           {merchOpen && (
             <div className="p-4 space-y-3">
@@ -2324,17 +2422,109 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               {(merchArtikelen||[]).length === 0
                 ? <p className="text-sm text-gray-400 italic">{t('merch_leeg')}</p>
                 : (
-                  <div className="flex flex-wrap gap-2">
-                    {(merchArtikelen||[]).map((d: MerchArtikel) => (
-                      <span key={d.id} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-800 rounded-full px-3 py-1 text-xs">
-                        <span className="font-medium">{merchLabel(d)}</span>
-                        {d.sku && d.naam && <span className="text-purple-400 font-mono">{d.naam}</span>}
-                        <button
-                          onClick={() => setMerchArtikelen((prev: MerchArtikel[]) => verwijderMerch(prev || [], d.id))}
-                          title={t('btn_delete')}
-                          className="text-purple-300 hover:text-red-500 transition-colors">✕</button>
-                      </span>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-xs text-gray-500 bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">{t('merch_naam')}</th>
+                          <th className="px-3 py-2 text-center" title={t('merch_voorraad_volgen_tip')}>{t('merch_voorraad_volgen')}</th>
+                          <th className="px-3 py-2 text-right">{t('merch_voorraad')}</th>
+                          <th className="px-3 py-2 text-right">{t('merch_inkoopprijs')}</th>
+                          <th className="px-3 py-2 text-right">{t('merch_verkoopprijs')}</th>
+                          <th className="px-3 py-2 text-right">{t('manual_order_btw')}</th>
+                          {wcCreds?.enabled && <th className="px-3 py-2 text-center" title={t('merch_wc_push_tip')}>WC</th>}
+                          <th className="px-3 py-2 text-right"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(merchArtikelen||[]).map((m: MerchArtikel) => {
+                          const volgt = volgtVoorraad(m)
+                          const mutaties = merchLogVoorArtikel(merchVoorraadLog, m.id)
+                          return (
+                            <React.Fragment key={m.id}>
+                              <tr className={volgt && merchVoorraad(m) <= 0 ? 'bg-red-50' : ''}>
+                                <td className="px-3 py-2">
+                                  <span className="font-medium">{m.naam || m.sku}</span>
+                                  {m.sku && m.naam && <span className="ml-1 font-mono text-xs text-gray-400">[{m.sku}]</span>}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <input type="checkbox" checked={volgt}
+                                    onChange={e => wijzigMerch(m.id, {voorraad_volgen: e.target.checked})}
+                                    className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {volgt
+                                    ? <span className={`font-mono font-semibold ${merchVoorraad(m) <= 0 ? 'text-red-600' : 'text-gray-700'}`}>{merchVoorraad(m)}×</span>
+                                    : <span className="text-xs text-gray-400">{t('merch_geen_voorraad')}</span>}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {volgt ? <MerchGetal waarde={m.inkoopprijs} onSave={(v) => wijzigMerch(m.id, {inkoopprijs: v})} /> : <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <MerchGetal waarde={m.verkoopprijs} onSave={(v) => wijzigMerch(m.id, {verkoopprijs: v})} />
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <select value={String(m.btw_pct ?? stdBtw)}
+                                    onChange={e => wijzigMerch(m.id, {btw_pct: Number(e.target.value)})}
+                                    className="border border-gray-200 rounded px-1.5 py-1 text-sm bg-white t-input outline-none">
+                                    {btwOpts.map((o: any) => <option key={o.v} value={o.v}>{o.l}</option>)}
+                                  </select>
+                                </td>
+                                {wcCreds?.enabled && (
+                                  <td className="px-3 py-2 text-center">
+                                    <input type="checkbox" checked={volgt && m.wc_push !== false} disabled={!volgt}
+                                      title={t('merch_wc_push_tip')}
+                                      onChange={e => wijzigMerch(m.id, {wc_push: e.target.checked})}
+                                      className="w-4 h-4 rounded border-gray-300 t-checkbox disabled:opacity-30" />
+                                  </td>
+                                )}
+                                <td className="px-3 py-2 text-right whitespace-nowrap">
+                                  {volgt && (
+                                    <button onClick={() => openMerchMutatie(m)}
+                                      title={t('merch_mutatie_titel')}
+                                      className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-colors">
+                                      {t('merch_mutatie_knop')}
+                                    </button>
+                                  )}
+                                  {mutaties.length > 0 && (
+                                    <button onClick={() => setMerchLogOpen(v => v === m.id ? null : m.id)}
+                                      title={t('merch_log_titel')}
+                                      className="ml-1.5 text-gray-300 hover:text-gray-600 transition-colors">☰</button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      if (!confirm(t('merch_verwijder_bevestig').replace('{artikel}', merchLabel(m)))) return
+                                      setMerchArtikelen((prev: MerchArtikel[]) => verwijderMerch(prev || [], m.id))
+                                    }}
+                                    title={t('btn_delete')}
+                                    className="ml-1.5 text-gray-300 hover:text-red-500 transition-colors text-xs">✕</button>
+                                </td>
+                              </tr>
+                              {merchLogOpen === m.id && (
+                                <tr className="bg-gray-50">
+                                  <td colSpan={wcCreds?.enabled ? 8 : 7} className="px-3 py-2">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_log_titel')}</div>
+                                    <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                                      {mutaties.map((r: MerchMutatie) => (
+                                        <div key={r.id} className="flex items-center gap-2 text-xs text-gray-600">
+                                          <span className="text-gray-400 w-20 flex-shrink-0">{fmtD(r.datum)}</span>
+                                          <span className={`font-mono font-semibold w-12 text-right ${r.aantal < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                            {r.aantal > 0 ? '+' : ''}{r.aantal}
+                                          </span>
+                                          <span className="w-24 flex-shrink-0">{t(`merch_reden_${r.reden}`)}</span>
+                                          <span className="text-gray-400 flex-1 truncate">{r.referentie || r.omschrijving || ''}</span>
+                                          <span className="text-gray-400 font-mono">→ {r.stand}×</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-gray-100">
@@ -2358,6 +2548,53 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           )}
         </div>
       )}
+
+      {showMerchMutatie && (() => {
+        const artikel = (merchArtikelen||[]).find((m: MerchArtikel) => m.id === merchMutatieForm.merch_id)
+        if (!artikel) return null
+        const reden = merchMutatieForm.reden
+        return (
+          <Modal title={`${t('merch_mutatie_titel')} — ${merchLabel(artikel)}`} onClose={() => setShowMerchMutatie(false)}>
+            <div className="space-y-3">
+              <div className="text-sm text-gray-500">
+                {t('merch_huidige_voorraad')}: <strong className="text-gray-800">{merchVoorraad(artikel)}×</strong>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_mutatie_reden')}</label>
+                <Sel value={reden} onChange={(v: string) => setMerchMutatieForm(f => ({...f, reden: v as MerchMutatie['reden']}))}
+                  opts={(['inkoop', 'verkoop', 'retour', 'correctie', 'telling'] as const)
+                    .map(r => ({v: r, l: t(`merch_reden_${r}`)}))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  {reden === 'telling' ? t('merch_getelde_stand') : t('manual_order_qty')}
+                </label>
+                <Inp type="number" value={merchMutatieForm.aantal}
+                  onChange={(v: string) => setMerchMutatieForm(f => ({...f, aantal: v}))} placeholder="0" />
+                <p className="text-xs text-gray-400 mt-1">
+                  {reden === 'telling' ? t('merch_hint_telling') : reden === 'correctie' ? t('merch_hint_correctie') : t('merch_hint_mutatie')}
+                </p>
+              </div>
+              {reden === 'inkoop' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_inkoopprijs')}</label>
+                  <Inp type="number" value={merchMutatieForm.prijs}
+                    onChange={(v: string) => setMerchMutatieForm(f => ({...f, prijs: v}))} placeholder="0.00" />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking')}</label>
+                <Inp value={merchMutatieForm.notitie}
+                  onChange={(v: string) => setMerchMutatieForm(f => ({...f, notitie: v}))} placeholder={t('ph_merch_notitie')} />
+              </div>
+              <div className="flex justify-end gap-2 pt-1 border-t">
+                <Btn v="secondary" onClick={() => setShowMerchMutatie(false)}>{t('btn_cancel')}</Btn>
+                <Btn onClick={bewaarMerchMutatie}>{t('btn_save')}</Btn>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {filtered.length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">

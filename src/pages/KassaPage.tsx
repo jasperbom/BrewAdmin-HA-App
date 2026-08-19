@@ -14,6 +14,10 @@ import { printFactuur } from '../components/PakbonExport'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
+import {
+  MerchArtikel, MerchMutatie, merchLabel, merchVoorraad, volgtVoorraad,
+  boekMerchMutaties, merchAfboekingenVoorRegels,
+} from '../utils/merch'
 import { totaliseerRegels } from '../utils/centen'
 import { afvullingHoortBijBierNaam } from '../utils/picking'
 import { standaardBtwPct } from '../utils/btw'
@@ -53,6 +57,10 @@ interface KassaPageProps {
   setJournaal?: any
   btwInst?: any
   btwTarieven?: Array<number | string>
+  merchArtikelen?: MerchArtikel[]
+  setMerchArtikelen?: any
+  merchVoorraadLog?: MerchMutatie[]
+  setMerchVoorraadLog?: any
 }
 
 // Eén regel op de kassabon. De prijs komt altijd uit het artikel (normaal of
@@ -70,6 +78,8 @@ interface BonRegel {
   artikel_key?: string | null
   sku?: string | null
   prijsType?: 'normaal' | 'b2b'
+  /** Merch-artikel met eigen voorraad; wordt bij afrekenen afgeboekt. */
+  merch_id?: number | null
 }
 
 // Handmatige korting op de hele bon: vast bedrag (incl. BTW) of percentage.
@@ -96,6 +106,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
   auditLog = [], setAuditLog = () => {},
   setJournaal = () => {},
   btwInst = {}, btwTarieven = [0, 9, 21],
+  merchArtikelen = [], setMerchArtikelen = () => {},
+  merchVoorraadLog = [], setMerchVoorraadLog = () => {},
 }) => {
   // Standaard BTW-tarief uit de instellingen (21% tenzij anders ingesteld)
   const stdBtw = standaardBtwPct(btwInst, btwTarieven)
@@ -288,9 +300,32 @@ const KassaPage: React.FC<KassaPageProps> = ({
         })
       }
     }
+    // Merch met eigen voorraad verkoopt de kassa gewoon mee: geen afvulling,
+    // geen accijns, geen AGP — alleen een teller die eraf gaat. Zonder
+    // verkoopprijs blijft de tegel uitgeschakeld (een €0-bon is een valkuil).
+    for (const m of (merchArtikelen || [])) {
+      if (!volgtVoorraad(m)) continue
+      const voorraad = merchVoorraad(m)
+      items.push({
+        key: `merch-${m.id}`,
+        merch: true,
+        merch_id: m.id,
+        bier_naam: m.naam || m.sku || '',
+        verpakking_type: t('orders_regel_merch'),
+        artikel_id: null,
+        artikel_key: null,
+        sku: m.sku || null,
+        prijs: m.verkoopprijs != null ? Number(m.verkoopprijs) : null,
+        b2bPrijs: null,
+        btw_pct: m.btw_pct != null ? Number(m.btw_pct) : stdBtw,
+        voorraad,
+        buitenAgp: voorraad,
+        agp: 0,
+      })
+    }
     return items.sort((a, b) => a.bier_naam.localeCompare(b.bier_naam) || a.verpakking_type.localeCompare(b.verpakking_type))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [av, uit, verplaatsingen, afboekingen, bestellingPicks, bestellingen, openReserveringen, producten, productArtikelen, artikelen, verpakkingen, locaties, bat])
+  }, [av, uit, verplaatsingen, afboekingen, bestellingPicks, bestellingen, openReserveringen, producten, productArtikelen, artikelen, verpakkingen, locaties, bat, merchArtikelen])
 
   const catalogusGefilterd = catalogus.filter((c: any) =>
     !productZoek.trim() ||
@@ -372,12 +407,16 @@ const KassaPage: React.FC<KassaPageProps> = ({
     return {prijs: item.prijs ?? 0, prijsType: 'normaal'}
   }
 
-  const maxVoorItem = (item: any): number => isPrive ? item.buitenAgp : item.voorraad
+  // Merch blokkeert niet op nul: het shirt ligt fysiek op de toonbank, ook als
+  // de teller achterloopt. De stand mag negatief worden en valt dan rood op in
+  // de merch-lijst — dat is het signaal om te tellen of een inkoop te boeken.
+  const maxVoorItem = (item: any): number =>
+    item.merch ? Infinity : (isPrive ? item.buitenAgp : item.voorraad)
 
   const addToCart = (item: any, aantal = 1) => {
     setLaatsteVerkoop(null)
     setCart(prev => {
-      const bestaand = prev.find(r => r.key === item.key && r.type === 'bier')
+      const bestaand = prev.find(r => r.key === item.key && r.type === (item.merch ? 'vrij' : 'bier'))
       const huidig = bestaand ? bestaand.aantal : 0
       const max = maxVoorItem(item)
       const nieuw = Math.min(huidig + aantal, max)
@@ -391,17 +430,18 @@ const KassaPage: React.FC<KassaPageProps> = ({
       const {prijs, prijsType} = prijsVoorItem(item)
       return [...prev, {
         key: item.key,
-        type: 'bier',
+        type: item.merch ? 'vrij' : 'bier',
         bier_naam: item.bier_naam,
         verpakking_type: item.verpakking_type,
         aantal: nieuw,
         prijs_per_stuk: prijs,
         btw_pct: item.btw_pct,
-        omschrijving: `${item.bier_naam} – ${item.verpakking_type}`,
+        omschrijving: item.merch ? item.bier_naam : `${item.bier_naam} – ${item.verpakking_type}`,
         artikel_id: item.artikel_id,
         artikel_key: item.artikel_key,
         sku: item.sku,
         prijsType,
+        ...(item.merch ? {merch_id: item.merch_id} : {}),
       }]
     })
   }
@@ -873,6 +913,13 @@ const KassaPage: React.FC<KassaPageProps> = ({
     if (nieuweUitleveringen.length > 0) setUit((prev: any[]) => [...(prev || []), ...nieuweUitleveringen])
     if (nieuweAccijns.length > 0) setAcc((prev: any[]) => [...(prev || []), ...nieuweAccijns])
     setVerkoopFacturen((prev: any[]) => [...(prev || []), factuur])
+    // Merch met eigen voorraad afboeken (bonregels met een merch-artikel).
+    const merchMutaties = merchAfboekingenVoorRegels(cart, merchArtikelen, {datum: vandaag, referentie: factuurNummer})
+    if (merchMutaties.length) {
+      const geboekt = boekMerchMutaties(merchArtikelen, merchVoorraadLog, merchMutaties)
+      setMerchArtikelen(geboekt.artikelen)
+      setMerchVoorraadLog(geboekt.log)
+    }
     // Journaal (ERP-plan 2.1): kassafactuur is direct definitief → boeken.
     setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(factuur)))
     setLog((prev: any[]) => {
@@ -1060,8 +1107,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
                 {catalogusGefilterd.map((item: any) => {
                   const max = maxVoorItem(item)
-                  const inCart = cart.find(r => r.key === item.key && r.type === 'bier')?.aantal || 0
-                  const uitverkocht = max <= 0
+                  const inCart = cart.find(r => r.key === item.key)?.aantal || 0
+                  const uitverkocht = max <= 0 || (item.merch && item.prijs == null)
                   const {prijs, prijsType} = prijsVoorItem(item)
                   const prijsToon = toonInclBtw ? rnd2(prijs * (1 + Number(item.btw_pct || 0) / 100)) : prijs
                   // AGP-voorraad is voor privé/balie niet verkoopbaar — puur ter info tonen.
@@ -1082,8 +1129,15 @@ const KassaPage: React.FC<KassaPageProps> = ({
                           {item.prijs != null || (isZakelijk && item.b2bPrijs != null) ? fmt(prijsToon) : '—'}
                           {prijsType === 'b2b' && <span className="ml-1 text-[9px] font-semibold bg-blue-100 text-blue-700 px-1 py-0.5 rounded align-middle">B2B</span>}
                         </span>
-                        <span className={`text-[10px] ${uitverkocht ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-                          {uitverkocht ? t('pos_geen_voorraad') : `${max} ${t('pos_voorraad')}`}
+                        {/* Merch heeft geen harde grens: de stand is informatief
+                            (oranje bij nul of minder), bier blokkeert wél. */}
+                        <span className={`text-[10px] ${
+                          item.merch
+                            ? (item.prijs == null ? 'text-red-500 font-medium' : Number(item.voorraad) <= 0 ? 'text-orange-500 font-medium' : 'text-gray-400')
+                            : uitverkocht ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                          {item.merch
+                            ? (item.prijs == null ? t('pos_merch_geen_prijs') : `${item.voorraad} ${t('pos_voorraad')}`)
+                            : uitverkocht ? t('pos_geen_voorraad') : `${max} ${t('pos_voorraad')}`}
                         </span>
                       </div>
                       {agpInfo > 0 && (

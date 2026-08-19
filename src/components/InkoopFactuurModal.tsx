@@ -4,6 +4,7 @@ import Btn from './ui/Btn'
 import Inp from './ui/Inp'
 import Sel from './ui/Sel'
 import { t } from '../i18n'
+import { MerchArtikel, merchLabel, volgtVoorraad } from '../utils/merch'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
 import { getEffectiveBrewProp, formatBrewValue } from '../utils/brewProps'
 import { ADDON_BASE, callClaudeProxy } from '../utils/api'
@@ -259,6 +260,9 @@ interface InkoopFactuurModalProps {
   // doorrolt (omdat de oorspronkelijke aangifte al ingediend/betaald is).
   // null = geen rollover nodig.
   getRolloverInfo?: (datum: string) => { rolloverNaar: string; vanafPeriode: string } | null
+  // Merch-artikelen met eigen voorraad: een vrije regel kan eraan gekoppeld
+  // worden zodat de inkoop meteen de merch-voorraad aanvult.
+  merchArtikelen?: MerchArtikel[]
 }
 
 function InkoopFactuurModal({
@@ -266,8 +270,10 @@ function InkoopFactuurModal({
   initialTab='ingredienten', initialIngId='', claudeCreds=null, breweryNaam='',
   ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
   kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo,
-  scanCorrecties=[], onScanCorrectie
+  scanCorrecties=[], onScanCorrectie, merchArtikelen=[]
 }: InkoopFactuurModalProps) {
+  // Alleen merch met eigen voorraad is aan een inkoopregel te koppelen.
+  const merchMetVoorraad = (merchArtikelen || []).filter(volgtVoorraad)
   const defaultType = ingTypes[0] || 'Mout'
 
   // Pre-fill defaults voor "+ lot" op een specifiek ingredient: leid type,
@@ -350,7 +356,8 @@ function InkoopFactuurModal({
     })
   })
 
-  const emptyVrije = {naam:'', netto: '' as string | number, btw_tarief: 21, kostensoort: 'Overig'}
+  const emptyVrije = {naam:'', netto: '' as string | number, btw_tarief: 21, kostensoort: 'Overig',
+    merch_id: '' as string | number, merch_aantal: ''}
   const [vrijeForm, setVrijeForm] = useState<any>(emptyVrije)
   const [vrijeList, setVrijeList] = useState<any[]>(() => {
     if (!initialData?.regels) return []
@@ -415,6 +422,8 @@ function InkoopFactuurModal({
   const voegVrijeToe = () => {
     if (!vrijeForm.naam.trim()) { alert(t('err_fill_description')); return }
     if (!parseFloat(vrijeForm.netto)) { alert(t('err_fill_amount')); return }
+    // Een merch-koppeling zonder aantal zou stilzwijgend niets bijboeken.
+    if (vrijeForm.merch_id && !(Number(vrijeForm.merch_aantal) > 0)) { alert(t('err_merch_inkoop_aantal')); return }
     if (editingVrijeIdx !== null) {
       setVrijeList(prev => prev.map((r: any, i: number) => i===editingVrijeIdx ? {...vrijeForm, _id:r._id} : r))
       setEditingVrijeIdx(null)
@@ -1144,6 +1153,35 @@ function InkoopFactuurModal({
                   </select>
                 </div>
               </div>
+              {/* Merch-inkoop: koppel de regel aan een merch-artikel zodat de
+                  voorraad meegroeit en de inkoopprijs bijgewerkt wordt. */}
+              {merchMetVoorraad.length > 0 && (
+                <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 space-y-2">
+                  <div className="text-xs font-semibold text-purple-800">{t('merch_inkoop_koppel')}</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{t('merch_titel_kort')}</label>
+                      <select value={String(vrijeForm.merch_id ?? '')}
+                        onChange={e => setVrijeForm((f: any) => ({...f, merch_id: e.target.value}))}
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full bg-white">
+                        <option value="">{t('merch_inkoop_geen')}</option>
+                        {merchMetVoorraad.map((m: MerchArtikel) => (
+                          <option key={m.id} value={m.id}>{m.naam || m.sku}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{t('manual_order_qty')}</label>
+                      <input type="number" value={String(vrijeForm.merch_aantal ?? '')} min={0} step="1"
+                        disabled={!vrijeForm.merch_id}
+                        onChange={e => setVrijeForm((f: any) => ({...f, merch_aantal: e.target.value}))}
+                        placeholder="0"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none disabled:opacity-40" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-purple-700">{t('merch_inkoop_hint')}</p>
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 {editingVrijeIdx !== null && (
                   <Btn v="secondary" onClick={() => {setEditingVrijeIdx(null);setVrijeForm(emptyVrije)}}>{t('btn_cancel')}</Btn>

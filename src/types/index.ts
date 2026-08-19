@@ -474,6 +474,8 @@ export interface FactuurRegel {
   // - 'import_niet_eu'           = invoer van buiten de EU (verlegd → rubriek 4a/5b)
   btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'
   kostensoort?: string
+  /** Vrije regel die merch-voorraad aanvult: welk artikel en hoeveel stuks. */
+  merch_id?: number | null
 }
 
 export interface Bijlage {
@@ -990,12 +992,18 @@ export interface BestellingRegel {
   wc_btw?: number
 }
 
-/** Zie `src/utils/merch.ts`. */
+/** Zie `src/utils/merch.ts` — daar staan ook de voorraadvelden en -logica. */
 export interface MerchArtikel {
   id: number
   sku?: string | null
   naam?: string | null
   toegevoegd?: string
+  voorraad_volgen?: boolean
+  voorraad?: number
+  inkoopprijs?: number
+  verkoopprijs?: number
+  btw_pct?: number
+  wc_push?: boolean
 }
 
 export interface BestellingPick {
@@ -1804,6 +1812,8 @@ export interface JournaalRegel {
   btw_tarief?: number
   btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'
   kostensoort?: string
+  /** Vrije regel die merch-voorraad aanvult: welk artikel en hoeveel stuks. */
+  merch_id?: number | null
   btw_periode?: string      // effectieve BTW-periodeKey (incl. rollover)
   // Bedragen in hele centen (integers) — bewust vooruitlopend op ERP-plan 2.2
   // zodat het journaal nooit een float-migratie nodig heeft. Verkoop positief =
