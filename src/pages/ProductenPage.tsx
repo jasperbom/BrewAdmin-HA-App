@@ -2,6 +2,7 @@ import React from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
+import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
@@ -63,7 +64,7 @@ const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null
   } catch { return null }
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], btwInst={}, btwTarieven=[0,9,21]}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[]}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -864,10 +865,18 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         const prod = (producten||[]).find((p: any) => p.id === pa.product_id);
         return {...pa, biernaam: prod?.naam || '', _product_id: pa.product_id};
       });
-      const combis = paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false);
+      const bierCombis = paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false);
+      // Merch met eigen voorraad gaat op dezelfde manier mee: het aantal komt
+      // niet uit afvullingen maar uit de eigen teller (zie utils/merch.ts).
+      const merchCombis = (merchArtikelen||[])
+        .filter((m: MerchArtikel) => m.sku && volgtVoorraad(m) && m.wc_push !== false)
+        .map((m: MerchArtikel) => ({...m, artikelnummer: m.sku, biernaam: m.naam || m.sku, verpakking_type: '', _merch: true}));
+      const combis = [...bierCombis, ...merchCombis];
       for (const art of combis) {
-        const naam = `${art.biernaam} ${art.verpakking_type}`.trim();
-        const beschikbaar = wcBeschikbaarVoorArt(art);
+        const naam = (art._merch ? String(art.biernaam || '') : `${art.biernaam} ${art.verpakking_type}`).trim();
+        // Merch mag negatief staan (waarschuwing, geen blokkade); WooCommerce
+        // wil geen negatieve voorraad, dus daar wordt nul gepusht.
+        const beschikbaar = art._merch ? Math.max(0, merchVoorraad(art)) : wcBeschikbaarVoorArt(art);
         addWcLog('debug', `🔍 ${naam} → ${beschikbaar}×`, '');
         try {
           const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
@@ -899,7 +908,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       } else {
         setWcSyncMsg(`✓ ${pushMsg}`);
         addWcLog('push', `↑ ${pushMsg}`,
-          combis.filter((a: any) => a.artikelnummer).map((a: any) => `${a.biernaam} ${a.verpakking_type}: ${wcBeschikbaarVoorArt(a)}×`).join(', '));
+          combis.filter((a: any) => a.artikelnummer).map((a: any) =>
+            `${a.biernaam} ${a.verpakking_type || ''}`.trim() + `: ${a._merch ? Math.max(0, merchVoorraad(a)) : wcBeschikbaarVoorArt(a)}×`).join(', '));
       }
     } catch(e: any) {
       const melding = wcFoutMelding(e, t);

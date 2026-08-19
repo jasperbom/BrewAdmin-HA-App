@@ -474,6 +474,8 @@ export interface FactuurRegel {
   // - 'import_niet_eu'           = invoer van buiten de EU (verlegd → rubriek 4a/5b)
   btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'
   kostensoort?: string
+  /** Vrije regel die merch-voorraad aanvult: welk artikel en hoeveel stuks. */
+  merch_id?: number | null
 }
 
 export interface Bijlage {
@@ -971,13 +973,37 @@ export interface BreweryDetails {
 export interface BestellingRegel {
   id: number
   artikel_id?: number | null
+  artikel_key?: string | null
+  sku?: string | null
   bier_naam: string
   verpakking_type: string
   aantal: number
   prijs_per_stuk: number
   btw_pct: number
   omschrijving?: string
-  type?: 'bier' | 'vrij' | 'verzending'
+  // Ontbrekend type = 'bier' (oude orders): moet uit de biervoorraad gepickt
+  // worden. 'vrij' staat alleen op de factuur — merch of een dienst.
+  type?: 'bier' | 'vrij' | 'verzending' | 'korting'
+  /** WooCommerce-regel die niet aan een eigen artikel te koppelen was. */
+  wc_onbekend?: boolean
+  /** Bekend merch-artikel: nooit picken, alleen factureren. */
+  merch?: boolean
+  wc_netto?: number
+  wc_btw?: number
+}
+
+/** Zie `src/utils/merch.ts` — daar staan ook de voorraadvelden en -logica. */
+export interface MerchArtikel {
+  id: number
+  sku?: string | null
+  naam?: string | null
+  toegevoegd?: string
+  voorraad_volgen?: boolean
+  voorraad?: number
+  inkoopprijs?: number
+  verkoopprijs?: number
+  btw_pct?: number
+  wc_push?: boolean
 }
 
 export interface BestellingPick {
@@ -1786,6 +1812,8 @@ export interface JournaalRegel {
   btw_tarief?: number
   btw_soort?: 'binnenlands' | 'intracom_eu' | 'import_niet_eu'
   kostensoort?: string
+  /** Vrije regel die merch-voorraad aanvult: welk artikel en hoeveel stuks. */
+  merch_id?: number | null
   btw_periode?: string      // effectieve BTW-periodeKey (incl. rollover)
   // Bedragen in hele centen (integers) — bewust vooruitlopend op ERP-plan 2.2
   // zodat het journaal nooit een float-migratie nodig heeft. Verkoop positief =

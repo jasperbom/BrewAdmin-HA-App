@@ -4,6 +4,98 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.97] — 2026-08-19
+
+### Nieuw — merch die je zélf op voorraad hebt
+
+Merch was tot nu toe alleen "niet uit eigen voorraad" (de leverancier
+verstuurt het). Heb je shirts en glazen wél zelf liggen, dan houdt de app het
+aantal nu bij — bewust kaal: een teller met een mutatielog, géén lots, THT,
+accijns of AGP. Dat blijft strikt bier.
+
+- **Zet "Eigen voorraad" aan** bij een merch-artikel (lijst boven de
+  bestellingen). Je vult er een in- en verkoopprijs, BTW-tarief en het aantal
+  bij. De sectiekop toont de totale voorraadwaarde.
+- **Voorraad bijwerken** met een reden: inkoop, verkoop, retour, correctie of
+  telling. Een telling zet de stand absoluut, de rest telt op of af. Elke
+  mutatie komt in het logje per artikel, met de stand erachter.
+- **Een order afronden boekt de merch af**, met het factuurnummer als
+  referentie. Is er te weinig, dan volgt een waarschuwing — geen blokkade: de
+  klant heeft het al meegekregen. De voorraad wordt dan negatief en valt rood
+  op tot je een inkoop of telling boekt.
+- **De kassa verkoopt merch mee.** Artikelen met eigen voorraad en een
+  verkoopprijs verschijnen als tegel; de stand staat erbij (oranje bij nul of
+  minder) en gaat er bij het afrekenen af. Bier blijft wél hard blokkeren op
+  nul — dat raakt de accijnsadministratie.
+- **Inkoopfacturen vullen de voorraad aan.** Bij een vrije regel kies je een
+  merch-artikel en het aantal stuks; het factuurbedrag wordt de nieuwe
+  inkoopprijs per stuk. Werkt ook bij het boeken vanaf een banktransactie.
+- **De WooCommerce-voorraadpush neemt merch mee** (vinkje per artikel, net als
+  bij bier). Een negatieve stand wordt als 0 gepusht.
+
+Technisch: nieuwe data-key `merch_voorraad_log` en voorraadvelden op
+`merch_artikelen`; alle rekenlogica puur in `src/utils/merch.ts`
+(`boekMerchMutaties`, `merchTekorten`, `merchAfboekingenVoorRegels`,
+`merchVoorraadWaarde`) mét tests. Bierregels boeken nooit merch af, ook niet
+bij een gelijke naam. Bewerken van een bestaande inkoopfactuur raakt de
+voorraad niet — net als bij lots en onderdelen boekt alleen het aanmaken bij.
+
+---
+
+## [1.11.96] — 2026-08-19
+
+### Gewijzigd — het heet nu gewoon "merch"
+
+De functie uit 1.11.95 heette overal "dropshipping". Dat is vakjargon; in de
+app staat er nu **merch**: het label op de orderregel, de knop *Markeer als
+merch* en de lijst **Merch-artikelen**. Alleen de naam verandert — het gedrag
+is hetzelfde.
+
+Technisch: `utils/dropship.ts` → `utils/merch.ts`, data-key
+`dropship_artikelen` → `merch_artikelen`, regelveld `dropship` → `merch`,
+i18n-sleutels `*_dropship_*` → `*_merch_*` (alle vijf talen). Wie 1.11.95 al
+draaide: de lijst met gemarkeerde artikelen begint één keer opnieuw en op al
+gemarkeerde orderregels verdwijnt het paarse label. Die regels blijven wél
+vrije regels (`type: 'vrij'`), dus die orders zijn gewoon af te ronden.
+
+---
+
+## [1.11.95] — 2026-08-19
+
+### Opgelost — merch-orders uit de webshop bleven eeuwig openstaan
+
+Verkoop je via WooCommerce ook merch die je niet zelf op voorraad hebt (een
+leverancier verstuurt het rechtstreeks — dropshipping), dan kwam die regel als
+een gewone bierregel binnen. Picken kon dus nooit lukken ("geen beschikbare
+voorraad") en afronden vroeg om precies die picks: de order bleef op
+**Nieuw** hangen, zonder factuur.
+
+- **De order wijst nu zelf de uitweg.** Staat er een regel waarvoor geen
+  énkele voorraad in aanmerking komt, dan verschijnt onder de orderregels een
+  uitleg met de knop **Markeer als dropshipping**. Eén klik: de regel gaat van
+  de picking af, blijft gewoon op de factuur staan en de order is af te ronden.
+  Dezelfde knop staat in het pickscherm, precies bij de melding dat er niets
+  te picken valt.
+- **De app onthoudt het artikel.** Gemarkeerde artikelen komen in de nieuwe
+  lijst **Dropship-artikelen** (uitklapper boven de bestellijst, ook met de
+  hand te vullen op SKU of productnaam). Elke volgende WooCommerce-import zet
+  dat artikel meteen als vrije regel neer — mét een paars `Dropshipping`-label
+  en zónder de oranje "niet herkend"-waarschuwing, want het is een bewuste
+  keuze en geen gok.
+- **Oude orders liepen écht vast.** Regels van vóór de merch-splitsing hebben
+  helemaal geen regelsoort. Die telden wél mee voor "er moet gepickt worden",
+  maar niet voor "alles is gepickt" — en het knopje om de regelsoort te
+  wisselen werd er niet eens voor getoond. Zo'n regel geldt nu overal als
+  bierregel en is dus ook om te zetten.
+
+Technisch: nieuwe pure logica in `src/utils/dropship.ts` (mét test), herkenning
+in `utils/wcImport.ts` via `refs.dropship`, nieuwe data-key
+`dropship_artikelen` (in `_KEY_TYPES` en in de Excel-backup). De kleine
+⇄-knop blijft een eenmalige correctie op één order; alleen de expliciete
+dropshipping-knop legt het artikel structureel vast.
+
+---
+
 ## [1.11.94] — 2026-08-13
 
 ### Verbeterd — het getal in de cirkel boven in het menu legt zichzelf uit

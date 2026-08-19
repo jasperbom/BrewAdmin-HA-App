@@ -15,6 +15,7 @@ import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { bouwUbl, controleerUbl } from '../utils/ubl'
 import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
+import { MerchArtikel, MerchMutatie, MerchMutatieInvoer, boekMerchMutaties } from '../utils/merch'
 import Modal from '../components/ui/Modal'
 import AccijnsPage from './AccijnsPage'
 import { printFactuur, buildFactuurHTML, printHerinnering, buildHerinneringHTML } from '../components/PakbonExport'
@@ -23,7 +24,7 @@ import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, onInitialTabConsumed=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, onInitialTabConsumed=()=>{}, merchArtikelen=[], setMerchArtikelen=()=>{}, merchVoorraadLog=[], setMerchVoorraadLog=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -673,10 +674,28 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       regels.push({type:'verpakking', naam:v._naam||v.naam||'', aantal:Number(v.aantal),
         prijs_per_stuk:ps||null, netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort:'Verpakkingsmateriaal'});
     });
+    // Merch-inkopen die vanuit deze factuur de voorraad aanvullen.
+    const merchInkopen: MerchMutatieInvoer[] = [];
     vrijeRegels.forEach((r: any) => {
       const netto = r2(parseFloat(r.netto)||0);
       const btw_tarief = Number(r.btw_tarief)||0;
-      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'});
+      const merchId = Number(r.merch_id) || 0;
+      const merchAantal = Number(r.merch_aantal) || 0;
+      if (merchId && merchAantal > 0) {
+        merchInkopen.push({
+          merch_id: merchId,
+          aantal: merchAantal,
+          reden: 'inkoop',
+          datum: factuurForm.datum || ymd(now),
+          referentie: factuurForm.factuur || factuurForm.leverancier || '',
+          omschrijving: r.naam.trim(),
+          // Stuksprijs uit het factuurbedrag; dat is de waarde waarvoor de
+          // merch op voorraad komt (excl. BTW).
+          prijs_per_stuk: r2(netto / merchAantal),
+        });
+      }
+      regels.push({naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig',
+        ...(merchId && merchAantal > 0 ? {merch_id: merchId, aantal: merchAantal} : {})});
     });
     // Geen inkoopfactuur opslaan als leverancier én factuurnummer beide leeg zijn:
     // dan geldt de ontvangst als voorraadcorrectie (lots blijven wel staan).
@@ -703,6 +722,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}),
     };
     setInkoopFacturen((prev: any) => [...prev, nieuweFactuur]);
+    // Merch-voorraad aanvullen. Net als bij lots en onderdelen gebeurt dit
+    // alleen bij het aanmaken van de factuur — `updateFactuur` raakt voorraad
+    // bewust niet aan, anders zou bewerken dubbel bijboeken.
+    if (merchInkopen.length) {
+      const geboekt = boekMerchMutaties(merchArtikelen, merchVoorraadLog, merchInkopen);
+      setMerchArtikelen(geboekt.artikelen);
+      setMerchVoorraadLog(geboekt.log);
+    }
     // Journaal (ERP-plan 2.1): inkoopfactuur boeken bij vastleggen.
     setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)));
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuwFactuurId, actie:'aangemaakt', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
@@ -1600,12 +1627,31 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     if (!tx) return
     const btwSoort = factuurForm?.btw_soort || 'binnenlands'
     const verlegd = btwSoort !== 'binnenlands'
+    // Merch-inkopen die vanuit deze boeking de voorraad aanvullen.
+    const merchInkopen: MerchMutatieInvoer[] = []
     const regels: any[] = (vrijeRegels||[]).map((r: any) => {
       const netto = r2(parseFloat(r.netto)||0)
       const btw_tarief = Number(r.btw_tarief)||0
-      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig'}
+      const merchId = Number(r.merch_id) || 0
+      const merchAantal = Number(r.merch_aantal) || 0
+      if (merchId && merchAantal > 0) {
+        merchInkopen.push({
+          merch_id: merchId, aantal: merchAantal, reden: 'inkoop',
+          datum: factuurForm?.datum || tx.datum,
+          referentie: factuurForm?.factuur || factuurForm?.leverancier || tx.tegenpartij || '',
+          omschrijving: r.naam.trim(),
+          prijs_per_stuk: r2(netto / merchAantal),
+        })
+      }
+      return {naam: r.naam.trim(), type: 'overig', netto, btw_tarief, btw_bedrag: verlegd ? 0 : r2(netto*btw_tarief/100), btw_soort: btwSoort, kostensoort: r.kostensoort||'Overig',
+        ...(merchId && merchAantal > 0 ? {merch_id: merchId, aantal: merchAantal} : {})}
     })
     if (!regels.length) return
+    if (merchInkopen.length) {
+      const geboekt = boekMerchMutaties(merchArtikelen, merchVoorraadLog, merchInkopen)
+      setMerchArtikelen(geboekt.artikelen)
+      setMerchVoorraadLog(geboekt.log)
+    }
     // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
     const totalen = totaliseerRegels(regels)
     const factuurDatum = factuurForm?.datum || tx.datum
@@ -2120,7 +2166,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
         {/* Inkoop factuur modal */}
         {showVrijeFactuur && (
-          <InkoopFactuurModal
+          <InkoopFactuurModal merchArtikelen={merchArtikelen}
             knownLeveranciers={knownLeveranciers}
             ing={ing}
             onderdelen={onderdelen}
@@ -2952,7 +2998,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
         {/* Nieuwe boeking modal */}
         {boekingTxIndex !== null && boekingInitialData && (
-          <InkoopFactuurModal
+          <InkoopFactuurModal merchArtikelen={merchArtikelen}
             knownLeveranciers={knownLeveranciers}
             ing={ing}
             onderdelen={onderdelen}

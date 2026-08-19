@@ -113,6 +113,24 @@ describe('mapWcOrderRegels', () => {
     expect(r[0].btw_pct).toBe(6)
   })
 
+  it('brengt een bekend merch-artikel binnen zonder onbekend-vlag', () => {
+    const r = mapWcOrderRegels(order, {...refs, merch: [{id: 1, sku: 'SHIRT-L', naam: null}]})
+    const regel = r[1]
+    expect(regel.type).toBe('vrij')
+    expect(regel.merch).toBe(true)
+    expect(regel.wc_onbekend).toBeUndefined()
+    expect(regel.prijs_per_stuk).toBeCloseTo(20.66, 2)
+    // de bierregel blijft gewoon een pickregel
+    expect(r[0].type).toBe('bier')
+  })
+
+  it('laat een als merch gemarkeerd artikel niet meer aan een eigen artikel koppelen', () => {
+    const r = mapWcOrderRegels(order, {...refs, merch: [{id: 1, sku: null, naam: 'Witbier 33cl'}]})
+    expect(r[0]).toMatchObject({type: 'vrij', merch: true, verpakking_type: ''})
+    // prijs komt dan uit WooCommerce zelf, niet uit de eigen prijslijst
+    expect(r[0].prijs_per_stuk).toBeCloseTo(1.71, 2)
+  })
+
   it('geeft een lege lijst voor een order zonder regels', () => {
     expect(mapWcOrderRegels({}, refs)).toEqual([])
     expect(mapWcOrderRegels(null, refs)).toEqual([])
