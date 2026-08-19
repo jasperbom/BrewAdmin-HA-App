@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.99] — 2026-08-19
+
+### Verbeterd — de PSP-lijst toont alleen wat er écht in kan zitten
+
+Aanscherping op 1.11.98, naar aanleiding van de praktijk:
+
+- **Facturen die al aan een andere banktransactie hangen staan er niet meer
+  tussen** — ook niet met het vinkje aan. Ze konden toch niet in deze bundel
+  zitten; ze aanbieden nodigt alleen maar uit tot dubbel koppelen.
+- **Contant of per pin afgerekende kassabonnen vallen weg.** Dat geld is nooit
+  langs de PSP gegaan. Een kassabon *op rekening* blijft wél staan: die kan de
+  klant alsnog via de betaallink op de factuur voldoen.
+- **Er wordt op de betaaldatum gezocht, niet op de factuurdatum.** De import
+  haalt nu `date_paid` uit WooCommerce mee, en bij het afronden onthoudt de
+  factuur de besteldatum. Dat is de dag die de PSP uitbetaalt — de factuurdatum
+  is de dag dat jíj de order afrondde, soms dagen later. In de lijst staat
+  daarom de betaaldatum, met de factuurdatum als tooltip.
+- Het vinkje heet nu "toon ook facturen buiten dit tijdvak" en doet alleen dat.
+
+---
+
 ## [1.11.98] — 2026-08-19
 
 ### Opgelost — PSP-uitbetalingen koppelden niet aan orders die al betaald stonden

@@ -13,7 +13,7 @@ import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, storno
 import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { bouwUbl, controleerUbl } from '../utils/ubl'
-import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten } from '../utils/bank'
+import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten, pspFactuurDatum } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import { MerchArtikel, MerchMutatie, MerchMutatieInvoer, boekMerchMutaties } from '../utils/merch'
 import Modal from '../components/ui/Modal'
@@ -1373,10 +1373,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   // Kandidaten voor de PSP-bundel van deze transactie: open én al betaalde
-  // facturen rond de uitbetaaldatum, zonder de facturen die elders al hangen.
-  const pspKandidatenVoor = (tx: any) => pspKandidaten(verkoopFacturen || [], {
+  // facturen rond de uitbetaaldatum. Facturen die elders al gekoppeld zijn of
+  // aan de balie contant/pin zijn afgerekend blijven eruit — die kunnen niet
+  // in een PSP-uitbetaling zitten. `negeerDatum` laat alleen het tijdvak los.
+  const pspKandidatenVoor = (tx: any, negeerDatum = false) => pspKandidaten(verkoopFacturen || [], {
     datum: tx?.datum,
     alGekoppeld: verkoopIdsElders(tx ? txKey(tx) : undefined),
+    negeerDatum,
   })
 
   const openPspModal = (txIndex: number) => {
@@ -2889,20 +2892,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         {/* PSP-uitbetaling uitsplitsen modal */}
         {pspTxIndex !== null && bankTransacties[pspTxIndex] && (() => {
           const tx = bankTransacties[pspTxIndex]
-          // Standaard de plausibele bundel-kandidaten: open én al betaalde
-          // facturen rond de uitbetaaldatum, zonder wat elders al gekoppeld
-          // is. Met het vinkje komt álles in beeld (ook oudere facturen en
-          // facturen die aan een andere transactie hangen), voor het geval de
-          // bundel toch buiten dat raam valt.
-          const elders = verkoopIdsElders(txKey(tx))
-          const kandidaten = pspToonAlles
-            ? (verkoopFacturen||[])
-                .filter((f: any) => (f.bruto||0) > 0 && f.status !== 'credit')
-                .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
-            : (verkoopFacturen||[])
-                .filter((f: any) => pspSelectie.includes(f.id) && (f.bruto||0) > 0)
-                .concat(pspKandidatenVoor(tx).filter((f: any) => !pspSelectie.includes(f.id)))
-                .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
+          // Alleen facturen die écht in een PSP-uitbetaling kúnnen zitten:
+          // elders gekoppelde en aan de balie afgerekende facturen laten we
+          // helemaal weg. Het vinkje laat alleen het tijdvak los, voor het
+          // geval de bundel buiten dat venster valt.
+          const kandidaten = (verkoopFacturen||[])
+            .filter((f: any) => pspSelectie.includes(f.id) && (f.bruto||0) > 0)
+            .concat(pspKandidatenVoor(tx, pspToonAlles).filter((f: any) => !pspSelectie.includes(f.id)))
+            .sort((a: any, b: any) => pspFactuurDatum(b).localeCompare(pspFactuurDatum(a)))
           const som = r2((verkoopFacturen||[]).filter((f: any) => pspSelectie.includes(f.id)).reduce((s: number, f: any) => s + (f.bruto||0), 0))
           const kosten = r2(som - tx.bedrag)
           const somTeLaag = pspSelectie.length > 0 && kosten < -0.005
@@ -2931,10 +2928,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   {kandidaten.map((f: any) => (
                     <label key={f.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
                       <input type="checkbox" className="t-checkbox" checked={pspSelectie.includes(f.id)} onChange={()=>toggleFactuur(f.id)} />
-                      <span className="text-gray-500 whitespace-nowrap">{f.datum||'—'}</span>
+                      <span className="text-gray-500 whitespace-nowrap"
+                        title={f.datum && pspFactuurDatum(f) !== f.datum ? `${t('lbl_factuurdatum')}: ${f.datum}` : ''}>
+                        {pspFactuurDatum(f) || '—'}
+                      </span>
                       <span className="flex-1 truncate text-gray-800">{f.factuurnummer ? `${f.factuurnummer} · ` : ''}{klantNaamVoor(f) || t('lbl_onbekend')}</span>
                       {f.status === 'betaald' && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 whitespace-nowrap">{t('factuur_paid')}</span>}
-                      {elders.has(f.id) && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 whitespace-nowrap" title={t('tip_psp_elders_gekoppeld')}>{t('lbl_psp_elders')}</span>}
                       <span className="font-medium text-gray-700 whitespace-nowrap">{fmt(f.bruto||0)}</span>
                     </label>
                   ))}
