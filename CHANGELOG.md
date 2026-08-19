@@ -4,6 +4,53 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.0] — 2026-08-19
+
+### Nieuw — BTW-betalingen koppelen vanuit het bankoverzicht
+
+Een afschrijving van de Belastingdienst was alleen te koppelen vanaf het
+tabblad **BTW-aangifte**, en dan nog pas nadat je daar op "aangifte ingediend"
+had gedrukt. Wie eerst het bankafschrift importeerde, zag een transactie zonder
+enige knop om er iets mee te doen.
+
+- **In de bankregel staat nu een keuzelijst "→ BTW-aangifte…"** met de
+  ingediende aangiftes die nog niet betaald zijn, dichtstbijzijnde bedrag
+  eerst. Eén klik koppelt de transactie en zet de periode op afgesloten. Werkt
+  beide kanten op: een teruggave komt als bijschrijving binnen en krijgt de
+  aangiftes met een negatief bedrag aangeboden.
+- **Transacties van de Belastingdienst worden herkend** (op naam, omschrijving
+  of de vaste ontvangstrekening) en krijgen een ⚡-markering, zodat je ze tussen
+  de andere afschrijvingen terugvindt.
+- **Staat er nog geen aangifte klaar**, dan wijst zo'n herkende transactie de
+  weg met een knop naar het tabblad BTW-aangifte, in plaats van er stilzwijgend
+  bij te blijven staan.
+
+Het bestaande koppelen vanaf de aangiftekant blijft gewoon werken; dit is een
+tweede ingang naar dezelfde koppeling.
+
+---
+
+## [1.11.99] — 2026-08-19
+
+### Verbeterd — de PSP-lijst toont alleen wat er écht in kan zitten
+
+Aanscherping op 1.11.98, naar aanleiding van de praktijk:
+
+- **Facturen die al aan een andere banktransactie hangen staan er niet meer
+  tussen** — ook niet met het vinkje aan. Ze konden toch niet in deze bundel
+  zitten; ze aanbieden nodigt alleen maar uit tot dubbel koppelen.
+- **Contant of per pin afgerekende kassabonnen vallen weg.** Dat geld is nooit
+  langs de PSP gegaan. Een kassabon *op rekening* blijft wél staan: die kan de
+  klant alsnog via de betaallink op de factuur voldoen.
+- **Er wordt op de betaaldatum gezocht, niet op de factuurdatum.** De import
+  haalt nu `date_paid` uit WooCommerce mee, en bij het afronden onthoudt de
+  factuur de besteldatum. Dat is de dag die de PSP uitbetaalt — de factuurdatum
+  is de dag dat jíj de order afrondde, soms dagen later. In de lijst staat
+  daarom de betaaldatum, met de factuurdatum als tooltip.
+- Het vinkje heet nu "toon ook facturen buiten dit tijdvak" en doet alleen dat.
+
+---
+
 ## [1.11.98] — 2026-08-19
 
 ### Opgelost — PSP-uitbetalingen koppelden niet aan orders die al betaald stonden

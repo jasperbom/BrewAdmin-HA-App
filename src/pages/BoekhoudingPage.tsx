@@ -13,7 +13,7 @@ import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, storno
 import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { bouwUbl, controleerUbl } from '../utils/ubl'
-import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten } from '../utils/bank'
+import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten, pspFactuurDatum, isBelastingdienstTransactie } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import { MerchArtikel, MerchMutatie, MerchMutatieInvoer, boekMerchMutaties } from '../utils/merch'
 import Modal from '../components/ui/Modal'
@@ -1356,6 +1356,59 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     })
   }
 
+  // ── BTW-betaling koppelen vanuit het bankoverzicht ────────────────────────
+  // Een afschrijving van de Belastingdienst was tot nu toe alleen te koppelen
+  // vanaf het tabblad BTW-aangifte, ná "aangifte ingediend". Wie eerst het
+  // afschrift importeerde stond met lege handen: de transactie bleef
+  // ongekoppeld en er was geen knop om er iets mee te doen.
+
+  // Ingediende aangiftes die nog niet betaald zijn. Een te betalen bedrag
+  // (positief) hoort bij een afschrijving, een teruggave (negatief) komt juist
+  // als bijschrijving binnen. Dichtst bij het transactiebedrag eerst.
+  const btwKandidatenVoorTx = (tx: any) => {
+    const isCredit = tx?.type === 'C'
+    const bedrag = Math.abs(Number(tx?.bedrag || 0))
+    return (btwAangiftes || [])
+      .filter((a: any) => a?.periodeKey && !btwBetaaldePerioden.has(a.periodeKey))
+      .filter((a: any) => (Number(a.bedrag || 0) < 0) === isCredit)
+      .sort((a: any, b: any) =>
+        Math.abs(Math.abs(Number(a.bedrag || 0)) - bedrag) - Math.abs(Math.abs(Number(b.bedrag || 0)) - bedrag))
+  }
+
+  const btwKoppelControl = (tx: any, i: number) => {
+    const kandidaten = btwKandidatenVoorTx(tx)
+    const herkend = isBelastingdienstTransactie(tx)
+    if (!kandidaten.length) {
+      // Niets ingediend om aan te koppelen: alleen bij een herkenbare
+      // Belastingdienst-transactie de weg wijzen, anders zwijgen.
+      if (!herkend) return null
+      return (
+        <button onClick={()=>setMainTab('btw_aangifte')}
+          title={t('tip_btw_geen_aangifte')}
+          className="px-2 py-0.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
+          {t('btn_btw_naar_aangifte')}
+        </button>
+      )
+    }
+    return (
+      <div className="flex items-center gap-1">
+        {herkend && <span className="text-xs text-orange-600 font-medium whitespace-nowrap">⚡ {t('lbl_belastingdienst')}</span>}
+        <select defaultValue="" title={t('tip_btw_koppel_transactie')}
+          onChange={(e: any) => { if (e.target.value) koppelBtwBetaling(i, e.target.value) }}
+          className={`border rounded px-2 py-0.5 text-xs focus:outline-none max-w-[190px] ${herkend
+            ? 'border-orange-300 bg-orange-50 text-orange-800'
+            : 'border-gray-200 text-gray-600 bg-white'}`}>
+          <option value="">{t('lbl_koppel_btw_aangifte')}</option>
+          {kandidaten.map((a: any) => (
+            <option key={a.periodeKey} value={a.periodeKey}>
+              {periodeKeyLabel(a.periodeKey)} · {fmt(Math.abs(Number(a.bedrag || 0)))}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
   // ── PSP-uitbetaling: één credittransactie dekt meerdere verkoopfacturen ────
 
   // Verkoopfacturen die al aan een ándere banktransactie gekoppeld zijn. Die
@@ -1373,10 +1426,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   // Kandidaten voor de PSP-bundel van deze transactie: open én al betaalde
-  // facturen rond de uitbetaaldatum, zonder de facturen die elders al hangen.
-  const pspKandidatenVoor = (tx: any) => pspKandidaten(verkoopFacturen || [], {
+  // facturen rond de uitbetaaldatum. Facturen die elders al gekoppeld zijn of
+  // aan de balie contant/pin zijn afgerekend blijven eruit — die kunnen niet
+  // in een PSP-uitbetaling zitten. `negeerDatum` laat alleen het tijdvak los.
+  const pspKandidatenVoor = (tx: any, negeerDatum = false) => pspKandidaten(verkoopFacturen || [], {
     datum: tx?.datum,
     alGekoppeld: verkoopIdsElders(tx ? txKey(tx) : undefined),
+    negeerDatum,
   })
 
   const openPspModal = (txIndex: number) => {
@@ -2810,6 +2866,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 </span>
                               ) : !tx.gekoppeldFactuurId && !tx.herinneringsGematcht && (
                                 <>
+                                  {btwKoppelControl(tx, i)}
                                   {tx.pspHerkend && (
                                     <span className="text-xs text-blue-600 font-medium whitespace-nowrap">⚡ {t('lbl_psp_herkend')}</span>
                                   )}
@@ -2863,6 +2920,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                   </span>
                                 )
                               })() : !tx.gekoppeldInkoopId && !tx.herinneringsGematcht && (<>
+                                {btwKoppelControl(tx, i)}
                                 <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                   className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   + {t('btn_nieuwe_boeking')}
@@ -2889,20 +2947,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         {/* PSP-uitbetaling uitsplitsen modal */}
         {pspTxIndex !== null && bankTransacties[pspTxIndex] && (() => {
           const tx = bankTransacties[pspTxIndex]
-          // Standaard de plausibele bundel-kandidaten: open én al betaalde
-          // facturen rond de uitbetaaldatum, zonder wat elders al gekoppeld
-          // is. Met het vinkje komt álles in beeld (ook oudere facturen en
-          // facturen die aan een andere transactie hangen), voor het geval de
-          // bundel toch buiten dat raam valt.
-          const elders = verkoopIdsElders(txKey(tx))
-          const kandidaten = pspToonAlles
-            ? (verkoopFacturen||[])
-                .filter((f: any) => (f.bruto||0) > 0 && f.status !== 'credit')
-                .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
-            : (verkoopFacturen||[])
-                .filter((f: any) => pspSelectie.includes(f.id) && (f.bruto||0) > 0)
-                .concat(pspKandidatenVoor(tx).filter((f: any) => !pspSelectie.includes(f.id)))
-                .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
+          // Alleen facturen die écht in een PSP-uitbetaling kúnnen zitten:
+          // elders gekoppelde en aan de balie afgerekende facturen laten we
+          // helemaal weg. Het vinkje laat alleen het tijdvak los, voor het
+          // geval de bundel buiten dat venster valt.
+          const kandidaten = (verkoopFacturen||[])
+            .filter((f: any) => pspSelectie.includes(f.id) && (f.bruto||0) > 0)
+            .concat(pspKandidatenVoor(tx, pspToonAlles).filter((f: any) => !pspSelectie.includes(f.id)))
+            .sort((a: any, b: any) => pspFactuurDatum(b).localeCompare(pspFactuurDatum(a)))
           const som = r2((verkoopFacturen||[]).filter((f: any) => pspSelectie.includes(f.id)).reduce((s: number, f: any) => s + (f.bruto||0), 0))
           const kosten = r2(som - tx.bedrag)
           const somTeLaag = pspSelectie.length > 0 && kosten < -0.005
@@ -2931,10 +2983,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   {kandidaten.map((f: any) => (
                     <label key={f.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
                       <input type="checkbox" className="t-checkbox" checked={pspSelectie.includes(f.id)} onChange={()=>toggleFactuur(f.id)} />
-                      <span className="text-gray-500 whitespace-nowrap">{f.datum||'—'}</span>
+                      <span className="text-gray-500 whitespace-nowrap"
+                        title={f.datum && pspFactuurDatum(f) !== f.datum ? `${t('lbl_factuurdatum')}: ${f.datum}` : ''}>
+                        {pspFactuurDatum(f) || '—'}
+                      </span>
                       <span className="flex-1 truncate text-gray-800">{f.factuurnummer ? `${f.factuurnummer} · ` : ''}{klantNaamVoor(f) || t('lbl_onbekend')}</span>
                       {f.status === 'betaald' && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 whitespace-nowrap">{t('factuur_paid')}</span>}
-                      {elders.has(f.id) && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 whitespace-nowrap" title={t('tip_psp_elders_gekoppeld')}>{t('lbl_psp_elders')}</span>}
                       <span className="font-medium text-gray-700 whitespace-nowrap">{fmt(f.bruto||0)}</span>
                     </label>
                   ))}

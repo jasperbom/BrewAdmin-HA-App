@@ -108,6 +108,19 @@ const PSP_PATROON = /mollie|stripe|adyen|sumup|zettle|paypal|pay\.nl|buckaroo|mu
 export const isPspTransactie = (tx: any): boolean =>
   tx.type === 'C' && PSP_PATROON.test(`${tx.tegenpartij||''} ${tx.omschrijving||''} ${tx.referentie||''}`)
 
+// Betaling aan of van de Belastingdienst? Wordt gebruikt om een banktransactie
+// als BTW-betaling of -teruggave te herkennen, zodat de bankpagina meteen de
+// koppeling naar een aangifteperiode aanbiedt. De vaste ontvangstrekening van
+// de Belastingdienst staat erbij: die is stabieler dan de omschrijving.
+const BELASTINGDIENST_IBAN = 'NL86INGB0002445588'
+
+export function isBelastingdienstTransactie(tx: any): boolean {
+  const tekst = `${tx?.tegenpartij || ''} ${tx?.omschrijving || ''} ${tx?.tegenrekening || ''}`
+    .toLowerCase().replace(/\s+/g, '')
+  return tekst.includes('belastingdienst')
+    || tekst.includes(BELASTINGDIENST_IBAN.toLowerCase())
+}
+
 // Welke verkoopfacturen mogen in een PSP-uitbetaling zitten?
 //
 // Eerder werd hier alleen op ópenstaande facturen gezocht. Dat brak zodra één
@@ -121,6 +134,9 @@ export const isPspTransactie = (tx: any): boolean =>
 //  - creditnota's en facturen zonder bedrag;
 //  - facturen die al aan een ándere banktransactie hangen (die zijn daar al
 //    verantwoord; meenemen zou de omzet dubbel koppelen);
+//  - facturen die aan de balie contant of per pin zijn afgerekend: dat geld is
+//    nooit langs de PSP gegaan. Een kassabon 'op rekening' blijft wél staan —
+//    die kan de klant alsnog via de betaallink op de factuur voldoen;
 //  - facturen die ver buiten het tijdvak van de uitbetaling vallen — dat houdt
 //    de zoekruimte klein en voorkomt dat een toevallige som uit lang vervlogen
 //    facturen "past".
@@ -130,6 +146,19 @@ export const isPspTransactie = (tx: any): boolean =>
 // Zulke facturen zijn dus jonger dan de uitbetaling en horen er wél bij.
 export const PSP_MAX_DAGEN_TERUG = 120
 export const PSP_MAX_DAGEN_VOORUIT = 30
+
+// Betaalwijzen waarbij het geld direct in de la/op de pinterminal belandde.
+const DIRECT_AFGEREKEND = new Set(['contant', 'pin', 'kas', 'cash'])
+
+/**
+ * De datum waarop een verkoopfactuur betaald ís, voor zover bekend. De
+ * factuurdatum zelf is de datum van afronden — dat kan dagen na de
+ * webshopbestelling liggen, terwijl de PSP allang had uitbetaald. De
+ * WooCommerce-betaaldatum (en anders de besteldatum) ligt veel dichter bij de
+ * uitbetaling en is dus wat telt bij het zoeken naar de bundel.
+ */
+export const pspFactuurDatum = (f: any): string =>
+  String(f?.wc_betaald_datum || f?.order_datum || f?.datum || '')
 const DAG_MS = 24 * 60 * 60 * 1000
 
 export interface PspKandidaatOpties {
@@ -141,6 +170,8 @@ export interface PspKandidaatOpties {
   maxDagen?: number
   /** Hoe ver ná de uitbetaling een factuur nog mee mag doen (dagen). */
   maxDagenVooruit?: number
+  /** Laat het datumvenster los (handmatig zoeken buiten het tijdvak). */
+  negeerDatum?: boolean
 }
 
 export function pspKandidaten(facturen: any[], opties: PspKandidaatOpties = {}): any[] {
@@ -157,13 +188,14 @@ export function pspKandidaten(facturen: any[], opties: PspKandidaatOpties = {}):
       if (!f || Number(f.bruto || 0) <= 0) return false
       if (f.status === 'credit') return false
       if (bezet.has(f.id)) return false
-      if (Number.isFinite(vanaf)) {
-        const d = Date.parse(`${String(f.datum || '')}T00:00:00`)
+      if (DIRECT_AFGEREKEND.has(String(f.betaalwijze || '').toLowerCase())) return false
+      if (!opties.negeerDatum && Number.isFinite(vanaf)) {
+        const d = Date.parse(`${pspFactuurDatum(f)}T00:00:00`)
         if (Number.isFinite(d) && (d > tot || d < vanaf)) return false
       }
       return true
     })
-    .sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || '')))
+    .sort((a: any, b: any) => pspFactuurDatum(b).localeCompare(pspFactuurDatum(a)))
 }
 
 // Zoekt een combinatie verkoopfacturen waarvan de som overeenkomt met het

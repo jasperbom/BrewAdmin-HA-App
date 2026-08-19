@@ -441,6 +441,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           id: newId([...(bestellingen||[]), ...nieuw]),
           status: 'nieuw',
           datum: (o.date_created||tod()).slice(0, 10),
+          // Wanneer de klant betaald heeft (WooCommerce `date_paid`). Dat is de
+          // dag die de PSP uitbetaalt — niet de dag waarop jij de order afrondt
+          // en de factuur krijgt. De bankkoppeling zoekt daarop.
+          ...(o.date_paid ? {wc_betaald_datum: String(o.date_paid).slice(0, 10)} : {}),
           klant_naam: `${o.billing?.first_name||''} ${o.billing?.last_name||''}`.trim() || t('lbl_onbekend'),
           klant_email: o.billing?.email||'',
           klant_straat: o.billing?.address_1||'',
@@ -1100,6 +1104,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       datum: vandaag,
       factuurnummer: factuurNummer,
       bestelling_id: selectedOrder.id,
+      // Herkomstdatums naast de factuurdatum: de bankkoppeling van een
+      // PSP-uitbetaling zoekt op wanneer er betaald is, niet op wanneer de
+      // order is afgerond (dat kan dagen later zijn).
+      order_datum: selectedOrder.datum || vandaag,
+      ...(selectedOrder.wc_betaald_datum ? {wc_betaald_datum: selectedOrder.wc_betaald_datum} : {}),
       klant_id: snap.klant_id ?? null,
       klant_naam: snap.klant_naam || '',
       klant_bedrijf: snap.klant_bedrijf || '',
