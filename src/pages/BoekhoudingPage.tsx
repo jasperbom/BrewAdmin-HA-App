@@ -13,7 +13,7 @@ import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, storno
 import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { bouwUbl, controleerUbl } from '../utils/ubl'
-import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie } from '../utils/bank'
+import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import { MerchArtikel, MerchMutatie, MerchMutatieInvoer, boekMerchMutaties } from '../utils/merch'
 import Modal from '../components/ui/Modal'
@@ -86,7 +86,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [pspTxIndex, setPspTxIndex] = React.useState<number|null>(null)
   const [pspSelectie, setPspSelectie] = React.useState<number[]>([])
   const [pspBtwPct, setPspBtwPct] = React.useState('21')
-  const [pspToonBetaald, setPspToonBetaald] = React.useState(false)
+  const [pspToonAlles, setPspToonAlles] = React.useState(false)
 
   // Nieuwe boeking modal state
   const [boekingTxIndex, setBoekingTxIndex] = React.useState<number|null>(null)
@@ -1247,7 +1247,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           // Geen automatische koppeling — wel herkennen en een combinatie van
           // open facturen voorstellen; de gebruiker bevestigt in de modal.
           if (isPspTransactie(tx)) {
-            const voorstel = zoekPspCombinatie(tx.bedrag, openVerkoop)
+            // Ook al betaalde facturen tellen mee: een bundel bevat bijna
+            // altijd orders die al op betaald staan (kassa, handmatig vinkje,
+            // eerder gekoppelde losse betaling). Alleen op de open facturen
+            // zoeken leverde dan hélemaal geen voorstel op.
+            const voorstel = zoekPspCombinatie(tx.bedrag, pspKandidatenVoor(tx))
             return {...tx, pspHerkend: true, pspVoorstelIds: voorstel || undefined}
           }
         } else {
@@ -1353,11 +1357,33 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   // ── PSP-uitbetaling: één credittransactie dekt meerdere verkoopfacturen ────
+
+  // Verkoopfacturen die al aan een ándere banktransactie gekoppeld zijn. Die
+  // horen niet in een PSP-bundel: hun geld staat al ergens anders op het
+  // afschrift, meenemen zou de omzet dubbel koppelen.
+  const verkoopIdsElders = (huidigeKey?: string): Set<number> => {
+    const uit = new Set<number>()
+    for (const [key, waarde] of Object.entries(bankKoppelingen || {})) {
+      if (huidigeKey && key === huidigeKey) continue
+      const k: any = waarde
+      if (k?.soort === 'verkoop' && k.factuurId != null) uit.add(k.factuurId)
+      if (k?.soort === 'psp') for (const id of (k.factuurIds || [])) uit.add(id)
+    }
+    return uit
+  }
+
+  // Kandidaten voor de PSP-bundel van deze transactie: open én al betaalde
+  // facturen rond de uitbetaaldatum, zonder de facturen die elders al hangen.
+  const pspKandidatenVoor = (tx: any) => pspKandidaten(verkoopFacturen || [], {
+    datum: tx?.datum,
+    alGekoppeld: verkoopIdsElders(tx ? txKey(tx) : undefined),
+  })
+
   const openPspModal = (txIndex: number) => {
     const tx = bankTransacties[txIndex]
     setPspSelectie(tx?.pspVoorstelIds ? [...tx.pspVoorstelIds] : [])
     setPspBtwPct('21')
-    setPspToonBetaald(false)
+    setPspToonAlles(false)
     setPspTxIndex(txIndex)
   }
 
@@ -2863,9 +2889,20 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         {/* PSP-uitbetaling uitsplitsen modal */}
         {pspTxIndex !== null && bankTransacties[pspTxIndex] && (() => {
           const tx = bankTransacties[pspTxIndex]
-          const kandidaten = (verkoopFacturen||[])
-            .filter((f: any) => (f.bruto||0) > 0 && f.status !== 'credit' && (pspToonBetaald || f.status !== 'betaald' || pspSelectie.includes(f.id)))
-            .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
+          // Standaard de plausibele bundel-kandidaten: open én al betaalde
+          // facturen rond de uitbetaaldatum, zonder wat elders al gekoppeld
+          // is. Met het vinkje komt álles in beeld (ook oudere facturen en
+          // facturen die aan een andere transactie hangen), voor het geval de
+          // bundel toch buiten dat raam valt.
+          const elders = verkoopIdsElders(txKey(tx))
+          const kandidaten = pspToonAlles
+            ? (verkoopFacturen||[])
+                .filter((f: any) => (f.bruto||0) > 0 && f.status !== 'credit')
+                .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
+            : (verkoopFacturen||[])
+                .filter((f: any) => pspSelectie.includes(f.id) && (f.bruto||0) > 0)
+                .concat(pspKandidatenVoor(tx).filter((f: any) => !pspSelectie.includes(f.id)))
+                .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''))
           const som = r2((verkoopFacturen||[]).filter((f: any) => pspSelectie.includes(f.id)).reduce((s: number, f: any) => s + (f.bruto||0), 0))
           const kosten = r2(som - tx.bedrag)
           const somTeLaag = pspSelectie.length > 0 && kosten < -0.005
@@ -2880,6 +2917,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   <span className="font-semibold text-green-600 whitespace-nowrap">+{fmt(tx.bedrag)}</span>
                 </div>
                 <p className="text-xs text-gray-500">{t('msg_psp_uitleg')}</p>
+                {/* Niets voorgesteld: zeg wát de gebruiker dan kan doen in
+                    plaats van een lege lijst met vinkjes te tonen. */}
+                {pspSelectie.length === 0 && !tx.pspVoorstelIds && (
+                  <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                    {t('msg_psp_geen_voorstel')}
+                  </p>
+                )}
                 <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-50">
                   {kandidaten.length === 0 && (
                     <div className="text-center text-sm text-gray-400 py-4">{t('msg_no_verkoopfacturen')}</div>
@@ -2890,13 +2934,14 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <span className="text-gray-500 whitespace-nowrap">{f.datum||'—'}</span>
                       <span className="flex-1 truncate text-gray-800">{f.factuurnummer ? `${f.factuurnummer} · ` : ''}{klantNaamVoor(f) || t('lbl_onbekend')}</span>
                       {f.status === 'betaald' && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 whitespace-nowrap">{t('factuur_paid')}</span>}
+                      {elders.has(f.id) && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 whitespace-nowrap" title={t('tip_psp_elders_gekoppeld')}>{t('lbl_psp_elders')}</span>}
                       <span className="font-medium text-gray-700 whitespace-nowrap">{fmt(f.bruto||0)}</span>
                     </label>
                   ))}
                 </div>
                 <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
-                  <input type="checkbox" className="t-checkbox" checked={pspToonBetaald} onChange={()=>setPspToonBetaald((v: boolean)=>!v)} />
-                  {t('btn_psp_toon_betaald')}
+                  <input type="checkbox" className="t-checkbox" checked={pspToonAlles} onChange={()=>setPspToonAlles((v: boolean)=>!v)} />
+                  {t('btn_psp_toon_alles')}
                 </label>
                 <div className="border-t border-gray-100 pt-2 space-y-1 text-sm">
                   <div className="flex justify-between text-gray-600">
