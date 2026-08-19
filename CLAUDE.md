@@ -40,7 +40,7 @@ BrewAdmin-HA-App/
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
-│   │   ├── dropship.ts     # Dropship-artikelen: merch die wel verkocht/gefactureerd wordt maar niet uit eigen voorraad komt (herkenning op SKU/naam, onthouden vanuit een orderregel)
+│   │   ├── merch.ts        # Merch-artikelen: wel verkocht/gefactureerd, maar niet uit eigen voorraad geleverd (herkenning op SKU/naam, onthouden vanuit een orderregel)
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
@@ -397,7 +397,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `recepten_gesloten_groepen` | array | Ingeklapte receptgroepen |
 | `tanks` | array | Tanks / fermentoren |
 | `artikelen` | array | WooCommerce-artikelen (SKU-mapping) |
-| `dropship_artikelen` | array | Artikelen zonder eigen voorraad (dropshipping/merch): `{sku, naam}`. Een WooCommerce-importregel die hierop matcht wordt een vrije regel (`type: 'vrij'`, `dropship: true`) i.p.v. een pickregel — anders kan zo'n order nooit afgerond worden. Vult zich vanzelf via "markeer als dropshipping" op een orderregel |
+| `merch_artikelen` | array | Merch zonder eigen voorraad: `{sku, naam}`. Een WooCommerce-importregel die hierop matcht wordt een vrije regel (`type: 'vrij'`, `merch: true`) i.p.v. een pickregel — anders kan zo'n order nooit afgerond worden. Vult zich vanzelf via "markeer als merch" op een orderregel |
 | `hygiene_items` | array | *(legacy)* Hygiëne-controleitems — gemigreerd naar `batch_taken_items` |
 | `hygiene_groups` | array | *(legacy)* Hygiëne-groepen — gemigreerd naar `batch_taken_groepen` |
 | `haccp_schoonmaak_taken` | array | Schoonmaakschema (object, frequentie, middel) |

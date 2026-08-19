@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.11.96] — 2026-08-19
+
+### Gewijzigd — het heet nu gewoon "merch"
+
+De functie uit 1.11.95 heette overal "dropshipping". Dat is vakjargon; in de
+app staat er nu **merch**: het label op de orderregel, de knop *Markeer als
+merch* en de lijst **Merch-artikelen**. Alleen de naam verandert — het gedrag
+is hetzelfde.
+
+Technisch: `utils/dropship.ts` → `utils/merch.ts`, data-key
+`dropship_artikelen` → `merch_artikelen`, regelveld `dropship` → `merch`,
+i18n-sleutels `*_dropship_*` → `*_merch_*` (alle vijf talen). Wie 1.11.95 al
+draaide: de lijst met gemarkeerde artikelen begint één keer opnieuw en op al
+gemarkeerde orderregels verdwijnt het paarse label. Die regels blijven wél
+vrije regels (`type: 'vrij'`), dus die orders zijn gewoon af te ronden.
+
+---
+
 ## [1.11.95] — 2026-08-19
 
 ### Opgelost — merch-orders uit de webshop bleven eeuwig openstaan

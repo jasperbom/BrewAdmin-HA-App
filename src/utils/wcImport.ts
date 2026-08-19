@@ -11,17 +11,17 @@
 //     zo'n order nooit compleet te krijgen was. Regels die niet aan een eigen
 //     artikel/product/batch te koppelen zijn komen daarom binnen als vrije
 //     regel (`type: 'vrij'`) — wél op de factuur, geen picking.
-//     Merch die de brouwerij als dropshipping verkoopt (leverancier verstuurt
-//     rechtstreeks) staat in de dropship-lijst (`utils/dropship`): die regels
-//     zijn geen gok maar een expliciete keuze van de gebruiker en komen dus
-//     zonder "onbekend"-waarschuwing binnen.
+//     Merch die de brouwerij niet zelf op voorraad heeft staat in de
+//     merch-lijst (`utils/merch`): die regels zijn geen gok maar een
+//     expliciete keuze van de gebruiker en komen dus zonder
+//     "onbekend"-waarschuwing binnen.
 //  3. **Artikelherkenning.** Er werd alleen in de legacy-`artikelen` gezocht,
 //     niet in de `productArtikelen` van de productpagina — precies waar de
 //     SKU's tegenwoordig staan.
 //
 // Bedragen: WooCommerce is leidend (`wc_netto`/`wc_btw`, zie utils/orderRegel).
 
-import { DropshipArtikel, isDropship } from './dropship'
+import { MerchArtikel, isMerch } from './merch'
 
 export interface WcRefs {
   artikelen?: any[]
@@ -31,8 +31,8 @@ export interface WcRefs {
   standaardBtw?: number
   /** Actieve BTW-tarieven; het afgeleide tarief wordt hier naartoe afgerond. */
   btwTarieven?: Array<number | string>
-  /** Artikelen die als dropshipping verkocht worden (geen eigen voorraad). */
-  dropship?: DropshipArtikel[]
+  /** Merch-artikelen: wel verkocht, maar niet uit eigen voorraad geleverd. */
+  merch?: MerchArtikel[]
 }
 
 export type WcRegelType = 'bier' | 'vrij' | 'verzending'
@@ -53,8 +53,8 @@ export interface WcOrderRegel {
   wc_btw?: number
   /** Productregel die niet aan een eigen artikel/product/batch te koppelen was. */
   wc_onbekend?: boolean
-  /** Bekend dropship-artikel: bewust geen picking, geen waarschuwing. */
-  dropship?: boolean
+  /** Bekend merch-artikel: bewust geen picking, geen waarschuwing. */
+  merch?: boolean
 }
 
 // Statussen die WooCommerce voor een order kan hebben en die zinvol zijn om te
@@ -187,11 +187,11 @@ export function mapWcOrderRegels(order: any, refs: WcRefs = {}): WcOrderRegel[] 
   for (const item of (order?.line_items || [])) {
     const sku = String(item?.sku || '').trim() || null
     const naam = String(item?.name || '').trim()
-    // Expliciet als dropshipping gemarkeerd? Dan niet meer naar een eigen
-    // artikel zoeken: de gebruiker heeft al gezegd dat dit niet uit de eigen
-    // voorraad geleverd wordt.
-    const isDrop = isDropship(sku, naam, refs.dropship)
-    const match = isDrop ? null : vindWcArtikel(sku, naam, refs)
+    // Expliciet als merch gemarkeerd? Dan niet meer naar een eigen artikel
+    // zoeken: de gebruiker heeft al gezegd dat dit niet uit de eigen voorraad
+    // geleverd wordt.
+    const merchRegel = isMerch(sku, naam, refs.merch)
+    const match = merchRegel ? null : vindWcArtikel(sku, naam, refs)
     const aantal = Number(item?.quantity || 1) || 1
     const netto = Number(parseFloat(item?.total ?? item?.subtotal ?? '0')) || 0
     const btw = Number(parseFloat(item?.total_tax ?? item?.subtotal_tax ?? '0')) || 0
@@ -214,8 +214,8 @@ export function mapWcOrderRegels(order: any, refs: WcRefs = {}): WcOrderRegel[] 
       btw_pct: btwPct,
       omschrijving: naam,
       // `wc_onbekend` is een váág signaal ("controleer dit even"); een bekend
-      // dropship-artikel is juist een bewuste keuze en krijgt die vlag niet.
-      ...(isDrop ? {dropship: true} : match ? {} : {wc_onbekend: true}),
+      // merch-artikel is juist een bewuste keuze en krijgt die vlag niet.
+      ...(merchRegel ? {merch: true} : match ? {} : {wc_onbekend: true}),
       ...wcBedragen(netto, btw),
     })
   }

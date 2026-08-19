@@ -21,7 +21,7 @@ import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../uti
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
 import { regelBedrag, heeftAutoritair } from '../utils/orderRegel'
 import { matchAfvullingenVoorRegel, diagnosePickMatch } from '../utils/picking'
-import { DropshipArtikel, dropshipLabel, onthoudDropship, vergeetDropship, verwijderDropship } from '../utils/dropship'
+import { MerchArtikel, merchLabel, onthoudMerch, vergeetMerch, verwijderMerch } from '../utils/merch'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -67,8 +67,8 @@ interface BestellingenPageProps {
   btwAangiftes?: any[]
   bankKoppelingen?: Record<string, any>
   setJournaal?: any
-  dropshipArtikelen?: DropshipArtikel[]
-  setDropshipArtikelen?: any
+  merchArtikelen?: MerchArtikel[]
+  setMerchArtikelen?: any
 }
 
 type StatusFilter = 'alle' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
@@ -101,7 +101,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   btwTarieven=[0, 9, 21],
   btwInst={}, btwAangiftes=[], bankKoppelingen={},
   setJournaal=()=>{},
-  dropshipArtikelen=[], setDropshipArtikelen=()=>{},
+  merchArtikelen=[], setMerchArtikelen=()=>{},
 }) => {
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -148,9 +148,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw)})
   const [showVerzendkostenModal, setShowVerzendkostenModal] = useState(false)
   const [verzendkostenForm, setVerzendkostenForm] = useState({naam: '', prijs_per_stuk: '', btw_pct: '21'})
-  // Beheerlijstje dropship-artikelen (merch zonder eigen voorraad)
-  const [dropshipOpen, setDropshipOpen] = useState(false)
-  const [dropshipForm, setDropshipForm] = useState({sku: '', naam: ''})
+  // Beheerlijstje merch-artikelen (verkoop zonder eigen voorraad)
+  const [merchOpen, setMerchOpen] = useState(false)
+  const [merchForm, setMerchForm] = useState({sku: '', naam: ''})
 
   // Draft picks state (voor picking modal)
   const [draftPicks, setDraftPicks] = useState<Record<number, Array<{afvulling_id: number, aantal: number, bron_locatie_id?: number | null}>>>({})
@@ -385,7 +385,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         if (pagina.length < WC_PER_PAGE) break
       }
       const refs = {artikelen, productArtikelen, producten, bat, standaardBtw: stdBtw, btwTarieven,
-        dropship: dropshipArtikelen}
+        merch: merchArtikelen}
       const bestaandeWcIds = new Set((bestellingen||[]).map((b: any) => b.wc_order_id).filter(Boolean))
       let imported = 0
       let onbekendeRegels = 0
@@ -1307,16 +1307,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // Regelsoort wisselen tussen 'bier' (uit de biervoorraad picken) en 'vrij'
-  // (merch/dienst/dropshipping — alleen op de factuur). De WooCommerce-import
+  // (merch of dienst — alleen op de factuur). De WooCommerce-import
   // raadt dit op basis van de artikel-/productadministratie; hiermee corrigeert
   // de gebruiker een verkeerde gok. Al gepickte regels blijven op slot.
   //
   // Met `onthouden` wordt de keuze ook op artikelniveau vastgelegd
-  // (`dropship_artikelen`): dezelfde merch komt bij de volgende import meteen
+  // (`merch_artikelen`): dezelfde merch komt bij de volgende import meteen
   // als vrije regel binnen, zodat de order niet opnieuw op een onmogelijke
-  // pick blijft hangen. Dat gebeurt alleen via de expliciete
-  // dropshipping-knop — de kleine ⇄ blijft een eenmalige correctie op déze
-  // order en mag een gewoon bier niet stilletjes uit de picking halen.
+  // pick blijft hangen. Dat gebeurt alleen via de expliciete merch-knop —
+  // de kleine ⇄ blijft een eenmalige correctie op déze order en mag een
+  // gewoon bier niet stilletjes uit de picking halen.
   const updateRegelType = (regelId: number, onthouden = false) => {
     if (!selectedOrder) return
     const regel = (selectedOrder.regels||[]).find((r: any) => r.id === regelId)
@@ -1329,8 +1329,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       b.id === selectedOrder.id
         ? {...b, regels: (b.regels||[]).map((r: any) => {
             if (r.id !== regelId) return r
-            const {wc_onbekend, dropship, ...rest} = r
-            return {...rest, type: nieuwType, ...(nieuwType === 'vrij' && (onthouden || dropship) ? {dropship: true} : {})}
+            const {wc_onbekend, merch, ...rest} = r
+            return {...rest, type: nieuwType, ...(nieuwType === 'vrij' && (onthouden || merch) ? {merch: true} : {})}
           })}
         : b
     ))
@@ -1338,11 +1338,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // gebruiker zegt daarmee dat het wél uit eigen voorraad komt.
     const sleutel = {sku: regel.sku || '', naam: regel.omschrijving || regel.bier_naam || ''}
     if (onthouden && nieuwType === 'vrij') {
-      setDropshipArtikelen((prev: DropshipArtikel[]) => onthoudDropship(prev || [], {...sleutel, datum: tod()}))
+      setMerchArtikelen((prev: MerchArtikel[]) => onthoudMerch(prev || [], {...sleutel, datum: tod()}))
     } else if (nieuwType === 'bier') {
-      setDropshipArtikelen((prev: DropshipArtikel[]) => vergeetDropship(prev || [], sleutel))
+      setMerchArtikelen((prev: MerchArtikel[]) => vergeetMerch(prev || [], sleutel))
     }
-    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Regelsoort gewijzigd: ${regel.bier_naam||regelId} → ${nieuwType}${onthouden && nieuwType === 'vrij' ? ' (dropshipping onthouden)' : ''}`})
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Regelsoort gewijzigd: ${regel.bier_naam||regelId} → ${nieuwType}${onthouden && nieuwType === 'vrij' ? ' (merch onthouden)' : ''}`})
   }
 
   // Beschikbare BTW-tarieven voor de dropdown (uit instellingen, met fallback).
@@ -1685,11 +1685,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       {r.bier_naam}
                       {r.sku && <span className="ml-1 font-mono text-xs text-gray-400">[{r.sku}]</span>}
                       {soort === 'verzending' && <span className="ml-1 text-xs text-blue-500">🚚</span>}
-                      {soort === 'vrij' && !r.dropship && <span className="ml-1 text-xs text-purple-500">✎</span>}
-                      {r.dropship && (
+                      {soort === 'vrij' && !r.merch && <span className="ml-1 text-xs text-purple-500">✎</span>}
+                      {r.merch && (
                         <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold align-middle"
-                          title={t('orders_regel_dropship_uitleg')}>
-                          {t('orders_regel_dropship')}
+                          title={t('orders_regel_merch_uitleg')}>
+                          {t('orders_regel_merch')}
                         </span>
                       )}
                       {soort === 'korting' && <span className="ml-1 text-xs font-semibold text-green-600">%</span>}
@@ -1735,7 +1735,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           </table>
           </div>
           {/* Vastloper-detector: pickregels waarvoor geen enkele afvulling in
-              aanmerking komt. Dat is precies het merch/dropshipping-geval —
+              aanmerking komt. Dat is precies het merch-geval —
               zonder deze uitweg blijft de order eeuwig op 'nieuw' staan omdat
               afronden om picks vraagt die nooit kunnen bestaan. */}
           {(() => {
@@ -1756,11 +1756,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {r.sku && <span className="font-mono text-purple-500">[{r.sku}]</span>}
                     <button
                       onClick={() => {
-                        if (!confirm(t('picking_dropship_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
+                        if (!confirm(t('picking_merch_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
                         updateRegelType(r.id, true)
                       }}
                       className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors">
-                      {t('picking_dropship_knop')}
+                      {t('picking_merch_knop')}
                     </button>
                   </div>
                 ))}
@@ -2111,23 +2111,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {resterend > 0 && afvullingen.length === 0 && (
                       <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}{r.artikel_key ? '' : ''}</div>
                     )}
-                    {/* Uitweg voor merch/dropshipping: dit artikel komt niet uit
+                    {/* Uitweg voor merch: dit artikel komt niet uit
                         de eigen voorraad, dus picken kan nooit lukken. Eén klik
                         zet de regel om naar een vrije (factuur-)regel én
                         onthoudt het artikel voor volgende imports. */}
                     {resterend > 0 && afvullingen.length === 0 && gepicktVoorRegel(selectedOrder.id, r.id) === 0 && (
                       <div className="mt-2 flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-2">
                         <div className="flex-1 text-[11px] text-purple-800">
-                          <div className="font-semibold">{t('picking_dropship_titel')}</div>
-                          <div>{t('picking_dropship_uitleg')}</div>
+                          <div className="font-semibold">{t('picking_merch_titel')}</div>
+                          <div>{t('picking_merch_uitleg')}</div>
                         </div>
                         <button
                           onClick={() => {
-                            if (!confirm(t('picking_dropship_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
+                            if (!confirm(t('picking_merch_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
                             updateRegelType(r.id, true)
                           }}
                           className="shrink-0 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-colors">
-                          {t('picking_dropship_knop')}
+                          {t('picking_merch_knop')}
                         </button>
                       </div>
                     )}
@@ -2307,30 +2307,30 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         </div>
       </div>
 
-      {/* Dropship-artikelen: merch die de brouwerij verkoopt maar niet zelf
-          levert. Staat hier omdat de lijst tijdens het orderwerk ontstaat —
-          elke "markeer als dropshipping" op een orderregel komt hierin. */}
-      {(wcCreds?.enabled || (dropshipArtikelen||[]).length > 0) && (
+      {/* Merch-artikelen: wat de brouwerij verkoopt maar niet zelf levert.
+          Staat hier omdat de lijst tijdens het orderwerk ontstaat — elke
+          "markeer als merch" op een orderregel komt hierin. */}
+      {(wcCreds?.enabled || (merchArtikelen||[]).length > 0) && (
         <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
           <SectionHeader
-            title={t('dropship_titel')}
-            open={dropshipOpen}
-            onToggle={() => setDropshipOpen(o => !o)}
-            info={`${(dropshipArtikelen||[]).length}`}
+            title={t('merch_titel')}
+            open={merchOpen}
+            onToggle={() => setMerchOpen(o => !o)}
+            info={`${(merchArtikelen||[]).length}`}
           />
-          {dropshipOpen && (
+          {merchOpen && (
             <div className="p-4 space-y-3">
-              <p className="text-xs text-gray-500">{t('dropship_uitleg')}</p>
-              {(dropshipArtikelen||[]).length === 0
-                ? <p className="text-sm text-gray-400 italic">{t('dropship_leeg')}</p>
+              <p className="text-xs text-gray-500">{t('merch_uitleg')}</p>
+              {(merchArtikelen||[]).length === 0
+                ? <p className="text-sm text-gray-400 italic">{t('merch_leeg')}</p>
                 : (
                   <div className="flex flex-wrap gap-2">
-                    {(dropshipArtikelen||[]).map((d: DropshipArtikel) => (
+                    {(merchArtikelen||[]).map((d: MerchArtikel) => (
                       <span key={d.id} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-800 rounded-full px-3 py-1 text-xs">
-                        <span className="font-medium">{dropshipLabel(d)}</span>
+                        <span className="font-medium">{merchLabel(d)}</span>
                         {d.sku && d.naam && <span className="text-purple-400 font-mono">{d.naam}</span>}
                         <button
-                          onClick={() => setDropshipArtikelen((prev: DropshipArtikel[]) => verwijderDropship(prev || [], d.id))}
+                          onClick={() => setMerchArtikelen((prev: MerchArtikel[]) => verwijderMerch(prev || [], d.id))}
                           title={t('btn_delete')}
                           className="text-purple-300 hover:text-red-500 transition-colors">✕</button>
                       </span>
@@ -2339,19 +2339,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 )}
               <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-gray-100">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('dropship_sku')}</label>
-                  <Inp value={dropshipForm.sku} onChange={(v: string) => setDropshipForm(f => ({...f, sku: v}))} placeholder={t('ph_dropship_sku')} />
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_sku')}</label>
+                  <Inp value={merchForm.sku} onChange={(v: string) => setMerchForm(f => ({...f, sku: v}))} placeholder={t('ph_merch_sku')} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('dropship_naam')}</label>
-                  <Inp value={dropshipForm.naam} onChange={(v: string) => setDropshipForm(f => ({...f, naam: v}))} placeholder={t('ph_dropship_naam')} />
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_naam')}</label>
+                  <Inp value={merchForm.naam} onChange={(v: string) => setMerchForm(f => ({...f, naam: v}))} placeholder={t('ph_merch_naam')} />
                 </div>
                 <Btn v="secondary" onClick={() => {
-                  const sku = dropshipForm.sku.trim()
-                  const naam = dropshipForm.naam.trim()
-                  if (!sku && !naam) { alert(t('err_dropship_leeg')); return }
-                  setDropshipArtikelen((prev: DropshipArtikel[]) => onthoudDropship(prev || [], {sku, naam, datum: tod()}))
-                  setDropshipForm({sku: '', naam: ''})
+                  const sku = merchForm.sku.trim()
+                  const naam = merchForm.naam.trim()
+                  if (!sku && !naam) { alert(t('err_merch_leeg')); return }
+                  setMerchArtikelen((prev: MerchArtikel[]) => onthoudMerch(prev || [], {sku, naam, datum: tod()}))
+                  setMerchForm({sku: '', naam: ''})
                 }}>{t('btn_add')}</Btn>
               </div>
             </div>
