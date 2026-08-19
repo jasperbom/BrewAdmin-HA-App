@@ -13,7 +13,7 @@ import { verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, storno
 import { totaliseerRegels, totaliseerInkoop, toCent } from '../utils/centen'
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { bouwUbl, controleerUbl } from '../utils/ubl'
-import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten, pspFactuurDatum } from '../utils/bank'
+import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten, pspFactuurDatum, isBelastingdienstTransactie } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
 import { MerchArtikel, MerchMutatie, MerchMutatieInvoer, boekMerchMutaties } from '../utils/merch'
 import Modal from '../components/ui/Modal'
@@ -1354,6 +1354,59 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         } : t
       )
     })
+  }
+
+  // ── BTW-betaling koppelen vanuit het bankoverzicht ────────────────────────
+  // Een afschrijving van de Belastingdienst was tot nu toe alleen te koppelen
+  // vanaf het tabblad BTW-aangifte, ná "aangifte ingediend". Wie eerst het
+  // afschrift importeerde stond met lege handen: de transactie bleef
+  // ongekoppeld en er was geen knop om er iets mee te doen.
+
+  // Ingediende aangiftes die nog niet betaald zijn. Een te betalen bedrag
+  // (positief) hoort bij een afschrijving, een teruggave (negatief) komt juist
+  // als bijschrijving binnen. Dichtst bij het transactiebedrag eerst.
+  const btwKandidatenVoorTx = (tx: any) => {
+    const isCredit = tx?.type === 'C'
+    const bedrag = Math.abs(Number(tx?.bedrag || 0))
+    return (btwAangiftes || [])
+      .filter((a: any) => a?.periodeKey && !btwBetaaldePerioden.has(a.periodeKey))
+      .filter((a: any) => (Number(a.bedrag || 0) < 0) === isCredit)
+      .sort((a: any, b: any) =>
+        Math.abs(Math.abs(Number(a.bedrag || 0)) - bedrag) - Math.abs(Math.abs(Number(b.bedrag || 0)) - bedrag))
+  }
+
+  const btwKoppelControl = (tx: any, i: number) => {
+    const kandidaten = btwKandidatenVoorTx(tx)
+    const herkend = isBelastingdienstTransactie(tx)
+    if (!kandidaten.length) {
+      // Niets ingediend om aan te koppelen: alleen bij een herkenbare
+      // Belastingdienst-transactie de weg wijzen, anders zwijgen.
+      if (!herkend) return null
+      return (
+        <button onClick={()=>setMainTab('btw_aangifte')}
+          title={t('tip_btw_geen_aangifte')}
+          className="px-2 py-0.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
+          {t('btn_btw_naar_aangifte')}
+        </button>
+      )
+    }
+    return (
+      <div className="flex items-center gap-1">
+        {herkend && <span className="text-xs text-orange-600 font-medium whitespace-nowrap">⚡ {t('lbl_belastingdienst')}</span>}
+        <select defaultValue="" title={t('tip_btw_koppel_transactie')}
+          onChange={(e: any) => { if (e.target.value) koppelBtwBetaling(i, e.target.value) }}
+          className={`border rounded px-2 py-0.5 text-xs focus:outline-none max-w-[190px] ${herkend
+            ? 'border-orange-300 bg-orange-50 text-orange-800'
+            : 'border-gray-200 text-gray-600 bg-white'}`}>
+          <option value="">{t('lbl_koppel_btw_aangifte')}</option>
+          {kandidaten.map((a: any) => (
+            <option key={a.periodeKey} value={a.periodeKey}>
+              {periodeKeyLabel(a.periodeKey)} · {fmt(Math.abs(Number(a.bedrag || 0)))}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
   }
 
   // ── PSP-uitbetaling: één credittransactie dekt meerdere verkoopfacturen ────
@@ -2813,6 +2866,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 </span>
                               ) : !tx.gekoppeldFactuurId && !tx.herinneringsGematcht && (
                                 <>
+                                  {btwKoppelControl(tx, i)}
                                   {tx.pspHerkend && (
                                     <span className="text-xs text-blue-600 font-medium whitespace-nowrap">⚡ {t('lbl_psp_herkend')}</span>
                                   )}
@@ -2866,6 +2920,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                   </span>
                                 )
                               })() : !tx.gekoppeldInkoopId && !tx.herinneringsGematcht && (<>
+                                {btwKoppelControl(tx, i)}
                                 <button onClick={()=>{ setBoekingTxIndex(i); setBoekingInitialData({datum: tx.datum, leverancier: tx.tegenpartij||'', factuurnummer: '', regels: [{type:'overig', naam: tx.omschrijving||tx.tegenpartij||'', hoeveelheid: 1, prijs_per_stuk: Math.abs(tx.bedrag), btw_tarief: 0, netto: Math.abs(tx.bedrag), btw_bedrag: 0}]}); setBoekingForm({omschrijving: tx.omschrijving||tx.tegenpartij||'', categorie: tx.tegenpartij||'', btw_pct:'21'}) }}
                                   className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-xs font-medium transition-colors whitespace-nowrap">
                                   + {t('btn_nieuwe_boeking')}

@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.0] — 2026-08-19
+
+### Nieuw — BTW-betalingen koppelen vanuit het bankoverzicht
+
+Een afschrijving van de Belastingdienst was alleen te koppelen vanaf het
+tabblad **BTW-aangifte**, en dan nog pas nadat je daar op "aangifte ingediend"
+had gedrukt. Wie eerst het bankafschrift importeerde, zag een transactie zonder
+enige knop om er iets mee te doen.
+
+- **In de bankregel staat nu een keuzelijst "→ BTW-aangifte…"** met de
+  ingediende aangiftes die nog niet betaald zijn, dichtstbijzijnde bedrag
+  eerst. Eén klik koppelt de transactie en zet de periode op afgesloten. Werkt
+  beide kanten op: een teruggave komt als bijschrijving binnen en krijgt de
+  aangiftes met een negatief bedrag aangeboden.
+- **Transacties van de Belastingdienst worden herkend** (op naam, omschrijving
+  of de vaste ontvangstrekening) en krijgen een ⚡-markering, zodat je ze tussen
+  de andere afschrijvingen terugvindt.
+- **Staat er nog geen aangifte klaar**, dan wijst zo'n herkende transactie de
+  weg met een knop naar het tabblad BTW-aangifte, in plaats van er stilzwijgend
+  bij te blijven staan.
+
+Het bestaande koppelen vanaf de aangiftekant blijft gewoon werken; dit is een
+tweede ingang naar dezelfde koppeling.
+
+---
+
 ## [1.11.99] — 2026-08-19
 
 ### Verbeterd — de PSP-lijst toont alleen wat er écht in kan zitten

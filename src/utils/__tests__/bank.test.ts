@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseMT940, scoreMatch, besteMatch, saldoControle,
-  isPspTransactie, zoekPspCombinatie, pspKandidaten,
+  isPspTransactie, zoekPspCombinatie, pspKandidaten, isBelastingdienstTransactie,
 } from '../bank'
 
 const MT940_FIXTURE = [
@@ -168,5 +168,17 @@ describe('pspKandidaten', () => {
   })
   it('zonder datum vervalt het datumfilter', () => {
     expect(pspKandidaten(facturen).map(f => f.id)).toEqual([7, 5, 2, 1, 6])
+  })
+})
+
+describe('isBelastingdienstTransactie', () => {
+  it('herkent de Belastingdienst op naam, omschrijving of rekeningnummer', () => {
+    expect(isBelastingdienstTransactie({tegenpartij: 'Belastingdienst'})).toBe(true)
+    expect(isBelastingdienstTransactie({omschrijving: 'BELASTINGDIENST OMZETBELASTING'})).toBe(true)
+    expect(isBelastingdienstTransactie({tegenrekening: 'NL86 INGB 0002 4455 88'})).toBe(true)
+  })
+  it('laat gewone transacties met rust', () => {
+    expect(isBelastingdienstTransactie({tegenpartij: 'Mouterij Dingemans'})).toBe(false)
+    expect(isBelastingdienstTransactie({})).toBe(false)
   })
 })

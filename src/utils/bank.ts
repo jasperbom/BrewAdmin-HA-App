@@ -108,6 +108,19 @@ const PSP_PATROON = /mollie|stripe|adyen|sumup|zettle|paypal|pay\.nl|buckaroo|mu
 export const isPspTransactie = (tx: any): boolean =>
   tx.type === 'C' && PSP_PATROON.test(`${tx.tegenpartij||''} ${tx.omschrijving||''} ${tx.referentie||''}`)
 
+// Betaling aan of van de Belastingdienst? Wordt gebruikt om een banktransactie
+// als BTW-betaling of -teruggave te herkennen, zodat de bankpagina meteen de
+// koppeling naar een aangifteperiode aanbiedt. De vaste ontvangstrekening van
+// de Belastingdienst staat erbij: die is stabieler dan de omschrijving.
+const BELASTINGDIENST_IBAN = 'NL86INGB0002445588'
+
+export function isBelastingdienstTransactie(tx: any): boolean {
+  const tekst = `${tx?.tegenpartij || ''} ${tx?.omschrijving || ''} ${tx?.tegenrekening || ''}`
+    .toLowerCase().replace(/\s+/g, '')
+  return tekst.includes('belastingdienst')
+    || tekst.includes(BELASTINGDIENST_IBAN.toLowerCase())
+}
+
 // Welke verkoopfacturen mogen in een PSP-uitbetaling zitten?
 //
 // Eerder werd hier alleen op ópenstaande facturen gezocht. Dat brak zodra één
