@@ -163,6 +163,46 @@ describe('bouwFactuurContext — status en varianten', () => {
     expect(render()).not.toContain('badge-green')
   })
 
+  it('een betaalde factuur vraagt niet meer om een overboeking', () => {
+    const ctx = bouwFactuurContext({order, brewery, appName: '', factuur: {
+      ...factuur, status: 'betaald', wc_betaald_datum: '2026-03-09', wc_betaal_methode: 'iDEAL',
+    }} as any)
+    expect(ctx.toon_betaalblok).toBe(false)
+    expect(ctx.toon_voldaanblok).toBe(true)
+    expect(ctx.betaald_op).toBe('09-03-2026')
+    expect(ctx.betaald_via).toBe('iDEAL')
+    expect(String(ctx.voldaan_regel)).toContain('09-03-2026')
+    expect(String(ctx.voldaan_regel)).toContain('iDEAL')
+
+    const uit = render({factuur: {...factuur, status: 'betaald', wc_betaald_datum: '2026-03-09', wc_betaal_methode: 'iDEAL'}})
+    expect(uit).toContain('paid-block')
+    // Geen betaalblok meer: er valt niets meer over te maken. (De IBAN staat
+    // nog wél in de brouwerijgegevens in de kop — dat is bedrijfsinformatie.)
+    expect(uit).not.toContain('pay-block')
+    expect(uit).not.toContain('Betaalinformatie')
+  })
+
+  it('valt terug op de eigen betaaldatum en meldt anders alleen dat het voldaan is', () => {
+    const metEigen = bouwFactuurContext({order, brewery, appName: '',
+      factuur: {...factuur, status: 'betaald', betaald_datum: '2026-03-11'}} as any)
+    expect(metEigen.betaald_op).toBe('11-03-2026')
+    expect(String(metEigen.voldaan_regel)).toContain('11-03-2026')
+
+    const zonder = bouwFactuurContext({order, brewery, appName: '',
+      factuur: {...factuur, status: 'betaald'}} as any)
+    // Zonder bekende datum geen "voldaan op —", maar de kale zin.
+    expect(zonder.betaald_op).toBe('—')
+    expect(zonder.voldaan_regel).toBe('Deze factuur is voldaan — u hoeft niets meer te doen.')
+  })
+
+  it('een openstaande factuur houdt het betaalblok en toont geen voldaan-blok', () => {
+    const ctx = bouwFactuurContext({order, brewery, appName: '', factuur} as any)
+    expect(ctx.toon_betaalblok).toBe(true)
+    expect(ctx.toon_voldaanblok).toBe(false)
+    expect(ctx.voldaan_regel).toBe('')
+    expect(render()).not.toContain('paid-block')
+  })
+
   it('de QR-code komt in het document bij een betaallink', () => {
     const uit = render({payInfo: {url: 'https://pay', qrDataUrl: 'data:image/png;base64,QR'}})
     expect(uit).toContain('class="qr-block"')
@@ -237,5 +277,29 @@ describe('eigenFactuurTemplate', () => {
     const terugval = renderTemplateOfFallback('{{#regels}}kapot', FACTUUR_HTML_DEFAULT, ctx)
     expect(terugval).toContain('class="page"')
     expect(terugval).toContain('2026-0042')
+  })
+})
+
+describe('bouwFactuurContext — meta bij een betaalde factuur', () => {
+  const ctxVan = (over: Record<string, unknown>) => bouwFactuurContext({
+    order, brewery, appName: '', factuur: {...factuur, ...over},
+  } as any)
+
+  it('vervangt de vervaldatum door de betaaldatum', () => {
+    const labels = (ctxVan({status: 'betaald', wc_betaald_datum: '2026-03-09'}).meta as any[])
+      .map(m => `${m.label}: ${m.waarde}`)
+    expect(labels.some(l => l.startsWith('Vervaldatum'))).toBe(false)
+    expect(labels).toContain('Betaald op: 09-03-2026')
+  })
+
+  it('laat de regel weg als er geen betaaldatum bekend is', () => {
+    const labels = (ctxVan({status: 'betaald'}).meta as any[]).map(m => m.label)
+    expect(labels.some(l => l.startsWith('Vervaldatum'))).toBe(false)
+    expect(labels).not.toContain('Betaald op')
+  })
+
+  it('houdt de vervaldatum op een openstaande factuur', () => {
+    const labels = (ctxVan({}).meta as any[]).map(m => `${m.label}: ${m.waarde}`)
+    expect(labels.some(l => l.startsWith('Vervaldatum'))).toBe(true)
   })
 })

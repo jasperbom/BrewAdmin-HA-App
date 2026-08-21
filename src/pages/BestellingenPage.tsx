@@ -3,7 +3,10 @@ import { t } from '../i18n'
 import { newId, wcGet, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
-import { mapWcOrderRegels, wcOrdersPad, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
+import {
+  mapWcOrderRegels, wcOrdersPad, WC_IMPORT_STATUSSEN_DEFAULT,
+  wcBetaalVelden, betaalVeldenGewijzigd,
+} from '../utils/wcImport'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
@@ -235,6 +238,20 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const orderNummer = (b: any): string =>
     b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : (b.bestel_nummer || `M-${b.id}`)
 
+  // "Betaald"-markering op een WooCommerce-order: het label plus, als
+  // WooCommerce het weet, wanneer en waarmee er betaald is.
+  const betaaldTip = (b: any): string => [
+    b.wc_betaald_datum ? t('orders_betaald_op').replace('{datum}', fmtD(b.wc_betaald_datum)) : t('orders_betaald'),
+    b.wc_betaal_methode || '',
+  ].filter(Boolean).join(' · ')
+
+  const BetaaldBadge = ({b}: {b: any}) => b?.wc_betaald ? (
+    <span title={betaaldTip(b)}
+      className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+      ✓ {t('orders_betaald')}
+    </span>
+  ) : null
+
   // Picks voor een bestelling
   const picksVoorOrder = (bestelling_id: number) =>
     (bestellingPicks||[]).filter((p: any) => p.bestelling_id === bestelling_id)
@@ -419,8 +436,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       let imported = 0
       let onbekendeRegels = 0
       const nieuw: any[] = []
+      // Betaalstatus van orders die we al hebben. Een webshoporder komt vaak
+      // binnen als `pending` (iDEAL nog niet afgerond) en is een uur later
+      // betaald; zonder deze verversing bleef de app voor altijd denken dat er
+      // nog geld moest komen — en zei de factuurmail dat ook.
+      const betaalUpdates: Record<number, any> = {}
       for (const o of (orders||[])) {
-        if (bestaandeWcIds.has(o.id)) continue
+        if (bestaandeWcIds.has(o.id)) {
+          const bestaand = (bestellingen||[]).find((b: any) => b.wc_order_id === o.id)
+          const velden = wcBetaalVelden(o)
+          if (bestaand && betaalVeldenGewijzigd(bestaand, velden)) betaalUpdates[bestaand.id] = velden
+          continue
+        }
         // Productregels + verzendkosten + toeslagen, met autoritatieve
         // WooCommerce-bedragen. Zie utils/wcImport.ts.
         const regels = mapWcOrderRegels(o, refs)
@@ -441,10 +468,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           id: newId([...(bestellingen||[]), ...nieuw]),
           status: 'nieuw',
           datum: (o.date_created||tod()).slice(0, 10),
-          // Wanneer de klant betaald heeft (WooCommerce `date_paid`). Dat is de
-          // dag die de PSP uitbetaalt — niet de dag waarop jij de order afrondt
-          // en de factuur krijgt. De bankkoppeling zoekt daarop.
-          ...(o.date_paid ? {wc_betaald_datum: String(o.date_paid).slice(0, 10)} : {}),
+          // Of de klant al betaald heeft, wanneer en waarmee (zie
+          // utils/wcImport → wcBetaalStatus). De betaaldatum is de dag die de
+          // PSP uitbetaalt — niet de dag waarop jij de order afrondt en de
+          // factuur maakt; de bankkoppeling zoekt daarop.
+          ...wcBetaalVelden(o),
           klant_naam: `${o.billing?.first_name||''} ${o.billing?.last_name||''}`.trim() || t('lbl_onbekend'),
           klant_email: o.billing?.email||'',
           klant_straat: o.billing?.address_1||'',
@@ -464,16 +492,26 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         nieuw.push(nb)
         imported++
       }
-      if (nieuw.length) {
-        setBestellingen((prev: any[]) => [...(prev||[]), ...nieuw])
+      const bijgewerkt = Object.keys(betaalUpdates).length
+      if (nieuw.length || bijgewerkt) {
+        setBestellingen((prev: any[]) => [
+          ...(prev||[]).map((b: any) => betaalUpdates[b.id] ? {...b, ...betaalUpdates[b.id]} : b),
+          ...nieuw,
+        ])
         nieuw.forEach((o: any) => logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:o.id, actie:'aangemaakt', omschrijving:`WC import — ${o.klant_naam||'onbekend'}`}))
+        Object.keys(betaalUpdates).forEach(id => logAudit(auditLog, setAuditLog, {
+          entiteit:'Bestelling', entiteit_id:Number(id), actie:'gewijzigd',
+          omschrijving:`WC betaalstatus — ${betaalUpdates[Number(id)].wc_betaald ? 'betaald' : 'open'}`,
+        }))
       }
       const melding = t('msg_wc_orders_imported').replace('{n}', String(imported))
       // Niet-herkende regels expliciet melden: die komen als vrije regel binnen
       // (geen picking) en horen gecontroleerd te worden.
-      setWcMsg(onbekendeRegels > 0
-        ? `${melding} — ${t('msg_wc_regels_onbekend').replace('{n}', String(onbekendeRegels))}`
-        : melding)
+      const delen = [
+        onbekendeRegels > 0 ? t('msg_wc_regels_onbekend').replace('{n}', String(onbekendeRegels)) : '',
+        bijgewerkt > 0 ? t('msg_wc_betaalstatus_bijgewerkt').replace('{n}', String(bijgewerkt)) : '',
+      ].filter(Boolean)
+      setWcMsg(delen.length ? `${melding} — ${delen.join(' · ')}` : melding)
     } catch(e: any) {
       setWcMsg(t('msg_wc_import_failed').replace('{msg}', wcFoutMelding(e, t)))
     }
@@ -1109,6 +1147,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // order is afgerond (dat kan dagen later zijn).
       order_datum: selectedOrder.datum || vandaag,
       ...(selectedOrder.wc_betaald_datum ? {wc_betaald_datum: selectedOrder.wc_betaald_datum} : {}),
+      ...(selectedOrder.wc_betaal_methode ? {wc_betaal_methode: selectedOrder.wc_betaal_methode} : {}),
       klant_id: snap.klant_id ?? null,
       klant_naam: snap.klant_naam || '',
       klant_bedrijf: snap.klant_bedrijf || '',
@@ -1127,7 +1166,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       netto_cent: factuurTotalen.netto_cent,
       btw_cent: factuurTotalen.btw_cent,
       bruto_cent: factuurTotalen.bruto_cent,
-      status: 'open',
+      // Een webshoporder is meestal al afgerekend voordat hij hier wordt
+      // afgerond. Die factuur openzetten klopt niet: hij zou in de openstaande
+      // posten staan, een betaalverzoek meesturen en om een herinnering vragen
+      // voor geld dat al binnen is. Betaald in WooCommerce = betaald hier.
+      // De PSP-uitbetaling koppelt later gewoon aan deze factuur — die
+      // zoekfunctie neemt betaalde facturen mee (zie utils/bank.ts).
+      status: selectedOrder.wc_betaald ? 'betaald' : 'open',
+      ...(selectedOrder.wc_betaald
+        ? {betaald_datum: selectedOrder.wc_betaald_datum || vandaag}
+        : {}),
       definitief: true,
     }
 
@@ -1664,6 +1712,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[selectedOrder.status]||'bg-gray-100'}`}>
             {t(`orders_status_${selectedOrder.status}`)||selectedOrder.status}
           </span>
+          <BetaaldBadge b={selectedOrder} />
           {(() => {
             const kType = effectiveKlantType(selectedOrder)
             if (!kType) return null
@@ -2636,6 +2685,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               </div>
               <div className="flex items-center gap-3">
                 {picks.length > 0 && <span className="text-xs text-gray-400">{t('msg_stuks_gepickt').replace('{n}', String(picks.reduce((s: number, p: any) => s+p.aantal,0)))}</span>}
+                <BetaaldBadge b={b} />
                 <span className="font-semibold text-gray-800">{fmt(totaal)}</span>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status]||'bg-gray-100'}`}>
                   {t(`orders_status_${b.status}`)||b.status}

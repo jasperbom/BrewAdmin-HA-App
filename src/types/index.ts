@@ -949,6 +949,10 @@ export interface VerkoopFactuur {
   // Het brutobedrag telt als aflossing van die schuld.
   verrekend_alt_id?: number | null
   betaald_datum?: string
+  // Overgenomen van de WooCommerce-order: wanneer en waarmee de klant betaald
+  // heeft. Stuurt de betaalde-factuurmail en het "voldaan"-blok op de PDF.
+  wc_betaald_datum?: string
+  wc_betaal_methode?: string
 }
 
 export interface BreweryDetails {
@@ -1046,6 +1050,13 @@ export interface Bestelling {
   opmerkingen?: string
   wc_order_id?: number | null
   wc_order_nummer?: string | null
+  // Betaalstatus zoals WooCommerce hem kent (zie utils/wcImport → wcBetaalStatus).
+  // Wordt bij elke import ververst: een order die als `pending` binnenkwam kan
+  // later alsnog betaald zijn. De factuur bij het afronden erft dit.
+  wc_betaald?: boolean
+  wc_betaald_datum?: string
+  wc_betaal_methode?: string
+  wc_transactie_id?: string
   factuur_id?: number | null
   factuur_nummer?: string | null
   pakbon_nummer?: string | null

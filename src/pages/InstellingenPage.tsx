@@ -1814,10 +1814,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_mail_templates_title')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_mail_templates_desc')}</p>
         <div className="flex flex-col gap-5">
-          {(['pakbon','factuur','bestelling'] as const).map((kind) => {
-            const labelKey = kind === 'pakbon' ? 'settings_mail_template_pakbon'
-              : kind === 'factuur' ? 'settings_mail_template_factuur'
-              : 'settings_mail_template_bestelling'
+          {/* `factuur_betaald` is de tekst voor een factuur die al voldaan is
+              (webshoporder betaald in WooCommerce, kassaverkoop) — die vraagt
+              niet om een overboeking. */}
+          {(['pakbon','factuur','factuur_betaald','bestelling'] as const).map((kind) => {
+            const labelKey = `settings_mail_template_${kind}`
             const varsHintKey = `settings_mail_vars_${kind}`
             const defaultSubject = t(`mail_${kind}_subject_default`)
             const defaultBody = t(`mail_${kind}_body_default`)

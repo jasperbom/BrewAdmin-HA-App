@@ -41,7 +41,7 @@ BrewAdmin-HA-App/
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
 │   │   ├── merch.ts        # Merch-artikelen: herkenning op SKU/naam (onthouden vanuit een orderregel) + eigen voorraad (mutaties, tekorten, waardering) voor merch die je zélf op voorraad hebt
-│   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel)
+│   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval
@@ -601,7 +601,12 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 ### WooCommerce API
 
 - REST API v3, Basic auth (consumer key + secret)
-- Used for: order fetch, product lookup by SKU
+- Used for: order fetch, product lookup by SKU, betaalstatus van een order
+  (`date_paid` + status; zie `utils/wcImport.ts`). Bij elke import wordt de
+  betaalstatus van al bestaande orders ververst — een order die als `pending`
+  binnenkwam kan later betaald zijn. Een order die in WooCommerce betaald is,
+  levert bij afronden een verkoopfactuur met status `betaald` (die factuur
+  vraagt niet meer om een overboeking, in de mail noch op de PDF)
 - Credentials in `instellingen` (`wcUrl`, `wcKey`, `wcSecret`)
 
 ### Claude AI (Anthropic)
