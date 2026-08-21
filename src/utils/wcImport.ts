@@ -94,6 +94,76 @@ export function wcOrdersPad(opts: {
   return `orders?${params.join('&')}`
 }
 
+// ── Betaalstatus van een WooCommerce-order ─────────────────────────────────
+//
+// WooCommerce kent geen los "betaald"-vlaggetje in de API-payload. Wat er wél
+// staat:
+//   - `date_paid` — gezet op het moment dat de betaling binnenkwam. Leeg bij
+//     bankoverschrijving (BACS) en rembours totdat de winkelier hem markeert.
+//   - `status` — WooCommerce zelf beschouwt een order als betaald zodra hij op
+//     `processing` of `completed` staat (`wc_get_is_paid_statuses`). Dat is de
+//     stand die de winkelier hanteert, dus die volgen we.
+// Een geannuleerde, mislukte of terugbetaalde order telt nooit als betaald,
+// ook niet als er ooit een `date_paid` is gezet: dat geld staat niet (meer) op
+// de rekening en de factuur hoort gewoon open te staan.
+export const WC_BETAALDE_STATUSSEN: string[] = ['processing', 'completed']
+export const WC_NIET_BETAALD_STATUSSEN: string[] = ['cancelled', 'failed', 'refunded', 'trash']
+
+export interface WcBetaling {
+  betaald: boolean
+  /** Betaaldatum (yyyy-mm-dd) als WooCommerce die kent, anders null. */
+  datum: string | null
+  /** Betaalmethode zoals de klant hem zag ("iDEAL", "Bankoverschrijving"). */
+  methode: string
+  /** Transactiereferentie van de gateway; handig bij het terugzoeken. */
+  transactie: string
+}
+
+export function wcBetaalStatus(order: any): WcBetaling {
+  const status = norm(order?.status)
+  const datumRaw = String(order?.date_paid || order?.date_paid_gmt || '').trim()
+  const datum = /^\d{4}-\d{2}-\d{2}/.test(datumRaw) ? datumRaw.slice(0, 10) : null
+  const geblokkeerd = WC_NIET_BETAALD_STATUSSEN.includes(status)
+  return {
+    betaald: !geblokkeerd && (!!datum || WC_BETAALDE_STATUSSEN.includes(status)),
+    datum: geblokkeerd ? null : datum,
+    methode: String(order?.payment_method_title || order?.payment_method || '').trim(),
+    transactie: String(order?.transaction_id || '').trim(),
+  }
+}
+
+/** De betaalvelden zoals ze op een BrewAdmin-bestelling worden bewaard. */
+export interface WcBetaalVelden {
+  wc_betaald: boolean
+  wc_betaald_datum?: string
+  wc_betaal_methode?: string
+  wc_transactie_id?: string
+}
+
+export function wcBetaalVelden(order: any): WcBetaalVelden {
+  const b = wcBetaalStatus(order)
+  return {
+    wc_betaald: b.betaald,
+    ...(b.datum ? {wc_betaald_datum: b.datum} : {}),
+    ...(b.methode ? {wc_betaal_methode: b.methode} : {}),
+    ...(b.transactie ? {wc_transactie_id: b.transactie} : {}),
+  }
+}
+
+/**
+ * Is de opgeslagen betaalinformatie van een bestelling nog gelijk aan wat
+ * WooCommerce nu zegt? Een order die als `pending` binnenkwam en daarna betaald
+ * is, moet bij een volgende import bijgewerkt worden — anders staat de app voor
+ * altijd op "nog niet betaald".
+ */
+export function betaalVeldenGewijzigd(bestelling: any, velden: WcBetaalVelden): boolean {
+  const zelfde = (a: any, b: any) => String(a ?? '') === String(b ?? '')
+  return !!bestelling.wc_betaald !== velden.wc_betaald
+    || !zelfde(bestelling.wc_betaald_datum, velden.wc_betaald_datum)
+    || !zelfde(bestelling.wc_betaal_methode, velden.wc_betaal_methode)
+    || !zelfde(bestelling.wc_transactie_id, velden.wc_transactie_id)
+}
+
 export interface WcArtikelMatch {
   bier_naam: string
   verpakking_type: string

@@ -55,6 +55,8 @@ export const FACTUUR_CSS_DEFAULT = `
   .btw-table th, .btw-table td { font-size: 9pt; padding: 3px 5px; }
   .pay-block { background: #f0f7ff; border: 1px solid #cce5ff; padding: 3mm 4mm; border-radius: 3px; font-size: 8.5pt; line-height: 1.55; }
   .pay-block .pay-title { font-weight: bold; font-size: 9.5pt; margin-bottom: 1.5px; }
+  .paid-block { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 3mm 4mm; border-radius: 3px; font-size: 8.5pt; line-height: 1.55; }
+  .paid-block .pay-title { font-weight: bold; font-size: 9.5pt; margin-bottom: 1.5px; }
   .badge { display: inline-block; padding: 0.5mm 2mm; border-radius: 2mm; font-size: 8pt; font-weight: bold; }
   .badge-green { background: #d1fae5; color: #065f46; }
   .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
@@ -156,6 +158,11 @@ export const FACTUUR_HTML_DEFAULT = `<div class="page">
     <div>{{lbl_ovv_factuurnummer}} <strong>{{factuurnummer}}</strong></div>
   </div>{{/toon_betaalblok}}
 
+  {{#toon_voldaanblok}}<div class="paid-block">
+    <div class="pay-title">{{lbl_voldaan_titel}}</div>
+    <div>{{voldaan_regel}}</div>
+  </div>{{/toon_voldaanblok}}
+
   {{#qr}}<div class="qr-block">
     <img src="{{qr}}" alt="QR" />
     <div class="qr-text">
@@ -176,6 +183,7 @@ export const FACTUUR_TEMPLATE_VELDEN: readonly string[] = [
   'btw_overzicht[].tarief', 'btw_overzicht[].netto', 'btw_overzicht[].btw', 'btw_overzicht[].totaal',
   'totaal_netto', 'totaal_btw', 'totaal_bruto',
   'toon_betaalblok', 'iban', 'factuurdatum', 'vervaldatum', 'betalingstermijn',
+  'toon_voldaanblok', 'voldaan_regel', 'betaald_op', 'betaald_via',
   'qr', 'opmerking',
 ]
 
@@ -266,10 +274,31 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     ? `WooCommerce #${order.wc_order_nummer}`
     : (order?.id ? `${t('lbl_order_ref')} M-${order.id}` : '')
 
+  // Betaald: uit de factuurstatus. De datum komt bij voorkeur uit de
+  // WooCommerce-betaling (het moment dat de klant afrekende) en anders uit het
+  // moment dat de factuur hier op betaald is gezet.
+  const isBetaald = factuur?.status === 'betaald'
+  const betaaldOp = isBetaald
+    ? fmtDatumDoc(factuur?.wc_betaald_datum || factuur?.betaald_datum || '')
+    : ''
+  const betaaldVia = isBetaald
+    ? String(factuur?.wc_betaal_methode || factuur?.betaalwijze || '').trim()
+    : ''
+  const voldaanRegel = !isBetaald ? ''
+    : betaaldOp && betaaldOp !== '—'
+      ? (betaaldVia
+          ? t('factuur_voldaan_op_via').replace('{datum}', betaaldOp).replace('{methode}', betaaldVia)
+          : t('factuur_voldaan_op').replace('{datum}', betaaldOp))
+      : t('factuur_voldaan')
+
   const meta = [
     {label: t('lbl_factuurnummer'), waarde: factuurnummer},
     {label: t('lbl_factuurdatum'), waarde: fmtDatumDoc(factuur?.datum)},
-    {label: t('lbl_vervaldatum').replace('{n}', String(betalingstermijn)), waarde: vervaldatum},
+    // Een vervaldatum op een voldane factuur is een betaalverzoek dat niemand
+    // meer hoeft te lezen; daar staat de betaaldatum in de plaats.
+    isBetaald
+      ? (betaaldOp && betaaldOp !== '—' ? {label: t('lbl_paid_on'), waarde: betaaldOp} : null)
+      : {label: t('lbl_vervaldatum').replace('{n}', String(betalingstermijn)), waarde: vervaldatum},
     leveringsdatum ? {label: t('lbl_leverdatum'), waarde: leveringsdatum} : null,
     orderRef ? {label: t('lbl_order_ref'), waarde: orderRef} : null,
   ].filter(Boolean)
@@ -287,7 +316,7 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     heeft_brouwerij_info: info.length > 0,
     doc_titel: isCredit ? t('lbl_creditnota_titel') : t('lbl_factuur_titel'),
     factuurnummer,
-    is_betaald: factuur?.status === 'betaald',
+    is_betaald: isBetaald,
     klant_titel: klant.titel,
     klant_regels: klant.rest.map(regel => ({regel})),
     meta,
@@ -311,12 +340,18 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     totaal_netto: fmtEuroDoc(factuur?.netto ?? 0),
     totaal_btw: fmtEuroDoc(factuur?.btw ?? 0),
     totaal_bruto: fmtEuroDoc(factuur?.bruto ?? 0),
-    // Betalen
-    toon_betaalblok: fv.betaalblok !== false,
+    // Betalen. Een al voldane factuur krijgt geen betaalverzoek meer: IBAN,
+    // vervaldatum en "o.v.v. het factuurnummer" vragen om geld dat al binnen
+    // is. In plaats daarvan staat er wanneer en waarmee er betaald is.
+    toon_betaalblok: fv.betaalblok !== false && !isBetaald,
     iban: brewery?.iban || '',
     factuurdatum: fmtDatumDoc(factuur?.datum),
     vervaldatum,
     betalingstermijn,
+    toon_voldaanblok: fv.betaalblok !== false && isBetaald,
+    voldaan_regel: voldaanRegel,
+    betaald_op: betaaldOp,
+    betaald_via: betaaldVia,
     // Een creditnota krijgt geen betaal-QR: daar valt niets te betalen.
     qr: (payInfo?.qrDataUrl && !isCredit) ? payInfo.qrDataUrl : '',
     opmerking: order?.opmerkingen || '',
@@ -335,6 +370,7 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     lbl_subtotaal_excl: t('lbl_subtotaal_excl'),
     lbl_totaal_incl: t('lbl_totaal_incl'),
     lbl_betaalinformatie: t('lbl_betaalinformatie'),
+    lbl_voldaan_titel: t('lbl_voldaan_titel'),
     lbl_iban: t('lbl_iban'),
     lbl_tnv: t('lbl_tnv'),
     lbl_bedrag_kort: t('lbl_bedrag_kort'),

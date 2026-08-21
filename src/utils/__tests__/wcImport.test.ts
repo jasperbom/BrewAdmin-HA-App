@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   wcOrdersPad, vindWcArtikel, mapWcOrderRegels, WC_IMPORT_STATUSSEN_DEFAULT,
+  wcBetaalStatus, wcBetaalVelden, betaalVeldenGewijzigd,
 } from '../wcImport'
 
 const refs = {
@@ -134,5 +135,67 @@ describe('mapWcOrderRegels', () => {
   it('geeft een lege lijst voor een order zonder regels', () => {
     expect(mapWcOrderRegels({}, refs)).toEqual([])
     expect(mapWcOrderRegels(null, refs)).toEqual([])
+  })
+})
+
+describe('wcBetaalStatus', () => {
+  it('leest de betaaldatum uit date_paid', () => {
+    const b = wcBetaalStatus({status: 'processing', date_paid: '2026-08-20T14:03:11',
+      payment_method_title: 'iDEAL', transaction_id: 'tr_abc'})
+    expect(b).toEqual({betaald: true, datum: '2026-08-20', methode: 'iDEAL', transactie: 'tr_abc'})
+  })
+
+  it('volgt WooCommerce: processing/completed telt als betaald, ook zonder date_paid', () => {
+    expect(wcBetaalStatus({status: 'completed'}).betaald).toBe(true)
+    expect(wcBetaalStatus({status: 'processing'}).betaald).toBe(true)
+    expect(wcBetaalStatus({status: 'completed'}).datum).toBeNull()
+  })
+
+  it('laat een order die nog moet betalen open staan', () => {
+    expect(wcBetaalStatus({status: 'pending'}).betaald).toBe(false)
+    expect(wcBetaalStatus({status: 'on-hold', payment_method_title: 'Bankoverschrijving'}))
+      .toEqual({betaald: false, datum: null, methode: 'Bankoverschrijving', transactie: ''})
+  })
+
+  it('telt een geannuleerde of terugbetaalde order nooit als betaald', () => {
+    for (const status of ['cancelled', 'failed', 'refunded']) {
+      const b = wcBetaalStatus({status, date_paid: '2026-08-01T10:00:00'})
+      expect(b.betaald).toBe(false)
+      expect(b.datum).toBeNull()
+    }
+  })
+
+  it('valt terug op date_paid_gmt en payment_method', () => {
+    const b = wcBetaalStatus({status: 'pending', date_paid_gmt: '2026-07-05T08:00:00', payment_method: 'ideal'})
+    expect(b).toMatchObject({betaald: true, datum: '2026-07-05', methode: 'ideal'})
+  })
+
+  it('negeert een onbruikbare datum', () => {
+    expect(wcBetaalStatus({status: 'pending', date_paid: ''}).datum).toBeNull()
+    expect(wcBetaalStatus({status: 'pending', date_paid: 'gisteren'}).betaald).toBe(false)
+  })
+})
+
+describe('wcBetaalVelden / betaalVeldenGewijzigd', () => {
+  it('laat lege velden weg zodat de order niet volloopt met lege strings', () => {
+    expect(wcBetaalVelden({status: 'pending'})).toEqual({wc_betaald: false})
+  })
+
+  it('ziet een order die inmiddels betaald is', () => {
+    const velden = wcBetaalVelden({status: 'processing', date_paid: '2026-08-20T09:00:00',
+      payment_method_title: 'iDEAL'})
+    expect(betaalVeldenGewijzigd({wc_betaald: false}, velden)).toBe(true)
+    expect(betaalVeldenGewijzigd({wc_betaald: true, wc_betaald_datum: '2026-08-20',
+      wc_betaal_methode: 'iDEAL'}, velden)).toBe(false)
+  })
+
+  it('ziet ook een gewijzigde datum of methode', () => {
+    const velden = wcBetaalVelden({status: 'completed', date_paid: '2026-08-20T09:00:00', payment_method_title: 'iDEAL'})
+    expect(betaalVeldenGewijzigd({wc_betaald: true, wc_betaald_datum: '2026-08-19', wc_betaal_methode: 'iDEAL'}, velden)).toBe(true)
+    expect(betaalVeldenGewijzigd({wc_betaald: true, wc_betaald_datum: '2026-08-20', wc_betaal_methode: 'PayPal'}, velden)).toBe(true)
+  })
+
+  it('behandelt een oude order zonder betaalvelden als onbetaald', () => {
+    expect(betaalVeldenGewijzigd({}, {wc_betaald: false})).toBe(false)
   })
 })

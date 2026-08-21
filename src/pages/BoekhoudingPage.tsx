@@ -1023,7 +1023,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   // Pakt subject/body uit ingestelde mail_templates; valt terug op de i18n-default
   // wanneer de gebruiker niets heeft ingevuld.
-  const tplOrDefault = (key: 'pakbon'|'factuur'|'bestelling', field: 'subject'|'body'): string => {
+  const tplOrDefault = (key: 'pakbon'|'factuur'|'factuur_betaald'|'bestelling', field: 'subject'|'body'): string => {
     const stored = (mailTemplates as any)?.[key]?.[field]
     if (typeof stored === 'string' && stored.trim()) return stored
     return t(`mail_${key}_${field}_default`)
@@ -1046,6 +1046,23 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
         } catch { return '' }
       })()
+      // Een al betaalde factuur (webshoporder die in WooCommerce is afgerekend,
+      // kassaverkoop, handmatig afgevinkt) krijgt een eigen mailtekst: vragen om
+      // geld dat al binnen is, is de kortste weg naar een verwarde klant.
+      const isBetaald = factuur.status === 'betaald'
+      const betaaldOp = (() => {
+        const d = factuur.wc_betaald_datum || factuur.betaald_datum || ''
+        if (!d) return ''
+        try { return new Date(d).toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'}) }
+        catch { return String(d) }
+      })()
+      const betaaldVia = String(factuur.wc_betaal_methode || factuur.betaalwijze || '').trim()
+      const betaalregel = !isBetaald ? ''
+        : betaaldOp && betaaldVia
+          ? t('mail_betaalregel_op_via').replace('{datum}', betaaldOp).replace('{methode}', betaaldVia)
+          : betaaldOp
+            ? t('mail_betaalregel_op').replace('{datum}', betaaldOp)
+            : t('mail_betaalregel')
       const vars = {
         naam: resolved.klant_naam || '',
         nr: factuurNr,
@@ -1053,6 +1070,9 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         vervaldatum: verval,
         iban: inst.iban || '',
         brouwerij: inst.naam || appName || '',
+        betaaldatum: betaaldOp,
+        betaalwijze: betaaldVia,
+        betaalregel,
       }
       const ontvanger = klant?.email || resolved.klant_email || ''
       // Mollie-betaallink: alleen aanbieden voor openstaande (niet-betaalde,
@@ -1083,11 +1103,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         const pdf2 = await htmlToPdfBase64(html2)
         return [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdf2, mimeType: 'application/pdf'}]
       } : undefined
+      const tplKind = isBetaald ? 'factuur_betaald' as const : 'factuur' as const
       setMailModal({
         title: t('mail_modal_title_factuur'),
         to: ontvanger,
-        subject: interpolate(tplOrDefault('factuur', 'subject'), vars),
-        text: interpolate(tplOrDefault('factuur', 'body'), vars),
+        subject: interpolate(tplOrDefault(tplKind, 'subject'), vars),
+        text: interpolate(tplOrDefault(tplKind, 'body'), vars),
         attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
         factuurId: factuur.id,
         mollie: mollieCtx,

@@ -4,6 +4,66 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.2] — 2026-08-21
+
+### Nieuw — betaalstatus uit WooCommerce, en een factuurmail die dat weet
+
+Een webshoporder is meestal al afgerekend voordat je hem hier afrondt. De app
+wist dat niet: elke orderfactuur kwam als openstaand binnen en de factuurmail
+vroeg de klant netjes om het bedrag "vóór {vervaldatum}" over te maken — geld
+dat al binnen was.
+
+- **De import leest nu of een order betaald is**, met wanneer en waarmee
+  (`date_paid`, of de status `processing`/`completed` die WooCommerce zelf als
+  betaald ziet; geannuleerd/mislukt/terugbetaald telt nooit mee). De
+  bestelling toont een groene **Betaald**-markering met datum en betaalmethode.
+- **Bij elke import wordt de betaalstatus van bestaande orders ververst.** Een
+  order die als `pending` binnenkwam en een uur later is betaald, bleef anders
+  voor altijd op "nog niet betaald" staan.
+- **Een betaalde order levert een verkoopfactuur met status Betaald**, met de
+  WooCommerce-betaaldatum. Hij staat dus niet meer bij de openstaande posten en
+  vraagt niet om een herinnering. De PSP-uitbetaling koppelt gewoon zoals
+  voorheen aan zo'n factuur.
+- **De factuurmail heeft een eigen tekst voor een betaalde factuur:** "Deze
+  factuur is al voldaan op {datum} via {methode}; je hoeft niets meer te doen."
+  Aan te passen bij Instellingen → Bedrijf → E-mailtemplates ("Factuur-mail (al
+  betaald)"), met de variabelen `{betaalregel}`, `{betaaldatum}` en
+  `{betaalwijze}`.
+- **De factuur-PDF vraagt niet meer om een overboeking als hij voldaan is:**
+  in plaats van het betaalblok met IBAN en vervaldatum staat er een groen
+  "Reeds voldaan"-blok, en in de kop staat de betaaldatum in plaats van de
+  vervaldatum. Geldt ook voor kassaverkopen en handmatig op betaald gezette
+  facturen.
+
+---
+
+## [1.12.1] — 2026-08-21
+
+### Opgelost — etiketallergenen vastleggen waar de etiketcontrole erom vraagt
+
+De etiketcontrole (CCP 3) blokkeerde met *"Voor dit product zijn nog geen
+etiketallergenen vastgelegd"* en verwees naar "Producten" — een pagina waar de
+allergenen helemaal niet in te vullen zijn. Wie midden in een afvulsessie stond
+kon alleen nog de blokkade omzeilen met een afwijking.
+
+- **De allergenen van het etiket zijn nu direct in de etiketcontrole aan te
+  vinken**, zowel bij het live meelopen als bij het achteraf vastleggen. Ze
+  worden op het product opgeslagen (met audit-regel), waarna de vergelijking
+  met de receptuur meteen groen of rood kleurt. Opslaan zonder vinkjes legt
+  vast dat het etiket geen allergenen vermeldt — iets anders dan "nog niet
+  gecontroleerd".
+- **Bewust geen "overnemen uit het recept"-knop**: dan zou de vergelijking
+  zichzelf gelijk maken en meet CCP 3 niets meer. Wat je aanvinkt is wat er op
+  het etiket staat.
+- **Een al vastgelegde lijst is bij te werken** via "Etiketallergenen
+  bijwerken", bijvoorbeeld als het etiket is herzien.
+- **Bij het achteraf vastleggen** stond in de blokkademelding letterlijk
+  `{allergenen}` in plaats van de ontbrekende allergenen; die worden nu
+  ingevuld. De melding "nog niet vastgelegd" stond bovendien twee keer onder
+  elkaar.
+
+---
+
 ## [1.12.0] — 2026-08-19
 
 ### Nieuw — BTW-betalingen koppelen vanuit het bankoverzicht
