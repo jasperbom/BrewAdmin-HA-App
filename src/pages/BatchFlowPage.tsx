@@ -3710,7 +3710,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         {faseStatus === 'Afgevuld' && (
           <AfvulSessieSectie
             batch={selB} bi={bi} ing={ing} av={av} setAv={setAv}
-            producten={producten} verpakkingen={verpakkingen}
+            producten={producten} setProducten={setProducten} verpakkingen={verpakkingen}
             vrijgaven={haccpVrijgaven}
             sessies={afvulSessies} setSessies={setAfvulSessies}
             sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}

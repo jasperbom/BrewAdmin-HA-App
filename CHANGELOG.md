@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.1] — 2026-08-21
+
+### Opgelost — etiketallergenen vastleggen waar de etiketcontrole erom vraagt
+
+De etiketcontrole (CCP 3) blokkeerde met *"Voor dit product zijn nog geen
+etiketallergenen vastgelegd"* en verwees naar "Producten" — een pagina waar de
+allergenen helemaal niet in te vullen zijn. Wie midden in een afvulsessie stond
+kon alleen nog de blokkade omzeilen met een afwijking.
+
+- **De allergenen van het etiket zijn nu direct in de etiketcontrole aan te
+  vinken**, zowel bij het live meelopen als bij het achteraf vastleggen. Ze
+  worden op het product opgeslagen (met audit-regel), waarna de vergelijking
+  met de receptuur meteen groen of rood kleurt. Opslaan zonder vinkjes legt
+  vast dat het etiket geen allergenen vermeldt — iets anders dan "nog niet
+  gecontroleerd".
+- **Bewust geen "overnemen uit het recept"-knop**: dan zou de vergelijking
+  zichzelf gelijk maken en meet CCP 3 niets meer. Wat je aanvinkt is wat er op
+  het etiket staat.
+- **Een al vastgelegde lijst is bij te werken** via "Etiketallergenen
+  bijwerken", bijvoorbeeld als het etiket is herzien.
+- **Bij het achteraf vastleggen** stond in de blokkademelding letterlijk
+  `{allergenen}` in plaats van de ontbrekende allergenen; die worden nu
+  ingevuld. De melding "nog niet vastgelegd" stond bovendien twee keer onder
+  elkaar.
+
+---
+
 ## [1.12.0] — 2026-08-19
 
 ### Nieuw — BTW-betalingen koppelen vanuit het bankoverzicht

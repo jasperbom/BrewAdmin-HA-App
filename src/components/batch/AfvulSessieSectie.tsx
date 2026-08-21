@@ -11,6 +11,7 @@ import Inp from '../ui/Inp'
 import Sel from '../ui/Sel'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../haccp/BlokkadeKaart'
 import AfwijkingModal from '../haccp/AfwijkingModal'
+import EtiketAllergenen from '../haccp/EtiketAllergenen'
 import {
   maakParaaf, haccpInst, risicoVoorBatch, omkeerproefVerplicht,
   kroonkurkVerplicht,
@@ -46,6 +47,8 @@ interface Props {
   av: any[]
   setAv: (fn: any) => void
   producten: any[]
+  /** Nodig om de etiketallergenen van een product bij CCP 3 vast te leggen. */
+  setProducten: (fn: any) => void
   verpakkingen: any[]
   vrijgaven: any[]
   sessies: AfvulSessie[]
@@ -331,6 +334,34 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const etiketOnvolledig = !ec.product_id || !ec.lotcode_ok || !ec.tht_ok || !ec.alcohol_ok
   const allergeenLabel = (a: string) =>
     t(ALLERGENEN_LIJST.find(x => x.key === a)?.label || a)
+
+  // De allergenenredenen dragen hun allergenen als parameter; zonder invullen
+  // leest de afvuller letterlijk "{allergenen}" en weet hij niet wat er mist.
+  const etiketRedenTekst = (
+    r: {code: string; i18nKey: string},
+    v: {ontbreektOpEtiket: string[]; teveelOpEtiket: string[]}
+  ): string =>
+    r.code === 'allergeen_ontbreekt'
+      ? t('haccp_blok_allergeen_ontbreekt')
+          .replace('{allergenen}', v.ontbreektOpEtiket.map(allergeenLabel).join(', '))
+      : r.code === 'allergeen_teveel'
+      ? t('haccp_blok_allergeen_teveel')
+          .replace('{allergenen}', v.teveelOpEtiket.map(allergeenLabel).join(', '))
+      : t(r.i18nKey)
+
+  // Etiketallergenen horen bij het product (masterdata), maar worden hier
+  // vastgelegd omdat CCP 3 het hier mist. Een lege lijst is een geldig
+  // antwoord ("het etiket vermeldt geen allergenen") en iets anders dan een
+  // ontbrekende lijst — daarom altijd een array wegschrijven.
+  const legEtiketAllergenenVast = (product: any, allergenen: string[]) => {
+    if (!product) return
+    p.setProducten((prev: any[]) => (prev || []).map((x: any) => x.id === product.id
+      ? {...x, allergenen, etiket_bijgewerkt: tod()} : x))
+    logAudit(p.auditLog, p.setAuditLog, {
+      entiteit: 'Product', entiteit_id: product.id, actie: 'gewijzigd',
+      omschrijving: `Etiket-allergenen: ${product.naam || ''}`,
+    })
+  }
 
   const slaEtiketOp = (afwijkingId?: number) => {
     if (!sessie || etiketOnvolledig) return
@@ -791,9 +822,19 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
                 ? naEtiket.allergenen.map(allergeenLabel).join(', ')
                 : t('haccp_ccp3_geen_allergenen')}
           </div>
-          {naEtiketBlok.redenen.map((r, i) => (
-            <div key={i} className="text-red-700 font-medium">✗ {t(r.i18nKey)}</div>
+          {naEtiketBlok.redenen.filter(r => r.code !== 'etiket_onbekend').map((r, i) => (
+            <div key={i} className="text-red-700 font-medium">
+              ✗ {etiketRedenTekst(r, naVergelijking)}
+            </div>
           ))}
+          {/* Ook hier: het etiket vastleggen kan meteen, zonder de pagina te
+              verlaten en het formulier kwijt te raken. */}
+          {naProduct && (
+            <div className="pt-1">
+              <EtiketAllergenen product={naProduct}
+                onOpslaan={all => legEtiketAllergenenVast(naProduct, all)} />
+            </div>
+          )}
         </div>
       )}
       {/* Pas melden wat er ontbreekt zodra er iets is ingevuld — een leeg
@@ -1042,21 +1083,26 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           )}
           {ec.product_id && !etiketBlok.toegestaan && (
             <>
-              {etiketBlok.redenen.map((r, i) => (
+              {/* 'etiket_onbekend' staat al op de etiketregel hierboven —
+                  dezelfde zin twee keer onder elkaar leest als twee fouten. */}
+              {etiketBlok.redenen.filter(r => r.code !== 'etiket_onbekend').map((r, i) => (
                 <div key={i} className="text-red-700 font-medium">
-                  {r.code === 'allergeen_ontbreekt'
-                    ? `✗ ${t('haccp_blok_allergeen_ontbreekt').replace('{allergenen}',
-                        vergelijking.ontbreektOpEtiket.map(allergeenLabel).join(', '))}`
-                    : r.code === 'allergeen_teveel'
-                    ? `✗ ${t('haccp_blok_allergeen_teveel').replace('{allergenen}',
-                        vergelijking.teveelOpEtiket.map(allergeenLabel).join(', '))}`
-                    : `✗ ${t(r.i18nKey)}`}
+                  ✗ {etiketRedenTekst(r, vergelijking)}
                 </div>
               ))}
               {vergelijking.etiketOnbekend && (
                 <div className="text-gray-500">{t('haccp_ccp3_product_instellen')}</div>
               )}
             </>
+          )}
+          {/* De blokkade oplossen waar hij optreedt: wat er op het etiket
+              staat aanvinken. Zonder dit blijft "nog niet vastgelegd" een
+              doodlopende weg midden in de afvulsessie. */}
+          {!!ec.product_id && gekozenProduct && (
+            <div className="pt-1">
+              <EtiketAllergenen product={gekozenProduct}
+                onOpslaan={all => legEtiketAllergenenVast(gekozenProduct, all)} />
+            </div>
           )}
         </div>
 
