@@ -37,8 +37,10 @@ export interface AfboekingBatch {
  * Bouwt het AccijnsRecord dat bij een afboeking hoort, of `null` als de
  * afboeking niet accijnsplichtig is (of er geen liters mee gemoeid zijn).
  *
- * Het tarief wordt — net als bij een AGP-verplaatsing — op de brouwdatum van
- * de batch bepaald, zodat oude batches op hun eigen jaartarief blijven staan.
+ * Het tarief hoort — net als bij een AGP-verplaatsing — bij de datum van het
+ * belastbare feit: de onttrekking zelf (`afboeking.datum`), niet de brouwdatum.
+ * De accijns wordt immers pas verschuldigd op het moment dat het bier de
+ * schorsingsregeling verlaat.
  */
 export const bouwAfboekingAccijnsRecord = (
   afboeking: Pick<Afboeking, 'id' | 'batch_id' | 'datum' | 'aantal' | 'reden'>,
@@ -55,7 +57,9 @@ export const bouwAfboekingAccijnsRecord = (
 
   const abv = Number(batch?.ABV || 0)
   const plato = Number(batch?.platogehalte || 0)
-  const tarief = tariefVoorDatum(accijnsInst || null, batch?.datum)
+  // Tarief van het belastbare feit: de onttrekking aan de schorsingsregeling
+  // (de afboekdatum), niet de brouwdatum.
+  const tarief = tariefVoorDatum(accijnsInst || null, afboeking?.datum)
   const eff: AccijnsInst = { ...(accijnsInst || {}), tarief_per_hl_plato: tarief.r3 }
   const bedrag = accijnsCalc(liter, abv, tarief.r1, tarief.r2, eff, plato)
 

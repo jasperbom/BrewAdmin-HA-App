@@ -4,6 +4,96 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.6] — 2026-08-23
+
+### Accijns-impact van een tariefwijziging klopt weer
+
+Het wat-als-overzicht bij het wijzigen van een jaartarief (Instellingen →
+Financieel) ging nog uit van de brouwdatum: het rekende de batches door die in
+dat jaar gebrouwen waren. Nu de accijns bij uitslag verschuldigd wordt, hoort
+het te gaan over de **uitslagen** met een datum in dat jaar.
+
+- Het overzicht toont nu de geboekte uitslagen van dat jaar — uitlevering,
+  verplaatsing en vermissing — met soort, batch, verpakking en liters.
+- "Oud" is het bedrag zoals het geboekt is (en dus in je aangifte terecht is
+  gekomen), niet een herberekening. "Nieuw" is dezelfde hoeveelheid op het
+  voorgestelde tarief.
+- Uitslagen in een maand waarvan de aangifte al is ingediend of betaald krijgen
+  een merkje, en het verschil wordt gesplitst: wat een correctie bij de Douane
+  vraagt versus wat nog in een open maand valt.
+- Voorraad die nog in de AGP ligt telt bewust niet mee — daarover ontstaat de
+  accijns pas bij uitslag. Dat staat er nu ook bij.
+- De Impact-knop is actief zodra er uitslagen in dat jaar zijn (was: batches).
+
+Ook opgelost in ditzelfde scherm: alle bedragen stonden met een dubbel
+euroteken (€€48,75).
+
+---
+
+## [1.12.5] — 2026-08-23
+
+### Accijnstarief volgt de uitslagdatum
+
+De accijns wordt verschuldigd op het moment dat het bier de AGP verlaat, dus
+geldt het tarief van dát moment. De app rekende overal met het tarief van de
+**brouwdatum**. Bier dat je in december brouwt en in februari uitslaat viel
+daardoor onder het oude tarief.
+
+Aangepast op alle plekken waar een belastbaar feit wordt geboekt — het tarief
+komt nu van de datum van het feit zelf:
+
+- uitslag bij het picken van een bestelling en bij een kassaverkoop
+- verplaatsing uit de AGP (AGP-pagina én "uitslaan voor verkoop" op het product)
+- vermissing: het tarief van de afboekdatum
+- intern gebruik: het tarief van de verbruiksdatum
+
+Ook de waarderingen kloppen nu: de accijnstegels op de AGP-pagina rekenen met
+het tarief van vandaag (wat je zou betalen als je alles nu uitsloeg), en de
+historische gemiddelden met het tarief dat op die peildatum gold. De
+voorcalculatie die bij het afvullen wordt bevroren, staat op het tarief van de
+afvuldatum.
+
+Dit raakt alleen nieuwe boekingen; bestaande accijnsrecords houden hun
+opgeslagen bedrag. Merkbaar is het uitsluitend wanneer je tarieven per jaar in
+de tariefhistorie hebt staan én voorraad over de jaargrens heen ligt.
+
+Nog niet aangepast: het "wat-als"-overzicht bij het wijzigen van een jaartarief
+in de instellingen groepeert nog op brouwjaar.
+
+---
+
+## [1.12.4] — 2026-08-23
+
+### Uitslaan vanaf de productpagina
+
+Bier dat je particulier verkoopt moet eerst de AGP uit. Dat kon alleen op de
+AGP-pagina, per afvulling, in een andere werkruimte — terwijl je op de
+productpagina al ziet hoeveel er nog onder schorsing ligt. Die stap zit nu bij
+de voorraad zelf.
+
+- **"Uitslaan voor verkoop" op het product.** Je kiest een verpakking, een
+  aantal en de bestemming; de app kiest zelf de afvullingen — oudste THT eerst.
+  Vóór het opslaan zie je de verdeling per afvulling én het accijnsbedrag dat
+  geboekt wordt.
+- **Locatiebadges zijn knoppen.** De paarse (AGP) en blauwe (vrije voorraad)
+  badges bij een afvulling openen direct de verplaats-/uitslagmodal met die
+  afvulling en locatie al ingevuld.
+- **In AGP / vrij per verpakking.** De voorraadregel toont nu apart hoeveel er
+  nog onder schorsing ligt en hoeveel er al uitgeslagen is.
+- De boeking is exact dezelfde als op de AGP-pagina: één verplaatsing, één
+  accijnsrecord en een regel in het voorraadverloop. Beide pagina's gebruiken
+  daarvoor nu dezelfde logica (`src/utils/agp.ts`, met tests).
+
+### Navigatie — menuknop keert terug naar het overzicht
+
+Op de menuknop drukken van de pagina waar je al was deed niets: de geopende
+batch, bestelling of product bleef staan. Nu keert die knop terug naar het
+overzicht van dat onderdeel. Hetzelfde geldt voor de werkruimteknop
+(Productie/Verkoop/Administratie): daarop tikken brengt je terug naar het
+dashboard van die werkruimte.
+
+---
+
 ## [1.12.3] — 2026-08-23
 
 ### Nieuw — bewaking van de tanktemperatuur

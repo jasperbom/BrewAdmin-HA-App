@@ -1,14 +1,16 @@
 import React from 'react'
 import { t } from '../i18n'
-import { fmt, fmtD, tod } from '../utils/format'
+import { fmt, fmtD } from '../utils/format'
 import { newId } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
+import VerplaatsModal from '../components/VerplaatsModal'
 import { logAudit } from '../utils/audit'
-import { agpOverzicht, getAgpLocatie, accijnsCalc, tariefVoorDatum, voorraadPerLocatie, gemAgpInPeriode, accijnsMaandGesloten } from '../utils/calculations'
+import { bouwVerplaatsing } from '../utils/agp'
+import { agpOverzicht, getAgpLocatie, voorraadPerLocatie, gemAgpInPeriode, accijnsMaandGesloten } from '../utils/calculations'
 import { productNaam } from '../utils/product'
 
 function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog, accijnsAangiftes=[]}: any) {
@@ -53,9 +55,6 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
   const totaal_accijns_agp = ovz.totaal_accijns_agp + ovz.totaal_accijns_tank;
 
   const agp = getAgpLocatie(locaties);
-  const r1 = accijnsInst?.tarief_per_hl_abv ?? 7.51;
-  const r2 = accijnsInst?.tarief_per_hl ?? 24.17;
-
   const locById = (id: number) => (locaties||[]).find((l: any) => l.id === id) || {id, naam: t('lbl_onbekend')};
   const batById = (id: number) => (bat||[]).find((b: any) => b.id === id);
 
@@ -63,107 +62,27 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
   const toggle = (k: string) => setOpenSec(s => ({...s, [k]: !s[k]}));
 
   const [vplModal, setVplModal] = useState<any>(null);
-  const openVerplaats = (afv: any, fromId: number) => {
-    setVplModal({
-      afvulling_id: afv.id,
-      batch_id: afv.batch_id,
-      datum: tod(),
-      aantal: '',
-      van_locatie_id: fromId,
-      naar_locatie_id: 0,
-      opmerking: '',
-    });
-  };
+  const openVerplaats = (afv: any, fromId: number) => setVplModal({afv, vanLocatieId: fromId});
 
-  const saveVerplaats = () => {
-    if (!vplModal) return;
-    const aantal = Number(vplModal.aantal||0);
-    if (!aantal || aantal <= 0) { alert(t('agp_err_aantal_verplicht')); return; }
-    const van = locById(vplModal.van_locatie_id);
-    const naar = locById(vplModal.naar_locatie_id);
-    if (!van || !naar) { alert(t('agp_err_locatie_verplicht')); return; }
-    if (van.id === naar.id) { alert(t('agp_err_zelfde_locatie')); return; }
-    // Eenmaal uit AGP = uit de schorsingsregeling; terugplaatsing onder schorsing
-    // is geen reguliere voorraadbeweging maar een teruggaaf-procedure.
-    if (naar.is_agp) { alert(t('agp_err_geen_retour_naar_agp')); return; }
+  // De records worden gebouwd door `utils/agp.ts` — dezelfde logica die de
+  // productpagina gebruikt, zodat een uitslag daar identiek geboekt wordt.
+  const saveVerplaats = (invoer: any) => {
+    const afv = (av||[]).find((a: any) => a.id === invoer.afvulling_id);
+    const batch = batById(invoer.batch_id);
+    const ctx = {afv, batch, locaties, uit, verplaatsingen, afboekingen, accijnsInst};
+    const r = bouwVerplaatsing(invoer, ctx, {
+      verplaatsing_id: newId(verplaatsingen||[]),
+      accijns_id: newId(acc||[]),
+      log_id: newId(log||[]),
+    }, {logTitel: t('agp_verplaats_titel')});
 
-    const afv = (av||[]).find((a: any) => a.id === vplModal.afvulling_id);
-    const voorraad = voorraadPerLocatie(afv, locaties, uit, verplaatsingen, afboekingen);
-    const beschikbaar = voorraad[van.id] || 0;
-    if (aantal > beschikbaar) {
-      alert(t('agp_err_te_weinig_voorraad').replace('{n}', String(beschikbaar)));
-      return;
-    }
-
-    const verplId = newId(verplaatsingen||[]);
-    const batch = batById(vplModal.batch_id);
-    const inhoud = Number(afv?.inhoud_per_eenheid || afv?.inhoud_liter || 0);
-    const liter = aantal * inhoud;
-
-    let accijnsBedrag = 0;
-    let accRecordId: number | undefined;
-
-    if (van.is_agp && !naar.is_agp) {
-      const abv = Number(batch?.ABV || 0);
-      const plato = Number(batch?.platogehalte || 0);
-      const _t = tariefVoorDatum(accijnsInst, batch?.datum);
-      const _eff = {...(accijnsInst || {}), tarief_per_hl_plato: _t.r3};
-      accijnsBedrag = accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato);
-      const newAcc = {
-        id: newId(acc||[]),
-        batch_id: vplModal.batch_id,
-        batch_naam: batch?.naam || '',
-        batch_nummer: batch?.batch_nummer,
-        verpakking_naam: afv?.verpakking_naam || '',
-        verpakking_type: afv?.verpakking_type || '',
-        liter,
-        abv,
-        accijns: accijnsBedrag,
-        totaal_accijns: accijnsBedrag,
-        datum: vplModal.datum,
-        betaald: false,
-        bron: 'verplaatsing' as const,
-        verplaatsing_id: verplId,
-      };
-      accRecordId = newAcc.id;
-      setAcc((prev: any[]) => [...(prev||[]), newAcc]);
-    }
-
-    const verpl = {
-      id: verplId,
-      afvulling_id: vplModal.afvulling_id,
-      batch_id: vplModal.batch_id,
-      datum: vplModal.datum,
-      aantal,
-      van_locatie_id: van.id,
-      naar_locatie_id: naar.id,
-      accijns: accijnsBedrag || undefined,
-      accijns_record_id: accRecordId,
-      opmerking: vplModal.opmerking || '',
-      created_at: new Date().toISOString(),
-    };
-    setVerplaatsingen((prev: any[]) => [...(prev||[]), verpl]);
-    // Verplaatsing AGP → niet-AGP is een vorm van uitslaan (bier verlaat AGP).
-    // Leg dit vast in de voorraad_log met type 'uitslaan' zodat het zichtbaar
-    // wordt in het voorraadverloop naast verkoop-uitleveringen.
-    if (van.is_agp && !naar.is_agp && setLog) {
-      setLog((prev: any[]) => [...(prev||[]), {
-        id: newId(prev||[]),
-        datum: vplModal.datum,
-        type: 'uitslaan',
-        batch_id: vplModal.batch_id,
-        batch_naam: batch?.naam || '',
-        afvulling_id: vplModal.afvulling_id,
-        verpakking_type: afv?.verpakking_naam || afv?.verpakking_type || '',
-        hoeveelheid: aantal,
-        eenheid: 'stuks',
-        referentie: `${van.naam} → ${naar.naam}`,
-        omschrijving: `${t('agp_verplaats_titel')}: ${van.naam} → ${naar.naam}${accijnsBedrag?` (accijns ${fmt(accijnsBedrag)})`:''}`,
-      }]);
-    }
+    setVerplaatsingen((prev: any[]) => [...(prev||[]), r.verplaatsing]);
+    if (r.accijnsRecord) setAcc((prev: any[]) => [...(prev||[]), r.accijnsRecord]);
+    // Een uitslag hoort ook in het voorraadverloop, naast verkoop-uitleveringen.
+    if (r.logRegel && setLog) setLog((prev: any[]) => [...(prev||[]), r.logRegel]);
     logAudit(auditLog, setAuditLog, {
-      entiteit: 'Verplaatsing', entiteit_id: verplId, actie: 'aangemaakt',
-      omschrijving: `${aantal}× ${afv?.verpakking_naam||''} (${batch?.naam||''}): ${van.naam} → ${naar.naam}${accijnsBedrag?` (accijns ${fmt(accijnsBedrag)})`:''}`,
+      entiteit: 'Verplaatsing', entiteit_id: r.verplaatsing.id, actie: 'aangemaakt',
+      omschrijving: `${r.verplaatsing.aantal}× ${afv?.verpakking_naam||''} (${batch?.naam||''}): ${r.omschrijving}`,
     });
     setVplModal(null);
   };
@@ -489,74 +408,15 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
       </div>
 
       {vplModal && (
-        <Modal title={t('agp_verplaats_titel')} onClose={()=>setVplModal(null)}>
-          <div className="space-y-3 text-sm">
-            {(() => {
-              const afv = (av||[]).find((a: any) => a.id === vplModal.afvulling_id);
-              const batch = batById(vplModal.batch_id);
-              const voorraad = afv ? voorraadPerLocatie(afv, locaties, uit, verplaatsingen, afboekingen) : {};
-              const beschikbaar = voorraad[vplModal.van_locatie_id] || 0;
-              return (
-                <>
-                  <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                    <div className="text-xs text-gray-500">{bierNaam(batch, afv)}{batch?.batch_nummer ? ` #${batch.batch_nummer}` : ''}</div>
-                    <div className="font-medium">{afv?.verpakking_naam || afv?.verpakking_type || '—'}</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t('agp_van')}</label>
-                      <select value={vplModal.van_locatie_id} onChange={e=>setVplModal((f: any)=>({...f, van_locatie_id: Number(e.target.value)}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                        {(locaties||[]).map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.naam}{l.is_agp?' (AGP)':''} — {voorraad[l.id]||0}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t('agp_naar')}</label>
-                      <select value={vplModal.naar_locatie_id} onChange={e=>setVplModal((f: any)=>({...f, naar_locatie_id: Number(e.target.value)}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                        <option value={0}>—</option>
-                        {(locaties||[]).filter((l: any) => l.id !== vplModal.van_locatie_id && !l.is_agp).map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.naam}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Inp label={`${t('agp_aantal')} (${t('agp_max')} ${beschikbaar})`} type="number" value={vplModal.aantal} onChange={(v: string)=>setVplModal((f: any)=>({...f, aantal: v}))} />
-                    <Inp label={t('lbl_datum')} type="date" value={vplModal.datum} onChange={(v: string)=>setVplModal((f: any)=>({...f, datum: v}))} />
-                  </div>
-                  <Inp label={t('lbl_opmerking')} value={vplModal.opmerking||''} onChange={(v: string)=>setVplModal((f: any)=>({...f, opmerking: v}))} />
-                  {(() => {
-                    const van = locById(vplModal.van_locatie_id);
-                    const naar = vplModal.naar_locatie_id ? locById(vplModal.naar_locatie_id) : null;
-                    if (van?.is_agp && naar && !naar.is_agp) {
-                      const inhoud = Number(afv?.inhoud_per_eenheid || afv?.inhoud_liter || 0);
-                      const liter = Number(vplModal.aantal||0) * inhoud;
-                      const abv = Number(batch?.ABV || 0);
-                      const plato = Number(batch?.platogehalte || 0);
-                      const _t = tariefVoorDatum(accijnsInst, batch?.datum);
-                      const _eff = {...(accijnsInst || {}), tarief_per_hl_plato: _t.r3};
-                      const bedrag = liter > 0 ? accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato) : 0;
-                      return (
-                        <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
-                          {t('agp_info_accijns_boeken')} <span className="font-bold">{fmt(bedrag)}</span> ({liter.toFixed(1)}L × {abv||0}% ABV)
-                        </div>
-                      );
-                    }
-                    if (van && naar && !van.is_agp && !naar.is_agp) {
-                      return <div className="bg-gray-50 border border-gray-200 rounded p-3 text-xs text-gray-600">{t('agp_info_geen_accijns_buiten')}</div>;
-                    }
-                    return null;
-                  })()}
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Btn v="secondary" onClick={()=>setVplModal(null)}>{t('btn_cancel')}</Btn>
-                    <Btn onClick={saveVerplaats}>{t('agp_verplaats_opslaan')}</Btn>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </Modal>
+        <VerplaatsModal
+          afv={vplModal.afv}
+          batch={batById(vplModal.afv.batch_id)}
+          naam={bierNaam(batById(vplModal.afv.batch_id), vplModal.afv)}
+          vanLocatieId={vplModal.vanLocatieId}
+          ctx={{locaties, uit, verplaatsingen, afboekingen, accijnsInst}}
+          onClose={()=>setVplModal(null)}
+          onOpslaan={saveVerplaats}
+        />
       )}
 
       {locModal && (

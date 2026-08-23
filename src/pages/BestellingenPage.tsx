@@ -750,7 +750,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         pickResult[pick.id].uitlevering_ids.push(uitleveringRec.id)
 
         if (isAgp) {
-          const _t = tariefVoorDatum(accijnsInst, batch?.datum)
+          // Tarief van de uitslagdatum: de accijns wordt pas verschuldigd op
+          // het moment dat het bier de AGP verlaat, niet bij het brouwen.
+          const _t = tariefVoorDatum(accijnsInst, vandaag)
           const _eff = {...(accijnsInst || {}), tarief_per_hl_plato: _t.r3}
           const accBed = accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato)
           const accRec = {

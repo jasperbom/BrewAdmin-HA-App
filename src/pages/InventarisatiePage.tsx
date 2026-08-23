@@ -124,7 +124,8 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
           : berekenVoorcalcVoorAfvulling(
               { inhoud_per_eenheid: Number(a.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
               batch,
-              accijnsInst
+              accijnsInst,
+              a.datum
             ).perEenheid
         return {
           id: offset + i + 1,

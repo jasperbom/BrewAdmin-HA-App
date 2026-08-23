@@ -13,7 +13,7 @@ import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
 import { checkIntegriteit } from '../utils/integriteit'
-import { fmt, fmtD, tod } from '../utils/format'
+import { fmt, fmtAmt, fmtD, tod } from '../utils/format'
 import { standaardBtwPct } from '../utils/btw'
 import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
 import { taakReinigingStatus } from '../utils/ontsmetting'
@@ -36,8 +36,8 @@ const BEWAKING_VELDEN: Array<{sleutel: keyof typeof BEWAKING_DEFAULTS, label: st
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
 // bij zodat de gebruiker waardes kan wijzigen, de impact kan bekijken, en pas
 // dán kan opslaan. Impact-knop is enabled zodra de draft afwijkt van entry.
-const JaarRow = ({entry, batchesInJaar, onSave, onDelete, onImpact}: {
-  entry: any, batchesInJaar: number,
+const JaarRow = ({entry, uitslagenInJaar, onSave, onDelete, onImpact}: {
+  entry: any, uitslagenInJaar: number,
   onSave: (patch: any) => void,
   onDelete: () => void,
   onImpact: (patch: any) => void,
@@ -94,8 +94,8 @@ const JaarRow = ({entry, batchesInJaar, onSave, onDelete, onImpact}: {
       <td className="px-2 py-2 whitespace-nowrap">
         <div className="flex items-center gap-1">
           <button onClick={() => valid && onImpact(toPatch())}
-            disabled={!valid || batchesInJaar === 0}
-            title={t('settings_excise_historie_impact_tip').replace('{n}', String(batchesInJaar))}
+            disabled={!valid || uitslagenInJaar === 0}
+            title={t('settings_excise_historie_impact_tip').replace('{n}', String(uitslagenInJaar))}
             className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
             📊 {t('settings_excise_historie_impact')}
           </button>
@@ -473,7 +473,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -581,20 +581,20 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
   const openImpact = (jaar: number, nieuwTarief: {tarief_per_hl_abv: number, tarief_per_hl: number, tarief_per_hl_plato?: number}, nogOpslaan: boolean) => {
     const oud = huidigJaarTarief(jaar);
-    const resultaat = berekenAccijnsImpact(bat, accijnsInst, jaar, nieuwTarief);
+    const resultaat = berekenAccijnsImpact(acc, bat, accijnsInst, jaar, nieuwTarief, accijnsAangiftes);
     setImpactModal({jaar, oudTarief: {r1: oud.r1, r2: oud.r2, r3: oud.r3}, nieuwTarief, resultaat, nogOpslaan});
   };
 
   const impactExportCsv = () => {
     if (!impactModal) return;
     const rows = [
-      ['Datum', 'Batch#', 'Naam', 'Liter', 'ABV%', 'Plato', 'Oud_accijns_EUR', 'Nieuw_accijns_EUR', 'Verschil_EUR'],
+      ['Datum', 'Soort', 'Batch#', 'Naam', 'Verpakking', 'Liter', 'ABV%', 'Plato', 'Aangegeven', 'Oud_accijns_EUR', 'Nieuw_accijns_EUR', 'Verschil_EUR'],
       ...impactModal.resultaat.rijen.map(r => [
-        r.datum, r.batch_nummer || String(r.batch_id), r.naam,
-        r.liter.toFixed(1), r.abv.toFixed(2), String(r.plato),
+        r.datum, r.bron, r.batch_nummer || String(r.batch_id ?? ''), r.naam, r.verpakking || '',
+        r.liter.toFixed(1), r.abv.toFixed(2), String(r.plato), r.aangegeven ? 'ja' : 'nee',
         r.oudAccijns.toFixed(2), r.nieuwAccijns.toFixed(2), r.verschil.toFixed(2),
       ]),
-      ['', '', 'TOTAAL', '', '', '', impactModal.resultaat.totaalOud.toFixed(2), impactModal.resultaat.totaalNieuw.toFixed(2), impactModal.resultaat.totaalVerschil.toFixed(2)],
+      ['', '', '', 'TOTAAL', '', '', '', '', '', impactModal.resultaat.totaalOud.toFixed(2), impactModal.resultaat.totaalNieuw.toFixed(2), impactModal.resultaat.totaalVerschil.toFixed(2)],
     ];
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
     const blob = new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8'});
@@ -2909,12 +2909,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               </thead>
               <tbody>
                 {historieLijst.map((e: any) => {
-                  const batchesInJaar = (bat || []).filter((b: any) => {
-                    const y = new Date(b?.datum || '').getFullYear();
-                    return y === Number(e.jaar);
-                  }).length;
+                  // Een tariefwijziging raakt de uitslagen van dat jaar (het
+                  // belastbare feit), niet de batches die er gebrouwen zijn.
+                  const uitslagenInJaar = (acc || []).filter((a: any) =>
+                    String(a?.datum || '').slice(0, 4) === String(e.jaar)).length;
                   return (
-                    <JaarRow key={e.jaar} entry={e} batchesInJaar={batchesInJaar}
+                    <JaarRow key={e.jaar} entry={e} uitslagenInJaar={uitslagenInJaar}
                       onSave={(patch: any) => saveHistorieEntry(patch)}
                       onDelete={() => deleteHistorieEntry(Number(e.jaar))}
                       onImpact={(patch: any) => openImpact(Number(e.jaar), patch, false)} />
@@ -3125,15 +3125,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <div className="flex flex-wrap gap-4 text-xs text-gray-600 mt-3">
                   <div>
                     <span className="text-gray-400">{t('settings_excise_impact_old')}:</span>{' '}
-                    <strong>€{fmt(impactModal.oudTarief.r1)}/hL×ABV%</strong>{' · '}
-                    <strong>€{fmt(impactModal.oudTarief.r2)}/hL</strong>
-                    {impactModal.oudTarief.r3 != null && <> · <strong>€{fmt(impactModal.oudTarief.r3)}/hL×Plato</strong></>}
+                    <strong>€{fmtAmt(impactModal.oudTarief.r1)}/hL×ABV%</strong>{' · '}
+                    <strong>€{fmtAmt(impactModal.oudTarief.r2)}/hL</strong>
+                    {impactModal.oudTarief.r3 != null && <> · <strong>€{fmtAmt(impactModal.oudTarief.r3)}/hL×Plato</strong></>}
                   </div>
                   <div>
                     <span className="text-gray-400">{t('settings_excise_impact_new')}:</span>{' '}
-                    <strong>€{fmt(impactModal.nieuwTarief.tarief_per_hl_abv)}/hL×ABV%</strong>{' · '}
-                    <strong>€{fmt(impactModal.nieuwTarief.tarief_per_hl)}/hL</strong>
-                    {impactModal.nieuwTarief.tarief_per_hl_plato != null && <> · <strong>€{fmt(impactModal.nieuwTarief.tarief_per_hl_plato)}/hL×Plato</strong></>}
+                    <strong>€{fmtAmt(impactModal.nieuwTarief.tarief_per_hl_abv)}/hL×ABV%</strong>{' · '}
+                    <strong>€{fmtAmt(impactModal.nieuwTarief.tarief_per_hl)}/hL</strong>
+                    {impactModal.nieuwTarief.tarief_per_hl_plato != null && <> · <strong>€{fmtAmt(impactModal.nieuwTarief.tarief_per_hl_plato)}/hL×Plato</strong></>}
                   </div>
                 </div>
               </div>
@@ -3142,13 +3142,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
             <div className="flex-1 overflow-auto p-6">
               {impactModal.resultaat.rijen.length === 0 ? (
-                <p className="text-sm text-gray-400 italic">{t('settings_excise_impact_no_batches')}</p>
+                <p className="text-sm text-gray-400 italic">{t('settings_excise_impact_no_uitslagen').replace('{j}', String(impactModal.jaar))}</p>
               ) : (
                 <>
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200 sticky top-0 bg-white">
                         <th className="px-2 py-2">{t('lbl_date')}</th>
+                        <th className="px-2 py-2">{t('settings_excise_impact_soort')}</th>
                         <th className="px-2 py-2">{t('lbl_batch_nr')}</th>
                         <th className="px-2 py-2">{t('lbl_name')}</th>
                         <th className="px-2 py-2 text-right">L</th>
@@ -3160,27 +3161,36 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                     </thead>
                     <tbody>
                       {impactModal.resultaat.rijen.map((r: any) => (
-                        <tr key={r.batch_id} className="border-b border-gray-100">
-                          <td className="px-2 py-1.5 text-gray-600">{fmtD(r.datum)}</td>
-                          <td className="px-2 py-1.5 text-gray-500 text-xs">{r.batch_nummer || `#${r.batch_id}`}</td>
-                          <td className="px-2 py-1.5">{r.naam}</td>
+                        <tr key={r.record_id} className="border-b border-gray-100">
+                          <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap">
+                            {fmtD(r.datum)}
+                            {r.aangegeven && (
+                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 text-gray-500 align-middle"
+                                title={t('settings_excise_impact_aangegeven_tip')}>
+                                {t('settings_excise_impact_aangegeven')}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-gray-500 text-xs">{t(`excise_bron_${r.bron}`)}</td>
+                          <td className="px-2 py-1.5 text-gray-500 text-xs">{r.batch_nummer || (r.batch_id ? `#${r.batch_id}` : '—')}</td>
+                          <td className="px-2 py-1.5">{r.naam}{r.verpakking ? <span className="text-gray-400 text-xs ml-1">{r.verpakking}</span> : null}</td>
                           <td className="px-2 py-1.5 text-right text-gray-600">{r.liter.toFixed(1)}</td>
                           <td className="px-2 py-1.5 text-right text-gray-600">{r.abv.toFixed(2)}</td>
-                          <td className="px-2 py-1.5 text-right">€{fmt(r.oudAccijns.toFixed(2))}</td>
-                          <td className="px-2 py-1.5 text-right">€{fmt(r.nieuwAccijns.toFixed(2))}</td>
+                          <td className="px-2 py-1.5 text-right">€{fmtAmt(r.oudAccijns.toFixed(2))}</td>
+                          <td className="px-2 py-1.5 text-right">€{fmtAmt(r.nieuwAccijns.toFixed(2))}</td>
                           <td className={`px-2 py-1.5 text-right font-medium ${r.verschil > 0 ? 'text-red-600' : r.verschil < 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                            {r.verschil > 0 ? '+' : ''}€{fmt(r.verschil.toFixed(2))}
+                            {r.verschil > 0 ? '+' : ''}€{fmtAmt(r.verschil.toFixed(2))}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-gray-300 font-semibold">
-                        <td className="px-2 py-2" colSpan={5}>{t('settings_excise_impact_total')} ({impactModal.resultaat.rijen.length} batches)</td>
-                        <td className="px-2 py-2 text-right">€{fmt(impactModal.resultaat.totaalOud.toFixed(2))}</td>
-                        <td className="px-2 py-2 text-right">€{fmt(impactModal.resultaat.totaalNieuw.toFixed(2))}</td>
+                        <td className="px-2 py-2" colSpan={6}>{t('settings_excise_impact_total_n').replace('{n}', String(impactModal.resultaat.rijen.length))}</td>
+                        <td className="px-2 py-2 text-right">€{fmtAmt(impactModal.resultaat.totaalOud.toFixed(2))}</td>
+                        <td className="px-2 py-2 text-right">€{fmtAmt(impactModal.resultaat.totaalNieuw.toFixed(2))}</td>
                         <td className={`px-2 py-2 text-right ${impactModal.resultaat.totaalVerschil > 0 ? 'text-red-600' : impactModal.resultaat.totaalVerschil < 0 ? 'text-green-600' : ''}`}>
-                          {impactModal.resultaat.totaalVerschil > 0 ? '+' : ''}€{fmt(impactModal.resultaat.totaalVerschil.toFixed(2))}
+                          {impactModal.resultaat.totaalVerschil > 0 ? '+' : ''}€{fmtAmt(impactModal.resultaat.totaalVerschil.toFixed(2))}
                         </td>
                       </tr>
                     </tfoot>
@@ -3189,12 +3199,24 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   <div className={`mt-4 p-3 rounded-lg ${impactModal.resultaat.totaalVerschil > 0 ? 'bg-red-50 border border-red-200 text-red-800' : impactModal.resultaat.totaalVerschil < 0 ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-gray-50 border border-gray-200 text-gray-700'}`}>
                     <p className="text-sm font-semibold">
                       {impactModal.resultaat.totaalVerschil > 0
-                        ? t('settings_excise_impact_owed').replace('{bedrag}', fmt(impactModal.resultaat.totaalVerschil.toFixed(2)))
+                        ? t('settings_excise_impact_owed').replace('{bedrag}', fmtAmt(impactModal.resultaat.totaalVerschil.toFixed(2)))
                         : impactModal.resultaat.totaalVerschil < 0
-                        ? t('settings_excise_impact_refund').replace('{bedrag}', fmt(Math.abs(impactModal.resultaat.totaalVerschil).toFixed(2)))
+                        ? t('settings_excise_impact_refund').replace('{bedrag}', fmtAmt(Math.abs(impactModal.resultaat.totaalVerschil).toFixed(2)))
                         : t('settings_excise_impact_nochange')}
                     </p>
+                    {/* Een verschil dat in een al ingediende aangifte valt vraagt om een
+                        correctie bij de Douane; dat is iets anders dan het meenemen in
+                        de eerstvolgende aangifte. */}
+                    {impactModal.resultaat.verschilAangegeven !== 0 && (
+                      <p className="text-xs mt-1.5 opacity-90">
+                        {t('settings_excise_impact_split')
+                          .replace('{aangegeven}', fmtAmt(impactModal.resultaat.verschilAangegeven.toFixed(2)))
+                          .replace('{open}', fmtAmt(impactModal.resultaat.verschilOpen.toFixed(2)))}
+                      </p>
+                    )}
                   </div>
+
+                  <p className="mt-3 text-xs text-gray-500">{t('settings_excise_impact_voorraad_note')}</p>
                 </>
               )}
             </div>
