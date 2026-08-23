@@ -1865,13 +1865,54 @@ class TestTankBewaking:
         assert doel == 2 and ramp == 20
         assert srv._tank_doel({})[0] is None
 
+    def test_werkelijk_setpoint_wint_van_het_schema(self):
+        profiel = [{'temp': 18, 'tijd': 5, 'ramp': 6}]
+        batch = {'vergistingsprofiel': profiel,
+                 'vergisting_stap_start': '2026-03-10T06:00:00Z'}
+        stap_sinds = srv._iso_naar_epoch('2026-03-10T06:00:00Z')
+        # De koeling staat handmatig op 16: dáár moet de tank staan, en het
+        # instelvenster loopt vanaf die wissel — niet vanaf de stapstart.
+        doel, sinds, ramp = srv._tank_doel(batch, (16.0, stap_sinds + 7200))
+        assert doel == 16.0 and sinds == stap_sinds + 7200 and ramp is None
+        # Stuurt de koeling op precies wat het schema vraagt, dan blijven de
+        # ramp en het stapmoment gelden.
+        doel, sinds, ramp = srv._tank_doel(batch, (18.0, stap_sinds - 7200))
+        assert doel == 18.0 and sinds == stap_sinds and ramp == 6
+        # Nog onbekende wisseldatum (eerste waarneming): geen instelvenster.
+        assert srv._tank_doel(batch, (16.0, None)) == (16.0, None, None)
+        # Zonder setpoint blijft het schema gelden.
+        assert srv._tank_doel(batch)[0] == 18
+        assert srv._tank_doel(batch, (None, None))[0] == 18
+
+    def test_setpoint_voor_tank_negeert_oude_en_onbruikbare_waarden(self):
+        nu = 1_800_000_000.0
+        iso = lambda ts: datetime.datetime.fromtimestamp(
+            ts, datetime.timezone.utc).isoformat()
+        rijen = [{'tank': 'T1', 'setpoint': 16, 'sinds': iso(nu - 7200), 'gezien': iso(nu)},
+                 {'tank': 'T2', 'setpoint': 20, 'sinds': None,
+                  'gezien': iso(nu - srv._SETPOINT_MAX_LEEFTIJD_S - 60)},
+                 {'tank': 'T3', 'setpoint': None, 'sinds': None, 'gezien': iso(nu)}]
+        assert srv._setpoint_voor_tank(rijen, 'T1', nu) == (16.0, srv._iso_naar_epoch(iso(nu - 7200)))
+        assert srv._setpoint_voor_tank(rijen, 'T2', nu) is None   # te lang niet ververst
+        assert srv._setpoint_voor_tank(rijen, 'T3', nu) is None   # geen bruikbare waarde
+        assert srv._setpoint_voor_tank(rijen, 'T9', nu) is None
+        assert srv._setpoint_voor_tank([], 'T1', nu) is None
+
+    def test_python_en_typescript_gebruiken_dezelfde_setpoint_leeftijd(self):
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'tankbewaking.ts').read_text(encoding='utf-8')
+        uren = re.search(r'SETPOINT_MAX_LEEFTIJD_MS = ([\d.]+) \* UUR_MS', bron)
+        assert uren, 'SETPOINT_MAX_LEEFTIJD_MS niet gevonden in tankbewaking.ts'
+        assert float(uren.group(1)) * 3600 == srv._SETPOINT_MAX_LEEFTIJD_S
+
     # ── De tick en de alarmadministratie ────────────────────────────────────
 
     @staticmethod
     def _clean():
         conn = srv._db()
         with conn:
-            for key in ('batches', 'gist_metingen', 'tank_alarmen'):
+            for key in ('batches', 'gist_metingen', 'tank_alarmen',
+                        'tank_setpoints'):
                 conn.execute('DELETE FROM records WHERE key=?', (key,))
                 conn.execute('DELETE FROM versies WHERE key=?', (key,))
             for key in ('ha_instellingen', 'notificatie_instellingen'):
@@ -2016,5 +2057,109 @@ class TestTankBewaking:
             versie = srv._data_version("tank_alarmen")
             srv._tank_bewaking_tick()
             assert srv._data_version("tank_alarmen") == versie
+        finally:
+            self._clean()
+
+    # ── Het werkelijke setpoint van de koeling ──────────────────────────────
+
+    @staticmethod
+    def _koppel_climate(entity='climate.tank1'):
+        """Hang een climate-entity aan T1 (bovenop wat _seed heeft gezet)."""
+        inst = srv._read_json('ha_instellingen', {})
+        inst['climates_enabled'] = True
+        inst['climates'] = [{'id': 1, 'tank': 'T1', 'entity': entity}]
+        srv._write_json('ha_instellingen', inst)
+
+    def test_toetst_aan_het_werkelijke_setpoint(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(m) or True))
+        # Het schema zegt 18, maar de brouwer heeft de koeling zelf op 24 gezet
+        # en de tank staat keurig op 24. Dat is geen storing.
+        self._seed([24.0] * 37)
+        self._koppel_climate()
+        monkeypatch.setattr(srv, '_ha_fetch_climate_setpoint', lambda e: 24.0)
+        try:
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_alarmen', []) == []
+            assert calls == []
+            rij = srv._read_json('tank_setpoints', [])[0]
+            assert rij['tank'] == 'T1' and rij['setpoint'] == 24.0
+            # Eerste waarneming: geen wisselmoment, dus ook geen instelvenster
+            # dat een lopende storing zou verzwijgen.
+            assert rij['sinds'] is None and rij['gezien']
+        finally:
+            self._clean()
+
+    def test_alarm_als_de_tank_het_setpoint_niet_haalt(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(m) or True))
+        # Schema én meting zeggen 24, maar de koeling stuurt op 18: de tank
+        # hangt al uren zes graden boven z'n setpoint.
+        self._seed([24.0] * 37, doel=24)
+        self._koppel_climate()
+        monkeypatch.setattr(srv, '_ha_fetch_climate_setpoint', lambda e: 18.0)
+        try:
+            srv._tank_bewaking_tick()
+            alarmen = srv._read_json('tank_alarmen', [])
+            assert len(alarmen) == 1 and alarmen[0]['doel'] == 18.0
+            assert len(calls) == 1
+        finally:
+            self._clean()
+
+    def test_setpoint_wissel_zet_sinds_en_geeft_instelruimte(self, app, monkeypatch):
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        self._seed([24.0] * 37, doel=24)
+        self._koppel_climate()
+        monkeypatch.setattr(srv, '_ha_fetch_climate_setpoint', lambda e: 24.0)
+        try:
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_alarmen', []) == []
+            # De brouwer zet de koeling naar 12 (cold crash): de tank staat nog
+            # op 24, maar dat is instellen — geen storing.
+            monkeypatch.setattr(srv, '_ha_fetch_climate_setpoint', lambda e: 12.0)
+            srv._tank_bewaking_tick()
+            rij = srv._read_json('tank_setpoints', [])[0]
+            assert rij['setpoint'] == 12.0 and rij['sinds']
+            assert srv._read_json('tank_alarmen', []) == []
+        finally:
+            self._clean()
+
+    def test_ongewijzigd_setpoint_schrijft_niet_elke_ronde(self, app, monkeypatch):
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        self._seed([18.2] * 37)
+        self._koppel_climate()
+        monkeypatch.setattr(srv, '_ha_fetch_climate_setpoint', lambda e: 18.0)
+        try:
+            srv._tank_bewaking_tick()
+            versie = srv._data_version('tank_setpoints')
+            srv._tank_bewaking_tick()
+            assert srv._data_version('tank_setpoints') == versie
+        finally:
+            self._clean()
+
+    def test_onleesbare_climate_valt_terug_op_het_schema(self, app, monkeypatch):
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        # Geen enkele waarde te lezen (HA even weg): het schema blijft gelden,
+        # dus 24 °C op een doel van 18 is gewoon alarm.
+        self._seed([24.0] * 37)
+        self._koppel_climate()
+        monkeypatch.setattr(srv, '_ha_fetch_climate_setpoint', lambda e: None)
+        try:
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_setpoints', []) == []
+            assert len(srv._read_json('tank_alarmen', [])) == 1
+        finally:
+            self._clean()
+
+    def test_zonder_climate_koppeling_geen_setpoints(self, app, monkeypatch):
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        gelezen = []
+        monkeypatch.setattr(srv, '_ha_fetch_climate_setpoint',
+                            lambda e: (gelezen.append(e) or 18.0))
+        self._seed([24.0] * 37)
+        try:
+            srv._tank_bewaking_tick()
+            assert gelezen == []            # niets te lezen zonder koppeling
+            assert len(srv._read_json('tank_alarmen', [])) == 1
         finally:
             self._clean()

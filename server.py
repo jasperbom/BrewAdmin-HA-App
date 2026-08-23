@@ -1149,6 +1149,7 @@ _KEY_TYPES = {
         'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
         'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
         'locaties', 'verplaatsingen', 'btw_tarieven', 'tank_alarmen',
+        'tank_setpoints',
         'ing_types', 'kosten_soorten', 'gn_codes',
     )},
     # objecten (instellingen/koppeltabellen)
@@ -2796,9 +2797,29 @@ def _beoordeel_tank(doel, doel_sinds, ramp_uren, punten: list,
     return {**basis, 'status': 'alarm' if groot else 'waarschuwing', 'reden': 'band'}
 
 
-def _tank_doel(batch: dict) -> tuple:
-    """(doeltemperatuur, sinds-epoch, ramp-uren) voor een batch. Een lopende
-    cold-crash wint van het vergistingsprofiel. Spiegelt tankDoel()."""
+def _tank_doel(batch: dict, setpoint: tuple | None = None) -> tuple:
+    """(doeltemperatuur, sinds-epoch, ramp-uren) voor een batch. Het werkelijke
+    setpoint van de gekoppelde koeling wint; zonder (verse) setpoint-waarde
+    telt het schema — een lopende cold-crash boven het vergistingsprofiel.
+    Spiegelt tankDoel()."""
+    schema = _schema_doel(batch)
+    if setpoint is None:
+        return schema
+    sp, sp_sinds = setpoint
+    if not isinstance(sp, (int, float)):
+        return schema
+    doel, doel_sinds, ramp = schema
+    zelfde = doel is not None and abs(doel - sp) < 0.05
+    if not zelfde:
+        return (sp, sp_sinds, None)
+    if sp_sinds is not None and doel_sinds is not None:
+        return (sp, max(sp_sinds, doel_sinds), ramp)
+    return (sp, sp_sinds if sp_sinds is not None else doel_sinds, ramp)
+
+
+def _schema_doel(batch: dict) -> tuple:
+    """Doeltemperatuur volgens het schema: de terugval zonder gekoppelde
+    koeling. Spiegelt schemaDoel()."""
     if batch.get('cold_crash_datum'):
         try:
             target = float(batch.get('cold_crash_target'))
@@ -2839,6 +2860,99 @@ def _tank_doel(batch: dict) -> tuple:
         ramp = None
     return (temp, _iso_naar_epoch(_vergisting_start_iso(batch)),
             ramp if ramp and ramp > 0 else None)
+
+
+# Ouder dan dit vertrouwen we een gelezen setpoint niet meer: de entity is dan
+# onbereikbaar of ontkoppeld (zie SETPOINT_MAX_LEEFTIJD_MS in tankbewaking.ts).
+_SETPOINT_MAX_LEEFTIJD_S = 2 * _UUR_S
+# Een ongewijzigd setpoint hoeven we niet elke ronde weg te schrijven: dat zou
+# elke vijf minuten een versiebump geven (en dus een refetch bij elke open
+# browser). Alleen bij een echte wijziging, of na een kwartier stilte.
+_SETPOINT_TIK_S = 900
+
+
+def _setpoint_voor_tank(rijen: list, tank, now: float) -> tuple | None:
+    """(setpoint, sinds-epoch) voor één tank, of None zonder bruikbare verse
+    waarde. Spiegelt setpointVoorTank()."""
+    for r in rijen or []:
+        if not isinstance(r, dict) or str(r.get('tank')) != str(tank):
+            continue
+        try:
+            sp = float(r.get('setpoint'))
+        except (TypeError, ValueError):
+            return None
+        gezien = _iso_naar_epoch(r.get('gezien'))
+        if gezien is not None and now - gezien > _SETPOINT_MAX_LEEFTIJD_S:
+            return None
+        return (sp, _iso_naar_epoch(r.get('sinds')))
+    return None
+
+
+def _lees_tank_setpoints(ha_inst: dict, tanks: set, now: float) -> list:
+    """Lees het werkelijke setpoint van elke climate-entity die aan een bewaakte
+    tank hangt en houd `tank_setpoints` bij. `sinds` is het moment waarop de
+    waarde veranderde — het startpunt van een nieuw instelvenster. Bij de
+    eerste waarneming blijft `sinds` leeg: dat de addon net is gestart zegt
+    niets over de tank, en een instelvenster zou daar een lopende storing twaalf
+    uur lang mee verzwijgen. Zonder climate-koppeling levert dit niets op en
+    valt de bewaking terug op het vergistingsschema."""
+    if not ha_inst.get('climates_enabled'):
+        return []
+    koppeling = {}
+    for c in (ha_inst.get('climates') or []):
+        if not isinstance(c, dict) or not c.get('entity'):
+            continue
+        tank = str(c.get('tank')) if c.get('tank') is not None else None
+        if tank in tanks and tank not in koppeling:
+            koppeling[tank] = str(c['entity'])
+    if not koppeling:
+        return []
+
+    # Netwerk-I/O buiten het datalock.
+    gelezen = {tank: _ha_fetch_climate_setpoint(entity)
+               for tank, entity in koppeling.items()}
+    nu_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    with _data_lock:
+        rijen = _read_json('tank_setpoints', []) or []
+        per_tank = {str(r.get('tank')): r for r in rijen if isinstance(r, dict)}
+        gewijzigd = False
+        for tank, entity in koppeling.items():
+            sp = gelezen.get(tank)
+            bestaand = per_tank.get(tank)
+            if sp is None:
+                # Niet te lezen: de oude waarde laten staan en `gezien` níét
+                # bijwerken, zodat hij vanzelf verloopt.
+                continue
+            if bestaand is None:
+                per_tank[tank] = {'tank': tank, 'entity': entity, 'setpoint': sp,
+                                  'sinds': None, 'gezien': nu_iso}
+                gewijzigd = True
+                continue
+            oud = bestaand.get('setpoint')
+            zelfde_entity = bestaand.get('entity') == entity
+            veranderd = (not isinstance(oud, (int, float))) or abs(oud - sp) >= 0.05
+            if veranderd or not zelfde_entity:
+                bestaand['setpoint'] = sp
+                bestaand['entity'] = entity
+                # Een andere entity op dezelfde tank is een nieuwe koeling, geen
+                # setpoint-wissel — dan blijft `sinds` onbekend.
+                bestaand['sinds'] = nu_iso if (veranderd and zelfde_entity) else None
+                bestaand['gezien'] = nu_iso
+                gewijzigd = True
+                continue
+            vorige = _iso_naar_epoch(bestaand.get('gezien'))
+            if vorige is None or now - vorige >= _SETPOINT_TIK_S:
+                bestaand['gezien'] = nu_iso
+                gewijzigd = True
+        # Tanks zonder koppeling meer: hun regel valt af (en daarmee ook de
+        # kans dat een oud setpoint later weer opduikt).
+        nieuw = [r for tank, r in per_tank.items() if tank in koppeling]
+        if len(nieuw) != len(rijen):
+            gewijzigd = True
+        if gewijzigd:
+            _write_json('tank_setpoints', nieuw)
+    return nieuw
 
 
 _BEWAKING_RANG = {'alarm': 4, 'waarschuwing': 3, 'sensor_stil': 2, 'afwijking': 1}
@@ -2892,6 +3006,11 @@ def _tank_bewaking_tick() -> None:
     now = time.time()
     vanaf = now - max(cfg['trend_uren'] * 3, 24) * _UUR_S
 
+    # Waar stuurt de koeling écht op? Dat is het doel waar we tegen toetsen;
+    # het vergistingsschema is slechts de terugval.
+    setpoints = _lees_tank_setpoints(
+        ha_inst, {str(b.get('tank')) for b in actief}, now) if actief else []
+
     # Metingen één keer bundelen per batch — de lijst kan duizenden rijen tellen.
     per_batch: dict = {}
     for m in (metingen if actief else []):
@@ -2908,7 +3027,8 @@ def _tank_bewaking_tick() -> None:
 
     oordelen = []
     for b in actief:
-        doel, doel_sinds, ramp = _tank_doel(b)
+        doel, doel_sinds, ramp = _tank_doel(
+            b, _setpoint_voor_tank(setpoints, b.get('tank'), now))
         punten = sorted(per_batch.get(b.get('id'), []))
         oordelen.append((b, _beoordeel_tank(doel, doel_sinds, ramp, punten, now, cfg)))
 
