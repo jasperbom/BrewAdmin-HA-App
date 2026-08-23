@@ -1148,7 +1148,7 @@ _KEY_TYPES = {
         'haccp_opleidingen',
         'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
         'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
-        'locaties', 'verplaatsingen', 'btw_tarieven',
+        'locaties', 'verplaatsingen', 'btw_tarieven', 'tank_alarmen',
         'ing_types', 'kosten_soorten', 'gn_codes',
     )},
     # objecten (instellingen/koppeltabellen)
@@ -2631,6 +2631,394 @@ def _auto_metingen_tick() -> None:
         _write_json('gist_metingen', metingen)
 
     _log('auto-metingen', f'{len(new_entries)} meting(en) opgeslagen')
+
+
+# ── Tanktemperatuur-bewaking ────────────────────────────────────────────────
+# Python-spiegel van src/utils/tankbewaking.ts. Beide kanten moeten hetzelfde
+# oordeel vellen: de app tekent de status op het dashboard, deze tick stuurt de
+# push en houdt de alarmgeschiedenis (`tank_alarmen`) bij. Wijzig je hier een
+# regel, wijzig hem dáár ook — en andersom.
+
+_BEWAKING_DEFAULTS = {
+    'tolerantie': 1.5,
+    'duur_min': 60.0,
+    'alarm_marge': 2.0,
+    'instel_uren': 12.0,
+    'trend_c_per_uur': 0.4,
+    'trend_uren': 3.0,
+    'wegloop_min': 30.0,
+    'sensor_stil_min': 45.0,
+}
+
+# Ondergrens per instelling: waarden daaronder (of onzin) vallen terug op de
+# default. Een tolerantie van 0 zou een alarmstorm geven; een alarmmarge van 0
+# is wél een geldige keuze.
+_BEWAKING_MIN = {'alarm_marge': -1.0, 'instel_uren': -1.0, 'wegloop_min': -1.0}
+
+# Minimale tijd tussen twee punten waarover een helling iets zegt (zie
+# MIN_PAAR_MS in tankbewaking.ts).
+_MIN_PAAR_S = 30 * 60
+_UUR_S = 3600.0
+
+
+def _bewaking_cfg(ha_inst: dict) -> dict:
+    """Instellingen uit `ha_instellingen.bewaking`, aangevuld met de defaults."""
+    ruw = (ha_inst or {}).get('bewaking') or {}
+    cfg = {}
+    for sleutel, default in _BEWAKING_DEFAULTS.items():
+        ondergrens = _BEWAKING_MIN.get(sleutel, 0.0)
+        try:
+            waarde = float(ruw.get(sleutel))
+        except (TypeError, ValueError):
+            waarde = None
+        cfg[sleutel] = waarde if waarde is not None and waarde > ondergrens else default
+    return cfg
+
+
+def _meting_epoch(meting: dict) -> float | None:
+    """Tijdstip van een `gist_metingen`-rij in epoch-seconden. Datum en tijd zijn
+    lokaal weggeschreven (zie _auto_metingen_tick), dus lokaal terugparsen."""
+    datum = meting.get('datum')
+    if not datum or not isinstance(datum, str):
+        return None
+    tijd = meting.get('tijd') if isinstance(meting.get('tijd'), str) else ''
+    try:
+        d = datetime.date.fromisoformat(datum[:10])
+        uur, minuut = 0, 0
+        if tijd:
+            delen = tijd.split(':')
+            uur, minuut = int(delen[0]), int(delen[1]) if len(delen) > 1 else 0
+        return datetime.datetime(d.year, d.month, d.day, uur, minuut).timestamp()
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
+def _trend_per_uur(punten: list, van: float, tot: float,
+                   min_span: float | None = None) -> float | None:
+    """Mediaan van alle paarsgewijze hellingen (Theil-Sen) in °C/uur over het
+    venster. Spiegelt tempTrendPerUur: bewust geen kleinste kwadraten, want één
+    sprong of uitschieter mag de trend niet meeslepen."""
+    reeks = [p for p in punten if van <= p[0] <= tot]
+    if len(reeks) < 3:
+        return None
+    span = reeks[-1][0] - reeks[0][0]
+    grens = min_span if min_span is not None else max((tot - van) / 2.0, _MIN_PAAR_S)
+    if span < grens:
+        return None
+
+    max_punten = 120
+    if len(reeks) > max_punten:
+        stap = -(-len(reeks) // max_punten)  # ceil
+        reeks = [p for i, p in enumerate(reeks) if i % stap == 0 or i == len(reeks) - 1]
+
+    hellingen = []
+    for i in range(len(reeks)):
+        for j in range(i + 1, len(reeks)):
+            dt = reeks[j][0] - reeks[i][0]
+            if dt < _MIN_PAAR_S:
+                continue
+            hellingen.append((reeks[j][1] - reeks[i][1]) / (dt / _UUR_S))
+    if not hellingen:
+        return None
+    hellingen.sort()
+    mid = len(hellingen) // 2
+    if len(hellingen) % 2:
+        return hellingen[mid]
+    return (hellingen[mid - 1] + hellingen[mid]) / 2.0
+
+
+def _buiten_band_sinds(punten: list, doel: float, tolerantie: float) -> float | None:
+    """Begin van de aaneengesloten reeks aan het eind die buiten de band ligt.
+    Een korte terugkeer in de band zet de klok terug."""
+    sinds = None
+    for ts, temp in reversed(punten):
+        if abs(temp - doel) <= tolerantie:
+            break
+        sinds = ts
+    return sinds
+
+
+def _beoordeel_tank(doel, doel_sinds, ramp_uren, punten: list,
+                    now: float, cfg: dict) -> dict:
+    """Oordeel over één tank. Spiegelt beoordeelTank in tankbewaking.ts —
+    zie daar voor de onderbouwing van elke regel."""
+    leeg = {'status': 'geen_doel', 'reden': None, 'doel': doel, 'temp': None,
+            'afwijking': None, 'laatste': None, 'buiten_sinds': None,
+            'buiten_min': None, 'trend': None}
+    punten = sorted(punten)
+    if not punten:
+        return {**leeg, 'status': 'geen_data'}
+
+    laatste_ts, laatste_temp = punten[-1]
+    if now - laatste_ts > cfg['sensor_stil_min'] * 60:
+        return {**leeg, 'status': 'sensor_stil', 'reden': 'sensor', 'temp': laatste_temp,
+                'laatste': laatste_ts,
+                'afwijking': (laatste_temp - doel) if doel is not None else None}
+    if doel is None:
+        return {**leeg, 'status': 'geen_doel', 'temp': laatste_temp, 'laatste': laatste_ts}
+
+    afwijking = laatste_temp - doel
+    buiten = abs(afwijking) > cfg['tolerantie']
+    trend = _trend_per_uur(punten, now - cfg['trend_uren'] * _UUR_S, now)
+    buiten_sinds = _buiten_band_sinds(punten, doel, cfg['tolerantie']) if buiten else None
+    buiten_min = (now - buiten_sinds) / 60.0 if buiten_sinds is not None else None
+
+    richting = 1.0 if afwijking >= 0 else -1.0
+    recent = _trend_per_uur(punten, now - _UUR_S, now, _MIN_PAAR_S)
+    wegloop = (buiten
+               and buiten_min is not None and buiten_min >= cfg['wegloop_min']
+               and trend is not None and trend * richting >= cfg['trend_c_per_uur']
+               and recent is not None and recent * richting >= cfg['trend_c_per_uur'] / 2)
+
+    ramp = ramp_uren if isinstance(ramp_uren, (int, float)) and ramp_uren > 0 else 0.0
+    instel_s = (cfg['instel_uren'] + ramp) * _UUR_S
+    bereikt = doel_sinds is None or any(
+        ts >= doel_sinds and abs(temp - doel) <= cfg['tolerantie'] for ts, temp in punten)
+    in_instel = (not bereikt) and doel_sinds is not None and now < doel_sinds + instel_s
+
+    basis = {'status': 'ok', 'reden': None, 'doel': doel, 'temp': laatste_temp,
+             'afwijking': afwijking, 'laatste': laatste_ts,
+             'buiten_sinds': buiten_sinds, 'buiten_min': buiten_min, 'trend': trend}
+
+    if wegloop:
+        return {**basis, 'status': 'alarm', 'reden': 'wegloop'}
+    if in_instel:
+        return {**basis, 'status': 'instellen'}
+    if not buiten:
+        return basis
+
+    groot = abs(afwijking) >= cfg['tolerantie'] + cfg['alarm_marge']
+    if not bereikt:
+        return {**basis, 'status': 'alarm' if groot else 'waarschuwing',
+                'reden': 'nooit_bereikt'}
+    if buiten_min is None or buiten_min < cfg['duur_min']:
+        return {**basis, 'status': 'afwijking', 'reden': 'band'}
+    return {**basis, 'status': 'alarm' if groot else 'waarschuwing', 'reden': 'band'}
+
+
+def _tank_doel(batch: dict) -> tuple:
+    """(doeltemperatuur, sinds-epoch, ramp-uren) voor een batch. Een lopende
+    cold-crash wint van het vergistingsprofiel. Spiegelt tankDoel()."""
+    if batch.get('cold_crash_datum'):
+        try:
+            target = float(batch.get('cold_crash_target'))
+        except (TypeError, ValueError):
+            return (None, None, None)
+        profiel = batch.get('vergistingsprofiel')
+        van_temp = 20.0
+        if isinstance(profiel, list) and profiel and isinstance(profiel[-1], dict):
+            try:
+                van_temp = float(profiel[-1].get('temp'))
+            except (TypeError, ValueError):
+                van_temp = 20.0
+        try:
+            per_uur = float(batch.get('cold_crash_ramp'))
+        except (TypeError, ValueError):
+            per_uur = 1.0
+        if per_uur <= 0:
+            per_uur = 1.0
+        return (target, _iso_naar_epoch(batch.get('cold_crash_datum')),
+                max(0.0, (van_temp - target) / per_uur))
+
+    profiel = batch.get('vergistingsprofiel')
+    if not isinstance(profiel, list) or not profiel:
+        return (None, None, None)
+    try:
+        idx = int(batch.get('vergisting_stap_idx') or 0)
+    except (TypeError, ValueError):
+        idx = 0
+    idx = max(0, min(len(profiel) - 1, idx))
+    stap = profiel[idx] if isinstance(profiel[idx], dict) else {}
+    try:
+        temp = float(stap.get('temp'))
+    except (TypeError, ValueError):
+        return (None, None, None)
+    try:
+        ramp = float(stap.get('ramp'))
+    except (TypeError, ValueError):
+        ramp = None
+    return (temp, _iso_naar_epoch(_vergisting_start_iso(batch)),
+            ramp if ramp and ramp > 0 else None)
+
+
+_BEWAKING_RANG = {'alarm': 4, 'waarschuwing': 3, 'sensor_stil': 2, 'afwijking': 1}
+# Bovengrens op de alarmgeschiedenis: herstelde regels ouder dan dit aantal
+# vallen af zodat de key niet ongelimiteerd groeit.
+_ALARM_HISTORIE_MAX = 500
+
+
+def _bewaking_bericht(naam: str, oordeel: dict) -> str:
+    """Meldingstekst voor één storing. Bewust in het Nederlands, net als de
+    andere serverpushes (`verg-stap`, `sluitcontrole`)."""
+    if oordeel['status'] == 'sensor_stil':
+        return f"{naam}: geen temperatuurmeting meer binnengekomen. Controleer de sensor."
+    temp = oordeel.get('temp')
+    doel = oordeel.get('doel')
+    kop = f"{naam}: {temp:.1f} °C terwijl {doel:.1f} °C is ingesteld"
+    if oordeel.get('reden') == 'wegloop':
+        trend = oordeel.get('trend') or 0
+        return (f"{kop}. De temperatuur loopt weg ({trend:+.1f} °C/uur) — "
+                f"controleer de koeling.")
+    if oordeel.get('reden') == 'nooit_bereikt':
+        return f"{kop}. De tank haalt deze stap niet."
+    uren = (oordeel.get('buiten_min') or 0) / 60.0
+    return f"{kop}, al {uren:.1f} uur buiten de marge."
+
+
+def _tank_bewaking_tick() -> None:
+    """Eén ronde temperatuurbewaking: beoordeel elke batch die in een tank met
+    sensor ligt, en houd `tank_alarmen` bij. Een storing opent één regel (met
+    push, indien ingeschakeld); zodra de tank terug in de band is wordt diezelfde
+    regel gesloten en volgt een herstelmelding. De alarmregels worden altijd
+    geschreven — ook zonder notify-service — zodat de app ze kan tonen."""
+    with _data_lock:
+        ha_inst = _read_json('ha_instellingen', {}) or {}
+    if not ha_inst.get('enabled') or not (ha_inst.get('bewaking') or {}).get('enabled'):
+        return
+    sensor_tanks = {str(s.get('tank')) for s in (ha_inst.get('sensors') or [])
+                    if isinstance(s, dict) and s.get('tank') and s.get('entity')}
+    if not sensor_tanks:
+        return
+
+    with _data_lock:
+        batches = _read_json('batches', []) or []
+        metingen = _read_json('gist_metingen', []) or [] if batches else []
+    actief = [b for b in batches
+              if isinstance(b, dict) and b.get('tank') is not None
+              and str(b.get('tank')) in sensor_tanks
+              and b.get('status') in ('Vergisten', 'Conditioneren')]
+
+    cfg = _bewaking_cfg(ha_inst)
+    now = time.time()
+    vanaf = now - max(cfg['trend_uren'] * 3, 24) * _UUR_S
+
+    # Metingen één keer bundelen per batch — de lijst kan duizenden rijen tellen.
+    per_batch: dict = {}
+    for m in (metingen if actief else []):
+        if not isinstance(m, dict):
+            continue
+        try:
+            temp = float(m.get('temp'))
+        except (TypeError, ValueError):
+            continue
+        ts = _meting_epoch(m)
+        if ts is None or ts < vanaf:
+            continue
+        per_batch.setdefault(m.get('batch_id'), []).append((ts, temp))
+
+    oordelen = []
+    for b in actief:
+        doel, doel_sinds, ramp = _tank_doel(b)
+        punten = sorted(per_batch.get(b.get('id'), []))
+        oordelen.append((b, _beoordeel_tank(doel, doel_sinds, ramp, punten, now, cfg)))
+
+    with _data_lock:
+        alarmen = _read_json('tank_alarmen', []) or []
+        max_id = max((a.get('id', 0) for a in alarmen if isinstance(a, dict)), default=0)
+        open_per_batch = {a.get('batch_id'): a for a in alarmen
+                          if isinstance(a, dict) and not a.get('hersteld_op')}
+        nu_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        notify_jobs: list[tuple[str, str]] = []
+        gewijzigd = False
+
+        for batch, oordeel in oordelen:
+            bid = batch.get('id')
+            naam = batch.get('naam') or batch.get('biernaam') or f"batch {bid}"
+            status = oordeel['status']
+            bestaand = open_per_batch.get(bid)
+
+            if status in ('waarschuwing', 'alarm', 'sensor_stil'):
+                if bestaand is None:
+                    max_id += 1
+                    alarmen.append({
+                        'id': max_id, 'batch_id': bid, 'tank': str(batch.get('tank')),
+                        'soort': status, 'reden': oordeel.get('reden'),
+                        'gestart_op': nu_iso, 'laatste_op': nu_iso,
+                        'doel': oordeel.get('doel'), 'temp': oordeel.get('temp'),
+                        'afwijking': oordeel.get('afwijking'),
+                        'piek_afwijking': oordeel.get('afwijking'),
+                        'trend_per_uur': oordeel.get('trend'),
+                        'hersteld_op': None, 'genotificeerd': True,
+                    })
+                    notify_jobs.append((naam, _bewaking_bericht(naam, oordeel)))
+                    gewijzigd = True
+                else:
+                    afw = oordeel.get('afwijking')
+                    piek = bestaand.get('piek_afwijking')
+                    nieuwe_piek = afw is not None and (piek is None or abs(afw) > abs(piek))
+                    if nieuwe_piek:
+                        bestaand['piek_afwijking'] = afw
+                    # Verzwaart de situatie? Dan opnieuw melden — een
+                    # waarschuwing die een alarm wordt mag niet stil blijven.
+                    escalatie = _BEWAKING_RANG.get(status, 0) > _BEWAKING_RANG.get(bestaand.get('soort'), 0)
+                    if escalatie:
+                        bestaand['soort'] = status
+                        bestaand['reden'] = oordeel.get('reden')
+                        bestaand['temp'] = oordeel.get('temp')
+                        bestaand['trend_per_uur'] = oordeel.get('trend')
+                        bestaand['bevestigd'] = False
+                        notify_jobs.append((naam, _bewaking_bericht(naam, oordeel)))
+                    # Een lopende storing elke ronde wegschrijven zou elke vijf
+                    # minuten een versiebump geven (en dus een refetch bij elke
+                    # open browser) terwijl er niets verandert. Alleen bij echte
+                    # wijzigingen of een kwartier stilte de klok bijwerken.
+                    vorige = _iso_naar_epoch(bestaand.get('laatste_op'))
+                    if escalatie or nieuwe_piek or vorige is None or now - vorige >= 900:
+                        bestaand['laatste_op'] = nu_iso
+                        gewijzigd = True
+            elif bestaand is not None and status in ('ok', 'instellen'):
+                bestaand['hersteld_op'] = nu_iso
+                bestaand['hersteld_temp'] = oordeel.get('temp')
+                temp = oordeel.get('temp')
+                notify_jobs.append((naam, f"{naam}: temperatuur is terug op niveau"
+                                          f"{f' ({temp:.1f} °C)' if temp is not None else ''}."))
+                gewijzigd = True
+
+        # Een batch die de tank uit is (afgevuld, andere tank, sensor losgekoppeld)
+        # wordt niet meer beoordeeld. Zijn openstaande storing zou dan eeuwig in
+        # de banner blijven staan, dus die sluiten we hier stilzwijgend — zonder
+        # herstelmelding, want er is niets hersteld.
+        beoordeeld = {b.get('id') for b, _ in oordelen}
+        for regel in alarmen:
+            if (isinstance(regel, dict) and not regel.get('hersteld_op')
+                    and regel.get('batch_id') not in beoordeeld):
+                regel['hersteld_op'] = nu_iso
+                regel['afgesloten_zonder_meting'] = True
+                gewijzigd = True
+
+        if gewijzigd:
+            # Herstelde regels boven het maximum vallen af; open regels blijven
+            # altijd staan, ongeacht hoeveel het er zijn.
+            gesloten = [a for a in alarmen if isinstance(a, dict) and a.get('hersteld_op')]
+            if len(gesloten) > _ALARM_HISTORIE_MAX:
+                weg = {id(a) for a in
+                       sorted(gesloten, key=lambda a: a.get('gestart_op') or '')[:len(gesloten) - _ALARM_HISTORIE_MAX]}
+                alarmen = [a for a in alarmen if id(a) not in weg]
+            _write_json('tank_alarmen', alarmen)
+
+    if not notify_jobs:
+        return
+    with _data_lock:
+        notif = _read_json('notificatie_instellingen', {}) or {}
+    if not notif.get('enabled') or not notif.get('notify_service'):
+        return
+    for _naam, bericht in notify_jobs:
+        ok = _ha_notify(notif['notify_service'], 'BrewAdmin — tanktemperatuur', bericht)
+        _log('tank-bewaking', f"notify: {'ok' if ok else 'mislukt'} — {bericht}",
+             level=logging.INFO if ok else logging.ERROR)
+
+
+def _tank_bewaking_loop(interval: float = 300.0) -> None:
+    """Achtergrondloop: beoordeel elke 5 minuten de tanktemperaturen. De
+    automatische metingen komen elke 10 minuten binnen, dus vaker kijken heeft
+    geen zin — en trager zou een wegloper onnodig lang laten lopen."""
+    time.sleep(45)  # ná de eerste ronde automatische metingen
+    while True:
+        try:
+            _tank_bewaking_tick()
+        except Exception as exc:
+            _log('tank-bewaking', f'error: {exc}', level=logging.ERROR)
+        time.sleep(interval)
 
 
 def _cold_crash_tick() -> None:
@@ -4483,6 +4871,11 @@ if __name__ == '__main__':
     _threads['vergisting_stap'] = threading.Thread(target=_vergisting_stap_loop, daemon=True)
     _threads['vergisting_stap'].start()
     _log('server', 'Vergistingsstap-melding-thread gestart (elke 5 minuten)')
+
+    # Start background tanktemperatuur-bewakingsthread (elke 5 minuten)
+    _threads['tank_bewaking'] = threading.Thread(target=_tank_bewaking_loop, daemon=True)
+    _threads['tank_bewaking'].start()
+    _log('server', 'Tanktemperatuur-bewakingsthread gestart (elke 5 minuten)')
 
     # Start background sluitcontrole-herinnering-thread (CCP 2, elke 2 minuten)
     _threads['sluitcontrole'] = threading.Thread(target=_sluitcontrole_loop, daemon=True)

@@ -4,6 +4,46 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.3] — 2026-08-23
+
+### Nieuw — bewaking van de tanktemperatuur
+
+Als een koelpomp uitvalt loopt de temperatuur weg, en dat merk je pas als je
+toevallig kijkt. De app kijkt nu zelf mee met de automatische metingen van de
+tanksensoren en meldt het wanneer een tank z'n ingestelde temperatuur
+kwijtraakt — zonder vals alarm bij de afwijkingen die er nu eenmaal bij horen.
+
+- **Een marge rond het doel.** Een koeling die het setpoint net niet haalt, of
+  eromheen pendelt, is gezond gedrag. Standaard geldt ±1,5 °C als normaal, en
+  een afwijking moet een uur aanhouden voordat er iets gemeld wordt. Een
+  uitschieter van twintig minuten — een monster trekken, het luik open — waait
+  vanzelf over.
+- **Ruimte na een stapwissel.** Schakel je door naar de diacetylrust, dan staat
+  het bier per definitie uren van het nieuwe doel af. Daar krijgt de tank
+  standaard 12 uur voor (plus de ramp-tijd van de stap zelf), en die ruimte
+  vervalt zodra de tank z'n doel één keer haalt. Een lopende cold crash telt
+  op dezelfde manier: de geplande daaltijd is de instelruimte.
+- **Een wegloper meldt wél meteen.** Niet "hoe ver zit het ernaast" maar
+  "beweegt het weg van het doel" is het storingssignaal. Loopt de temperatuur
+  gestaag verder van het doel af (standaard vanaf 0,4 °C/uur) én beweegt hij
+  nu nog steeds, dan is dat een alarm — ook tijdens het instellen, want juist
+  dan wijst het op een defecte pomp of koeling.
+- **Een stille sensor is ook een storing.** Komt er 45 minuten geen meting
+  binnen, dan meldt de app dat.
+- **Waar je het ziet:** een balk boven in de app (rood bij alarm, oranje bij
+  een waarschuwing) met wat er aan de hand is, en een statuspill op de
+  tankkaart van het productiedashboard. De melding gaat ook als push naar Home
+  Assistant, via de notify-service die al voor de andere meldingen is
+  ingesteld — de server rekent zelf door, dus ook met de browser dicht. Zodra
+  de tank terug op temperatuur is volgt een herstelmelding.
+- **Instellen** bij Instellingen → Home Assistant → Temperatuurbewaking. Alle
+  drempels zijn aan te passen; leeglaten zet ze terug op de standaardwaarde.
+- Elke storing wordt vastgelegd in de nieuwe gegevenssleutel `tank_alarmen`
+  (met piekafwijking en hersteltijdstip), zodat je achteraf kunt zien wat er
+  gebeurd is.
+
+---
+
 ## [1.12.2] — 2026-08-21
 
 ### Nieuw — betaalstatus uit WooCommerce, en een factuurmail die dat weet

@@ -11,6 +11,7 @@ import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, bt
 import { periodeKeyLabel } from './utils/btw'
 import { schoonTakenOp, deactiveerStandaardMetingen } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
+import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/tankbewaking'
 import { attentiePosten } from './utils/attentie'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
@@ -162,6 +163,9 @@ function App() {
   const [logoIcoon, setLogoIcoon] = useStore('app_logo_icoon', {});
   const [factuurCounter, setFactuurCounter] = useStore('factuur_counter', {jaar:0,nr:0});
   const [gistMetingen, setGistMetingen, refreshGistMetingen] = useStore('gist_metingen', []);
+  // Temperatuurstoringen op de gisttanks; geschreven door de server-tick
+  // (_tank_bewaking_tick) en hier alleen gelezen en bevestigd.
+  const [tankAlarmen, setTankAlarmen, refreshTankAlarmen] = useStore('tank_alarmen', []);
   const [carbSessies, setCarbSessies, refreshCarbSessies] = useStore('carbonatie_sessies', []);
   const [verliesRegistraties, setVerliesRegistraties] = useStore('verlies_registraties', []);
   const [brouwdagStappen, setBrouwdagStappen] = useStore('brouwdag_stappen', []);
@@ -1164,6 +1168,66 @@ function App() {
       .filter((x: any) => !stapAcked.includes(x.ackKey))
   }, [bat, stapAcked, notificatieInst?.on_screen, stapNowTick])
 
+  // ── Temperatuurbewaking gisttanks ──────────────────────────────────────────
+  // De server-tick beoordeelt elke 5 minuten de automatische metingen en opent
+  // of sluit een regel in `tank_alarmen`. De app haalt die lijst periodiek op
+  // zolang de bewaking aanstaat en er iets in een tank ligt — een wegloper mag
+  // je niet pas zien als je toevallig de pagina ververst.
+  const bewakingAan = !!(haInst?.enabled && haInst?.bewaking?.enabled)
+  const heeftTankBatch = React.useMemo(
+    () => (bat || []).some((b: any) => b?.tank != null && BEWAAKTE_STATUSSEN.includes(b?.status)),
+    [bat]
+  )
+  React.useEffect(() => {
+    if (!bewakingAan || !heeftTankBatch) return
+    // De metingen komen mee: daarmee klopt ook het live oordeel op de
+    // tankkaarten zonder dat de gebruiker de pagina hoeft te verversen.
+    const haal = () => { refreshTankAlarmen(); refreshGistMetingen() }
+    haal()
+    const id = setInterval(haal, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [bewakingAan, heeftTankBatch])
+
+  // Live oordeel per tank voor het dashboard. De server-tick rekent hetzelfde
+  // uit voor de push; deze memo zorgt dat de kaart ook tussen twee ticks door
+  // klopt en dat de status meteen omslaat na het doorschakelen van een stap.
+  const tankBewaking = React.useMemo(() => {
+    const uit: Record<string, any> = {}
+    if (!bewakingAan) return uit
+    const sensorTanks = (haInst?.sensors || [])
+      .filter((s: any) => s?.tank && s?.entity).map((s: any) => String(s.tank))
+    if (!sensorTanks.length) return uit
+    for (const o of beoordeelBatches(bat as any, gistMetingen as any, sensorTanks,
+                                     Date.now(), haInst?.bewaking)) {
+      if (o.tank) uit[o.tank] = o
+    }
+    return uit
+  }, [bewakingAan, bat, gistMetingen, haInst?.sensors, haInst?.bewaking, stapNowTick])
+
+  const openTankAlarmen = React.useMemo(() => {
+    if (notificatieInst?.on_screen === false || !bewakingAan) return []
+    return (tankAlarmen || [])
+      .filter((a: any) => a && !a.hersteld_op && !a.bevestigd)
+      .map((a: any) => {
+        const b = (bat || []).find((x: any) => x.id === a.batch_id)
+        const tk = (tanks || []).find((x: any) => x.id === a.tank)
+        return {
+          id: a.id as number,
+          batchId: a.batch_id as number,
+          soort: a.soort as string,
+          naam: b?.naam || b?.biernaam || t('lbl_naamloos'),
+          tank: tk?.naam || a.tank || '',
+          tekst: tankAlarmTekst(a),
+        }
+      })
+  }, [tankAlarmen, bat, tanks, notificatieInst?.on_screen, bewakingAan])
+
+  // Wegklikken bewaart de bevestiging op de regel zelf: de storing blijft open
+  // (en zichtbaar bij de batch), maar de banner komt niet terug — tot de server
+  // hem verzwaart, want dan zet de tick `bevestigd` weer uit.
+  const bevestigTankAlarm = (id: number) =>
+    setTankAlarmen((p: any[]) => (p || []).map(a => a?.id === id ? {...a, bevestigd: true} : a))
+
   // Snelkoppeling-banner voor een batch die aan het brouwen is (brouwdag bezig).
   const [brouwAcked, setBrouwAcked] = React.useState<number[]>([])
   const brouwendeBatches = React.useMemo(() => {
@@ -1213,7 +1277,7 @@ function App() {
       btw_instellingen: btwInst, btw_tarieven: btwTarieven,
       ing_types: ingTypes, ing_type_btw: ingTypeBtw, kosten_soorten: kostenSoorten, gn_codes: gnCodes,
       bestellingen, bestelling_picks: bestellingPicks, afboekingen,
-      klanten, gist_metingen: gistMetingen,
+      klanten, gist_metingen: gistMetingen, tank_alarmen: tankAlarmen,
       carbonatie_sessies: carbSessies,
       verlies_registraties: verliesRegistraties,
       brouwdag_stappen: brouwdagStappen,
@@ -1301,6 +1365,7 @@ function App() {
       if (Array.isArray(d.afboekingen)) setAfboekingen(d.afboekingen);
       if (Array.isArray(d.klanten)) setKlanten(d.klanten);
       if (Array.isArray(d.gist_metingen)) setGistMetingen(d.gist_metingen);
+      if (Array.isArray(d.tank_alarmen)) setTankAlarmen(d.tank_alarmen);
       if (Array.isArray(d.carbonatie_sessies)) setCarbSessies(d.carbonatie_sessies);
       if (Array.isArray(d.verlies_registraties)) setVerliesRegistraties(d.verlies_registraties);
       if (Array.isArray(d.brouwdag_stappen)) setBrouwdagStappen(d.brouwdag_stappen);
@@ -1596,6 +1661,26 @@ function App() {
           })}
         </div>
       )}
+      {openTankAlarmen.length > 0 && (
+        <div className="sticky top-0 z-50 space-y-px">
+          {openTankAlarmen.map((a: any) => (
+            <div key={a.id} className={`${a.soort === 'alarm' ? 'bg-red-600' : 'bg-orange-500'} text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow`}>
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                <span>{t('tank_alarm_screen')
+                  .replace('{tank}', a.tank).replace('{batch}', a.naam)
+                  .replace('{melding}', a.tekst)}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => { setNavBatchId(a.batchId); setPage('batchflow') }}
+                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
+                <button onClick={() => bevestigTankAlarm(a.id)}
+                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {stapGereedBatches.length > 0 && (
         <div className="sticky top-0 z-50 space-y-px">
           {stapGereedBatches.map((x: any) => (
@@ -1733,7 +1818,7 @@ function App() {
             van de actieve werkruimte — zo landt de werkruimte-wisselaar (die
             bij een echte wissel naar 'dashboard' springt) altijd op de juiste,
             kleine "dagelijkse takenlijst" voor die pet. */}
-        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} />}
+        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} />}
         {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard bestellingen={bestellingen} bestellingPicks={bestellingPicks} setOpenOrderId={setOpenOrderId} av={av} producten={producten} locaties={locaties} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} wcCreds={wcCreds} wcSyncLog={wcSyncLog} setPage={setPage} />}
         {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} />}

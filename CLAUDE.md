@@ -37,6 +37,9 @@ BrewAdmin-HA-App/
 │   │   ├── calculations.ts # Business logic calculations
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
+│   │   ├── tankbewaking.ts # Bewaking tanktemperatuur: tolerantieband, instelruimte na een
+│   │   │                   # stapwissel/cold-crash, wegloopdetectie (Theil-Sen-trend) en
+│   │   │                   # sensorstilte — server.py spiegelt deze regels in Python
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
@@ -136,7 +139,8 @@ De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 `src/utils/__tests__/`: accijns, BTW-rollover en grondslag-BTW, centen,
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
 ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de
-templaterenderer + factuurlayout, de Excel-backup-round-trip en de
+templaterenderer + factuurlayout, de Excel-backup-round-trip, de
+tanktemperatuurbewaking en de
 HACCP-beheerspunten
 (risicoclassificatie, stabiliteit, vrijgave-oordeel, sluitcontrole,
 allergenenvergelijking, lotcode en THT) en de traceerbaarheid
@@ -146,8 +150,10 @@ allergenenvergelijking, lotcode en THT) en de traceerbaarheid
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
 optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
 onder parallelle clients), rate-limiting (429), secrets-maskering, de
-server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export) en de
-HACCP-sluitcontrole-herinnering.
+server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export), de
+HACCP-sluitcontrole-herinnering en de tanktemperatuurbewaking (het oordeel
+zelf én de alarmadministratie; een test bewaakt dat de drempel-defaults in
+server.py en tankbewaking.ts gelijk blijven).
 De suite start de echte handler op een efemere poort met een tijdelijke
 DATA_DIR.
 
@@ -424,6 +430,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `afboekingen` | array | Biervoorraadbewegingen |
 | `klanten` | array | Klanten |
 | `gist_metingen` | array | Gistingsmetingen per batch |
+| `tank_alarmen` | array | Temperatuurstoringen per tank/batch, geopend en gesloten door de server-tick `_tank_bewaking_tick` (soort `waarschuwing`/`alarm`/`sensor_stil`, reden, piekafwijking, hersteltijdstip). De app leest ze voor de banner en zet `bevestigd` bij wegklikken — nooit zelf openen of sluiten |
 | `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
 | `verlies_registraties` | array | Verliesposten per batch (tankrest, leiding, schuim, monster, afgekeurd, overig) |
 | `batch_notities` | array | Vrije, handmatige notities per batch (timestamped logje) |
@@ -444,7 +451,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota` per jaar; `bestelling` = kort doorlopend `M-`-nummer voor handmatige orders, geen jaarreset), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
-| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`) |
+| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`) |
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties aan facturen/BTW (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |

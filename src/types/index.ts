@@ -1199,6 +1199,48 @@ export interface HaInst {
   co2_enabled?: boolean
   co2_entity?: string           // entity_id (sensor.*) van de weegschaal
   co2_unit?: 'kg' | 'g'         // eenheid die de sensor rapporteert
+  // ── Temperatuurbewaking ──────────────────────────────────────────────────
+  // Drempelwaarden voor het beoordelen van de automatische metingen; de
+  // rekenregels staan in src/utils/tankbewaking.ts (server.py spiegelt ze).
+  bewaking?: TankBewakingInst
+}
+
+// Zie `BewakingInst` in src/utils/tankbewaking.ts — daar staat ook wat elke
+// drempel betekent en welke default geldt. Hier alleen als opslagvorm.
+export interface TankBewakingInst {
+  enabled?: boolean
+  tolerantie?: number
+  duur_min?: number
+  alarm_marge?: number
+  instel_uren?: number
+  trend_c_per_uur?: number
+  trend_uren?: number
+  wegloop_min?: number
+  sensor_stil_min?: number
+}
+
+// Een geconstateerde temperatuurstoring op een tank. De server-tick opent er
+// één zodra de bewaking iets meldenswaardigs ziet en sluit hem weer zodra de
+// tank terug in de band is; de app toont de open regels als banner en de
+// gesloten regels als geschiedenis bij de batch.
+export interface TankAlarm {
+  id: number
+  batch_id: number
+  tank: string
+  soort: 'waarschuwing' | 'alarm' | 'sensor_stil'
+  reden: 'band' | 'wegloop' | 'sensor' | 'nooit_bereikt' | null
+  gestart_op: string            // ISO-timestamp van het openen
+  doel: number | null           // doeltemperatuur op dat moment
+  temp: number | null           // gemeten temperatuur bij het openen
+  afwijking: number | null      // temp − doel
+  trend_per_uur?: number | null // gemeten beweging (°C/uur) bij het openen
+  // Bijgewerkt zolang het alarm openstaat: de zwaarste waarneming tot nu toe.
+  piek_afwijking?: number | null
+  laatste_op?: string           // ISO-timestamp van de laatste waarneming
+  hersteld_op?: string | null   // ISO-timestamp van het herstel (null = open)
+  hersteld_temp?: number | null
+  genotificeerd?: boolean       // push verstuurd voor `soort`
+  bevestigd?: boolean           // handmatig weggeklikt in de app
 }
 
 // Meldingsinstellingen. Eén centrale plek voor notificaties die de app via

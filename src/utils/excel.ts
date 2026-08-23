@@ -114,6 +114,7 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('Afboekingen',           data.afboekingen)
     addSheet('Klanten',               data.klanten)
     addSheet('GistMetingen',          data.gist_metingen)
+    addSheet('TankAlarmen',           data.tank_alarmen)
     addSheet('CarbonatieSessies',     data.carbonatie_sessies)
     addSheet('VerliesRegistraties',   data.verlies_registraties)
     addSheet('BrouwdagStappen',       data.brouwdag_stappen)
@@ -312,6 +313,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         afboekingen:                  parse('Afboekingen'),
         klanten:                      parse('Klanten'),
         gist_metingen:                parse('GistMetingen'),
+        tank_alarmen:                 parse('TankAlarmen'),
         carbonatie_sessies:           parse('CarbonatieSessies'),
         verlies_registraties:         parse('VerliesRegistraties'),
         brouwdag_stappen:             parse('BrouwdagStappen'),
