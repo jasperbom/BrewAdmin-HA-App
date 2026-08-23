@@ -5,7 +5,7 @@ import {
   berekenProductKostprijs, berekenCogs, telThtAlerts, laatsteOpenAccijnsMaand,
   productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
   registreerTankReiniging, laatsteTankReiniging,
-  berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht,
+  berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht, berekenAccijnsImpact,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -98,6 +98,70 @@ describe('AGP-waardering — tarief van de peildatum, niet van de brouwdatum', (
     }
     const ovz = agpOverzicht(batches, afvullingen, [], [], [], locaties, instNu)
     expect(ovz.totaal_accijns_agp).toBeCloseTo(1 * 6 * 30, 4)
+  })
+})
+
+describe('berekenAccijnsImpact — uitslagen in het jaar, niet batches', () => {
+  const inst: any = {tarief_per_hl_abv: 10, tarief_per_hl: 0}
+  const nieuw = {tarief_per_hl_abv: 15, tarief_per_hl: 0}
+  const batches = [
+    {id: 1, naam: 'Blond', batch_nummer: '2431', ABV: 6, platogehalte: 0, datum: '2026-11-01'},
+  ]
+  // Batch is in 2026 gebrouwen; de uitslagen vallen in 2026 én 2027.
+  const acc = [
+    {id: 100, batch_id: 1, datum: '2026-12-10', liter: 100, abv: 6, accijns: 60, bron: 'uitlevering'},
+    {id: 101, batch_id: 1, datum: '2027-02-10', liter: 50, abv: 6, accijns: 30, bron: 'verplaatsing'},
+    {id: 102, batch_id: 1, datum: '2027-03-05', liter: 20, abv: 6, accijns: 12, bron: 'afboeking'},
+  ]
+
+  it('neemt de uitslagen van het gekozen jaar, ongeacht het brouwjaar', () => {
+    const r = berekenAccijnsImpact(acc, batches, inst, 2027, nieuw)
+    expect(r.rijen.map(x => x.record_id)).toEqual([101, 102])
+    // 50 L = 0,5 hl × 6 × 15 = 45 (was 30); 20 L = 0,2 hl × 6 × 15 = 18 (was 12)
+    expect(r.totaalOud).toBeCloseTo(42, 4)
+    expect(r.totaalNieuw).toBeCloseTo(63, 4)
+    expect(r.totaalVerschil).toBeCloseTo(21, 4)
+  })
+
+  it('een batch uit 2026 met alleen uitslagen in 2027 telt niet mee in 2026', () => {
+    const r = berekenAccijnsImpact(acc, batches, inst, 2026, nieuw)
+    expect(r.rijen.map(x => x.record_id)).toEqual([100])
+    expect(r.totaalVerschil).toBeCloseTo(1 * 6 * 15 - 60, 4)
+  })
+
+  it('vergelijkt tegen het geboekte bedrag, niet tegen een herberekening', () => {
+    // Een record met een afwijkend (handmatig/legacy) bedrag blijft "oud".
+    const afwijkend = [{id: 200, batch_id: 1, datum: '2027-04-01', liter: 100, abv: 6, accijns: 999, bron: 'uitlevering'}]
+    const r = berekenAccijnsImpact(afwijkend, batches, inst, 2027, nieuw)
+    expect(r.rijen[0].oudAccijns).toBe(999)
+    expect(r.rijen[0].nieuwAccijns).toBeCloseTo(1 * 6 * 15, 4)
+  })
+
+  it('splitst het verschil in al aangegeven en nog open maanden', () => {
+    const aangiftes = [{maand: '2027-02', status: 'ingediend'}]
+    const r = berekenAccijnsImpact(acc, batches, inst, 2027, nieuw, aangiftes)
+    expect(r.rijen.find(x => x.record_id === 101)!.aangegeven).toBe(true)
+    expect(r.rijen.find(x => x.record_id === 102)!.aangegeven).toBe(false)
+    expect(r.verschilAangegeven).toBeCloseTo(15, 4)   // 45 − 30
+    expect(r.verschilOpen).toBeCloseTo(6, 4)          // 18 − 12
+  })
+
+  it('gebruikt het Plato-gehalte uit de batch, dat niet op het record staat', () => {
+    const platoBatch = [{id: 2, naam: 'Tripel', ABV: 1, platogehalte: 20, datum: '2026-01-01'}]
+    const rec = [{id: 300, batch_id: 2, datum: '2027-05-01', liter: 100, abv: 1, accijns: 10, bron: 'uitlevering'}]
+    const r = berekenAccijnsImpact(rec, platoBatch, inst, 2027, {...nieuw, tarief_per_hl_plato: 2})
+    // Plato wint: 1 hl × 20 Plato × 2 = 40 (ABV-tarief zou 1 × 1 × 15 = 15 zijn)
+    expect(r.rijen[0].plato).toBe(20)
+    expect(r.rijen[0].nieuwAccijns).toBeCloseTo(40, 4)
+  })
+
+  it('slaat records zonder liters over en sorteert op datum', () => {
+    const rommel = [
+      {id: 1, batch_id: 1, datum: '2027-06-01', liter: 0, accijns: 0},
+      {id: 2, batch_id: 1, datum: '2027-01-01', liter: 10, abv: 6, accijns: 6},
+    ]
+    const r = berekenAccijnsImpact(rommel, batches, inst, 2027, nieuw)
+    expect(r.rijen.map(x => x.record_id)).toEqual([2])
   })
 })
 

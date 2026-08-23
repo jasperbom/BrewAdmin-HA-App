@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.6] — 2026-08-23
+
+### Accijns-impact van een tariefwijziging klopt weer
+
+Het wat-als-overzicht bij het wijzigen van een jaartarief (Instellingen →
+Financieel) ging nog uit van de brouwdatum: het rekende de batches door die in
+dat jaar gebrouwen waren. Nu de accijns bij uitslag verschuldigd wordt, hoort
+het te gaan over de **uitslagen** met een datum in dat jaar.
+
+- Het overzicht toont nu de geboekte uitslagen van dat jaar — uitlevering,
+  verplaatsing en vermissing — met soort, batch, verpakking en liters.
+- "Oud" is het bedrag zoals het geboekt is (en dus in je aangifte terecht is
+  gekomen), niet een herberekening. "Nieuw" is dezelfde hoeveelheid op het
+  voorgestelde tarief.
+- Uitslagen in een maand waarvan de aangifte al is ingediend of betaald krijgen
+  een merkje, en het verschil wordt gesplitst: wat een correctie bij de Douane
+  vraagt versus wat nog in een open maand valt.
+- Voorraad die nog in de AGP ligt telt bewust niet mee — daarover ontstaat de
+  accijns pas bij uitslag. Dat staat er nu ook bij.
+- De Impact-knop is actief zodra er uitslagen in dat jaar zijn (was: batches).
+
+Ook opgelost in ditzelfde scherm: alle bedragen stonden met een dubbel
+euroteken (€€48,75).
+
+---
+
 ## [1.12.5] — 2026-08-23
 
 ### Accijnstarief volgt de uitslagdatum
