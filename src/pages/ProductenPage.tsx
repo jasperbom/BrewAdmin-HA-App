@@ -9,8 +9,11 @@ import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
+import VerplaatsModal from '../components/VerplaatsModal'
+import UitslagModal from '../components/UitslagModal'
 import { logAudit } from '../utils/audit'
-import { voorraadPerLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
+import { bouwVerplaatsing } from '../utils/agp'
+import { voorraadPerLocatie, getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 import { standaardBtwPct } from '../utils/btw'
 
@@ -64,7 +67,7 @@ const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null
   } catch { return null }
 }
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[]}: any) {
+function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[]}: any) {
   const {useState, useMemo} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -95,6 +98,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     toonNieuwProduct: boolean; nieuwProductNaam: string;
   }>({aantal: '1', product_id: '', opmerking: '', toonNieuwProduct: false, nieuwProductNaam: ''});
   const [rebrandError, setRebrandError] = useState('');
+  // Uitslaan uit de AGP: per afvulling/locatie (verplaatsModal) of in één keer
+  // op productniveau (uitslagOpen). Beide boeken via `utils/agp.ts` exact
+  // dezelfde records als de AGP-pagina.
+  const [verplaatsModal, setVerplaatsModal] = useState<any>(null);
+  const [uitslagOpen, setUitslagOpen] = useState(false);
   // Vernietigingsreview-modal: voor het doorzetten van een bestaande afboeking
   // van Aangevraagd → Toegestaan → Uitgevoerd (Douane v2.4 §7.2.3).
   const [vernietigReviewModal, setVernietigReviewModal] = useState<any>(null);
@@ -295,9 +303,34 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         return vpTypeMatch(rVt, vt);
       }).reduce((s: number, r: any) => s + r.aantal, 0);
       const totBeschikbaar = Math.max(0, rows.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0) - totInBestelling);
-      return {vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar};
+      // Splitsing onder/buiten schorsing: wat nog in de AGP ligt moet eerst
+      // uitgeslagen worden voordat je het particulier kunt verkopen.
+      let totInAgp = 0, totVrij = 0;
+      for (const a of rows) {
+        const perLoc = beschikbaarPerLocatie(a);
+        for (const [k, n] of Object.entries(perLoc)) {
+          const loc = (locaties||[]).find((l: any) => l.id === Number(k));
+          if (loc?.is_agp) totInAgp += Number(n||0); else totVrij += Number(n||0);
+        }
+      }
+      return {vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar, totInAgp, totVrij};
     });
-  }, [sel, selProduct, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen, productArtikelen, artikelen, verpakkingen]);
+  }, [sel, selProduct, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen, productArtikelen, artikelen, verpakkingen, locaties, verplaatsingen]);
+
+  // Alle afvullingen van het geselecteerde product (over verpakkingstypes heen)
+  // + wat daarvan al voor open bestellingen gepickt is. Voer voor de
+  // uitslag-modal, die zelf de juiste afvullingen kiest.
+  const selAfvullingen = useMemo(() => selVoorraad.flatMap((v: any) => v.rows), [selVoorraad]);
+  const selGereserveerd = useMemo(() => {
+    const res: Record<number, number> = {};
+    for (const a of selAfvullingen) res[a.id] = gepicktVoorAfvulling(a);
+    return res;
+  }, [selAfvullingen, bestellingPicks, bestellingen]);
+  // Vrij uitslaanbare voorraad in de AGP over alle verpakkingen van dit product.
+  const agpTotaalProduct = useMemo(
+    () => selVoorraad.reduce((s: number, v: any) => s + (v.totInAgp || 0), 0),
+    [selVoorraad]
+  );
 
   const startEdit = (product?: any) => {
     if (product) {
@@ -496,6 +529,64 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       consument: margeVoorPrijs(kostprijsPerEenheid, Number(art.verkoopprijs || 0)),
       b2b: margeVoorPrijs(kostprijsPerEenheid, Number(art.b2b_prijs || 0)),
     };
+  };
+
+  // ── Uitslaan / verplaatsen ────────────────────────────────────────────────
+  // Uit de AGP naar een eigen locatie is fiscaal een uitslag: er ontstaat op
+  // dat moment accijnsschuld. De records worden gebouwd door `utils/agp.ts`,
+  // zodat het exact dezelfde boeking is als vanaf de AGP-pagina.
+  const boekVerplaatsingen = (invoerRegels: any[], ctxPer: any[]) => {
+    const nieuweVerpl: any[] = [], nieuweAcc: any[] = [], nieuweLog: any[] = [];
+    let totaalAccijns = 0;
+    invoerRegels.forEach((invoer: any, i: number) => {
+      // newId() is globaal monotoon oplopend, dus ook binnen deze lus (waar de
+      // vorige records nog niet in de state staan) blijven de ids uniek.
+      const r = bouwVerplaatsing(
+        invoer,
+        {...ctxPer[i], locaties, uit, verplaatsingen, afboekingen, accijnsInst},
+        {verplaatsing_id: newId(verplaatsingen||[]), accijns_id: newId(acc||[]), log_id: newId(log||[])},
+        {logTitel: t('agp_verplaats_titel')}
+      );
+      nieuweVerpl.push(r.verplaatsing);
+      if (r.accijnsRecord) nieuweAcc.push(r.accijnsRecord);
+      if (r.logRegel) nieuweLog.push(r.logRegel);
+      totaalAccijns += r.accijns;
+    });
+    if (nieuweVerpl.length) setVerplaatsingen((prev: any[]) => [...(prev||[]), ...nieuweVerpl]);
+    if (nieuweAcc.length) setAcc((prev: any[]) => [...(prev||[]), ...nieuweAcc]);
+    if (nieuweLog.length && setLog) setLog((prev: any[]) => [...(prev||[]), ...nieuweLog]);
+    return {nieuweVerpl, totaalAccijns};
+  };
+
+  const saveVerplaats = (invoer: any) => {
+    const afv = (av||[]).find((a: any) => a.id === invoer.afvulling_id);
+    const batch = (bat||[]).find((b: any) => b.id === invoer.batch_id);
+    const naar = (locaties||[]).find((l: any) => l.id === invoer.naar_locatie_id);
+    const van = (locaties||[]).find((l: any) => l.id === invoer.van_locatie_id);
+    const {nieuweVerpl, totaalAccijns} = boekVerplaatsingen([invoer], [{afv, batch}]);
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Verplaatsing', entiteit_id: nieuweVerpl[0]?.id, actie: 'aangemaakt',
+      omschrijving: `${Number(invoer.aantal||0)}× ${afv?.verpakking_naam||''} (${selProduct?.naam||batch?.naam||''}): ${van?.naam||''} → ${naar?.naam||''}${totaalAccijns?` (accijns ${fmt(totaalAccijns)})`:''}`,
+    });
+    setVerplaatsModal(null);
+  };
+
+  // Uitslaan op productniveau: de modal heeft de afvullingen al gekozen
+  // (oudste THT eerst); hier worden ze in één keer geboekt.
+  const saveUitslag = ({allocaties, naar_locatie_id, datum, opmerking}: any) => {
+    const agpId = getAgpLocatie(locaties).id;
+    const naar = (locaties||[]).find((l: any) => l.id === naar_locatie_id);
+    const invoerRegels = allocaties.map((alloc: any) => ({
+      afvulling_id: alloc.afv.id, batch_id: alloc.afv.batch_id, datum,
+      aantal: alloc.aantal, van_locatie_id: agpId, naar_locatie_id, opmerking,
+    }));
+    const {totaalAccijns} = boekVerplaatsingen(invoerRegels, allocaties.map((alloc: any) => ({afv: alloc.afv, batch: alloc.batch})));
+    const totaal = allocaties.reduce((s: number, a: any) => s + a.aantal, 0);
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Verplaatsing', entiteit_id: sel!, actie: 'aangemaakt',
+      omschrijving: `${t('uitslag_audit')}: ${totaal}× ${selProduct?.naam||''} → ${naar?.naam||''}${totaalAccijns?` (accijns ${fmt(totaalAccijns)})`:''}`,
+    });
+    setUitslagOpen(false);
   };
 
   // Afboeken
@@ -1221,13 +1312,22 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   onToggle={() => setVoorraadOpen(!voorraadOpen)}
                   rounded={voorraadOpen ? 'top' : 'full'}
                   title={t('lbl_product_voorraad')}
+                  info={agpTotaalProduct > 0 && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setUitslagOpen(true) }}
+                      className="text-xs px-2.5 py-1 rounded bg-white/20 hover:bg-white/30 text-white font-medium transition-colors whitespace-nowrap">
+                      {t('uitslag_knop')} ({agpTotaalProduct}× {t('uitslag_in_agp')})
+                    </button>
+                  )}
                 />
-                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar}) => (
+                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar, totInAgp, totVrij}) => (
                   <div key={vt}>
                     <div className="px-4 py-2 bg-gray-50 border-b border-t flex items-center justify-between text-sm">
                       <span className="font-medium text-gray-700">{vt}</span>
                       <div className="flex gap-3 text-xs text-gray-500">
                         <span className="text-gray-400">{t('voorraad_afgevuld')}: <strong>{totAfgevuld}×</strong></span>
+                        {totInAgp > 0 && <span className="text-purple-600">{t('uitslag_in_agp')}: <strong>{totInAgp}×</strong></span>}
+                        {totVrij > 0 && <span className="text-blue-600">{t('uitslag_vrij')}: <strong>{totVrij}×</strong></span>}
                         {totGepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>{totGepickt}×</strong></span>}
                         {totInBestelling > 0 && <span className="text-orange-500">{t('voorraad_in_bestelling')}: <strong>{totInBestelling}×</strong></span>}
                         {totUitgeleverd > 0 && <span className="text-blue-500">{t('voorraad_uitgeleverd')}: <strong>{totUitgeleverd}×</strong></span>}
@@ -1284,14 +1384,19 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                   {perLocEntries.map(e => {
                                     const loc = (locaties||[]).find((l: any) => l.id === e.locId);
                                     const isAgp = !!loc?.is_agp;
+                                    // Klikken opent dezelfde verplaats-/uitslagmodal als op de
+                                    // AGP-pagina, met deze afvulling en locatie al ingevuld.
                                     return (
-                                      <span
+                                      <button
                                         key={e.locId}
-                                        className={`px-1.5 py-0.5 rounded font-medium ${isAgp ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}
-                                        title={isAgp ? t('lbl_agp_voorraad') : t('lbl_niet_agp_voorraad')}
+                                        type="button"
+                                        onClick={ev => { ev.stopPropagation(); setVerplaatsModal({afv: a, vanLocatieId: e.locId}) }}
+                                        className={`px-1.5 py-0.5 rounded font-medium transition-colors ${isAgp ? 'bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100'}`}
+                                        title={isAgp ? t('uitslag_badge_titel_agp') : t('uitslag_badge_titel_vrij')}
                                       >
                                         {loc?.naam || t('lbl_onbekend')}: <strong>{e.n}×</strong>
-                                      </span>
+                                        <span className="ml-1 opacity-60">→</span>
+                                      </button>
                                     );
                                   })}
                                 </div>
@@ -1762,6 +1867,34 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       </div>
 
       {/* Afboeken modal — M-1 Bijzondere mutaties */}
+      {verplaatsModal && (
+        <VerplaatsModal
+          afv={verplaatsModal.afv}
+          batch={(bat||[]).find((b: any) => b.id === verplaatsModal.afv.batch_id)}
+          naam={selProduct?.naam || t('lbl_onbekend')}
+          vanLocatieId={verplaatsModal.vanLocatieId}
+          ctx={{locaties, uit, verplaatsingen, afboekingen, accijnsInst}}
+          onClose={() => setVerplaatsModal(null)}
+          onOpslaan={saveVerplaats}
+        />
+      )}
+
+      {uitslagOpen && (
+        <UitslagModal
+          productNaam={selProduct?.naam || t('lbl_onbekend')}
+          afvullingen={selAfvullingen}
+          batches={bat||[]}
+          locaties={locaties}
+          uit={uit}
+          verplaatsingen={verplaatsingen}
+          afboekingen={afboekingen}
+          accijnsInst={accijnsInst}
+          gereserveerd={selGereserveerd}
+          onClose={() => setUitslagOpen(false)}
+          onOpslaan={saveUitslag}
+        />
+      )}
+
       {afboekModal && (() => {
         const perEenheid = Number(afboekModal.voorcalc_accijns_per_eenheid) > 0
           ? Number(afboekModal.voorcalc_accijns_per_eenheid)

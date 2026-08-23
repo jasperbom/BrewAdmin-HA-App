@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.4] — 2026-08-23
+
+### Uitslaan vanaf de productpagina
+
+Bier dat je particulier verkoopt moet eerst de AGP uit. Dat kon alleen op de
+AGP-pagina, per afvulling, in een andere werkruimte — terwijl je op de
+productpagina al ziet hoeveel er nog onder schorsing ligt. Die stap zit nu bij
+de voorraad zelf.
+
+- **"Uitslaan voor verkoop" op het product.** Je kiest een verpakking, een
+  aantal en de bestemming; de app kiest zelf de afvullingen — oudste THT eerst.
+  Vóór het opslaan zie je de verdeling per afvulling én het accijnsbedrag dat
+  geboekt wordt.
+- **Locatiebadges zijn knoppen.** De paarse (AGP) en blauwe (vrije voorraad)
+  badges bij een afvulling openen direct de verplaats-/uitslagmodal met die
+  afvulling en locatie al ingevuld.
+- **In AGP / vrij per verpakking.** De voorraadregel toont nu apart hoeveel er
+  nog onder schorsing ligt en hoeveel er al uitgeslagen is.
+- De boeking is exact dezelfde als op de AGP-pagina: één verplaatsing, één
+  accijnsrecord en een regel in het voorraadverloop. Beide pagina's gebruiken
+  daarvoor nu dezelfde logica (`src/utils/agp.ts`, met tests).
+
+### Navigatie — menuknop keert terug naar het overzicht
+
+Op de menuknop drukken van de pagina waar je al was deed niets: de geopende
+batch, bestelling of product bleef staan. Nu keert die knop terug naar het
+overzicht van dat onderdeel. Hetzelfde geldt voor de werkruimteknop
+(Productie/Verkoop/Administratie): daarop tikken brengt je terug naar het
+dashboard van die werkruimte.
+
+---
+
 ## [1.12.3] — 2026-08-23
 
 ### Nieuw — bewaking van de tanktemperatuur
