@@ -5,6 +5,7 @@ import { TANK_STATUSSEN, telThtAlerts, resolveTankHistorie, tankRestVolume, effe
 import { TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import type { TankReinigingStatus, TankStatusMap } from '../types'
 import { telOpenstaandeBatchTaken } from '../utils/taken'
+import { bewakingLabel, type BatchOordeel } from '../utils/tankbewaking'
 import { volgendeBrouwdagStap } from '../utils/brouwdag'
 import { newId } from '../utils/api'
 import { logAudit } from '../utils/audit'
@@ -23,6 +24,8 @@ interface ProductieDashboardProps {
   av: any[]
   verliesRegistraties: any[]
   haTankTemps: Record<string, number>
+  // Oordeel van de temperatuurbewaking per tank-id (zie utils/tankbewaking.ts).
+  tankBewaking?: Record<string, BatchOordeel>
   tankStatussen: TankStatusMap
   setTankStatussen: (updater: any) => void
   tankLog: any[]
@@ -44,6 +47,18 @@ interface ProductieDashboardProps {
 type MetingForm = { sg: string, ph: string, temp: string }
 const LEGE_METING: MetingForm = { sg: '', ph: '', temp: '' }
 
+// Kleur per bewakingsstatus. Semantische statuskleuren (zie CLAUDE.md), niet
+// thema-afhankelijk. Statussen die hier ontbreken (`geen_data`, `geen_doel`)
+// krijgen bewust geen pill: daar valt niets zinnigs over te zeggen.
+const BEWAKING_PILL: Record<string, string> = {
+  ok: 'bg-green-100 text-green-700',
+  instellen: 'bg-blue-100 text-blue-700',
+  afwijking: 'bg-orange-100 text-orange-700',
+  waarschuwing: 'bg-orange-500 text-white',
+  alarm: 'bg-red-600 text-white',
+  sensor_stil: 'bg-gray-200 text-gray-600',
+}
+
 // Productie-werkruimte-dashboard (ERP-navigatie-herstructurering): een lean
 // dagelijkse takenlijst voor op de vloer — mobile-first, tap-targets ≥44px.
 // De tankkaarten tonen wél hun visuele tankweergave (TankVisual) en
@@ -51,7 +66,7 @@ const LEGE_METING: MetingForm = { sg: '', ph: '', temp: '' }
 // waardevolle, dagelijks gebruikte info, geen "rijke tankbediening". Climate-
 // control en cold-crash-bediening blijven wél op Batches/Batchflow.
 function ProductieDashboard({
-  bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {},
+  bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {}, tankBewaking = {},
   tankStatussen = {}, setTankStatussen = () => {}, tankLog = [], setTankLog = () => {},
   batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
@@ -199,6 +214,10 @@ function ProductieDashboard({
                 return batch.datum ? Math.floor((Date.now() - new Date(batch.datum).getTime()) / 86400000) : null
               })()
               const isFormOpen = inlineMetingBatchId === batch.id
+              // Alleen tonen wanneer er iets te zeggen valt: zonder sensor,
+              // zonder metingen of zonder doeltemperatuur blijft de kaart kaal.
+              const oordeel = tankBewaking[tank.id]
+              const bewaking = oordeel && BEWAKING_PILL[oordeel.status] ? oordeel : null
 
               return (
                 <div key={tank.id} className="bg-white rounded-xl shadow-sm border t-border p-4 flex-shrink-0" style={{ width: 288 }}>
@@ -215,8 +234,18 @@ function ProductieDashboard({
                         {daysInTank != null && <span className="text-xs text-gray-500">{t('dashboard_days_in_tank').replace('{n}', String(daysInTank))}</span>}
                         {batch.liter_vergist && <span className="text-xs text-gray-400">{inTank.toFixed(1)}L / {batch.liter_vergist}L</span>}
                       </div>
-                      {haTankTemps[tank.id] != null && (
-                        <div className="text-sm font-bold text-blue-700 mt-1">{Number(haTankTemps[tank.id]).toFixed(1)}°C</div>
+                      {(haTankTemps[tank.id] != null || bewaking) && (
+                        <div className="flex items-center gap-2 mt-1">
+                          {haTankTemps[tank.id] != null && (
+                            <span className="text-sm font-bold text-blue-700">{Number(haTankTemps[tank.id]).toFixed(1)}°C</span>
+                          )}
+                          {bewaking && (
+                            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${BEWAKING_PILL[bewaking.status]}`}
+                              title={bewaking.doel != null ? t('tank_bew_doel').replace('{doel}', bewaking.doel.toFixed(1)) : ''}>
+                              {bewakingLabel(bewaking.status)}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

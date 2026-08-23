@@ -17,6 +17,7 @@ import http.client
 import http.server
 import io
 import json
+import re
 import socket
 import ssl
 import threading
@@ -1754,3 +1755,266 @@ class TestWooCommerceProxy:
         assert status == 401
         assert json.loads(data)['message'].startswith('Sorry')
         assert len(pogingen) == 1
+
+
+class TestTankBewaking:
+    """Temperatuurbewaking van de gisttanks: het oordeel zelf (spiegel van
+    src/utils/tankbewaking.ts) en de alarmadministratie van de server-tick.
+
+    De scherpe randen zitten in wat er níét mag gebeuren: een koeling die het
+    setpoint net niet haalt, een stapwissel en een uitschieter van twintig
+    minuten mogen geen melding geven — een pomp die uitvalt wél."""
+
+    NU = 1_800_000_000.0  # vaste 'nu' zodat de tests niet van de klok afhangen
+    CFG = srv._bewaking_cfg({})
+
+    @classmethod
+    def _reeks(cls, temps, stap_min=10, eind=None):
+        """Meetpunten terug in de tijd; temps[0] is het oudste punt."""
+        eind = cls.NU if eind is None else eind
+        stap = stap_min * 60
+        start = eind - (len(temps) - 1) * stap
+        return [(start + i * stap, t) for i, t in enumerate(temps)]
+
+    @classmethod
+    def _vlak(cls, temp, uren, eind=None):
+        return cls._reeks([temp] * (uren * 6 + 1), 10, cls.NU if eind is None else eind)
+
+    def _oordeel(self, doel, doel_sinds, punten, ramp=None, cfg=None):
+        return srv._beoordeel_tank(doel, doel_sinds, ramp, punten, self.NU, cfg or self.CFG)
+
+    # ── Het oordeel ─────────────────────────────────────────────────────────
+
+    def test_offset_binnen_de_band_is_ok(self):
+        # De koeling haalt het setpoint nooit exact: 18,7 op een doel van 18.
+        r = self._oordeel(18, self.NU - 3 * 86400, self._vlak(18.7, 12))
+        assert r['status'] == 'ok'
+
+    def test_korte_uitschieter_meldt_niet(self):
+        punten = self._vlak(18, 6, self.NU - 20 * 60) + self._reeks([20, 21, 22])
+        r = self._oordeel(18, self.NU - 5 * 86400, punten)
+        assert r['status'] == 'afwijking'
+
+    def test_stapwissel_krijgt_instelruimte(self):
+        # Vier uur geleden doorgeschakeld van 18 naar 22; de tank klimt netjes.
+        klim = [18 + i * (1.5 / 24) for i in range(25)]
+        r = self._oordeel(22, self.NU - 4 * 3600, self._reeks(klim), ramp=12)
+        assert r['status'] == 'instellen'
+
+    def test_wegloper_slaat_alarm(self):
+        # Pomp uitgevallen: zes uur lang een halve graad per uur omhoog.
+        klim = [18 + i * (0.5 / 6) for i in range(37)]
+        r = self._oordeel(18, self.NU - 5 * 86400, self._reeks(klim))
+        assert r['status'] == 'alarm' and r['reden'] == 'wegloop'
+        assert r['trend'] > 0.4
+
+    def test_inhalende_koeling_is_geen_wegloper(self):
+        daal = [23 - i * (0.5 / 6) for i in range(37)]
+        r = self._oordeel(18, self.NU - 5 * 86400, self._reeks(daal))
+        assert r['reden'] != 'wegloop' and r['trend'] < 0
+
+    def test_uitgedoofde_beweging_is_geen_wegloper(self):
+        # Twee uur geleden opgelopen naar 20 en sindsdien stil: wel een
+        # afwijking om iets aan te doen, geen wegloper.
+        punten = self._vlak(18, 6, self.NU - 2 * 3600) + self._vlak(20, 2)
+        r = self._oordeel(18, self.NU - 5 * 86400, punten)
+        assert r['status'] == 'waarschuwing' and r['reden'] == 'band'
+
+    def test_grote_aanhoudende_afwijking_is_alarm(self):
+        punten = self._vlak(18, 6, self.NU - 2 * 3600) + self._vlak(22, 2)
+        r = self._oordeel(18, self.NU - 5 * 86400, punten)
+        assert r['status'] == 'alarm' and r['reden'] == 'band'
+
+    def test_stille_sensor_meldt(self):
+        r = self._oordeel(18, self.NU - 5 * 86400, self._vlak(18, 6, self.NU - 2 * 3600))
+        assert r['status'] == 'sensor_stil'
+
+    def test_zonder_metingen_of_doel(self):
+        assert self._oordeel(18, None, [])['status'] == 'geen_data'
+        assert self._oordeel(None, None, self._vlak(18, 2))['status'] == 'geen_doel'
+
+    def test_python_en_typescript_gebruiken_dezelfde_defaults(self):
+        # De defaults staan op twee plaatsen; lopen ze uiteen, dan oordelen de
+        # app en de server verschillend over dezelfde tank.
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'tankbewaking.ts').read_text(encoding='utf-8')
+        blok = bron.split('BEWAKING_DEFAULTS')[1].split('}')[0]
+        ts_waarden = dict(re.findall(r'(\w+):\s*([\d.]+)', blok))
+        assert ts_waarden, 'BEWAKING_DEFAULTS niet gevonden in tankbewaking.ts'
+        for sleutel, waarde in srv._BEWAKING_DEFAULTS.items():
+            assert float(ts_waarden[sleutel]) == waarde, f'{sleutel} loopt uiteen'
+
+    def test_instellingen_vallen_terug_op_defaults(self):
+        cfg = srv._bewaking_cfg({'bewaking': {'tolerantie': 0, 'duur_min': '90',
+                                              'trend_uren': 'nvt', 'alarm_marge': 0}})
+        assert cfg['tolerantie'] == 1.5   # 0 zou een alarmstorm geven
+        assert cfg['duur_min'] == 90.0
+        assert cfg['trend_uren'] == 3.0
+        assert cfg['alarm_marge'] == 0.0  # wél een geldige keuze
+
+    def test_doel_uit_stap_en_cold_crash(self):
+        profiel = [{'temp': 18, 'tijd': 5}, {'temp': 22, 'tijd': 2}]
+        doel, sinds, ramp = srv._tank_doel(
+            {'vergistingsprofiel': profiel, 'vergisting_stap_idx': 1,
+             'vergisting_stap_start': '2026-03-10T06:00:00Z'})
+        assert doel == 22 and sinds == srv._iso_naar_epoch('2026-03-10T06:00:00Z')
+        # Een lopende cold-crash wint, met de daaltijd als ramp (22 → 2 @ 1 °C/u).
+        doel, _sinds, ramp = srv._tank_doel(
+            {'vergistingsprofiel': profiel, 'cold_crash_datum': '2026-03-10T00:00:00Z',
+             'cold_crash_target': 2, 'cold_crash_ramp': 1})
+        assert doel == 2 and ramp == 20
+        assert srv._tank_doel({})[0] is None
+
+    # ── De tick en de alarmadministratie ────────────────────────────────────
+
+    @staticmethod
+    def _clean():
+        conn = srv._db()
+        with conn:
+            for key in ('batches', 'gist_metingen', 'tank_alarmen'):
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+            for key in ('ha_instellingen', 'notificatie_instellingen'):
+                conn.execute('DELETE FROM kv WHERE key=?', (key,))
+
+    @staticmethod
+    def _metingen(batch_id, temps, stap_min=10):
+        """Metingen zoals _auto_metingen_tick ze wegschrijft: lokale datum+tijd,
+        het laatste punt vlak vóór nu."""
+        nu = datetime.datetime.now()
+        rijen = []
+        for i, temp in enumerate(reversed(temps)):
+            moment = nu - datetime.timedelta(minutes=i * stap_min + 1)
+            rijen.append({'id': i + 1, 'batch_id': batch_id, 'temp': temp, 'auto': True,
+                          'datum': moment.strftime('%Y-%m-%d'),
+                          'tijd': moment.strftime('%H:%M')})
+        return list(reversed(rijen))
+
+    def _seed(self, temps, doel=18, bewaking=True):
+        srv._write_json('ha_instellingen', {
+            'enabled': True, 'sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.t1'}],
+            'bewaking': {'enabled': bewaking}})
+        srv._write_json('notificatie_instellingen',
+                        {'enabled': True, 'notify_service': 'mobile_app_test'})
+        srv._write_json('batches', [{
+            'id': 1, 'naam': 'Tripel', 'tank': 'T1', 'status': 'Vergisten',
+            'vergistingsprofiel': [{'temp': doel, 'tijd': 6}],
+            'vergisting_stap_start': (datetime.datetime.now(datetime.timezone.utc)
+                                      - datetime.timedelta(days=3)).isoformat()}])
+        srv._write_json('gist_metingen', self._metingen(1, temps))
+
+    def test_opent_alarm_en_meldt_eenmalig(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(m) or True))
+        # Zes uur 24 °C op een doel van 18: ver ernaast en aanhoudend.
+        self._seed([24.0] * 37)
+        try:
+            srv._tank_bewaking_tick()
+            alarmen = srv._read_json('tank_alarmen', [])
+            assert len(alarmen) == 1
+            assert alarmen[0]['soort'] == 'alarm' and alarmen[0]['batch_id'] == 1
+            assert alarmen[0]['hersteld_op'] is None
+            assert len(calls) == 1 and 'Tripel' in calls[0]
+            # Tweede ronde: dezelfde storing meldt niet opnieuw.
+            srv._tank_bewaking_tick()
+            assert len(srv._read_json('tank_alarmen', [])) == 1
+            assert len(calls) == 1
+        finally:
+            self._clean()
+
+    def test_sluit_alarm_bij_herstel(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(m) or True))
+        self._seed([24.0] * 37)
+        try:
+            srv._tank_bewaking_tick()
+            # Tank is terug op temperatuur.
+            srv._write_json('gist_metingen', self._metingen(1, [18.2] * 37))
+            srv._tank_bewaking_tick()
+            alarmen = srv._read_json('tank_alarmen', [])
+            assert len(alarmen) == 1 and alarmen[0]['hersteld_op']
+            assert 'terug op niveau' in calls[-1]
+            # En daarna blijft het stil.
+            srv._tank_bewaking_tick()
+            assert len(calls) == 2
+        finally:
+            self._clean()
+
+    def test_zwijgt_bij_een_gezonde_tank(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(m) or True))
+        self._seed([18.6] * 37)
+        try:
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_alarmen', []) == []
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_uitgeschakelde_bewaking_doet_niets(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(m) or True))
+        self._seed([24.0] * 37, bewaking=False)
+        try:
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_alarmen', []) == []
+            assert calls == []
+        finally:
+            self._clean()
+
+    def test_alarm_wordt_geschreven_zonder_notify_service(self, app, monkeypatch):
+        # De banner in de app moet ook werken als er geen push is ingesteld.
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        self._seed([24.0] * 37)
+        srv._write_json('notificatie_instellingen', {'enabled': False, 'notify_service': ''})
+        try:
+            srv._tank_bewaking_tick()
+            assert len(srv._read_json('tank_alarmen', [])) == 1
+        finally:
+            self._clean()
+
+    def test_escalatie_meldt_opnieuw(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(m) or True))
+        # Eerst 20 °C op een doel van 18: buiten de band, maar niet groot.
+        self._seed([20.0] * 37)
+        try:
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_alarmen', [])[0]['soort'] == 'waarschuwing'
+            # Het loopt verder op naar 24: dezelfde regel, zwaardere soort.
+            srv._write_json('gist_metingen', self._metingen(1, [24.0] * 37))
+            srv._tank_bewaking_tick()
+            alarmen = srv._read_json('tank_alarmen', [])
+            assert len(alarmen) == 1 and alarmen[0]['soort'] == 'alarm'
+            assert len(calls) == 2
+        finally:
+            self._clean()
+
+    def test_sluit_alarm_van_een_batch_die_de_tank_uit_is(self, app, monkeypatch):
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        self._seed([24.0] * 37)
+        try:
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_alarmen', [])[0]['hersteld_op'] is None
+            # Batch is afgevuld: er valt niets meer te bewaken, dus de storing
+            # mag niet eeuwig in de banner blijven staan.
+            batches = srv._read_json('batches', [])
+            batches[0]['status'] = 'Afgevuld'
+            srv._write_json('batches', batches)
+            srv._tank_bewaking_tick()
+            regel = srv._read_json('tank_alarmen', [])[0]
+            assert regel['hersteld_op'] and regel['afgesloten_zonder_meting']
+        finally:
+            self._clean()
+
+    def test_lopende_storing_schrijft_niet_elke_ronde(self, app, monkeypatch):
+        # Elke ronde wegschrijven zou elke vijf minuten een versiebump geven.
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        self._seed([24.0] * 37)
+        try:
+            srv._tank_bewaking_tick()
+            versie = srv._data_version("tank_alarmen")
+            srv._tank_bewaking_tick()
+            assert srv._data_version("tank_alarmen") == versie
+        finally:
+            self._clean()

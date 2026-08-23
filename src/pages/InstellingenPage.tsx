@@ -17,6 +17,21 @@ import { fmt, fmtD, tod } from '../utils/format'
 import { standaardBtwPct } from '../utils/btw'
 import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
 import { taakReinigingStatus } from '../utils/ontsmetting'
+import { BEWAKING_DEFAULTS } from '../utils/tankbewaking'
+
+// Instelbare drempels van de temperatuurbewaking. De volgorde is die van het
+// oordeel zelf: eerst wat "normaal" is, dan wanneer het meldenswaardig wordt,
+// dan de storingsdetectie. Betekenis en defaults staan in utils/tankbewaking.ts.
+const BEWAKING_VELDEN: Array<{sleutel: keyof typeof BEWAKING_DEFAULTS, label: string, hint: string, eenheid: string, stap: number}> = [
+  {sleutel: 'tolerantie',      label: 'settings_bew_tolerantie',   hint: 'settings_bew_tolerantie_hint',   eenheid: 'eenheid_graad',  stap: 0.1},
+  {sleutel: 'duur_min',        label: 'settings_bew_duur',         hint: 'settings_bew_duur_hint',         eenheid: 'eenheid_minuut', stap: 5},
+  {sleutel: 'alarm_marge',     label: 'settings_bew_marge',        hint: 'settings_bew_marge_hint',        eenheid: 'eenheid_graad',  stap: 0.5},
+  {sleutel: 'instel_uren',     label: 'settings_bew_instel',       hint: 'settings_bew_instel_hint',       eenheid: 'eenheid_uur',    stap: 1},
+  {sleutel: 'trend_c_per_uur', label: 'settings_bew_trend',        hint: 'settings_bew_trend_hint',        eenheid: 'eenheid_graad_uur', stap: 0.1},
+  {sleutel: 'trend_uren',      label: 'settings_bew_trend_uren',   hint: 'settings_bew_trend_uren_hint',   eenheid: 'eenheid_uur',    stap: 1},
+  {sleutel: 'wegloop_min',     label: 'settings_bew_wegloop',      hint: 'settings_bew_wegloop_hint',      eenheid: 'eenheid_minuut', stap: 5},
+  {sleutel: 'sensor_stil_min', label: 'settings_bew_sensor_stil',  hint: 'settings_bew_sensor_stil_hint',  eenheid: 'eenheid_minuut', stap: 5},
+]
 
 // Bewerkbare rij in de "Tarieven per jaar"-tabel. Houdt een eigen draft-state
 // bij zodat de gebruiker waardes kan wijzigen, de impact kan bekijken, en pas
@@ -782,6 +797,17 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     const nextId = sensors.length ? Math.max(...sensors.map((s: any) => s.id)) + 1 : 1
     setHaInst((p: any) => ({...p, sensors: [...sensors, {id: nextId, tank: '', entity: ''}]}))
     logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:nextId, actie:'aangemaakt', omschrijving:'HA sensor toegevoegd'})
+  }
+
+  // Eén drempel van de temperatuurbewaking bijwerken. Een leeggemaakt veld
+  // verdwijnt uit de opslag, zodat de default weer geldt.
+  const setBewaking = (sleutel: string, waarde: any) => {
+    setHaInst((p: any) => {
+      const bew = {...(p?.bewaking || {})}
+      if (waarde === undefined || (typeof waarde === 'number' && !Number.isFinite(waarde))) delete bew[sleutel]
+      else bew[sleutel] = waarde
+      return {...p, bewaking: bew}
+    })
   }
 
   const removeSensor = (id: number) => {
@@ -2357,6 +2383,45 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p>{t('settings_ha_proxy_hint')} <code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code></p>
           {tanks && tanks.length > 0 && <p>{t('settings_ha_configured_tanks')}: <strong className="text-gray-500">{tanks.map((tk: any) => tk.id).join(', ')}</strong></p>}
         </div>
+      </div>
+
+      {/* ── Temperatuurbewaking ── */}
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_bew_title')}</h2>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_bew_desc')}</p>
+
+        <label className="flex items-center gap-3 cursor-pointer w-fit mb-5">
+          <div className="relative">
+            <input type="checkbox" checked={haInst?.bewaking?.enabled||false}
+              onChange={e => {setBewaking('enabled', e.target.checked);logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Temperatuurbewaking ${e.target.checked ? 'ingeschakeld' : 'uitgeschakeld'}`})}} className="sr-only peer" />
+            <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+          </div>
+          <span className="text-sm font-medium text-gray-700">{t('lbl_ingeschakeld')}</span>
+        </label>
+
+        {!haInst?.enabled && (
+          <p className="text-sm text-orange-600 mb-4">{t('settings_bew_sensoren_uit')}</p>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {BEWAKING_VELDEN.map(veld => (
+            <div key={veld.sleutel}>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                {t(veld.label)}
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="number" step={veld.stap} min={0}
+                  value={haInst?.bewaking?.[veld.sleutel] ?? BEWAKING_DEFAULTS[veld.sleutel]}
+                  onChange={e => setBewaking(veld.sleutel, e.target.value === '' ? undefined : Number(e.target.value))}
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input" />
+                <span className="text-xs text-gray-400">{t(veld.eenheid)}</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">{t(veld.hint)}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_bew_hint')}</p>
       </div>
 
       {/* ── CO₂-cilinder weegsensor ── */}
