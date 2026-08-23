@@ -1285,7 +1285,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     const voorcalc = berekenVoorcalcVoorAfvulling(
       { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: n, aantal: n },
       selB,
-      accijnsInst
+      accijnsInst,
+      avF.datum || tod()
     )
     setAv((prev: any[]) => [...(prev||[]), {
       id: avId,
@@ -3307,7 +3308,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                             const vc = berekenVoorcalcVoorAfvulling(
                               { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: Number(avF.hoeveelheid), aantal: Number(avF.hoeveelheid) },
                               selB,
-                              accijnsInst
+                              accijnsInst,
+                              avF.datum || tod()
                             )
                             return (
                               <div className="text-amber-700">

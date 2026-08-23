@@ -784,7 +784,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       : berekenVoorcalcVoorAfvulling(
           { inhoud_per_eenheid: Number(afboekModal.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
           (bat||[]).find((b: any) => b.id === afboekModal.batch_id),
-          accijnsInst
+          accijnsInst,
+          afboekModal.datum
         ).perEenheid;
     const totaalVoorcalc = perEenheid * aantal;
     // Douane v2.4 §7.2.3: vernietiging start in status 'Aangevraagd'.
@@ -1901,7 +1902,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           : berekenVoorcalcVoorAfvulling(
               { inhoud_per_eenheid: Number(afboekModal.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
               (bat||[]).find((b: any) => b.id === afboekModal.batch_id),
-              accijnsInst
+              accijnsInst,
+              afboekModal.datum
             ).perEenheid;
         return (
         <Modal title={t('title_bijzondere_mutatie_modal').replace('{verpakking}', afboekModal.verpakking_naam || afboekModal.verpakking_type || '')} onClose={() => setAfboekModal(null)}>

@@ -47,14 +47,22 @@ describe('bouwAfboekingAccijnsRecord', () => {
     })
   })
 
-  it('gebruikt het jaartarief van de brouwdatum, niet van de afboekdatum', () => {
+  // Een vermissing is een onttrekking aan de schorsingsregeling: het
+  // belastbare feit valt op de afboekdatum, dus telt dát jaartarief.
+  it('gebruikt het jaartarief van de afboekdatum, niet van de brouwdatum', () => {
     const inst: any = {
       tarief_per_hl_abv: 100, tarief_per_hl: 0,
-      tarieven_historie: [{jaar: 2026, tarief_per_hl_abv: 10, tarief_per_hl: 0}],
+      tarieven_historie: [
+        {jaar: 2026, tarief_per_hl_abv: 10, tarief_per_hl: 0},
+        {jaar: 2027, tarief_per_hl_abv: 20, tarief_per_hl: 0},
+      ],
     }
-    // Batch is gebrouwen in 2026 → r1 = 10 (uit de historie), niet 100.
-    const rec = bouwAfboekingAccijnsRecord(vermis, afvulling, batch, inst, 1)!
-    expect(rec.accijns).toBeCloseTo(0.0396 * 8 * 10, 4)
+    // Batch gebrouwen in 2026, afgeboekt in 2027 → r1 = 20.
+    const rec = bouwAfboekingAccijnsRecord({...vermis, datum: '2027-01-15'}, afvulling, batch, inst, 1)!
+    expect(rec.accijns).toBeCloseTo(0.0396 * 8 * 20, 4)
+    // Dezelfde batch in 2026 afgeboekt → r1 = 10.
+    const rec2026 = bouwAfboekingAccijnsRecord(vermis, afvulling, batch, inst, 1)!
+    expect(rec2026.accijns).toBeCloseTo(0.0396 * 8 * 10, 4)
   })
 
   it('geeft null voor niet-accijnsplichtige redenen', () => {

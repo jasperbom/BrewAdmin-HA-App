@@ -73,18 +73,24 @@ export const inhoudPerEenheid = (afv?: Afvulling | null): number =>
   Number(afv?.inhoud_per_eenheid || afv?.inhoud_liter || 0)
 
 /** Accijns die ontstaat wanneer `aantal` eenheden van deze afvulling de AGP
- * verlaten. Gebruikt het tarief dat gold op de brouwdatum van de batch. */
+ * verlaten.
+ *
+ * Het tarief hoort bij de **uitslagdatum**, niet bij de brouwdatum: de accijns
+ * wordt pas verschuldigd op het moment dat het bier de schorsingsregeling
+ * verlaat. Bier dat in december is gebrouwen en in februari wordt uitgeslagen
+ * valt dus onder het nieuwe tarief. */
 export const uitslagAccijns = (
   afv: Afvulling | null | undefined,
   batch: Batch | null | undefined,
   aantal: number,
-  accijnsInst?: AccijnsInst | null
+  accijnsInst?: AccijnsInst | null,
+  uitslagDatum?: string
 ): number => {
   const liter = Number(aantal || 0) * inhoudPerEenheid(afv)
   if (liter <= 0) return 0
   const abv = Number((batch as any)?.ABV || 0)
   const plato = Number((batch as any)?.platogehalte || 0)
-  const tar = tariefVoorDatum(accijnsInst, (batch as any)?.datum)
+  const tar = tariefVoorDatum(accijnsInst, uitslagDatum)
   const eff: AccijnsInst = { ...(accijnsInst || {}), tarief_per_hl_plato: tar.r3 }
   return accijnsCalc(liter, abv, tar.r1, tar.r2, eff, plato)
 }
@@ -140,7 +146,7 @@ export const bouwVerplaatsing = (
   const afv = ctx.afv
   const batch = ctx.batch
   const isUitslag = !!van?.is_agp && !naar?.is_agp
-  const accijns = isUitslag ? uitslagAccijns(afv, batch, aantal, ctx.accijnsInst) : 0
+  const accijns = isUitslag ? uitslagAccijns(afv, batch, aantal, ctx.accijnsInst, invoer.datum) : 0
   const liter = aantal * inhoudPerEenheid(afv)
   const route = `${van?.naam || ''} → ${naar?.naam || ''}`
   const omschrijving = `${opts.logTitel}: ${route}${accijns ? ` (accijns ${fmt(accijns)})` : ''}`
@@ -254,11 +260,13 @@ export const uitslagKandidaten = (
     })
 }
 
-/** Verdeelt een gevraagd aantal over de kandidaten (oudste THT eerst). */
+/** Verdeelt een gevraagd aantal over de kandidaten (oudste THT eerst).
+ * `uitslagDatum` bepaalt het accijnstarief — zie `uitslagAccijns`. */
 export const verdeelUitslag = (
   kandidaten: UitslagKandidaat[],
   gevraagd: number,
-  accijnsInst?: AccijnsInst | null
+  accijnsInst?: AccijnsInst | null,
+  uitslagDatum?: string
 ): UitslagVerdeling => {
   const totaalBeschikbaar = (kandidaten || []).reduce((s, k) => s + Math.max(0, k.beschikbaar), 0)
   let rest = Math.max(0, Math.floor(Number(gevraagd || 0)))
@@ -267,7 +275,7 @@ export const verdeelUitslag = (
     if (rest <= 0) break
     const n = Math.min(rest, Math.max(0, k.beschikbaar))
     if (n <= 0) continue
-    allocaties.push({ afv: k.afv, batch: k.batch, aantal: n, accijns: uitslagAccijns(k.afv, k.batch, n, accijnsInst) })
+    allocaties.push({ afv: k.afv, batch: k.batch, aantal: n, accijns: uitslagAccijns(k.afv, k.batch, n, accijnsInst, uitslagDatum) })
     rest -= n
   }
   return {

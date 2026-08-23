@@ -1709,7 +1709,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const voorcalc = berekenVoorcalcVoorAfvulling(
       { inhoud_per_eenheid: Number(velden.inhoud_per_eenheid), hoeveelheid: n, aantal: n },
       selB,
-      accijnsInst
+      accijnsInst,
+      velden.datum || tod()
     )
     setAv((prev: any[]) => [...(prev || []), {
       id: avId,
@@ -2999,7 +3000,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const voorcalcPreview = avF.inhoud_per_eenheid && Number(avF.hoeveelheid) > 0
       ? berekenVoorcalcVoorAfvulling(
           { inhoud_per_eenheid: Number(avF.inhoud_per_eenheid), hoeveelheid: Number(avF.hoeveelheid), aantal: Number(avF.hoeveelheid) },
-          selB, accijnsInst)
+          selB, accijnsInst, avF.datum || tod())
       : null
     // Legacy-batches (afgevuld vóór dit systeem) mogen zonder sessie door.
     const legacy = isLegacyBatch(selB.id, av || [])

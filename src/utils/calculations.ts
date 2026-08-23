@@ -1,6 +1,6 @@
 import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog, TankReinigingStatus } from '../types'
 import { convertEenheid, ZuurMiddel } from './constants'
-import { ymd } from './format'
+import { ymd, tod } from './format'
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────
 // Aanzuren werkt heel anders voor maisch/wort dan voor brouwwater:
@@ -333,16 +333,22 @@ export const berekenAccijnsImpact = (
 export const berekenVoorcalcVoorAfvulling = (
   afvulling: Pick<Afvulling, 'inhoud_per_eenheid' | 'hoeveelheid' | 'aantal'>,
   batch: Pick<Batch, 'ABV' | 'platogehalte'> | null | undefined,
-  accijnsInst: AccijnsInst | null = null
+  accijnsInst: AccijnsInst | null = null,
+  afvulDatum?: string
 ): { perEenheid: number; totaal: number; snapshot: { r1: number; r2: number; r3?: number; abv: number; plato: number } } => {
-  const r1 = accijnsInst?.tarief_per_hl_abv ?? 7.51
-  const r2 = accijnsInst?.tarief_per_hl ?? 24.17
-  const r3 = accijnsInst?.tarief_per_hl_plato
+  // Voorcalculatie = de beste schatting op het moment van afvullen, dus het
+  // tarief van de afvuldatum. Zonder datum valt het terug op het actuele
+  // hoofdtarief (gedrag van vóór de tariefhistorie).
+  const tar = tariefVoorDatum(accijnsInst, afvulDatum)
+  const r1 = tar.r1
+  const r2 = tar.r2
+  const r3 = tar.r3
   const inhoud = Number(afvulling.inhoud_per_eenheid || 0)
   const aantal = Number(afvulling.hoeveelheid || afvulling.aantal || 0)
   const abv = Number(batch?.ABV || 0)
   const plato = Number(batch?.platogehalte || 0)
-  const perEenheid = inhoud > 0 ? accijnsCalc(inhoud, abv, r1, r2, accijnsInst, plato) : 0
+  const eff: AccijnsInst = { ...(accijnsInst || {}), tarief_per_hl_plato: r3 }
+  const perEenheid = inhoud > 0 ? accijnsCalc(inhoud, abv, r1, r2, eff, plato) : 0
   const totaal = perEenheid * aantal
   return {
     perEenheid,
@@ -1252,11 +1258,15 @@ export const tankAccijnsWaarde = (
   batch: any,
   afvullingen: Afvulling[],
   inst: AccijnsInst | null = null,
-  verliezen: VerliesRegistratie[] = []
+  verliezen: VerliesRegistratie[] = [],
+  peildatum?: string
 ): { liter: number; abv: number; geschat: boolean; accijns: number } => {
   const liter = tankRestVolume(batch, afvullingen, verliezen)
   const { abv, geschat } = schatABV(batch)
-  const {r1, r2, r3} = tariefVoorDatum(inst, batch?.datum)
+  // Waardering van een toekomstige schuld: het tarief dat gold/geldt op de
+  // peildatum (default vandaag), niet dat van de brouwdatum. De accijns wordt
+  // pas verschuldigd bij uitslag.
+  const {r1, r2, r3} = tariefVoorDatum(inst, peildatum || tod())
   const plato = Number(batch?.platogehalte || 0)
   const eff = {...(inst || {}), tarief_per_hl_plato: r3}
   const accijns = liter > 0 ? accijnsCalc(liter, abv, r1, r2, eff, plato) : 0
@@ -1466,13 +1476,14 @@ export const agpOverzicht = (
   verliezen: VerliesRegistratie[] = []
 ): AgpOverzicht => {
   const agp = getAgpLocatie(locaties)
-  const r1 = inst?.tarief_per_hl_abv ?? 7.51
-  const r2 = inst?.tarief_per_hl ?? 24.17
+  // Waardering van de accijnsschuld die ontstaat als álles vandaag uitgeslagen
+  // zou worden — dus het tarief van vandaag, niet dat van de brouwdatum.
+  const vandaag = tod()
 
   // Tanks: batches in TANK_STATUSSEN
   const tankRijen: AgpTankRij[] = (batches || [])
     .filter(b => TANK_STATUSSEN.includes(String(b?.status)))
-    .map(b => ({ batch: b, ...tankAccijnsWaarde(b, afvullingen, inst, verliezen) }))
+    .map(b => ({ batch: b, ...tankAccijnsWaarde(b, afvullingen, inst, verliezen, vandaag) }))
     .filter(r => r.liter > 0)
 
   // Afvullingen met enige voorraad (in of buiten AGP)
@@ -1488,7 +1499,7 @@ export const agpOverzicht = (
     const abv = Number(batch?.ABV || 0)
     const liter_in_agp = in_agp * afvInhoud(av)
     const plato = Number(batch?.platogehalte || 0)
-    const _t = tariefVoorDatum(inst, batch?.datum)
+    const _t = tariefVoorDatum(inst, vandaag)
     const _eff = {...(inst || {}), tarief_per_hl_plato: _t.r3}
     const accijns_in_agp = liter_in_agp > 0 ? accijnsCalc(liter_in_agp, abv, _t.r1, _t.r2, _eff, plato) : 0
     return { afv: av, batch, voorraad, in_agp, buiten_agp, liter_in_agp, accijns_in_agp, abv }
@@ -1541,7 +1552,8 @@ export const agpValueAt = (
     if (rest <= 0) continue
     const { abv } = schatABV(b)
     const plato = Number(b?.platogehalte || 0)
-    const _t = tariefVoorDatum(inst, b?.datum)
+    // Historische waardering: het tarief zoals dat op peildatum D gold.
+    const _t = tariefVoorDatum(inst, D)
     const _eff = {...(inst || {}), tarief_per_hl_plato: _t.r3}
     tankAcc += accijnsCalc(rest, abv, _t.r1, _t.r2, _eff, plato)
   }
@@ -1571,7 +1583,7 @@ export const agpValueAt = (
     const batch = (batches || []).find(b => b.id === av.batch_id)
     const abv = Number(batch?.ABV || 0)
     const plato = Number(batch?.platogehalte || 0)
-    const _t = tariefVoorDatum(inst, batch?.datum)
+    const _t = tariefVoorDatum(inst, D)
     const _eff = {...(inst || {}), tarief_per_hl_plato: _t.r3}
     verpaktAcc += accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato)
   }

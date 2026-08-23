@@ -60,7 +60,7 @@ const VerplaatsModal: React.FC<VerplaatsModalProps> = ({ afv, batch, naam, vanLo
 
   const aantal = Number(form.aantal || 0)
   const liter = aantal * inhoudPerEenheid(afv)
-  const bedrag = van?.is_agp && naar && !naar.is_agp ? uitslagAccijns(afv, batch, aantal, ctx.accijnsInst) : 0
+  const bedrag = van?.is_agp && naar && !naar.is_agp ? uitslagAccijns(afv, batch, aantal, ctx.accijnsInst, form.datum) : 0
 
   return (
     <Modal title={t('agp_verplaats_titel')} onClose={onClose}>

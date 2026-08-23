@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.5] — 2026-08-23
+
+### Accijnstarief volgt de uitslagdatum
+
+De accijns wordt verschuldigd op het moment dat het bier de AGP verlaat, dus
+geldt het tarief van dát moment. De app rekende overal met het tarief van de
+**brouwdatum**. Bier dat je in december brouwt en in februari uitslaat viel
+daardoor onder het oude tarief.
+
+Aangepast op alle plekken waar een belastbaar feit wordt geboekt — het tarief
+komt nu van de datum van het feit zelf:
+
+- uitslag bij het picken van een bestelling en bij een kassaverkoop
+- verplaatsing uit de AGP (AGP-pagina én "uitslaan voor verkoop" op het product)
+- vermissing: het tarief van de afboekdatum
+- intern gebruik: het tarief van de verbruiksdatum
+
+Ook de waarderingen kloppen nu: de accijnstegels op de AGP-pagina rekenen met
+het tarief van vandaag (wat je zou betalen als je alles nu uitsloeg), en de
+historische gemiddelden met het tarief dat op die peildatum gold. De
+voorcalculatie die bij het afvullen wordt bevroren, staat op het tarief van de
+afvuldatum.
+
+Dit raakt alleen nieuwe boekingen; bestaande accijnsrecords houden hun
+opgeslagen bedrag. Merkbaar is het uitsluitend wanneer je tarieven per jaar in
+de tariefhistorie hebt staan én voorraad over de jaargrens heen ligt.
+
+Nog niet aangepast: het "wat-als"-overzicht bij het wijzigen van een jaartarief
+in de instellingen groepeert nog op brouwjaar.
+
+---
+
 ## [1.12.4] — 2026-08-23
 
 ### Uitslaan vanaf de productpagina

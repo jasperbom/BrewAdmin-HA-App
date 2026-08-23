@@ -88,9 +88,22 @@ describe('uitslagAccijns', () => {
     expect(uitslagAccijns(afvulling(), batch(), 12, INST)).toBeCloseTo(1.7844, 3)
   })
 
-  it('gebruikt het tarief van het brouwjaar uit de historie', () => {
-    const inst: AccijnsInst = { ...INST, tarieven_historie: [{ jaar: 2026, tarief_per_hl_abv: 10, tarief_per_hl: 24.17 } as any] }
-    expect(uitslagAccijns(afvulling(), batch(), 12, inst)).toBeCloseTo(0.0396 * 6 * 10, 4)
+  // De accijns wordt verschuldigd bij uitslag, dus telt het tarief van de
+  // uitslagdatum — niet dat van het brouwjaar.
+  it('gebruikt het tarief van de uitslagdatum, niet van de brouwdatum', () => {
+    const inst: AccijnsInst = {
+      ...INST,
+      tarieven_historie: [
+        { jaar: 2026, tarief_per_hl_abv: 7.51, tarief_per_hl: 24.17 },
+        { jaar: 2027, tarief_per_hl_abv: 10, tarief_per_hl: 24.17 },
+      ] as any,
+    }
+    // Batch gebrouwen in 2026, uitgeslagen in 2027 → tarief 2027.
+    expect(uitslagAccijns(afvulling(), batch({ datum: '2026-11-20' }), 12, inst, '2027-01-05'))
+      .toBeCloseTo(0.0396 * 6 * 10, 4)
+    // Dezelfde batch in 2026 uitgeslagen → tarief 2026.
+    expect(uitslagAccijns(afvulling(), batch({ datum: '2026-11-20' }), 12, inst, '2026-12-20'))
+      .toBeCloseTo(0.0396 * 6 * 7.51, 4)
   })
 
   it('is 0 zonder aantal of zonder inhoud', () => {
@@ -111,6 +124,23 @@ describe('bouwVerplaatsing', () => {
     expect(r.logRegel).toMatchObject({ id: 9, type: 'uitslaan', afvulling_id: 10, hoeveelheid: 12, eenheid: 'stuks' })
     expect(r.logRegel?.referentie).toBe('AGP → Proeflokaal')
     expect(r.omschrijving).toContain('AGP → Proeflokaal')
+  })
+
+  it('boekt op het tarief van de uitslagdatum uit de invoer', () => {
+    const inst: AccijnsInst = {
+      ...INST,
+      tarieven_historie: [
+        { jaar: 2026, tarief_per_hl_abv: 7.51, tarief_per_hl: 24.17 },
+        { jaar: 2027, tarief_per_hl_abv: 10, tarief_per_hl: 24.17 },
+      ] as any,
+    }
+    const r = bouwVerplaatsing(
+      invoer({ datum: '2027-02-01' }),
+      ctx({ batch: batch({ datum: '2026-11-20' }), accijnsInst: inst }),
+      ids, { logTitel: 'Voorraad verplaatsen' }
+    )
+    expect(r.accijns).toBeCloseTo(0.0396 * 6 * 10, 4)
+    expect(r.accijnsRecord?.datum).toBe('2027-02-01')
   })
 
   it('bouwt tussen vrije locaties géén accijns- of logregel', () => {
@@ -159,6 +189,16 @@ describe('verdeelUitslag', () => {
     expect(v.tekort).toBe(0)
     expect(v.totaalBeschikbaar).toBe(30)
     expect(v.totaalAccijns).toBeCloseTo(uitslagAccijns(kandidaten[0].afv, batch(), 24, INST), 6)
+  })
+
+  it('rekent de verdeling door op het tarief van de uitslagdatum', () => {
+    const inst: AccijnsInst = {
+      ...INST,
+      tarieven_historie: [{ jaar: 2027, tarief_per_hl_abv: 10, tarief_per_hl: 24.17 }] as any,
+    }
+    const v = verdeelUitslag(kandidaten, 24, inst, '2027-03-01')
+    // 24 × 0,33 L = 7,92 L = 0,0792 hl × 6% × 10
+    expect(v.totaalAccijns).toBeCloseTo(0.0792 * 6 * 10, 4)
   })
 
   it('blijft binnen één afvulling als dat genoeg is', () => {

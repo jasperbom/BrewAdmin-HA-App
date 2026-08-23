@@ -252,7 +252,8 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       return berekenVoorcalcVoorAfvulling(
         { inhoud_per_eenheid: Number(a.inhoud_per_eenheid||0), hoeveelheid: 1, aantal: 1 },
         batchMap[a.batch_id],
-        accijnsInst
+        accijnsInst,
+        a.datum
       ).perEenheid
     }
 

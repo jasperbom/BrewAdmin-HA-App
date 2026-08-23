@@ -1022,7 +1022,9 @@ function App() {
           };
           nieuweUit.push(uitl);
           if (liter > 0 && abv > 0) {
-            const {r1: _r1, r2: _r2, r3: _r3} = tariefVoorDatum(accijnsInst, batch?.datum);
+            // Intern gebruik = uitslag tot verbruik: tarief van de
+            // verbruiksdatum, niet van de brouwdatum.
+            const {r1: _r1, r2: _r2, r3: _r3} = tariefVoorDatum(accijnsInst, uitl.datum);
             const _effInst = {...(accijnsInst || {}), tarief_per_hl_plato: _r3};
             const accBedrag = accijnsCalc(liter, abv, _r1, _r2, _effInst, plato);
             nieuweAcc.push({

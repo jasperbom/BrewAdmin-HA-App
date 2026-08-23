@@ -5,6 +5,7 @@ import {
   berekenProductKostprijs, berekenCogs, telThtAlerts, laatsteOpenAccijnsMaand,
   productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
   registreerTankReiniging, laatsteTankReiniging,
+  berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -33,6 +34,70 @@ describe('tariefVoorDatum', () => {
     expect(tariefVoorDatum(inst, '2026-06-01')).toMatchObject({r1: 8, r2: 25})
     expect(tariefVoorDatum(inst, null)).toMatchObject({r1: 8, r2: 25})
     expect(tariefVoorDatum(null, '2026-06-01')).toMatchObject({r1: 7.51, r2: 24.17})
+  })
+})
+
+describe('berekenVoorcalcVoorAfvulling — tarief van de afvuldatum', () => {
+  const inst: any = {
+    tarief_per_hl_abv: 8, tarief_per_hl: 0,
+    tarieven_historie: [
+      {jaar: 2026, tarief_per_hl_abv: 10, tarief_per_hl: 0},
+      {jaar: 2027, tarief_per_hl_abv: 20, tarief_per_hl: 0},
+    ],
+  }
+  const afv = {inhoud_per_eenheid: 0.5, hoeveelheid: 100, aantal: 100}
+  const batch = {ABV: 6, platogehalte: 0}
+
+  // De voorcalculatie is de beste schatting op het moment van afvullen, dus
+  // hoort hij op het tarief van de afvuldatum te staan.
+  it('gebruikt het jaartarief van de afvuldatum', () => {
+    const r = berekenVoorcalcVoorAfvulling(afv, batch, inst, '2027-02-01')
+    expect(r.perEenheid).toBeCloseTo(0.005 * 6 * 20, 6)
+    expect(r.totaal).toBeCloseTo(0.005 * 6 * 20 * 100, 6)
+    expect(r.snapshot).toMatchObject({r1: 20, abv: 6})
+  })
+
+  it('gebruikt een ander jaartarief bij een afvulling in een ander jaar', () => {
+    expect(berekenVoorcalcVoorAfvulling(afv, batch, inst, '2026-12-20').perEenheid)
+      .toBeCloseTo(0.005 * 6 * 10, 6)
+  })
+
+  it('valt zonder datum terug op het hoofdtarief', () => {
+    expect(berekenVoorcalcVoorAfvulling(afv, batch, inst).perEenheid).toBeCloseTo(0.005 * 6 * 8, 6)
+  })
+})
+
+describe('AGP-waardering — tarief van de peildatum, niet van de brouwdatum', () => {
+  const inst: any = {
+    tarief_per_hl_abv: 8, tarief_per_hl: 0,
+    tarieven_historie: [
+      {jaar: 2026, tarief_per_hl_abv: 10, tarief_per_hl: 0},
+      {jaar: 2027, tarief_per_hl_abv: 20, tarief_per_hl: 0},
+    ],
+  }
+  const batches = [{id: 1, naam: 'Blond', status: 'Afgevuld', ABV: 6, datum: '2026-11-01', liter_vergist: 100}]
+  const afvullingen: any = [{id: 10, batch_id: 1, aantal: 200, hoeveelheid: 200, inhoud_per_eenheid: 0.5, datum: '2026-11-05'}]
+  const locaties: any = [{id: 1, naam: 'AGP', is_agp: true}, {id: 2, naam: 'Depot'}]
+
+  it('waardeert de voorraad op peildatum D tegen het tarief van D', () => {
+    // 200 × 0,5 L = 100 L = 1 hl × 6% ABV
+    expect(agpValueAt('2026-12-01', batches, afvullingen, [], [], [], locaties, inst).verpakt)
+      .toBeCloseTo(1 * 6 * 10, 4)
+    expect(agpValueAt('2027-01-05', batches, afvullingen, [], [], [], locaties, inst).verpakt)
+      .toBeCloseTo(1 * 6 * 20, 4)
+  })
+
+  it('waardeert de AGP-tegels tegen het tarief van vandaag', () => {
+    const jaarNu = new Date().getFullYear()
+    const instNu: any = {
+      tarief_per_hl_abv: 8, tarief_per_hl: 0,
+      tarieven_historie: [
+        {jaar: jaarNu, tarief_per_hl_abv: 30, tarief_per_hl: 0},
+        {jaar: 2026, tarief_per_hl_abv: 10, tarief_per_hl: 0},
+      ],
+    }
+    const ovz = agpOverzicht(batches, afvullingen, [], [], [], locaties, instNu)
+    expect(ovz.totaal_accijns_agp).toBeCloseTo(1 * 6 * 30, 4)
   })
 })
 

@@ -60,9 +60,10 @@ const UitslagModal: React.FC<UitslagModalProps> = ({
   const types = Object.keys(perVerpakking).sort()
   const actiefType = verpakking || types[0] || ''
   const kandidaten = perVerpakking[actiefType] || []
+  // De uitslagdatum bepaalt het accijnstarief, dus die hoort in de berekening.
   const verdeling = useMemo(
-    () => verdeelUitslag(kandidaten, Number(aantal || 0), accijnsInst),
-    [kandidaten, aantal, accijnsInst]
+    () => verdeelUitslag(kandidaten, Number(aantal || 0), accijnsInst, datum),
+    [kandidaten, aantal, accijnsInst, datum]
   )
 
   const opslaan = () => {
