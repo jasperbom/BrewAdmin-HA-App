@@ -241,7 +241,10 @@ function ProductieDashboard({
                           )}
                           {bewaking && (
                             <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${BEWAKING_PILL[bewaking.status]}`}
-                              title={bewaking.doel != null ? t('tank_bew_doel').replace('{doel}', bewaking.doel.toFixed(1)) : ''}>
+                              title={bewaking.doel != null
+                                ? t(bewaking.doelBron === 'setpoint' ? 'tank_bew_doel_setpoint' : 'tank_bew_doel')
+                                    .replace('{doel}', bewaking.doel.toFixed(1))
+                                : ''}>
                               {bewakingLabel(bewaking.status)}
                             </span>
                           )}

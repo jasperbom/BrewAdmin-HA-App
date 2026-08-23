@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.7] — 2026-08-23
+
+### Temperatuurbewaking toetst aan het werkelijke setpoint
+
+De bewaking van de tanktemperatuur vergeleek de gemeten temperatuur met wat het
+**vergistingsschema** op dat moment voorschreef. Dat is de bedoeling, niet de
+werkelijkheid: zet je de koeling handmatig op 16 °C terwijl het schema 18 °C
+zegt, dan sloeg de app alarm over een tank die precies doet wat je hebt
+gevraagd — en andersom bleef het stil als de koeling op een heel ander setpoint
+bleef hangen dan het schema.
+
+- De server leest nu elke ronde het werkelijke setpoint (`temperature`) van de
+  climate-entity die aan de tank hangt, en dát is het doel waaraan getoetst
+  wordt. Het vergistingsschema (en een lopende cold crash) blijft de terugval
+  voor tanks zonder gekoppelde koeling.
+- Een setpoint-wissel start het instelvenster opnieuw: dat het bier ná een
+  wissel uren onderweg is naar de nieuwe waarde is geen storing. Loopt de
+  temperatuur intussen de verkeerde kant op, dan meldt dat nog steeds meteen.
+- Is de climate-entity even niet te lezen, dan blijft de laatst bekende waarde
+  twee uur geldig; daarna valt de bewaking terug op het schema.
+- Het setpoint per tank staat in de nieuwe sleutel `tank_setpoints`, geschreven
+  door de server-tick. De tankkaart op het dashboard laat in de tooltip zien
+  wanneer het oordeel op het setpoint van de koeling steunt.
+
+---
+
 ## [1.12.6] — 2026-08-23
 
 ### Accijns-impact van een tariefwijziging klopt weer

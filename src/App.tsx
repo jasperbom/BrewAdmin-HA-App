@@ -166,6 +166,9 @@ function App() {
   // Temperatuurstoringen op de gisttanks; geschreven door de server-tick
   // (_tank_bewaking_tick) en hier alleen gelezen en bevestigd.
   const [tankAlarmen, setTankAlarmen, refreshTankAlarmen] = useStore('tank_alarmen', []);
+  // Werkelijk setpoint per tank, uitgelezen van de gekoppelde climate-entity
+  // door diezelfde tick. Alleen lezen — de app schrijft hier nooit in.
+  const [tankSetpoints, , refreshTankSetpoints] = useStore('tank_setpoints', []);
   const [carbSessies, setCarbSessies, refreshCarbSessies] = useStore('carbonatie_sessies', []);
   const [verliesRegistraties, setVerliesRegistraties] = useStore('verlies_registraties', []);
   const [brouwdagStappen, setBrouwdagStappen] = useStore('brouwdag_stappen', []);
@@ -1196,7 +1199,7 @@ function App() {
     if (!bewakingAan || !heeftTankBatch) return
     // De metingen komen mee: daarmee klopt ook het live oordeel op de
     // tankkaarten zonder dat de gebruiker de pagina hoeft te verversen.
-    const haal = () => { refreshTankAlarmen(); refreshGistMetingen() }
+    const haal = () => { refreshTankAlarmen(); refreshGistMetingen(); refreshTankSetpoints() }
     haal()
     const id = setInterval(haal, 5 * 60 * 1000)
     return () => clearInterval(id)
@@ -1212,11 +1215,11 @@ function App() {
       .filter((s: any) => s?.tank && s?.entity).map((s: any) => String(s.tank))
     if (!sensorTanks.length) return uit
     for (const o of beoordeelBatches(bat as any, gistMetingen as any, sensorTanks,
-                                     Date.now(), haInst?.bewaking)) {
+                                     Date.now(), haInst?.bewaking, tankSetpoints as any)) {
       if (o.tank) uit[o.tank] = o
     }
     return uit
-  }, [bewakingAan, bat, gistMetingen, haInst?.sensors, haInst?.bewaking, stapNowTick])
+  }, [bewakingAan, bat, gistMetingen, haInst?.sensors, haInst?.bewaking, tankSetpoints, stapNowTick])
 
   const openTankAlarmen = React.useMemo(() => {
     if (notificatieInst?.on_screen === false || !bewakingAan) return []

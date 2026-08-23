@@ -37,9 +37,11 @@ BrewAdmin-HA-App/
 │   │   ├── calculations.ts # Business logic calculations
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
-│   │   ├── tankbewaking.ts # Bewaking tanktemperatuur: tolerantieband, instelruimte na een
-│   │   │                   # stapwissel/cold-crash, wegloopdetectie (Theil-Sen-trend) en
-│   │   │                   # sensorstilte — server.py spiegelt deze regels in Python
+│   │   ├── tankbewaking.ts # Bewaking tanktemperatuur: getoetst aan het wérkelijke setpoint van de
+│   │   │                   # gekoppelde koeling (key `tank_setpoints`, terugval = vergistings-
+│   │   │                   # schema/cold-crash), tolerantieband, instelruimte na een setpoint-/
+│   │   │                   # stapwissel, wegloopdetectie (Theil-Sen-trend) en sensorstilte —
+│   │   │                   # server.py spiegelt deze regels in Python
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
@@ -140,8 +142,8 @@ De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
 ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
-tanktemperatuurbewaking en de
-HACCP-beheerspunten
+tanktemperatuurbewaking (incl. het werkelijke setpoint van
+de koeling) en de HACCP-beheerspunten
 (risicoclassificatie, stabiliteit, vrijgave-oordeel, sluitcontrole,
 allergenenvergelijking, lotcode en THT) en de traceerbaarheid
 (één stap terug/vooruit, massabalans, traceergaten, oefeningstatus).
@@ -152,8 +154,9 @@ optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
 onder parallelle clients), rate-limiting (429), secrets-maskering, de
 server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export), de
 HACCP-sluitcontrole-herinnering en de tanktemperatuurbewaking (het oordeel
-zelf én de alarmadministratie; een test bewaakt dat de drempel-defaults in
-server.py en tankbewaking.ts gelijk blijven).
+zelf, het uitlezen van het werkelijke climate-setpoint én de
+alarmadministratie; tests bewaken dat de drempel-defaults en de
+setpoint-leeftijd in server.py en tankbewaking.ts gelijk blijven).
 De suite start de echte handler op een efemere poort met een tijdelijke
 DATA_DIR.
 
@@ -430,6 +433,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `afboekingen` | array | Biervoorraadbewegingen |
 | `klanten` | array | Klanten |
 | `gist_metingen` | array | Gistingsmetingen per batch |
+| `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
 | `tank_alarmen` | array | Temperatuurstoringen per tank/batch, geopend en gesloten door de server-tick `_tank_bewaking_tick` (soort `waarschuwing`/`alarm`/`sensor_stil`, reden, piekafwijking, hersteltijdstip). De app leest ze voor de banner en zet `bevestigd` bij wegklikken — nooit zelf openen of sluiten |
 | `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
 | `verlies_registraties` | array | Verliesposten per batch (tankrest, leiding, schuim, monster, afgekeurd, overig) |
@@ -477,6 +481,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de backup
+- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
 

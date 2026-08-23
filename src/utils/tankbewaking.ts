@@ -289,10 +289,69 @@ export function beoordeelTank(
   return {...basis, status: groot ? 'alarm' : 'waarschuwing', reden: 'band'}
 }
 
+// ── Werkelijk setpoint van de koeling ───────────────────────────────────────
+// Het vergistingsschema zegt wat de bedoeling wás; de thermostaat zegt waar de
+// tank nú op stuurt. Alleen dat laatste kun je een tank aanrekenen: zet de
+// brouwer de koeling handmatig op 16 °C terwijl het schema 18 °C zegt, dan is
+// 16 °C het juiste doel — en niet iets om alarm over te slaan.
+//
+// De server-tick leest elke ronde `attributes.temperature` van de climate-
+// entity die aan de tank hangt en legt hem vast in de key `tank_setpoints`.
+// `sinds` is het moment waarop de wáárde veranderde (en dus het startpunt van
+// een nieuw instelvenster); bij de allereerste waarneming is dat onbekend
+// (null) — anders zou een herstart van de addon elke tank twaalf uur lang
+// "aan het instellen" noemen en een echte storing verzwijgen.
+
+export interface TankSetpointRij {
+  tank?: string | null
+  entity?: string | null
+  setpoint?: number | string | null
+  sinds?: string | null    // ISO — sinds wanneer deze waarde geldt (null = onbekend)
+  gezien?: string | null   // ISO — laatst met succes uitgelezen
+}
+
+export interface TankSetpoint {
+  setpoint: number
+  sindsMs: number | null
+}
+
+// Ouder dan dit en we vertrouwen de waarde niet meer: de tick draait elke vijf
+// minuten, dus een record dat twee uur niet is ververst betekent een climate-
+// entity die niet meer te lezen is (of niet meer gekoppeld). Dan valt de
+// bewaking terug op het vergistingsschema.
+export const SETPOINT_MAX_LEEFTIJD_MS = 2 * UUR_MS
+
+function _isoMs(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const ms = new Date(String(iso)).getTime()
+  return isNaN(ms) ? null : ms
+}
+
+// Het bruikbare setpoint voor één tank, of null wanneer er geen (verse) waarde is.
+export function setpointVoorTank(
+  rijen: TankSetpointRij[] | null | undefined,
+  tank: string | number | null | undefined,
+  nuMs: number,
+): TankSetpoint | null {
+  if (tank == null) return null
+  for (const r of rijen || []) {
+    if (!r || String(r.tank) !== String(tank)) continue
+    const sp = typeof r.setpoint === 'number' ? r.setpoint
+      : typeof r.setpoint === 'string' && r.setpoint.trim() !== '' ? Number(r.setpoint) : NaN
+    if (!Number.isFinite(sp)) return null
+    const gezien = _isoMs(r.gezien)
+    if (gezien != null && nuMs - gezien > SETPOINT_MAX_LEEFTIJD_MS) return null
+    return {setpoint: sp, sindsMs: _isoMs(r.sinds)}
+  }
+  return null
+}
+
 // ── Doeltemperatuur van een batch ───────────────────────────────────────────
-// Waar moet deze tank op dit moment staan? Een lopende cold crash wint: die
-// stuurt de tank bewust naar z'n eigen target. Anders geldt de temperatuur van
-// de huidige stap in het vergistingsprofiel.
+// Waar moet deze tank op dit moment staan? Het werkelijke setpoint van de
+// gekoppelde koeling wint altijd — dát is waar de tank op stuurt. Is er geen
+// (verse) setpoint-waarde, dan valt de bewaking terug op het schema: een
+// lopende cold crash met z'n eigen target, anders de temperatuur van de
+// huidige stap in het vergistingsprofiel.
 
 export interface DoelBatch extends VergistBatch {
   cold_crash_target?: number | string | null
@@ -303,10 +362,36 @@ export interface TankDoel {
   doel: number | null
   doelSindsMs: number | null
   rampUren: number | null
-  bron: 'coldcrash' | 'stap' | null
+  bron: 'setpoint' | 'coldcrash' | 'stap' | null
 }
 
-export function tankDoel(batch: DoelBatch | null | undefined): TankDoel {
+export function tankDoel(
+  batch: DoelBatch | null | undefined,
+  setpoint?: TankSetpoint | null,
+): TankDoel {
+  const schema = schemaDoel(batch)
+  if (!setpoint || !Number.isFinite(setpoint.setpoint)) return schema
+
+  // Stuurt de koeling op precies wat het schema vraagt, dan is de stapwissel
+  // (of de geplande cold-crash-daling) nog steeds de gebeurtenis waar het bier
+  // naartoe onderweg is: die ramp en dat startmoment blijven dus gelden. Wijkt
+  // het setpoint af, dan telt alleen het moment waarop het gezet werd.
+  const zelfde = schema.doel != null && Math.abs(schema.doel - setpoint.setpoint) < 0.05
+  const sinds = setpoint.sindsMs
+  const doelSindsMs = !zelfde ? sinds
+    : sinds != null && schema.doelSindsMs != null ? Math.max(sinds, schema.doelSindsMs)
+    : sinds ?? schema.doelSindsMs
+  return {
+    doel: setpoint.setpoint,
+    doelSindsMs,
+    rampUren: zelfde ? schema.rampUren : null,
+    bron: 'setpoint',
+  }
+}
+
+// Doeltemperatuur volgens het schema — de terugval wanneer er geen koeling aan
+// de tank hangt (of het setpoint niet te lezen is).
+export function schemaDoel(batch: DoelBatch | null | undefined): TankDoel {
   const leeg: TankDoel = {doel: null, doelSindsMs: null, rampUren: null, bron: null}
   if (!batch) return leeg
 
@@ -397,18 +482,22 @@ export interface BewaakteBatch extends DoelBatch {
 export interface BatchOordeel extends BewakingOordeel {
   batchId: number
   tank: string | null
+  doelBron: TankDoel['bron']
 }
 
 // Beoordeel elke batch die in een tank ligt en waarvan de tank een sensor
 // heeft. `sensorTanks` is de verzameling tank-id's met een gekoppelde
 // HA-sensor; zonder sensor is er niets te bewaken (en geen automatische
-// metingenreeks om op te steunen).
+// metingenreeks om op te steunen). `setpoints` zijn de door de server gelezen
+// werkelijke setpoints per tank (key `tank_setpoints`); ontbreekt er één, dan
+// valt die tank terug op het vergistingsschema.
 export function beoordeelBatches(
   batches: BewaakteBatch[] | null | undefined,
   metingen: MetingRij[] | null | undefined,
   sensorTanks: Iterable<string>,
   nuMs: number,
   inst?: BewakingInst | null,
+  setpoints?: TankSetpointRij[] | null,
 ): BatchOordeel[] {
   const tanksMetSensor = new Set(Array.from(sensorTanks || []).map(String))
   const cfg = bewakingInst(inst)
@@ -419,14 +508,15 @@ export function beoordeelBatches(
   for (const b of batches || []) {
     if (!b || b.tank == null || !BEWAAKTE_STATUSSEN.includes(String(b.status))) continue
     if (!tanksMetSensor.has(String(b.tank))) continue
-    const doel = tankDoel(b)
+    const doel = tankDoel(b, setpointVoorTank(setpoints, b.tank, nuMs))
     const oordeel = beoordeelTank({
       doel: doel.doel,
       doelSindsMs: doel.doelSindsMs,
       rampUren: doel.rampUren,
       metingen: tempReeks(metingen, b.id, vanaf),
     }, nuMs, inst)
-    uit.push({...oordeel, batchId: b.id, tank: b.tank == null ? null : String(b.tank)})
+    uit.push({...oordeel, batchId: b.id, tank: b.tank == null ? null : String(b.tank),
+              doelBron: doel.bron})
   }
   return uit
 }

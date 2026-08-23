@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   bewakingInst, BEWAKING_DEFAULTS, tempTrendPerUur, buitenBandSinds, beoordeelTank,
-  tankDoel, tempReeks, metingTs, beoordeelBatches, isMeldenswaardig, bewakingRang,
+  tankDoel, schemaDoel, setpointVoorTank, tempReeks, metingTs, beoordeelBatches,
+  isMeldenswaardig, bewakingRang, SETPOINT_MAX_LEEFTIJD_MS,
   UUR_MS, type TempPunt,
 } from '../tankbewaking'
 
@@ -286,6 +287,87 @@ describe('tankDoel', () => {
   it('geeft geen doel zonder profiel', () => {
     expect(tankDoel({status: 'Vergisten'}).doel).toBeNull()
     expect(tankDoel(null).doel).toBeNull()
+    expect(schemaDoel(null).doel).toBeNull()
+  })
+})
+
+describe('setpointVoorTank', () => {
+  const iso = (ms: number) => new Date(ms).toISOString()
+
+  it('leest het setpoint van de juiste tank', () => {
+    const rijen = [
+      {tank: 'T1', setpoint: 16, sinds: iso(NU - 2 * UUR_MS), gezien: iso(NU)},
+      {tank: 'T2', setpoint: 20, sinds: null, gezien: iso(NU)},
+    ]
+    expect(setpointVoorTank(rijen, 'T1', NU)).toEqual({setpoint: 16, sindsMs: NU - 2 * UUR_MS})
+    expect(setpointVoorTank(rijen, 'T2', NU)).toEqual({setpoint: 20, sindsMs: null})
+    expect(setpointVoorTank(rijen, 'T3', NU)).toBeNull()
+    expect(setpointVoorTank(rijen, null, NU)).toBeNull()
+    expect(setpointVoorTank(null, 'T1', NU)).toBeNull()
+  })
+
+  it('negeert een waarde die te lang niet is ververst', () => {
+    const oud = [{tank: 'T1', setpoint: 16, sinds: null,
+                  gezien: iso(NU - SETPOINT_MAX_LEEFTIJD_MS - 60_000)}]
+    expect(setpointVoorTank(oud, 'T1', NU)).toBeNull()
+    // Net binnen het venster telt hij wél.
+    const vers = [{tank: 'T1', setpoint: 16, sinds: null,
+                   gezien: iso(NU - SETPOINT_MAX_LEEFTIJD_MS + 60_000)}]
+    expect(setpointVoorTank(vers, 'T1', NU)?.setpoint).toBe(16)
+  })
+
+  it('negeert een onbruikbare waarde', () => {
+    expect(setpointVoorTank([{tank: 'T1', setpoint: null, gezien: null}], 'T1', NU)).toBeNull()
+    expect(setpointVoorTank([{tank: 'T1', setpoint: '', gezien: null}], 'T1', NU)).toBeNull()
+    expect(setpointVoorTank([{tank: 'T1', setpoint: '16.5', gezien: null}], 'T1', NU)?.setpoint).toBe(16.5)
+  })
+})
+
+describe('tankDoel — het werkelijke setpoint wint', () => {
+  const profiel = [{temp: 18, tijd: 5, ramp: 6}, {temp: 22, tijd: 2, ramp: 8}]
+  const batch = {status: 'Vergisten', vergistingsprofiel: profiel, datum: '2026-03-05'}
+
+  it('toetst aan het handmatig gezette setpoint, niet aan het schema', () => {
+    const d = tankDoel(batch, {setpoint: 16, sindsMs: NU - 3 * UUR_MS})
+    expect(d.doel).toBe(16)
+    expect(d.bron).toBe('setpoint')
+    // Het instelvenster loopt vanaf de setpoint-wissel, niet vanaf de stapstart.
+    expect(d.doelSindsMs).toBe(NU - 3 * UUR_MS)
+    // De ramp van de stap slaat op een doel dat niet meer gestuurd wordt.
+    expect(d.rampUren).toBeNull()
+  })
+
+  it('houdt stapmoment en ramp vast als het setpoint precies het schema volgt', () => {
+    const d = tankDoel(batch, {setpoint: 18, sindsMs: NU - 10 * UUR_MS})
+    expect(d.doel).toBe(18)
+    expect(d.bron).toBe('setpoint')
+    expect(d.rampUren).toBe(6)
+    // Later van de twee: de stapstart (giststart) ligt hier vóór de meting.
+    expect(d.doelSindsMs).toBe(NU - 10 * UUR_MS)
+  })
+
+  it('valt zonder setpoint terug op het schema', () => {
+    expect(tankDoel(batch, null).bron).toBe('stap')
+    expect(tankDoel(batch, {setpoint: NaN, sindsMs: null}).bron).toBe('stap')
+  })
+
+  it('wint ook van een lopende cold crash', () => {
+    const cc = {...batch, status: 'Conditioneren', cold_crash_datum: '2026-03-10T00:00:00',
+                cold_crash_target: 2, cold_crash_ramp: 1}
+    // De server stapt het setpoint gestuurd omlaag; dáár moet de tank nú staan.
+    const d = tankDoel(cc, {setpoint: 12, sindsMs: NU - UUR_MS})
+    expect(d.doel).toBe(12)
+    expect(d.bron).toBe('setpoint')
+    expect(d.doelSindsMs).toBe(NU - UUR_MS)
+  })
+
+  it('geeft geen instelvenster bij een nog onbekende wisseldatum', () => {
+    // Eerste waarneming na een herstart: `sinds` onbekend en het setpoint wijkt
+    // af van het schema — dan geen instelvenster, anders zwijgt een lopende
+    // storing twaalf uur lang.
+    const d = tankDoel(batch, {setpoint: 16, sindsMs: null})
+    expect(d.doel).toBe(16)
+    expect(d.doelSindsMs).toBeNull()
   })
 })
 
@@ -333,6 +415,35 @@ describe('beoordeelBatches', () => {
   it('geeft een lege lijst zonder sensoren of batches', () => {
     expect(beoordeelBatches([], metingen, ['T1'], NU)).toEqual([])
     expect(beoordeelBatches(null, null, [], NU)).toEqual([])
+  })
+
+  it('toetst aan het werkelijke setpoint van de tank', () => {
+    // De brouwer stuurt de koeling bewust op 24 °C (hoge-gistingsstap) terwijl
+    // het schema nog 18 zegt. De tank staat keurig op 24: geen storing.
+    const batches = [{id: 7, tank: 'T1', status: 'Vergisten', datum: '2026-03-01',
+                      vergistingsprofiel: [{temp: 18, tijd: 5}]}]
+    const setpoints = [{tank: 'T1', setpoint: 24,
+                        sinds: new Date(NU - 20 * UUR_MS).toISOString(),
+                        gezien: new Date(NU).toISOString()}]
+    expect(beoordeelBatches(batches, metingen, ['T1'], NU)[0].status).toBe('alarm')
+    const uit = beoordeelBatches(batches, metingen, ['T1'], NU, null, setpoints)
+    expect(uit[0].status).toBe('ok')
+    expect(uit[0].doel).toBe(24)
+    expect(uit[0].doelBron).toBe('setpoint')
+  })
+
+  it('slaat wél alarm als de tank het werkelijke setpoint niet haalt', () => {
+    const batches = [{id: 7, tank: 'T1', status: 'Vergisten', datum: '2026-03-01',
+                      vergistingsprofiel: [{temp: 24, tijd: 5}]}]
+    // Schema en meting zeggen 24, maar de koeling stuurt op 18: de tank hangt
+    // al uren zes graden boven z'n setpoint.
+    const setpoints = [{tank: 'T1', setpoint: 18,
+                        sinds: new Date(NU - 20 * UUR_MS).toISOString(),
+                        gezien: new Date(NU).toISOString()}]
+    expect(beoordeelBatches(batches, metingen, ['T1'], NU)[0].status).toBe('ok')
+    const uit = beoordeelBatches(batches, metingen, ['T1'], NU, null, setpoints)
+    expect(uit[0].status).toBe('alarm')
+    expect(uit[0].doel).toBe(18)
   })
 })
 
