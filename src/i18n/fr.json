@@ -3451,5 +3451,7 @@
   "bier_tip_levering": "Cet article peut-il être expédié, seulement retiré, ou les deux ?",
   "bier_lev_beide": "Livraison et retrait",
   "bier_lev_verzenden": "Livraison uniquement",
-  "bier_lev_afhalen": "Retrait uniquement"
+  "bier_lev_afhalen": "Retrait uniquement",
+  "bier_afgeleid_hint_form": "depuis les champs ci-dessus et la recette",
+  "bier_leeg_uitleg": "Aucune information bière. Cliquez sur Modifier pour les ajouter aux données produit."
 }

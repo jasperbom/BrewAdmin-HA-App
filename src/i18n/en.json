@@ -3451,5 +3451,7 @@
   "bier_tip_levering": "Can this item be shipped, only picked up, or both?",
   "bier_lev_beide": "Shipping and pickup",
   "bier_lev_verzenden": "Shipping only",
-  "bier_lev_afhalen": "Pickup only"
+  "bier_lev_afhalen": "Pickup only",
+  "bier_afgeleid_hint_form": "from the fields above and the recipe",
+  "bier_leeg_uitleg": "No beer details yet. Click Edit to add them with the product details."
 }

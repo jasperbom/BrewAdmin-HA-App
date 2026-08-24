@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.12] — 2026-08-24
+
+### Eén formulier voor het bier
+
+De bierinformatie stond in een eigen sectie met eigen invulvelden, terwijl je
+de naam, stijl, ABV, EBC, IBU en omschrijving bovenaan bewerkte met de knop
+**Bewerken**. Twee formulieren voor hetzelfde bier.
+
+- **Alles zit nu in dat ene formulier**: onder de foto's en de gekoppelde
+  recepten volgen kcal, ingrediënten, smaakprofiel, serveertip, de vijf
+  smaakassen, Untappd, uit roulatie en je eigen extra regels. Eén keer
+  Bewerken, één keer Opslaan.
+- De sectie **Bierinformatie** op de productpagina is nu een leesweergave met
+  een Bewerken-knop die datzelfde formulier opent — geen tweede invulplek meer.
+- Ook binnen die twee schermen niets meer dubbel: het formulier herhaalt de
+  afgeleide waarden niet (ABV, IBU, EBC en stijl staan er als veld boven), en
+  de leesweergave herhaalt de chips uit de productkop niet.
+
+---
+
 ## [1.12.11] — 2026-08-24
 
 ### Bierinformatie is gewoon bierinformatie

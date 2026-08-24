@@ -649,8 +649,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   serveertip, de vijf smaakassen, Untappd, "uit roulatie" en vrije extra regels
   staan als **gewone velden op het product**; maat/aantal, pakketinhoud, badge
   en levering als velden op het artikel (en op `merch_artikelen`). Je bewerkt ze
-  waar je het bier resp. de verpakking bewerkt — de sectie "Bierinformatie" op
-  de productpagina en het artikelformulier — niet in een webshopscherm.
+  waar je het bier resp. de verpakking bewerkt: in het **productformulier**
+  (dezelfde Bewerken-knop als voor naam, stijl en ABV) en in het
+  artikelformulier — niet in een apart webshopscherm. De sectie
+  "Bierinformatie" op de productpagina is een leesweergave.
   Velden met `afgeleid: true` (ABV, IBU, EBC, stijl, inhoud) leidt
   `afgeleideBierInfo` af uit de productgegevens, de verpakking en het recept;
   die zijn nergens een invulveld. `bierInfoVoorArtikel` stapelt afgeleid → bier

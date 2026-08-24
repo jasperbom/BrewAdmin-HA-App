@@ -3451,5 +3451,7 @@
   "bier_tip_levering": "Kann dieser Artikel versendet werden, nur abgeholt, oder beides?",
   "bier_lev_beide": "Versand und Abholung",
   "bier_lev_verzenden": "Nur Versand",
-  "bier_lev_afhalen": "Nur Abholung"
+  "bier_lev_afhalen": "Nur Abholung",
+  "bier_afgeleid_hint_form": "aus den Feldern oben und dem Rezept",
+  "bier_leeg_uitleg": "Noch keine Bierinformationen. Über Bearbeiten fügst du sie bei den Produktdaten hinzu."
 }
