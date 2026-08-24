@@ -558,6 +558,12 @@ export interface Recept {
   parent_id?: string
   is_huidige?: boolean
   versie_datum?: string
+  // ── Voorcalculatie kostprijs (utils/receptKostprijs.ts) ────────────────────
+  // Eigen velden van de app: vaste kosten per brouw (energie, water,
+  // schoonmaak) en een handmatig verliespercentage dat de meting uit de
+  // brouwhistorie overstemt. Blijven bij een Brewfather-sync behouden.
+  kostprijs_overig?: number | string
+  kostprijs_verlies_pct?: number | string
 }
 
 export interface ReceptIngredient {

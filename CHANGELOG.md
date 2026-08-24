@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.16] — 2026-08-24
+
+### Kostprijs per liter bij het recept — vóórdat je brouwt
+
+De batchpagina rekent achteraf: wat heeft déze brouw gekost. Bij het recept wil
+je het andersom weten. Nieuw paneel **Kostprijs per liter** op de receptpagina,
+met de kostprijs meteen zichtbaar in de balk.
+
+- **Twee getallen naast elkaar**: per liter uit de gistkuip (wat je brouwt) en
+  per verkoopbare liter (wat je factureert). Het verschil is je verlies.
+- **Verlies uit je eigen historie**: het percentage komt uit de brouwsels van
+  dít recept — vergiste liters versus wat er daadwerkelijk is afgevuld, gewogen
+  op liters. Nog geen historie van dit recept? Dan het gemiddelde van de
+  brouwerij, dan de genoteerde verliesposten, en pas als laatste een aanname
+  van 8%. Het paneel zegt altijd waar het cijfer vandaan komt, splitst het uit
+  per verliesbron (tankrest, leiding …) en je kunt het handmatig overschrijven.
+- **Prijzen van nu**: elke receptregel wordt gerekend met het gewogen gemiddelde
+  van de lots die je nog in huis hebt; is er niets meer, dan met de prijs van de
+  laatste inkoop (die regel wordt als zodanig gemarkeerd). Eenheden worden
+  omgerekend, dus 600 g hop uit een lot van €30 per kilo klopt gewoon.
+- **Regels zonder bekende prijs tellen niet stiekem als nul** — het paneel meldt
+  hoeveel er nog ontbreken.
+- **Vaste kosten per brouw** (energie, water, schoonmaak) vul je per recept in;
+  ze blijven bij een Brewfather-sync behouden.
+- Verdeling over mout, hop, gist en overig als balk en als tabel, met het
+  aandeel per regel.
+
+Nieuw: `src/utils/receptKostprijs.ts` + testsuite, `components/ReceptKostprijs.tsx`.
+
+---
+
 ## [1.12.15] — 2026-08-24
 
 ### Kostprijs en trend per brouw, bij het bier

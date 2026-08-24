@@ -4,9 +4,10 @@ import { fmtD } from '../utils/format'
 import { bfGetRecipesWithVersions } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import SearchInput from '../components/ui/SearchInput'
+import ReceptKostprijs from '../components/ReceptKostprijs'
 import { logAudit } from '../utils/audit'
 
-function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
+function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState} = React;
   const [sel, setSel]         = useState(null);
   const [syncing, setSyncing] = useState(false);
@@ -54,10 +55,17 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
       // overnemen als die er was.
       const byId = new Map<string, any>(recepten.map((r: any) => [r.id, r]));
       const SECTIES = ['mout', 'hop', 'gist', 'overig'];
+      const EIGEN_VELDEN = ['kostprijs_overig', 'kostprijs_verlies_pct'];
       const merged = recs.map((nw: any) => {
         const oud = byId.get(nw.id);
         if (!oud) return nw;
-        const out = { ...nw };
+        // Eigen velden van de app (niet uit Brewfather) blijven staan: de
+        // vaste kosten per brouw en een handmatig verliespercentage zijn
+        // brouwerijgegevens, geen receptgegevens.
+        const out: any = { ...nw };
+        for (const veld of EIGEN_VELDEN) {
+          if (oud[veld] !== undefined && oud[veld] !== '') out[veld] = oud[veld];
+        }
         for (const s of SECTIES) {
           const oudeLijst = oud[s] || [];
           out[s] = (nw[s] || []).map((it: any) => {
@@ -145,6 +153,13 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
       benodigd, totaalNodig,
       gedeeld: regels > 1,
     };
+  };
+
+  // Wijzig eigen velden op het geselecteerde recept (bijv. de vaste kosten per
+  // brouw). Blijft bij een Brewfather-sync behouden — zie `runSync`.
+  const updateRecept = (patch: any) => {
+    if (!selRec) return;
+    setRecepten((prev: any[]) => prev.map((r: any) => r.id === selRec.id ? { ...r, ...patch } : r));
   };
 
   // Wijzig een enkele ingredient-entry in het geselecteerde recept.
@@ -611,6 +626,16 @@ function ReceptenPage({ing, lots, bfCreds, recepten, setRecepten, verborgen, set
                 </div>
               </div>
             )}
+            <ReceptKostprijs
+              recept={selRec}
+              ingredienten={ing}
+              lots={lots}
+              batches={bat}
+              afvullingen={av}
+              verliesRegistraties={verliesRegistraties}
+              readOnly={selRec.is_huidige === false}
+              onWijzig={updateRecept}
+            />
             <IngSection titel={t('recipe_section_grains')} items={selRec.mout}   cat="mout"/>
             <IngSection titel={t('recipe_section_hops')}   items={selRec.hop}    cat="hop"/>
             <IngSection titel={t('recipe_section_yeast')}  items={selRec.gist}   cat="gist"/>

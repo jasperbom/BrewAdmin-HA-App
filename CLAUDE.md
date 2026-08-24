@@ -53,6 +53,11 @@ BrewAdmin-HA-App/
 │   │   │                   # gemeten ABV/OG/FG/kleur/rendement/kostprijs-per-liter (gemiddelde,
 │   │   │                   # spreiding, trend t.o.v. de vorige brouw, reeks voor een lijntje) en
 │   │   │                   # of de vastgelegde bierinformatie daarvan afwijkt
+│   │   ├── receptKostprijs.ts # Voorcalculatie bij het recept: prijs per ingrediënt uit de lots
+│   │   │                   # (gewogen gemiddelde van wat er ligt, anders de laatste inkoop),
+│   │   │                   # gemiddeld verlies uit de eigen brouwhistorie (vergist versus
+│   │   │                   # afgevuld, gewogen op liters; anders de verliesposten, anders 8%)
+│   │   │                   # en de kostprijs per brouwzaalliter én per verkoopbare liter
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,
@@ -160,7 +165,8 @@ ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de WooCommerce-produc
 (payload, winkel lezen, verschillen), de bierinformatie (velddefinities, afgeleide
 velden, stapelen per niveau, ingrediëntenlijst uit het recept), de
 batchsamenvatting bij een product + de vertaling
-naar het webshopthema, de
+naar het webshopthema, de receptvoorcalculatie (ingrediëntprijs uit de lots,
+gemiddeld verlies, kostprijs per liter), de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
@@ -419,7 +425,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `voorraad_log` | array | Mutatielog ingrediënten |
 | `voorraad_archief` | array | Gearchiveerde voorraadmutaties |
 | `voorraad_gesloten_bieren` | array | Afgesloten biersoorten |
-| `recepten` | array | Recepten (lokaal + Brewfather) |
+| `recepten` | array | Recepten (lokaal + Brewfather). Eigen velden van de app (`kostprijs_overig` = vaste kosten per brouw, `kostprijs_verlies_pct` = handmatig verliespercentage) blijven bij een Brewfather-sync behouden — zie `EIGEN_VELDEN` in `runSync` |
 | `recepten_verborgen` | array | Verborgen recept-IDs |
 | `recepten_gearchiveerde_tags` | array | Gearchiveerde recepttags |
 | `recepten_tag_volgorde` | array | Volgorde recepttags |
