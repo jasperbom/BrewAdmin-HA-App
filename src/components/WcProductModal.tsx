@@ -10,9 +10,10 @@ import {
   ordenCategorieen, WC_VELD_LABEL,
   WC_STATUSSEN, WC_ZICHTBAARHEDEN, WC_BACKORDERS, WC_BTW_STATUSSEN,
 } from '../utils/wcProduct'
-import { BierVeld, BIER_VELDEN } from '../utils/bierinfo'
+import { BierVeld } from '../utils/bierinfo'
 import { crafteryLabel } from '../utils/craftery'
 import BierInfoForm from './BierInfoForm'
+import BierInfoWeergave from './BierInfoWeergave'
 
 // De volledige WooCommerce-productkaart van één artikel, bewerkbaar vanuit de
 // app. Alles wat je normaal in WordPress bij een product invult staat hier —
@@ -425,39 +426,19 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
         </>)}
         {tab === 'thema' && (
           <div className="sm:col-span-2 space-y-4">
-            {/* De bierinformatie die met dit artikel meegaat. Wijzigen doe je
-                bij het bier of het artikel — hier staat hij ter controle. */}
+            {/* De bierinformatie die met dit artikel meegaat, precies zoals
+                hij in de winkel komt te staan. Wijzigen doe je bij het bier of
+                het artikel — hier zie je alleen wat er gepusht wordt. */}
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div className="flex items-center justify-between gap-2 mb-2">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   {t('bier_gaat_mee')}
                 </span>
                 <span className="text-[11px] text-gray-400">{t('bier_gaat_mee_hint')}</span>
               </div>
-              {Object.keys(bierInfo || {}).length === 0 ? (
-                <p className="text-[11px] text-gray-400 italic">{t('bier_gaat_mee_leeg')}</p>
-              ) : (
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {BIER_VELDEN
-                    .filter(f => {
-                      const w = (bierInfo || {})[f.veld]
-                      return w !== undefined && w !== null && w !== '' &&
-                        (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '')
-                    })
-                    .map(f => {
-                      const w = (bierInfo || {})[f.veld]
-                      const tekst = Array.isArray(w)
-                        ? w.map((r: any) => `${r.label}: ${r.value}`).join(' · ')
-                        : (typeof w === 'boolean' ? t(w ? 'lbl_ja' : 'lbl_nee') : String(w))
-                      return (
-                        <span key={f.veld} className="text-[11px] text-gray-600">
-                          <span className="text-gray-400">{t(f.label)}: </span>
-                          <span className="font-medium">{tekst.length > 60 ? `${tekst.slice(0, 60)}…` : tekst}</span>
-                        </span>
-                      )
-                    })}
-                </div>
-              )}
+              {Object.keys(bierInfo || {}).length === 0
+                ? <p className="text-[11px] text-gray-400 italic">{t('bier_gaat_mee_leeg')}</p>
+                : <BierInfoWeergave info={bierInfo} compact />}
             </div>
 
             {/* Merch heeft geen productpagina met een artikelformulier; daar

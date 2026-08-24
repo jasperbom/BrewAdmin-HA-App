@@ -651,8 +651,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   en levering als velden op het artikel (en op `merch_artikelen`). Je bewerkt ze
   waar je het bier resp. de verpakking bewerkt: in het **productformulier**
   (dezelfde Bewerken-knop als voor naam, stijl en ABV) en in het
-  artikelformulier — niet in een apart webshopscherm. De sectie
-  "Bierinformatie" op de productpagina is een leesweergave.
+  artikelformulier — niet in een apart webshopscherm. De productpagina toont
+  het bier meteen zoals de webshop dat doet (`components/BierInfoWeergave.tsx`:
+  cijferstrip, smaakbalken, spectabel, tekstblokken); `weergave` op de
+  velddefinitie bepaalt waar een veld belandt.
   Velden met `afgeleid: true` (ABV, IBU, EBC, stijl, inhoud) leidt
   `afgeleideBierInfo` af uit de productgegevens, de verpakking en het recept;
   die zijn nergens een invulveld. `bierInfoVoorArtikel` stapelt afgeleid → bier

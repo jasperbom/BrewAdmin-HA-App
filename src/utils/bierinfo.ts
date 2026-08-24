@@ -29,6 +29,13 @@ export type BierVeldSoort = 'tekst' | 'lang' | 'getal' | 'schuif' | 'keuze' | 'j
  */
 export type BierNiveau = 'product' | 'artikel'
 
+/**
+ * Hoe de eigenschap getoond wordt. Dezelfde indeling die een bierdrinker
+ * gewend is: de grote cijfers onder de naam, een specregel in de tabel, een
+ * balk voor het smaakprofiel, een tekstblok, de waardering of een markering.
+ */
+export type BierWeergave = 'cijfer' | 'spec' | 'balk' | 'kaart' | 'waardering' | 'markering'
+
 /** Eén label/waarde-regel, voor vrije extra eigenschappen. */
 export interface BierRegel { label: string; value: string }
 
@@ -39,6 +46,8 @@ export interface BierVeld {
   soort: BierVeldSoort
   /** i18n-sleutel van het label. */
   label: string
+  /** Waar het veld in de productweergave terechtkomt. */
+  weergave: BierWeergave
   /** i18n-sleutel van de uitleg bij het veld. */
   tip?: string
   /** Groep waarin het veld getoond wordt (i18n-sleutel). */
@@ -46,6 +55,11 @@ export interface BierVeld {
   /** Keuzewaarden bij `soort: 'keuze'`: waarde + i18n-label. */
   opties?: {v: string, l: string}[]
   placeholder?: string
+  /**
+   * Smaak-as die het bier juist strakker maakt (bitter, droog) in plaats van
+   * voller. Alleen voor de kleur van de balk.
+   */
+  strak?: boolean
   /**
    * De app leidt dit veld af uit andere gegevens en bewaart het niet apart.
    * Je wijzigt het op zijn eigen plek (de productgegevens, de verpakking, het
@@ -59,45 +73,45 @@ export const BIER_VELDEN: BierVeld[] = [
   // ABV, IBU, EBC en de stijl staan al in de productgegevens; de inhoud komt
   // van de verpakking. Ze staan hier omdat ze bij de bierinformatie horen,
   // maar je vult ze bij het product resp. de verpakking in.
-  {veld: 'abv',    niveau: 'product', afgeleid: true, soort: 'tekst', label: 'bier_veld_abv',    groep: 'bier_groep_kern'},
-  {veld: 'ibu',    niveau: 'product', afgeleid: true, soort: 'tekst', label: 'bier_veld_ibu',    groep: 'bier_groep_kern'},
-  {veld: 'ebc',    niveau: 'product', afgeleid: true, soort: 'tekst', label: 'bier_veld_ebc',    groep: 'bier_groep_kern'},
-  {veld: 'stijl',  niveau: 'product', afgeleid: true, soort: 'tekst', label: 'bier_veld_stijl',  groep: 'bier_groep_kern'},
-  {veld: 'inhoud', niveau: 'artikel', afgeleid: true, soort: 'tekst', label: 'bier_veld_inhoud', groep: 'bier_groep_kern'},
-  {veld: 'kcal',   niveau: 'product', soort: 'tekst', label: 'bier_veld_kcal', groep: 'bier_groep_kern', placeholder: '67'},
+  {veld: 'abv',    niveau: 'product', afgeleid: true, weergave: 'cijfer', soort: 'tekst', label: 'bier_veld_abv',    groep: 'bier_groep_kern'},
+  {veld: 'ibu',    niveau: 'product', afgeleid: true, weergave: 'cijfer', soort: 'tekst', label: 'bier_veld_ibu',    groep: 'bier_groep_kern'},
+  {veld: 'ebc',    niveau: 'product', afgeleid: true, weergave: 'cijfer', soort: 'tekst', label: 'bier_veld_ebc',    groep: 'bier_groep_kern'},
+  {veld: 'stijl',  niveau: 'product', afgeleid: true, weergave: 'spec',   soort: 'tekst', label: 'bier_veld_stijl',  groep: 'bier_groep_kern'},
+  {veld: 'inhoud', niveau: 'artikel', afgeleid: true, weergave: 'spec',   soort: 'tekst', label: 'bier_veld_inhoud', groep: 'bier_groep_kern'},
+  {veld: 'kcal',   niveau: 'product', weergave: 'cijfer', soort: 'tekst', label: 'bier_veld_kcal', groep: 'bier_groep_kern', placeholder: '67'},
 
   // ── Wat erin zit en hoe je het drinkt ───────────────────────────────────
-  {veld: 'ingredienten', niveau: 'product', soort: 'lang', label: 'bier_veld_ingredienten',
+  {veld: 'ingredienten', niveau: 'product', weergave: 'kaart', soort: 'lang', label: 'bier_veld_ingredienten',
     tip: 'bier_tip_ingredienten', groep: 'bier_groep_inhoud', placeholder: 'water, gerstemout, hop, gist'},
-  {veld: 'smaakprofiel', niveau: 'product', soort: 'lang', label: 'bier_veld_smaakprofiel', groep: 'bier_groep_inhoud'},
-  {veld: 'serveertip',   niveau: 'product', soort: 'lang', label: 'bier_veld_serveertip',
+  {veld: 'smaakprofiel', niveau: 'product', weergave: 'kaart', soort: 'lang', label: 'bier_veld_smaakprofiel', groep: 'bier_groep_inhoud'},
+  {veld: 'serveertip',   niveau: 'product', weergave: 'kaart', soort: 'lang', label: 'bier_veld_serveertip',
     groep: 'bier_groep_inhoud', placeholder: '6–8 °C · tulpglas'},
 
   // ── Smaakprofiel in cijfers (0–100) ─────────────────────────────────────
-  {veld: 'smaak_fruit',  niveau: 'product', soort: 'schuif', label: 'bier_veld_smaak_fruit',  tip: 'bier_tip_smaakassen', groep: 'bier_groep_smaak'},
-  {veld: 'smaak_body',   niveau: 'product', soort: 'schuif', label: 'bier_veld_smaak_body',   groep: 'bier_groep_smaak'},
-  {veld: 'smaak_bitter', niveau: 'product', soort: 'schuif', label: 'bier_veld_smaak_bitter', groep: 'bier_groep_smaak'},
-  {veld: 'smaak_zoet',   niveau: 'product', soort: 'schuif', label: 'bier_veld_smaak_zoet',   groep: 'bier_groep_smaak'},
-  {veld: 'smaak_droog',  niveau: 'product', soort: 'schuif', label: 'bier_veld_smaak_droog',  groep: 'bier_groep_smaak'},
+  {veld: 'smaak_fruit',  niveau: 'product', weergave: 'balk', soort: 'schuif', label: 'bier_veld_smaak_fruit',  tip: 'bier_tip_smaakassen', groep: 'bier_groep_smaak'},
+  {veld: 'smaak_body',   niveau: 'product', weergave: 'balk', soort: 'schuif', label: 'bier_veld_smaak_body',   groep: 'bier_groep_smaak'},
+  {veld: 'smaak_bitter', niveau: 'product', weergave: 'balk', soort: 'schuif', strak: true, label: 'bier_veld_smaak_bitter', groep: 'bier_groep_smaak'},
+  {veld: 'smaak_zoet',   niveau: 'product', weergave: 'balk', soort: 'schuif', label: 'bier_veld_smaak_zoet',   groep: 'bier_groep_smaak'},
+  {veld: 'smaak_droog',  niveau: 'product', weergave: 'balk', soort: 'schuif', strak: true, label: 'bier_veld_smaak_droog',  groep: 'bier_groep_smaak'},
 
   // ── Waardering ──────────────────────────────────────────────────────────
-  {veld: 'untappd_score',  niveau: 'product', soort: 'tekst', label: 'bier_veld_untappd_score', groep: 'bier_groep_untappd', placeholder: '4,75'},
-  {veld: 'untappd_aantal', niveau: 'product', soort: 'getal', label: 'bier_veld_untappd_aantal', tip: 'bier_tip_untappd_aantal', groep: 'bier_groep_untappd'},
-  {veld: 'untappd_url',    niveau: 'product', soort: 'tekst', label: 'bier_veld_untappd_url',    groep: 'bier_groep_untappd', placeholder: 'https://untappd.com/b/…'},
+  {veld: 'untappd_score',  niveau: 'product', weergave: 'waardering', soort: 'tekst', label: 'bier_veld_untappd_score', groep: 'bier_groep_untappd', placeholder: '4,75'},
+  {veld: 'untappd_aantal', niveau: 'product', weergave: 'waardering', soort: 'getal', label: 'bier_veld_untappd_aantal', tip: 'bier_tip_untappd_aantal', groep: 'bier_groep_untappd'},
+  {veld: 'untappd_url',    niveau: 'product', weergave: 'waardering', soort: 'tekst', label: 'bier_veld_untappd_url',    groep: 'bier_groep_untappd', placeholder: 'https://untappd.com/b/…'},
 
   // ── Uit roulatie ────────────────────────────────────────────────────────
-  {veld: 'uit_roulatie', niveau: 'product', soort: 'ja_nee', label: 'bier_veld_uit_roulatie', tip: 'bier_tip_uit_roulatie', groep: 'bier_groep_roulatie'},
-  {veld: 'opvolger',     niveau: 'product', soort: 'tekst',  label: 'bier_veld_opvolger',     tip: 'bier_tip_opvolger', groep: 'bier_groep_roulatie'},
+  {veld: 'uit_roulatie', niveau: 'product', weergave: 'markering', soort: 'ja_nee', label: 'bier_veld_uit_roulatie', tip: 'bier_tip_uit_roulatie', groep: 'bier_groep_roulatie'},
+  {veld: 'opvolger',     niveau: 'product', weergave: 'markering', soort: 'tekst',  label: 'bier_veld_opvolger',     tip: 'bier_tip_opvolger', groep: 'bier_groep_roulatie'},
 
   // ── Vrije extra eigenschappen ───────────────────────────────────────────
-  {veld: 'extra_specs',   niveau: 'product', soort: 'regels', label: 'bier_veld_extra_specs',   tip: 'bier_tip_extra_specs',   groep: 'bier_groep_extra'},
-  {veld: 'extra_blokken', niveau: 'product', soort: 'regels', label: 'bier_veld_extra_blokken', tip: 'bier_tip_extra_blokken', groep: 'bier_groep_extra'},
+  {veld: 'extra_specs',   niveau: 'product', weergave: 'spec',  soort: 'regels', label: 'bier_veld_extra_specs',   tip: 'bier_tip_extra_specs',   groep: 'bier_groep_extra'},
+  {veld: 'extra_blokken', niveau: 'product', weergave: 'kaart', soort: 'regels', label: 'bier_veld_extra_blokken', tip: 'bier_tip_extra_blokken', groep: 'bier_groep_extra'},
 
   // ── Per verpakking ──────────────────────────────────────────────────────
-  {veld: 'tag',            niveau: 'artikel', soort: 'tekst', label: 'bier_veld_tag', tip: 'bier_tip_tag', groep: 'bier_groep_verpakking', placeholder: 'S–XXL of ×7'},
-  {veld: 'pakket_inhoud',  niveau: 'artikel', soort: 'lang',  label: 'bier_veld_pakket_inhoud', tip: 'bier_tip_pakket_inhoud', groep: 'bier_groep_verpakking'},
-  {veld: 'badge',          niveau: 'artikel', soort: 'tekst', label: 'bier_veld_badge', tip: 'bier_tip_badge', groep: 'bier_groep_verpakking', placeholder: 'Bestseller'},
-  {veld: 'levering',       niveau: 'artikel', soort: 'keuze', label: 'bier_veld_levering', tip: 'bier_tip_levering', groep: 'bier_groep_verpakking', opties: [
+  {veld: 'tag',            niveau: 'artikel', weergave: 'spec', soort: 'tekst', label: 'bier_veld_tag', tip: 'bier_tip_tag', groep: 'bier_groep_verpakking', placeholder: 'S–XXL of ×7'},
+  {veld: 'pakket_inhoud',  niveau: 'artikel', weergave: 'kaart', soort: 'lang',  label: 'bier_veld_pakket_inhoud', tip: 'bier_tip_pakket_inhoud', groep: 'bier_groep_verpakking'},
+  {veld: 'badge',          niveau: 'artikel', weergave: 'markering', soort: 'tekst', label: 'bier_veld_badge', tip: 'bier_tip_badge', groep: 'bier_groep_verpakking', placeholder: 'Bestseller'},
+  {veld: 'levering',       niveau: 'artikel', weergave: 'markering', soort: 'keuze', label: 'bier_veld_levering', tip: 'bier_tip_levering', groep: 'bier_groep_verpakking', opties: [
     {v: 'beide',     l: 'bier_lev_beide'},
     {v: 'verzenden', l: 'bier_lev_verzenden'},
     {v: 'afhalen',   l: 'bier_lev_afhalen'},
@@ -111,6 +125,10 @@ export const bierVelden = (niveau: BierNiveau): BierVeld[] =>
 /** De velden die je zelf invult — de afgeleide vallen hierbuiten. */
 export const bierInvulVelden = (niveau: BierNiveau): BierVeld[] =>
   bierVelden(niveau).filter(v => !v.afgeleid)
+
+/** De velden die in een bepaald deel van de productweergave horen. */
+export const bierWeergaveVelden = (weergave: BierWeergave): BierVeld[] =>
+  BIER_VELDEN.filter(v => v.weergave === weergave)
 
 /** De groepen in de volgorde waarin ze getoond worden. */
 export const BIER_GROEPEN: string[] = BIER_VELDEN.reduce((lijst: string[], v) =>
