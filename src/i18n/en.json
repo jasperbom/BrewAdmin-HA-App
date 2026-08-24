@@ -3453,5 +3453,15 @@
   "bier_lev_verzenden": "Shipping only",
   "bier_lev_afhalen": "Pickup only",
   "bier_afgeleid_hint_form": "from the fields above and the recipe",
-  "bier_leeg_uitleg": "No beer details yet. Click Edit to add them with the product details."
+  "bier_leeg_uitleg": "No beer details yet. Click Edit to add them with the product details.",
+  "lbl_batch": "Batch",
+  "lbl_batch_og": "OG",
+  "lbl_batch_fg": "FG",
+  "batch_stat_aantal": "{n} batches",
+  "batch_stat_gebrouwen": "brewed",
+  "batch_stat_laatst": "last",
+  "batch_stat_rendement": "Efficiency",
+  "batch_afwijking": "The beer says {veld} {bier}, while your batches average {gemeten}.",
+  "batch_afwijking_leeg": "The beer has no {veld} yet; your batches average {gemeten}.",
+  "batch_afwijking_overnemen": "Use this"
 }

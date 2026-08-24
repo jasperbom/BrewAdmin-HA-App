@@ -3453,5 +3453,15 @@
   "bier_lev_verzenden": "Alleen verzenden",
   "bier_lev_afhalen": "Alleen afhalen",
   "bier_afgeleid_hint_form": "uit de velden hierboven en het recept",
-  "bier_leeg_uitleg": "Nog geen bierinformatie ingevuld. Klik op Bewerken om ze bij de productgegevens toe te voegen."
+  "bier_leeg_uitleg": "Nog geen bierinformatie ingevuld. Klik op Bewerken om ze bij de productgegevens toe te voegen.",
+  "lbl_batch": "Batch",
+  "lbl_batch_og": "OG",
+  "lbl_batch_fg": "FG",
+  "batch_stat_aantal": "{n} batches",
+  "batch_stat_gebrouwen": "gebrouwen",
+  "batch_stat_laatst": "laatst",
+  "batch_stat_rendement": "Rendement",
+  "batch_afwijking": "Bij het bier staat {veld} {bier}, terwijl je batches gemiddeld {gemeten} halen.",
+  "batch_afwijking_leeg": "Bij het bier staat nog geen {veld}; je batches halen gemiddeld {gemeten}.",
+  "batch_afwijking_overnemen": "Overnemen"
 }

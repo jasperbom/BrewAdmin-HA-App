@@ -49,6 +49,9 @@ BrewAdmin-HA-App/
 │   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
+│   │   ├── batchStats.ts   # Wat de batches over een bier zeggen: aantal, gebrouwen liters,
+│   │   │                   # gemeten ABV/OG/FG/kleur/rendement (gemiddelde + spreiding) en of de
+│   │   │                   # vastgelegde bierinformatie daarvan afwijkt
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,
@@ -154,7 +157,8 @@ De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
 ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de WooCommerce-productkaart
 (payload, winkel lezen, verschillen), de bierinformatie (velddefinities, afgeleide
-velden, stapelen per niveau, ingrediëntenlijst uit het recept) + de vertaling
+velden, stapelen per niveau, ingrediëntenlijst uit het recept), de
+batchsamenvatting bij een product + de vertaling
 naar het webshopthema, de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
