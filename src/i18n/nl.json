@@ -3463,5 +3463,7 @@
   "batch_stat_rendement": "Rendement",
   "batch_afwijking": "Bij het bier staat {veld} {bier}, terwijl je batches gemiddeld {gemeten} halen.",
   "batch_afwijking_leeg": "Bij het bier staat nog geen {veld}; je batches halen gemiddeld {gemeten}.",
-  "batch_afwijking_overnemen": "Overnemen"
+  "batch_afwijking_overnemen": "Overnemen",
+  "batch_stat_kostprijs": "Kostprijs/L",
+  "batch_trend_tip": "Vorige brouw {vorige}, laatste {laatste}"
 }

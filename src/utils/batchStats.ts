@@ -18,8 +18,18 @@ export interface BatchMeting {
   max: number
   /** De waarde van de meest recente batch met een meting. */
   laatste: number
+  /** De meting van de brouw dáárvoor; null bij één meting. */
+  vorige: number | null
   /** Verschil tussen hoogste en laagste meting. */
   spreiding: number
+  /**
+   * Verandering van de laatste meting ten opzichte van de vorige, in procent.
+   * Null bij één meting of wanneer de vorige nul was. Zo zie je in één getal
+   * of de kostprijs oploopt of het rendement terugzakt.
+   */
+  trendPct: number | null
+  /** Alle metingen op volgorde van brouwdatum — genoeg voor een lijntje. */
+  reeks: number[]
 }
 
 export interface BatchSamenvatting {
@@ -37,6 +47,17 @@ export interface BatchSamenvatting {
   fg: BatchMeting | null
   kleur: BatchMeting | null
   rendement: BatchMeting | null
+  /**
+   * Kostprijs per liter, alleen wanneer de aanroeper hem kan berekenen (die
+   * heeft de ingrediënten, lots, verpakkingen en accijns nodig). Batches
+   * zonder afgevulde liters hebben geen kostprijs en tellen niet mee.
+   */
+  kostprijs: BatchMeting | null
+}
+
+export interface BatchStatsOpties {
+  /** Kostprijs per liter van één batch, of null wanneer die niet bekend is. */
+  kostprijsPerLiter?: (batch: any) => number | null | undefined
 }
 
 const getal = (x: any): number | null => {
@@ -67,13 +88,17 @@ function meting(batches: any[], veld: string, decimalen: number): BatchMeting | 
   const som = waarden.reduce((s, w) => s + w, 0)
   const min = Math.min(...waarden)
   const max = Math.max(...waarden)
+  const vorige = waarden.length > 1 ? waarden[waarden.length - 2] : null
   return {
     aantal: waarden.length,
     gemiddeld: rond(som / waarden.length, decimalen),
     min: rond(min, decimalen),
     max: rond(max, decimalen),
     laatste: rond(laatste, decimalen),
+    vorige: vorige === null ? null : rond(vorige, decimalen),
     spreiding: rond(max - min, decimalen),
+    trendPct: vorige === null || vorige === 0 ? null : rond(((laatste - vorige) / vorige) * 100, 1),
+    reeks: waarden.map(w => rond(w, decimalen)),
   }
 }
 
@@ -81,7 +106,10 @@ function meting(batches: any[], veld: string, decimalen: number): BatchMeting | 
  * Alles wat de batches over dit bier vertellen. Batches zonder meting tellen
  * gewoon mee voor het aantal en de liters; ze verstoren de gemiddelden niet.
  */
-export function batchSamenvatting(batches?: any[] | null): BatchSamenvatting {
+export function batchSamenvatting(
+  batches?: any[] | null,
+  opties?: BatchStatsOpties,
+): BatchSamenvatting {
   const lijst = (batches || []).filter(Boolean)
   // Oudste eerst, zodat "laatste meting" de meest recente brouw is. Batches
   // zonder datum blijven in hun oorspronkelijke volgorde achteraan.
@@ -106,6 +134,10 @@ export function batchSamenvatting(batches?: any[] | null): BatchSamenvatting {
     fg:        meting(opDatum, 'FG', 3),
     kleur:     meting(opDatum, 'kleur', 0),
     rendement: meting(opDatum, 'brouwzaal_eff', 0),
+    kostprijs: opties?.kostprijsPerLiter
+      // Via een tijdelijk veld, zodat `meting` één implementatie blijft.
+      ? meting(opDatum.map(b => ({_kpl: opties.kostprijsPerLiter!(b) || null})), '_kpl', 2)
+      : null,
   }
 }
 

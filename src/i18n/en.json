@@ -3463,5 +3463,7 @@
   "batch_stat_rendement": "Efficiency",
   "batch_afwijking": "The beer says {veld} {bier}, while your batches average {gemeten}.",
   "batch_afwijking_leeg": "The beer has no {veld} yet; your batches average {gemeten}.",
-  "batch_afwijking_overnemen": "Use this"
+  "batch_afwijking_overnemen": "Use this",
+  "batch_stat_kostprijs": "Cost/L",
+  "batch_trend_tip": "Previous brew {vorige}, latest {laatste}"
 }

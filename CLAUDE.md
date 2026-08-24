@@ -50,8 +50,9 @@ BrewAdmin-HA-App/
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
 │   │   ├── batchStats.ts   # Wat de batches over een bier zeggen: aantal, gebrouwen liters,
-│   │   │                   # gemeten ABV/OG/FG/kleur/rendement (gemiddelde + spreiding) en of de
-│   │   │                   # vastgelegde bierinformatie daarvan afwijkt
+│   │   │                   # gemeten ABV/OG/FG/kleur/rendement/kostprijs-per-liter (gemiddelde,
+│   │   │                   # spreiding, trend t.o.v. de vorige brouw, reeks voor een lijntje) en
+│   │   │                   # of de vastgelegde bierinformatie daarvan afwijkt
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,

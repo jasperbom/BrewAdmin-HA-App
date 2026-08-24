@@ -17,10 +17,24 @@ describe('batchSamenvatting', () => {
     expect(s.perStatus).toEqual({Gesloten: 1, Afgevuld: 2})
   })
 
-  it('vat het alcoholpercentage samen, met de spreiding', () => {
+  it('vat het alcoholpercentage samen, met de spreiding en de trend', () => {
     expect(batchSamenvatting(batches).abv).toEqual({
-      aantal: 3, gemiddeld: 7.3, min: 7.1, max: 7.5, laatste: 7.1, spreiding: 0.4,
+      aantal: 3, gemiddeld: 7.3, min: 7.1, max: 7.5,
+      laatste: 7.1, vorige: 7.5, spreiding: 0.4,
+      trendPct: -5.3, reeks: [7.3, 7.5, 7.1],
     })
+  })
+
+  it('houdt de reeks op brouwvolgorde, ook als de lijst dat niet is', () => {
+    const doorElkaar = [batches[2], batches[0], batches[1]]
+    expect(batchSamenvatting(doorElkaar).abv?.reeks).toEqual([7.3, 7.5, 7.1])
+  })
+
+  it('geeft geen trend bij één meting', () => {
+    const m = batchSamenvatting([batches[0]]).abv
+    expect(m?.vorige).toBeNull()
+    expect(m?.trendPct).toBeNull()
+    expect(m?.reeks).toEqual([7.3])
   })
 
   it('neemt de meest recente brouw als "laatste", ongeacht de volgorde', () => {
@@ -60,6 +74,29 @@ describe('batchSamenvatting', () => {
 
   it('leest komma-getallen zoals ze soms ingevoerd worden', () => {
     expect(batchSamenvatting([{ABV: '7,4'}]).abv?.gemiddeld).toBe(7.4)
+  })
+})
+
+describe('kostprijs per liter', () => {
+  const kosten: Record<number, number | null> = {11: 1.42, 12: 1.55, 13: null}
+
+  it('vat de kostprijs samen wanneer de aanroeper hem kan berekenen', () => {
+    const s = batchSamenvatting(
+      batches.map((b, i) => ({...b, id: 11 + i})),
+      {kostprijsPerLiter: (b) => kosten[b.id]},
+    )
+    expect(s.kostprijs).toMatchObject({
+      aantal: 2, gemiddeld: 1.49, min: 1.42, max: 1.55, laatste: 1.55, vorige: 1.42,
+      reeks: [1.42, 1.55],
+    })
+    // Van 1,42 naar 1,55 is ruim 9% duurder.
+    expect(s.kostprijs?.trendPct).toBe(9.2)
+  })
+
+  it('blijft leeg zonder rekenfunctie of zonder bekende kostprijzen', () => {
+    expect(batchSamenvatting(batches).kostprijs).toBeNull()
+    expect(batchSamenvatting(batches, {kostprijsPerLiter: () => null}).kostprijs).toBeNull()
+    expect(batchSamenvatting(batches, {kostprijsPerLiter: () => 0}).kostprijs).toBeNull()
   })
 })
 

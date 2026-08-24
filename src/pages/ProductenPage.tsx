@@ -10,6 +10,7 @@ import { crafteryMeta, crafteryLees, crafteryMetaUitWc, CRAFTERY_SLEUTELS } from
 import BierInfoForm from '../components/BierInfoForm'
 import BierInfoWeergave from '../components/BierInfoWeergave'
 import { batchSamenvatting, bierAfwijkingen } from '../utils/batchStats'
+import Sparkline from '../components/Sparkline'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
@@ -22,7 +23,7 @@ import VerplaatsModal from '../components/VerplaatsModal'
 import UitslagModal from '../components/UitslagModal'
 import { logAudit } from '../utils/audit'
 import { bouwVerplaatsing } from '../utils/agp'
-import { voorraadPerLocatie, getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
+import { voorraadPerLocatie, getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, berekenBatchKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 import { standaardBtwPct } from '../utils/btw'
 
@@ -964,6 +965,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const themaAan = wcCreds?.enabled && wcCreds?.themaVelden !== false;
   const bierProductVelden = bierInvulVelden('product');
   const bierArtikelVelden = bierInvulVelden('artikel');
+
+  // Kostprijs per liter van één batch (ingrediënten, utility, verpakking,
+  // accijns / afgevulde liters). Null zolang er niets afgevuld is: dan is er
+  // geen volume om de kosten over te verdelen.
+  const kostprijsVanBatch = (b: any): number | null => {
+    const {kostprijs_per_liter} = berekenBatchKostprijs(b, bi, lots, av, verpakkingen, onderdelen, acc);
+    return kostprijs_per_liter > 0 ? kostprijs_per_liter : null;
+  };
 
   const receptenVoorProduct = (prod: any) => (prod?.recept_ids?.length
     ? (recepten||[]).filter((r: any) => prod.recept_ids.includes(r.id))
@@ -1977,14 +1986,15 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     liter en wat er gemeten is. Zo zie je bij het bier of het
                     ABV op je etiket nog klopt met wat er uit de tank komt. */}
                 {selBatches.length > 0 && (() => {
-                  const sam = batchSamenvatting(selBatches);
+                  const sam = batchSamenvatting(selBatches, {kostprijsPerLiter: kostprijsVanBatch});
                   const afwijkingen = bierAfwijkingen(sam, selProduct);
-                  const metingen: {label: string, m: any, eenheid?: string, dec: number}[] = [
+                  const metingen: {label: string, m: any, eenheid?: string, dec: number, duurderIsSlecht?: boolean}[] = [
                     {label: t('bier_veld_abv'), m: sam.abv, eenheid: '%', dec: 1},
                     {label: t('lbl_batch_og'), m: sam.og, dec: 3},
                     {label: t('lbl_batch_fg'), m: sam.fg, dec: 3},
                     {label: t('bier_veld_ebc'), m: sam.kleur, dec: 0},
                     {label: t('batch_stat_rendement'), m: sam.rendement, eenheid: '%', dec: 0},
+                    {label: t('batch_stat_kostprijs'), m: sam.kostprijs, dec: 2, duurderIsSlecht: true},
                   ].filter(r => r.m);
                   return (
                     <div className="mb-3 space-y-2">
@@ -1999,19 +2009,38 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
                       {metingen.length > 0 && (
                         <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                          {metingen.map(r => (
-                            <div key={r.label}>
-                              <div className="text-sm font-semibold" style={{color: 'var(--t-accent)'}}>
-                                {r.m.gemiddeld.toFixed(r.dec)}{r.eenheid || ''}
+                          {metingen.map(r => {
+                            // Een stijging is bij kosten slecht nieuws en bij
+                            // rendement juist goed; vandaar `duurderIsSlecht`.
+                            const pct = r.m.trendPct;
+                            const slecht = pct !== null && (r.duurderIsSlecht ? pct > 0 : pct < 0);
+                            return (
+                              <div key={r.label}>
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="text-sm font-semibold" style={{color: 'var(--t-accent)'}}>
+                                    {r.dec === 2 ? fmt(r.m.gemiddeld) : `${r.m.gemiddeld.toFixed(r.dec)}${r.eenheid || ''}`}
+                                  </span>
+                                  {pct !== null && Math.abs(pct) >= 1 && (
+                                    <span className={`text-[10px] font-medium ${slecht ? 'text-red-600' : 'text-green-600'}`}
+                                      title={t('batch_trend_tip')
+                                        .replace('{vorige}', String(r.m.vorige))
+                                        .replace('{laatste}', String(r.m.laatste))}>
+                                      {pct > 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(0)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">
+                                    {r.label}
+                                    {r.m.aantal > 1 && r.m.spreiding > 0 && (
+                                      <span className="normal-case"> · {r.dec === 2 ? fmt(r.m.min) : r.m.min.toFixed(r.dec)}–{r.dec === 2 ? fmt(r.m.max) : r.m.max.toFixed(r.dec)}</span>
+                                    )}
+                                  </div>
+                                  <Sparkline waarden={r.m.reeks} titel={`${r.label}: ${r.m.reeks.join(' · ')}`} />
+                                </div>
                               </div>
-                              <div className="text-[10px] text-gray-400 uppercase tracking-wide">
-                                {r.label}
-                                {r.m.aantal > 1 && r.m.spreiding > 0 && (
-                                  <span className="normal-case"> · {r.m.min.toFixed(r.dec)}–{r.m.max.toFixed(r.dec)}</span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
@@ -2048,6 +2077,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                           <th className="text-right py-1 font-medium">{t('lbl_batch_fg')}</th>
                           <th className="text-right py-1 font-medium">{t('bier_veld_abv')}</th>
                           <th className="text-right py-1 font-medium">{t('bier_veld_ebc')}</th>
+                          <th className="text-right py-1 font-medium">{t('batch_stat_kostprijs')}</th>
                           <th className="text-left py-1 font-medium pl-3">{t('lbl_status')}</th>
                           <th className="w-6"></th>
                         </tr>
@@ -2070,6 +2100,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                               <td className="py-1.5 text-right">{cel(b.FG, 3)}</td>
                               <td className="py-1.5 text-right font-medium">{b.ABV ? `${Number(b.ABV).toFixed(1)}%` : <span className="text-gray-300">–</span>}</td>
                               <td className="py-1.5 text-right">{cel(b.kleur, 0)}</td>
+                              <td className="py-1.5 text-right">
+                                {(() => {
+                                  const kpl = kostprijsVanBatch(b);
+                                  return kpl ? fmt(kpl) : <span className="text-gray-300">–</span>;
+                                })()}
+                              </td>
                               <td className="py-1.5 pl-3">
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
                               </td>
