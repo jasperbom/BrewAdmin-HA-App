@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.13] — 2026-08-24
+
+### Het bier staat op de productpagina, zoals in de winkel
+
+De bierinformatie zat achter een ingeklapte sectie: om te zien wat je over een
+bier had vastgelegd moest je klikken, en voor het smaakprofiel zelfs Bewerken
+openen.
+
+- De productpagina **toont het bier nu meteen**, in dezelfde opbouw als de
+  webshop: de cijferstrip (ABV, IBU, EBC, kcal en de Untappd-waardering), het
+  smaakprofiel als balken — accentkleur voor de assen die het bier voller
+  maken, groen voor bitter en droog — de spectabel met stijl, inhoud en je
+  eigen regels, en de tekstblokken met ingrediënten, smaakprofiel, serveertip
+  en eigen blokken. Niets meer inklappen, niets meer openen.
+- De losse sectie *Bierinformatie* is daarmee verdwenen, en met haar de tweede
+  Bewerken-knop: **er is nog één plek om het bier te bewerken**, de knop
+  rechtsboven bij het product.
+- De oude ABV/EBC/IBU-badges zijn opgegaan in de cijferstrip.
+- Waar de velden in de weergave terechtkomen staat bij de velddefinitie
+  (`weergave` in `utils/bierinfo.ts`), dus een nieuw veld verschijnt vanzelf op
+  de juiste plek. De WooCommerce-productkaart gebruikt dezelfde weergave voor
+  "gaat mee naar de webshop".
+
+---
+
 ## [1.12.12] — 2026-08-24
 
 ### Eén formulier voor het bier

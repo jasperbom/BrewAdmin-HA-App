@@ -8,6 +8,7 @@ import {
 } from '../utils/bierinfo'
 import { crafteryMeta, crafteryLees, crafteryMetaUitWc, CRAFTERY_SLEUTELS } from '../utils/craftery'
 import BierInfoForm from '../components/BierInfoForm'
+import BierInfoWeergave from '../components/BierInfoWeergave'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
@@ -130,7 +131,6 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const [wcSyncMsg, setWcSyncMsg] = useState('');
   // Volledige WooCommerce-productkaart van één artikel (modal).
   const [wcModalArt, setWcModalArt] = useState<any>(null);
-  const [bierInfoOpen, setBierInfoOpen] = useState(false);
 
   const selProduct = useMemo(() => (producten||[]).find((p: any) => p.id === sel), [producten, sel]);
 
@@ -1471,20 +1471,25 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   )}
 
                   <div className="flex-1 min-w-0">
-                    {selProduct.stijl && <div className="text-sm text-gray-500 mb-1">{selProduct.stijl}</div>}
                     {selProduct.categorie && <div className="text-xs text-gray-400 mb-2">{selProduct.categorie}</div>}
-                    {/* ABV / EBC / IBU badges */}
-                    {(selProduct.abv || selProduct.ebc || selProduct.ibu) && (
-                      <div className="flex gap-2 mb-3">
-                        {selProduct.abv && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{Number(selProduct.abv).toFixed(1)}% ABV</span>}
-                        {selProduct.ebc && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">{selProduct.ebc} EBC</span>}
-                        {selProduct.ibu && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{selProduct.ibu} IBU</span>}
-                      </div>
-                    )}
                     {selProduct.omschrijving && <div className="text-sm text-gray-600 mb-3">{selProduct.omschrijving}</div>}
                     {selProduct.notities && <div className="text-xs text-gray-400 italic">{selProduct.notities}</div>}
                   </div>
                 </div>
+
+                {/* Het bier zoals het op de webshop staat: de cijfers, het
+                    smaakprofiel, de specs en de tekstblokken. Meteen zichtbaar
+                    — bewerken doe je met de knop rechtsboven. */}
+                <div className="mt-4">
+                  <BierInfoWeergave info={bierInfoVoorArtikel({product: selProduct, recepten: selRecepten})} />
+                </div>
+                {bierProductVelden.every((f: any) => {
+                  const w = selProduct[f.veld];
+                  return w === undefined || w === null || w === '' ||
+                    (Array.isArray(w) ? w.length === 0 : typeof w === 'boolean' ? !w : String(w).trim() === '');
+                }) && (
+                  <p className="mt-3 text-xs text-gray-400 italic">{t('bier_leeg_uitleg')}</p>
+                )}
               </div>
             </div>
 
@@ -1503,58 +1508,6 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 </div>
               ))}
             </div>
-
-            {/* Bierinformatie — hier alleen om te lezen. Bewerken doe je in
-                het productformulier, samen met naam, stijl en ABV: het is één
-                bier, dus één plek om het bij te houden. */}
-            {(() => {
-              const info = bierInfoVoorArtikel({product: selProduct, recepten: selRecepten});
-              // ABV, IBU, EBC en stijl staan al in de kop van het product;
-              // hier alleen wat je verder over dit bier hebt vastgelegd.
-              const zichtbaar = bierInvulVelden('product').filter((f: any) => {
-                const w = info[f.veld];
-                return w !== undefined && w !== null && w !== '' &&
-                  (Array.isArray(w) ? w.length > 0 : typeof w === 'boolean' ? w : String(w).trim() !== '');
-              });
-              return (
-                <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${bierInfoOpen?'':'overflow-hidden'}`}>
-                  <SectionHeader
-                    open={bierInfoOpen}
-                    onToggle={() => setBierInfoOpen(!bierInfoOpen)}
-                    rounded={bierInfoOpen ? 'top' : 'full'}
-                    title={t('bier_sectie_titel')}
-                    info={<span className="flex items-center gap-2">
-                      <span>{zichtbaar.length}</span>
-                      <Btn onClick={() => startEdit(selProduct)} s="sm" v="header">{t('btn_bewerken')}</Btn>
-                    </span>}
-                  />
-                  {bierInfoOpen && (
-                    <div className="p-4">
-                      {zichtbaar.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic">{t('bier_leeg_uitleg')}</p>
-                      ) : (
-                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                          {zichtbaar.map((f: any) => {
-                            const w = info[f.veld];
-                            const tekst = Array.isArray(w)
-                              ? w.map((r: any) => `${r.label}: ${r.value}`).join(' · ')
-                              : typeof w === 'boolean' ? t(w ? 'lbl_ja' : 'lbl_nee') : String(w);
-                            const breed = f.soort === 'lang' || f.soort === 'regels';
-                            return (
-                              <div key={f.veld} className={breed ? 'sm:col-span-2' : ''}>
-                                <dt className="text-[11px] text-gray-400">{t(f.label)}</dt>
-                                <dd className="text-sm text-gray-700 whitespace-pre-wrap">{tekst}</dd>
-                              </div>
-                            );
-                          })}
-                        </dl>
-                      )}
-                      {themaAan && <p className="text-[11px] text-gray-400 mt-3">{t('bier_uitleg_webshop')}</p>}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
 
             {/* Voorraad overzicht */}
             {selVoorraad.length > 0 && (

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   BIER_VELDEN, BIER_GROEPEN, bierVelden, bierInvulVelden,
-  bierInhoud, bierIngredienten, afgeleideBierInfo, bierInfoVoorArtikel,
+  bierInhoud, bierIngredienten, afgeleideBierInfo, bierInfoVoorArtikel, bierWeergaveVelden,
 } from '../bierinfo'
 
 describe('velddefinities', () => {
@@ -28,6 +28,31 @@ describe('velddefinities', () => {
     expect(invul).toContain('kcal')
     expect(invul).toContain('smaakprofiel')
     expect(bierInvulVelden('artikel').map(v => v.veld)).not.toContain('inhoud')
+  })
+})
+
+describe('weergave-indeling', () => {
+  it('geeft elk veld een plek in de productweergave', () => {
+    expect(BIER_VELDEN.every(v => !!v.weergave)).toBe(true)
+  })
+  it('zet de getallen waar een bierdrinker op scant in de cijferstrip', () => {
+    expect(bierWeergaveVelden('cijfer').map(v => v.veld)).toEqual(['abv', 'ibu', 'ebc', 'kcal'])
+  })
+  it('toont het smaakprofiel als balken en de teksten als blokken', () => {
+    expect(bierWeergaveVelden('balk').map(v => v.veld))
+      .toEqual(['smaak_fruit', 'smaak_body', 'smaak_bitter', 'smaak_zoet', 'smaak_droog'])
+    expect(bierWeergaveVelden('kaart').map(v => v.veld))
+      .toEqual(['ingredienten', 'smaakprofiel', 'serveertip', 'extra_blokken', 'pakket_inhoud'])
+  })
+  it('markeert de assen die het bier strakker maken', () => {
+    const strak = bierWeergaveVelden('balk').filter(v => v.strak).map(v => v.veld)
+    expect(strak).toEqual(['smaak_bitter', 'smaak_droog'])
+  })
+  it('zet stijl, inhoud en eigen regels in de spectabel', () => {
+    const specs = bierWeergaveVelden('spec').map(v => v.veld)
+    expect(specs).toContain('stijl')
+    expect(specs).toContain('inhoud')
+    expect(specs).toContain('extra_specs')
   })
 })
 
