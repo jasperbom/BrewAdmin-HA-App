@@ -1,3 +1,5 @@
+import type { WcVelden } from '../utils/wcProduct'
+
 export type Allergeen = 'gluten' | 'gerst' | 'tarwe' | 'rogge' | 'haver' |
   'lactose' | 'soja' | 'noten' | 'sulfiet' | 'overig'
 
@@ -412,6 +414,10 @@ export interface ProductArtikel {
   // Ontbrekend/undefined geldt als `true` zodat bestaande artikelen
   // hun huidige gedrag behouden.
   wc_push?: boolean
+  // Volledige WooCommerce-productkaart voor dit artikel (naam, teksten,
+  // prijzen, categorieën, afbeeldingen …). Ontbrekend = nog nooit gekoppeld;
+  // dan pusht de app alleen de voorraad, precies zoals voorheen.
+  wc?: WcVelden
 }
 
 export interface InkoopFactuur {
@@ -1008,6 +1014,9 @@ export interface MerchArtikel {
   verkoopprijs?: number
   btw_pct?: number
   wc_push?: boolean
+  // Zie ProductArtikel.wc — merch met eigen voorraad is in de webshop
+  // gewoon een product en wordt op dezelfde manier beheerd.
+  wc?: WcVelden
 }
 
 export interface BestellingPick {

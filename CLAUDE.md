@@ -46,6 +46,12 @@ BrewAdmin-HA-App/
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
 │   │   ├── merch.ts        # Merch-artikelen: herkenning op SKU/naam (onthouden vanuit een orderregel) + eigen voorraad (mutaties, tekorten, waardering) voor merch die je zélf op voorraad hebt
+│   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
+│   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
+│   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
+│   │   ├── craftery.ts     # Eigen productvelden van het Craftery-webshopthema (`_cf_…`-meta):
+│   │   │                   # velddefinities + voorstel dat ABV/IBU/EBC/stijl/inhoud uit de
+│   │   │                   # administratie invult. Alleen deze sleutels worden gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
@@ -140,7 +146,8 @@ docker build -t brewadmin .
 De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 `src/utils/__tests__/`: accijns, BTW-rollover en grondslag-BTW, centen,
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
-ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de
+ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de WooCommerce-productkaart
+(payload, winkel lezen, verschillen) + de themavelden van het webshopthema, de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
@@ -464,7 +471,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
-| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) — nooit in backup |
+| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
 | `mollie_creds` *(secure)* | object | Mollie API-key + `enabled` + `redirectUrl` voor de online betaallink op verkoopfacturen (nooit in backup); server-side proxy voegt de key toe |
@@ -547,7 +554,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/logout` | Alleen directe poort: beëindig de sessie |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
 | POST | `/api/brewfather/*` | Proxy to Brewfather API |
-| POST | `/api/woocommerce/*` | Proxy to WooCommerce API |
+| POST | `/api/woocommerce/*` | Proxy to WooCommerce API (GET via de prefix, PUT via `put/`) |
+| POST | `/api/woocommerce/create/*` | Aanmaken in WooCommerce (product, categorie, tag). Bewust **zonder** herkansing bij een timeout: een POST is niet idempotent |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
 | POST | `/api/nextnr` | Volgend factuur-/creditnotanummer, atomair per reeks/jaar (`{reeks, jaar}` → `{jaar, nr, nummer}`) |
 | POST | `/api/commit` | Meerdere data-keys atomair opslaan (`{data:{key:waarde}, versions:{key:versie}}`), 409 bij versieconflict |
@@ -620,6 +628,26 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   levert bij afronden een verkoopfactuur met status `betaald` (die factuur
   vraagt niet meer om een overboeking, in de mail noch op de PDF)
 - Credentials in `instellingen` (`wcUrl`, `wcKey`, `wcSecret`)
+- **Productbeheer** (v1.12.8): de volledige productkaart per artikel staat in
+  `productArtikel.wc` resp. `merchArtikel.wc` (`WcVelden` uit
+  `utils/wcProduct.ts`) en wordt bewerkt in `components/WcProductModal.tsx`
+  (knop `WC` bij het artikel). Ophalen = de winkel is leidend; pushen gaat via
+  `bouwWcPayload`, dat **lege velden weglaat** zodat een push nooit iets in de
+  webshop wist. Bulk: `↑ Push voorraad` (alleen `stock_quantity`),
+  `↑ Push alles` (complete kaart) en `↓ Ophalen uit webshop` op de
+  productenpagina. Een SKU die de winkel nog niet kent wordt aangemaakt via
+  `POST /api/woocommerce/create/products`
+- **Themavelden** (`utils/craftery.ts`): het Craftery-thema bewaart ABV, IBU,
+  EBC, kcal, inhoud, stijl, smaakprofiel, Untappd, archief- en pakketvelden als
+  `_cf_…`-post-meta. Die staan in het tabblad "Thema-velden" van de
+  productkaart en gaan als `meta_data` mee; `crafteryVoorstel` vult de lege
+  velden met wat de app al weet. Wijzigt het thema, dan wijzigt
+  `CRAFTERY_VELDEN` mee — de app schrijft nooit een meta-sleutel die daar niet
+  in staat, en laat meta van andere plugins ongemoeid. Uit te zetten met
+  `woocommerce_creds.themaVelden = false`
+- Afbeeldingen zijn verwijzingen, geen uploads: de WC REST API accepteert een
+  media-`id` of een publieke `src`-URL. Base64 uit deze app kan er niet in —
+  uploaden blijft WordPress-werk
 
 ### Claude AI (Anthropic)
 

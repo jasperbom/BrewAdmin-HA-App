@@ -121,6 +121,9 @@ WC_PROXY_PREFIX = '/api/woocommerce/'
 WC_PING_PATH    = '/api/woocommerce/ping'
 WC_TEST_PATH    = '/api/woocommerce/test'
 WC_PUT_PREFIX   = '/api/woocommerce/put/'
+# Aanmaken (product, categorie, tag) — bewust een eigen prefix: een POST is
+# níét idempotent en mag daarom nooit herhaald worden bij een timeout.
+WC_POST_PREFIX  = '/api/woocommerce/create/'
 # WooCommerce op gedeelde hosting doet over een product-PUT regelmatig meer dan
 # 8 seconden (de oude limiet) — dat leverde een kale 502 op terwijl de winkel
 # gewoon traag was. Ruimer wachten + één herkansing bij een tijdelijke storing.
@@ -384,14 +387,17 @@ def _wc_oorzaak(exc: BaseException) -> str:
     return 'netwerk'
 
 
-def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = None) -> tuple[int, bytes]:
-    """Make a GET or PUT request to the WooCommerce REST API.
+def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = None,
+                herkansing: bool = True) -> tuple[int, bytes]:
+    """Make a GET, PUT or POST request to the WooCommerce REST API.
 
     Netwerkfouten komen terug met een oorzaakscode (`oorzaak`) i.p.v. een kale
-    502; een timeout krijgt 504. Beide calls zijn idempotent (GET, en een PUT
-    die `stock_quantity` op een absolute waarde zet), dus één herkansing bij
-    een tijdelijke storing is veilig — WooCommerce op gedeelde hosting is
-    regelmatig even traag of weigert kortstondig de verbinding."""
+    502; een timeout krijgt 504. GET en PUT zijn idempotent (een PUT zet
+    `stock_quantity` en de overige velden op een absolute waarde), dus één
+    herkansing bij een tijdelijke storing is veilig — WooCommerce op gedeelde
+    hosting is regelmatig even traag of weigert kortstondig de verbinding.
+    Een POST maakt iets áán: die mag nooit herhaald worden, anders staat er bij
+    een trage winkel zomaar twee keer hetzelfde product (`herkansing=False`)."""
     auth = base64.b64encode(f'{creds["key"]}:{creds["secret"]}'.encode()).decode()
     url  = f'{creds["url"]}{WC_API_PATH}/{subpath}'
     req  = urllib.request.Request(
@@ -405,7 +411,8 @@ def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = Non
         method=method,
     )
     oorzaak = 'netwerk'
-    for poging in range(WC_POGINGEN):
+    pogingen = WC_POGINGEN if herkansing else 1
+    for poging in range(pogingen):
         try:
             with urllib.request.urlopen(req, timeout=WC_TIMEOUT) as resp:
                 return resp.status, resp.read()
@@ -415,7 +422,7 @@ def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = Non
             return e.code, e.read() or b'{}'
         except Exception as e:
             oorzaak = _wc_oorzaak(e)
-            if oorzaak in ('certificaat', 'tls', 'dns') or poging == WC_POGINGEN - 1:
+            if oorzaak in ('certificaat', 'tls', 'dns') or poging == pogingen - 1:
                 break
             time.sleep(WC_RETRY_PAUZE)
     _log('woocommerce', f'{method} {subpath.split("?")[0]} mislukt: {oorzaak}')
@@ -3600,7 +3607,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'ok': True, 'server': 'wc-ready'})
             return
 
-        if WC_PROXY_PREFIX in path and WC_PUT_PREFIX not in path:
+        if WC_PROXY_PREFIX in path and WC_PUT_PREFIX not in path and WC_POST_PREFIX not in path:
             self._wc_proxy_get()
             return
 
@@ -3712,6 +3719,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if WC_PUT_PREFIX in path:
             self._wc_proxy_put()
+            return
+
+        if WC_POST_PREFIX in path:
+            self._wc_proxy_post()
             return
 
         if CLAUDE_PROXY_PREFIX in path:
@@ -3935,9 +3946,21 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
     def _wc_proxy_put(self):
         """Proxy a PUT request to WooCommerce, delivered as browser POST."""
+        self._wc_proxy_write(WC_PUT_PREFIX, 'PUT', herkansing=True)
+
+    def _wc_proxy_post(self):
+        """Proxy a POST (aanmaken) request to WooCommerce.
+
+        Aanmaken is niet idempotent — bij een timeout wordt er dus níét
+        herkanst; de client meldt de storing en de gebruiker controleert de
+        winkel voordat hij het opnieuw probeert."""
+        self._wc_proxy_write(WC_POST_PREFIX, 'POST', herkansing=False)
+
+    def _wc_proxy_write(self, prefix: str, method: str, herkansing: bool):
+        """Gedeelde afhandeling van een schrijvende WooCommerce-proxycall."""
         full = self.path
-        idx  = full.find(WC_PUT_PREFIX)
-        wc_subpath = full[idx + len(WC_PUT_PREFIX):]
+        idx  = full.find(prefix)
+        wc_subpath = full[idx + len(prefix):]
         if not _valid_wc_path(wc_subpath):
             self._json(400, {'error': 'invalid path'})
             return
@@ -3953,7 +3976,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._json(400, {'error': 'invalid json'})
             return
-        status, data = _wc_request(creds, 'PUT', wc_subpath, body)
+        status, data = _wc_request(creds, method, wc_subpath, body, herkansing=herkansing)
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(data))
