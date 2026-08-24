@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   CRAFTERY_VELDEN, CRAFTERY_SLEUTELS, CRAFTERY_GROEPEN,
-  CRAFTERY_PRODUCT_SLEUTELS, CRAFTERY_ARTIKEL_SLEUTELS, crafteryVelden,
-  crafteryInhoud, crafteryVoorstel, crafteryProductVoorstel, crafteryArtikelVoorstel,
-  vulAanMetVoorstel, combineerThemaMeta, splitsThemaMeta, crafteryIngredienten,
+  CRAFTERY_PRODUCT_SLEUTELS, CRAFTERY_ARTIKEL_SLEUTELS, CRAFTERY_AUTO_SLEUTELS,
+  crafteryVelden, crafteryInvulVelden,
+  crafteryInhoud, crafteryAutoMeta, crafteryAutoProduct, crafteryAutoArtikel,
+  vulAanMetVoorstel, combineerThemaMeta, splitsThemaMeta, crafteryIngredienten, zonderAutoVelden,
 } from '../craftery'
 import { bouwWcPayload, leesWcProduct, wcVerschillen } from '../wcProduct'
 
@@ -49,6 +50,42 @@ describe('niveaus: bier versus verpakking', () => {
   })
 })
 
+describe('afgeleide velden', () => {
+  it('markeert precies de velden die de app zelf kent', () => {
+    expect(CRAFTERY_AUTO_SLEUTELS.sort()).toEqual(
+      ['_cf_abv', '_cf_ibu', '_cf_ebc', '_cf_stijl', '_cf_inhoud'].sort())
+  })
+  it('laat die velden uit het invulformulier weg — je vult ze maar op één plek in', () => {
+    const invul = crafteryInvulVelden('product').map(v => v.sleutel)
+    expect(invul).not.toContain('_cf_abv')
+    expect(invul).not.toContain('_cf_stijl')
+    expect(invul).toContain('_cf_kcal')
+    expect(invul).toContain('_cf_smaak')
+    expect(crafteryInvulVelden('artikel').map(v => v.sleutel)).not.toContain('_cf_inhoud')
+  })
+  it('slaat een afwijkende winkelwaarde van zo’n veld niet op als invoer', () => {
+    // De administratie is de bron: bij de volgende push gaat de eigen waarde
+    // mee en wordt het verschil rechtgezet.
+    const r = splitsThemaMeta({_cf_abv: '6,8%', _cf_inhoud: '75cl', _cf_smaak: 'Fris'})
+    expect(r.product).toEqual({_cf_smaak: 'Fris'})
+    expect(r.artikel).toEqual({})
+  })
+})
+
+describe('zonderAutoVelden', () => {
+  it('gooit een oude opgeslagen ABV weg zodat de productgegevens winnen', () => {
+    expect(zonderAutoVelden({_cf_abv: '6,8%', _cf_inhoud: '75cl', _cf_smaak: 'Fris'}))
+      .toEqual({_cf_smaak: 'Fris'})
+  })
+  it('laat de ingrediënten staan — dat blijft een invulveld', () => {
+    expect(zonderAutoVelden({_cf_ingredienten: 'water, gerstemout'}))
+      .toEqual({_cf_ingredienten: 'water, gerstemout'})
+  })
+  it('overleeft ontbrekende invoer', () => {
+    expect(zonderAutoVelden(null)).toEqual({})
+  })
+})
+
 describe('combineerThemaMeta', () => {
   it('legt de verpakkingswaarden over die van het bier heen', () => {
     const r = combineerThemaMeta({_cf_abv: '7,1%', _cf_inhoud: '33cl'}, {_cf_inhoud: '75cl'})
@@ -62,13 +99,24 @@ describe('combineerThemaMeta', () => {
     expect(combineerThemaMeta(null, null)).toEqual({})
     expect(combineerThemaMeta(undefined, {_cf_badge: 'Nieuw'})).toEqual({_cf_badge: 'Nieuw'})
   })
+  it('stapelt drie lagen: afgeleid → bier → verpakking', () => {
+    const auto = {_cf_abv: '7,1%', _cf_ingredienten: 'water, gerstemout, hop, gist', _cf_inhoud: '33cl'}
+    const bier = {_cf_ingredienten: 'water, gerstemout, hop, gist, koriander'}
+    const verpakking = {_cf_badge: 'Nieuw'}
+    expect(combineerThemaMeta(auto, bier, verpakking)).toEqual({
+      _cf_abv: '7,1%',
+      _cf_ingredienten: 'water, gerstemout, hop, gist, koriander',
+      _cf_inhoud: '33cl',
+      _cf_badge: 'Nieuw',
+    })
+  })
 })
 
 describe('splitsThemaMeta', () => {
   it('stuurt elk veld naar het niveau waar het hoort', () => {
-    const r = splitsThemaMeta({_cf_abv: '7,1%', _cf_inhoud: '33cl', _onbekend: 'x'})
-    expect(r.product).toEqual({_cf_abv: '7,1%'})
-    expect(r.artikel).toEqual({_cf_inhoud: '33cl'})
+    const r = splitsThemaMeta({_cf_smaak: 'Rijp fruit', _cf_badge: 'Nieuw', _onbekend: 'x'})
+    expect(r.product).toEqual({_cf_smaak: 'Rijp fruit'})
+    expect(r.artikel).toEqual({_cf_badge: 'Nieuw'})
   })
   it('negeert sleutels die de app niet beheert', () => {
     expect(splitsThemaMeta({_wc_plugin: 'y'})).toEqual({product: {}, artikel: {}})
@@ -93,24 +141,24 @@ describe('crafteryInhoud', () => {
   })
 })
 
-describe('crafteryVoorstel', () => {
-  it('vult wat de app al weet, in de notatie van de winkel', () => {
-    const v = crafteryVoorstel({product: {abv: 7.14, ibu: 24.4, ebc: 12, stijl: 'NEIPA'}, inhoudLiter: 0.33})
+describe('crafteryAutoMeta', () => {
+  it('leidt af wat de app al weet, in de notatie van de winkel', () => {
+    const v = crafteryAutoMeta({product: {abv: 7.14, ibu: 24.4, ebc: 12, stijl: 'NEIPA'}, inhoudLiter: 0.33})
     expect(v).toEqual({_cf_abv: '7,1%', _cf_ibu: '24', _cf_ebc: '12', _cf_inhoud: '33cl', _cf_stijl: 'NEIPA'})
   })
   it('splitst netjes per niveau: bier apart van verpakking', () => {
-    expect(crafteryProductVoorstel({abv: 7.14, stijl: 'NEIPA'})).toEqual({_cf_abv: '7,1%', _cf_stijl: 'NEIPA'})
-    expect(crafteryProductVoorstel({}, [{mout: [{naam: 'Pilsner'}], hop: [{naam: 'Citra'}], gist: [{naam: 'US-05'}]}]))
+    expect(crafteryAutoProduct({abv: 7.14, stijl: 'NEIPA'})).toEqual({_cf_abv: '7,1%', _cf_stijl: 'NEIPA'})
+    expect(crafteryAutoProduct({}, [{mout: [{naam: 'Pilsner'}], hop: [{naam: 'Citra'}], gist: [{naam: 'US-05'}]}]))
       .toEqual({_cf_ingredienten: 'water, gerstemout, hop, gist'})
-    expect(crafteryArtikelVoorstel(0.75)).toEqual({_cf_inhoud: '75cl'})
-    expect(crafteryArtikelVoorstel(null)).toEqual({})
+    expect(crafteryAutoArtikel(0.75)).toEqual({_cf_inhoud: '75cl'})
+    expect(crafteryAutoArtikel(null)).toEqual({})
     // Een productvoorstel bevat nooit een verpakkingsveld.
-    expect(Object.keys(crafteryProductVoorstel({abv: 7})).every(k => CRAFTERY_PRODUCT_SLEUTELS.includes(k))).toBe(true)
+    expect(Object.keys(crafteryAutoProduct({abv: 7})).every(k => CRAFTERY_PRODUCT_SLEUTELS.includes(k))).toBe(true)
   })
   it('verzint niets bij ontbrekende gegevens', () => {
-    expect(crafteryVoorstel({product: {}, inhoudLiter: null})).toEqual({})
-    expect(crafteryVoorstel({})).toEqual({})
-    expect(crafteryVoorstel({product: {abv: 0, ibu: 0, ebc: 0, stijl: '  '}})).toEqual({})
+    expect(crafteryAutoMeta({product: {}, inhoudLiter: null})).toEqual({})
+    expect(crafteryAutoMeta({})).toEqual({})
+    expect(crafteryAutoMeta({product: {abv: 0, ibu: 0, ebc: 0, stijl: '  '}})).toEqual({})
   })
 })
 

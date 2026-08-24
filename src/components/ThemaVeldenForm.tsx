@@ -1,8 +1,7 @@
 import React from 'react'
 import { t } from '../i18n'
-import Btn from './ui/Btn'
 import { WcMetaRegel } from '../utils/wcProduct'
-import { CrafteryVeld, CRAFTERY_GROEPEN, vulAanMetVoorstel } from '../utils/craftery'
+import { CrafteryVeld, CRAFTERY_GROEPEN } from '../utils/craftery'
 
 // De invulvelden van het webshopthema, gegroepeerd. Eén component voor twee
 // plekken: de biereigenschappen bij het product (ABV, stijl, smaakprofiel — je
@@ -38,16 +37,18 @@ export interface ThemaVeldenFormProps {
   velden: CrafteryVeld[]
   waarden?: Record<string, any> | null
   onChange: (meta: Record<string, any>) => void
-  /** Waarden die de app zelf al kent; toont de knop "Overnemen uit de app". */
-  voorstel?: Record<string, string>
   /** Uitleg boven de velden (i18n-sleutel). */
   uitleg?: string
-  /** Melding na het overnemen — de aanroeper toont hem waar dat past. */
-  onOvergenomen?: () => void
+  /**
+   * Waarden die de app zelf afleidt, per meta-sleutel. Ze staan als
+   * placeholder in het veld: laat je het leeg, dan gaat de afgeleide waarde
+   * naar de winkel; typ je iets, dan wint dat.
+   */
+  placeholders?: Record<string, string>
 }
 
 const ThemaVeldenForm: React.FC<ThemaVeldenFormProps> = ({
-  velden, waarden, onChange, voorstel = {}, uitleg, onOvergenomen,
+  velden, waarden, onChange, uitleg, placeholders = {},
 }) => {
   const meta = waarden || {}
   const zet = (sleutel: string, waarde: any) => onChange({...meta, [sleutel]: waarde})
@@ -55,21 +56,12 @@ const ThemaVeldenForm: React.FC<ThemaVeldenFormProps> = ({
 
   // Alleen de groepen waar dit niveau ook echt velden in heeft.
   const groepen = CRAFTERY_GROEPEN.filter(g => velden.some(f => f.groep === g))
-  const teVullen = Object.keys(voorstel).filter(k => velden.some(f => f.sleutel === k))
+  // Afgeleide waarde als placeholder; anders de voorbeeldtekst uit het veld.
+  const placeholder = (f: CrafteryVeld) => placeholders[f.sleutel] || f.placeholder
 
   return (
     <div className="space-y-3">
-      {(uitleg || teVullen.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {uitleg && <p className="text-[11px] text-gray-500 flex-1 min-w-[12rem]">{t(uitleg)}</p>}
-          {teVullen.length > 0 && (
-            <Btn s="sm" v="secondary" title={t('cf_tip_overnemen')}
-              onClick={() => { onChange(vulAanMetVoorstel(meta, voorstel)); onOvergenomen?.() }}>
-              {t('cf_btn_overnemen')}
-            </Btn>
-          )}
-        </div>
-      )}
+      {uitleg && <p className="text-[11px] text-gray-500">{t(uitleg)}</p>}
 
       {groepen.map(groep => (
         <div key={groep}>
@@ -97,7 +89,7 @@ const ThemaVeldenForm: React.FC<ThemaVeldenFormProps> = ({
                     {t(f.label)}
                   </label>
                   {f.soort === 'lang' ? (
-                    <textarea rows={3} className={inputCls} placeholder={f.placeholder}
+                    <textarea rows={3} className={inputCls} placeholder={placeholder(f)}
                       value={String(w)} onChange={e => zet(f.sleutel, e.target.value)} />
                   ) : f.soort === 'keuze' ? (
                     <select value={String(w)} onChange={e => zet(f.sleutel, e.target.value)}
@@ -129,8 +121,11 @@ const ThemaVeldenForm: React.FC<ThemaVeldenFormProps> = ({
                     <ThemaRegels waarde={Array.isArray(w) ? w : []} onChange={r => zet(f.sleutel, r)} />
                   ) : (
                     <input type={f.soort === 'getal' ? 'number' : 'text'} className={inputCls}
-                      placeholder={f.placeholder} value={String(w)}
+                      placeholder={placeholder(f)} value={String(w)}
                       onChange={e => zet(f.sleutel, e.target.value)} />
+                  )}
+                  {placeholders[f.sleutel] && String(w).trim() === '' && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">{t('cf_leeg_is_automatisch')}</p>
                   )}
                   {f.tip && <p className="text-[10px] text-gray-400 mt-0.5">{t(f.tip)}</p>}
                 </div>

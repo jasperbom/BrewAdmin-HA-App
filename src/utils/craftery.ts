@@ -28,6 +28,13 @@ export interface CrafteryVeld {
   /** Meta-sleutel in WooCommerce, bijv. `_cf_abv`. */
   sleutel: string
   niveau: CrafteryNiveau
+  /**
+   * Dit veld leidt de app zelf af uit wat er al in de administratie staat
+   * (ABV, IBU, EBC en stijl van het product; de inhoud van de verpakking).
+   * Zulke velden zijn géén invulveld: je wijzigt ze bij het product of bij de
+   * verpakking, en ze gaan van daaruit mee naar de winkel. Eén plek dus.
+   */
+  automatisch?: boolean
   /** i18n-sleutel van het label. */
   label: string
   soort: CrafteryVeldSoort
@@ -48,12 +55,12 @@ export interface CrafteryVeld {
 export const CRAFTERY_VELDEN: CrafteryVeld[] = [
   // Spec sheet — de tabel op de productpagina, met ABV/IBU/EBC/kcal als
   // cijferstrip onder de winkelwagenknop.
-  {sleutel: '_cf_abv',    niveau: 'product', label: 'cf_veld_abv',    soort: 'tekst', groep: 'cf_groep_specs', placeholder: '7,14%'},
-  {sleutel: '_cf_ibu',    niveau: 'product', label: 'cf_veld_ibu',    soort: 'tekst', groep: 'cf_groep_specs', placeholder: '24'},
-  {sleutel: '_cf_ebc',    niveau: 'product', label: 'cf_veld_ebc',    soort: 'tekst', groep: 'cf_groep_specs', placeholder: '12'},
+  {sleutel: '_cf_abv',    niveau: 'product', automatisch: true, label: 'cf_veld_abv',    soort: 'tekst', groep: 'cf_groep_specs', placeholder: '7,14%'},
+  {sleutel: '_cf_ibu',    niveau: 'product', automatisch: true, label: 'cf_veld_ibu',    soort: 'tekst', groep: 'cf_groep_specs', placeholder: '24'},
+  {sleutel: '_cf_ebc',    niveau: 'product', automatisch: true, label: 'cf_veld_ebc',    soort: 'tekst', groep: 'cf_groep_specs', placeholder: '12'},
   {sleutel: '_cf_kcal',   niveau: 'product', label: 'cf_veld_kcal',   soort: 'tekst', groep: 'cf_groep_specs', placeholder: '67'},
-  {sleutel: '_cf_inhoud', niveau: 'artikel', label: 'cf_veld_inhoud', soort: 'tekst', groep: 'cf_groep_specs', placeholder: '33cl'},
-  {sleutel: '_cf_stijl',  niveau: 'product', label: 'cf_veld_stijl',  soort: 'tekst', groep: 'cf_groep_specs', tip: 'cf_tip_stijl', placeholder: 'NEIPA'},
+  {sleutel: '_cf_inhoud', niveau: 'artikel', automatisch: true, label: 'cf_veld_inhoud', soort: 'tekst', groep: 'cf_groep_specs', placeholder: '33cl'},
+  {sleutel: '_cf_stijl',  niveau: 'product', automatisch: true, label: 'cf_veld_stijl',  soort: 'tekst', groep: 'cf_groep_specs', tip: 'cf_tip_stijl', placeholder: 'NEIPA'},
   {sleutel: '_cf_tag',    niveau: 'artikel', label: 'cf_veld_tag',    soort: 'tekst', groep: 'cf_groep_specs', tip: 'cf_tip_tag', placeholder: 'S–XXL of ×7'},
 
   // Infokaarten op de productpagina.
@@ -101,6 +108,14 @@ export const crafteryVelden = (niveau: CrafteryNiveau): CrafteryVeld[] =>
 
 export const CRAFTERY_PRODUCT_SLEUTELS: string[] = crafteryVelden('product').map(v => v.sleutel)
 export const CRAFTERY_ARTIKEL_SLEUTELS: string[] = crafteryVelden('artikel').map(v => v.sleutel)
+
+/** De velden die je zelf invult — de afgeleide velden vallen hier buiten. */
+export const crafteryInvulVelden = (niveau: CrafteryNiveau): CrafteryVeld[] =>
+  crafteryVelden(niveau).filter(v => !v.automatisch)
+
+/** Sleutels die de app zelf afleidt en dus nooit als invoer opslaat. */
+export const CRAFTERY_AUTO_SLEUTELS: string[] =
+  CRAFTERY_VELDEN.filter(v => v.automatisch).map(v => v.sleutel)
 
 /** De groepen in de volgorde waarin ze getoond worden. */
 export const CRAFTERY_GROEPEN: string[] = CRAFTERY_VELDEN.reduce((lijst: string[], v) =>
@@ -178,7 +193,7 @@ export function crafteryIngredienten(recepten?: any[] | null): string {
   return delen.length > 1 ? delen.join(', ') : ''
 }
 
-export interface CrafteryVoorstelInvoer {
+export interface CrafteryAutoInvoer {
   /** Het product uit deze app (naam, stijl, abv, ebc, ibu). */
   product?: {stijl?: string, abv?: any, ebc?: any, ibu?: any} | null
   /** De verpakking van dit artikel — bepaalt de inhoud. */
@@ -188,22 +203,23 @@ export interface CrafteryVoorstelInvoer {
 }
 
 /**
- * Wat de app zelf al weet, in de vorm die het thema verwacht. Bedoeld om de
- * lege velden mee te vullen: het ABV, de stijl en de inhoud staan hier al in
- * de administratie, die hoef je niet nog eens in WordPress te typen.
+ * De themawaarden die de app zelf afleidt uit de administratie. Deze velden
+ * vul je nergens apart in: het ABV, de IBU, de EBC en de stijl staan bij het
+ * product, de inhoud bij de verpakking en de ingrediënten volgen uit het
+ * recept. Wijzig je daar iets, dan gaat het bij de eerstvolgende push mee.
  *
  * Alleen waarden die de app écht kent komen terug; er wordt niets verzonnen.
  */
-export function crafteryVoorstel(invoer: CrafteryVoorstelInvoer): Record<string, string> {
+export function crafteryAutoMeta(invoer: CrafteryAutoInvoer): Record<string, string> {
   return {
-    ...crafteryProductVoorstel(invoer.product, invoer.recepten),
-    ...crafteryArtikelVoorstel(invoer.inhoudLiter),
+    ...crafteryAutoProduct(invoer.product, invoer.recepten),
+    ...crafteryAutoArtikel(invoer.inhoudLiter),
   }
 }
 
 /** Het deel dat bij het bier hoort: ABV, IBU, EBC, stijl en ingrediënten. */
-export function crafteryProductVoorstel(
-  product?: CrafteryVoorstelInvoer['product'],
+export function crafteryAutoProduct(
+  product?: CrafteryAutoInvoer['product'],
   recepten?: any[] | null,
 ): Record<string, string> {
   const p = product || {}
@@ -228,7 +244,7 @@ export function crafteryProductVoorstel(
 }
 
 /** Het deel dat bij de verpakking hoort: de inhoud. */
-export function crafteryArtikelVoorstel(inhoudLiter?: any): Record<string, string> {
+export function crafteryAutoArtikel(inhoudLiter?: any): Record<string, string> {
   const inhoud = crafteryInhoud(inhoudLiter)
   return inhoud ? {_cf_inhoud: inhoud} : {}
 }
@@ -251,36 +267,56 @@ export function vulAanMetVoorstel(
 }
 
 /**
- * De meta die met dít artikel meegaat: de eigenschappen van het bier, met
- * daaroverheen wat op het artikel zelf is ingevuld.
+ * De meta die met dít artikel meegaat, in lagen: eerst wat de app zelf afleidt
+ * (ABV, stijl, inhoud, ingrediënten), daarna wat je bij het bier hebt
+ * ingevuld, daarna wat op deze verpakking staat.
  *
- * Het artikel wint alleen met een ingevulde waarde — een leeg veld bij de
- * verpakking laat de productwaarde staan in plaats van hem weg te drukken.
+ * Een latere laag wint alleen met een ingevulde waarde — een leeg veld drukt
+ * de laag eronder niet weg. Zo blijft de afgeleide waarde staan zolang je zelf
+ * niets invult, en overrulet jouw tekst hem zodra je hem wél invult.
  */
 export function combineerThemaMeta(
-  productMeta?: Record<string, any> | null,
-  artikelMeta?: Record<string, any> | null,
+  ...lagen: (Record<string, any> | null | undefined)[]
 ): Record<string, any> {
   const uit: Record<string, any> = {}
   const leeg = (w: any) => w === undefined || w === null ||
     (Array.isArray(w) ? w.length === 0 : String(w).trim() === '')
 
-  for (const [sleutel, waarde] of Object.entries(productMeta || {})) {
-    if (!leeg(waarde)) uit[sleutel] = waarde
-  }
-  for (const [sleutel, waarde] of Object.entries(artikelMeta || {})) {
-    if (!leeg(waarde)) uit[sleutel] = waarde
+  for (const laag of lagen) {
+    for (const [sleutel, waarde] of Object.entries(laag || {})) {
+      if (!leeg(waarde)) uit[sleutel] = waarde
+    }
   }
   return uit
 }
 
-/** Splits meta uit de winkel op naar het niveau waar hij hoort. */
+/**
+ * Haal de afgeleide velden uit opgeslagen meta. Nodig omdat oudere versies
+ * ABV, IBU, EBC, stijl en inhoud nog als invoer bewaarden: zonder deze
+ * opschoning zou zo'n oude waarde de actuele productgegevens overschrijven bij
+ * het pushen.
+ */
+export function zonderAutoVelden(meta?: Record<string, any> | null): Record<string, any> {
+  const uit: Record<string, any> = {}
+  for (const [sleutel, waarde] of Object.entries(meta || {})) {
+    if (!CRAFTERY_AUTO_SLEUTELS.includes(sleutel)) uit[sleutel] = waarde
+  }
+  return uit
+}
+
+/**
+ * Splits meta uit de winkel op naar het niveau waar hij hoort. Afgeleide
+ * velden slaan we niet op: die komen uit de administratie, dus een afwijkende
+ * waarde in de winkel is geen invoer maar een verschil dat bij de volgende
+ * push rechtgezet wordt.
+ */
 export function splitsThemaMeta(meta?: Record<string, any> | null): {
   product: Record<string, any>, artikel: Record<string, any>,
 } {
   const product: Record<string, any> = {}
   const artikel: Record<string, any> = {}
   for (const [sleutel, waarde] of Object.entries(meta || {})) {
+    if (CRAFTERY_AUTO_SLEUTELS.includes(sleutel)) continue
     if (CRAFTERY_ARTIKEL_SLEUTELS.includes(sleutel)) artikel[sleutel] = waarde
     else if (CRAFTERY_PRODUCT_SLEUTELS.includes(sleutel)) product[sleutel] = waarde
   }

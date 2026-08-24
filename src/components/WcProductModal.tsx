@@ -10,7 +10,7 @@ import {
   ordenCategorieen, WC_VELD_LABEL,
   WC_STATUSSEN, WC_ZICHTBAARHEDEN, WC_BACKORDERS, WC_BTW_STATUSSEN,
 } from '../utils/wcProduct'
-import { CrafteryVeld, combineerThemaMeta, splitsThemaMeta } from '../utils/craftery'
+import { CrafteryVeld, combineerThemaMeta, splitsThemaMeta, zonderAutoVelden } from '../utils/craftery'
 import ThemaVeldenForm from './ThemaVeldenForm'
 
 // De volledige WooCommerce-productkaart van één artikel, bewerkbaar vanuit de
@@ -49,16 +49,15 @@ export interface WcProductModalProps {
    * van de winkel niet aan en toont het tabblad niet.
    */
   themaVelden?: CrafteryVeld[]
-  /** Waarden die de app zelf al kent, om lege themavelden mee te vullen. */
-  themaVoorstel?: Record<string, string>
   /**
-   * De biereigenschappen van het product (ABV, stijl, smaakprofiel …). Die
-   * vul je één keer in bij het product; hier zijn ze alleen leesbaar, zodat je
-   * ziet wat er met deze verpakking meegaat naar de winkel.
+   * Alles wat níét hier bewerkt wordt maar wel meegaat: de waarden die de app
+   * afleidt (ABV, stijl, inhoud, ingrediënten) plus wat bij het bier is
+   * ingevuld. Alleen leesbaar — je wijzigt het bij het product of de
+   * verpakking, zodat het op één plek staat.
    */
-  themaProductMeta?: Record<string, any> | null
-  /** Labels bij die productwaarden, voor het leesbare overzicht. */
-  themaProductVelden?: CrafteryVeld[]
+  themaVanElders?: Record<string, any> | null
+  /** Alle themavelden, puur om labels bij die waarden te vinden. */
+  themaAlleVelden?: CrafteryVeld[]
   /**
    * Wordt aangeroepen wanneer een ophaalactie biereigenschappen uit de winkel
    * meebrengt — de aanroeper zet ze bij het product neer.
@@ -92,8 +91,7 @@ const Veld: React.FC<{label: string, tip?: string, breed?: boolean, children: Re
 const WcProductModal: React.FC<WcProductModalProps> = ({
   sku, titel, velden, naamFallback, omschrijvingFallback, prijsExcl, btwPct,
   voorraad = null, prijzenInclBtw = true, onOpslaan, onClose, onLog,
-  themaVelden = [], themaVoorstel = {},
-  themaProductMeta = null, themaProductVelden = [], onProductThema,
+  themaVelden = [], themaVanElders = null, themaAlleVelden = [], onProductThema,
 }) => {
   const {useState, useEffect, useMemo} = React
   const [v, setV] = useState<WcVelden>({...(velden || {})})
@@ -109,13 +107,15 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
   const zet = (patch: Partial<WcVelden>) => setV(f => ({...f, ...patch}))
   // Uit de winkel lezen we alle themavelden; het productdeel gaat via
   // `onProductThema` naar het bier, het artikeldeel blijft hier.
-  const metaSleutels = [...themaVelden, ...themaProductVelden].map(f => f.sleutel)
+  const metaSleutels = [...themaVelden, ...themaAlleVelden].map(f => f.sleutel)
 
   // Wat er daadwerkelijk naar de winkel gaat: de biereigenschappen van het
   // product met daaroverheen wat op deze verpakking is ingevuld.
   const metaVoorPush = useMemo(
-    () => combineerThemaMeta(themaProductMeta, v.meta),
-    [themaProductMeta, v.meta])
+    // `zonderAutoVelden`: een oude opgeslagen ABV mag de actuele
+    // productgegevens nooit overschrijven.
+    () => combineerThemaMeta(themaVanElders, zonderAutoVelden(v.meta)),
+    [themaVanElders, v.meta])
 
   const payload = useMemo(() => bouwWcPayload({
     velden: {...v, meta: metaVoorPush}, sku, naamFallback, omschrijvingFallback,
@@ -444,7 +444,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
           <div className="sm:col-span-2 space-y-4">
             {/* Wat van het bier komt: hier alleen ter controle. Aanpassen doe
                 je bij het product, want het geldt voor élke verpakking. */}
-            {themaProductVelden.length > 0 && (
+            {themaAlleVelden.length > 0 && (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -452,17 +452,17 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                   </span>
                   <span className="text-[11px] text-gray-400">{t('cf_van_product_hint')}</span>
                 </div>
-                {Object.keys(themaProductMeta || {}).length === 0 ? (
+                {Object.keys(themaVanElders || {}).length === 0 ? (
                   <p className="text-[11px] text-gray-400 italic">{t('cf_van_product_leeg')}</p>
                 ) : (
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {themaProductVelden
+                    {themaAlleVelden
                       .filter(f => {
-                        const w = (themaProductMeta || {})[f.sleutel]
+                        const w = (themaVanElders || {})[f.sleutel]
                         return w !== undefined && w !== null && (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '')
                       })
                       .map(f => {
-                        const w = (themaProductMeta || {})[f.sleutel]
+                        const w = (themaVanElders || {})[f.sleutel]
                         const tekst = Array.isArray(w)
                           ? w.map((r: any) => `${r.label}: ${r.value}`).join(' · ')
                           : String(w)
@@ -480,11 +480,9 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
 
             <ThemaVeldenForm
               velden={themaVelden}
-              waarden={v.meta}
+              waarden={zonderAutoVelden(v.meta)}
               onChange={meta => zet({meta})}
-              voorstel={themaVoorstel}
               uitleg="cf_uitleg_artikel"
-              onOvergenomen={() => setMsg({soort: 'info', tekst: t('cf_msg_overgenomen')})}
             />
           </div>
         )}
@@ -506,7 +504,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                       d.veld.startsWith('meta:')
                         // Een themaveld kan van het bier of van de verpakking
                         // komen; zoek het label in allebei de lijsten.
-                        ? t([...themaVelden, ...themaProductVelden]
+                        ? t([...themaVelden, ...themaAlleVelden]
                             .find(f => f.sleutel === d.veld.slice(5))?.label || d.veld)
                         : t(WC_VELD_LABEL[d.veld] || d.veld)
                     }</span>

@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.10] — 2026-08-24
+
+### ABV, IBU, EBC, stijl en inhoud vul je nog maar op één plek in
+
+De themasectie vroeg opnieuw om het ABV, de IBU, de EBC en de stijl — terwijl
+die bovenaan bij het product al staan (en de inhoud bij de verpakking). Dat
+waren dus twee plekken voor dezelfde waarde, met kans op verschil.
+
+- Die vijf velden zijn nu **afgeleid**: geen invulveld meer, maar een regel
+  *Uit de administratie* boven het formulier met de waarden die meegaan. Wijzig
+  je het ABV bij het product, dan gaat het bij de eerstvolgende push mee.
+- **De ingrediënten** zijn een invulveld met de uit het recept afgeleide lijst
+  als grijze voorbeeldtekst: laat je het leeg, dan pusht de app die lijst; typ
+  je iets, dan wint jouw tekst.
+- Wat overblijft om in te vullen is precies wat de app níét weet: kcal,
+  smaakprofiel (tekst + de vijf assen), serveertip, Untappd, uit roulatie en je
+  eigen spec-/infokaartregels.
+- De knop *Overnemen uit de app* is daarmee overbodig en verdwenen — het gaat
+  vanzelf.
+- Een ABV die een oudere versie als themaveld had opgeslagen wordt genegeerd:
+  de productgegevens winnen altijd. Ophalen uit de webshop slaat deze velden
+  ook niet meer op; een afwijking in de winkel blijft zichtbaar in de
+  verschillenlijst en wordt bij de volgende push rechtgezet.
+
+---
+
 ## [1.12.9] — 2026-08-24
 
 ### Biereigenschappen horen bij het bier, niet bij de fles
