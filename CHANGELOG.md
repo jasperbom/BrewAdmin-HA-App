@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.11] — 2026-08-24
+
+### Bierinformatie is gewoon bierinformatie
+
+Smaakprofiel, serveertip, ingrediënten, Untappd, kcal: dat waren "velden voor
+de webshop", opgeslagen in een apart blok met sleutels van het WordPress-thema.
+Maar het is gewoon informatie over je bier — je gebruikt het op een etiket, in
+een verkoopgesprek en (onder meer) in de webshop.
+
+- Die gegevens staan nu als **gewone velden op het product en het artikel**,
+  net als de naam, de stijl en het ABV. Nieuw bestand `utils/bierinfo.ts` met
+  één definitie van alle velden; de sectie op de productpagina heet
+  **Bierinformatie** en is er ook zonder WooCommerce-koppeling.
+- De verpakkingsvelden (maat/aantal, pakketinhoud, badge, levering) staan waar
+  je de verpakking bewerkt: in het artikelformulier bij de SKU en de prijs.
+  Levering ("alleen afhalen") is meteen bruikbaar buiten de webshop om.
+- **WooCommerce is nog puur een uitvoerkanaal.** `utils/craftery.ts` is
+  teruggebracht tot een vertaaltabel: bierinformatie → de `_cf_`-velden van het
+  thema, en terug bij het ophalen. Er wordt daar niets meer bewaard.
+- Wat al in de webshop staat kun je in één keer overnemen: "Ophalen uit
+  webshop" zet de teksten in de bierinformatie, en vult alleen wat hier nog
+  leeg is.
+- Wie de vorige versie gebruikte: de losse webshopvelden worden bij het starten
+  eenmalig omgezet naar de nieuwe velden.
+
+---
+
 ## [1.12.10] — 2026-08-24
 
 ### ABV, IBU, EBC, stijl en inhoud vul je nog maar op één plek in

@@ -1,4 +1,5 @@
 import type { WcVelden, WcMetaWaarde } from '../utils/wcProduct'
+import type { BierRegel } from '../utils/bierinfo'
 
 export type Allergeen = 'gluten' | 'gerst' | 'tarwe' | 'rogge' | 'haver' |
   'lactose' | 'soja' | 'noten' | 'sulfiet' | 'overig'
@@ -394,10 +395,36 @@ export interface Product {
   etiket_artikel?: string
   etiket_versie?: string
   etiket_bijgewerkt?: string
-  // Biereigenschappen voor de webshop (themavelden van WooCommerce, zie
-  // `utils/craftery.ts`): ABV, IBU, stijl, smaakprofiel … Horen bij het bier
-  // zelf, dus één keer invullen — elke verpakking van dit product stuurt ze
-  // mee naar de winkel.
+  // ── Bierinformatie ────────────────────────────────────────────────────
+  // Gewone eigenschappen van het bier (zie `utils/bierinfo.ts`), naast de
+  // abv/ebc/ibu/stijl hierboven. Bruikbaar op een etiket, in een
+  // verkoopgesprek en in de webshop — daar worden ze naartoe vertaald door
+  // `utils/craftery.ts`.
+  /** Voedingswaarde per 100 ml. */
+  kcal?: string
+  /** Ingrediëntenlijst; leeg = afgeleid uit het gekoppelde recept. */
+  ingredienten?: string
+  smaakprofiel?: string
+  serveertip?: string
+  /** Smaakassen 0–100; leeg = niet vastgelegd (en dus nergens getoond). */
+  smaak_fruit?: string | number
+  smaak_body?: string | number
+  smaak_bitter?: string | number
+  smaak_zoet?: string | number
+  smaak_droog?: string | number
+  untappd_score?: string
+  untappd_aantal?: string | number
+  untappd_url?: string
+  /** Dit bier wordt niet meer gebrouwen. */
+  uit_roulatie?: boolean
+  /** Het bier dat dit opvolgt. */
+  opvolger?: string
+  /** Vrije extra eigenschappen (gistsoort, vatrijping …). */
+  extra_specs?: BierRegel[]
+  /** Vrije extra tekstblokken. */
+  extra_blokken?: BierRegel[]
+  // Legacy (v1.12.8–1.12.10): losse webshopvelden per meta-sleutel. Wordt bij
+  // het starten eenmalig gemigreerd naar de velden hierboven.
   wc_thema?: Record<string, WcMetaWaarde>
 }
 
@@ -419,6 +446,15 @@ export interface ProductArtikel {
   // Ontbrekend/undefined geldt als `true` zodat bestaande artikelen
   // hun huidige gedrag behouden.
   wc_push?: boolean
+  // ── Informatie over deze verpakking ───────────────────────────────────
+  /** Korte aanduiding: een maat bij merch, het aantal bij een pakket. */
+  tag?: string
+  /** Wat er in dit pakket zit, één item per regel. */
+  pakket_inhoud?: string
+  /** Opvallend label bij dit artikel ("Bestseller"). */
+  badge?: string
+  /** Hoe dit artikel geleverd wordt: verzenden, afhalen of allebei. */
+  levering?: 'beide' | 'verzenden' | 'afhalen' | ''
   // Volledige WooCommerce-productkaart voor dit artikel (naam, teksten,
   // prijzen, categorieën, afbeeldingen …). Ontbrekend = nog nooit gekoppeld;
   // dan pusht de app alleen de voorraad, precies zoals voorheen.

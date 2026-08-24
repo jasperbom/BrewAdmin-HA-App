@@ -4,11 +4,10 @@ import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl } from '../utils/wcProduct'
 import {
-  CRAFTERY_VELDEN, CRAFTERY_SLEUTELS, crafteryInvulVelden,
-  crafteryAutoProduct, crafteryAutoArtikel,
-  combineerThemaMeta, splitsThemaMeta, vulAanMetVoorstel, zonderAutoVelden,
-} from '../utils/craftery'
-import ThemaVeldenForm from '../components/ThemaVeldenForm'
+  BIER_VELDEN, bierVelden, bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel,
+} from '../utils/bierinfo'
+import { crafteryMeta, crafteryLees, crafteryMetaUitWc, CRAFTERY_SLEUTELS } from '../utils/craftery'
+import BierInfoForm from '../components/BierInfoForm'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
@@ -131,7 +130,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const [wcSyncMsg, setWcSyncMsg] = useState('');
   // Volledige WooCommerce-productkaart van één artikel (modal).
   const [wcModalArt, setWcModalArt] = useState<any>(null);
-  const [themaOpen, setThemaOpen] = useState(false);
+  const [bierInfoOpen, setBierInfoOpen] = useState(false);
 
   const selProduct = useMemo(() => (producten||[]).find((p: any) => p.id === sel), [producten, sel]);
 
@@ -958,29 +957,28 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const wcPrijzenInclBtw = wcCreds?.prijzenInclBtw !== false;
   // Eigen productvelden van het Craftery-webshopthema (`_cf_…`-meta). Uit te
   // zetten bij de koppeling voor wie een ander thema draait.
+  // Bierinformatie hoort bij het bier, niet bij de webshop: de velden staan
+  // altijd op het product en het artikel. Naar WooCommerce gaat een vertaling
+  // (utils/craftery.ts), die je bij de koppeling kunt uitzetten.
   const themaAan = wcCreds?.enabled && wcCreds?.themaVelden !== false;
-  const themaVelden = themaAan ? CRAFTERY_VELDEN : [];
-  const themaSleutels = themaVelden.map((f: any) => f.sleutel);
-  // De biereigenschappen (smaakprofiel, serveertip …) horen bij het product en
-  // gelden voor élke verpakking; alleen wat per verpakking verschilt (badge,
-  // levering) staat bij het artikel. ABV, IBU, EBC, stijl en inhoud staan
-  // nergens in dit formulier: die leidt de app af uit de productgegevens en de
-  // verpakking, zodat je ze maar op één plek bijhoudt.
-  const themaProductVelden = themaAan ? crafteryInvulVelden('product') : [];
-  const themaArtikelVelden = themaAan ? crafteryInvulVelden('artikel') : [];
+  const bierProductVelden = bierInvulVelden('product');
+  const bierArtikelVelden = bierInvulVelden('artikel');
 
-  // De afgeleide waarden van één product/artikel.
   const receptenVoorProduct = (prod: any) => (prod?.recept_ids?.length
     ? (recepten||[]).filter((r: any) => prod.recept_ids.includes(r.id))
     : []);
-  const autoThemaProduct = (prod: any) => crafteryAutoProduct(prod, receptenVoorProduct(prod));
-  const autoThemaArtikel = (a: any) => {
+  const inhoudVanArtikel = (a: any) => {
     const vp = (verpakkingen||[]).find((x: any) => x.id === Number(a?.verpakking_id));
-    return crafteryAutoArtikel(vp?.inhoud_liter ?? a?.inhoud_liter);
+    return vp?.inhoud_liter ?? a?.inhoud_liter;
   };
+  /** Alles wat de app zelf afleidt voor dit product/artikel. */
+  const afgeleidVoor = (prod: any, a?: any) => afgeleideBierInfo({
+    product: prod, inhoudLiter: a ? inhoudVanArtikel(a) : undefined,
+    recepten: receptenVoorProduct(prod),
+  });
 
-  const zetProductThema = (productId: number, meta: Record<string, any>) => {
-    setProducten((prev: any[]) => prev.map((p: any) => p.id === productId ? {...p, wc_thema: meta} : p));
+  const zetProductVeld = (productId: number, veld: string, waarde: any) => {
+    setProducten((prev: any[]) => prev.map((p: any) => p.id === productId ? {...p, [veld]: waarde} : p));
   };
 
   // Sla de WooCommerce-productkaart van één artikel op.
@@ -1001,11 +999,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       omschrijving: prod?.omschrijving || '',
       voorraad: wcBeschikbaarVoorArt({...a, biernaam: prod?.naam || '', _product_id: a.product_id}),
       productId: prod?.id,
-      // Alles wat niet in de productkaart van dít artikel bewerkt wordt: de
-      // afgeleide waarden plus wat je bij het bier hebt ingevuld.
-      themaVanElders: combineerThemaMeta(
-        autoThemaProduct(prod), zonderAutoVelden(prod?.wc_thema),
-        crafteryAutoArtikel(vp?.inhoud_liter ?? a.inhoud_liter)),
+      // De bierinformatie die met dit artikel meegaat naar de winkel. Alleen
+      // ter controle in de modal: je wijzigt het bij het bier of het artikel.
+      bierInfo: bierInfoVoorArtikel({
+        product: prod, artikel: a,
+        inhoudLiter: vp?.inhoud_liter ?? a.inhoud_liter,
+        recepten: receptenVoorProduct(prod),
+      }),
     };
   };
 
@@ -1017,8 +1017,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const prod = (producten||[]).find((p: any) => p.id === pa.product_id);
       return {
         ...pa, biernaam: prod?.naam || '', _product_id: pa.product_id,
-        _omschrijving: prod?.omschrijving || '', _thema: prod?.wc_thema || null,
-        _autoThema: themaAan ? {...autoThemaProduct(prod), ...autoThemaArtikel(pa)} : null,
+        _omschrijving: prod?.omschrijving || '',
+        // De bierinformatie, vertaald naar de velden van het webshopthema.
+        _themaMeta: themaAan ? crafteryMeta({
+          product: prod, artikel: pa,
+          inhoudLiter: inhoudVanArtikel(pa), recepten: receptenVoorProduct(prod),
+        }) : null,
         _pa: true,
       };
     });
@@ -1070,9 +1074,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           }
           const body = volledig
             ? bouwWcPayload({
-                // Afgeleid uit de administratie + bij het bier ingevuld + wat
-                // op deze verpakking staat.
-                velden: {...(art.wc || {}), meta: combineerThemaMeta(art._autoThema, zonderAutoVelden(art._thema), zonderAutoVelden(art.wc?.meta))},
+                velden: {...(art.wc || {}), meta: art._themaMeta || {}},
                 sku: art.artikelnummer,
                 naamFallback: naam, omschrijvingFallback: art._omschrijving,
                 prijsExcl: art.verkoopprijs, btwPct: art.btw_pct,
@@ -1132,7 +1134,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     setWcSyncing(true); setWcSyncMsg('');
     const nu = new Date().toISOString();
     const updates: Record<number, any> = {};
-    const productThemas: Record<number, Record<string, any>> = {};
+    // Bierinformatie uit de winkel, per product verzameld.
+    const bierUitWinkel: Record<number, Record<string, any>> = {};
     let gevonden = 0;
     const onbekend: string[] = [];
     try {
@@ -1140,14 +1143,16 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         try {
           const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
           if (!prods?.length) { onbekend.push(art.artikelnummer); continue; }
-          const velden = leesWcProduct(prods[0], {btwPct: art.btw_pct, prijzenInclBtw: wcPrijzenInclBtw, metaSleutels: themaSleutels});
-          const {product: themaProduct, artikel: themaArtikel} = splitsThemaMeta(velden.meta);
-          updates[art.id] = {wc: {...velden, meta: themaArtikel, gepulld: nu}, prijs: prods[0].regular_price};
-          // Biereigenschappen horen bij het product. Meerdere verpakkingen van
-          // hetzelfde bier leveren dezelfde waarden; alleen aanvullen wat nog
-          // leeg is, zodat de laatste SKU niet steeds de vorige overschrijft.
-          if (art.product_id && Object.keys(themaProduct).length) {
-            productThemas[art.product_id] = vulAanMetVoorstel(productThemas[art.product_id], themaProduct as Record<string, string>);
+          const velden = leesWcProduct(prods[0], {btwPct: art.btw_pct, prijzenInclBtw: wcPrijzenInclBtw, metaSleutels: themaAan ? CRAFTERY_SLEUTELS : []});
+          // De themavelden uit de winkel zijn gewoon bierinformatie: vertaal
+          // ze terug naar de velden van het product en het artikel.
+          const {product: bierProduct, artikel: bierArtikel} = crafteryLees(crafteryMetaUitWc(prods[0].meta_data));
+          updates[art.id] = {wc: {...velden, meta: undefined, gepulld: nu}, prijs: prods[0].regular_price, bier: bierArtikel};
+          // Meerdere verpakkingen van hetzelfde bier leveren dezelfde waarden;
+          // de eerste die iets zegt telt, zodat de laatste SKU de vorige niet
+          // steeds overschrijft.
+          if (art.product_id && Object.keys(bierProduct).length) {
+            bierUitWinkel[art.product_id] = {...bierProduct, ...(bierUitWinkel[art.product_id] || {})};
           }
           gevonden++;
         } catch(e: any) {
@@ -1162,13 +1167,20 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         const uitWinkel = prijsLeeg
           ? wcRegulierePrijsExcl({regular_price: u.prijs}, a.btw_pct, wcPrijzenInclBtw)
           : null;
-        return {...a, wc: u.wc, ...(uitWinkel ? {verkoopprijs: uitWinkel.toFixed(2)} : {})};
+        // Alleen aanvullen wat hier nog leeg is: eigen invoer gaat voor.
+        const bier = Object.fromEntries(Object.entries(u.bier || {})
+          .filter(([veld]) => a[veld] === undefined || a[veld] === null || String(a[veld]).trim() === ''));
+        return {...a, ...bier, wc: u.wc, ...(uitWinkel ? {verkoopprijs: uitWinkel.toFixed(2)} : {})};
       }));
-      if (Object.keys(productThemas).length) {
-        setProducten((prev: any[]) => prev.map((prod: any) => productThemas[prod.id]
-          // Wat al bij het bier staat blijft staan; de winkel vult alleen aan.
-          ? {...prod, wc_thema: vulAanMetVoorstel(prod.wc_thema, productThemas[prod.id] as Record<string, string>)}
-          : prod));
+      if (Object.keys(bierUitWinkel).length) {
+        setProducten((prev: any[]) => prev.map((prod: any) => {
+          const uitWinkel = bierUitWinkel[prod.id];
+          if (!uitWinkel) return prod;
+          // Wat de app al weet blijft staan; de winkel vult alleen aan.
+          const aanvulling = Object.fromEntries(Object.entries(uitWinkel)
+            .filter(([veld]) => prod[veld] === undefined || prod[veld] === null || String(prod[veld]).trim() === ''));
+          return {...prod, ...aanvulling};
+        }));
       }
       const melding = t('wc_msg_pull_alles').replace('{n}', String(gevonden)).replace('{f}', String(onbekend.length));
       setWcSyncMsg(onbekend.length ? `⚠ ${melding}` : `✓ ${melding}`);
@@ -1483,53 +1495,53 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               ))}
             </div>
 
-            {/* Biereigenschappen voor de webshop: één keer per bier, niet per
-                verpakking. Elke SKU van dit bier stuurt deze waarden mee. */}
-            {themaAan && themaProductVelden.length > 0 && (() => {
-              const thema = selProduct.wc_thema || {};
-              const auto = autoThemaProduct(selProduct);
-              const ingevuld = themaProductVelden.filter((f: any) => {
-                const w = thema[f.sleutel];
-                return w !== undefined && w !== null && (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '');
+            {/* Bierinformatie: eigenschappen van het bier zelf. Je vult ze
+                één keer in en de app gebruikt ze overal — onder meer voor de
+                webshop. ABV, IBU, EBC en stijl staan hierboven bij de
+                productgegevens en verschijnen hier alleen ter controle. */}
+            {(() => {
+              const afgeleid = afgeleidVoor(selProduct);
+              const ingevuld = bierProductVelden.filter((f: any) => {
+                const w = selProduct[f.veld];
+                return w !== undefined && w !== null && w !== '' &&
+                  (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '');
               }).length;
               return (
-                <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${themaOpen?'':'overflow-hidden'}`}>
+                <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${bierInfoOpen?'':'overflow-hidden'}`}>
                   <SectionHeader
-                    open={themaOpen}
-                    onToggle={() => setThemaOpen(!themaOpen)}
-                    rounded={themaOpen ? 'top' : 'full'}
-                    title={t('cf_sectie_titel')}
-                    info={`${ingevuld}/${themaProductVelden.length}`}
+                    open={bierInfoOpen}
+                    onToggle={() => setBierInfoOpen(!bierInfoOpen)}
+                    rounded={bierInfoOpen ? 'top' : 'full'}
+                    title={t('bier_sectie_titel')}
+                    info={`${ingevuld}/${bierProductVelden.length}`}
                   />
-                  {themaOpen && (
+                  {bierInfoOpen && (
                     <div className="p-4 space-y-3">
-                      {/* Wat de app zelf al weet. Geen invulvelden: ABV, IBU,
-                          EBC en stijl wijzig je bij het product hierboven, de
-                          inhoud bij de verpakking. */}
+                      {/* Wat de app zelf afleidt uit de administratie. */}
                       <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                         <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('cf_auto_titel')}</span>
-                          <span className="text-[11px] text-gray-400">{t('cf_auto_hint')}</span>
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('bier_afgeleid_titel')}</span>
+                          <span className="text-[11px] text-gray-400">{t('bier_afgeleid_hint')}</span>
                         </div>
-                        {Object.keys(auto).length === 0 ? (
-                          <p className="text-[11px] text-gray-400 italic">{t('cf_auto_leeg')}</p>
+                        {Object.keys(afgeleid).length === 0 ? (
+                          <p className="text-[11px] text-gray-400 italic">{t('bier_afgeleid_leeg')}</p>
                         ) : (
                           <div className="flex flex-wrap gap-x-4 gap-y-1">
-                            {CRAFTERY_VELDEN.filter((f: any) => auto[f.sleutel]).map((f: any) => (
-                              <span key={f.sleutel} className="text-[11px] text-gray-600">
+                            {BIER_VELDEN.filter((f: any) => afgeleid[f.veld]).map((f: any) => (
+                              <span key={f.veld} className="text-[11px] text-gray-600">
                                 <span className="text-gray-400">{t(f.label)}: </span>
-                                <span className="font-medium">{auto[f.sleutel]}</span>
+                                <span className="font-medium">{afgeleid[f.veld]}</span>
                               </span>
                             ))}
                           </div>
                         )}
                       </div>
-                      <ThemaVeldenForm
-                        velden={themaProductVelden}
-                        waarden={zonderAutoVelden(thema)}
-                        onChange={meta => zetProductThema(selProduct.id, meta)}
-                        uitleg="cf_uitleg_product"
-                        placeholders={auto}
+                      <BierInfoForm
+                        velden={bierProductVelden}
+                        waarden={selProduct}
+                        onChange={(veld, waarde) => zetProductVeld(selProduct.id, veld, waarde)}
+                        uitleg={themaAan ? 'bier_uitleg_webshop' : undefined}
+                        placeholders={afgeleid}
                       />
                     </div>
                   )}
@@ -1789,6 +1801,16 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_omschrijving')}</label>
                       <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
+                    </div>
+                    <div className="sm:col-span-3 border-t border-gray-200 pt-2 mt-1">
+                      {/* Informatie over déze verpakking: maat/aantal, wat er
+                          in een pakket zit, een badge en hoe je hem levert. */}
+                      <BierInfoForm
+                        velden={bierArtikelVelden}
+                        waarden={artForm}
+                        onChange={(veld, waarde) => setArtForm((f: any) => ({...f, [veld]: waarde}))}
+                        placeholders={afgeleidVoor(selProduct, artForm)}
+                      />
                     </div>
                     <div className="sm:col-span-3">
                       <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none" title={t('tip_artikel_wc_push')}>
@@ -2121,10 +2143,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             btwPct={wcModalArt.btw_pct}
             voorraad={ctx.voorraad}
             prijzenInclBtw={wcPrijzenInclBtw}
-            themaVelden={themaArtikelVelden}
-            themaAlleVelden={themaAan ? CRAFTERY_VELDEN : []}
-            themaVanElders={ctx.themaVanElders}
-            onProductThema={meta => ctx.productId && zetProductThema(ctx.productId, meta)}
+            bierInfo={ctx.bierInfo}
+            themaMeta={themaAan ? crafteryMeta({
+              product: (producten||[]).find((p: any) => p.id === wcModalArt.product_id),
+              artikel: wcModalArt,
+              inhoudLiter: inhoudVanArtikel(wcModalArt),
+              recepten: receptenVoorProduct((producten||[]).find((p: any) => p.id === wcModalArt.product_id)),
+            }) : null}
             onLog={addWcLog}
             onOpslaan={(velden) => bewaarWcVelden(wcModalArt.id, velden)}
             onClose={() => setWcModalArt(null)}

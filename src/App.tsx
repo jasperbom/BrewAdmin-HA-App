@@ -3,6 +3,7 @@ import { t, setLang as i18nSetLang } from './i18n'
 import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami } from './utils/api'
 import { maakAppIcoon } from './utils/icoon'
 import { tod } from './utils/format'
+import { crafteryLees } from './utils/craftery'
 import { excelExport, excelImport } from './utils/excel'
 import { logAudit, setAuditUser } from './utils/audit'
 import { findKlantVoorOrder } from './utils/klant'
@@ -677,6 +678,37 @@ function App() {
     const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenOpschoningV4, takenMigratie, batchTakenItems]);
+
+  // Eenmalige migratie (v1.12.11): de webshop-themavelden die kort als losse
+  // `_cf_`-meta bij het product en het artikel stonden, zijn nu gewone
+  // bierinformatie (utils/bierinfo.ts). Zet ze één keer over.
+  const bierInfoMigratieRef = React.useRef(false);
+  React.useEffect(() => {
+    if (bierInfoMigratieRef.current) return;
+    const teMigreren = (producten||[]).some((p: any) => p?.wc_thema)
+      || (productArtikelen||[]).some((a: any) => a?.wc?.meta);
+    if (!teMigreren) return;
+    bierInfoMigratieRef.current = true;
+
+    setProducten((prev: any[]) => prev.map((p: any) => {
+      if (!p?.wc_thema) return p;
+      const {product: velden} = crafteryLees(p.wc_thema);
+      const {wc_thema, ...rest} = p;
+      // Wat al bij het bier staat blijft staan; de oude opslag vult aan.
+      const aanvulling = Object.fromEntries(Object.entries(velden)
+        .filter(([veld]) => rest[veld] === undefined || rest[veld] === null || String(rest[veld]).trim() === ''));
+      return {...rest, ...aanvulling};
+    }));
+
+    setProductArtikelen((prev: any[]) => prev.map((a: any) => {
+      if (!a?.wc?.meta) return a;
+      const {artikel: velden} = crafteryLees(a.wc.meta);
+      const {meta, ...wcRest} = a.wc;
+      const aanvulling = Object.fromEntries(Object.entries(velden)
+        .filter(([veld]) => a[veld] === undefined || a[veld] === null || String(a[veld]).trim() === ''));
+      return {...a, ...aanvulling, wc: wcRest};
+    }));
+  }, [producten, productArtikelen]);
 
   // Eenmalige migratie: bestaande batches met status 'Verpakt' worden hernoemd
   // naar 'Afgevuld' (canonieke status sinds v1.9.75). 'Verpakt' blijft in de

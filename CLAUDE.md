@@ -49,10 +49,15 @@ BrewAdmin-HA-App/
 │   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
-│   │   ├── craftery.ts     # Eigen productvelden van het Craftery-webshopthema (`_cf_…`-meta):
-│   │   │                   # velddefinities mét niveau (bier vs. verpakking), samenvoegen/splitsen
-│   │   │                   # per niveau + voorstel dat ABV/IBU/EBC/stijl/inhoud/ingrediënten uit de
-│   │   │                   # administratie invult. Alleen deze sleutels worden gelezen/geschreven
+│   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
+│   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
+│   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,
+│   │   │                   # pakketinhoud, badge, levering), met niveau (product/artikel) en welke
+│   │   │                   # velden de app zélf afleidt (ABV/IBU/EBC/stijl uit het product, inhoud
+│   │   │                   # uit de verpakking, ingrediënten uit het recept)
+│   │   ├── craftery.ts     # Vertaaltabel bierinformatie ↔ de `_cf_…`-meta van het Craftery-
+│   │   │                   # webshopthema. Bewaart zelf niets; alleen deze sleutels worden
+│   │   │                   # gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
@@ -148,8 +153,9 @@ De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 `src/utils/__tests__/`: accijns, BTW-rollover en grondslag-BTW, centen,
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
 ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de WooCommerce-productkaart
-(payload, winkel lezen, verschillen) + de themavelden van het webshopthema
-(niveau-indeling, samenvoegen/splitsen, ingrediëntenvoorstel), de
+(payload, winkel lezen, verschillen), de bierinformatie (velddefinities, afgeleide
+velden, stapelen per niveau, ingrediëntenlijst uit het recept) + de vertaling
+naar het webshopthema, de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
@@ -639,24 +645,24 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   `↑ Push alles` (complete kaart) en `↓ Ophalen uit webshop` op de
   productenpagina. Een SKU die de winkel nog niet kent wordt aangemaakt via
   `POST /api/woocommerce/create/products`
-- **Themavelden** (`utils/craftery.ts`): het Craftery-thema bewaart ABV, IBU,
-  EBC, kcal, inhoud, stijl, smaakprofiel, Untappd, archief- en pakketvelden als
-  `_cf_…`-post-meta. Elk veld heeft een **niveau**: `product` = een eigenschap
-  van het bier (staat in `product.wc_thema`, ingevuld in de sectie
-  "Biereigenschappen voor de webshop" op de productpagina) en `artikel` = per
-  verpakking (`productArtikel.wc.meta`, tabblad "Thema-velden" van de
-  productkaart). Velden met `automatisch: true` (ABV, IBU, EBC, stijl, inhoud)
-  zijn **geen invoer**: `crafteryAutoProduct`/`crafteryAutoArtikel` leiden ze af
-  uit de productgegevens, de verpakking en het recept (ingrediëntenlijst), zodat
-  je ze maar op één plek bijhoudt. Bij het pushen stapelt `combineerThemaMeta`
-  de lagen (afgeleid → bier → verpakking; een latere laag wint alleen met een
-  ingevulde waarde), `zonderAutoVelden` gooit oud opgeslagen afgeleide invoer
-  weg en bij het ophalen splitst `splitsThemaMeta` de rest naar het juiste
-  niveau. De invulvelden zelf staan in `components/ThemaVeldenForm.tsx`, gedeeld
-  door beide plekken. Wijzigt het thema, dan wijzigt
-  `CRAFTERY_VELDEN` mee — de app schrijft nooit een meta-sleutel die daar niet
-  in staat, en laat meta van andere plugins ongemoeid. Uit te zetten met
-  `woocommerce_creds.themaVelden = false`
+- **Bierinformatie** (`utils/bierinfo.ts`): kcal, ingrediënten, smaakprofiel,
+  serveertip, de vijf smaakassen, Untappd, "uit roulatie" en vrije extra regels
+  staan als **gewone velden op het product**; maat/aantal, pakketinhoud, badge
+  en levering als velden op het artikel (en op `merch_artikelen`). Je bewerkt ze
+  waar je het bier resp. de verpakking bewerkt — de sectie "Bierinformatie" op
+  de productpagina en het artikelformulier — niet in een webshopscherm.
+  Velden met `afgeleid: true` (ABV, IBU, EBC, stijl, inhoud) leidt
+  `afgeleideBierInfo` af uit de productgegevens, de verpakking en het recept;
+  die zijn nergens een invulveld. `bierInfoVoorArtikel` stapelt afgeleid → bier
+  → verpakking (een leeg veld drukt de laag eronder nooit weg).
+  `components/BierInfoForm.tsx` rendert de velden overal hetzelfde
+- **Naar de webshop** (`utils/craftery.ts`): `crafteryMeta` vertaalt die
+  bierinformatie naar de `_cf_…`-post-meta van het Craftery-thema en gaat als
+  `meta_data` mee in de push; `crafteryLees` doet het omgekeerde bij het
+  ophalen (afgeleide velden komen niet terug — die staan in de administratie
+  zelf). Wijzigt het thema, dan wijzigt `CRAFTERY_META` mee; de app schrijft
+  nooit een meta-sleutel die daar niet in staat en laat meta van andere plugins
+  ongemoeid. Uit te zetten met `woocommerce_creds.themaVelden = false`
 - Afbeeldingen zijn verwijzingen, geen uploads: de WC REST API accepteert een
   media-`id` of een publieke `src`-URL. Base64 uit deze app kan er niet in —
   uploaden blijft WordPress-werk
