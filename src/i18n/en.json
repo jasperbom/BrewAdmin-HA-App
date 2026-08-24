@@ -3391,7 +3391,6 @@
   "settings_wc_prijzen_incl_btw": "Shop prices include VAT",
   "settings_wc_prijzen_incl_btw_hint": "Found in WooCommerce under Settings → Tax → \"Prices entered with tax\". The app converts its prices (always excluding VAT) accordingly.",
   "wc_tab_thema": "Theme fields",
-  "cf_uitleg": "Custom fields of the Craftery shop theme. Anything left empty here stays as it is in the shop.",
   "cf_btn_overnemen": "Take from the app",
   "cf_tip_overnemen": "Fills the empty fields with what the app already knows: ABV, IBU, EBC, style and volume. Filled fields are kept.",
   "cf_msg_overgenomen": "Empty fields filled from the app — not saved yet.",
@@ -3442,5 +3441,13 @@
   "cf_ph_regel_label": "Label",
   "cf_ph_regel_waarde": "Value",
   "settings_wc_thema_velden": "Manage Craftery theme fields",
-  "settings_wc_thema_velden_hint": "Enables the \"Theme fields\" tab on the product card: ABV, IBU, EBC, style, taste profile, Untappd and the Craftery bundle fields. Off = the app leaves those fields in the shop alone."
+  "settings_wc_thema_velden_hint": "Enables the \"Theme fields\" tab on the product card: ABV, IBU, EBC, style, taste profile, Untappd and the Craftery bundle fields. Off = the app leaves those fields in the shop alone.",
+  "cf_sectie_titel": "Beer properties for the shop",
+  "cf_uitleg_product": "These properties belong to the beer itself: fill them in once and every packaging (bottle, keg, bundle) sends them to the shop.",
+  "cf_uitleg_artikel": "Only what differs per packaging. The beer’s own properties live on the product and are sent along automatically.",
+  "cf_msg_overgenomen_product": "Empty fields filled with this beer’s data.",
+  "cf_van_product": "From this beer",
+  "cf_van_product_hint": "edit on the product",
+  "cf_van_product_leeg": "Nothing filled in on this beer yet.",
+  "cf_btn_as_wissen": "Clear"
 }

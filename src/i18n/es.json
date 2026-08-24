@@ -3391,7 +3391,6 @@
   "settings_wc_prijzen_incl_btw": "Los precios de la tienda incluyen IVA",
   "settings_wc_prijzen_incl_btw_hint": "Está en WooCommerce en Ajustes → Impuestos → «Precios introducidos con impuestos». La app convierte sus precios (siempre sin IVA) según eso.",
   "wc_tab_thema": "Campos del tema",
-  "cf_uitleg": "Campos propios del tema Craftery. Lo que deje vacío se mantiene igual en la tienda.",
   "cf_btn_overnemen": "Tomar de la app",
   "cf_tip_overnemen": "Rellena los campos vacíos con lo que la app ya sabe: ABV, IBU, EBC, estilo y contenido. Los campos con valor se mantienen.",
   "cf_msg_overgenomen": "Campos vacíos rellenados desde la app — aún no guardados.",
@@ -3442,5 +3441,13 @@
   "cf_ph_regel_label": "Etiqueta",
   "cf_ph_regel_waarde": "Valor",
   "settings_wc_thema_velden": "Gestionar los campos del tema Craftery",
-  "settings_wc_thema_velden_hint": "Activa la pestaña «Campos del tema» en la ficha: ABV, IBU, EBC, estilo, perfil de sabor, Untappd y los campos de pack del tema Craftery. Desactivado = la app no toca esos campos."
+  "settings_wc_thema_velden_hint": "Activa la pestaña «Campos del tema» en la ficha: ABV, IBU, EBC, estilo, perfil de sabor, Untappd y los campos de pack del tema Craftery. Desactivado = la app no toca esos campos.",
+  "cf_sectie_titel": "Propiedades de la cerveza para la tienda",
+  "cf_uitleg_product": "Estas propiedades pertenecen a la cerveza en sí: se rellenan una vez y cada envase (botella, barril, pack) las envía a la tienda.",
+  "cf_uitleg_artikel": "Solo lo que cambia por envase. Las propiedades de la cerveza están en el producto y se envían automáticamente.",
+  "cf_msg_overgenomen_product": "Campos vacíos rellenados con los datos de esta cerveza.",
+  "cf_van_product": "De esta cerveza",
+  "cf_van_product_hint": "editar en el producto",
+  "cf_van_product_leeg": "Todavía no hay nada en esta cerveza.",
+  "cf_btn_as_wissen": "Vaciar"
 }

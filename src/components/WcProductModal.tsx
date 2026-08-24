@@ -5,12 +5,13 @@ import { wcFoutMelding } from '../utils/wcFout'
 import Modal from './ui/Modal'
 import Btn from './ui/Btn'
 import {
-  WcVelden, WcCategorie, WcAfbeelding, WcMetaRegel,
+  WcVelden, WcCategorie, WcAfbeelding,
   bouwWcPayload, leesWcProduct, wcVerschillen, wcRegulierePrijsExcl,
   ordenCategorieen, WC_VELD_LABEL,
   WC_STATUSSEN, WC_ZICHTBAARHEDEN, WC_BACKORDERS, WC_BTW_STATUSSEN,
 } from '../utils/wcProduct'
-import { CrafteryVeld, CRAFTERY_GROEPEN, vulAanMetVoorstel } from '../utils/craftery'
+import { CrafteryVeld, combineerThemaMeta, splitsThemaMeta } from '../utils/craftery'
+import ThemaVeldenForm from './ThemaVeldenForm'
 
 // De volledige WooCommerce-productkaart van één artikel, bewerkbaar vanuit de
 // app. Alles wat je normaal in WordPress bij een product invult staat hier —
@@ -43,13 +44,26 @@ export interface WcProductModalProps {
   onClose: () => void
   onLog?: (type: 'push' | 'pull' | 'fout' | 'debug', msg: string, details?: string) => void
   /**
-   * Eigen productvelden van het webshopthema (`meta_data`). Leeg/weggelaten =
-   * geen themategevel: de modal toont het tabblad dan niet en raakt de meta van
-   * de winkel niet aan.
+   * De themavelden die op dít artikel horen — dus de verpakkingsgebonden
+   * velden (inhoud, badge, levering). Leeg/weggelaten = de app raakt de meta
+   * van de winkel niet aan en toont het tabblad niet.
    */
   themaVelden?: CrafteryVeld[]
   /** Waarden die de app zelf al kent, om lege themavelden mee te vullen. */
   themaVoorstel?: Record<string, string>
+  /**
+   * De biereigenschappen van het product (ABV, stijl, smaakprofiel …). Die
+   * vul je één keer in bij het product; hier zijn ze alleen leesbaar, zodat je
+   * ziet wat er met deze verpakking meegaat naar de winkel.
+   */
+  themaProductMeta?: Record<string, any> | null
+  /** Labels bij die productwaarden, voor het leesbare overzicht. */
+  themaProductVelden?: CrafteryVeld[]
+  /**
+   * Wordt aangeroepen wanneer een ophaalactie biereigenschappen uit de winkel
+   * meebrengt — de aanroeper zet ze bij het product neer.
+   */
+  onProductThema?: (meta: Record<string, any>) => void
 }
 
 type Tab = 'algemeen' | 'teksten' | 'prijs' | 'verzending' | 'indeling' | 'afbeeldingen' | 'thema'
@@ -75,32 +89,11 @@ const Veld: React.FC<{label: string, tip?: string, breed?: boolean, children: Re
     </div>
   )
 
-/** Eigen label/waarde-regels (spec sheet of infokaarten van het thema). */
-const ThemaRegels: React.FC<{waarde: WcMetaRegel[], onChange: (r: WcMetaRegel[]) => void}> = ({waarde, onChange}) => {
-  const rijen = [...waarde, {label: '', value: ''}]
-  const wijzig = (i: number, patch: Partial<WcMetaRegel>) => {
-    const nieuw = rijen.map((r, j) => j === i ? {...r, ...patch} : r)
-    // Een regel zonder label of waarde slaat het thema niet op — hier ook niet.
-    onChange(nieuw.filter(r => r.label.trim() || r.value.trim()))
-  }
-  return (
-    <div className="space-y-1">
-      {rijen.map((r, i) => (
-        <div key={i} className="flex gap-1.5">
-          <input type="text" className={`${inputCls} w-1/3`} placeholder={t('cf_ph_regel_label')}
-            value={r.label} onChange={e => wijzig(i, {label: e.target.value})} />
-          <input type="text" className={inputCls} placeholder={t('cf_ph_regel_waarde')}
-            value={r.value} onChange={e => wijzig(i, {value: e.target.value})} />
-        </div>
-      ))}
-    </div>
-  )
-}
-
 const WcProductModal: React.FC<WcProductModalProps> = ({
   sku, titel, velden, naamFallback, omschrijvingFallback, prijsExcl, btwPct,
   voorraad = null, prijzenInclBtw = true, onOpslaan, onClose, onLog,
   themaVelden = [], themaVoorstel = {},
+  themaProductMeta = null, themaProductVelden = [], onProductThema,
 }) => {
   const {useState, useEffect, useMemo} = React
   const [v, setV] = useState<WcVelden>({...(velden || {})})
@@ -114,15 +107,20 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
   const [nieuweCat, setNieuweCat] = useState('')
 
   const zet = (patch: Partial<WcVelden>) => setV(f => ({...f, ...patch}))
-  const metaSleutels = themaVelden.map(f => f.sleutel)
-  const zetMeta = (sleutel: string, waarde: any) =>
-    setV(f => ({...f, meta: {...(f.meta || {}), [sleutel]: waarde}}))
-  const metaWaarde = (sleutel: string): any => (v.meta || {})[sleutel] ?? ''
+  // Uit de winkel lezen we alle themavelden; het productdeel gaat via
+  // `onProductThema` naar het bier, het artikeldeel blijft hier.
+  const metaSleutels = [...themaVelden, ...themaProductVelden].map(f => f.sleutel)
+
+  // Wat er daadwerkelijk naar de winkel gaat: de biereigenschappen van het
+  // product met daaroverheen wat op deze verpakking is ingevuld.
+  const metaVoorPush = useMemo(
+    () => combineerThemaMeta(themaProductMeta, v.meta),
+    [themaProductMeta, v.meta])
 
   const payload = useMemo(() => bouwWcPayload({
-    velden: v, sku, naamFallback, omschrijvingFallback,
+    velden: {...v, meta: metaVoorPush}, sku, naamFallback, omschrijvingFallback,
     prijsExcl, btwPct, voorraad, prijzenInclBtw,
-  }), [v, sku, naamFallback, omschrijvingFallback, prijsExcl, btwPct, voorraad, prijzenInclBtw])
+  }), [v, metaVoorPush, sku, naamFallback, omschrijvingFallback, prijsExcl, btwPct, voorraad, prijzenInclBtw])
 
   const verschillen = useMemo(
     () => (wcProduct ? wcVerschillen(payload, wcProduct) : []),
@@ -155,7 +153,10 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
   const pull = () => {
     if (!wcProduct) return
     const uit = leesWcProduct(wcProduct, {btwPct, prijzenInclBtw, metaSleutels})
-    setV({...uit, gepulld: new Date().toISOString(), gesynct: v.gesynct})
+    const {product: uitProduct, artikel: uitArtikel} = splitsThemaMeta(uit.meta)
+    setV({...uit, meta: uitArtikel, gepulld: new Date().toISOString(), gesynct: v.gesynct})
+    // De biereigenschappen horen bij het product, niet bij deze verpakking.
+    if (Object.keys(uitProduct).length) onProductThema?.(uitProduct)
     setMsg({soort: 'info', tekst: t('wc_msg_opgehaald')})
     onLog?.('pull', `↓ ${titel} — ${t('wc_msg_opgehaald')}`)
   }
@@ -166,7 +167,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
     setBezig(true); setMsg(null)
     try {
       const body = bouwWcPayload({
-        velden: v, sku, naamFallback, omschrijvingFallback,
+        velden: {...v, meta: metaVoorPush}, sku, naamFallback, omschrijvingFallback,
         prijsExcl, btwPct, voorraad, prijzenInclBtw, nieuw,
       })
       const res = nieuw
@@ -439,69 +440,54 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
             <p className="text-[11px] text-gray-400">{t('wc_hint_afbeeldingen')}</p>
           </div>
         </>)}
-        {tab === 'thema' && (<>
-          <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
-            <p className="text-[11px] text-gray-500 flex-1 min-w-[12rem]">{t('cf_uitleg')}</p>
-            {Object.keys(themaVoorstel).length > 0 && (
-              <Btn s="sm" v="secondary" title={t('cf_tip_overnemen')}
-                onClick={() => { zet({meta: vulAanMetVoorstel(v.meta, themaVoorstel)}); setMsg({soort: 'info', tekst: t('cf_msg_overgenomen')}) }}>
-                {t('cf_btn_overnemen')}
-              </Btn>
-            )}
-          </div>
-          {CRAFTERY_GROEPEN.filter(g => themaVelden.some(f => f.groep === g)).map(groep => (
-            <div key={groep} className="sm:col-span-2">
-              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mt-1 mb-1">{t(groep)}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {themaVelden.filter(f => f.groep === groep).map(f => {
-                  const waarde = metaWaarde(f.sleutel)
-                  if (f.soort === 'ja_nee') {
-                    return (
-                      <label key={f.sleutel} className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none pt-4"
-                        title={f.tip ? t(f.tip) : undefined}>
-                        {/* Het thema bewaart deze schakelaar als 'yes'/'no'. */}
-                        <input type="checkbox" className="t-checkbox" checked={waarde === 'yes'}
-                          onChange={e => zetMeta(f.sleutel, e.target.checked ? 'yes' : 'no')} />
-                        <span>{t(f.label)}</span>
-                      </label>
-                    )
-                  }
-                  return (
-                    <Veld key={f.sleutel} label={t(f.label)} tip={f.tip ? t(f.tip) : undefined}
-                      breed={f.soort === 'lang' || f.soort === 'regels'}>
-                      {f.soort === 'lang' ? (
-                        <textarea rows={3} className={inputCls} placeholder={f.placeholder}
-                          value={String(waarde)} onChange={e => zetMeta(f.sleutel, e.target.value)} />
-                      ) : f.soort === 'keuze' ? (
-                        <select value={String(waarde)} onChange={e => zetMeta(f.sleutel, e.target.value)}
-                          className={`${inputCls} bg-white`}>
-                          <option value="">{t('wc_opt_onveranderd')}</option>
-                          {(f.opties || []).map(o => <option key={o.v} value={o.v}>{t(o.l)}</option>)}
-                        </select>
-                      ) : f.soort === 'schuif' ? (
-                        <div className="flex items-center gap-2">
-                          {/* accentkleur uit het thema — geen browserblauw */}
-                          <input type="range" min={0} max={100} step={1} className="flex-1"
-                            style={{accentColor: 'var(--t-accent)'}}
-                            value={Number(waarde) || 0} onChange={e => zetMeta(f.sleutel, e.target.value)} />
-                          <input type="number" min={0} max={100} className={`${inputCls} w-16`}
-                            value={String(waarde)} onChange={e => zetMeta(f.sleutel, e.target.value)} />
-                        </div>
-                      ) : f.soort === 'regels' ? (
-                        <ThemaRegels waarde={Array.isArray(waarde) ? waarde : []}
-                          onChange={rijen => zetMeta(f.sleutel, rijen)} />
-                      ) : (
-                        <input type={f.soort === 'getal' ? 'number' : 'text'} className={inputCls}
-                          placeholder={f.placeholder} value={String(waarde)}
-                          onChange={e => zetMeta(f.sleutel, e.target.value)} />
-                      )}
-                    </Veld>
-                  )
-                })}
+        {tab === 'thema' && (
+          <div className="sm:col-span-2 space-y-4">
+            {/* Wat van het bier komt: hier alleen ter controle. Aanpassen doe
+                je bij het product, want het geldt voor élke verpakking. */}
+            {themaProductVelden.length > 0 && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    {t('cf_van_product')}
+                  </span>
+                  <span className="text-[11px] text-gray-400">{t('cf_van_product_hint')}</span>
+                </div>
+                {Object.keys(themaProductMeta || {}).length === 0 ? (
+                  <p className="text-[11px] text-gray-400 italic">{t('cf_van_product_leeg')}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {themaProductVelden
+                      .filter(f => {
+                        const w = (themaProductMeta || {})[f.sleutel]
+                        return w !== undefined && w !== null && (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '')
+                      })
+                      .map(f => {
+                        const w = (themaProductMeta || {})[f.sleutel]
+                        const tekst = Array.isArray(w)
+                          ? w.map((r: any) => `${r.label}: ${r.value}`).join(' · ')
+                          : String(w)
+                        return (
+                          <span key={f.sleutel} className="text-[11px] text-gray-600">
+                            <span className="text-gray-400">{t(f.label)}: </span>
+                            <span className="font-medium">{tekst.length > 60 ? `${tekst.slice(0, 60)}…` : tekst}</span>
+                          </span>
+                        )
+                      })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
-        </>)}
+            )}
+
+            <ThemaVeldenForm
+              velden={themaVelden}
+              waarden={v.meta}
+              onChange={meta => zet({meta})}
+              voorstel={themaVoorstel}
+              uitleg="cf_uitleg_artikel"
+              onOvergenomen={() => setMsg({soort: 'info', tekst: t('cf_msg_overgenomen')})}
+            />
+          </div>
+        )}
       </div>
 
       {/* Verschillen met de winkel */}
@@ -518,7 +504,10 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                   <div key={d.veld} className="flex flex-wrap gap-2 py-0.5 border-b border-gray-100 last:border-0">
                     <span className="w-40 text-gray-500">{
                       d.veld.startsWith('meta:')
-                        ? t(themaVelden.find(f => f.sleutel === d.veld.slice(5))?.label || d.veld)
+                        // Een themaveld kan van het bier of van de verpakking
+                        // komen; zoek het label in allebei de lijsten.
+                        ? t([...themaVelden, ...themaProductVelden]
+                            .find(f => f.sleutel === d.veld.slice(5))?.label || d.veld)
                         : t(WC_VELD_LABEL[d.veld] || d.veld)
                     }</span>
                     <span className="flex-1 min-w-[8rem] truncate" title={d.extern}>

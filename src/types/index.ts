@@ -1,4 +1,4 @@
-import type { WcVelden } from '../utils/wcProduct'
+import type { WcVelden, WcMetaWaarde } from '../utils/wcProduct'
 
 export type Allergeen = 'gluten' | 'gerst' | 'tarwe' | 'rogge' | 'haver' |
   'lactose' | 'soja' | 'noten' | 'sulfiet' | 'overig'
@@ -394,6 +394,11 @@ export interface Product {
   etiket_artikel?: string
   etiket_versie?: string
   etiket_bijgewerkt?: string
+  // Biereigenschappen voor de webshop (themavelden van WooCommerce, zie
+  // `utils/craftery.ts`): ABV, IBU, stijl, smaakprofiel … Horen bij het bier
+  // zelf, dus één keer invullen — elke verpakking van dit product stuurt ze
+  // mee naar de winkel.
+  wc_thema?: Record<string, WcMetaWaarde>
 }
 
 export interface ProductArtikel {
