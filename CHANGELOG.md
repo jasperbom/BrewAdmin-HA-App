@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.15] — 2026-08-24
+
+### Kostprijs en trend per brouw, bij het bier
+
+De batchsamenvatting liet zien wát je brouwt; nu ook wat het kost en welke
+kant het op gaat.
+
+- **Kostprijs per liter** staat in de meetstrip en als kolom in de batchtabel:
+  ingrediënten, utility, verpakking en accijns gedeeld door de afgevulde liters
+  — dezelfde berekening als het kostprijsoverzicht op de batchpagina. Een batch
+  die nog niet is afgevuld heeft geen kostprijs en telt niet mee.
+- **Elke meetwaarde heeft nu een trend**: een pijl met het verschil ten
+  opzichte van de vorige brouw (`€0,38 ▲11%`) plus een klein lijntje van alle
+  brouwsels. Rood wanneer het de verkeerde kant op gaat — duurder bij de
+  kostprijs, lager bij het rendement — en groen bij de goede kant.
+- De onderliggende reeks (`reeks`) en de vorige meting zitten in
+  `batchSamenvatting`, dus elke grootheid krijgt dit vanzelf.
+
+---
+
 ## [1.12.14] — 2026-08-24
 
 ### Wat je batches zeggen, zie je nu bij het bier

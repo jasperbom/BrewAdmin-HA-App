@@ -3463,5 +3463,7 @@
   "batch_stat_rendement": "Sudhausausbeute",
   "batch_afwijking": "Beim Bier steht {veld} {bier}, deine Sude liegen im Schnitt bei {gemeten}.",
   "batch_afwijking_leeg": "Beim Bier fehlt {veld} noch; deine Sude liegen im Schnitt bei {gemeten}.",
-  "batch_afwijking_overnemen": "Übernehmen"
+  "batch_afwijking_overnemen": "Übernehmen",
+  "batch_stat_kostprijs": "Kosten/L",
+  "batch_trend_tip": "Vorheriger Sud {vorige}, letzter {laatste}"
 }

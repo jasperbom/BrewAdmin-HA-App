@@ -3463,5 +3463,7 @@
   "batch_stat_rendement": "Rendimiento",
   "batch_afwijking": "En la cerveza figura {veld} {bier}, pero sus lotes promedian {gemeten}.",
   "batch_afwijking_leeg": "La cerveza aún no tiene {veld}; sus lotes promedian {gemeten}.",
-  "batch_afwijking_overnemen": "Usar este"
+  "batch_afwijking_overnemen": "Usar este",
+  "batch_stat_kostprijs": "Coste/L",
+  "batch_trend_tip": "Lote anterior {vorige}, último {laatste}"
 }
