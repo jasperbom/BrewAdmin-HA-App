@@ -10,8 +10,9 @@ import {
   ordenCategorieen, WC_VELD_LABEL,
   WC_STATUSSEN, WC_ZICHTBAARHEDEN, WC_BACKORDERS, WC_BTW_STATUSSEN,
 } from '../utils/wcProduct'
-import { CrafteryVeld, combineerThemaMeta, splitsThemaMeta, zonderAutoVelden } from '../utils/craftery'
-import ThemaVeldenForm from './ThemaVeldenForm'
+import { BierVeld, BIER_VELDEN } from '../utils/bierinfo'
+import { crafteryLabel } from '../utils/craftery'
+import BierInfoForm from './BierInfoForm'
 
 // De volledige WooCommerce-productkaart van één artikel, bewerkbaar vanuit de
 // app. Alles wat je normaal in WordPress bij een product invult staat hier —
@@ -44,25 +45,19 @@ export interface WcProductModalProps {
   onClose: () => void
   onLog?: (type: 'push' | 'pull' | 'fout' | 'debug', msg: string, details?: string) => void
   /**
-   * De themavelden die op dít artikel horen — dus de verpakkingsgebonden
-   * velden (inhoud, badge, levering). Leeg/weggelaten = de app raakt de meta
-   * van de winkel niet aan en toont het tabblad niet.
+   * De bierinformatie van dit artikel (velden uit `utils/bierinfo.ts`), zoals
+   * hij meegaat naar de winkel. Alleen leesbaar: je wijzigt hem bij het bier
+   * of bij het artikel, zodat hij op één plek staat.
    */
-  themaVelden?: CrafteryVeld[]
+  bierInfo?: Record<string, any> | null
+  /** Diezelfde informatie, al vertaald naar de meta van het webshopthema. */
+  themaMeta?: Record<string, any> | null
   /**
-   * Alles wat níét hier bewerkt wordt maar wel meegaat: de waarden die de app
-   * afleidt (ABV, stijl, inhoud, ingrediënten) plus wat bij het bier is
-   * ingevuld. Alleen leesbaar — je wijzigt het bij het product of de
-   * verpakking, zodat het op één plek staat.
+   * Alleen voor een artikel dat nergens anders een formulier heeft (merch):
+   * de verpakkingsvelden zijn hier wél bewerkbaar.
    */
-  themaVanElders?: Record<string, any> | null
-  /** Alle themavelden, puur om labels bij die waarden te vinden. */
-  themaAlleVelden?: CrafteryVeld[]
-  /**
-   * Wordt aangeroepen wanneer een ophaalactie biereigenschappen uit de winkel
-   * meebrengt — de aanroeper zet ze bij het product neer.
-   */
-  onProductThema?: (meta: Record<string, any>) => void
+  artikelVelden?: BierVeld[]
+  onArtikelVeld?: (veld: string, waarde: any) => void
 }
 
 type Tab = 'algemeen' | 'teksten' | 'prijs' | 'verzending' | 'indeling' | 'afbeeldingen' | 'thema'
@@ -91,7 +86,7 @@ const Veld: React.FC<{label: string, tip?: string, breed?: boolean, children: Re
 const WcProductModal: React.FC<WcProductModalProps> = ({
   sku, titel, velden, naamFallback, omschrijvingFallback, prijsExcl, btwPct,
   voorraad = null, prijzenInclBtw = true, onOpslaan, onClose, onLog,
-  themaVelden = [], themaVanElders = null, themaAlleVelden = [], onProductThema,
+  bierInfo = null, themaMeta = null, artikelVelden = [], onArtikelVeld,
 }) => {
   const {useState, useEffect, useMemo} = React
   const [v, setV] = useState<WcVelden>({...(velden || {})})
@@ -105,22 +100,11 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
   const [nieuweCat, setNieuweCat] = useState('')
 
   const zet = (patch: Partial<WcVelden>) => setV(f => ({...f, ...patch}))
-  // Uit de winkel lezen we alle themavelden; het productdeel gaat via
-  // `onProductThema` naar het bier, het artikeldeel blijft hier.
-  const metaSleutels = [...themaVelden, ...themaAlleVelden].map(f => f.sleutel)
-
-  // Wat er daadwerkelijk naar de winkel gaat: de biereigenschappen van het
-  // product met daaroverheen wat op deze verpakking is ingevuld.
-  const metaVoorPush = useMemo(
-    // `zonderAutoVelden`: een oude opgeslagen ABV mag de actuele
-    // productgegevens nooit overschrijven.
-    () => combineerThemaMeta(themaVanElders, zonderAutoVelden(v.meta)),
-    [themaVanElders, v.meta])
 
   const payload = useMemo(() => bouwWcPayload({
-    velden: {...v, meta: metaVoorPush}, sku, naamFallback, omschrijvingFallback,
+    velden: {...v, meta: themaMeta || {}}, sku, naamFallback, omschrijvingFallback,
     prijsExcl, btwPct, voorraad, prijzenInclBtw,
-  }), [v, metaVoorPush, sku, naamFallback, omschrijvingFallback, prijsExcl, btwPct, voorraad, prijzenInclBtw])
+  }), [v, themaMeta, sku, naamFallback, omschrijvingFallback, prijsExcl, btwPct, voorraad, prijzenInclBtw])
 
   const verschillen = useMemo(
     () => (wcProduct ? wcVerschillen(payload, wcProduct) : []),
@@ -152,11 +136,10 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
   // ── Ophalen: de winkel is leidend ────────────────────────────────────────
   const pull = () => {
     if (!wcProduct) return
-    const uit = leesWcProduct(wcProduct, {btwPct, prijzenInclBtw, metaSleutels})
-    const {product: uitProduct, artikel: uitArtikel} = splitsThemaMeta(uit.meta)
-    setV({...uit, meta: uitArtikel, gepulld: new Date().toISOString(), gesynct: v.gesynct})
-    // De biereigenschappen horen bij het product, niet bij deze verpakking.
-    if (Object.keys(uitProduct).length) onProductThema?.(uitProduct)
+    // Bierinformatie halen we hier niet op: die staat in de administratie en
+    // wordt met "Ophalen uit webshop" op de productenpagina overgenomen.
+    const uit = leesWcProduct(wcProduct, {btwPct, prijzenInclBtw})
+    setV({...uit, meta: undefined, gepulld: new Date().toISOString(), gesynct: v.gesynct})
     setMsg({soort: 'info', tekst: t('wc_msg_opgehaald')})
     onLog?.('pull', `↓ ${titel} — ${t('wc_msg_opgehaald')}`)
   }
@@ -167,7 +150,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
     setBezig(true); setMsg(null)
     try {
       const body = bouwWcPayload({
-        velden: {...v, meta: metaVoorPush}, sku, naamFallback, omschrijvingFallback,
+        velden: {...v, meta: themaMeta || {}}, sku, naamFallback, omschrijvingFallback,
         prijsExcl, btwPct, voorraad, prijzenInclBtw, nieuw,
       })
       const res = nieuw
@@ -261,7 +244,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-3">
-        {TABS.filter(tb => tb.v !== 'thema' || themaVelden.length > 0).map(tb => (
+        {TABS.filter(tb => tb.v !== 'thema' || !!bierInfo).map(tb => (
           <button key={tb.v} onClick={() => setTab(tb.v)}
             className={`px-3 py-1.5 text-xs font-medium rounded-t ${tab === tb.v ? 't-tab' : 'text-gray-500 hover:bg-gray-50'}`}>
             {t(tb.l)}
@@ -442,48 +425,46 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
         </>)}
         {tab === 'thema' && (
           <div className="sm:col-span-2 space-y-4">
-            {/* Wat van het bier komt: hier alleen ter controle. Aanpassen doe
-                je bij het product, want het geldt voor élke verpakking. */}
-            {themaAlleVelden.length > 0 && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    {t('cf_van_product')}
-                  </span>
-                  <span className="text-[11px] text-gray-400">{t('cf_van_product_hint')}</span>
-                </div>
-                {Object.keys(themaVanElders || {}).length === 0 ? (
-                  <p className="text-[11px] text-gray-400 italic">{t('cf_van_product_leeg')}</p>
-                ) : (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {themaAlleVelden
-                      .filter(f => {
-                        const w = (themaVanElders || {})[f.sleutel]
-                        return w !== undefined && w !== null && (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '')
-                      })
-                      .map(f => {
-                        const w = (themaVanElders || {})[f.sleutel]
-                        const tekst = Array.isArray(w)
-                          ? w.map((r: any) => `${r.label}: ${r.value}`).join(' · ')
-                          : String(w)
-                        return (
-                          <span key={f.sleutel} className="text-[11px] text-gray-600">
-                            <span className="text-gray-400">{t(f.label)}: </span>
-                            <span className="font-medium">{tekst.length > 60 ? `${tekst.slice(0, 60)}…` : tekst}</span>
-                          </span>
-                        )
-                      })}
-                  </div>
-                )}
+            {/* De bierinformatie die met dit artikel meegaat. Wijzigen doe je
+                bij het bier of het artikel — hier staat hij ter controle. */}
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  {t('bier_gaat_mee')}
+                </span>
+                <span className="text-[11px] text-gray-400">{t('bier_gaat_mee_hint')}</span>
               </div>
-            )}
+              {Object.keys(bierInfo || {}).length === 0 ? (
+                <p className="text-[11px] text-gray-400 italic">{t('bier_gaat_mee_leeg')}</p>
+              ) : (
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {BIER_VELDEN
+                    .filter(f => {
+                      const w = (bierInfo || {})[f.veld]
+                      return w !== undefined && w !== null && w !== '' &&
+                        (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '')
+                    })
+                    .map(f => {
+                      const w = (bierInfo || {})[f.veld]
+                      const tekst = Array.isArray(w)
+                        ? w.map((r: any) => `${r.label}: ${r.value}`).join(' · ')
+                        : (typeof w === 'boolean' ? t(w ? 'lbl_ja' : 'lbl_nee') : String(w))
+                      return (
+                        <span key={f.veld} className="text-[11px] text-gray-600">
+                          <span className="text-gray-400">{t(f.label)}: </span>
+                          <span className="font-medium">{tekst.length > 60 ? `${tekst.slice(0, 60)}…` : tekst}</span>
+                        </span>
+                      )
+                    })}
+                </div>
+              )}
+            </div>
 
-            <ThemaVeldenForm
-              velden={themaVelden}
-              waarden={zonderAutoVelden(v.meta)}
-              onChange={meta => zet({meta})}
-              uitleg="cf_uitleg_artikel"
-            />
+            {/* Merch heeft geen productpagina met een artikelformulier; daar
+                bewerk je de verpakkingsvelden hier. */}
+            {artikelVelden.length > 0 && onArtikelVeld && (
+              <BierInfoForm velden={artikelVelden} waarden={bierInfo} onChange={onArtikelVeld} />
+            )}
           </div>
         )}
       </div>
@@ -502,10 +483,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                   <div key={d.veld} className="flex flex-wrap gap-2 py-0.5 border-b border-gray-100 last:border-0">
                     <span className="w-40 text-gray-500">{
                       d.veld.startsWith('meta:')
-                        // Een themaveld kan van het bier of van de verpakking
-                        // komen; zoek het label in allebei de lijsten.
-                        ? t([...themaVelden, ...themaAlleVelden]
-                            .find(f => f.sleutel === d.veld.slice(5))?.label || d.veld)
+                        ? t(crafteryLabel(d.veld.slice(5)) || d.veld)
                         : t(WC_VELD_LABEL[d.veld] || d.veld)
                     }</span>
                     <span className="flex-1 min-w-[8rem] truncate" title={d.extern}>

@@ -18,7 +18,8 @@ import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '..
 import MailModal from '../components/MailModal'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden } from '../utils/wcProduct'
-import { CRAFTERY_VELDEN } from '../utils/craftery'
+import { crafteryMeta } from '../utils/craftery'
+import { bierInvulVelden, bierInfoVoorArtikel } from '../utils/bierinfo'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { logAudit } from '../utils/audit'
@@ -2631,7 +2632,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           btwPct={wcMerchModal.btw_pct ?? stdBtw}
           voorraad={volgtVoorraad(wcMerchModal) ? Math.max(0, merchVoorraad(wcMerchModal)) : null}
           prijzenInclBtw={wcCreds?.prijzenInclBtw !== false}
-          themaVelden={wcCreds?.themaVelden === false ? [] : CRAFTERY_VELDEN}
+          bierInfo={bierInfoVoorArtikel({artikel: wcMerchModal})}
+          themaMeta={wcCreds?.themaVelden === false ? null : crafteryMeta({artikel: wcMerchModal})}
+          artikelVelden={bierInvulVelden('artikel')}
+          onArtikelVeld={(veld, waarde) => wijzigMerch(wcMerchModal.id, {[veld]: waarde} as any)}
           onOpslaan={(velden: WcVelden) => wijzigMerch(wcMerchModal.id, {wc: velden})}
           onClose={() => setWcMerchModal(null)}
         />

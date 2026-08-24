@@ -45,6 +45,12 @@ export interface MerchArtikel {
   wc_push?: boolean
   /** Volledige WooCommerce-productkaart (zie utils/wcProduct.ts). */
   wc?: WcVelden
+  // Informatie over dit artikel, zelfde velden als bij een bierverpakking
+  // (zie utils/bierinfo.ts): maat/aantal, pakketinhoud, badge en levering.
+  tag?: string
+  pakket_inhoud?: string
+  badge?: string
+  levering?: 'beide' | 'verzenden' | 'afhalen' | ''
 }
 
 export type MerchMutatieReden = 'inkoop' | 'verkoop' | 'retour' | 'correctie' | 'telling'
