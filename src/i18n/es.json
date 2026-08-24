@@ -3451,5 +3451,7 @@
   "bier_tip_levering": "¿Este artículo se puede enviar, solo recoger, o ambos?",
   "bier_lev_beide": "Envío y recogida",
   "bier_lev_verzenden": "Solo envío",
-  "bier_lev_afhalen": "Solo recogida"
+  "bier_lev_afhalen": "Solo recogida",
+  "bier_afgeleid_hint_form": "de los campos de arriba y la receta",
+  "bier_leeg_uitleg": "Aún no hay información de la cerveza. Pulse Editar para añadirla con los datos del producto."
 }

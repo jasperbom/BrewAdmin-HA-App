@@ -4,7 +4,7 @@ import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl } from '../utils/wcProduct'
 import {
-  BIER_VELDEN, bierVelden, bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel,
+  bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel,
 } from '../utils/bierinfo'
 import { crafteryMeta, crafteryLees, crafteryMetaUitWc, CRAFTERY_SLEUTELS } from '../utils/craftery'
 import BierInfoForm from '../components/BierInfoForm'
@@ -977,10 +977,6 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     recepten: receptenVoorProduct(prod),
   });
 
-  const zetProductVeld = (productId: number, veld: string, waarde: any) => {
-    setProducten((prev: any[]) => prev.map((p: any) => p.id === productId ? {...p, [veld]: waarde} : p));
-  };
-
   // Sla de WooCommerce-productkaart van één artikel op.
   const bewaarWcVelden = (artId: number, velden: WcVelden) => {
     setProductArtikelen((prev: any[]) => prev.map((a: any) => a.id === artId ? {...a, wc: velden} : a));
@@ -1420,6 +1416,19 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 </div>
               </div>
 
+              {/* Bierinformatie in hetzelfde formulier: het gaat over hetzelfde
+                  bier, dus je bewerkt het op één plek. ABV, IBU, EBC en de
+                  stijl staan hierboven al als veld; de ingrediëntenlijst uit
+                  het recept staat als voorbeeldtekst in zijn eigen veld. */}
+              <div className="pt-3 border-t border-gray-100 space-y-3">
+                <BierInfoForm
+                  velden={bierProductVelden}
+                  waarden={form}
+                  onChange={(veld, waarde) => setForm((f: any) => ({...f, [veld]: waarde}))}
+                  placeholders={afgeleideBierInfo({product: form, recepten: receptenVoorProduct(form)})}
+                />
+              </div>
+
               <div className="flex gap-2 pt-2 border-t border-gray-100">
                 <Btn onClick={saveProduct}>{t('btn_product_opslaan')}</Btn>
                 <Btn onClick={() => { setEditMode(false); setMsg(''); }} v="secondary">{t('btn_product_annuleren')}</Btn>
@@ -1495,17 +1504,18 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               ))}
             </div>
 
-            {/* Bierinformatie: eigenschappen van het bier zelf. Je vult ze
-                één keer in en de app gebruikt ze overal — onder meer voor de
-                webshop. ABV, IBU, EBC en stijl staan hierboven bij de
-                productgegevens en verschijnen hier alleen ter controle. */}
+            {/* Bierinformatie — hier alleen om te lezen. Bewerken doe je in
+                het productformulier, samen met naam, stijl en ABV: het is één
+                bier, dus één plek om het bij te houden. */}
             {(() => {
-              const afgeleid = afgeleidVoor(selProduct);
-              const ingevuld = bierProductVelden.filter((f: any) => {
-                const w = selProduct[f.veld];
+              const info = bierInfoVoorArtikel({product: selProduct, recepten: selRecepten});
+              // ABV, IBU, EBC en stijl staan al in de kop van het product;
+              // hier alleen wat je verder over dit bier hebt vastgelegd.
+              const zichtbaar = bierInvulVelden('product').filter((f: any) => {
+                const w = info[f.veld];
                 return w !== undefined && w !== null && w !== '' &&
-                  (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '');
-              }).length;
+                  (Array.isArray(w) ? w.length > 0 : typeof w === 'boolean' ? w : String(w).trim() !== '');
+              });
               return (
                 <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${bierInfoOpen?'':'overflow-hidden'}`}>
                   <SectionHeader
@@ -1513,36 +1523,33 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     onToggle={() => setBierInfoOpen(!bierInfoOpen)}
                     rounded={bierInfoOpen ? 'top' : 'full'}
                     title={t('bier_sectie_titel')}
-                    info={`${ingevuld}/${bierProductVelden.length}`}
+                    info={<span className="flex items-center gap-2">
+                      <span>{zichtbaar.length}</span>
+                      <Btn onClick={() => startEdit(selProduct)} s="sm" v="header">{t('btn_bewerken')}</Btn>
+                    </span>}
                   />
                   {bierInfoOpen && (
-                    <div className="p-4 space-y-3">
-                      {/* Wat de app zelf afleidt uit de administratie. */}
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('bier_afgeleid_titel')}</span>
-                          <span className="text-[11px] text-gray-400">{t('bier_afgeleid_hint')}</span>
-                        </div>
-                        {Object.keys(afgeleid).length === 0 ? (
-                          <p className="text-[11px] text-gray-400 italic">{t('bier_afgeleid_leeg')}</p>
-                        ) : (
-                          <div className="flex flex-wrap gap-x-4 gap-y-1">
-                            {BIER_VELDEN.filter((f: any) => afgeleid[f.veld]).map((f: any) => (
-                              <span key={f.veld} className="text-[11px] text-gray-600">
-                                <span className="text-gray-400">{t(f.label)}: </span>
-                                <span className="font-medium">{afgeleid[f.veld]}</span>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <BierInfoForm
-                        velden={bierProductVelden}
-                        waarden={selProduct}
-                        onChange={(veld, waarde) => zetProductVeld(selProduct.id, veld, waarde)}
-                        uitleg={themaAan ? 'bier_uitleg_webshop' : undefined}
-                        placeholders={afgeleid}
-                      />
+                    <div className="p-4">
+                      {zichtbaar.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">{t('bier_leeg_uitleg')}</p>
+                      ) : (
+                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                          {zichtbaar.map((f: any) => {
+                            const w = info[f.veld];
+                            const tekst = Array.isArray(w)
+                              ? w.map((r: any) => `${r.label}: ${r.value}`).join(' · ')
+                              : typeof w === 'boolean' ? t(w ? 'lbl_ja' : 'lbl_nee') : String(w);
+                            const breed = f.soort === 'lang' || f.soort === 'regels';
+                            return (
+                              <div key={f.veld} className={breed ? 'sm:col-span-2' : ''}>
+                                <dt className="text-[11px] text-gray-400">{t(f.label)}</dt>
+                                <dd className="text-sm text-gray-700 whitespace-pre-wrap">{tekst}</dd>
+                              </div>
+                            );
+                          })}
+                        </dl>
+                      )}
+                      {themaAan && <p className="text-[11px] text-gray-400 mt-3">{t('bier_uitleg_webshop')}</p>}
                     </div>
                   )}
                 </div>

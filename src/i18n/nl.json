@@ -3451,5 +3451,7 @@
   "bier_tip_levering": "Kan dit artikel verstuurd worden, alleen afgehaald, of allebei?",
   "bier_lev_beide": "Verzenden én afhalen",
   "bier_lev_verzenden": "Alleen verzenden",
-  "bier_lev_afhalen": "Alleen afhalen"
+  "bier_lev_afhalen": "Alleen afhalen",
+  "bier_afgeleid_hint_form": "uit de velden hierboven en het recept",
+  "bier_leeg_uitleg": "Nog geen bierinformatie ingevuld. Klik op Bewerken om ze bij de productgegevens toe te voegen."
 }
