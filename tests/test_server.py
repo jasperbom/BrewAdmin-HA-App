@@ -1756,6 +1756,42 @@ class TestWooCommerceProxy:
         assert json.loads(data)['message'].startswith('Sorry')
         assert len(pogingen) == 1
 
+    def test_aanmaken_wordt_nooit_herhaald(self, monkeypatch):
+        # Een POST maakt een product áán. Een herkansing na een timeout zou
+        # zomaar een tweede product in de winkel kunnen zetten.
+        pogingen = self._urlopen(monkeypatch, [TimeoutError()])
+        status, data = srv._wc_request(self.CREDS, 'POST', 'products', b'{}', herkansing=False)
+        assert status == 504 and json.loads(data)['oorzaak'] == 'timeout'
+        assert len(pogingen) == 1
+
+    def test_aanmaakproxy_valideert_pad_en_json(self, app, monkeypatch):
+        gestuurd = []
+
+        def fake(creds, method, subpath, body=None, herkansing=True):
+            gestuurd.append((method, subpath, body, herkansing))
+            return 200, b'{"id": 91}'
+
+        monkeypatch.setattr(srv, '_load_wc_creds', lambda: self.CREDS)
+        monkeypatch.setattr(srv, '_wc_request', fake)
+
+        # Ongeldig pad wordt geweigerd voordat de winkel benaderd wordt.
+        status, _, _ = req(app, 'POST', '/api/woocommerce/create/products;rm', b'{}')
+        assert status == 400 and not gestuurd
+
+        # Geen geldige JSON: ook weigeren.
+        status, _, _ = req(app, 'POST', '/api/woocommerce/create/products', b'geen json')
+        assert status == 400 and not gestuurd
+
+        status, body, _ = req(app, 'POST', '/api/woocommerce/create/products', b'{"name": "Tripel"}')
+        assert status == 200 and body['id'] == 91
+        # POST gaat zonder herkansing de deur uit (niet-idempotent).
+        assert gestuurd == [('POST', 'products', b'{"name": "Tripel"}', False)]
+
+    def test_aanmaakproxy_zonder_credentials(self, app, monkeypatch):
+        monkeypatch.setattr(srv, '_load_wc_creds', lambda: None)
+        status, _, _ = req(app, 'POST', '/api/woocommerce/create/products', b'{}')
+        assert status == 401
+
 
 class TestTankBewaking:
     """Temperatuurbewaking van de gisttanks: het oordeel zelf (spiegel van

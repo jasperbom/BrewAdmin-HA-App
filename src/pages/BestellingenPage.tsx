@@ -16,6 +16,9 @@ import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
+import WcProductModal from '../components/WcProductModal'
+import { WcVelden } from '../utils/wcProduct'
+import { CRAFTERY_VELDEN } from '../utils/craftery'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { logAudit } from '../utils/audit'
@@ -178,6 +181,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [verzendkostenForm, setVerzendkostenForm] = useState({naam: '', prijs_per_stuk: '', btw_pct: '21'})
   // Beheerlijstje merch-artikelen (verkoop zonder eigen voorraad)
   const [merchOpen, setMerchOpen] = useState(false)
+  // Volledige WooCommerce-productkaart van één merch-artikel.
+  const [wcMerchModal, setWcMerchModal] = useState<MerchArtikel | null>(null)
   const [merchForm, setMerchForm] = useState({sku: '', naam: ''})
   const [merchLogOpen, setMerchLogOpen] = useState<number | null>(null)
   const emptyMerchMutatie = {merch_id: 0, reden: 'inkoop' as MerchMutatie['reden'], aantal: '', prijs: '', notitie: ''}
@@ -2539,6 +2544,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                                   </td>
                                 )}
                                 <td className="px-3 py-2 text-right whitespace-nowrap">
+                                  {wcCreds?.enabled && (m.sku || m.naam) && (
+                                    <button onClick={() => setWcMerchModal(m)} title={t('wc_btn_kaart')}
+                                      className="mr-1.5 text-xs font-semibold align-middle"
+                                      style={{color: '#7f54b3'}}>WC</button>
+                                  )}
                                   {volgt && (
                                     <button onClick={() => openMerchMutatie(m)}
                                       title={t('merch_mutatie_titel')}
@@ -2607,6 +2617,22 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {wcMerchModal && (
+        <WcProductModal
+          sku={wcMerchModal.sku || ''}
+          titel={wcMerchModal.naam || wcMerchModal.sku || t('lbl_naamloos')}
+          velden={wcMerchModal.wc}
+          naamFallback={wcMerchModal.naam || wcMerchModal.sku || ''}
+          prijsExcl={wcMerchModal.verkoopprijs}
+          btwPct={wcMerchModal.btw_pct ?? stdBtw}
+          voorraad={volgtVoorraad(wcMerchModal) ? Math.max(0, merchVoorraad(wcMerchModal)) : null}
+          prijzenInclBtw={wcCreds?.prijzenInclBtw !== false}
+          themaVelden={wcCreds?.themaVelden === false ? [] : CRAFTERY_VELDEN}
+          onOpslaan={(velden: WcVelden) => wijzigMerch(wcMerchModal.id, {wc: velden})}
+          onClose={() => setWcMerchModal(null)}
+        />
       )}
 
       {showMerchMutatie && (() => {

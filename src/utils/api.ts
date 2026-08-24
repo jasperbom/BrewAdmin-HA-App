@@ -16,6 +16,7 @@ export const _BF_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '
 export const _BF_TEST  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/brewfather/test' })()
 export const _WC_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/' })()
 export const _WC_PUT   = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/put/' })()
+export const _WC_POST  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/create/' })()
 export const _WC_TEST  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/test' })()
 export const _WC_PING  = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/woocommerce/ping' })()
 export const _HA_PROXY = (() => { const p = _pad(); return p.replace(/[^/]*$/, '') + 'api/homeassistant/' })()
@@ -737,6 +738,20 @@ export const wcPut = async (subpath: string, data: any) => {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data),
   }, 1)
+  if (r.status === 429) throw _rateLimitError('WC', r)
+  if (!r.ok) throw await _wcError(r)
+  return r.json()
+}
+
+// Aanmaken in WooCommerce (product, categorie, tag). Bewust zonder
+// automatische herkansing — een POST die twee keer aankomt levert twee
+// producten op; de server herhaalt hem daarom ook niet.
+export const wcPost = async (subpath: string, data: any) => {
+  const r = await _fetchWithRetry(_WC_POST + subpath.replace(/^\//, ''), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data),
+  }, 0)
   if (r.status === 429) throw _rateLimitError('WC', r)
   if (!r.ok) throw await _wcError(r)
   return r.json()

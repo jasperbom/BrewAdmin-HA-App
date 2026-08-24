@@ -4,6 +4,63 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.8] — 2026-08-24
+
+### WooCommerce-producten volledig vanuit de app beheren
+
+De koppeling met de webshop kon één ding: de voorraad pushen. Al het andere —
+teksten, prijzen, categorieën, afbeeldingen, zichtbaarheid — deed je twee keer:
+één keer hier en één keer in WordPress.
+
+Elk artikel heeft nu een **WooCommerce-productkaart** (knop `WC` bij het
+artikel op de productenpagina, en bij een merch-artikel op de bestellingen-
+pagina) met alles wat de webshop van een product weet:
+
+- naam, URL-slug, status, zichtbaarheid, uitgelicht, sorteervolgorde en
+  "max. 1 per bestelling";
+- korte omschrijving en volledige omschrijving (HTML);
+- normale prijs (uit de verkoopprijs van het artikel), actieprijs met periode,
+  BTW-status en BTW-klasse;
+- voorraad, nabestellingen en de drempel voor lage voorraad;
+- gewicht, afmetingen en verzendklasse;
+- categorieën (met een nieuwe categorie aanmaken vanuit de app) en tags;
+- afbeeldingen: volgorde, alt-teksten en een nieuwe erbij via een publieke URL.
+
+Daarbij drie manieren om te synchroniseren:
+
+- **↓ Ophalen uit webshop** — per artikel of in één keer voor alle artikelen;
+  handig om over te stappen: wat er nu in de winkel staat wordt de startwaarde.
+- **↑ Push voorraad** — ongewijzigd het dagelijkse werk.
+- **↑ Push alles** — de complete productkaart plus de voorraad, voor alle
+  artikelen tegelijk of per artikel vanuit de kaart.
+- Staat een SKU nog niet in de webshop, dan maakt **+ Aanmaken in WooCommerce**
+  het product daar aan.
+
+En de eigen velden van het **Craftery-thema** staan er als apart tabblad bij:
+ABV, IBU, EBC, kcal, inhoud, stijl, ingrediënten, smaakprofiel (tekst én de vijf
+smaakassen), serveertip, Untappd-waardering, "uit roulatie" met opvolger, de
+cadeaupakket-velden en je eigen spec- en infokaartregels. Met één knop —
+*Overnemen uit de app* — vult de app de lege velden met wat ze al weet: het ABV,
+de IBU, de EBC, de stijl en de inhoud van de verpakking. Meta van andere
+plugins wordt niet aangeraakt, en het tabblad is uit te zetten bij de koppeling.
+
+De kaart toont vóór het pushen precies welke velden afwijken van de winkel.
+
+**Een push kan nooit iets wissen dat je hier nog niet hebt ingevuld**: lege
+velden gaan niet mee. Prijzen worden omgerekend volgens de nieuwe instelling
+*Webshopprijzen zijn inclusief BTW* (Instellingen → Koppelingen → WooCommerce),
+zodat wat jij excl. BTW rekent aankomt zoals de winkel het verwacht.
+
+- `server.py` heeft er een aanmaak-proxy bij (`POST /api/woocommerce/create/…`).
+  Die wordt bewust **niet** herkanst bij een timeout — een herhaalde POST zou
+  een tweede product in de winkel kunnen zetten.
+- Nieuwe pure logica in `src/utils/wcProduct.ts` (payload bouwen, winkel lezen,
+  verschillen bepalen, prijsomrekening) en `src/utils/craftery.ts` (de
+  velddefinities van het thema + het voorstel uit de administratie), allebei met
+  een eigen testsuite.
+
+---
+
 ## [1.12.7] — 2026-08-23
 
 ### Temperatuurbewaking toetst aan het werkelijke setpoint

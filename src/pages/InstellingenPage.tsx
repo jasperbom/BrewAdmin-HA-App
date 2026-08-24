@@ -661,20 +661,20 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setBfTesting(false);
   };
 
-  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || ''});
+  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || '', prijzenInclBtw: wcCreds?.prijzenInclBtw !== false, themaVelden: wcCreds?.themaVelden !== false});
   const [wcTesting, setWcTesting] = React.useState(false);
   const [wcMsg, setWcMsg] = React.useState('');
   const wcFormInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!wcFormInitialized.current && (wcCreds?.storeUrl || wcCreds?.consumerKey || wcCreds?.enabled)) {
-      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || ''});
+      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || '', prijzenInclBtw: wcCreds.prijzenInclBtw !== false, themaVelden: wcCreds.themaVelden !== false});
       wcFormInitialized.current = true;
     }
   }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
   const saveWc = () => {
     setWcCreds((prev: any) => ({...prev, ...wcForm}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`WooCommerce credentials ${wcForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
-    setWcMsg('✓ Opgeslagen');
+    setWcMsg(`✓ ${t('btn_save')}`);
     setTimeout(() => setWcMsg(''), 2000);
   };
   const testWc = async () => {
@@ -2099,6 +2099,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <input type="date" value={wcForm.importVanaf || ''} onChange={(e: any)=>setWcForm((f: any)=>({...f, importVanaf: e.target.value}))}
               className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-purple-500" />
             <p className="text-xs text-gray-400 mt-1">{t('settings_wc_import_vanaf_hint')}</p>
+          </div>
+          {/* Productbeheer: hoe de winkel prijzen invoert. Bepaalt of de app
+              haar prijzen (altijd excl. BTW) bij een push omrekent. */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('settings_wc_producten_title')}</h3>
+            <p className="text-xs text-gray-500 mb-3">{t('settings_wc_producten_desc')}</p>
+            <label className="flex items-center gap-2 cursor-pointer w-fit">
+              <input type="checkbox" checked={wcForm.prijzenInclBtw !== false}
+                onChange={(e: any)=>setWcForm((f: any)=>({...f, prijzenInclBtw: e.target.checked}))}
+                className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+              <span className="text-sm font-medium text-gray-700">{t('settings_wc_prijzen_incl_btw')}</span>
+            </label>
+            <p className="text-xs text-gray-400 mt-1">{t('settings_wc_prijzen_incl_btw_hint')}</p>
+            <label className="flex items-center gap-2 cursor-pointer w-fit mt-3">
+              <input type="checkbox" checked={wcForm.themaVelden !== false}
+                onChange={(e: any)=>setWcForm((f: any)=>({...f, themaVelden: e.target.checked}))}
+                className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+              <span className="text-sm font-medium text-gray-700">{t('settings_wc_thema_velden')}</span>
+            </label>
+            <p className="text-xs text-gray-400 mt-1">{t('settings_wc_thema_velden_hint')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={saveWc} className="wc-btn px-4 py-2 rounded text-sm font-medium transition-colors">{t('btn_save')}</button>

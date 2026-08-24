@@ -1,6 +1,9 @@
 import React from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
+import WcProductModal from '../components/WcProductModal'
+import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl } from '../utils/wcProduct'
+import { CRAFTERY_VELDEN, CRAFTERY_SLEUTELS, crafteryVoorstel } from '../utils/craftery'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
@@ -121,6 +124,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const [logFilter, setLogFilter] = useState<'alle' | 'voorraad' | 'woocommerce'>('alle');
   const [wcSyncing, setWcSyncing] = useState(false);
   const [wcSyncMsg, setWcSyncMsg] = useState('');
+  // Volledige WooCommerce-productkaart van één artikel (modal).
+  const [wcModalArt, setWcModalArt] = useState<any>(null);
 
   const selProduct = useMemo(() => (producten||[]).find((p: any) => p.id === sel), [producten, sel]);
 
@@ -942,22 +947,70 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     return Math.max(0, fysiek - gereserveerdVoorArtikel(openReserveringen, art));
   };
 
-  const wcPushAll = async () => {
+  // WooCommerce-winkels voeren prijzen doorgaans inclusief BTW in; de
+  // instelling staat bij de koppeling (leeg = inclusief).
+  const wcPrijzenInclBtw = wcCreds?.prijzenInclBtw !== false;
+  // Eigen productvelden van het Craftery-webshopthema (`_cf_…`-meta). Uit te
+  // zetten bij de koppeling voor wie een ander thema draait.
+  const themaVelden = wcCreds?.themaVelden === false ? [] : CRAFTERY_VELDEN;
+  const themaSleutels = themaVelden.map((f: any) => f.sleutel);
+
+  // Sla de WooCommerce-productkaart van één artikel op.
+  const bewaarWcVelden = (artId: number, velden: WcVelden) => {
+    setProductArtikelen((prev: any[]) => prev.map((a: any) => a.id === artId ? {...a, wc: velden} : a));
+  };
+
+  // Alles wat de WooCommerce-modal van één artikel moet weten: de naam zoals
+  // hij in de winkel hoort te staan, de productomschrijving en de voorraad die
+  // bij een push meegaat.
+  const wcArtContext = (a: any) => {
+    const prod = (producten||[]).find((p: any) => p.id === a.product_id) || selProduct;
+    const naam = `${prod?.naam || ''} ${a.verpakking_naam || a.verpakking_type || ''}`.trim();
+    const vp = (verpakkingen||[]).find((x: any) => x.id === Number(a.verpakking_id));
+    return {
+      titel: naam || a.artikelnummer || t('lbl_naamloos'),
+      naamFallback: naam || a.artikelnummer || '',
+      omschrijving: prod?.omschrijving || '',
+      voorraad: wcBeschikbaarVoorArt({...a, biernaam: prod?.naam || '', _product_id: a.product_id}),
+      // Wat de app al weet (ABV, IBU, EBC, stijl, inhoud) in de notatie van
+      // het thema — vult daar de lege velden mee.
+      themaVoorstel: crafteryVoorstel({product: prod, inhoudLiter: vp?.inhoud_liter ?? a.inhoud_liter}),
+    };
+  };
+
+  // De artikelen die meedoen aan een push, met de productgegevens erbij.
+  // wc_push === false sluit een artikel uit; ontbrekend geldt als ingeschakeld
+  // zodat bestaande artikelen hun gedrag behouden.
+  const wcPushArtikelen = () => {
+    const paWithNames = (productArtikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false).map((pa: any) => {
+      const prod = (producten||[]).find((p: any) => p.id === pa.product_id);
+      return {...pa, biernaam: prod?.naam || '', _product_id: pa.product_id, _omschrijving: prod?.omschrijving || '', _pa: true};
+    });
+    // Alleen terugvallen op de legacy-artikelenlijst zolang er nog geen
+    // productartikelen zijn (oude administraties).
+    return paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false);
+  };
+
+  /**
+   * Push naar WooCommerce. `volledig` bepaalt hoe ver dat gaat:
+   *  - false → alleen de voorraad (het oude gedrag, de dagelijkse push);
+   *  - true  → de complete productkaart uit `artikel.wc` + de voorraad.
+   * Lege velden gaan nooit mee, dus een volledige push kan niets in de winkel
+   * wissen wat je hier nog niet hebt ingevuld (zie utils/wcProduct.ts).
+   */
+  const wcPushAll = async (volledig = false) => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
     setWcSyncing(true); setWcSyncMsg('');
+    // Per artikel onthouden wat er gesynct is, zodat de modal en de lijst
+    // laten zien wanneer de winkel voor het laatst is bijgewerkt.
+    const gesynct: Record<number, {wc_id?: number, permalink?: string}> = {};
     try {
       let bijgewerkt = 0;
       // Fouten per artikel verzamelen i.p.v. de hele push afbreken: één trage
       // of ontbrekende SKU mocht niet betekenen dat de artikelen erna hun
       // voorraad niet meer krijgen (en dat je niet ziet wélke faalde).
       const mislukt: string[] = [];
-      // wc_push === false sluit het artikel uit van de push; ontbrekend geldt
-      // als ingeschakeld zodat bestaande artikelen hun gedrag behouden.
-      const paWithNames = (productArtikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false).map((pa: any) => {
-        const prod = (producten||[]).find((p: any) => p.id === pa.product_id);
-        return {...pa, biernaam: prod?.naam || '', _product_id: pa.product_id};
-      });
-      const bierCombis = paWithNames.length > 0 ? paWithNames : (artikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false);
+      const bierCombis = wcPushArtikelen();
       // Merch met eigen voorraad gaat op dezelfde manier mee: het aantal komt
       // niet uit afvullingen maar uit de eigen teller (zie utils/merch.ts).
       const merchCombis = (merchArtikelen||[])
@@ -979,7 +1032,16 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             mislukt.push(naam);
             continue;
           }
-          await wcPut(`products/${prods[0].id}`, {stock_quantity: beschikbaar, manage_stock: true});
+          const body = volledig
+            ? bouwWcPayload({
+                velden: art.wc, sku: art.artikelnummer,
+                naamFallback: naam, omschrijvingFallback: art._omschrijving,
+                prijsExcl: art.verkoopprijs, btwPct: art.btw_pct,
+                voorraad: beschikbaar, prijzenInclBtw: wcPrijzenInclBtw,
+              })
+            : {stock_quantity: beschikbaar, manage_stock: true};
+          await wcPut(`products/${prods[0].id}`, body);
+          if (volledig && art._pa) gesynct[art.id] = {wc_id: prods[0].id, permalink: prods[0].permalink};
           bijgewerkt++;
         } catch(e: any) {
           mislukt.push(naam);
@@ -987,6 +1049,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         }
       }
       setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}));
+      if (Object.keys(gesynct).length) {
+        const nu = new Date().toISOString();
+        setProductArtikelen((prev: any[]) => prev.map((a: any) => gesynct[a.id]
+          ? {...a, wc: {...(a.wc || {}), ...gesynct[a.id], gesynct: nu}}
+          : a));
+      }
       const pushMsg = t('msg_wc_push_result').replace('{n}', String(bijgewerkt));
       // Deels gelukt is geen succes: de melding blijft rood en noemt de
       // artikelen die WooCommerce niet gehaald hebben.
@@ -1007,6 +1075,55 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const melding = wcFoutMelding(e, t);
       setWcSyncMsg(t('msg_wc_push_failed').replace('{msg}', melding));
       addWcLog('fout', t('msg_wc_push_failed').replace('{msg}', melding), e.message);
+    }
+    setWcSyncing(false);
+    setTimeout(() => setWcSyncMsg(''), 6000);
+  };
+
+  /**
+   * Haal de productkaart van álle artikelen op uit WooCommerce. Bedoeld om in
+   * één keer over te stappen: wat er nu in de webshop staat wordt de lokale
+   * startwaarde. Overschrijft alleen het `wc`-blok (de spiegel van de winkel);
+   * de eigen prijs wordt alleen ingevuld wanneer die nog leeg is — een
+   * bestaande calculatie mag de webshop niet zomaar overrulen.
+   */
+  const wcPullAll = async () => {
+    if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
+    if (!confirm(t('wc_bevestig_pull_alles'))) return;
+    setWcSyncing(true); setWcSyncMsg('');
+    const nu = new Date().toISOString();
+    const updates: Record<number, any> = {};
+    let gevonden = 0;
+    const onbekend: string[] = [];
+    try {
+      for (const art of (productArtikelen||[]).filter((a: any) => a.artikelnummer)) {
+        try {
+          const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
+          if (!prods?.length) { onbekend.push(art.artikelnummer); continue; }
+          const velden = leesWcProduct(prods[0], {btwPct: art.btw_pct, prijzenInclBtw: wcPrijzenInclBtw, metaSleutels: themaSleutels});
+          updates[art.id] = {wc: {...velden, gepulld: nu}, prijs: prods[0].regular_price};
+          gevonden++;
+        } catch(e: any) {
+          onbekend.push(art.artikelnummer);
+          addWcLog('fout', `${art.artikelnummer} — ${wcFoutMelding(e, t)}`, e.message);
+        }
+      }
+      setProductArtikelen((prev: any[]) => prev.map((a: any) => {
+        const u = updates[a.id];
+        if (!u) return a;
+        const prijsLeeg = a.verkoopprijs === '' || a.verkoopprijs == null || Number(a.verkoopprijs) === 0;
+        const uitWinkel = prijsLeeg
+          ? wcRegulierePrijsExcl({regular_price: u.prijs}, a.btw_pct, wcPrijzenInclBtw)
+          : null;
+        return {...a, wc: u.wc, ...(uitWinkel ? {verkoopprijs: uitWinkel.toFixed(2)} : {})};
+      }));
+      const melding = t('wc_msg_pull_alles').replace('{n}', String(gevonden)).replace('{f}', String(onbekend.length));
+      setWcSyncMsg(onbekend.length ? `⚠ ${melding}` : `✓ ${melding}`);
+      addWcLog(onbekend.length ? 'fout' : 'pull', `↓ ${melding}`, onbekend.join(', '));
+    } catch(e: any) {
+      const melding = wcFoutMelding(e, t);
+      setWcSyncMsg(`⚠ ${melding}`);
+      addWcLog('fout', melding, e.message);
     }
     setWcSyncing(false);
     setTimeout(() => setWcSyncMsg(''), 6000);
@@ -1051,13 +1168,21 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         <h2 className="text-xl font-bold text-gray-800">{t('title_producten')}</h2>
         <div className="flex items-center gap-2">
           {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</span>}
-          {wcCreds?.enabled && (
-            <button onClick={wcPushAll} disabled={wcSyncing}
+          {wcCreds?.enabled && (<>
+            <button onClick={() => wcPushAll(false)} disabled={wcSyncing}
               title={t('wc_push_stock_title')}
               className="wc-btn flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
               {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
             </button>
-          )}
+            <button onClick={() => wcPushAll(true)} disabled={wcSyncing}
+              title={t('wc_push_alles_title')}
+              className="wc-btn flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
+              {t('btn_wc_push_alles')}
+            </button>
+            <Btn onClick={wcPullAll} v="secondary" disabled={wcSyncing} title={t('wc_pull_alles_title')}>
+              {t('btn_wc_pull_alles')}
+            </Btn>
+          </>)}
           <Btn onClick={() => startEdit()}>{t('btn_nieuw_product')}</Btn>
         </div>
       </div>
@@ -1640,6 +1765,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                               )}
                             </div>
                             <div className="flex gap-2 flex-shrink-0">
+                              {wcCreds?.enabled && a.artikelnummer && (
+                                <Btn onClick={() => setWcModalArt(a)} s="sm" v="secondary" title={t('wc_btn_kaart')}>WC</Btn>
+                              )}
                               <Btn onClick={() => startArtEdit(a)} s="sm" v="secondary">{t('btn_edit')}</Btn>
                               <Btn onClick={() => deleteArtikel(a.id)} s="sm" v="danger">{t('btn_delete')}</Btn>
                             </div>
@@ -1719,7 +1847,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                 </div>
                               )}
                             </td>
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 text-right whitespace-nowrap">
+                              {wcCreds?.enabled && a.artikelnummer && (
+                                <button onClick={() => setWcModalArt(a)} title={t('wc_btn_kaart')}
+                                  className="mr-1.5 text-xs font-semibold align-middle"
+                                  style={{color: '#7f54b3'}}>WC</button>
+                              )}
                               <button onClick={() => startArtEdit(a)} className="text-gray-400 hover:text-gray-600 mr-1">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
@@ -1866,6 +1999,29 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           </div>
         )}
       </div>
+
+      {/* Volledige WooCommerce-productkaart van één artikel */}
+      {wcModalArt && (() => {
+        const ctx = wcArtContext(wcModalArt);
+        return (
+          <WcProductModal
+            sku={wcModalArt.artikelnummer || ''}
+            titel={ctx.titel}
+            velden={wcModalArt.wc}
+            naamFallback={ctx.naamFallback}
+            omschrijvingFallback={ctx.omschrijving}
+            prijsExcl={wcModalArt.verkoopprijs}
+            btwPct={wcModalArt.btw_pct}
+            voorraad={ctx.voorraad}
+            prijzenInclBtw={wcPrijzenInclBtw}
+            themaVelden={themaVelden}
+            themaVoorstel={ctx.themaVoorstel}
+            onLog={addWcLog}
+            onOpslaan={(velden) => bewaarWcVelden(wcModalArt.id, velden)}
+            onClose={() => setWcModalArt(null)}
+          />
+        );
+      })()}
 
       {/* Afboeken modal — M-1 Bijzondere mutaties */}
       {verplaatsModal && (

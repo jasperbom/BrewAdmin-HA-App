@@ -17,6 +17,8 @@
 // Herkenning gaat op SKU (leidend, want stabiel) en anders op de exacte
 // productnaam, allebei hoofdletter-ongevoelig.
 
+import type { WcVelden } from './wcProduct'
+
 export interface MerchArtikel {
   id: number
   /** WooCommerce-SKU van het artikel (leidend bij het herkennen). */
@@ -41,6 +43,8 @@ export interface MerchArtikel {
   btw_pct?: number
   /** Voorraadaantal meesturen naar WooCommerce (alleen bij voorraad_volgen). */
   wc_push?: boolean
+  /** Volledige WooCommerce-productkaart (zie utils/wcProduct.ts). */
+  wc?: WcVelden
 }
 
 export type MerchMutatieReden = 'inkoop' | 'verkoop' | 'retour' | 'correctie' | 'telling'
