@@ -3485,12 +3485,21 @@
   "recipe_cost_loss_assumed": "pas encore d'historique — calculé avec {pct}%",
   "recipe_cost_loss_manual": "manuel",
   "recipe_cost_other_input": "Frais fixes par brassin",
-  "recipe_cost_other_hint": "énergie, eau, nettoyage",
   "recipe_cost_unit_price": "Prix/unité",
   "recipe_cost_amount": "Montant",
   "recipe_cost_share": "Part",
   "recipe_cost_no_price": "pas de prix",
   "recipe_cost_price_last": "(dernier achat)",
   "recipe_cost_price_last_tip": "Plus rien en stock — calculé avec le prix du dernier achat.",
-  "recipe_cost_note": "Calcul prévisionnel : prix des ingrédients des lots en stock, hors accises, emballage et main-d'œuvre."
+  "recipe_cost_note": "Calcul prévisionnel : prix des ingrédients des lots en stock, hors accises, emballage et main-d'œuvre.",
+  "recipe_cost_overhead_measured": "moyenne de tes {n} derniers brassins",
+  "recipe_cost_overhead_books": "à partir des factures d'énergie, d'eau et de nettoyage ({van} au {tot}), divisées par {n} brassins",
+  "recipe_cost_overhead_manual": "défini manuellement",
+  "recipe_cost_overhead_manual_on": "manuel — laisse vide pour que l'app calcule",
+  "recipe_cost_overhead_none": "rien de connu pour le moment",
+  "recipe_cost_overhead_scaled": "ajusté au volume",
+  "recipe_cost_overhead_hint": "Note l'électricité, l'eau et le nettoyage sur un brassin, ou enregistre les factures d'énergie et d'eau avec le bon type de coût — l'app fera le calcul.",
+  "recipe_cost_src_measured": "mesuré",
+  "recipe_cost_src_books": "depuis la comptabilité",
+  "recipe_cost_src_manual": "manuel"
 }

@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.17] — 2026-08-24
+
+### Energie, water en schoonmaak rekent de app zelf uit
+
+De vaste kosten per brouw waren nog een invulveld. Dat hoort niet: die cijfers
+staan al in de administratie. Nieuw: `src/utils/brouwKosten.ts`, met een vaste
+bronvolgorde per post (elektra, water, schoonmaak, overig):
+
+1. **Gemeten** — het gemiddelde van wat je op je eigen recente brouwsels hebt
+   genoteerd (`electra_kosten` en verwanten op de batch).
+2. **Boekhouding** — de inkoopregels met de bijbehorende kostensoort (Energie,
+   Water, Schoonmaak) over dezelfde periode, gedeeld door het aantal brouwsels
+   in die periode. Je energierekening ís je energiekosten. De kostensoort
+   `Overig` telt bewust níét mee: daar zit van alles in wat niets met brouwen te
+   maken heeft.
+3. **Handmatig** — alleen nog als overschrijving, niet als enige weg.
+4. **Niets bekend** — dan blijft het nul en zégt het paneel dat, met de tip hoe
+   je het wél laat rekenen.
+
+Het paneel bij het recept toont het bedrag, waar het vandaan komt en de
+uitsplitsing per post. Kosten met een cijfer per liter schalen mee met de
+batchgrootte — een brouw van 200 L kost minder stroom dan een van 400 L.
+
+**Afspraak voor de toekomst** (vastgelegd in CLAUDE.md, sectie *Afgeleide
+kosten*): elke nieuwe bron voor deze kosten — een HA-energiemeter per brouwdag,
+een watermeter, schoonmaakmiddel via de lots, urenregistratie — komt in
+`brouwKosten.ts` en werkt dan overal automatisch door.
+
+---
+
 ## [1.12.16] — 2026-08-24
 
 ### Kostprijs per liter bij het recept — vóórdat je brouwt

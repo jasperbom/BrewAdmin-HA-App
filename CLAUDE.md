@@ -53,6 +53,11 @@ BrewAdmin-HA-App/
 │   │   │                   # gemeten ABV/OG/FG/kleur/rendement/kostprijs-per-liter (gemiddelde,
 │   │   │                   # spreiding, trend t.o.v. de vorige brouw, reeks voor een lijntje) en
 │   │   │                   # of de vastgelegde bierinformatie daarvan afwijkt
+│   │   ├── brouwKosten.ts  # Vaste kosten van een brouwdag (elektra, water, schoonmaak,
+│   │   │                   # overig): gemiddelde uit de eigen batches, anders uit de
+│   │   │                   # inkoopfacturen met de bijbehorende kostensoort over dezelfde
+│   │   │                   # periode, anders handmatig. **Elke nieuwe bron voor deze
+│   │   │                   # kosten hoort hier** — zie "Afgeleide kosten" hieronder
 │   │   ├── receptKostprijs.ts # Voorcalculatie bij het recept: prijs per ingrediënt uit de lots
 │   │   │                   # (gewogen gemiddelde van wat er ligt, anders de laatste inkoop),
 │   │   │                   # gemiddeld verlies uit de eigen brouwhistorie (vergist versus
@@ -166,7 +171,8 @@ ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de WooCommerce-produc
 velden, stapelen per niveau, ingrediëntenlijst uit het recept), de
 batchsamenvatting bij een product + de vertaling
 naar het webshopthema, de receptvoorcalculatie (ingrediëntprijs uit de lots,
-gemiddeld verlies, kostprijs per liter), de
+gemiddeld verlies, kostprijs per liter), de afgeleide brouwkosten (gemeten
+batches → inkoopfacturen → handmatig, schaling naar batchgrootte), de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
@@ -379,6 +385,42 @@ De `Btn`-component (`src/components/ui/Btn.tsx`) heeft de volgende varianten:
 3. Is het een statusbadge? → vaste semantische Tailwind kleur
 4. Is het een destructieve actie? → `Btn v="danger"` of `red-*`
 5. Anders → `Btn v="secondary"` of `gray-*`
+
+---
+
+## Afgeleide kosten — nooit laten intypen wat de app kan weten
+
+**Uitgangspunt van de gebruiker (blijvend):** elk kostencijfer dat de app zelf
+kan afleiden, leidt de app zelf af. Energie, water, schoonmaak en soortgelijke
+brouwkosten zijn géén invulveld: ze komen uit wat er al in de administratie
+staat. Een handmatige waarde is altijd alleen een *overschrijving*, nooit de
+enige weg — en het scherm zegt altijd wáár het cijfer vandaan komt.
+
+De vaste bronvolgorde staat in **`src/utils/brouwKosten.ts`**
+(`KOSTEN_POSTEN` + `brouwKosten`/`kostenVoorBrouw`):
+
+1. `gemeten` — gemiddelde van de eigen recente batches (`electra_kosten`,
+   `water_kosten`, `schoonmaak_kosten`, `overige_kosten`)
+2. `boekhouding` — inkoopregels met de bijbehorende `kostensoort` (Energie,
+   Water, Schoonmaak …) over dezelfde periode, gedeeld door het aantal
+   brouwsels in die periode. Bewust **niet** de kostensoort `Overig`: daar zit
+   van alles in wat niets met brouwen te maken heeft
+3. `handmatig` — wat de gebruiker opgeeft
+4. `geen` — nul, en de app zegt dat erbij
+
+**Voeg nieuwe slimmigheid altijd hier toe, niet in een pagina.** Denk aan: een
+HA-energiemeter die per brouwdag meet, een watermeter, schoonmaakmiddel dat via
+de lots wordt afgeboekt, een urenregistratie, gasverbruik per kooktijd. Zo'n
+bron wordt een extra stap in `postCijfer` (of een extra post in
+`KOSTEN_POSTEN`); alles wat met deze kosten rekent — de receptvoorcalculatie,
+de batchkostprijs, de W&V — erft de verbetering dan automatisch. Nergens anders
+hoort een eigen sommetje over energie of water te staan.
+
+Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
+verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de
+ingrediëntprijs (`ingredientPrijs`, uit de lots) en de afgeleide bierinformatie
+(`afgeleideBierInfo` in `utils/bierinfo.ts`). Vraag het niet nóg een keer aan de
+gebruiker als het al ergens in de administratie staat.
 
 ---
 

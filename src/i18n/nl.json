@@ -3485,12 +3485,21 @@
   "recipe_cost_loss_assumed": "nog geen historie — gerekend met {pct}%",
   "recipe_cost_loss_manual": "handmatig",
   "recipe_cost_other_input": "Vaste kosten per brouw",
-  "recipe_cost_other_hint": "energie, water, schoonmaak",
   "recipe_cost_unit_price": "Prijs/eenheid",
   "recipe_cost_amount": "Bedrag",
   "recipe_cost_share": "Aandeel",
   "recipe_cost_no_price": "geen prijs",
   "recipe_cost_price_last": "(laatste inkoop)",
   "recipe_cost_price_last_tip": "Niets meer op voorraad — gerekend met de prijs van de laatste inkoop.",
-  "recipe_cost_note": "Voorcalculatie: ingrediëntprijzen uit de lots die je nu hebt liggen, exclusief accijns, verpakking en arbeid."
+  "recipe_cost_note": "Voorcalculatie: ingrediëntprijzen uit de lots die je nu hebt liggen, exclusief accijns, verpakking en arbeid.",
+  "recipe_cost_overhead_measured": "gemiddeld over je laatste {n} brouwsels",
+  "recipe_cost_overhead_books": "uit de energie-, water- en schoonmaakfacturen ({van} t/m {tot}), gedeeld door {n} brouwsels",
+  "recipe_cost_overhead_manual": "handmatig ingesteld",
+  "recipe_cost_overhead_manual_on": "handmatig — laat leeg om de app te laten rekenen",
+  "recipe_cost_overhead_none": "nog niets bekend",
+  "recipe_cost_overhead_scaled": "naar batchgrootte",
+  "recipe_cost_overhead_hint": "Noteer elektra, water en schoonmaak bij een batch, of boek de energie- en waterfacturen met de juiste kostensoort — dan rekent de app dit zelf uit.",
+  "recipe_cost_src_measured": "gemeten",
+  "recipe_cost_src_books": "uit de boekhouding",
+  "recipe_cost_src_manual": "handmatig"
 }

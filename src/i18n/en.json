@@ -3485,12 +3485,21 @@
   "recipe_cost_loss_assumed": "no history yet — calculated with {pct}%",
   "recipe_cost_loss_manual": "manual",
   "recipe_cost_other_input": "Fixed costs per brew",
-  "recipe_cost_other_hint": "energy, water, cleaning",
   "recipe_cost_unit_price": "Price/unit",
   "recipe_cost_amount": "Amount",
   "recipe_cost_share": "Share",
   "recipe_cost_no_price": "no price",
   "recipe_cost_price_last": "(last purchase)",
   "recipe_cost_price_last_tip": "Nothing left in stock — calculated with the price of the last purchase.",
-  "recipe_cost_note": "Pre-calculation: ingredient prices from the lots you currently hold, excluding excise duty, packaging and labour."
+  "recipe_cost_note": "Pre-calculation: ingredient prices from the lots you currently hold, excluding excise duty, packaging and labour.",
+  "recipe_cost_overhead_measured": "average of your last {n} brews",
+  "recipe_cost_overhead_books": "from the energy, water and cleaning invoices ({van} to {tot}), divided by {n} brews",
+  "recipe_cost_overhead_manual": "set manually",
+  "recipe_cost_overhead_manual_on": "manual — leave empty to let the app work it out",
+  "recipe_cost_overhead_none": "nothing known yet",
+  "recipe_cost_overhead_scaled": "scaled to batch size",
+  "recipe_cost_overhead_hint": "Record electricity, water and cleaning on a batch, or book the energy and water invoices under the right cost type — then the app works this out by itself.",
+  "recipe_cost_src_measured": "measured",
+  "recipe_cost_src_books": "from the books",
+  "recipe_cost_src_manual": "manual"
 }

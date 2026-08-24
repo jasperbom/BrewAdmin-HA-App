@@ -3485,12 +3485,21 @@
   "recipe_cost_loss_assumed": "noch keine Historie — gerechnet mit {pct}%",
   "recipe_cost_loss_manual": "manuell",
   "recipe_cost_other_input": "Fixkosten pro Sud",
-  "recipe_cost_other_hint": "Energie, Wasser, Reinigung",
   "recipe_cost_unit_price": "Preis/Einheit",
   "recipe_cost_amount": "Betrag",
   "recipe_cost_share": "Anteil",
   "recipe_cost_no_price": "kein Preis",
   "recipe_cost_price_last": "(letzter Einkauf)",
   "recipe_cost_price_last_tip": "Nichts mehr auf Lager — gerechnet mit dem Preis des letzten Einkaufs.",
-  "recipe_cost_note": "Vorkalkulation: Zutatenpreise aus den vorhandenen Chargen, ohne Verbrauchsteuer, Verpackung und Arbeit."
+  "recipe_cost_note": "Vorkalkulation: Zutatenpreise aus den vorhandenen Chargen, ohne Verbrauchsteuer, Verpackung und Arbeit.",
+  "recipe_cost_overhead_measured": "Durchschnitt deiner letzten {n} Sude",
+  "recipe_cost_overhead_books": "aus den Energie-, Wasser- und Reinigungsrechnungen ({van} bis {tot}), geteilt durch {n} Sude",
+  "recipe_cost_overhead_manual": "manuell festgelegt",
+  "recipe_cost_overhead_manual_on": "manuell — leer lassen, damit die App rechnet",
+  "recipe_cost_overhead_none": "noch nichts bekannt",
+  "recipe_cost_overhead_scaled": "auf Sudgröße skaliert",
+  "recipe_cost_overhead_hint": "Erfasse Strom, Wasser und Reinigung beim Sud oder buche die Energie- und Wasserrechnungen mit der passenden Kostenart — dann rechnet die App das selbst aus.",
+  "recipe_cost_src_measured": "gemessen",
+  "recipe_cost_src_books": "aus der Buchhaltung",
+  "recipe_cost_src_manual": "manuell"
 }
