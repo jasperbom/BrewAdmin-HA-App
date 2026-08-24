@@ -7,7 +7,7 @@ import SearchInput from '../components/ui/SearchInput'
 import ReceptKostprijs from '../components/ReceptKostprijs'
 import { logAudit } from '../utils/audit'
 
-function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopFacturen=[], bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
+function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState} = React;
   const [sel, setSel]         = useState(null);
   const [syncing, setSyncing] = useState(false);
@@ -634,6 +634,8 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
               afvullingen={av}
               verliesRegistraties={verliesRegistraties}
               inkoopFacturen={inkoopFacturen}
+              verpakkingen={verpakkingen}
+              onderdelen={onderdelen}
               readOnly={selRec.is_huidige === false}
               onWijzig={updateRecept}
             />

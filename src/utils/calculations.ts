@@ -1,6 +1,7 @@
 import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog, TankReinigingStatus } from '../types'
 import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd, tod } from './format'
+import { verpakkingKostenPerStuk } from './verpakkingKosten'
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────
 // Aanzuren werkt heel anders voor maisch/wort dan voor brouwwater:
@@ -557,14 +558,7 @@ export const berekenBatchKostprijs = (
     const vp = verpakkingen
       ? (vpId ? verpakkingen.find((v: any) => v.id === vpId) : verpakkingen.find((v: any) => v.naam === type))
       : null
-    const kPerStuk = vp
-      ? (Array.isArray(vp.onderdelen) && vp.onderdelen.length
-          ? vp.onderdelen.reduce((s: number, o: any) => {
-              const od = (onderdelen||[]).find((d: any) => d.id === o.onderdeel_id)
-              return s + Number(od?.kosten_per_stuk||0) * Number(o.aantal||1)
-            }, 0)
-          : Number(vp.kosten_verpakking||0) + Number(vp.kosten_afsluiting||0) + Number(vp.kosten_label||0))
-      : 0
+    const kPerStuk = verpakkingKostenPerStuk(vp, onderdelen)
     batchKosten += kPerStuk * stuks
 
     const accRows = bAcc.filter((a: any) => a.verpakking_type === type)

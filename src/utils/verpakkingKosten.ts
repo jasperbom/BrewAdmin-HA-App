@@ -1,0 +1,168 @@
+// Wat kost de verpakking van een liter bier?
+//
+// De prijs van één fles, blik of fust staat bij de verpakking (of bij haar
+// onderdelen: fles + kroonkurk + etiket). Dezelfde som stond op vier plekken in
+// de app; hier staat hij één keer.
+//
+// Voor een voorcalculatie is de vraag lastiger: het recept zegt niet hóé je
+// gaat afvullen. Maar je eigen afvullingen zeggen dat wel — brouw je dit bier
+// altijd op fles met een paar fusten erbij, dan is dát je verpakkingsmix. Zie
+// `verpakkingMix`.
+//
+// Puur rekenwerk: geen React, geen opslag.
+
+const getal = (x: any): number | null => {
+  if (x === null || x === undefined || String(x).trim() === '') return null
+  const n = Number(String(x).replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+const rond = (n: number, decimalen: number): number => {
+  const f = 10 ** decimalen
+  return Math.round(n * f) / f
+}
+
+/**
+ * De kostprijs van één verpakte eenheid.
+ *
+ * Heeft de verpakking onderdelen, dan is dat de som van die onderdelen
+ * (kosten per stuk × aantal); anders de losse velden verpakking, afsluiting en
+ * etiket.
+ */
+export function verpakkingKostenPerStuk(verpakking: any, onderdelen?: any[] | null): number {
+  if (!verpakking) return 0
+  const delen = verpakking.onderdelen
+  if (Array.isArray(delen) && delen.length) {
+    return delen.reduce((s: number, o: any) => {
+      const od = (onderdelen || []).find((d: any) => Number(d?.id) === Number(o?.onderdeel_id))
+      const aantal = getal(o?.aantal) ?? getal(o?.aantal_per_stuk) ?? 1
+      return s + (getal(od?.kosten_per_stuk) ?? 0) * aantal
+    }, 0)
+  }
+  return (getal(verpakking.kosten_verpakking) ?? 0)
+    + (getal(verpakking.kosten_afsluiting) ?? 0)
+    + (getal(verpakking.kosten_label) ?? 0)
+}
+
+/** De verpakking bij een afvulling: op id, anders op naam, anders op type. */
+export function vindVerpakking(afvulling: any, verpakkingen?: any[] | null): any {
+  const lijst = verpakkingen || []
+  if (afvulling?.verpakking_id != null) {
+    const opId = lijst.find((v: any) => Number(v?.id) === Number(afvulling.verpakking_id))
+    if (opId) return opId
+  }
+  const naam = String(afvulling?.verpakking_naam || afvulling?.verpakking_type || '').trim().toLowerCase()
+  if (!naam) return null
+  return lijst.find((v: any) => String(v?.naam || '').trim().toLowerCase() === naam) || null
+}
+
+export interface VerpakkingMixRegel {
+  verpakkingId: number | null
+  naam: string
+  /** Inhoud van één eenheid in liters. */
+  inhoud: number
+  /** Liters die in deze verpakking gingen. */
+  liters: number
+  /** Aandeel in de totale afgevulde liters (0–1). */
+  aandeel: number
+  kostenPerStuk: number
+  kostenPerLiter: number
+}
+
+export interface VerpakkingMix {
+  regels: VerpakkingMixRegel[]
+  /** Gewogen gemiddelde verpakkingskosten per afgevulde liter. */
+  perLiter: number
+  /**
+   * `recept`     = de afvullingen van dit bier zelf;
+   * `brouwerij`  = het gemiddelde over alle afvullingen;
+   * `geen`       = niets bekend (of alle verpakkingen staan op nul).
+   */
+  bron: 'recept' | 'brouwerij' | 'geen'
+  /** Aantal batches waarop de mix berust. */
+  batches: number
+  /** Afgevulde liters waarop de mix berust. */
+  liters: number
+}
+
+const LEEG: VerpakkingMix = {regels: [], perLiter: 0, bron: 'geen', batches: 0, liters: 0}
+
+export interface VerpakkingMixInvoer {
+  /** De batches die de mix bepalen (bijv. die van dit recept). */
+  batches?: any[] | null
+  afvullingen?: any[] | null
+  verpakkingen?: any[] | null
+  onderdelen?: any[] | null
+}
+
+/** De verpakkingsmix over een set batches, gewogen op afgevulde liters. */
+function mixVoorBatches(invoer: VerpakkingMixInvoer, bron: VerpakkingMix['bron']): VerpakkingMix {
+  const ids = new Set((invoer.batches || []).filter(Boolean).map((b: any) => Number(b?.id)))
+  const rijen = (invoer.afvullingen || []).filter((a: any) => ids.has(Number(a?.batch_id)))
+  if (!rijen.length) return LEEG
+
+  const perVerpakking = new Map<string, VerpakkingMixRegel>()
+  let totaalLiters = 0
+  const gezien = new Set<number>()
+
+  for (const a of rijen) {
+    const inhoud = getal(a?.inhoud_per_eenheid) ?? getal(a?.inhoud_liter) ?? 0
+    const stuks = getal(a?.hoeveelheid) ?? getal(a?.aantal) ?? 0
+    const liters = inhoud * stuks
+    if (liters <= 0) continue
+
+    const vp = vindVerpakking(a, invoer.verpakkingen)
+    const naam = String(vp?.naam || a?.verpakking_naam || a?.verpakking_type || '')
+    const sleutel = vp?.id != null ? `id:${vp.id}` : `naam:${naam.toLowerCase()}`
+    const kostenPerStuk = rond(verpakkingKostenPerStuk(vp, invoer.onderdelen), 4)
+    const eenheidInhoud = inhoud || (getal(vp?.inhoud_liter) ?? 0)
+
+    const bestaand = perVerpakking.get(sleutel)
+    if (bestaand) {
+      bestaand.liters = rond(bestaand.liters + liters, 3)
+    } else {
+      perVerpakking.set(sleutel, {
+        verpakkingId: vp?.id ?? null,
+        naam,
+        inhoud: eenheidInhoud,
+        liters: rond(liters, 3),
+        aandeel: 0,
+        kostenPerStuk,
+        kostenPerLiter: eenheidInhoud > 0 ? rond(kostenPerStuk / eenheidInhoud, 4) : 0,
+      })
+    }
+    totaalLiters += liters
+    gezien.add(Number(a.batch_id))
+  }
+
+  if (totaalLiters <= 0) return LEEG
+
+  const regels = [...perVerpakking.values()]
+    .map(r => ({...r, aandeel: rond(r.liters / totaalLiters, 4)}))
+    .sort((a, b) => b.liters - a.liters)
+  const perLiter = rond(regels.reduce((s, r) => s + r.kostenPerLiter * r.liters, 0) / totaalLiters, 4)
+
+  // Alles op nul betekent dat je de verpakkingsprijzen nog niet hebt ingevuld —
+  // dat is geen mix van nul euro, dat is "onbekend".
+  if (perLiter <= 0) return LEEG
+
+  return {regels, perLiter, bron, batches: gezien.size, liters: rond(totaalLiters, 1)}
+}
+
+/**
+ * De verpakkingskosten per liter voor een bier: eerst uit zijn eigen
+ * afvullingen, anders uit die van de hele brouwerij.
+ *
+ * `eigenBatches` zijn de batches van dit recept/bier, `alleBatches` alle
+ * batches. Laat je `alleBatches` weg, dan is er geen brouwerijterugval.
+ */
+export function verpakkingMix(
+  eigenBatches?: any[] | null,
+  alleBatches?: any[] | null,
+  rest?: Omit<VerpakkingMixInvoer, 'batches'>,
+): VerpakkingMix {
+  const eigen = mixVoorBatches({...rest, batches: eigenBatches}, 'recept')
+  if (eigen.bron !== 'geen') return eigen
+  if (!alleBatches?.length) return LEEG
+  return mixVoorBatches({...rest, batches: alleBatches}, 'brouwerij')
+}

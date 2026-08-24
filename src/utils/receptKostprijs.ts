@@ -5,7 +5,7 @@
 // het andersom weten — vóórdat je brouwt, op basis van de hoeveelheden in het
 // recept en de prijzen die je nu betaalt.
 //
-// Twee dingen maken het eerlijk:
+// Drie dingen maken het eerlijk:
 //
 //  1. **De prijs die je nu betaalt.** Die staat op de lots die je in huis hebt,
 //     niet in het recept. Zie `ingredientPrijs`.
@@ -13,6 +13,10 @@
 //     400 liter in de gistkuip komt er misschien 370 in de fles. Rekenen met de
 //     brouwzaalliters maakt je kostprijs structureel te laag. `gemiddeldVerlies`
 //     haalt dat percentage uit je eigen brouwhistorie.
+//  3. **De verpakking kost vaak meer dan het bier.** Een fles met kroonkurk en
+//     etiket is zo €0,32; op 33 cl is dat bijna een euro per liter. Welke
+//     verpakking dit bier krijgt zegt het recept niet, maar je eigen
+//     afvullingen wel — zie `verpakkingMix` in `utils/verpakkingKosten.ts`.
 //
 // Puur rekenwerk: geen React, geen opslag.
 
@@ -213,6 +217,11 @@ export interface ReceptKostprijs {
   onbekend: number
   /** Vaste kosten per brouw (energie, water, schoonmaak, overig). */
   overigeKosten: number
+  /**
+   * Verpakking van de liters die je overhoudt (fles, kroonkurk, etiket, fust).
+   * Rekent over `litersNaVerlies`: wat in de tank achterblijft verpak je niet.
+   */
+  verpakkingKosten: number
   totaal: number
   /** Batchgrootte volgens het recept, in liters. */
   liters: number
@@ -232,6 +241,11 @@ export interface ReceptKostprijsInvoer {
   verliesPct?: number
   /** Vaste kosten per brouw: energie, water, schoonmaak, overig. */
   overigeKosten?: number
+  /**
+   * Verpakkingskosten per afgevulde liter (uit `utils/verpakkingKosten.ts`).
+   * Wordt toegepast op de liters die na verlies overblijven.
+   */
+  verpakkingPerLiter?: number
   /** Batchgrootte overschrijven (bijv. om een grotere brouw door te rekenen). */
   liters?: number
 }
@@ -306,9 +320,11 @@ export function receptKostprijs(invoer: ReceptKostprijsInvoer): ReceptKostprijs 
 
   const liters = invoer.liters ?? (getal(r.batch_size) ?? 0)
   const overigeKosten = rond(invoer.overigeKosten ?? 0, 2)
-  const totaal = rond(ingredientKosten + overigeKosten, 2)
   const verliesPct = Math.max(0, Math.min(99, invoer.verliesPct ?? 0))
   const litersNaVerlies = rond(liters * (1 - verliesPct / 100), 1)
+  // Alleen wat je daadwerkelijk afvult kost verpakking.
+  const verpakkingKosten = rond(Math.max(0, invoer.verpakkingPerLiter ?? 0) * litersNaVerlies, 2)
+  const totaal = rond(ingredientKosten + overigeKosten + verpakkingKosten, 2)
 
   return {
     regels,
@@ -316,6 +332,7 @@ export function receptKostprijs(invoer: ReceptKostprijsInvoer): ReceptKostprijs 
     perSoort,
     onbekend,
     overigeKosten,
+    verpakkingKosten,
     totaal,
     liters: rond(liters, 1),
     verliesPct: rond(verliesPct, 1),

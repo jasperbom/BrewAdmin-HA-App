@@ -213,6 +213,23 @@ describe('receptKostprijs', () => {
     expect(k.perLiterBrouwzaal).toBe(0.69)
   })
 
+  it('rekent de verpakking over de liters die je overhoudt', () => {
+    const k = receptKostprijs({
+      recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS,
+      verliesPct: 20, verpakkingPerLiter: 0.75,
+    })
+    // 320 verkoopbare liters × €0,75
+    expect(k.verpakkingKosten).toBe(240)
+    expect(k.totaal).toBe(378)
+    expect(k.perLiterVerkoopbaar).toBe(1.181)
+  })
+
+  it('telt geen verpakking zonder bekende verpakkingsprijs', () => {
+    const k = receptKostprijs({recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS})
+    expect(k.verpakkingKosten).toBe(0)
+    expect(k.totaal).toBe(k.ingredientKosten)
+  })
+
   it('geeft geen kostprijs per liter bij een recept zonder batchgrootte', () => {
     const k = receptKostprijs({recept: {mout: []}, ingredienten: INGREDIENTEN, lots: LOTS})
     expect(k.liters).toBe(0)

@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "sin precio",
   "recipe_cost_price_last": "(última compra)",
   "recipe_cost_price_last_tip": "Sin existencias — calculado con el precio de la última compra.",
-  "recipe_cost_note": "Cálculo previo: precios de los ingredientes de los lotes en stock, sin impuestos especiales, envase ni mano de obra.",
+  "recipe_cost_note": "Cálculo previo: precios de los ingredientes de los lotes en stock, envase según tu propia mezcla, sin impuestos especiales ni mano de obra.",
   "recipe_cost_overhead_measured": "media de tus últimas {n} elaboraciones",
   "recipe_cost_overhead_books": "de las facturas de energía, agua y limpieza ({van} a {tot}), divididas entre {n} elaboraciones",
   "recipe_cost_overhead_manual": "establecido manualmente",
@@ -3501,5 +3501,12 @@
   "recipe_cost_overhead_hint": "Anota electricidad, agua y limpieza en un lote, o registra las facturas de energía y agua con el tipo de coste correcto — así la app lo calcula sola.",
   "recipe_cost_src_measured": "medido",
   "recipe_cost_src_books": "de la contabilidad",
-  "recipe_cost_src_manual": "manual"
+  "recipe_cost_src_manual": "manual",
+  "recipe_cost_packaging": "Envase",
+  "recipe_cost_packaging_per_liter": "por litro envasado",
+  "recipe_cost_packaging_per_unit": "por unidad",
+  "recipe_cost_packaging_own": "de tus propios envasados de esta cerveza ({n} elaboraciones)",
+  "recipe_cost_packaging_brewery": "mezcla de envases media de la fábrica ({n} elaboraciones)",
+  "recipe_cost_packaging_hint": "Introduce el precio de la botella, chapa, etiqueta o barril en Ingredientes → Envases y la app contará el envase.",
+  "recipe_cost_subtotal_ingredients": "Ingredientes"
 }

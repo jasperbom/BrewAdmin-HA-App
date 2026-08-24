@@ -58,11 +58,17 @@ BrewAdmin-HA-App/
 │   │   │                   # inkoopfacturen met de bijbehorende kostensoort over dezelfde
 │   │   │                   # periode, anders handmatig. **Elke nieuwe bron voor deze
 │   │   │                   # kosten hoort hier** — zie "Afgeleide kosten" hieronder
+│   │   ├── verpakkingKosten.ts # Kostprijs van één verpakte eenheid (onderdelen, anders de
+│   │   │                   # losse velden) — de enige implementatie, ook gebruikt door
+│   │   │                   # `berekenBatchKostprijs` en de pagina's — plus de verpakkingsmix
+│   │   │                   # per liter, afgeleid uit de eigen afvullingen (anders die van de
+│   │   │                   # hele brouwerij)
 │   │   ├── receptKostprijs.ts # Voorcalculatie bij het recept: prijs per ingrediënt uit de lots
 │   │   │                   # (gewogen gemiddelde van wat er ligt, anders de laatste inkoop),
 │   │   │                   # gemiddeld verlies uit de eigen brouwhistorie (vergist versus
-│   │   │                   # afgevuld, gewogen op liters; anders de verliesposten, anders 8%)
-│   │   │                   # en de kostprijs per brouwzaalliter én per verkoopbare liter
+│   │   │                   # afgevuld, gewogen op liters; anders de verliesposten, anders 8%),
+│   │   │                   # verpakking over de liters ná verlies, en de kostprijs per
+│   │   │                   # brouwzaalliter én per verkoopbare liter
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,
@@ -171,8 +177,10 @@ ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de WooCommerce-produc
 velden, stapelen per niveau, ingrediëntenlijst uit het recept), de
 batchsamenvatting bij een product + de vertaling
 naar het webshopthema, de receptvoorcalculatie (ingrediëntprijs uit de lots,
-gemiddeld verlies, kostprijs per liter), de afgeleide brouwkosten (gemeten
-batches → inkoopfacturen → handmatig, schaling naar batchgrootte), de
+gemiddeld verlies, verpakking, kostprijs per liter), de afgeleide brouwkosten
+(gemeten batches → inkoopfacturen → handmatig, schaling naar batchgrootte), de
+verpakkingskosten (prijs per eenheid uit de onderdelen, mix uit de eigen
+afvullingen), de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
@@ -418,8 +426,9 @@ hoort een eigen sommetje over energie of water te staan.
 
 Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
 verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de
-ingrediëntprijs (`ingredientPrijs`, uit de lots) en de afgeleide bierinformatie
-(`afgeleideBierInfo` in `utils/bierinfo.ts`). Vraag het niet nóg een keer aan de
+ingrediëntprijs (`ingredientPrijs`, uit de lots), de verpakkingsmix
+(`verpakkingMix` in `utils/verpakkingKosten.ts`, uit de eigen afvullingen) en de
+afgeleide bierinformatie (`afgeleideBierInfo` in `utils/bierinfo.ts`). Vraag het niet nóg een keer aan de
 gebruiker als het al ergens in de administratie staat.
 
 ---

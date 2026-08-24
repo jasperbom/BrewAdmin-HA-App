@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
 import { newId, haGetState, haCallService } from '../utils/api'
 import { tod, fmtD, fmt, r3 } from '../utils/format'
+import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import {
   STATUSSEN, TANK_REINIGING_LABEL_KEY, VERLIES_BRONNEN, convertEenheid,
   DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase,
@@ -3222,12 +3223,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const verpK = mijnAv.reduce((s: number, a: any) => {
       const vp = (verpakkingen || []).find((v: any) => v.id === a.verpakking_id) || (verpakkingen || []).find((v: any) => v.naam === a.verpakking_type)
       if (!vp) return s
-      const kPerStuk = Array.isArray(vp.onderdelen) && vp.onderdelen.length
-        ? vp.onderdelen.reduce((s2: number, o: any) => {
-            const od = (onderdelen || []).find((d: any) => d.id === o.onderdeel_id)
-            return s2 + Number(od?.kosten_per_stuk || 0) * Number(o.aantal || 1)
-          }, 0)
-        : Number(vp.kosten_verpakking || 0) + Number(vp.kosten_afsluiting || 0) + Number(vp.kosten_label || 0)
+      const kPerStuk = verpakkingKostenPerStuk(vp, onderdelen)
       return s + kPerStuk * Number(a.hoeveelheid || 0)
     }, 0)
     // Accijns: daadwerkelijk geboekt (uitslagen) als die er zijn, anders voorcalc.

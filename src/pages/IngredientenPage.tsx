@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory, extractBfProps } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty, r2, r3 } from '../utils/format'
+import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
 import { getEffectiveBrewProps, getEffectiveBrewProp, stripEmptyBrewProps, formatBrewValue } from '../utils/brewProps'
 import Modal from '../components/ui/Modal'
@@ -277,13 +278,7 @@ const IngredientenPage: React.FC<Props> = ({
     })
     return stocks.length ? Math.min(...stocks) : 0
   }
-  const vpKosten = (vp: any) => {
-    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.kosten_verpakking || 0) + Number(vp.kosten_afsluiting || 0) + Number(vp.kosten_label || 0)
-    return vp.onderdelen.reduce((s: number, o: any) => {
-      const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
-      return s + Number(od?.kosten_per_stuk || 0) * Number(o.aantal || 1)
-    }, 0)
-  }
+  const vpKosten = (vp: any) => verpakkingKostenPerStuk(vp, onderdelen)
 
   const onPreset = (preset: string) => {
     if (!preset) { setVOntvForm((f: any) => ({ ...f, preset: '', naam: '', inhoud_liter: '', type: '' })); return }
