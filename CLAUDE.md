@@ -645,11 +645,14 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   van het bier (staat in `product.wc_thema`, ingevuld in de sectie
   "Biereigenschappen voor de webshop" op de productpagina) en `artikel` = per
   verpakking (`productArtikel.wc.meta`, tabblad "Thema-velden" van de
-  productkaart). Bij het pushen voegt `combineerThemaMeta` ze samen (artikel
-  wint met een ingevulde waarde), bij het ophalen splitst `splitsThemaMeta` ze
-  weer. `crafteryProductVoorstel`/`crafteryArtikelVoorstel` vullen de lege
-  velden met wat de app al weet — inclusief de ingrediëntenlijst uit het
-  recept. De invulvelden zelf staan in `components/ThemaVeldenForm.tsx`, gedeeld
+  productkaart). Velden met `automatisch: true` (ABV, IBU, EBC, stijl, inhoud)
+  zijn **geen invoer**: `crafteryAutoProduct`/`crafteryAutoArtikel` leiden ze af
+  uit de productgegevens, de verpakking en het recept (ingrediëntenlijst), zodat
+  je ze maar op één plek bijhoudt. Bij het pushen stapelt `combineerThemaMeta`
+  de lagen (afgeleid → bier → verpakking; een latere laag wint alleen met een
+  ingevulde waarde), `zonderAutoVelden` gooit oud opgeslagen afgeleide invoer
+  weg en bij het ophalen splitst `splitsThemaMeta` de rest naar het juiste
+  niveau. De invulvelden zelf staan in `components/ThemaVeldenForm.tsx`, gedeeld
   door beide plekken. Wijzigt het thema, dan wijzigt
   `CRAFTERY_VELDEN` mee — de app schrijft nooit een meta-sleutel die daar niet
   in staat, en laat meta van andere plugins ongemoeid. Uit te zetten met
