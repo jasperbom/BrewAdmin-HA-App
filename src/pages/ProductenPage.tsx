@@ -9,6 +9,7 @@ import {
 import { crafteryMeta, crafteryLees, crafteryMetaUitWc, CRAFTERY_SLEUTELS } from '../utils/craftery'
 import BierInfoForm from '../components/BierInfoForm'
 import BierInfoWeergave from '../components/BierInfoWeergave'
+import { batchSamenvatting, bierAfwijkingen } from '../utils/batchStats'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
@@ -1971,27 +1972,122 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               />
               <div className="p-3">
                 {selBatches.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_batches_gekoppeld')}</div>}
-                {selBatches.slice(0, 10).map((b: any) => {
-                  const direct = batchHoortBijProduct(b, sel);
+
+                {/* Wat de brouwsels van dit bier laten zien: hoe vaak, hoeveel
+                    liter en wat er gemeten is. Zo zie je bij het bier of het
+                    ABV op je etiket nog klopt met wat er uit de tank komt. */}
+                {selBatches.length > 0 && (() => {
+                  const sam = batchSamenvatting(selBatches);
+                  const afwijkingen = bierAfwijkingen(sam, selProduct);
+                  const metingen: {label: string, m: any, eenheid?: string, dec: number}[] = [
+                    {label: t('bier_veld_abv'), m: sam.abv, eenheid: '%', dec: 1},
+                    {label: t('lbl_batch_og'), m: sam.og, dec: 3},
+                    {label: t('lbl_batch_fg'), m: sam.fg, dec: 3},
+                    {label: t('bier_veld_ebc'), m: sam.kleur, dec: 0},
+                    {label: t('batch_stat_rendement'), m: sam.rendement, eenheid: '%', dec: 0},
+                  ].filter(r => r.m);
                   return (
-                    <div key={b.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
-                      <div>
-                        <span className="text-sm font-medium">{b.naam}</span>
-                        {b.batch_nummer && <span className="text-xs text-gray-400 ml-2">#{b.batch_nummer}</span>}
+                    <div className="mb-3 space-y-2">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                        <span>{t('batch_stat_aantal').replace('{n}', String(sam.aantal))}</span>
+                        {sam.liters > 0 && <span>{fmtQty(sam.liters)} L {t('batch_stat_gebrouwen')}</span>}
+                        {sam.laatste && <span>{t('batch_stat_laatst')} {fmtD(sam.laatste)}</span>}
+                        {Object.entries(sam.perStatus).map(([status, n]) => (
+                          <span key={status} className="text-gray-400">{n}× {status}</span>
+                        ))}
                       </div>
-                      <div className="flex items-center gap-2">
-                        {b.ABV && <span className="text-xs text-gray-500">{Number(b.ABV).toFixed(1)}%</span>}
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
-                        {direct && setBat && (
-                          <button type="button" onClick={() => ontkoppelBatch(b.id)}
-                            title={t('btn_ontkoppel_batch')}
-                            className="text-xs text-gray-400 hover:text-red-600 px-1 leading-none">✕</button>
-                        )}
-                      </div>
+
+                      {metingen.length > 0 && (
+                        <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          {metingen.map(r => (
+                            <div key={r.label}>
+                              <div className="text-sm font-semibold" style={{color: 'var(--t-accent)'}}>
+                                {r.m.gemiddeld.toFixed(r.dec)}{r.eenheid || ''}
+                              </div>
+                              <div className="text-[10px] text-gray-400 uppercase tracking-wide">
+                                {r.label}
+                                {r.m.aantal > 1 && r.m.spreiding > 0 && (
+                                  <span className="normal-case"> · {r.m.min.toFixed(r.dec)}–{r.m.max.toFixed(r.dec)}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Wijkt het etiket af van wat je brouwt? Dan kun je het
+                          in één klik gelijktrekken. */}
+                      {afwijkingen.map(a => (
+                        <div key={a.veld} className="flex flex-wrap items-center gap-2 text-xs rounded-lg bg-orange-50 text-orange-800 px-3 py-2">
+                          <span>
+                            {(a.bier === null ? t('batch_afwijking_leeg') : t('batch_afwijking'))
+                              .replace('{veld}', t(a.veld === 'abv' ? 'bier_veld_abv' : 'bier_veld_ebc'))
+                              .replace('{bier}', a.bier === null ? '' : String(a.bier))
+                              .replace('{gemeten}', String(a.gemeten))}
+                          </span>
+                          <Btn s="sm" v="secondary"
+                            onClick={() => setProducten((prev: any[]) => prev.map((prod: any) =>
+                              prod.id === selProduct.id ? {...prod, [a.veld]: a.gemeten} : prod))}>
+                            {t('batch_afwijking_overnemen')}
+                          </Btn>
+                        </div>
+                      ))}
                     </div>
                   );
-                })}
-                {selBatches.length > 10 && <div className="text-xs text-gray-400 text-center py-1">+{selBatches.length - 10}</div>}
+                })()}
+
+                {selBatches.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-gray-500 border-b border-gray-100">
+                          <th className="text-left py-1 font-medium">{t('lbl_batch')}</th>
+                          <th className="text-left py-1 font-medium">{t('lbl_datum')}</th>
+                          <th className="text-right py-1 font-medium">L</th>
+                          <th className="text-right py-1 font-medium">{t('lbl_batch_og')}</th>
+                          <th className="text-right py-1 font-medium">{t('lbl_batch_fg')}</th>
+                          <th className="text-right py-1 font-medium">{t('bier_veld_abv')}</th>
+                          <th className="text-right py-1 font-medium">{t('bier_veld_ebc')}</th>
+                          <th className="text-left py-1 font-medium pl-3">{t('lbl_status')}</th>
+                          <th className="w-6"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selBatches.slice(0, 10).map((b: any) => {
+                          const direct = batchHoortBijProduct(b, sel);
+                          const cel = (w: any, dec: number) => (w === undefined || w === null || w === '')
+                            ? <span className="text-gray-300">–</span>
+                            : Number(w).toFixed(dec);
+                          return (
+                            <tr key={b.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                              <td className="py-1.5">
+                                <span className="font-medium">{b.naam}</span>
+                                {b.batch_nummer && <span className="text-gray-400 ml-1">#{b.batch_nummer}</span>}
+                              </td>
+                              <td className="py-1.5 text-gray-500">{b.datum ? fmtD(b.datum) : '–'}</td>
+                              <td className="py-1.5 text-right">{cel(b.liter_vergist, 0)}</td>
+                              <td className="py-1.5 text-right">{cel(b.OG, 3)}</td>
+                              <td className="py-1.5 text-right">{cel(b.FG, 3)}</td>
+                              <td className="py-1.5 text-right font-medium">{b.ABV ? `${Number(b.ABV).toFixed(1)}%` : <span className="text-gray-300">–</span>}</td>
+                              <td className="py-1.5 text-right">{cel(b.kleur, 0)}</td>
+                              <td className="py-1.5 pl-3">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
+                              </td>
+                              <td className="py-1.5 text-right">
+                                {direct && setBat && (
+                                  <button type="button" onClick={() => ontkoppelBatch(b.id)}
+                                    title={t('btn_ontkoppel_batch')}
+                                    className="text-gray-300 hover:text-red-600 px-1 leading-none">✕</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {selBatches.length > 10 && <div className="text-xs text-gray-400 text-center py-1">+{selBatches.length - 10}</div>}
+                  </div>
+                )}
 
                 {/* Batch koppelen */}
                 {setBat && (

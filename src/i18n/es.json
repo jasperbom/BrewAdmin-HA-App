@@ -3453,5 +3453,15 @@
   "bier_lev_verzenden": "Solo envío",
   "bier_lev_afhalen": "Solo recogida",
   "bier_afgeleid_hint_form": "de los campos de arriba y la receta",
-  "bier_leeg_uitleg": "Aún no hay información de la cerveza. Pulse Editar para añadirla con los datos del producto."
+  "bier_leeg_uitleg": "Aún no hay información de la cerveza. Pulse Editar para añadirla con los datos del producto.",
+  "lbl_batch": "Lote",
+  "lbl_batch_og": "DO",
+  "lbl_batch_fg": "DF",
+  "batch_stat_aantal": "{n} lotes",
+  "batch_stat_gebrouwen": "elaborados",
+  "batch_stat_laatst": "último",
+  "batch_stat_rendement": "Rendimiento",
+  "batch_afwijking": "En la cerveza figura {veld} {bier}, pero sus lotes promedian {gemeten}.",
+  "batch_afwijking_leeg": "La cerveza aún no tiene {veld}; sus lotes promedian {gemeten}.",
+  "batch_afwijking_overnemen": "Usar este"
 }

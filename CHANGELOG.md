@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.14] — 2026-08-24
+
+### Wat je batches zeggen, zie je nu bij het bier
+
+De metingen van je brouwsels stonden alleen op de batchpagina. Bij het product
+zag je van een batch niet meer dan de naam, het ABV en de status — terwijl juist
+dáár de vraag speelt: klopt het ABV op mijn etiket nog met wat er uit de tank
+komt?
+
+- De sectie **Batches** op de productpagina opent nu met een samenvatting:
+  hoeveel batches, hoeveel liter gebrouwen, wanneer voor het laatst en hoeveel
+  er in welke status staan.
+- Daaronder de gemeten waarden over álle batches van dit bier — ABV, OG, FG,
+  EBC en brouwzaalrendement — als gemiddelde met de spreiding erachter
+  (`7.4% · ABV · 7.3–7.5`). Zo zie je in één blik hoe consistent je brouwt.
+- Per batch staan de metingen nu in een tabel: datum, liters, OG, FG, ABV, EBC
+  en status, in plaats van alleen naam en ABV.
+- **Wijkt je bierinformatie af van wat je brouwt**, dan zegt de app dat: "Bij
+  het bier staat ABV 6,9, terwijl je batches gemiddeld 7,4 halen" — met een
+  knop *Overnemen* die het gelijktrekt. Een klein verschil is normaal en blijft
+  stil (marge 0,2 %vol en 2 EBC); een leeg veld bij het bier wordt wel gemeld.
+- Nieuwe pure logica in `src/utils/batchStats.ts` met een eigen testsuite.
+
+---
+
 ## [1.12.13] — 2026-08-24
 
 ### Het bier staat op de productpagina, zoals in de winkel

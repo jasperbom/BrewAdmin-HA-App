@@ -3453,5 +3453,15 @@
   "bier_lev_verzenden": "Livraison uniquement",
   "bier_lev_afhalen": "Retrait uniquement",
   "bier_afgeleid_hint_form": "depuis les champs ci-dessus et la recette",
-  "bier_leeg_uitleg": "Aucune information bière. Cliquez sur Modifier pour les ajouter aux données produit."
+  "bier_leeg_uitleg": "Aucune information bière. Cliquez sur Modifier pour les ajouter aux données produit.",
+  "lbl_batch": "Brassin",
+  "lbl_batch_og": "DI",
+  "lbl_batch_fg": "DF",
+  "batch_stat_aantal": "{n} brassins",
+  "batch_stat_gebrouwen": "brassés",
+  "batch_stat_laatst": "dernier",
+  "batch_stat_rendement": "Rendement",
+  "batch_afwijking": "La bière indique {veld} {bier}, alors que vos brassins font en moyenne {gemeten}.",
+  "batch_afwijking_leeg": "La bière n’a pas encore de {veld} ; vos brassins font en moyenne {gemeten}.",
+  "batch_afwijking_overnemen": "Reprendre"
 }

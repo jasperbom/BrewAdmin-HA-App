@@ -3453,5 +3453,15 @@
   "bier_lev_verzenden": "Nur Versand",
   "bier_lev_afhalen": "Nur Abholung",
   "bier_afgeleid_hint_form": "aus den Feldern oben und dem Rezept",
-  "bier_leeg_uitleg": "Noch keine Bierinformationen. Über Bearbeiten fügst du sie bei den Produktdaten hinzu."
+  "bier_leeg_uitleg": "Noch keine Bierinformationen. Über Bearbeiten fügst du sie bei den Produktdaten hinzu.",
+  "lbl_batch": "Sud",
+  "lbl_batch_og": "Stammwürze",
+  "lbl_batch_fg": "Restextrakt",
+  "batch_stat_aantal": "{n} Sude",
+  "batch_stat_gebrouwen": "gebraut",
+  "batch_stat_laatst": "zuletzt",
+  "batch_stat_rendement": "Sudhausausbeute",
+  "batch_afwijking": "Beim Bier steht {veld} {bier}, deine Sude liegen im Schnitt bei {gemeten}.",
+  "batch_afwijking_leeg": "Beim Bier fehlt {veld} noch; deine Sude liegen im Schnitt bei {gemeten}.",
+  "batch_afwijking_overnemen": "Übernehmen"
 }
