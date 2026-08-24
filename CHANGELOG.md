@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.9] — 2026-08-24
+
+### Biereigenschappen horen bij het bier, niet bij de fles
+
+De themavelden uit 1.12.8 stonden per SKU: bij een bier in drie verpakkingen
+typte je het ABV, de IBU en de stijl drie keer over. Dat is nergens voor nodig —
+het gaat om het bier zelf.
+
+- **Bij het product** staat nu de sectie *Biereigenschappen voor de webshop*,
+  boven de artikelen. Daar vul je één keer ABV, IBU, EBC, kcal, stijl,
+  ingrediënten, smaakprofiel (tekst én de vijf assen), serveertip, Untappd,
+  "uit roulatie" en je eigen spec-/infokaartregels in. Elke verpakking van dat
+  bier stuurt ze mee naar de webshop.
+- **Bij het artikel** blijft alleen wat écht per verpakking verschilt: inhoud,
+  tag/aantal, pakketinhoud, badge en levering. De productkaart van een SKU laat
+  bovenaan zien wat er van het bier meekomt, zodat je ziet wat er gepusht wordt.
+- **Ingrediënten vult de app zelf voor** vanuit het gekoppelde recept:
+  "water, gerstemout, tarwemout, hop, gist" — graansoorten worden herkend
+  (tarwe, rogge, haver, spelt), merknamen als "Cara 50" horen niet op een
+  etiket. Samen met ABV/IBU/EBC/stijl/inhoud zit dat achter één knop:
+  *Overnemen uit de app*.
+- Een lege smaak-as is nu zichtbaar leeg (gedimde schuif met "—" en een
+  kruisje om hem te wissen) in plaats van een balk op nul: het thema tekent
+  een lege as niet, en dat verschil zag je eerst niet.
+- Ophalen uit de webshop zet de biereigenschappen automatisch bij het product
+  en de verpakkingsvelden bij het artikel.
+
+---
+
 ## [1.12.8] — 2026-08-24
 
 ### WooCommerce-producten volledig vanuit de app beheren

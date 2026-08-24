@@ -3391,7 +3391,6 @@
   "settings_wc_prijzen_incl_btw": "Webshopprijzen zijn inclusief BTW",
   "settings_wc_prijzen_incl_btw_hint": "Staat in WooCommerce onder Instellingen → Belasting → \"Prijzen ingevoerd inclusief belasting\". De app rekent haar prijzen (altijd exclusief BTW) hierop om.",
   "wc_tab_thema": "Thema-velden",
-  "cf_uitleg": "Eigen velden van het Craftery-webshopthema. Wat hier leeg blijft, blijft in de webshop staan zoals het is.",
   "cf_btn_overnemen": "Overnemen uit de app",
   "cf_tip_overnemen": "Vult de lege velden met wat de app al weet: ABV, IBU, EBC, stijl en inhoud. Ingevulde velden blijven staan.",
   "cf_msg_overgenomen": "Lege velden ingevuld vanuit de app — nog niet opgeslagen.",
@@ -3442,5 +3441,13 @@
   "cf_ph_regel_label": "Label",
   "cf_ph_regel_waarde": "Waarde",
   "settings_wc_thema_velden": "Craftery-themavelden beheren",
-  "settings_wc_thema_velden_hint": "Zet het tabblad \"Thema-velden\" op de productkaart aan: ABV, IBU, EBC, stijl, smaakprofiel, Untappd en de pakketvelden van het Craftery-thema. Uit = de app raakt die velden in de webshop niet aan."
+  "settings_wc_thema_velden_hint": "Zet het tabblad \"Thema-velden\" op de productkaart aan: ABV, IBU, EBC, stijl, smaakprofiel, Untappd en de pakketvelden van het Craftery-thema. Uit = de app raakt die velden in de webshop niet aan.",
+  "cf_sectie_titel": "Biereigenschappen voor de webshop",
+  "cf_uitleg_product": "Deze eigenschappen horen bij het bier zelf: je vult ze één keer in en elke verpakking (fles, fust, pakket) stuurt ze mee naar de webshop.",
+  "cf_uitleg_artikel": "Alleen wat per verpakking verschilt. De eigenschappen van het bier zelf staan bij het product en gaan automatisch mee.",
+  "cf_msg_overgenomen_product": "Lege velden ingevuld met de gegevens van dit bier.",
+  "cf_van_product": "Van dit bier",
+  "cf_van_product_hint": "wijzigen bij het product",
+  "cf_van_product_leeg": "Nog niets ingevuld bij dit bier.",
+  "cf_btn_as_wissen": "Leegmaken"
 }

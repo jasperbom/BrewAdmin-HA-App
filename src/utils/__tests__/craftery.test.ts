@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   CRAFTERY_VELDEN, CRAFTERY_SLEUTELS, CRAFTERY_GROEPEN,
-  crafteryInhoud, crafteryVoorstel, vulAanMetVoorstel,
+  CRAFTERY_PRODUCT_SLEUTELS, CRAFTERY_ARTIKEL_SLEUTELS, crafteryVelden,
+  crafteryInhoud, crafteryVoorstel, crafteryProductVoorstel, crafteryArtikelVoorstel,
+  vulAanMetVoorstel, combineerThemaMeta, splitsThemaMeta, crafteryIngredienten,
 } from '../craftery'
 import { bouwWcPayload, leesWcProduct, wcVerschillen } from '../wcProduct'
 
@@ -23,6 +25,54 @@ describe('velddefinities', () => {
     expect(CRAFTERY_GROEPEN[0]).toBe('cf_groep_specs')
     expect(new Set(CRAFTERY_GROEPEN).size).toBe(CRAFTERY_GROEPEN.length)
     expect(CRAFTERY_VELDEN.every(v => CRAFTERY_GROEPEN.includes(v.groep))).toBe(true)
+  })
+})
+
+describe('niveaus: bier versus verpakking', () => {
+  it('zet de biereigenschappen op productniveau', () => {
+    // Het ABV van een tripel is in een fles hetzelfde als in een fust — die
+    // velden horen bij het bier, niet bij de SKU.
+    for (const s of ['_cf_abv', '_cf_ibu', '_cf_ebc', '_cf_kcal', '_cf_stijl',
+                     '_cf_ingredienten', '_cf_smaak', '_cf_serveertip',
+                     '_cf_smaak_fruit', '_cf_untappd_score', '_cf_archief']) {
+      expect(CRAFTERY_PRODUCT_SLEUTELS).toContain(s)
+    }
+  })
+  it('houdt alleen de verpakkingsgebonden velden bij het artikel', () => {
+    expect(CRAFTERY_ARTIKEL_SLEUTELS.sort()).toEqual(
+      ['_cf_badge', '_cf_bevat', '_cf_inhoud', '_cf_levering', '_cf_tag'].sort())
+  })
+  it('deelt elk veld in bij precies één niveau', () => {
+    expect(CRAFTERY_PRODUCT_SLEUTELS.length + CRAFTERY_ARTIKEL_SLEUTELS.length).toBe(CRAFTERY_SLEUTELS.length)
+    expect(CRAFTERY_PRODUCT_SLEUTELS.some(s => CRAFTERY_ARTIKEL_SLEUTELS.includes(s))).toBe(false)
+    expect(crafteryVelden('product').every(v => v.niveau === 'product')).toBe(true)
+  })
+})
+
+describe('combineerThemaMeta', () => {
+  it('legt de verpakkingswaarden over die van het bier heen', () => {
+    const r = combineerThemaMeta({_cf_abv: '7,1%', _cf_inhoud: '33cl'}, {_cf_inhoud: '75cl'})
+    expect(r).toEqual({_cf_abv: '7,1%', _cf_inhoud: '75cl'})
+  })
+  it('laat een leeg artikelveld de productwaarde niet wegdrukken', () => {
+    expect(combineerThemaMeta({_cf_abv: '7,1%'}, {_cf_abv: '', _cf_badge: []}))
+      .toEqual({_cf_abv: '7,1%'})
+  })
+  it('overleeft ontbrekende invoer', () => {
+    expect(combineerThemaMeta(null, null)).toEqual({})
+    expect(combineerThemaMeta(undefined, {_cf_badge: 'Nieuw'})).toEqual({_cf_badge: 'Nieuw'})
+  })
+})
+
+describe('splitsThemaMeta', () => {
+  it('stuurt elk veld naar het niveau waar het hoort', () => {
+    const r = splitsThemaMeta({_cf_abv: '7,1%', _cf_inhoud: '33cl', _onbekend: 'x'})
+    expect(r.product).toEqual({_cf_abv: '7,1%'})
+    expect(r.artikel).toEqual({_cf_inhoud: '33cl'})
+  })
+  it('negeert sleutels die de app niet beheert', () => {
+    expect(splitsThemaMeta({_wc_plugin: 'y'})).toEqual({product: {}, artikel: {}})
+    expect(splitsThemaMeta(null)).toEqual({product: {}, artikel: {}})
   })
 })
 
@@ -48,10 +98,43 @@ describe('crafteryVoorstel', () => {
     const v = crafteryVoorstel({product: {abv: 7.14, ibu: 24.4, ebc: 12, stijl: 'NEIPA'}, inhoudLiter: 0.33})
     expect(v).toEqual({_cf_abv: '7,1%', _cf_ibu: '24', _cf_ebc: '12', _cf_inhoud: '33cl', _cf_stijl: 'NEIPA'})
   })
+  it('splitst netjes per niveau: bier apart van verpakking', () => {
+    expect(crafteryProductVoorstel({abv: 7.14, stijl: 'NEIPA'})).toEqual({_cf_abv: '7,1%', _cf_stijl: 'NEIPA'})
+    expect(crafteryProductVoorstel({}, [{mout: [{naam: 'Pilsner'}], hop: [{naam: 'Citra'}], gist: [{naam: 'US-05'}]}]))
+      .toEqual({_cf_ingredienten: 'water, gerstemout, hop, gist'})
+    expect(crafteryArtikelVoorstel(0.75)).toEqual({_cf_inhoud: '75cl'})
+    expect(crafteryArtikelVoorstel(null)).toEqual({})
+    // Een productvoorstel bevat nooit een verpakkingsveld.
+    expect(Object.keys(crafteryProductVoorstel({abv: 7})).every(k => CRAFTERY_PRODUCT_SLEUTELS.includes(k))).toBe(true)
+  })
   it('verzint niets bij ontbrekende gegevens', () => {
     expect(crafteryVoorstel({product: {}, inhoudLiter: null})).toEqual({})
     expect(crafteryVoorstel({})).toEqual({})
     expect(crafteryVoorstel({product: {abv: 0, ibu: 0, ebc: 0, stijl: '  '}})).toEqual({})
+  })
+})
+
+describe('crafteryIngredienten', () => {
+  const gerst = {mout: [{naam: 'Pilsner Malt'}, {naam: 'Cara 50'}], hop: [{naam: 'Citra'}], gist: [{naam: 'US-05'}]}
+
+  it('vertaalt het recept naar een etiketwaardige lijst', () => {
+    expect(crafteryIngredienten([gerst])).toBe('water, gerstemout, hop, gist')
+  })
+  it('benoemt andere graansoorten apart — die bepalen de allergenen', () => {
+    expect(crafteryIngredienten([{mout: [{naam: 'Pilsner'}, {naam: 'Tarwemout'}, {naam: 'Flaked Oats'}], hop: [{naam: 'Saaz'}], gist: [{naam: 'T-58'}]}]))
+      .toBe('water, gerstemout, tarwemout, havermout, hop, gist')
+  })
+  it('ontdubbelt over meerdere recepten heen', () => {
+    expect(crafteryIngredienten([gerst, {mout: [{naam: 'Wheat malt'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, gerstemout, tarwemout, hop, gist')
+  })
+  it('noemt alleen wat het recept ook echt bevat', () => {
+    expect(crafteryIngredienten([{hop: [{naam: 'Citra'}], gist: [{naam: 'US-05'}]}])).toBe('water, hop, gist')
+  })
+  it('geeft niets terug zonder recept of zonder ingrediënten', () => {
+    expect(crafteryIngredienten(null)).toBe('')
+    expect(crafteryIngredienten([])).toBe('')
+    expect(crafteryIngredienten([{mout: [], hop: [], gist: []}])).toBe('')
   })
 })
 

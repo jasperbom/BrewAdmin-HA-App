@@ -2619,6 +2619,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         </div>
       )}
 
+      {/* Merch heeft geen bier erboven: alle themavelden horen hier bij het
+          artikel zelf. */}
       {wcMerchModal && (
         <WcProductModal
           sku={wcMerchModal.sku || ''}

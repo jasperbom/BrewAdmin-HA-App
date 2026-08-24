@@ -50,7 +50,8 @@ BrewAdmin-HA-App/
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
 │   │   ├── craftery.ts     # Eigen productvelden van het Craftery-webshopthema (`_cf_…`-meta):
-│   │   │                   # velddefinities + voorstel dat ABV/IBU/EBC/stijl/inhoud uit de
+│   │   │                   # velddefinities mét niveau (bier vs. verpakking), samenvoegen/splitsen
+│   │   │                   # per niveau + voorstel dat ABV/IBU/EBC/stijl/inhoud/ingrediënten uit de
 │   │   │                   # administratie invult. Alleen deze sleutels worden gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
@@ -147,7 +148,8 @@ De pure businesslogica heeft een Vitest-suite (ERP-plan 3.1) in
 `src/utils/__tests__/`: accijns, BTW-rollover en grondslag-BTW, centen,
 journaalboekingen/storno, bankreconciliatie + MT940-parser, voorraad,
 ouderdom, COGS, de UBL-e-factuur + BTW-categorieafleiding, de WooCommerce-productkaart
-(payload, winkel lezen, verschillen) + de themavelden van het webshopthema, de
+(payload, winkel lezen, verschillen) + de themavelden van het webshopthema
+(niveau-indeling, samenvoegen/splitsen, ingrediëntenvoorstel), de
 templaterenderer + factuurlayout, de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
@@ -639,9 +641,16 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   `POST /api/woocommerce/create/products`
 - **Themavelden** (`utils/craftery.ts`): het Craftery-thema bewaart ABV, IBU,
   EBC, kcal, inhoud, stijl, smaakprofiel, Untappd, archief- en pakketvelden als
-  `_cf_…`-post-meta. Die staan in het tabblad "Thema-velden" van de
-  productkaart en gaan als `meta_data` mee; `crafteryVoorstel` vult de lege
-  velden met wat de app al weet. Wijzigt het thema, dan wijzigt
+  `_cf_…`-post-meta. Elk veld heeft een **niveau**: `product` = een eigenschap
+  van het bier (staat in `product.wc_thema`, ingevuld in de sectie
+  "Biereigenschappen voor de webshop" op de productpagina) en `artikel` = per
+  verpakking (`productArtikel.wc.meta`, tabblad "Thema-velden" van de
+  productkaart). Bij het pushen voegt `combineerThemaMeta` ze samen (artikel
+  wint met een ingevulde waarde), bij het ophalen splitst `splitsThemaMeta` ze
+  weer. `crafteryProductVoorstel`/`crafteryArtikelVoorstel` vullen de lege
+  velden met wat de app al weet — inclusief de ingrediëntenlijst uit het
+  recept. De invulvelden zelf staan in `components/ThemaVeldenForm.tsx`, gedeeld
+  door beide plekken. Wijzigt het thema, dan wijzigt
   `CRAFTERY_VELDEN` mee — de app schrijft nooit een meta-sleutel die daar niet
   in staat, en laat meta van andere plugins ongemoeid. Uit te zetten met
   `woocommerce_creds.themaVelden = false`

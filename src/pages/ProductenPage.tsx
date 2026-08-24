@@ -3,7 +3,12 @@ import { t } from '../i18n'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl } from '../utils/wcProduct'
-import { CRAFTERY_VELDEN, CRAFTERY_SLEUTELS, crafteryVoorstel } from '../utils/craftery'
+import {
+  CRAFTERY_VELDEN, CRAFTERY_SLEUTELS, crafteryVelden,
+  crafteryProductVoorstel, crafteryArtikelVoorstel,
+  combineerThemaMeta, splitsThemaMeta, vulAanMetVoorstel,
+} from '../utils/craftery'
+import ThemaVeldenForm from '../components/ThemaVeldenForm'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
@@ -126,6 +131,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const [wcSyncMsg, setWcSyncMsg] = useState('');
   // Volledige WooCommerce-productkaart van één artikel (modal).
   const [wcModalArt, setWcModalArt] = useState<any>(null);
+  const [themaOpen, setThemaOpen] = useState(false);
+  const [themaMsg, setThemaMsg] = useState('');
 
   const selProduct = useMemo(() => (producten||[]).find((p: any) => p.id === sel), [producten, sel]);
 
@@ -952,8 +959,18 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const wcPrijzenInclBtw = wcCreds?.prijzenInclBtw !== false;
   // Eigen productvelden van het Craftery-webshopthema (`_cf_…`-meta). Uit te
   // zetten bij de koppeling voor wie een ander thema draait.
-  const themaVelden = wcCreds?.themaVelden === false ? [] : CRAFTERY_VELDEN;
+  const themaAan = wcCreds?.enabled && wcCreds?.themaVelden !== false;
+  const themaVelden = themaAan ? CRAFTERY_VELDEN : [];
   const themaSleutels = themaVelden.map((f: any) => f.sleutel);
+  // De biereigenschappen (ABV, stijl, smaakprofiel) horen bij het product en
+  // gelden voor élke verpakking; alleen wat per verpakking verschilt (inhoud,
+  // badge, levering) staat bij het artikel.
+  const themaProductVelden = themaAan ? crafteryVelden('product') : [];
+  const themaArtikelVelden = themaAan ? crafteryVelden('artikel') : [];
+
+  const zetProductThema = (productId: number, meta: Record<string, any>) => {
+    setProducten((prev: any[]) => prev.map((p: any) => p.id === productId ? {...p, wc_thema: meta} : p));
+  };
 
   // Sla de WooCommerce-productkaart van één artikel op.
   const bewaarWcVelden = (artId: number, velden: WcVelden) => {
@@ -972,9 +989,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       naamFallback: naam || a.artikelnummer || '',
       omschrijving: prod?.omschrijving || '',
       voorraad: wcBeschikbaarVoorArt({...a, biernaam: prod?.naam || '', _product_id: a.product_id}),
-      // Wat de app al weet (ABV, IBU, EBC, stijl, inhoud) in de notatie van
-      // het thema — vult daar de lege velden mee.
-      themaVoorstel: crafteryVoorstel({product: prod, inhoudLiter: vp?.inhoud_liter ?? a.inhoud_liter}),
+      // De inhoud van déze verpakking, in de notatie van het thema.
+      themaVoorstel: crafteryArtikelVoorstel(vp?.inhoud_liter ?? a.inhoud_liter),
+      productId: prod?.id,
+      productThema: prod?.wc_thema || null,
     };
   };
 
@@ -984,7 +1002,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const wcPushArtikelen = () => {
     const paWithNames = (productArtikelen||[]).filter((a: any) => a.artikelnummer && a.wc_push !== false).map((pa: any) => {
       const prod = (producten||[]).find((p: any) => p.id === pa.product_id);
-      return {...pa, biernaam: prod?.naam || '', _product_id: pa.product_id, _omschrijving: prod?.omschrijving || '', _pa: true};
+      return {...pa, biernaam: prod?.naam || '', _product_id: pa.product_id, _omschrijving: prod?.omschrijving || '', _thema: prod?.wc_thema || null, _pa: true};
     });
     // Alleen terugvallen op de legacy-artikelenlijst zolang er nog geen
     // productartikelen zijn (oude administraties).
@@ -1034,7 +1052,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           }
           const body = volledig
             ? bouwWcPayload({
-                velden: art.wc, sku: art.artikelnummer,
+                // Biereigenschappen van het product + wat op deze verpakking staat.
+                velden: {...(art.wc || {}), meta: combineerThemaMeta(art._thema, art.wc?.meta)},
+                sku: art.artikelnummer,
                 naamFallback: naam, omschrijvingFallback: art._omschrijving,
                 prijsExcl: art.verkoopprijs, btwPct: art.btw_pct,
                 voorraad: beschikbaar, prijzenInclBtw: wcPrijzenInclBtw,
@@ -1093,6 +1113,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     setWcSyncing(true); setWcSyncMsg('');
     const nu = new Date().toISOString();
     const updates: Record<number, any> = {};
+    const productThemas: Record<number, Record<string, any>> = {};
     let gevonden = 0;
     const onbekend: string[] = [];
     try {
@@ -1101,7 +1122,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
           if (!prods?.length) { onbekend.push(art.artikelnummer); continue; }
           const velden = leesWcProduct(prods[0], {btwPct: art.btw_pct, prijzenInclBtw: wcPrijzenInclBtw, metaSleutels: themaSleutels});
-          updates[art.id] = {wc: {...velden, gepulld: nu}, prijs: prods[0].regular_price};
+          const {product: themaProduct, artikel: themaArtikel} = splitsThemaMeta(velden.meta);
+          updates[art.id] = {wc: {...velden, meta: themaArtikel, gepulld: nu}, prijs: prods[0].regular_price};
+          // Biereigenschappen horen bij het product. Meerdere verpakkingen van
+          // hetzelfde bier leveren dezelfde waarden; alleen aanvullen wat nog
+          // leeg is, zodat de laatste SKU niet steeds de vorige overschrijft.
+          if (art.product_id && Object.keys(themaProduct).length) {
+            productThemas[art.product_id] = vulAanMetVoorstel(productThemas[art.product_id], themaProduct as Record<string, string>);
+          }
           gevonden++;
         } catch(e: any) {
           onbekend.push(art.artikelnummer);
@@ -1117,6 +1145,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           : null;
         return {...a, wc: u.wc, ...(uitWinkel ? {verkoopprijs: uitWinkel.toFixed(2)} : {})};
       }));
+      if (Object.keys(productThemas).length) {
+        setProducten((prev: any[]) => prev.map((prod: any) => productThemas[prod.id]
+          // Wat al bij het bier staat blijft staan; de winkel vult alleen aan.
+          ? {...prod, wc_thema: vulAanMetVoorstel(prod.wc_thema, productThemas[prod.id] as Record<string, string>)}
+          : prod));
+      }
       const melding = t('wc_msg_pull_alles').replace('{n}', String(gevonden)).replace('{f}', String(onbekend.length));
       setWcSyncMsg(onbekend.length ? `⚠ ${melding}` : `✓ ${melding}`);
       addWcLog(onbekend.length ? 'fout' : 'pull', `↓ ${melding}`, onbekend.join(', '));
@@ -1429,6 +1463,40 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 </div>
               ))}
             </div>
+
+            {/* Biereigenschappen voor de webshop: één keer per bier, niet per
+                verpakking. Elke SKU van dit bier stuurt deze waarden mee. */}
+            {themaAan && themaProductVelden.length > 0 && (() => {
+              const thema = selProduct.wc_thema || {};
+              const ingevuld = themaProductVelden.filter((f: any) => {
+                const w = thema[f.sleutel];
+                return w !== undefined && w !== null && (Array.isArray(w) ? w.length > 0 : String(w).trim() !== '');
+              }).length;
+              return (
+                <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${themaOpen?'':'overflow-hidden'}`}>
+                  <SectionHeader
+                    open={themaOpen}
+                    onToggle={() => setThemaOpen(!themaOpen)}
+                    rounded={themaOpen ? 'top' : 'full'}
+                    title={t('cf_sectie_titel')}
+                    info={`${ingevuld}/${themaProductVelden.length}`}
+                  />
+                  {themaOpen && (
+                    <div className="p-4">
+                      {themaMsg && <div className="mb-3 text-xs px-3 py-2 rounded bg-blue-50 text-blue-700">{themaMsg}</div>}
+                      <ThemaVeldenForm
+                        velden={themaProductVelden}
+                        waarden={thema}
+                        onChange={meta => { zetProductThema(selProduct.id, meta); setThemaMsg(''); }}
+                        voorstel={crafteryProductVoorstel(selProduct, selRecepten)}
+                        uitleg="cf_uitleg_product"
+                        onOvergenomen={() => setThemaMsg(t('cf_msg_overgenomen_product'))}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Voorraad overzicht */}
             {selVoorraad.length > 0 && (
@@ -2014,8 +2082,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             btwPct={wcModalArt.btw_pct}
             voorraad={ctx.voorraad}
             prijzenInclBtw={wcPrijzenInclBtw}
-            themaVelden={themaVelden}
+            themaVelden={themaArtikelVelden}
             themaVoorstel={ctx.themaVoorstel}
+            themaProductVelden={themaProductVelden}
+            themaProductMeta={ctx.productThema}
+            onProductThema={meta => ctx.productId && zetProductThema(ctx.productId, meta)}
             onLog={addWcLog}
             onOpslaan={(velden) => bewaarWcVelden(wcModalArt.id, velden)}
             onClose={() => setWcModalArt(null)}
