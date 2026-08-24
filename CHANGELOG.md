@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.19] — 2026-08-24
+
+### Vier scheefheden in de voorcalculatie rechtgezet
+
+Narekenen van de kostprijsberekening leverde vier gevallen op waarin het cijfer
+niet klopte. De bedragen zelf waren goed; deze randgevallen niet.
+
+- **Verliesuitsplitsing rekende over de verkeerde liters.** Een verliespost van
+  een batch die nog gist werd gedeeld door de liters van de batches die wél
+  meetelden — een tankrest van 40 L uit een gistende brouw verscheen als 10%
+  verlies op een andere brouw. Teller en noemer gaan nu altijd over dezelfde
+  batches.
+- **Kleine verliesposten verdwenen in de afronding.** Vijf monsters van 0,15 L
+  werden per stuk afgerond en kwamen samen op 0,0% uit in plaats van 0,2%. Er
+  wordt nu in liters opgeteld en pas aan het eind afgerond.
+- **Een geplande brouw telde mee als brouwsel.** €90 energie over twee echte
+  brouwsels plus één geplande werd €30 per brouw in plaats van €45. Een batch
+  telt nu pas als brouwsel bij vergiste liters of genoteerde kosten.
+- **Eén brouwsel gaf een venster van één dag.** De boekhoudingsbron zocht
+  facturen tussen je eerste en laatste brouwsel; met één brouw was dat één dag
+  en vond de app nooit een energierekening. Het venster loopt nu minstens een
+  jaar terug tot je laatste brouwsel (en de brouwsels in datzelfde venster
+  vormen de deler). Zonder datums wordt er niets toegerekend.
+
+Verder: afvullingen die alleen het oudere `aantal`/`inhoud_liter` hebben tellen
+weer mee (in zowel het verlies als de verpakkingsmix), en de verpakkingsprijs
+per liter rondt pas aan het eind af.
+
+---
+
 ## [1.12.18] — 2026-08-24
 
 ### Verpakking telt mee in de voorcalculatie

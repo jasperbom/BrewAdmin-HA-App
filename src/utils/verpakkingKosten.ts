@@ -85,7 +85,8 @@ export interface VerpakkingMix {
   liters: number
 }
 
-const LEEG: VerpakkingMix = {regels: [], perLiter: 0, bron: 'geen', batches: 0, liters: 0}
+// Als functie, zodat aanroepers nooit dezelfde `regels`-array delen.
+const leeg = (): VerpakkingMix => ({regels: [], perLiter: 0, bron: 'geen', batches: 0, liters: 0})
 
 export interface VerpakkingMixInvoer {
   /** De batches die de mix bepalen (bijv. die van dit recept). */
@@ -99,15 +100,21 @@ export interface VerpakkingMixInvoer {
 function mixVoorBatches(invoer: VerpakkingMixInvoer, bron: VerpakkingMix['bron']): VerpakkingMix {
   const ids = new Set((invoer.batches || []).filter(Boolean).map((b: any) => Number(b?.id)))
   const rijen = (invoer.afvullingen || []).filter((a: any) => ids.has(Number(a?.batch_id)))
-  if (!rijen.length) return LEEG
+  if (!rijen.length) return leeg()
 
   const perVerpakking = new Map<string, VerpakkingMixRegel>()
+  // Totale kosten los bijhouden: delen door de liters aan het eind voorkomt
+  // dat de afronding per verpakking in het gemiddelde doorwerkt.
   let totaalLiters = 0
+  let totaalKosten = 0
   const gezien = new Set<number>()
 
   for (const a of rijen) {
-    const inhoud = getal(a?.inhoud_per_eenheid) ?? getal(a?.inhoud_liter) ?? 0
-    const stuks = getal(a?.hoeveelheid) ?? getal(a?.aantal) ?? 0
+    // Twee schrijfwijzen per veld; een nul telt als "niet ingevuld", net als in
+    // `afgevuldeLiters` (utils/receptKostprijs.ts) — anders rekent het verlies
+    // met andere liters dan de verpakking.
+    const inhoud = (getal(a?.inhoud_per_eenheid) || 0) || (getal(a?.inhoud_liter) || 0)
+    const stuks = (getal(a?.hoeveelheid) || 0) || (getal(a?.aantal) || 0)
     const liters = inhoud * stuks
     if (liters <= 0) continue
 
@@ -116,6 +123,8 @@ function mixVoorBatches(invoer: VerpakkingMixInvoer, bron: VerpakkingMix['bron']
     const sleutel = vp?.id != null ? `id:${vp.id}` : `naam:${naam.toLowerCase()}`
     const kostenPerStuk = rond(verpakkingKostenPerStuk(vp, invoer.onderdelen), 4)
     const eenheidInhoud = inhoud || (getal(vp?.inhoud_liter) ?? 0)
+
+    if (eenheidInhoud > 0) totaalKosten += (kostenPerStuk / eenheidInhoud) * liters
 
     const bestaand = perVerpakking.get(sleutel)
     if (bestaand) {
@@ -135,16 +144,16 @@ function mixVoorBatches(invoer: VerpakkingMixInvoer, bron: VerpakkingMix['bron']
     gezien.add(Number(a.batch_id))
   }
 
-  if (totaalLiters <= 0) return LEEG
+  if (totaalLiters <= 0) return leeg()
 
   const regels = [...perVerpakking.values()]
     .map(r => ({...r, aandeel: rond(r.liters / totaalLiters, 4)}))
     .sort((a, b) => b.liters - a.liters)
-  const perLiter = rond(regels.reduce((s, r) => s + r.kostenPerLiter * r.liters, 0) / totaalLiters, 4)
+  const perLiter = rond(totaalKosten / totaalLiters, 4)
 
   // Alles op nul betekent dat je de verpakkingsprijzen nog niet hebt ingevuld —
   // dat is geen mix van nul euro, dat is "onbekend".
-  if (perLiter <= 0) return LEEG
+  if (perLiter <= 0) return leeg()
 
   return {regels, perLiter, bron, batches: gezien.size, liters: rond(totaalLiters, 1)}
 }
@@ -163,6 +172,6 @@ export function verpakkingMix(
 ): VerpakkingMix {
   const eigen = mixVoorBatches({...rest, batches: eigenBatches}, 'recept')
   if (eigen.bron !== 'geen') return eigen
-  if (!alleBatches?.length) return LEEG
+  if (!alleBatches?.length) return leeg()
   return mixVoorBatches({...rest, batches: alleBatches}, 'brouwerij')
 }

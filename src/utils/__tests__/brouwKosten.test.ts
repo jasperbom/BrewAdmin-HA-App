@@ -16,8 +16,9 @@ describe('brouwKosten — gemeten op de eigen brouwsels', () => {
     expect(post(k, 'schoonmaak').perBrouw).toBe(13)
     expect(k.perBrouw).toBe(64)
     expect(k.bron).toBe('gemeten')
-    expect(k.van).toBe('2026-01-10')
+    // Het venster is dat van de boekhouding: minstens een jaar tot de laatste brouw.
     expect(k.tot).toBe('2026-04-10')
+    expect(k.van).toBe('2025-04-10')
   })
 
   it('slaat brouwsels zonder waarde over in plaats van ze als nul te middelen', () => {
@@ -31,7 +32,7 @@ describe('brouwKosten — gemeten op de eigen brouwsels', () => {
     const oud = {id: 0, datum: '2020-01-01', liter_vergist: 400, electra_kosten: 200}
     const k = brouwKosten({batches: [oud, ...batches], maxBatches: 2})
     expect(post(k, 'elektra').perBrouw).toBe(42)
-    expect(k.van).toBe('2026-01-10')
+    expect(post(k, 'elektra').batches).toBe(2)
   })
 
   it('een post waarover niets bekend is blijft nul en zegt dat', () => {
@@ -74,6 +75,37 @@ describe('brouwKosten — uit de boekhouding', () => {
     expect(k.perBrouw).toBe(0)
     expect(k.bron).toBe('geen')
     expect(post(k, 'overig').perBrouw).toBe(0)
+  })
+
+  it('telt een geplande brouw niet mee als brouwsel', () => {
+    const k = brouwKosten({
+      batches: [
+        {id: 1, datum: '2026-03-01', liter_vergist: 400, status: 'Afgevuld'},
+        {id: 2, datum: '2026-04-01', status: 'Gepland'},   // nooit gebrouwen
+        {id: 3, datum: '2026-05-01', liter_vergist: 400, status: 'Afgevuld'},
+      ],
+      inkoopFacturen: [{id: 1, datum: '2026-04-01', regels: [{kostensoort: 'Energie', netto: 90}]}],
+    })
+    expect(k.batches).toBe(2)
+    expect(post(k, 'elektra').perBrouw).toBe(45)
+  })
+
+  it('kijkt minstens een jaar terug, zodat één brouwsel geen leeg venster is', () => {
+    const k = brouwKosten({
+      batches: [{id: 1, datum: '2026-05-10', liter_vergist: 400}],
+      inkoopFacturen: [{id: 1, datum: '2026-04-01', regels: [{kostensoort: 'Energie', netto: 90}]}],
+    })
+    expect(k.van).toBe('2025-05-10')
+    expect(k.tot).toBe('2026-05-10')
+    expect(post(k, 'elektra')).toMatchObject({perBrouw: 90, bron: 'boekhouding'})
+  })
+
+  it('rekent niets toe zonder datums — dan is er geen periode', () => {
+    const k = brouwKosten({
+      batches: [{id: 1, liter_vergist: 400}],
+      inkoopFacturen: [{id: 1, datum: '2026-04-01', regels: [{kostensoort: 'Energie', netto: 90}]}],
+    })
+    expect(k.bron).toBe('geen')
   })
 
   it('negeert facturen buiten de periode van de brouwsels', () => {

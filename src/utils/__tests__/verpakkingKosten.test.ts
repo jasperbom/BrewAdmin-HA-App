@@ -106,6 +106,25 @@ describe('verpakkingMix', () => {
     expect(mix).toMatchObject({bron: 'geen', perLiter: 0, regels: []})
   })
 
+  it('leest oudere afvullingen die alleen `aantal` en `inhoud_liter` hebben', () => {
+    const mix = verpakkingMix([{id: 11}], null, {
+      afvullingen: [{id: 1, batch_id: 11, verpakking_naam: 'Fust 20L', inhoud_liter: 20, aantal: 5, hoeveelheid: 0}],
+      verpakkingen: VERPAKKINGEN, onderdelen: ONDERDELEN,
+    })
+    expect(mix.liters).toBe(100)
+    expect(mix.perLiter).toBeCloseTo(0.125, 4)
+  })
+
+  it('houdt het totaal kloppend bij een repeterende breuk', () => {
+    // €0,32 / 0,33 L rondt nooit netjes af; 3000 flessen moeten toch gewoon
+    // €960 opleveren.
+    const mix = verpakkingMix([{id: 11}], null, {
+      afvullingen: [{id: 1, batch_id: 11, verpakking_id: 1, inhoud_per_eenheid: 0.33, hoeveelheid: 3000}],
+      verpakkingen: VERPAKKINGEN, onderdelen: ONDERDELEN,
+    })
+    expect(mix.perLiter * mix.liters).toBeCloseTo(3000 * 0.32, 1)
+  })
+
   it('geeft niets terug zonder afvullingen', () => {
     expect(verpakkingMix([{id: 11}], null, {afvullingen: [], verpakkingen: VERPAKKINGEN}).bron).toBe('geen')
     expect(verpakkingMix(null, null, {afvullingen, verpakkingen: VERPAKKINGEN}).bron).toBe('geen')
