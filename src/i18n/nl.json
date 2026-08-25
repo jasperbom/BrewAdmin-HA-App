@@ -3466,7 +3466,7 @@
   "batch_afwijking_overnemen": "Overnemen",
   "batch_stat_kostprijs": "Kostprijs/L",
   "batch_trend_tip": "Vorige brouw {vorige}, laatste {laatste}",
-  "recipe_cost_title": "Kostprijs per liter",
+  "recipe_cost_title": "Kostprijs",
   "recipe_cost_per_liter_short": "/verkoopbare liter",
   "recipe_cost_unknown": "nog geen batchgrootte",
   "recipe_cost_per_sellable": "Per verkoopbare liter",
@@ -3508,5 +3508,8 @@
   "recipe_cost_packaging_own": "uit je eigen afvullingen van dit bier ({n} brouwsels)",
   "recipe_cost_packaging_brewery": "gemiddelde verpakkingsmix van de brouwerij ({n} brouwsels)",
   "recipe_cost_packaging_hint": "Vul de prijs van fles, kroonkurk, etiket of fust in bij Ingrediënten → Verpakkingen, dan telt de app de verpakking mee.",
-  "recipe_cost_subtotal_ingredients": "Ingrediënten"
+  "recipe_cost_subtotal_ingredients": "Ingrediënten",
+  "recipe_cost_per_unit_of": "Per {v}",
+  "recipe_cost_unit_split": "bier {b} + verpakking {p}",
+  "recipe_cost_unit_beer_only": "bier {b} — verpakking nog onbekend"
 }

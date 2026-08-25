@@ -3466,7 +3466,7 @@
   "batch_afwijking_overnemen": "Reprendre",
   "batch_stat_kostprijs": "Coût/L",
   "batch_trend_tip": "Brassin précédent {vorige}, dernier {laatste}",
-  "recipe_cost_title": "Coût par litre",
+  "recipe_cost_title": "Prix de revient",
   "recipe_cost_per_liter_short": "/litre vendable",
   "recipe_cost_unknown": "pas encore de volume de brassin",
   "recipe_cost_per_sellable": "Par litre vendable",
@@ -3508,5 +3508,8 @@
   "recipe_cost_packaging_own": "depuis tes propres conditionnements de cette bière ({n} brassins)",
   "recipe_cost_packaging_brewery": "mélange d'emballages moyen de la brasserie ({n} brassins)",
   "recipe_cost_packaging_hint": "Saisis le prix de la bouteille, de la capsule, de l’étiquette ou du fût dans Ingrédients → Emballages, et l’app comptera l’emballage.",
-  "recipe_cost_subtotal_ingredients": "Ingrédients"
+  "recipe_cost_subtotal_ingredients": "Ingrédients",
+  "recipe_cost_per_unit_of": "Par {v}",
+  "recipe_cost_unit_split": "bière {b} + emballage {p}",
+  "recipe_cost_unit_beer_only": "bière {b} — emballage encore inconnu"
 }

@@ -68,7 +68,9 @@ BrewAdmin-HA-App/
 │   │   │                   # gemiddeld verlies uit de eigen brouwhistorie (vergist versus
 │   │   │                   # afgevuld, gewogen op liters; anders de verliesposten, anders 8%),
 │   │   │                   # verpakking over de liters ná verlies, en de kostprijs per
-│   │   │                   # brouwzaalliter én per verkoopbare liter
+│   │   │                   # brouwzaalliter, per verkoopbare liter én per verpakte eenheid
+│   │   │                   # (`kostprijsPerEenheid`: bier per liter + de échte verpakkingsprijs
+│   │   │                   # van díe eenheid, eenheid uit de eigen afvulmix)
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,

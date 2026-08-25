@@ -3466,7 +3466,7 @@
   "batch_afwijking_overnemen": "Use this",
   "batch_stat_kostprijs": "Cost/L",
   "batch_trend_tip": "Previous brew {vorige}, latest {laatste}",
-  "recipe_cost_title": "Cost per litre",
+  "recipe_cost_title": "Cost price",
   "recipe_cost_per_liter_short": "/sellable litre",
   "recipe_cost_unknown": "no batch size yet",
   "recipe_cost_per_sellable": "Per sellable litre",
@@ -3508,5 +3508,8 @@
   "recipe_cost_packaging_own": "from your own fillings of this beer ({n} brews)",
   "recipe_cost_packaging_brewery": "average packaging mix of the brewery ({n} brews)",
   "recipe_cost_packaging_hint": "Enter the price of the bottle, cap, label or keg under Ingredients → Packaging, and the app will count packaging in.",
-  "recipe_cost_subtotal_ingredients": "Ingredients"
+  "recipe_cost_subtotal_ingredients": "Ingredients",
+  "recipe_cost_per_unit_of": "Per {v}",
+  "recipe_cost_unit_split": "beer {b} + packaging {p}",
+  "recipe_cost_unit_beer_only": "beer {b} — packaging still unknown"
 }

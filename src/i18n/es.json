@@ -3466,7 +3466,7 @@
   "batch_afwijking_overnemen": "Usar este",
   "batch_stat_kostprijs": "Coste/L",
   "batch_trend_tip": "Lote anterior {vorige}, último {laatste}",
-  "recipe_cost_title": "Coste por litro",
+  "recipe_cost_title": "Coste de producción",
   "recipe_cost_per_liter_short": "/litro vendible",
   "recipe_cost_unknown": "aún sin tamaño de lote",
   "recipe_cost_per_sellable": "Por litro vendible",
@@ -3508,5 +3508,8 @@
   "recipe_cost_packaging_own": "de tus propios envasados de esta cerveza ({n} elaboraciones)",
   "recipe_cost_packaging_brewery": "mezcla de envases media de la fábrica ({n} elaboraciones)",
   "recipe_cost_packaging_hint": "Introduce el precio de la botella, chapa, etiqueta o barril en Ingredientes → Envases y la app contará el envase.",
-  "recipe_cost_subtotal_ingredients": "Ingredientes"
+  "recipe_cost_subtotal_ingredients": "Ingredientes",
+  "recipe_cost_per_unit_of": "Por {v}",
+  "recipe_cost_unit_split": "cerveza {b} + envase {p}",
+  "recipe_cost_unit_beer_only": "cerveza {b} — envase aún desconocido"
 }
