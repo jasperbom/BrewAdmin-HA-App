@@ -175,3 +175,69 @@ export function verpakkingMix(
   if (!alleBatches?.length) return leeg()
   return mixVoorBatches({...rest, batches: alleBatches}, 'brouwerij')
 }
+
+// ── De referentieverpakking bij een recept ──────────────────────────────────
+
+/**
+ * Standaardmaat voor een voorcalculatie. Bij het recept reken je met één
+ * verpakking in plaats van met je hele afvulmix: dat maakt de uitkomst
+ * overzichtelijk én recepten onderling vergelijkbaar. De fles van 33 cl is de
+ * gangbare maat.
+ */
+export const REFERENTIE_INHOUD = 0.33
+
+export interface ReferentieVerpakking {
+  naam: string
+  inhoud: number
+  kostenPerStuk: number
+  kostenPerLiter: number
+  /**
+   * `verpakking` = een verpakking van de referentiemaat uit je eigen lijst;
+   * `mix`        = geen zo'n verpakking bekend, dus toch de afvulmix;
+   * `geen`       = niets bekend.
+   */
+  bron: 'verpakking' | 'mix' | 'geen'
+}
+
+/**
+ * De verpakking waarmee de voorcalculatie rekent: die van de referentiemaat
+ * (33 cl). Staat er meer dan één, dan wint degene waarin je dit bier het
+ * meest afvult. Ken je die maat niet, dan valt de berekening terug op de
+ * afvulmix — beter een gewogen gemiddelde dan niets.
+ */
+export function referentieVerpakking(
+  verpakkingen?: any[] | null,
+  onderdelen?: any[] | null,
+  mix?: VerpakkingMix | null,
+  inhoud = REFERENTIE_INHOUD,
+): ReferentieVerpakking {
+  const marge = 0.005
+  const kandidaten = (verpakkingen || [])
+    .map((v: any) => ({v, inhoud: getal(v?.inhoud_liter) ?? 0, kosten: verpakkingKostenPerStuk(v, onderdelen)}))
+    .filter(k => Math.abs(k.inhoud - inhoud) <= marge && k.kosten > 0)
+
+  if (kandidaten.length) {
+    // Meest gebruikte eerst: het aandeel uit de afvulmix beslist.
+    const aandeel = (id: any, naam: string): number => {
+      const r = (mix?.regels || []).find(x =>
+        (x.verpakkingId != null && Number(x.verpakkingId) === Number(id)) ||
+        (!!naam && x.naam.toLowerCase() === naam.toLowerCase()))
+      return r?.aandeel ?? 0
+    }
+    const beste = [...kandidaten].sort((a, b) =>
+      aandeel(b.v?.id, String(b.v?.naam || '')) - aandeel(a.v?.id, String(a.v?.naam || '')))[0]
+    return {
+      naam: String(beste.v?.naam || ''),
+      inhoud: beste.inhoud,
+      kostenPerStuk: rond(beste.kosten, 4),
+      kostenPerLiter: rond(beste.kosten / beste.inhoud, 4),
+      bron: 'verpakking',
+    }
+  }
+
+  if (mix && mix.bron !== 'geen' && mix.perLiter > 0) {
+    return {naam: '', inhoud, kostenPerStuk: rond(mix.perLiter * inhoud, 4),
+            kostenPerLiter: mix.perLiter, bron: 'mix'}
+  }
+  return {naam: '', inhoud, kostenPerStuk: 0, kostenPerLiter: 0, bron: 'geen'}
+}

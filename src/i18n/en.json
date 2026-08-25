@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "no price",
   "recipe_cost_price_last": "(last purchase)",
   "recipe_cost_price_last_tip": "Nothing left in stock — calculated with the price of the last purchase.",
-  "recipe_cost_note": "Pre-calculation: ingredient prices from the lots you currently hold, packaging from your own filling mix, excluding excise duty and labour.",
+  "recipe_cost_note": "Pre-calculation: ingredient prices from the lots you currently hold, packaging calculated on the 33 cl bottle, excluding excise duty and labour.",
   "recipe_cost_overhead_measured": "average of your last {n} brews",
   "recipe_cost_overhead_books": "from the energy, water and cleaning invoices ({van} to {tot}), divided by {n} brews",
   "recipe_cost_overhead_manual": "set manually",
@@ -3503,13 +3503,13 @@
   "recipe_cost_src_books": "from the books",
   "recipe_cost_src_manual": "manual",
   "recipe_cost_packaging": "Packaging",
-  "recipe_cost_packaging_per_liter": "per filled litre",
-  "recipe_cost_packaging_per_unit": "per unit",
-  "recipe_cost_packaging_own": "from your own fillings of this beer ({n} brews)",
-  "recipe_cost_packaging_brewery": "average packaging mix of the brewery ({n} brews)",
   "recipe_cost_packaging_hint": "Enter the price of the bottle, cap, label or keg under Ingredients → Packaging, and the app will count packaging in.",
   "recipe_cost_subtotal_ingredients": "Ingredients",
   "recipe_cost_per_unit_of": "Per {v}",
   "recipe_cost_unit_split": "beer {b} + packaging {p}",
-  "recipe_cost_unit_beer_only": "beer {b} — packaging still unknown"
+  "recipe_cost_unit_beer_only": "beer {b} — packaging still unknown",
+  "recipe_cost_packaging_ref": "calculated with {v} · {p} per unit",
+  "recipe_cost_packaging_units": "≈ {n} units per brew",
+  "recipe_cost_packaging_no_ref": "No 33 cl packaging found — calculated with your own filling mix. Add one under Ingredients → Packaging.",
+  "recipe_cost_packaging_actual": "You actually fill this beer as:"
 }

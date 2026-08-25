@@ -288,7 +288,7 @@ describe('kostprijsPerEenheid', () => {
   })
 
   it('rekent het bier per liter en de échte verpakking van die eenheid', () => {
-    const eenheden = kostprijsPerEenheid(k, mix)
+    const eenheden = kostprijsPerEenheid(k, mix.regels)
     const fles = eenheden[0]
     expect(fles.naam).toBe('Fles 33cL')
     expect(fles.bier).toBeCloseTo(0.625 * 0.33, 3)   // €0,206
@@ -297,19 +297,19 @@ describe('kostprijsPerEenheid', () => {
   })
 
   it('zet de meest gebruikte verpakking voorop', () => {
-    const eenheden = kostprijsPerEenheid(k, mix)
+    const eenheden = kostprijsPerEenheid(k, mix.regels)
     expect(eenheden.map(e => e.naam)).toEqual(['Fles 33cL', 'Fust 20L'])
     expect(eenheden[0].aandeel).toBeCloseTo(0.748, 2)
   })
 
   it('een fust is per liter goedkoper dan een fles', () => {
-    const [fles, fust] = kostprijsPerEenheid(k, mix)
+    const [fles, fust] = kostprijsPerEenheid(k, mix.regels)
     expect(fust.totaal / fust.inhoud).toBeLessThan(fles.totaal / fles.inhoud)
     expect(fust.totaal).toBeCloseTo(0.625 * 20 + 2.5, 3)
   })
 
   it('de eenheden samen komen uit op de kostprijs per verkoopbare liter', () => {
-    const eenheden = kostprijsPerEenheid(k, mix)
+    const eenheden = kostprijsPerEenheid(k, mix.regels)
     const perLiter = eenheden.reduce((s, e) => s + e.aandeel * (e.totaal / e.inhoud), 0)
     expect(perLiter).toBeCloseTo(k.perLiterVerkoopbaar!, 2)
   })
@@ -324,6 +324,6 @@ describe('kostprijsPerEenheid', () => {
 
   it('geeft niets terug zonder verkoopbare liters', () => {
     const leeg = receptKostprijs({recept: {mout: []}, ingredienten: INGREDIENTEN, lots: LOTS})
-    expect(kostprijsPerEenheid(leeg, mix)).toEqual([])
+    expect(kostprijsPerEenheid(leeg, mix.regels)).toEqual([])
   })
 })

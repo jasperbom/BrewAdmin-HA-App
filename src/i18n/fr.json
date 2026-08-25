@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "pas de prix",
   "recipe_cost_price_last": "(dernier achat)",
   "recipe_cost_price_last_tip": "Plus rien en stock — calculé avec le prix du dernier achat.",
-  "recipe_cost_note": "Calcul prévisionnel : prix des ingrédients des lots en stock, emballage selon ton propre mix, hors accises et main-d'œuvre.",
+  "recipe_cost_note": "Calcul prévisionnel : prix des ingrédients des lots en stock, emballage calculé sur la bouteille de 33 cl, hors accises et main-d'œuvre.",
   "recipe_cost_overhead_measured": "moyenne de tes {n} derniers brassins",
   "recipe_cost_overhead_books": "à partir des factures d'énergie, d'eau et de nettoyage ({van} au {tot}), divisées par {n} brassins",
   "recipe_cost_overhead_manual": "défini manuellement",
@@ -3503,13 +3503,13 @@
   "recipe_cost_src_books": "depuis la comptabilité",
   "recipe_cost_src_manual": "manuel",
   "recipe_cost_packaging": "Emballage",
-  "recipe_cost_packaging_per_liter": "par litre embouteillé",
-  "recipe_cost_packaging_per_unit": "par unité",
-  "recipe_cost_packaging_own": "depuis tes propres conditionnements de cette bière ({n} brassins)",
-  "recipe_cost_packaging_brewery": "mélange d'emballages moyen de la brasserie ({n} brassins)",
   "recipe_cost_packaging_hint": "Saisis le prix de la bouteille, de la capsule, de l’étiquette ou du fût dans Ingrédients → Emballages, et l’app comptera l’emballage.",
   "recipe_cost_subtotal_ingredients": "Ingrédients",
   "recipe_cost_per_unit_of": "Par {v}",
   "recipe_cost_unit_split": "bière {b} + emballage {p}",
-  "recipe_cost_unit_beer_only": "bière {b} — emballage encore inconnu"
+  "recipe_cost_unit_beer_only": "bière {b} — emballage encore inconnu",
+  "recipe_cost_packaging_ref": "calculé avec {v} · {p} par unité",
+  "recipe_cost_packaging_units": "≈ {n} unités par brassin",
+  "recipe_cost_packaging_no_ref": "Aucun emballage de 33 cl trouvé — calculé avec ton propre mix. Ajoutes-en un dans Ingrédients → Emballages.",
+  "recipe_cost_packaging_actual": "En réalité tu conditionnes cette bière en :"
 }

@@ -21,7 +21,6 @@
 // Puur rekenwerk: geen React, geen opslag.
 
 import { convertEenheid } from './constants'
-import { VerpakkingMix } from './verpakkingKosten'
 
 const getal = (x: any): number | null => {
   if (x === null || x === undefined || String(x).trim() === '') return null
@@ -384,6 +383,14 @@ export interface EenheidKostprijs {
   totaal: number
 }
 
+/** Eén verpakking om mee te rekenen. `VerpakkingMixRegel` past hier zo in. */
+export interface EenheidInvoer {
+  naam: string
+  inhoud: number
+  kostenPerStuk: number
+  aandeel?: number
+}
+
 /**
  * De kostprijs per verpakte eenheid — "wat kost één fles" leest nu eenmaal
  * makkelijker dan een prijs per liter.
@@ -394,20 +401,21 @@ export interface EenheidKostprijs {
  * kosten over de verkoopbare liters) en tellen we de échte verpakkingsprijs van
  * díe eenheid erbij.
  *
- * De eenheden komen uit je eigen afvulmix, meest gebruikte eerst. Ken je die
- * nog niet, dan blijft er één standaardeenheid over (33 cl) met alleen het
- * bier — de verpakking is dan immers onbekend.
+ * Geef één eenheid mee (de referentieverpakking bij een recept) of meerdere
+ * (bijvoorbeeld je hele afvulmix). Geen enkele bruikbare eenheid? Dan blijft er
+ * één standaardeenheid over (33 cl) met alleen het bier — de verpakking is dan
+ * immers onbekend.
  */
 export function kostprijsPerEenheid(
   kostprijs: ReceptKostprijs,
-  mix?: VerpakkingMix | null,
+  eenheden?: EenheidInvoer[] | null,
   standaardInhoud = 0.33,
 ): EenheidKostprijs[] {
   const liters = kostprijs.litersNaVerlies
   if (liters <= 0) return []
   const bierPerLiter = (kostprijs.ingredientKosten + kostprijs.overigeKosten) / liters
 
-  const regels = (mix?.regels || []).filter(r => r.inhoud > 0)
+  const regels = (eenheden || []).filter(r => r && r.inhoud > 0)
   if (!regels.length) {
     const bier = rond(bierPerLiter * standaardInhoud, 3)
     return [{naam: '', inhoud: standaardInhoud, aandeel: 0, bier, verpakking: 0, totaal: bier}]
@@ -417,7 +425,7 @@ export function kostprijsPerEenheid(
     const bier = rond(bierPerLiter * r.inhoud, 3)
     const verpakking = rond(r.kostenPerStuk, 3)
     return {
-      naam: r.naam, inhoud: r.inhoud, aandeel: r.aandeel,
+      naam: r.naam, inhoud: r.inhoud, aandeel: r.aandeel ?? 0,
       bier, verpakking, totaal: rond(bier + verpakking, 3),
     }
   })

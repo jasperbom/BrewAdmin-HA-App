@@ -61,8 +61,9 @@ BrewAdmin-HA-App/
 │   │   ├── verpakkingKosten.ts # Kostprijs van één verpakte eenheid (onderdelen, anders de
 │   │   │                   # losse velden) — de enige implementatie, ook gebruikt door
 │   │   │                   # `berekenBatchKostprijs` en de pagina's — plus de verpakkingsmix
-│   │   │                   # per liter, afgeleid uit de eigen afvullingen (anders die van de
-│   │   │                   # hele brouwerij)
+│   │   │                   # per liter uit de eigen afvullingen (anders die van de hele
+│   │   │                   # brouwerij) en `referentieVerpakking`: de 33 cl-fles waarmee de
+│   │   │                   # receptvoorcalculatie rekent (mix = terugval)
 │   │   ├── receptKostprijs.ts # Voorcalculatie bij het recept: prijs per ingrediënt uit de lots
 │   │   │                   # (gewogen gemiddelde van wat er ligt, anders de laatste inkoop),
 │   │   │                   # gemiddeld verlies uit de eigen brouwhistorie (vergist versus
@@ -70,7 +71,7 @@ BrewAdmin-HA-App/
 │   │   │                   # verpakking over de liters ná verlies, en de kostprijs per
 │   │   │                   # brouwzaalliter, per verkoopbare liter én per verpakte eenheid
 │   │   │                   # (`kostprijsPerEenheid`: bier per liter + de échte verpakkingsprijs
-│   │   │                   # van díe eenheid, eenheid uit de eigen afvulmix)
+│   │   │                   # van díe eenheid; het recept rekent op de 33 cl-fles)
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,

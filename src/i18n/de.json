@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "kein Preis",
   "recipe_cost_price_last": "(letzter Einkauf)",
   "recipe_cost_price_last_tip": "Nichts mehr auf Lager — gerechnet mit dem Preis des letzten Einkaufs.",
-  "recipe_cost_note": "Vorkalkulation: Zutatenpreise aus den vorhandenen Chargen, Verpackung aus deinem eigenen Abfüllmix, ohne Verbrauchsteuer und Arbeit.",
+  "recipe_cost_note": "Vorkalkulation: Zutatenpreise aus den vorhandenen Chargen, Verpackung gerechnet auf die 33-cl-Flasche, ohne Verbrauchsteuer und Arbeit.",
   "recipe_cost_overhead_measured": "Durchschnitt deiner letzten {n} Sude",
   "recipe_cost_overhead_books": "aus den Energie-, Wasser- und Reinigungsrechnungen ({van} bis {tot}), geteilt durch {n} Sude",
   "recipe_cost_overhead_manual": "manuell festgelegt",
@@ -3503,13 +3503,13 @@
   "recipe_cost_src_books": "aus der Buchhaltung",
   "recipe_cost_src_manual": "manuell",
   "recipe_cost_packaging": "Verpackung",
-  "recipe_cost_packaging_per_liter": "pro abgefülltem Liter",
-  "recipe_cost_packaging_per_unit": "pro Stück",
-  "recipe_cost_packaging_own": "aus deinen eigenen Abfüllungen dieses Bieres ({n} Sude)",
-  "recipe_cost_packaging_brewery": "durchschnittlicher Verpackungsmix der Brauerei ({n} Sude)",
   "recipe_cost_packaging_hint": "Trage den Preis von Flasche, Kronkorken, Etikett oder Fass unter Zutaten → Verpackungen ein, dann rechnet die App die Verpackung mit.",
   "recipe_cost_subtotal_ingredients": "Zutaten",
   "recipe_cost_per_unit_of": "Pro {v}",
   "recipe_cost_unit_split": "Bier {b} + Verpackung {p}",
-  "recipe_cost_unit_beer_only": "Bier {b} — Verpackung noch unbekannt"
+  "recipe_cost_unit_beer_only": "Bier {b} — Verpackung noch unbekannt",
+  "recipe_cost_packaging_ref": "gerechnet mit {v} · {p} pro Stück",
+  "recipe_cost_packaging_units": "≈ {n} Stück pro Sud",
+  "recipe_cost_packaging_no_ref": "Keine 33-cl-Verpackung gefunden — gerechnet mit deinem eigenen Abfüllmix. Lege eine an unter Zutaten → Verpackungen.",
+  "recipe_cost_packaging_actual": "Tatsächlich füllst du dieses Bier ab als:"
 }

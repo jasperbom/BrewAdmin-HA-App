@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.21] — 2026-08-24
+
+### De voorcalculatie rekent op de fles van 33 cl
+
+Rekenen met je hele afvulmix (89% fles, 11% fust) is nauwkeurig, maar geen
+maatstaf: twee recepten worden er onvergelijkbaar van, en een fles waarvan de
+prijs deels uit fustliters bestaat is lastig te lezen. Bij het recept rekent de
+app daarom met één verpakking — de fles van 33 cl, de gangbare maat.
+
+- `referentieVerpakking` zoekt in je eigen verpakkingen die van 33 cl (marge
+  van 5 mL, dus 0,330 telt ook). Staan er meer, dan wint degene waarin je dit
+  bier het meest afvult; heeft die geen prijs, dan de volgende.
+- Geen 33 cl-verpakking in de lijst? Dan valt de berekening terug op de
+  afvulmix en zegt het paneel dat erbij, met de tip er een aan te maken.
+- Het paneel toont wat je écht doet als extra regel ("Je vult dit bier af als:
+  Fles 33cL 89% · Fust 20L 11%") — informatief, maar de voorcalculatie blijft
+  op de referentieverpakking.
+- Nieuw op de verpakkingsregel: hoeveel eenheden een brouw oplevert
+  (≈ 1.071 flessen).
+
+`kostprijsPerEenheid` neemt nu een lijst verpakkingen in plaats van de mix, zodat
+dezelfde functie zowel één referentieverpakking als een hele afvulmix aankan.
+
+---
+
 ## [1.12.20] — 2026-08-24
 
 ### Kostprijs per fles, niet per liter
