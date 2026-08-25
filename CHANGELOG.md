@@ -4,6 +4,60 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.21] — 2026-08-24
+
+### De voorcalculatie rekent op de fles van 33 cl
+
+Rekenen met je hele afvulmix (89% fles, 11% fust) is nauwkeurig, maar geen
+maatstaf: twee recepten worden er onvergelijkbaar van, en een fles waarvan de
+prijs deels uit fustliters bestaat is lastig te lezen. Bij het recept rekent de
+app daarom met één verpakking — de fles van 33 cl, de gangbare maat.
+
+- `referentieVerpakking` zoekt in je eigen verpakkingen die van 33 cl (marge
+  van 5 mL, dus 0,330 telt ook). Staan er meer, dan wint degene waarin je dit
+  bier het meest afvult; heeft die geen prijs, dan de volgende.
+- Geen 33 cl-verpakking in de lijst? Dan valt de berekening terug op de
+  afvulmix en zegt het paneel dat erbij, met de tip er een aan te maken.
+- Het paneel toont wat je écht doet als extra regel ("Je vult dit bier af als:
+  Fles 33cL 89% · Fust 20L 11%") — informatief, maar de voorcalculatie blijft
+  op de referentieverpakking.
+- Nieuw op de verpakkingsregel: hoeveel eenheden een brouw oplevert
+  (≈ 1.071 flessen).
+
+`kostprijsPerEenheid` neemt nu een lijst verpakkingen in plaats van de mix, zodat
+dezelfde functie zowel één referentieverpakking als een hele afvulmix aankan.
+
+---
+
+## [1.12.20] — 2026-08-24
+
+### Kostprijs per fles, niet per liter
+
+Een prijs per liter zegt weinig als je in flessen verkoopt. Het paneel toont nu
+de kostprijs van één verpakte eenheid als hoofdgetal:
+
+```
+PER FLES 33CL                 PER VERKOOPBARE LITER
+€0,509                        €1,448
+bier €0,189 + verpakking €0,32   na 11,6% verlies · Per liter uit de gistkuip: €1,28
+
+Per Fust 20L: €13,98 · 11%
+```
+
+Bewust géén literprijs × 0,33: de verpakking verschilt per eenheid. Een fles
+kost €0,32 aan glas, kroonkurk en etiket; een liter uit een fust maar €0,125.
+Dus rekent `kostprijsPerEenheid` het bier per liter (ingrediënten + vaste
+kosten over de verkoopbare liters) en telt daar de échte verpakkingsprijs van
+díe eenheid bij op.
+
+Welke eenheid? Die met het grootste aandeel in je eigen afvullingen — dezelfde
+mix die de verpakkingskosten al voedt. De andere verpakkingen staan eronder, zo
+zie je meteen wat een fust per stuk kost. Nog geen afvulhistorie? Dan één
+standaardeenheid van 33 cl met alleen het bier, want de verpakking is dan
+onbekend.
+
+---
+
 ## [1.12.19] — 2026-08-24
 
 ### Vier scheefheden in de voorcalculatie rechtgezet

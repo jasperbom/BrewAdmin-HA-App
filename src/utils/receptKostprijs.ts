@@ -366,3 +366,67 @@ export function receptKostprijs(invoer: ReceptKostprijsInvoer): ReceptKostprijs 
     perLiterVerkoopbaar: litersNaVerlies > 0 ? rond(totaal / litersNaVerlies, 3) : null,
   }
 }
+
+// ── Wat kost één fles? ──────────────────────────────────────────────────────
+
+export interface EenheidKostprijs {
+  /** Naam van de verpakking, of leeg bij de standaardeenheid. */
+  naam: string
+  /** Inhoud van één eenheid in liters. */
+  inhoud: number
+  /** Aandeel van deze verpakking in je afvullingen (0–1); 0 = standaardeenheid. */
+  aandeel: number
+  /** Het bier zelf: ingrediënten en vaste kosten over deze inhoud. */
+  bier: number
+  /** De verpakking zelf: fles + kroonkurk + etiket, of het fust. */
+  verpakking: number
+  totaal: number
+}
+
+/** Eén verpakking om mee te rekenen. `VerpakkingMixRegel` past hier zo in. */
+export interface EenheidInvoer {
+  naam: string
+  inhoud: number
+  kostenPerStuk: number
+  aandeel?: number
+}
+
+/**
+ * De kostprijs per verpakte eenheid — "wat kost één fles" leest nu eenmaal
+ * makkelijker dan een prijs per liter.
+ *
+ * Bewust niet simpelweg de literprijs × 0,33: de verpakking verschilt per
+ * eenheid. Een fles kost €0,32 aan glas, kroonkurk en etiket, een liter uit een
+ * fust maar €0,125. Dus rekenen we het bier per liter (ingrediënten en vaste
+ * kosten over de verkoopbare liters) en tellen we de échte verpakkingsprijs van
+ * díe eenheid erbij.
+ *
+ * Geef één eenheid mee (de referentieverpakking bij een recept) of meerdere
+ * (bijvoorbeeld je hele afvulmix). Geen enkele bruikbare eenheid? Dan blijft er
+ * één standaardeenheid over (33 cl) met alleen het bier — de verpakking is dan
+ * immers onbekend.
+ */
+export function kostprijsPerEenheid(
+  kostprijs: ReceptKostprijs,
+  eenheden?: EenheidInvoer[] | null,
+  standaardInhoud = 0.33,
+): EenheidKostprijs[] {
+  const liters = kostprijs.litersNaVerlies
+  if (liters <= 0) return []
+  const bierPerLiter = (kostprijs.ingredientKosten + kostprijs.overigeKosten) / liters
+
+  const regels = (eenheden || []).filter(r => r && r.inhoud > 0)
+  if (!regels.length) {
+    const bier = rond(bierPerLiter * standaardInhoud, 3)
+    return [{naam: '', inhoud: standaardInhoud, aandeel: 0, bier, verpakking: 0, totaal: bier}]
+  }
+
+  return regels.map(r => {
+    const bier = rond(bierPerLiter * r.inhoud, 3)
+    const verpakking = rond(r.kostenPerStuk, 3)
+    return {
+      naam: r.naam, inhoud: r.inhoud, aandeel: r.aandeel ?? 0,
+      bier, verpakking, totaal: rond(bier + verpakking, 3),
+    }
+  })
+}

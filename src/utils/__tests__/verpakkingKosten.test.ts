@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { verpakkingKostenPerStuk, vindVerpakking, verpakkingMix } from '../verpakkingKosten'
+import { verpakkingKostenPerStuk, vindVerpakking, verpakkingMix, referentieVerpakking, REFERENTIE_INHOUD } from '../verpakkingKosten'
 
 const ONDERDELEN = [
   {id: 1, naam: 'Fles 33cl', kosten_per_stuk: 0.22},
@@ -128,5 +128,67 @@ describe('verpakkingMix', () => {
   it('geeft niets terug zonder afvullingen', () => {
     expect(verpakkingMix([{id: 11}], null, {afvullingen: [], verpakkingen: VERPAKKINGEN}).bron).toBe('geen')
     expect(verpakkingMix(null, null, {afvullingen, verpakkingen: VERPAKKINGEN}).bron).toBe('geen')
+  })
+})
+
+// ── referentieVerpakking ────────────────────────────────────────────────────
+
+describe('referentieVerpakking', () => {
+  const mixMetFust = verpakkingMix([{id: 11}], null, {
+    afvullingen: [
+      {batch_id: 11, verpakking_id: 1, inhoud_per_eenheid: 0.33, hoeveelheid: 900},
+      {batch_id: 11, verpakking_id: 2, inhoud_per_eenheid: 20, hoeveelheid: 5},
+    ],
+    verpakkingen: VERPAKKINGEN, onderdelen: ONDERDELEN,
+  })
+
+  it('kiest de verpakking van 33 cl, ook als je vooral op fust afvult', () => {
+    const ref = referentieVerpakking(VERPAKKINGEN, ONDERDELEN, mixMetFust)
+    expect(ref.naam).toBe('Fles 33cL')
+    expect(ref.inhoud).toBe(REFERENTIE_INHOUD)
+    expect(ref.kostenPerStuk).toBeCloseTo(0.32, 4)
+    expect(ref.kostenPerLiter).toBeCloseTo(0.32 / 0.33, 3)
+    expect(ref.bron).toBe('verpakking')
+  })
+
+  it('neemt bij meerdere 33 cl-verpakkingen degene die je het meest gebruikt', () => {
+    const verpakkingen = [
+      {id: 3, naam: 'Blik 33cL', inhoud_liter: 0.33, kosten_verpakking: 0.18, kosten_label: 0.02},
+      ...VERPAKKINGEN,
+    ]
+    const mix = verpakkingMix([{id: 11}], null, {
+      afvullingen: [
+        {batch_id: 11, verpakking_id: 3, inhoud_per_eenheid: 0.33, hoeveelheid: 100},
+        {batch_id: 11, verpakking_id: 1, inhoud_per_eenheid: 0.33, hoeveelheid: 900},
+      ],
+      verpakkingen, onderdelen: ONDERDELEN,
+    })
+    expect(referentieVerpakking(verpakkingen, ONDERDELEN, mix).naam).toBe('Fles 33cL')
+  })
+
+  it('accepteert 0,330 en 0,33 als dezelfde maat', () => {
+    const verpakkingen = [{id: 9, naam: 'Fles 330ml', inhoud_liter: 0.33, kosten_verpakking: 0.3}]
+    expect(referentieVerpakking(verpakkingen, ONDERDELEN, null).naam).toBe('Fles 330ml')
+  })
+
+  it('slaat een 33 cl-verpakking zonder prijs over', () => {
+    const verpakkingen = [{id: 9, naam: 'Fles 33cL', inhoud_liter: 0.33}]
+    expect(referentieVerpakking(verpakkingen, ONDERDELEN, mixMetFust).bron).toBe('mix')
+  })
+
+  it('valt zonder 33 cl-verpakking terug op de afvulmix', () => {
+    const alleenFust = [VERPAKKINGEN[1]]
+    const mix = verpakkingMix([{id: 11}], null, {
+      afvullingen: [{batch_id: 11, verpakking_id: 2, inhoud_per_eenheid: 20, hoeveelheid: 5}],
+      verpakkingen: alleenFust, onderdelen: ONDERDELEN,
+    })
+    const ref = referentieVerpakking(alleenFust, ONDERDELEN, mix)
+    expect(ref.bron).toBe('mix')
+    expect(ref.kostenPerLiter).toBeCloseTo(0.125, 4)
+    expect(ref.kostenPerStuk).toBeCloseTo(0.125 * 0.33, 3)
+  })
+
+  it('zegt niets te weten zonder verpakkingen en zonder mix', () => {
+    expect(referentieVerpakking([], [], null)).toMatchObject({bron: 'geen', kostenPerLiter: 0})
   })
 })
