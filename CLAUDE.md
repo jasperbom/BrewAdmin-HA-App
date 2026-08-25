@@ -71,7 +71,9 @@ BrewAdmin-HA-App/
 │   │   │                   # verpakking over de liters ná verlies, en de kostprijs per
 │   │   │                   # brouwzaalliter, per verkoopbare liter én per verpakte eenheid
 │   │   │                   # (`kostprijsPerEenheid`: bier per liter + de échte verpakkingsprijs
-│   │   │                   # van díe eenheid; het recept rekent op de 33 cl-fles)
+│   │   │                   # van díe eenheid; het recept rekent op de 33 cl-fles). `receptAccijns`
+│   │   │                   # geeft de accijns per liter uit ABV/Plato + tarief — apart van
+│   │   │                   # `totaal`, want die schuld ontstaat pas bij uitslag
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,

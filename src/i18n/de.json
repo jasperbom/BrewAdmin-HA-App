@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "kein Preis",
   "recipe_cost_price_last": "(letzter Einkauf)",
   "recipe_cost_price_last_tip": "Nichts mehr auf Lager — gerechnet mit dem Preis des letzten Einkaufs.",
-  "recipe_cost_note": "Vorkalkulation: Zutatenpreise aus den vorhandenen Chargen, Verpackung gerechnet auf die 33-cl-Flasche, ohne Verbrauchsteuer und Arbeit.",
+  "recipe_cost_note": "Vorkalkulation: Zutatenpreise aus den vorhandenen Chargen, Verpackung gerechnet auf die 33-cl-Flasche. Die Biersteuer steht separat; Arbeit zählt nicht mit.",
   "recipe_cost_overhead_measured": "Durchschnitt deiner letzten {n} Sude",
   "recipe_cost_overhead_books": "aus den Energie-, Wasser- und Reinigungsrechnungen ({van} bis {tot}), geteilt durch {n} Sude",
   "recipe_cost_overhead_manual": "manuell festgelegt",
@@ -3511,5 +3511,15 @@
   "recipe_cost_packaging_ref": "gerechnet mit {v} · {p} pro Stück",
   "recipe_cost_packaging_units": "≈ {n} Stück pro Sud",
   "recipe_cost_packaging_no_ref": "Keine 33-cl-Verpackung gefunden — gerechnet mit deinem eigenen Abfüllmix. Lege eine an unter Zutaten → Verpackungen.",
-  "recipe_cost_packaging_actual": "Tatsächlich füllst du dieses Bier ab als:"
+  "recipe_cost_packaging_actual": "Tatsächlich füllst du dieses Bier ab als:",
+  "recipe_cost_excise": "Biersteuer",
+  "recipe_cost_excise_per_liter": "pro Liter",
+  "recipe_cost_excise_per_unit": "pro {v}",
+  "recipe_cost_excise_abv": "{abv}% vol × {r} pro hl je Volumenprozent.",
+  "recipe_cost_excise_plato": "{plato} °Plato × {r} pro hl je Grad Plato.",
+  "recipe_cost_excise_min": "Mindestsatz {r} pro hl — höher als das Ergebnis nach Alkoholgehalt.",
+  "recipe_cost_excise_formula": "Mit deiner eigenen Steuerformel berechnet.",
+  "recipe_cost_excise_note": "Nur bei Entnahme fällig: auf Ausfuhr und unter Steueraussetzung zahlst du keine Biersteuer.",
+  "recipe_cost_incl_excise": "{v} inkl. Biersteuer",
+  "recipe_cost_total_incl_excise": "Gesamt inkl. Biersteuer"
 }

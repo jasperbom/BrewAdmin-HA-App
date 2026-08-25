@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "sin precio",
   "recipe_cost_price_last": "(última compra)",
   "recipe_cost_price_last_tip": "Sin existencias — calculado con el precio de la última compra.",
-  "recipe_cost_note": "Cálculo previo: precios de los ingredientes de los lotes en stock, envase calculado sobre la botella de 33 cl, sin impuestos especiales ni mano de obra.",
+  "recipe_cost_note": "Cálculo previo: precios de los ingredientes de los lotes en stock, envase calculado sobre la botella de 33 cl. Los impuestos especiales van aparte; la mano de obra no se incluye.",
   "recipe_cost_overhead_measured": "media de tus últimas {n} elaboraciones",
   "recipe_cost_overhead_books": "de las facturas de energía, agua y limpieza ({van} a {tot}), divididas entre {n} elaboraciones",
   "recipe_cost_overhead_manual": "establecido manualmente",
@@ -3511,5 +3511,15 @@
   "recipe_cost_packaging_ref": "calculado con {v} · {p} por unidad",
   "recipe_cost_packaging_units": "≈ {n} unidades por elaboración",
   "recipe_cost_packaging_no_ref": "No se encontró envase de 33 cl — calculado con tu propia mezcla. Añade uno en Ingredientes → Envases.",
-  "recipe_cost_packaging_actual": "En realidad envasas esta cerveza como:"
+  "recipe_cost_packaging_actual": "En realidad envasas esta cerveza como:",
+  "recipe_cost_excise": "Impuestos especiales",
+  "recipe_cost_excise_per_liter": "por litro",
+  "recipe_cost_excise_per_unit": "por {v}",
+  "recipe_cost_excise_abv": "{abv}% vol × {r} por hl y grado alcohólico.",
+  "recipe_cost_excise_plato": "{plato} °Plato × {r} por hl y grado Plato.",
+  "recipe_cost_excise_min": "Tipo mínimo {r} por hl — superior al resultado por alcohol.",
+  "recipe_cost_excise_formula": "Calculado con tu propia fórmula.",
+  "recipe_cost_excise_note": "Solo se devenga al despacho: no hay impuesto sobre exportación ni en régimen suspensivo.",
+  "recipe_cost_incl_excise": "{v} con impuestos",
+  "recipe_cost_total_incl_excise": "Total con impuestos"
 }

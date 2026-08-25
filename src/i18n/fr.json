@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "pas de prix",
   "recipe_cost_price_last": "(dernier achat)",
   "recipe_cost_price_last_tip": "Plus rien en stock — calculé avec le prix du dernier achat.",
-  "recipe_cost_note": "Calcul prévisionnel : prix des ingrédients des lots en stock, emballage calculé sur la bouteille de 33 cl, hors accises et main-d'œuvre.",
+  "recipe_cost_note": "Calcul prévisionnel : prix des ingrédients des lots en stock, emballage calculé sur la bouteille de 33 cl. Les accises figurent à part ; la main-d'œuvre n'est pas comptée.",
   "recipe_cost_overhead_measured": "moyenne de tes {n} derniers brassins",
   "recipe_cost_overhead_books": "à partir des factures d'énergie, d'eau et de nettoyage ({van} au {tot}), divisées par {n} brassins",
   "recipe_cost_overhead_manual": "défini manuellement",
@@ -3511,5 +3511,15 @@
   "recipe_cost_packaging_ref": "calculé avec {v} · {p} par unité",
   "recipe_cost_packaging_units": "≈ {n} unités par brassin",
   "recipe_cost_packaging_no_ref": "Aucun emballage de 33 cl trouvé — calculé avec ton propre mix. Ajoutes-en un dans Ingrédients → Emballages.",
-  "recipe_cost_packaging_actual": "En réalité tu conditionnes cette bière en :"
+  "recipe_cost_packaging_actual": "En réalité tu conditionnes cette bière en :",
+  "recipe_cost_excise": "Accises",
+  "recipe_cost_excise_per_liter": "par litre",
+  "recipe_cost_excise_per_unit": "par {v}",
+  "recipe_cost_excise_abv": "{abv}% vol × {r} par hl et par degré d’alcool.",
+  "recipe_cost_excise_plato": "{plato} °Plato × {r} par hl et par degré Plato.",
+  "recipe_cost_excise_min": "Taux minimum {r} par hl — supérieur au résultat basé sur l’alcool.",
+  "recipe_cost_excise_formula": "Calculé avec ta propre formule d’accises.",
+  "recipe_cost_excise_note": "Dû uniquement à la mise à la consommation : pas d’accises sur l’export ni sous suspension.",
+  "recipe_cost_incl_excise": "{v} accises comprises",
+  "recipe_cost_total_incl_excise": "Total accises comprises"
 }

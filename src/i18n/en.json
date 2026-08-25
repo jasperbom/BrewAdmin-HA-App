@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "no price",
   "recipe_cost_price_last": "(last purchase)",
   "recipe_cost_price_last_tip": "Nothing left in stock — calculated with the price of the last purchase.",
-  "recipe_cost_note": "Pre-calculation: ingredient prices from the lots you currently hold, packaging calculated on the 33 cl bottle, excluding excise duty and labour.",
+  "recipe_cost_note": "Pre-calculation: ingredient prices from the lots you currently hold, packaging calculated on the 33 cl bottle. Excise duty is listed separately; labour is not included.",
   "recipe_cost_overhead_measured": "average of your last {n} brews",
   "recipe_cost_overhead_books": "from the energy, water and cleaning invoices ({van} to {tot}), divided by {n} brews",
   "recipe_cost_overhead_manual": "set manually",
@@ -3511,5 +3511,15 @@
   "recipe_cost_packaging_ref": "calculated with {v} · {p} per unit",
   "recipe_cost_packaging_units": "≈ {n} units per brew",
   "recipe_cost_packaging_no_ref": "No 33 cl packaging found — calculated with your own filling mix. Add one under Ingredients → Packaging.",
-  "recipe_cost_packaging_actual": "You actually fill this beer as:"
+  "recipe_cost_packaging_actual": "You actually fill this beer as:",
+  "recipe_cost_excise": "Excise duty",
+  "recipe_cost_excise_per_liter": "per litre",
+  "recipe_cost_excise_per_unit": "per {v}",
+  "recipe_cost_excise_abv": "{abv}% ABV × {r} per hl per percentage point.",
+  "recipe_cost_excise_plato": "{plato} °Plato × {r} per hl per degree Plato.",
+  "recipe_cost_excise_min": "Minimum rate {r} per hl — higher than the alcohol-based outcome.",
+  "recipe_cost_excise_formula": "Calculated with your own excise formula.",
+  "recipe_cost_excise_note": "Only due on release: no excise on exports or on beer kept under suspension.",
+  "recipe_cost_incl_excise": "{v} incl. excise duty",
+  "recipe_cost_total_incl_excise": "Total incl. excise duty"
 }
