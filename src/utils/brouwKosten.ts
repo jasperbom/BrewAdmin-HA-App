@@ -90,10 +90,15 @@ export interface BrouwKosten {
    * anders `boekhouding`, `handmatig` of `geen`.
    */
   bron: KostenBron
-  /** Periode waarover gerekend is (yyyy-mm-dd), leeg wanneer onbekend. */
+  /**
+   * De periode waarover de boekhouding wordt verdeeld (yyyy-mm-dd): tot je
+   * laatste brouwsel, en minstens een jaar terug zodat kwartaal- en
+   * jaarrekeningen erin vallen. Leeg wanneer de brouwsels geen datum hebben —
+   * dan valt er niets toe te rekenen.
+   */
   van: string
   tot: string
-  /** Aantal brouwsels in die periode. */
+  /** Aantal brouwsels in die periode (geplande brouwen tellen niet mee). */
   batches: number
 }
 
@@ -109,6 +114,30 @@ export interface BrouwKostenInvoer {
 const datumVan = (x: any): string => String(x?.datum || '')
 
 /**
+ * Telt deze batch als brouwsel? Een geplande brouw is nog geen brouwsel: die
+ * mee laten tellen zou de kosten per brouw verwateren. Vergiste liters of
+ * genoteerde kosten maken er een echt brouwsel van.
+ */
+const isBrouwsel = (b: any): boolean =>
+  (getal(b?.liter_vergist) ?? 0) > 0 ||
+  KOSTEN_POSTEN.some(p => (getal(b?.[p.batchVeld]) ?? 0) > 0)
+
+/** Datum `dagen` eerder, als yyyy-mm-dd. */
+const datumMin = (datum: string, dagen: number): string => {
+  const d = new Date(`${datum}T00:00:00Z`)
+  if (isNaN(d.getTime())) return datum
+  d.setUTCDate(d.getUTCDate() - dagen)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Kortste periode waarover de boekhouding wordt verdeeld. Zonder ondergrens
+ * zou één brouwsel een venster van één dag opleveren — dan valt er geen enkele
+ * energierekening in en zegt de app onterecht dat ze niets weet.
+ */
+const MIN_VENSTER_DAGEN = 365
+
+/**
  * Het gemiddelde over de recente brouwsels, met de boekhouding als terugval.
  *
  * De periode is die van de meegenomen brouwsels: zo wordt een energierekening
@@ -116,30 +145,34 @@ const datumVan = (x: any): string => String(x?.datum || '')
  */
 export function brouwKosten(invoer: BrouwKostenInvoer): BrouwKosten {
   const max = invoer.maxBatches ?? 10
-  const alle = (invoer.batches || []).filter(Boolean)
+  const alle = (invoer.batches || []).filter(isBrouwsel)
 
   // Meest recente brouwsels eerst; brouwsels zonder datum achteraan.
   const opDatum = [...alle].sort((a, b) => datumVan(b).localeCompare(datumVan(a)))
   const recent = opDatum.slice(0, max)
   const datums = recent.map(datumVan).filter(Boolean).sort()
-  const van = datums[0] || ''
   const tot = datums[datums.length - 1] || ''
+  // Minstens een jaar terug, zodat kwartaal- en jaarrekeningen erin vallen.
+  const van = tot ? [datums[0] || tot, datumMin(tot, MIN_VENSTER_DAGEN)].sort()[0] : ''
 
   // De brouwsels in het venster bepalen de noemer voor de boekhouding: alle
-  // brouwsels in die periode, ook die zonder genoteerde kosten.
+  // brouwsels in die periode, ook die zonder genoteerde kosten. Zonder venster
+  // (batches zonder datum) valt er niets toe te rekenen.
   const inVenster = van && tot
     ? alle.filter(b => { const d = datumVan(b); return d >= van && d <= tot })
-    : recent
+    : []
   const litersVenster = inVenster.reduce((s, b) => s + (getal(b?.liter_vergist) ?? 0), 0)
 
   const regelsPerSoort = new Map<string, number>()
-  for (const f of (invoer.inkoopFacturen || [])) {
-    const d = String(f?.datum || '')
-    if (van && tot && !(d >= van && d <= tot)) continue
-    for (const r of (f?.regels || [])) {
-      const soort = String(r?.kostensoort || '')
-      if (!soort) continue
-      regelsPerSoort.set(soort, (regelsPerSoort.get(soort) || 0) + (getal(r?.netto) ?? 0))
+  if (van && tot) {
+    for (const f of (invoer.inkoopFacturen || [])) {
+      const d = String(f?.datum || '')
+      if (!(d >= van && d <= tot)) continue
+      for (const r of (f?.regels || [])) {
+        const soort = String(r?.kostensoort || '')
+        if (!soort) continue
+        regelsPerSoort.set(soort, (regelsPerSoort.get(soort) || 0) + (getal(r?.netto) ?? 0))
+      }
     }
   }
 

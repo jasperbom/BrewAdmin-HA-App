@@ -5,7 +5,7 @@
 // het andersom weten — vóórdat je brouwt, op basis van de hoeveelheden in het
 // recept en de prijzen die je nu betaalt.
 //
-// Twee dingen maken het eerlijk:
+// Drie dingen maken het eerlijk:
 //
 //  1. **De prijs die je nu betaalt.** Die staat op de lots die je in huis hebt,
 //     niet in het recept. Zie `ingredientPrijs`.
@@ -13,6 +13,10 @@
 //     400 liter in de gistkuip komt er misschien 370 in de fles. Rekenen met de
 //     brouwzaalliters maakt je kostprijs structureel te laag. `gemiddeldVerlies`
 //     haalt dat percentage uit je eigen brouwhistorie.
+//  3. **De verpakking kost vaak meer dan het bier.** Een fles met kroonkurk en
+//     etiket is zo €0,32; op 33 cl is dat bijna een euro per liter. Welke
+//     verpakking dit bier krijgt zegt het recept niet, maar je eigen
+//     afvullingen wel — zie `verpakkingMix` in `utils/verpakkingKosten.ts`.
 //
 // Puur rekenwerk: geen React, geen opslag.
 
@@ -124,12 +128,19 @@ export interface VerliesInvoer {
   standaardPct?: number
 }
 
-/** Afgevulde liters van één batch: aantal × inhoud per eenheid. */
+/**
+ * Afgevulde liters van één batch: aantal × inhoud per eenheid. Historisch
+ * bestaan twee schrijfwijzen voor beide velden; een nul telt als "niet
+ * ingevuld" zodat een oud record met alleen `aantal` niet op nul uitkomt.
+ */
 const afgevuldeLiters = (batchId: any, afvullingen?: any[] | null): number =>
   (afvullingen || [])
     .filter((a: any) => Number(a?.batch_id) === Number(batchId))
-    .reduce((s: number, a: any) =>
-      s + (getal(a?.inhoud_per_eenheid) ?? getal(a?.inhoud_liter) ?? 0) * (getal(a?.hoeveelheid) ?? getal(a?.aantal) ?? 0), 0)
+    .reduce((s: number, a: any) => {
+      const inhoud = (getal(a?.inhoud_per_eenheid) || 0) || (getal(a?.inhoud_liter) || 0)
+      const stuks = (getal(a?.hoeveelheid) || 0) || (getal(a?.aantal) || 0)
+      return s + inhoud * stuks
+    }, 0)
 
 /**
  * Het gemiddelde verlies tussen gistkuip en verpakking, gewogen op liters —
@@ -143,7 +154,8 @@ export function gemiddeldVerlies(invoer: VerliesInvoer): VerliesCijfer {
   const standaard = invoer.standaardPct ?? 8
   const batches = (invoer.batches || []).filter(Boolean)
 
-  let vergist = 0, afgevuld = 0, meetellend = 0
+  const meetellend: any[] = []
+  let vergist = 0, afgevuld = 0
   for (const b of batches) {
     const lv = getal(b?.liter_vergist) ?? 0
     if (lv <= 0) continue
@@ -151,42 +163,59 @@ export function gemiddeldVerlies(invoer: VerliesInvoer): VerliesCijfer {
     if (av <= 0) continue
     vergist += lv
     afgevuld += av
-    meetellend++
+    meetellend.push(b)
   }
 
-  // Uitsplitsing per bron: welk deel van de vergiste liters ging waaraan op?
-  const perBron: Record<string, number> = {}
-  const batchIds = new Set(batches.map((b: any) => Number(b?.id)))
-  const registraties = (invoer.verliesRegistraties || [])
-    .filter((r: any) => batchIds.has(Number(r?.batch_id)) && (getal(r?.liter) ?? 0) > 0)
-  const registratieLiters = registraties.reduce((s: number, r: any) => s + (getal(r.liter) ?? 0), 0)
-
-  const noemer = vergist > 0 ? vergist : batches.reduce((s: number, b: any) => s + (getal(b?.liter_vergist) ?? 0), 0)
-  if (noemer > 0) {
-    for (const r of registraties) {
+  /**
+   * Uitsplitsing per bron: welk deel van de vergiste liters ging waaraan op?
+   * Teller en noemer moeten over dezelfde batches gaan — een verliespost van
+   * een batch die nog gist hoort niet gedeeld te worden door liters waar hij
+   * niet in zit. Optellen gebeurt in liters; pas het eindpercentage wordt
+   * afgerond, anders verdwijnen kleine posten in de afronding.
+   */
+  const perBronVoor = (lijst: any[], noemer: number): Record<string, number> => {
+    const ids = new Set(lijst.map((b: any) => Number(b?.id)))
+    const liters: Record<string, number> = {}
+    for (const r of (invoer.verliesRegistraties || [])) {
+      if (!ids.has(Number(r?.batch_id))) continue
+      const l = getal(r?.liter) ?? 0
+      if (l <= 0) continue
       const bron = String(r.bron || 'overig')
-      perBron[bron] = rond((perBron[bron] || 0) + ((getal(r.liter) ?? 0) / noemer) * 100, 1)
+      liters[bron] = (liters[bron] || 0) + l
     }
+    const uit: Record<string, number> = {}
+    if (noemer > 0) {
+      for (const [bron, l] of Object.entries(liters)) uit[bron] = rond((l / noemer) * 100, 1)
+    }
+    return uit
   }
 
   if (vergist > 0 && afgevuld > 0) {
     return {
       pct: rond(Math.max(0, (1 - afgevuld / vergist) * 100), 1),
-      batches: meetellend, vergist: rond(vergist, 1), afgevuld: rond(afgevuld, 1),
-      perBron, bron: 'gemeten',
+      batches: meetellend.length, vergist: rond(vergist, 1), afgevuld: rond(afgevuld, 1),
+      perBron: perBronVoor(meetellend, vergist), bron: 'gemeten',
     }
   }
 
-  // Geen afgeronde brouw, maar wel genoteerde verliesposten? Reken daarmee.
+  // Geen afgeronde brouw, maar wel genoteerde verliesposten? Reken daarmee —
+  // over alle batches waarvan de vergiste liters bekend zijn.
+  const metLiters = batches.filter((b: any) => (getal(b?.liter_vergist) ?? 0) > 0)
+  const noemer = metLiters.reduce((s: number, b: any) => s + (getal(b.liter_vergist) ?? 0), 0)
+  const ids = new Set(metLiters.map((b: any) => Number(b?.id)))
+  const registratieLiters = (invoer.verliesRegistraties || [])
+    .filter((r: any) => ids.has(Number(r?.batch_id)))
+    .reduce((s: number, r: any) => s + Math.max(0, getal(r?.liter) ?? 0), 0)
+
   if (registratieLiters > 0 && noemer > 0) {
     return {
       pct: rond((registratieLiters / noemer) * 100, 1),
       batches: 0, vergist: rond(noemer, 1), afgevuld: 0,
-      perBron, bron: 'registraties',
+      perBron: perBronVoor(metLiters, noemer), bron: 'registraties',
     }
   }
 
-  return {pct: standaard, batches: 0, vergist: 0, afgevuld: 0, perBron, bron: 'aanname'}
+  return {pct: standaard, batches: 0, vergist: 0, afgevuld: 0, perBron: {}, bron: 'aanname'}
 }
 
 // ── De kostprijs van het recept ─────────────────────────────────────────────
@@ -213,6 +242,11 @@ export interface ReceptKostprijs {
   onbekend: number
   /** Vaste kosten per brouw (energie, water, schoonmaak, overig). */
   overigeKosten: number
+  /**
+   * Verpakking van de liters die je overhoudt (fles, kroonkurk, etiket, fust).
+   * Rekent over `litersNaVerlies`: wat in de tank achterblijft verpak je niet.
+   */
+  verpakkingKosten: number
   totaal: number
   /** Batchgrootte volgens het recept, in liters. */
   liters: number
@@ -232,6 +266,11 @@ export interface ReceptKostprijsInvoer {
   verliesPct?: number
   /** Vaste kosten per brouw: energie, water, schoonmaak, overig. */
   overigeKosten?: number
+  /**
+   * Verpakkingskosten per afgevulde liter (uit `utils/verpakkingKosten.ts`).
+   * Wordt toegepast op de liters die na verlies overblijven.
+   */
+  verpakkingPerLiter?: number
   /** Batchgrootte overschrijven (bijv. om een grotere brouw door te rekenen). */
   liters?: number
 }
@@ -306,9 +345,11 @@ export function receptKostprijs(invoer: ReceptKostprijsInvoer): ReceptKostprijs 
 
   const liters = invoer.liters ?? (getal(r.batch_size) ?? 0)
   const overigeKosten = rond(invoer.overigeKosten ?? 0, 2)
-  const totaal = rond(ingredientKosten + overigeKosten, 2)
   const verliesPct = Math.max(0, Math.min(99, invoer.verliesPct ?? 0))
   const litersNaVerlies = rond(liters * (1 - verliesPct / 100), 1)
+  // Alleen wat je daadwerkelijk afvult kost verpakking.
+  const verpakkingKosten = rond(Math.max(0, invoer.verpakkingPerLiter ?? 0) * litersNaVerlies, 2)
+  const totaal = rond(ingredientKosten + overigeKosten + verpakkingKosten, 2)
 
   return {
     regels,
@@ -316,6 +357,7 @@ export function receptKostprijs(invoer: ReceptKostprijsInvoer): ReceptKostprijs 
     perSoort,
     onbekend,
     overigeKosten,
+    verpakkingKosten,
     totaal,
     liters: rond(liters, 1),
     verliesPct: rond(verliesPct, 1),

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, ADDON_BASE } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
+import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling, effectiefOG, effectiefFG } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
@@ -3488,17 +3489,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                 const liters = rows.reduce((s: number, a: any) => s+Number(a.inhoud_per_eenheid||0)*Number(a.hoeveelheid||0), 0)
                 const vpId = rows.find((r: any) => r.verpakking_id)?.verpakking_id
                 const vp = verpakkingen ? (vpId ? verpakkingen.find((v: any) => v.id===vpId) : verpakkingen.find((v: any) => v.naam===type)) : null
-                // Onderdelen-gebaseerde verpakkingen (krat = bodem + N× kroonkurk + N× etiket) tellen de
-                // kosten_per_stuk van elk onderdeel × het aantal in de verpakking. Pas zonder onderdelen
-                // vallen we terug op de legacy directe velden.
-                const kPerStuk = vp
-                  ? (Array.isArray(vp.onderdelen) && vp.onderdelen.length
-                      ? vp.onderdelen.reduce((s: number, o: any) => {
-                          const od = (onderdelen||[]).find((d: any) => d.id === o.onderdeel_id)
-                          return s + Number(od?.kosten_per_stuk||0) * Number(o.aantal||1)
-                        }, 0)
-                      : Number(vp.kosten_verpakking||0)+Number(vp.kosten_afsluiting||0)+Number(vp.kosten_label||0))
-                  : 0
+                const kPerStuk = verpakkingKostenPerStuk(vp, onderdelen)
                 const totVerpK = kPerStuk * stuks
                 // Accijns: gebruik daadwerkelijk geboekte accijns (uit uitslagen/orders) als die er is.
                 // Zo niet, val terug op de voorcalc-snapshot per afvulling — dan ziet de gebruiker

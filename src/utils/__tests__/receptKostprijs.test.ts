@@ -112,6 +112,33 @@ describe('gemiddeldVerlies', () => {
     expect(v.perBron).toEqual({tankrest: 7, leiding: 2})
   })
 
+  it('splitst alleen de posten uit van batches die ook in de noemer zitten', () => {
+    // Batch 2 gist nog: zijn 400 liter zitten niet in de noemer, dus zijn
+    // tankrest mag ook niet als percentage van batch 1 verschijnen.
+    const batches = [{id: 1, liter_vergist: 400}, {id: 2, liter_vergist: 400}]
+    const afvullingen = [afv(1, 20, 18)]
+    const verliesRegistraties = [{id: 1, batch_id: 2, bron: 'tankrest', liter: 40}]
+    const v = gemiddeldVerlies({batches, afvullingen, verliesRegistraties})
+    expect(v.pct).toBe(10)
+    expect(v.vergist).toBe(400)
+    expect(v.perBron).toEqual({})
+  })
+
+  it('verliest kleine posten niet in de afronding', () => {
+    const batches = [{id: 1, liter_vergist: 400}]
+    const afvullingen = [afv(1, 20, 18)]
+    // 5 × 0,15 L = 0,75 L = 0,19% — samen afronden, niet per registratie
+    const verliesRegistraties = Array.from({length: 5}, (_, i) =>
+      ({id: i, batch_id: 1, bron: 'monster', liter: 0.15}))
+    expect(gemiddeldVerlies({batches, afvullingen, verliesRegistraties}).perBron).toEqual({monster: 0.2})
+  })
+
+  it('leest oudere afvullingen die alleen `aantal` hebben', () => {
+    const batches = [{id: 1, liter_vergist: 400}]
+    const afvullingen = [{batch_id: 1, inhoud_liter: 0.33, aantal: 1000, hoeveelheid: 0}]
+    expect(gemiddeldVerlies({batches, afvullingen}).afgevuld).toBe(330)
+  })
+
   it('rekent met de genoteerde verliesposten als er nog niets is afgevuld', () => {
     const batches = [{id: 1, liter_vergist: 400}]
     const verliesRegistraties = [{id: 1, batch_id: 1, bron: 'tankrest', liter: 20}]
@@ -211,6 +238,23 @@ describe('receptKostprijs', () => {
     const k = receptKostprijs({recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS, liters: 200})
     expect(k.liters).toBe(200)
     expect(k.perLiterBrouwzaal).toBe(0.69)
+  })
+
+  it('rekent de verpakking over de liters die je overhoudt', () => {
+    const k = receptKostprijs({
+      recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS,
+      verliesPct: 20, verpakkingPerLiter: 0.75,
+    })
+    // 320 verkoopbare liters × €0,75
+    expect(k.verpakkingKosten).toBe(240)
+    expect(k.totaal).toBe(378)
+    expect(k.perLiterVerkoopbaar).toBe(1.181)
+  })
+
+  it('telt geen verpakking zonder bekende verpakkingsprijs', () => {
+    const k = receptKostprijs({recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS})
+    expect(k.verpakkingKosten).toBe(0)
+    expect(k.totaal).toBe(k.ingredientKosten)
   })
 
   it('geeft geen kostprijs per liter bij een recept zonder batchgrootte', () => {

@@ -3491,7 +3491,7 @@
   "recipe_cost_no_price": "geen prijs",
   "recipe_cost_price_last": "(laatste inkoop)",
   "recipe_cost_price_last_tip": "Niets meer op voorraad — gerekend met de prijs van de laatste inkoop.",
-  "recipe_cost_note": "Voorcalculatie: ingrediëntprijzen uit de lots die je nu hebt liggen, exclusief accijns, verpakking en arbeid.",
+  "recipe_cost_note": "Voorcalculatie: ingrediëntprijzen uit de lots die je nu hebt liggen, verpakking uit je eigen afvulmix, exclusief accijns en arbeid.",
   "recipe_cost_overhead_measured": "gemiddeld over je laatste {n} brouwsels",
   "recipe_cost_overhead_books": "uit de energie-, water- en schoonmaakfacturen ({van} t/m {tot}), gedeeld door {n} brouwsels",
   "recipe_cost_overhead_manual": "handmatig ingesteld",
@@ -3501,5 +3501,12 @@
   "recipe_cost_overhead_hint": "Noteer elektra, water en schoonmaak bij een batch, of boek de energie- en waterfacturen met de juiste kostensoort — dan rekent de app dit zelf uit.",
   "recipe_cost_src_measured": "gemeten",
   "recipe_cost_src_books": "uit de boekhouding",
-  "recipe_cost_src_manual": "handmatig"
+  "recipe_cost_src_manual": "handmatig",
+  "recipe_cost_packaging": "Verpakking",
+  "recipe_cost_packaging_per_liter": "per afgevulde liter",
+  "recipe_cost_packaging_per_unit": "per stuk",
+  "recipe_cost_packaging_own": "uit je eigen afvullingen van dit bier ({n} brouwsels)",
+  "recipe_cost_packaging_brewery": "gemiddelde verpakkingsmix van de brouwerij ({n} brouwsels)",
+  "recipe_cost_packaging_hint": "Vul de prijs van fles, kroonkurk, etiket of fust in bij Ingrediënten → Verpakkingen, dan telt de app de verpakking mee.",
+  "recipe_cost_subtotal_ingredients": "Ingrediënten"
 }
