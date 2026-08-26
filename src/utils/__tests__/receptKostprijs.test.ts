@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ingredientPrijs, gemiddeldVerlies, receptKostprijs, kostprijsPerEenheid } from '../receptKostprijs'
+import { ingredientPrijs, gemiddeldVerlies, receptKostprijs, kostprijsPerEenheid, receptAccijns } from '../receptKostprijs'
 import { verpakkingMix } from '../verpakkingKosten'
 
 // ── ingredientPrijs ─────────────────────────────────────────────────────────
@@ -325,5 +325,89 @@ describe('kostprijsPerEenheid', () => {
   it('geeft niets terug zonder verkoopbare liters', () => {
     const leeg = receptKostprijs({recept: {mout: []}, ingredienten: INGREDIENTEN, lots: LOTS})
     expect(kostprijsPerEenheid(leeg, mix.regels)).toEqual([])
+  })
+})
+
+// ── accijns ─────────────────────────────────────────────────────────────────
+
+describe('receptAccijns', () => {
+  it('rekent per volumeprocent tegen het standaardtarief', () => {
+    const a = receptAccijns({ABV: 8.1, OG: 1.072})
+    // 0,01 hl × 8,1 × €7,51 = €0,608 per liter
+    expect(a.perLiter).toBeCloseTo(0.6083, 4)
+    expect(a.grondslag).toBe('abv')
+    expect(a.abv).toBe(8.1)
+    expect(a.plato).toBeCloseTo(17.5, 0)
+  })
+
+  it('valt bij een licht bier terug op het minimumtarief', () => {
+    // 0,01 × 2 × 7,51 = €0,150 is lager dan het minimum 0,01 × 24,17 = €0,242
+    const a = receptAccijns({ABV: 2})
+    expect(a.perLiter).toBeCloseTo(0.2417, 4)
+    expect(a.grondslag).toBe('minimum')
+  })
+
+  it('gebruikt de Plato-grondslag als die hoger uitvalt', () => {
+    const inst = {tarief_per_hl_abv: 7.51, tarief_per_hl: 24.17, tarief_per_hl_plato: 5}
+    const a = receptAccijns({ABV: 5, OG: 1.072}, inst)
+    // 0,01 × 17,5 × 5 = €0,875 tegen 0,01 × 5 × 7,51 = €0,376
+    expect(a.grondslag).toBe('plato')
+    expect(a.perLiter).toBeCloseTo(0.875, 2)
+  })
+
+  it('pakt het tarief van het opgegeven jaar', () => {
+    const inst = {
+      tarief_per_hl_abv: 9, tarief_per_hl: 24.17,
+      tarieven_historie: [{jaar: 2024, tarief_per_hl_abv: 7.51, tarief_per_hl: 24.17}],
+    }
+    expect(receptAccijns({ABV: 8.1}, inst, '2024-05-01').r1).toBe(7.51)
+    expect(receptAccijns({ABV: 8.1}, inst, '2026-05-01').r1).toBe(9)
+  })
+
+  it('rekent niets zonder ABV en zonder Plato', () => {
+    const a = receptAccijns({naam: 'Onbekend'})
+    expect(a).toMatchObject({perLiter: 0, grondslag: 'geen'})
+  })
+
+  it('leidt Plato af uit het begin-SG maar laat een ingevuld gehalte voorgaan', () => {
+    expect(receptAccijns({OG: 1.072}).plato).toBeCloseTo(17.5, 0)
+    expect(receptAccijns({OG: 1.072, platogehalte: 16}).plato).toBe(16)
+  })
+})
+
+describe('receptKostprijs met accijns', () => {
+  const k = receptKostprijs({
+    recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS,
+    verliesPct: 20, overigeKosten: 62, accijnsPerLiter: 0.6083,
+  })
+
+  it('houdt accijns buiten het kostprijstotaal maar telt hem apart', () => {
+    expect(k.totaal).toBe(200)                      // ingrediënten + vaste kosten
+    expect(k.accijns).toBeCloseTo(194.66, 1)        // 320 verkoopbare liters
+    expect(k.totaalMetAccijns).toBeCloseTo(394.66, 1)
+    expect(k.perLiterVerkoopbaar).toBe(0.625)
+    expect(k.perLiterVerkoopbaarMetAccijns).toBeCloseTo(1.233, 2)
+  })
+
+  it('rekent accijns over de liters ná verlies — tankrest slaat je niet uit', () => {
+    const zonderVerlies = receptKostprijs({
+      recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS, accijnsPerLiter: 0.6083,
+    })
+    expect(zonderVerlies.accijns).toBeCloseTo(0.6083 * 400, 1)
+    expect(k.accijns).toBeLessThan(zonderVerlies.accijns)
+  })
+
+  it('geeft de accijns per verpakte eenheid', () => {
+    const [fles] = kostprijsPerEenheid(k, [{naam: 'Fles 33cL', inhoud: 0.33, kostenPerStuk: 0.32}])
+    expect(fles.accijns).toBeCloseTo(0.201, 3)
+    expect(fles.totaal).toBeCloseTo(0.526, 3)
+    expect(fles.totaalMetAccijns).toBeCloseTo(0.727, 3)
+  })
+
+  it('blijft zonder accijns precies zoals het was', () => {
+    const zonder = receptKostprijs({recept: RECEPT, ingredienten: INGREDIENTEN, lots: LOTS, verliesPct: 20, overigeKosten: 62})
+    expect(zonder.accijns).toBe(0)
+    expect(zonder.totaalMetAccijns).toBe(zonder.totaal)
+    expect(zonder.perLiterVerkoopbaarMetAccijns).toBe(zonder.perLiterVerkoopbaar)
   })
 })

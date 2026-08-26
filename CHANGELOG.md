@@ -4,6 +4,72 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.23] — 2026-08-25
+
+### Bij het product: kostprijs en accijns uit elkaar, en het gat gedicht
+
+De kostprijs/liter bij een product telde accijns al mee, maar zei dat nergens —
+en het recept houdt hem juist apart. Naast elkaar leggen ging dus mis. Twee
+ingrepen:
+
+- **De strip zegt nu wat je ziet**: `KOSTPRIJS/L · incl. accijns`. En de
+  batchtabel heeft een eigen kolom **Accijns/L**, met de opbouw
+  ("Productie €1,37 + accijns €0,61 per liter") in de tooltip van de
+  kostprijscel.
+- **Afvullingen van vóór v2.4 telden hun accijns als nul.** Die hebben geen
+  uitslag én geen bevroren voorcalculatie, waardoor hun kostprijs stil te laag
+  uitkwam — en de trendlijn een sprong maakte tussen oude en nieuwe batches.
+  `berekenBatchKostprijs` schat die nu alsnog uit ABV/Plato en het tarief van de
+  brouwdatum. In de tabel staat zo'n bedrag cursief met een `~` ervoor, en
+  onder de tabel waarom.
+
+`berekenBatchKostprijs` geeft daarvoor `accijns`, `totaal_kosten_excl_accijns`,
+`kostprijs_per_liter_excl_accijns` en `accijns_bron` terug (`geboekt` →
+`voorcalc` → `geschat` → `geen`; bij meerdere verpakkingstypen wint de zwakste).
+De schatting is **opt-in via een nieuw, optioneel `accijnsInst`-argument**:
+alleen de productpagina geeft dat mee. De W&V en de COGS draaien onveranderd op
+werkelijke cijfers — die mogen nooit op een schatting steunen.
+
+---
+
+## [1.12.22] — 2026-08-25
+
+### Accijns voorberekend bij het recept
+
+De voorcalculatie telde ingrediënten, vaste kosten en verpakking — maar niet de
+accijns, terwijl die er voor een tripel van 8,1% ruim 40% bovenop doet. Zonder
+dat getal bepaal je je verkoopprijs op een halve kostprijs.
+
+```
+PER FLES 33CL
+€0,509
+bier €0,189 + verpakking €0,32
+€0,71 incl. accijns
+
+ACCIJNS  €215,09   €0,608 per liter · €0,201 per Fles 33cL
+8,1% vol × €7,51 per hl per volumeprocent. Alleen verschuldigd bij uitslag: over
+export en wat onder schorsing blijft betaal je geen accijns.
+```
+
+- `receptAccijns` leidt het bedrag af uit het doel-ABV van het recept en het
+  Plato-gehalte (uit het begin-SG), tegen het tarief van je eigen
+  accijnsinstellingen — inclusief tariefhistorie per jaar, de Plato-grondslag en
+  een eigen formule. De app kiest, net als de wet, de hoogste grondslag en zegt
+  erbij welke dat is.
+- **Accijns zit bewust niet in `totaal`**: het is geen productiekostenpost maar
+  een belasting die pas bij uitslag ontstaat — op export en onder schorsing
+  betaal je hem niet. De tabel toont daarom eerst de kostprijs, dan de accijns,
+  dan het totaal inclusief.
+- Gerekend over de liters ná verlies: wat in de tank achterblijft slaat je niet
+  uit, dus daar betaal je ook geen accijns over.
+- Zonder ABV én zonder Plato blijft de post weg: dan zou alleen het
+  minimumtarief overblijven, en dat is een ondergrens, geen voorspelling.
+
+Hiermee is de voorcalculatie eindelijk vergelijkbaar met de batchkostprijs, die
+accijns al meetelde.
+
+---
+
 ## [1.12.21] — 2026-08-24
 
 ### De voorcalculatie rekent op de fles van 33 cl

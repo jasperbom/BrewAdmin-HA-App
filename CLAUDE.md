@@ -71,7 +71,9 @@ BrewAdmin-HA-App/
 │   │   │                   # verpakking over de liters ná verlies, en de kostprijs per
 │   │   │                   # brouwzaalliter, per verkoopbare liter én per verpakte eenheid
 │   │   │                   # (`kostprijsPerEenheid`: bier per liter + de échte verpakkingsprijs
-│   │   │                   # van díe eenheid; het recept rekent op de 33 cl-fles)
+│   │   │                   # van díe eenheid; het recept rekent op de 33 cl-fles). `receptAccijns`
+│   │   │                   # geeft de accijns per liter uit ABV/Plato + tarief — apart van
+│   │   │                   # `totaal`, want die schuld ontstaat pas bij uitslag
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,
@@ -426,6 +428,15 @@ bron wordt een extra stap in `postCijfer` (of een extra post in
 `KOSTEN_POSTEN`); alles wat met deze kosten rekent — de receptvoorcalculatie,
 de batchkostprijs, de W&V — erft de verbetering dan automatisch. Nergens anders
 hoort een eigen sommetje over energie of water te staan.
+
+Zelfde principe, andere hoek: `berekenBatchKostprijs` in `utils/calculations.ts`
+neemt een **optionele** `accijnsInst` mee. Krijgt hij die, dan schat hij de
+accijns van afvullingen die noch een uitslag noch een bevroren
+voorcalc-snapshot hebben (van vóór v2.4) uit ABV/Plato, in plaats van ze stil
+als nul mee te tellen; het resultaat zegt via `accijns_bron` of het cijfer
+`geboekt`, `voorcalc`, `geschat` of `geen` is. **Geef dat argument alleen mee in
+schermen, nooit in de W&V of de COGS** — die mogen niet op een schatting
+draaien, en zonder het argument is het gedrag ongewijzigd.
 
 Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
 verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de

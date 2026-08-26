@@ -969,8 +969,15 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // Kostprijs per liter van één batch (ingrediënten, utility, verpakking,
   // accijns / afgevulde liters). Null zolang er niets afgevuld is: dan is er
   // geen volume om de kosten over te verdelen.
+  // Volledige opbouw: productiekosten en accijns apart. `accijnsInst` erbij
+  // zorgt dat oude afvullingen zonder uitslag én zonder voorcalc-snapshot toch
+  // een accijnsbedrag krijgen (gemarkeerd als schatting) in plaats van stil
+  // als nul mee te tellen.
+  const kostprijsDetail = (b: any) =>
+    berekenBatchKostprijs(b, bi, lots, av, verpakkingen, onderdelen, acc, accijnsInst);
+
   const kostprijsVanBatch = (b: any): number | null => {
-    const {kostprijs_per_liter} = berekenBatchKostprijs(b, bi, lots, av, verpakkingen, onderdelen, acc);
+    const {kostprijs_per_liter} = kostprijsDetail(b);
     return kostprijs_per_liter > 0 ? kostprijs_per_liter : null;
   };
 
@@ -1988,13 +1995,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 {selBatches.length > 0 && (() => {
                   const sam = batchSamenvatting(selBatches, {kostprijsPerLiter: kostprijsVanBatch});
                   const afwijkingen = bierAfwijkingen(sam, selProduct);
-                  const metingen: {label: string, m: any, eenheid?: string, dec: number, duurderIsSlecht?: boolean}[] = [
+                  const metingen: {label: string, m: any, eenheid?: string, dec: number, duurderIsSlecht?: boolean, bij?: string}[] = [
                     {label: t('bier_veld_abv'), m: sam.abv, eenheid: '%', dec: 1},
                     {label: t('lbl_batch_og'), m: sam.og, dec: 3},
                     {label: t('lbl_batch_fg'), m: sam.fg, dec: 3},
                     {label: t('bier_veld_ebc'), m: sam.kleur, dec: 0},
                     {label: t('batch_stat_rendement'), m: sam.rendement, eenheid: '%', dec: 0},
-                    {label: t('batch_stat_kostprijs'), m: sam.kostprijs, dec: 2, duurderIsSlecht: true},
+                    {label: t('batch_stat_kostprijs'), m: sam.kostprijs, dec: 2, duurderIsSlecht: true,
+                     bij: t('batch_stat_kostprijs_incl')},
                   ].filter(r => r.m);
                   return (
                     <div className="mb-3 space-y-2">
@@ -2032,6 +2040,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                 <div className="flex items-center gap-2">
                                   <div className="text-[10px] text-gray-400 uppercase tracking-wide">
                                     {r.label}
+                                    {r.bij && <span className="normal-case"> · {r.bij}</span>}
                                     {r.m.aantal > 1 && r.m.spreiding > 0 && (
                                       <span className="normal-case"> · {r.dec === 2 ? fmt(r.m.min) : r.m.min.toFixed(r.dec)}–{r.dec === 2 ? fmt(r.m.max) : r.m.max.toFixed(r.dec)}</span>
                                     )}
@@ -2078,6 +2087,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                           <th className="text-right py-1 font-medium">{t('bier_veld_abv')}</th>
                           <th className="text-right py-1 font-medium">{t('bier_veld_ebc')}</th>
                           <th className="text-right py-1 font-medium">{t('batch_stat_kostprijs')}</th>
+                          <th className="text-right py-1 font-medium">{t('batch_stat_accijns')}</th>
                           <th className="text-left py-1 font-medium pl-3">{t('lbl_status')}</th>
                           <th className="w-6"></th>
                         </tr>
@@ -2100,12 +2110,31 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                               <td className="py-1.5 text-right">{cel(b.FG, 3)}</td>
                               <td className="py-1.5 text-right font-medium">{b.ABV ? `${Number(b.ABV).toFixed(1)}%` : <span className="text-gray-300">–</span>}</td>
                               <td className="py-1.5 text-right">{cel(b.kleur, 0)}</td>
-                              <td className="py-1.5 text-right">
-                                {(() => {
-                                  const kpl = kostprijsVanBatch(b);
-                                  return kpl ? fmt(kpl) : <span className="text-gray-300">–</span>;
-                                })()}
-                              </td>
+                              {(() => {
+                                const d = kostprijsDetail(b);
+                                const liter = d.totaal_liter;
+                                const accPerLiter = liter > 0 ? (d.accijns || 0) / liter : 0;
+                                const geschat = d.accijns_bron === 'geschat';
+                                return (
+                                  <>
+                                    <td className="py-1.5 text-right">
+                                      {d.kostprijs_per_liter > 0
+                                        ? <span title={t('batch_kostprijs_opbouw')
+                                            .replace('{prod}', fmt(d.kostprijs_per_liter_excl_accijns || 0))
+                                            .replace('{acc}', fmt(accPerLiter))}>{fmt(d.kostprijs_per_liter)}</span>
+                                        : <span className="text-gray-300">–</span>}
+                                    </td>
+                                    <td className="py-1.5 text-right text-gray-500">
+                                      {accPerLiter > 0
+                                        ? <span className={geschat ? 'italic' : ''}
+                                            title={geschat ? t('batch_accijns_geschat') : ''}>
+                                            {geschat ? '~' : ''}{fmt(accPerLiter)}
+                                          </span>
+                                        : <span className="text-gray-300">–</span>}
+                                    </td>
+                                  </>
+                                );
+                              })()}
                               <td className="py-1.5 pl-3">
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
                               </td>
@@ -2122,6 +2151,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                       </tbody>
                     </table>
                     {selBatches.length > 10 && <div className="text-xs text-gray-400 text-center py-1">+{selBatches.length - 10}</div>}
+                    {selBatches.slice(0, 10).some((b: any) => kostprijsDetail(b).accijns_bron === 'geschat') && (
+                      <div className="text-[11px] text-gray-400 pt-1">~ {t('batch_accijns_geschat')}</div>
+                    )}
                   </div>
                 )}
 

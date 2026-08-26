@@ -511,6 +511,23 @@ export interface ProductKostprijsResult {
   kostprijs_per_liter: number
   totaal_kosten: number
   totaal_liter: number
+  // ── Opbouw (alleen gevuld door `berekenBatchKostprijs`) ────────────────────
+  // Accijns is geen productiekostenpost maar een belasting die pas bij uitslag
+  // ontstaat. Hij zit wél in `totaal_kosten` — zo staat het al jaren in het
+  // kostprijsoverzicht — maar apart erbij, zodat een scherm hem kan splitsen
+  // en met de receptvoorcalculatie kan vergelijken.
+  accijns?: number
+  totaal_kosten_excl_accijns?: number
+  kostprijs_per_liter_excl_accijns?: number
+  /**
+   * `geboekt`  = de werkelijke accijns uit de uitslagen;
+   * `voorcalc` = de snapshot die bij het afvullen is bevroren;
+   * `geschat`  = geen van beide bekend, dus berekend uit ABV/Plato (alleen
+   *              wanneer de aanroeper `accijnsInst` meegeeft);
+   * `geen`     = niets bekend, accijns telt als nul.
+   * Bij meerdere verpakkingstypen wint de zwakste bron.
+   */
+  accijns_bron?: 'geboekt' | 'voorcalc' | 'geschat' | 'geen'
 }
 
 // Productkostprijs/liter dezelfde scope als het kostprijsoverzicht op de
@@ -529,7 +546,12 @@ export const berekenBatchKostprijs = (
   afvullingen?: any[],
   verpakkingen?: any[],
   onderdelen?: any[],
-  accijns?: any[]
+  accijns?: any[],
+  // Optioneel: met de accijnsinstellingen erbij schat de functie de accijns
+  // van afvullingen die noch een uitslag noch een voorcalc-snapshot hebben
+  // (afvullingen van vóór v2.4). Zonder dit argument blijft het gedrag
+  // ongewijzigd — de W&V en de COGS mogen niet op een schatting draaien.
+  accijnsInst?: AccijnsInst | null
 ): ProductKostprijsResult => {
   const bAv = (afvullingen||[]).filter((a: any) => a.batch_id === b.id)
   const batchLiter = bAv.reduce((s: number, a: any) =>
@@ -551,6 +573,19 @@ export const berekenBatchKostprijs = (
 
   const bAcc = (accijns||[]).filter((a: any) => a.batch_id === b.id)
   const avTypes = [...new Set(bAv.map((a: any) => a.verpakking_type))] as string[]
+
+  // Accijns apart bijhouden, met de zwakste bron over alle verpakkingstypen:
+  // één geschat type maakt het hele cijfer een schatting.
+  let accijnsTotaal = 0
+  let accijnsBron: ProductKostprijsResult['accijns_bron'] = undefined
+  const RANG = {geboekt: 3, voorcalc: 2, geschat: 1, geen: 0} as const
+  const noteerBron = (bron: NonNullable<ProductKostprijsResult['accijns_bron']>) => {
+    if (!accijnsBron || RANG[bron] < RANG[accijnsBron]) accijnsBron = bron
+  }
+  const abvBatch = Number(b?.ABV || 0)
+  const platoBatch = Number(b?.platogehalte || 0)
+  const tar = tariefVoorDatum(accijnsInst, b?.datum)
+  const tarEff: AccijnsInst = {...(accijnsInst || {}), tarief_per_hl_plato: tar.r3}
   for (const type of avTypes) {
     const rows = bAv.filter((a: any) => a.verpakking_type === type)
     const stuks = rows.reduce((s: number, a: any) => s + Number(a.hoeveelheid||0), 0)
@@ -564,13 +599,31 @@ export const berekenBatchKostprijs = (
     const accRows = bAcc.filter((a: any) => a.verpakking_type === type)
     const totAccActueel = accRows.reduce((s: number, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0)
     const totAccVoorcalc = rows.reduce((s: number, a: any) => s + Number(a.voorcalc_accijns_totaal || 0), 0)
-    batchKosten += totAccActueel > 0 ? totAccActueel : totAccVoorcalc
+
+    let accVoorType = 0
+    if (totAccActueel > 0) { accVoorType = totAccActueel; noteerBron('geboekt') }
+    else if (totAccVoorcalc > 0) { accVoorType = totAccVoorcalc; noteerBron('voorcalc') }
+    else if (accijnsInst && (abvBatch > 0 || platoBatch > 0)) {
+      // Oude afvulling zonder snapshot: reken hem alsnog uit in plaats van
+      // hem stil als nul te laten meetellen.
+      const liters = rows.reduce((s: number, a: any) =>
+        s + Number(a.inhoud_per_eenheid || 0) * Number(a.hoeveelheid || 0), 0)
+      accVoorType = liters > 0 ? accijnsCalc(liters, abvBatch, tar.r1, tar.r2, tarEff, platoBatch) : 0
+      noteerBron(accVoorType > 0 ? 'geschat' : 'geen')
+    } else noteerBron('geen')
+
+    accijnsTotaal += accVoorType
+    batchKosten += accVoorType
   }
 
   return {
     kostprijs_per_liter: batchLiter > 0 ? batchKosten / batchLiter : 0,
     totaal_kosten: batchKosten,
     totaal_liter: batchLiter,
+    accijns: accijnsTotaal,
+    totaal_kosten_excl_accijns: batchKosten - accijnsTotaal,
+    kostprijs_per_liter_excl_accijns: batchLiter > 0 ? (batchKosten - accijnsTotaal) / batchLiter : 0,
+    accijns_bron: accijnsBron,
   }
 }
 
