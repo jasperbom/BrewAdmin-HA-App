@@ -429,6 +429,15 @@ bron wordt een extra stap in `postCijfer` (of een extra post in
 de batchkostprijs, de W&V — erft de verbetering dan automatisch. Nergens anders
 hoort een eigen sommetje over energie of water te staan.
 
+Zelfde principe, andere hoek: `berekenBatchKostprijs` in `utils/calculations.ts`
+neemt een **optionele** `accijnsInst` mee. Krijgt hij die, dan schat hij de
+accijns van afvullingen die noch een uitslag noch een bevroren
+voorcalc-snapshot hebben (van vóór v2.4) uit ABV/Plato, in plaats van ze stil
+als nul mee te tellen; het resultaat zegt via `accijns_bron` of het cijfer
+`geboekt`, `voorcalc`, `geschat` of `geen` is. **Geef dat argument alleen mee in
+schermen, nooit in de W&V of de COGS** — die mogen niet op een schatting
+draaien, en zonder het argument is het gedrag ongewijzigd.
+
 Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
 verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de
 ingrediëntprijs (`ingredientPrijs`, uit de lots), de verpakkingsmix

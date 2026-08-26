@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.23] — 2026-08-25
+
+### Bij het product: kostprijs en accijns uit elkaar, en het gat gedicht
+
+De kostprijs/liter bij een product telde accijns al mee, maar zei dat nergens —
+en het recept houdt hem juist apart. Naast elkaar leggen ging dus mis. Twee
+ingrepen:
+
+- **De strip zegt nu wat je ziet**: `KOSTPRIJS/L · incl. accijns`. En de
+  batchtabel heeft een eigen kolom **Accijns/L**, met de opbouw
+  ("Productie €1,37 + accijns €0,61 per liter") in de tooltip van de
+  kostprijscel.
+- **Afvullingen van vóór v2.4 telden hun accijns als nul.** Die hebben geen
+  uitslag én geen bevroren voorcalculatie, waardoor hun kostprijs stil te laag
+  uitkwam — en de trendlijn een sprong maakte tussen oude en nieuwe batches.
+  `berekenBatchKostprijs` schat die nu alsnog uit ABV/Plato en het tarief van de
+  brouwdatum. In de tabel staat zo'n bedrag cursief met een `~` ervoor, en
+  onder de tabel waarom.
+
+`berekenBatchKostprijs` geeft daarvoor `accijns`, `totaal_kosten_excl_accijns`,
+`kostprijs_per_liter_excl_accijns` en `accijns_bron` terug (`geboekt` →
+`voorcalc` → `geschat` → `geen`; bij meerdere verpakkingstypen wint de zwakste).
+De schatting is **opt-in via een nieuw, optioneel `accijnsInst`-argument**:
+alleen de productpagina geeft dat mee. De W&V en de COGS draaien onveranderd op
+werkelijke cijfers — die mogen nooit op een schatting steunen.
+
+---
+
 ## [1.12.22] — 2026-08-25
 
 ### Accijns voorberekend bij het recept

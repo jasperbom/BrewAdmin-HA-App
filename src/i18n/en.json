@@ -3521,5 +3521,9 @@
   "recipe_cost_excise_formula": "Calculated with your own excise formula.",
   "recipe_cost_excise_note": "Only due on release: no excise on exports or on beer kept under suspension.",
   "recipe_cost_incl_excise": "{v} incl. excise duty",
-  "recipe_cost_total_incl_excise": "Total incl. excise duty"
+  "recipe_cost_total_incl_excise": "Total incl. excise duty",
+  "batch_stat_kostprijs_incl": "incl. excise duty",
+  "batch_stat_accijns": "Excise/L",
+  "batch_kostprijs_opbouw": "Production {prod} + excise duty {acc} per litre",
+  "batch_accijns_geschat": "Estimated from ABV and rate: this filling has no release and no frozen pre-calculation."
 }

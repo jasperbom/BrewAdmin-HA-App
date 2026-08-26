@@ -3521,5 +3521,9 @@
   "recipe_cost_excise_formula": "Mit deiner eigenen Steuerformel berechnet.",
   "recipe_cost_excise_note": "Nur bei Entnahme fällig: auf Ausfuhr und unter Steueraussetzung zahlst du keine Biersteuer.",
   "recipe_cost_incl_excise": "{v} inkl. Biersteuer",
-  "recipe_cost_total_incl_excise": "Gesamt inkl. Biersteuer"
+  "recipe_cost_total_incl_excise": "Gesamt inkl. Biersteuer",
+  "batch_stat_kostprijs_incl": "inkl. Biersteuer",
+  "batch_stat_accijns": "Steuer/L",
+  "batch_kostprijs_opbouw": "Herstellung {prod} + Biersteuer {acc} pro Liter",
+  "batch_accijns_geschat": "Geschätzt aus Alkoholgehalt und Satz: für diese Abfüllung gibt es keine Entnahme und keine eingefrorene Vorkalkulation."
 }

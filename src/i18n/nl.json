@@ -3521,5 +3521,9 @@
   "recipe_cost_excise_formula": "Berekend met je eigen accijnsformule.",
   "recipe_cost_excise_note": "Alleen verschuldigd bij uitslag: over export en wat onder schorsing blijft betaal je geen accijns.",
   "recipe_cost_incl_excise": "{v} incl. accijns",
-  "recipe_cost_total_incl_excise": "Totaal incl. accijns"
+  "recipe_cost_total_incl_excise": "Totaal incl. accijns",
+  "batch_stat_kostprijs_incl": "incl. accijns",
+  "batch_stat_accijns": "Accijns/L",
+  "batch_kostprijs_opbouw": "Productie {prod} + accijns {acc} per liter",
+  "batch_accijns_geschat": "Geschat uit ABV en tarief: deze afvulling heeft geen uitslag en geen bevroren voorcalculatie."
 }

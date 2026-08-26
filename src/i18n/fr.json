@@ -3521,5 +3521,9 @@
   "recipe_cost_excise_formula": "Calculé avec ta propre formule d’accises.",
   "recipe_cost_excise_note": "Dû uniquement à la mise à la consommation : pas d’accises sur l’export ni sous suspension.",
   "recipe_cost_incl_excise": "{v} accises comprises",
-  "recipe_cost_total_incl_excise": "Total accises comprises"
+  "recipe_cost_total_incl_excise": "Total accises comprises",
+  "batch_stat_kostprijs_incl": "accises comprises",
+  "batch_stat_accijns": "Accises/L",
+  "batch_kostprijs_opbouw": "Production {prod} + accises {acc} par litre",
+  "batch_accijns_geschat": "Estimé d'après le degré d'alcool et le taux : ce conditionnement n'a ni mise à la consommation ni calcul figé."
 }

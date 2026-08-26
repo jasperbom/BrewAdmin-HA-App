@@ -3521,5 +3521,9 @@
   "recipe_cost_excise_formula": "Calculado con tu propia fórmula.",
   "recipe_cost_excise_note": "Solo se devenga al despacho: no hay impuesto sobre exportación ni en régimen suspensivo.",
   "recipe_cost_incl_excise": "{v} con impuestos",
-  "recipe_cost_total_incl_excise": "Total con impuestos"
+  "recipe_cost_total_incl_excise": "Total con impuestos",
+  "batch_stat_kostprijs_incl": "con impuestos",
+  "batch_stat_accijns": "Impuesto/L",
+  "batch_kostprijs_opbouw": "Producción {prod} + impuestos {acc} por litro",
+  "batch_accijns_geschat": "Estimado a partir del alcohol y el tipo: este envasado no tiene despacho ni cálculo previo congelado."
 }
