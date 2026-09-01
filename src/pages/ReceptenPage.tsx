@@ -6,6 +6,7 @@ import Btn from '../components/ui/Btn'
 import SearchInput from '../components/ui/SearchInput'
 import ReceptKostprijs from '../components/ReceptKostprijs'
 import { logAudit } from '../utils/audit'
+import { ingredientenVoorType } from '../utils/ingTypes'
 
 function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState} = React;
@@ -175,14 +176,13 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
     }));
   };
 
-  // Lijst van beschikbare ingredienten voor een receptcategorie.
-  const ingOptions = (cat: string): any[] => {
-    const expected = CAT_TO_TYPE[cat];
-    const types = cat === 'overig' ? ['Overig', 'Suiker'] : [expected];
-    return ing
-      .filter((i: any) => types.includes(i.type))
-      .sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam)));
-  };
+  // Lijst van beschikbare ingredienten voor een receptregel. Het type van de
+  // regel zelf gaat voor op de sectie: een kandijsuiker in de moutlijst
+  // (Brewfather zet suiker bij de fermentables) hoort bij de suikers. Verwante
+  // typen blijven kiesbaar (zie `verwanteIngTypes`), zodat ook een recept dat
+  // nog niet opnieuw gesynct is aan het juiste ingredient te koppelen is.
+  const ingOptions = (cat: string, item?: any): any[] =>
+    ingredientenVoorType(ing, item?.ingredient_type || CAT_TO_TYPE[cat]);
 
   const IngRow = ({item, cat, idx, readOnly}: any) => {
     const {ok, bijna, totaal, ingLots, ingMatch, totaalNodig, gedeeld} = checkStock(item, selRec);
@@ -206,7 +206,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
             }}
             className="text-xs border rounded px-1 py-0.5 bg-white">
             <option value="">{t('recipe_link_auto')}</option>
-            {ingOptions(cat).map((i: any) => (
+            {ingOptions(cat, item).map((i: any) => (
               <option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>
             ))}
           </select>
@@ -262,7 +262,11 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
               </div>
             ) : (
               <>
-                {item.gebruik || ''}
+                {/* Wijkt het type van de regel af van de sectie (suiker in de
+                    moutlijst), toon dat dan — anders lijkt het mout. */}
+                {item.ingredient_type && item.ingredient_type !== CAT_TO_TYPE[cat]
+                  ? <span className="text-gray-500">{t('ing_type_' + String(item.ingredient_type).toLowerCase())}</span>
+                  : (item.gebruik || '')}
                 {item.tijd != null && item.tijd !== '' ? <span className="ml-1 text-gray-300">· {item.tijd} {item.tijdEenheid === 'day' ? t('lbl_dagen') : t('lbl_minuten')}</span> : null}
               </>
             )}
@@ -569,7 +573,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                       _receptIngredienten: [
                         // Mout: extract_pct (yield) wordt overgenomen voor
                         // de efficiency-berekeningen in de Brouwdag-wizard.
-                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
+                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: i.ingredient_type || 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
                         // Hop: tijd → tijdstip_min, gebruik (boil/whirlpool/
                         // dry-hop/mash), alpha_pct voor IBU, temp_c voor
                         // whirlpool-additions.

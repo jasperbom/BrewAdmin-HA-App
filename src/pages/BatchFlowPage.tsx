@@ -16,6 +16,7 @@ import {
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
+import { ingredientenVoorType } from '../utils/ingTypes'
 import { registreerOntsmetting, taakReinigingStatus, taakSchoonmaakTaakId } from '../utils/ontsmetting'
 import {
   vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap, verpakProjectie,
@@ -617,7 +618,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: nb.id, actie: 'aangemaakt', omschrijving: nb.naam})
     if (recept) {
       const receptIng = [
-        ...(recept.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
+        ...(recept.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: i.ingredient_type || 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
         ...(recept.hop    || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
         ...(recept.gist   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'pkg', ingredient_id: i.ingredient_id ?? null })),
         ...(recept.overig || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
@@ -837,11 +838,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   }
 
   // Lijst van ingredienten voor de koppel-dropdown, gefilterd op type.
-  const batchIngOptions = (ingType: string): any[] => {
-    const type = ingType || 'Overig'
-    return [...(ing || []).filter((i: any) => i.type === type)]
-      .sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam), 'nl'))
-  }
+  const batchIngOptions = (ingType: string): any[] => ingredientenVoorType(ing, ingType)
 
   const isDryHopRij = (row: any) => {
     const g = String(row.gebruik || '').toLowerCase()
@@ -1202,7 +1199,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
     const nieuweIng = [
-      ...(r.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
+      ...(r.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: i.ingredient_type || 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
       ...(r.hop    || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
       ...(r.gist   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'pkg', ingredient_id: i.ingredient_id ?? null })),
       ...(r.overig || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
