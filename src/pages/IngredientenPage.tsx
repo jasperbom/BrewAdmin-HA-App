@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
-import { newId, bfGetIngredients, BF_FERM_TYPE_MAP, bfPushInventory, extractBfProps } from '../utils/api'
+import { newId, bfGetIngredients, bfPushInventory, extractBfProps } from '../utils/api'
+import { bfFermType } from '../utils/ingTypes'
 import { fmt, fmtD, tod, fmtQty, r2, r3 } from '../utils/format'
 import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
@@ -155,7 +156,7 @@ const IngredientenPage: React.FC<Props> = ({
           nieuw++
         }
       }
-      fermentables.forEach((f: any) => processItem(f, BF_FERM_TYPE_MAP[f.type] || 'Mout', 'fermentables'))
+      fermentables.forEach((f: any) => processItem(f, bfFermType(f.type), 'fermentables'))
       hops.forEach((h: any) => processItem(h, 'Hop', 'hops'))
       yeasts.forEach((y: any) => processItem(y, 'Gist', 'yeasts'))
       miscs.forEach((m: any) => processItem(m, 'Overig', 'miscs'))
