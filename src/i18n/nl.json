@@ -2819,6 +2819,7 @@
   "err_pos_voorraad": "Onvoldoende voorraad voor {product}: {beschikbaar} beschikbaar.",
   "err_pos_klant_naam": "Vul een naam in voor de klant.",
   "sync_conflict_melding": "Let op: deze gegevens zijn tegelijk in een ander venster of op een ander apparaat gewijzigd. Je laatste wijziging is NIET opgeslagen; de actuele gegevens zijn opnieuw geladen. Voer je wijziging opnieuw in.",
+  "sync_merge_botsing": "Let op: {n} wijziging(en) zijn tegelijk in een ander venster of op een ander apparaat aangepast. Daar is de versie van het andere venster aangehouden; je overige wijzigingen zijn wel bewaard. Controleer deze regels.",
   "err_factuurnummer_ophalen": "Kan geen factuurnummer ophalen van de server. Controleer de verbinding en probeer opnieuw.",
   "err_periode_gesloten_mutatie": "Deze factuur telt mee in een BTW-periode waarvan de aangifte al is ingediend of betaald. Wijzigen of verwijderen is geblokkeerd — boek een correctie of creditnota in de huidige periode.",
   "err_accijns_maand_gesloten": "Dit record telt mee in een accijnsmaand waarvan de aangifte al is ingediend of betaald. Wijzigen of verwijderen is geblokkeerd.",

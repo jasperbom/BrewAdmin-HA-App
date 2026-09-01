@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { lsSet, t } from '../i18n'
 import { bouwSyncSnapshot, berekenDelta, deltaIsKleiner, SyncSnapshot } from './delta'
+import { bouwMergeBasis, voegSamen, MergeBasis } from './merge'
 import { parseWcFout } from './wcFout'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
@@ -149,9 +150,25 @@ export const _fetchWithRetry = async (input: RequestInfo, init?: RequestInit, re
 // we overschrijven diens werk NIET, maar verversen en melden het conflict.
 const _versions = new Map<string, string>()
 
-export const _updateVersion = (key: string, r: Response): void => {
+// Generatieteller per key: elke keer dat we een nieuwere versie leren stijgt
+// hij. Een GET die onderweg is terwijl er intussen geschreven wordt, mag zijn
+// (dan verouderde) versie niet meer terugzetten — dat leverde een vals 409 op
+// bij de eerstvolgende save. `_versieStempel` vóór de fetch onthouden en aan
+// `_updateVersion` meegeven is genoeg.
+const _versieGen = new Map<string, number>()
+
+export const _versieStempel = (key: string): number => _versieGen.get(key) || 0
+
+const _setVersion = (key: string, v: string): void => {
+  _versions.set(key, v)
+  _versieGen.set(key, (_versieGen.get(key) || 0) + 1)
+}
+
+export const _updateVersion = (key: string, r: Response, stempel?: number): void => {
   const v = r.headers.get('X-Data-Version')
-  if (v) _versions.set(key, v)
+  if (!v) return
+  if (stempel !== undefined && _versieStempel(key) !== stempel) return
+  _setVersion(key, v)
 }
 
 // ── Delta-sync (ERP-plan 4.3) ───────────────────────────────────────────────
@@ -162,9 +179,16 @@ export const _updateVersion = (key: string, r: Response): void => {
 // stil de volledige POST. `null` = key is niet delta-baar.
 const _lastSynced = new Map<string, SyncSnapshot | null>()
 
+// Dezelfde serverstand als ijkpunt voor het samenvoegen bij een conflict
+// (utils/merge.ts). Breder dan het delta-snapshot: ook objecten en arrays
+// waarvan de volgorde wisselde zijn samen te voegen. `null` = niet samen te
+// voegen (scalars, records zonder id) — dan blijft het oude conflictgedrag.
+const _mergeBasis = new Map<string, MergeBasis | null>()
+
 // Export t.b.v. de vitest-suite (delta-integratie); intern gebruik verder.
 export const _rememberSynced = (key: string, data: any): void => {
   _lastSynced.set(key, bouwSyncSnapshot(data))
+  _mergeBasis.set(key, bouwMergeBasis(data))
 }
 
 // 'reject' = de server wees de payload definitief af (400/413/422,
@@ -178,11 +202,18 @@ export type SaveResult = 'ok' | 'fail' | 'conflict' | 'reject' | 'forbidden'
 // verouderde versie een vals conflict veroorzaken.
 let _sendChain: Promise<unknown> = Promise.resolve()
 
-export const _postToServer = (key: string, data: any): Promise<SaveResult> => {
-  const run = _sendChain.then(() => _doPost(key, data))
+// Voer `fn` uit als volgende schakel in de verzendketen. Alles wat vanuit
+// `fn` zelf nog schrijft (bijv. het herschrijven na een samenvoeging) gebruikt
+// `_doPost` rechtstreeks — opnieuw op de keten wachten zou binnen de keten
+// een deadlock zijn.
+const _opChain = <T>(fn: () => Promise<T>): Promise<T> => {
+  const run = _sendChain.then(fn)
   _sendChain = run.catch(() => {})
   return run
 }
+
+export const _postToServer = (key: string, data: any): Promise<SaveResult> =>
+  _opChain(() => _doPost(key, data))
 
 const _doPost = async (key: string, data: any): Promise<SaveResult> => {
   // Delta-pad (ERP-plan 4.3): alleen wanneer we een gesynchroniseerde
@@ -217,7 +248,7 @@ const _doFullPost = (key: string, data: any): Promise<SaveResult> => {
       _syncErrors = 0
       try {
         const d = await r.json()
-        if (d && typeof d.version === 'string') _versions.set(key, d.version)
+        if (d && typeof d.version === 'string') _setVersion(key, d.version)
       } catch (e) { /* oudere server zonder version-veld */ }
       _rememberSynced(key, data)
       return 'ok' as SaveResult
@@ -260,7 +291,7 @@ const _doDelta = (key: string, data: any, delta: {upsert: any[], verwijder: stri
       _syncErrors = 0
       try {
         const d = await r.json()
-        if (d && typeof d.version === 'string') _versions.set(key, d.version)
+        if (d && typeof d.version === 'string') _setVersion(key, d.version)
       } catch (e) { /* geen version in respons */ }
       _rememberSynced(key, data)
       return 'ok' as SaveResult
@@ -293,7 +324,7 @@ const lsGet = (k: string, d: any = []) => {
 // Een sequence-nummer per key voorkomt dat een oude (tragere) response of
 // retry een nieuwere save overschrijft.
 const _saveSeq = new Map<string, number>()
-const _pendingSaves = new Map<string, {seq: number, data: any, onOk: () => void, onConflict: () => void, onReject: () => void, onForbidden: () => void}>()
+const _pendingSaves = new Map<string, _BufEntry>()
 let _retryTimer: ReturnType<typeof setInterval> | null = null
 
 const _flushPendingSaves = () => {
@@ -302,21 +333,11 @@ const _flushPendingSaves = () => {
     return
   }
   for (const [key, entry] of [..._pendingSaves.entries()]) {
-    _postToServer(key, entry.data).then(res => {
+    _opChain(async () => {
       if (_saveSeq.get(key) !== entry.seq) return // nieuwere save gedaan
-      if (res === 'ok') {
-        _pendingSaves.delete(key)
-        entry.onOk()
-      } else if (res === 'conflict') {
-        _pendingSaves.delete(key)
-        entry.onConflict()
-      } else if (res === 'reject') {
-        _pendingSaves.delete(key)
-        entry.onReject()
-      } else if (res === 'forbidden') {
-        _pendingSaves.delete(key)
-        entry.onForbidden()
-      }
+      const res = await _doPost(key, entry.data)
+      if (res !== 'fail') _pendingSaves.delete(key)
+      await _handleSaveResult(key, entry, res)
     })
   }
 }
@@ -331,7 +352,19 @@ const _scheduleRetry = () => {
 // dat losse POSTs die half konden slagen. Saves die in dezelfde event-tick
 // gebeuren worden nu gebufferd en als één POST /api/commit atomair
 // weggeschreven — zonder dat de aanroepende pagina's iets hoeven te weten.
-type _BufEntry = {data: any, seq: number, onOk: () => void, onConflict: () => void, onReject: () => void, onForbidden: () => void}
+type _BufEntry = {
+  data: any
+  seq: number
+  onOk: () => void
+  // Conflict dat niet samen te voegen was: de serverstand is leidend en de
+  // lokale wijziging vervalt (met melding).
+  onConflict: () => void
+  // Conflict dat wél is samengevoegd: `data` is de nieuwe, weggeschreven
+  // stand; `botsingen` telt de records waarvoor de server won (0 = stil).
+  onSamengevoegd: (data: any, botsingen: number) => void
+  onReject: () => void
+  onForbidden: () => void
+}
 const _commitBuffer = new Map<string, _BufEntry>()
 let _flushScheduled = false
 
@@ -343,14 +376,66 @@ const _enqueueSave = (key: string, entry: _BufEntry) => {
   }
 }
 
-const _handleSaveResult = (key: string, e: _BufEntry, res: SaveResult) => {
+// Haal de actuele serverstand van één key op (inclusief versie). `null` bij
+// een fout of een key die de server niet kent.
+const _haalServerStand = async (key: string): Promise<{data: any, versie: string | null} | null> => {
+  try {
+    const r = await _fetchWithRetry(API_BASE + key, {headers: {'Cache-Control': 'no-cache'}}, 2)
+    if (!r.ok) return null
+    return {data: await r.json(), versie: r.headers.get('X-Data-Version')}
+  } catch (e) {
+    return null
+  }
+}
+
+// ── Conflict oplossen door samen te voegen ──────────────────────────────────
+// Het versieslot zit op de hele key, terwijl een conflict bijna altijd over
+// een ánder record gaat dan het record dat de gebruiker net wijzigde (de
+// server schrijft zelf in `batches`, `gist_metingen` en `carbonatie_sessies`,
+// en een tweede tab of de telefoon schrijft ook mee). We halen daarom de
+// verse serverstand op en leggen onze eigen wijziging daar per record
+// overheen (utils/merge.ts). Alleen als hetzelfde record aan beide kanten
+// anders werd, wint de server — en pas dán ziet de gebruiker een melding.
+// Aanroepen binnen de verzendketen: gebruikt `_doPost` rechtstreeks.
+export const _losConflictOp = async (key: string, e: _BufEntry): Promise<void> => {
+  const basis = _mergeBasis.get(key)
+  // Eén enkele waarde (thema, appnaam, een ingeklapt-stand, een migratie-
+  // markering) heeft geen delen om samen te voegen, maar ook niets te
+  // verliezen: daar is de laatste wijziging de bedoelde. Die schrijven we
+  // gewoon opnieuw weg met de verse versie — zonder melding.
+  const scalair = e.data === null || typeof e.data !== 'object'
+  if (!basis && !scalair) { e.onConflict(); return }
+
+  const stand = await _haalServerStand(key)
+  // Tijdens het ophalen kan er alweer een nieuwere save zijn gedaan; die
+  // vertrekt vanaf een verser ijkpunt en lost het conflict zelf op.
+  if ((_saveSeq.get(key) || 0) > e.seq) return
+  if (!stand) { e.onConflict(); return }
+
+  const samen = basis ? voegSamen(basis, e.data, stand.data) : null
+  if (!samen && !scalair) { e.onConflict(); return }
+
+  if (typeof stand.versie === 'string') _setVersion(key, stand.versie)
+  _rememberSynced(key, stand.data)
+  const res = await _doPost(key, samen ? samen.data : e.data)
+  if (res === 'ok') {
+    if (samen) e.onSamengevoegd(samen.data, samen.botsingen.length)
+    else e.onOk()
+    return
+  }
+  // Nóg een conflict (weer iemand anders was sneller): niet blijven proberen.
+  if (res === 'conflict') { e.onConflict(); return }
+  await _handleSaveResult(key, e, res)
+}
+
+const _handleSaveResult = async (key: string, e: _BufEntry, res: SaveResult): Promise<void> => {
   if (_saveSeq.get(key) !== e.seq) return // er is al een nieuwere save
   if (res === 'ok') e.onOk()
-  else if (res === 'conflict') e.onConflict()
+  else if (res === 'conflict') await _losConflictOp(key, e)
   else if (res === 'reject') e.onReject()
   else if (res === 'forbidden') e.onForbidden()
   else {
-    _pendingSaves.set(key, {seq: e.seq, data: e.data, onOk: e.onOk, onConflict: e.onConflict, onReject: e.onReject, onForbidden: e.onForbidden})
+    _pendingSaves.set(key, e)
     _scheduleRetry()
   }
 }
@@ -359,42 +444,41 @@ const _flushCommitBuffer = () => {
   const entries = [..._commitBuffer.entries()]
   _commitBuffer.clear()
   if (!entries.length) return
-  const run = _sendChain.then(async () => {
+  _opChain(async () => {
     if (entries.length === 1) {
       const [key, e] = entries[0]
-      _handleSaveResult(key, e, await _doPost(key, e.data))
+      await _handleSaveResult(key, e, await _doPost(key, e.data))
       return
     }
     const res = await _doCommit(entries)
     if (res.status === 'ok') {
-      entries.forEach(([k, e]) => { _rememberSynced(k, e.data); _handleSaveResult(k, e, 'ok') })
+      for (const [k, e] of entries) { _rememberSynced(k, e.data); await _handleSaveResult(k, e, 'ok') }
     } else if (res.status === 'conflict') {
       // Alleen de conflicterende keys vervallen; de rest alsnog los proberen.
       for (const [k, e] of entries) {
-        if (res.conflicts.includes(k)) _handleSaveResult(k, e, 'conflict')
-        else _handleSaveResult(k, e, await _doPost(k, e.data))
+        if (res.conflicts.includes(k)) await _handleSaveResult(k, e, 'conflict')
+        else await _handleSaveResult(k, e, await _doPost(k, e.data))
       }
     } else if (res.status === 'reject') {
       // Eén key is door schemavalidatie afgewezen; de rest alsnog los proberen.
       for (const [k, e] of entries) {
-        if (k === res.key || !res.key) _handleSaveResult(k, e, 'reject')
-        else _handleSaveResult(k, e, await _doPost(k, e.data))
+        if (k === res.key || !res.key) await _handleSaveResult(k, e, 'reject')
+        else await _handleSaveResult(k, e, await _doPost(k, e.data))
       }
     } else if (res.status === 'forbidden') {
       // Eén key is door de rol geweigerd (403); de rest alsnog los proberen.
       for (const [k, e] of entries) {
-        if (k === res.key || !res.key) _handleSaveResult(k, e, 'forbidden')
-        else _handleSaveResult(k, e, await _doPost(k, e.data))
+        if (k === res.key || !res.key) await _handleSaveResult(k, e, 'forbidden')
+        else await _handleSaveResult(k, e, await _doPost(k, e.data))
       }
     } else if (res.status === 'notfound') {
       // Oudere server zonder /api/commit → terugvallen op losse POSTs.
-      for (const [k, e] of entries) _handleSaveResult(k, e, await _doPost(k, e.data))
+      for (const [k, e] of entries) await _handleSaveResult(k, e, await _doPost(k, e.data))
     } else {
       // Netwerk-/serverfout: niets is geschreven; per key in de retry-queue.
-      entries.forEach(([k, e]) => _handleSaveResult(k, e, 'fail'))
+      for (const [k, e] of entries) await _handleSaveResult(k, e, 'fail')
     }
   })
-  _sendChain = run.catch(() => {})
 }
 
 const _doCommit = async (
@@ -421,7 +505,7 @@ const _doCommit = async (
       try {
         const d = await r.json()
         Object.entries(d?.versions || {}).forEach(([k, v]) => {
-          if (typeof v === 'string') _versions.set(k, v)
+          if (typeof v === 'string') _setVersion(k, v)
         })
       } catch (e) { /* geen versions in respons */ }
       return {status: 'ok'}
@@ -457,7 +541,16 @@ const _doCommit = async (
 // alle apparaten delen één rate-limit-budget). Eén GET /api/bulk levert nu
 // alle keys + versies in één keer; de per-key-GET blijft de fallback voor
 // oudere servers en voor refresh/herstel.
+//
+// Het antwoord is een momentopname van het opstarten. Pagina's die later
+// aankoppelen (BatchesPage, IngredientenPage registreren hun eigen keys pas
+// bij het openen) mogen daar niet meer uit lezen: ze zouden verouderde data
+// tonen én een verouderde versie zetten, waardoor de eerstvolgende save
+// gegarandeerd op een conflict liep. Na `_BULK_VERS_MS` gaat zo'n key gewoon
+// langs de losse GET.
+const _BULK_VERS_MS = 15_000
 let _bulkPromise: Promise<{data: any, versions: Record<string, string>} | null> | null = null
+let _bulkTijd = 0
 
 const _bulkLoad = (): Promise<{data: any, versions: Record<string, string>} | null> => {
   if (!_bulkPromise) {
@@ -468,6 +561,7 @@ const _bulkLoad = (): Promise<{data: any, versions: Record<string, string>} | nu
         if (!d || typeof d.data !== 'object' || typeof d.versions !== 'object') return null
         _serverReachable = true
         _syncErrors = 0
+        _bulkTijd = Date.now()
         return d
       })
       .catch(() => null)
@@ -485,10 +579,11 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     // Fallback voor servers zonder /api/bulk (en voor bulk-fouten):
     // de oorspronkelijke per-key-GET met 404-initial-sync.
     const perKeyFetch = () => {
+      const stempel = _versieStempel(key)
       _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
         .then(r => {
           _serverReachable = true
-          _updateVersion(key, r)
+          _updateVersion(key, r, stempel)
           if (r.ok) {
             _syncErrors = 0
             if (secure) localStorage.removeItem('craftery_' + key)
@@ -517,11 +612,13 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     }
 
     _bulkLoad().then(bulk => {
-      if (!bulk) { perKeyFetch(); return }
+      // Geen bulk, of een momentopname die te oud is voor deze laat
+      // aankoppelende key → verse losse GET.
+      if (!bulk || Date.now() - _bulkTijd > _BULK_VERS_MS) { perKeyFetch(); return }
       try {
         if (Object.prototype.hasOwnProperty.call(bulk.data, key)) {
           const v = bulk.versions[key]
-          if (typeof v === 'string') _versions.set(key, v)
+          if (typeof v === 'string') _setVersion(key, v)
           const d = bulk.data[key]
           _fetchedKeys.add(key)
           if (secure) localStorage.removeItem('craftery_' + key)
@@ -551,8 +648,9 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   // vervalt de lokale wijziging bewust, met een duidelijke melding.
   const herstelVanServer = (meldingKey: string) => {
     modified.current = false
+    const stempel = _versieStempel(key)
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-      .then(r => { _updateVersion(key, r); return r.ok ? r.json() : null })
+      .then(r => { _updateVersion(key, r, stempel); return r.ok ? r.json() : null })
       .then(d => {
         if (d !== null && d !== undefined) {
           _rememberSynced(key, d)
@@ -567,6 +665,17 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   const onReject = () => herstelVanServer('err_save_geweigerd')
   const onForbidden = () => herstelVanServer('err_geen_rechten')
 
+  // Het conflict is per record opgelost: de samengevoegde stand staat al op
+  // de server en komt nu ook in beeld. Zonder botsingen gebeurt dat stil —
+  // er is niets verloren gegaan. Alleen wanneer hetzelfde record aan beide
+  // kanten wijzigde (de server won) melden we dat, met het aantal.
+  const onSamengevoegd = (samengevoegd: any, botsingen: number) => {
+    modified.current = false
+    setData(samengevoegd)
+    if (!secure) lsSet(key, samengevoegd)
+    if (botsingen > 0) alert(t('sync_merge_botsing').replace('{n}', String(botsingen)))
+  }
+
   const save = (val: any) => {
     modified.current = true
     setData((prev: any) => {
@@ -577,14 +686,22 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       _pendingSaves.delete(key) // nieuwe save vervangt elke oudere retry
       // Via de commit-buffer: saves uit dezelfde event-tick worden gebundeld
       // tot één atomaire /api/commit (ERP-plan 1.1).
-      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict, onReject, onForbidden})
+      _enqueueSave(key, {data: next, seq, onOk: () => { modified.current = false }, onConflict, onSamengevoegd, onReject, onForbidden})
       return next
     })
   }
 
   const refresh = () => {
+    const stempel = _versieStempel(key)
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-      .then(r => { _serverReachable = true; _updateVersion(key, r); return r.ok ? r.json() : null })
+      .then(r => {
+        _serverReachable = true
+        // Is er intussen geschreven, dan is dit antwoord verouderd: niets
+        // terugzetten, anders verdwijnt de zojuist opgeslagen wijziging weer.
+        if (_versieStempel(key) !== stempel) return null
+        _updateVersion(key, r, stempel)
+        return r.ok ? r.json() : null
+      })
       .then(d => {
         if (d !== null && d !== undefined) {
           _rememberSynced(key, d)

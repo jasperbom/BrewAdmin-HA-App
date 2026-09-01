@@ -2819,6 +2819,7 @@
   "err_pos_voorraad": "Stock insuficiente para {product}: {beschikbaar} disponible.",
   "err_pos_klant_naam": "Introduce un nombre para el cliente.",
   "sync_conflict_melding": "Atención: estos datos se han modificado simultáneamente en otra ventana o en otro dispositivo. Tu último cambio NO se ha guardado; se han vuelto a cargar los datos actuales. Vuelve a introducir tu cambio.",
+  "sync_merge_botsing": "Aviso: {n} cambio(s) se han modificado al mismo tiempo en otra ventana o en otro dispositivo. Ahí se ha mantenido la versión de la otra ventana; tus demás cambios sí se han guardado. Revisa estas líneas.",
   "err_factuurnummer_ophalen": "No se ha podido obtener un número de factura del servidor. Comprueba la conexión e inténtalo de nuevo.",
   "err_periode_gesloten_mutatie": "Esta factura forma parte de un período de IVA cuya declaración ya se ha presentado o pagado. Modificar o eliminar está bloqueado: registra una corrección o nota de crédito en el período actual.",
   "err_accijns_maand_gesloten": "Este registro forma parte de un mes de impuestos especiales cuya declaración ya se ha presentado o pagado. Modificar o eliminar está bloqueado.",

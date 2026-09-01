@@ -4,6 +4,43 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.22] — 2026-09-01
+
+### De melding "tegelijk gewijzigd" verschijnt alleen nog als het écht botst
+
+Het versieslot dat verloren werk moet voorkomen, zat op een hele datasleutel.
+Wijzigde er iets anders in `batches` — een servertick die het cold-crash-
+setpoint verzet, een gistmeting, een tweede tab, je telefoon — dan botste
+daarna élke opslag op die sleutel, ook als die een compleet ander record
+raakte. Je kreeg een schrikmelding én je invoer was weg.
+
+De app lost zo'n botsing nu eerst zelf op. Bij een conflict haalt hij de verse
+serverstand op en legt jouw wijziging daar per record overheen:
+
+- Andere records aan beide kanten? Beide wijzigingen blijven staan, zonder
+  melding — er is niets verloren gegaan.
+- Hetzelfde record aan beide kanten anders? Daar wint de serverversie, en de
+  melding noemt hoeveel regels dat betrof. Je overige wijzigingen blijven wél
+  bewaard.
+- Eén enkele waarde (thema, appnaam, een ingeklapte sectie)? Die wordt stil
+  opnieuw weggeschreven: bij één waarde is de laatste wijziging de bedoelde.
+
+Twee bronnen van valse conflicten zijn ook weg:
+
+- Een pagina die je pas later opent (Batches, Ingrediënten) las zijn gegevens
+  nog uit de momentopname van het opstarten. Die toonde verouderde data én
+  zette een verouderd versienummer, waardoor de eerstvolgende klik gegarandeerd
+  op een conflict liep. Na 15 seconden haalt zo'n sleutel zijn eigen verse
+  stand op.
+- Een ophaalactie die onderweg was terwijl er geschreven werd, kon achteraf een
+  verouderd versienummer terugzetten. Elke sleutel heeft nu een generatie-
+  stempel; een verlaat antwoord wordt genegeerd.
+
+Nieuw: `src/utils/merge.ts` (pure logica, met tests) en het 409-pad van
+`api.ts`.
+
+---
+
 ## [1.12.21] — 2026-08-24
 
 ### De voorcalculatie rekent op de fles van 33 cl
