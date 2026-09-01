@@ -3,6 +3,7 @@ import { lsSet, t } from '../i18n'
 import { bouwSyncSnapshot, berekenDelta, deltaIsKleiner, SyncSnapshot } from './delta'
 import { bouwMergeBasis, voegSamen, MergeBasis } from './merge'
 import { parseWcFout } from './wcFout'
+import { bfFermType } from './ingTypes'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
 // Fallback '/' voor niet-browser-omgevingen (Vitest, fase 3.1): daar worden
@@ -1096,6 +1097,10 @@ export const bfMapRecipe = (r: any, opts: {
   tags:   Array.isArray(r.searchTags) ? r.searchTags : (r.searchTags ? [r.searchTags] : []),
   mout:   (r.fermentables||[]).map((f: any) => ({
     naam: f.name||'', hoeveelheid: Number(f.amount||0), eenheid: 'kg',
+    // Brewfather gooit mout, suiker en honing op één hoop; bewaar het
+    // werkelijke type zodat kandijsuiker aan een Suiker-ingredient gekoppeld
+    // kan worden in plaats van aan een mout dat niet bestaat.
+    ingredient_type: bfFermType(f.type),
     // Yield is het diastatisch extract% (0-100). `potential` is een SG-waarde
     // (1.037 = 80% yield). Beide accepteren als bron voor extract_pct.
     extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)/0.046*100*10)/10 : ''),
@@ -1261,12 +1266,6 @@ export const extractBfProps = (item: any): Record<string, any> => {
   return props
 }
 
-export const BF_FERM_TYPE_MAP: Record<string, string> = {
-  'Grain': 'Mout', 'Extract': 'Mout', 'Dry Extract': 'Mout',
-  'Sugar': 'Suiker', 'Honey': 'Suiker',
-  'Adjunct': 'Overig', 'Juice': 'Overig', 'Other': 'Overig',
-}
-
 // Push voorraad naar Brewfather via PATCH proxy
 export const bfPushInventory = async (cat: string, bfId: string, amount: number): Promise<boolean> => {
   try {
@@ -1338,7 +1337,9 @@ export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
   ;(r.fermentables||[]).forEach((f: any) => rows.push({
     batch_id: batchId,
     ingredient_naam: f.name||'',
-    ingredient_type: 'Mout',
+    // Suiker/honing uit de fermentables-lijst houdt zijn eigen type, zodat de
+    // regel bij het suiker-ingredient in de voorraad hoort (en niet bij mout).
+    ingredient_type: bfFermType(f.type),
     hoeveelheid: Number(f.amount||0).toFixed(3),
     eenheid: 'kg',
     extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)/0.046*100*10)/10 : ''),

@@ -7,6 +7,7 @@ import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, carbDr
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
+import { ingredientenVoorType } from '../utils/ingTypes'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -1002,11 +1003,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   }
 
   // Lijst van ingredienten voor de koppel-dropdown, gefilterd op type.
-  const batchIngOptions = (ingType: string): any[] => {
-    const t = ingType || 'Overig'
-    return [...ing.filter((i: any) => i.type === t)]
-      .sort((a: any, b: any) => String(a.naam).localeCompare(String(b.naam), 'nl'))
-  }
+  const batchIngOptions = (ingType: string): any[] => ingredientenVoorType(ing, ingType)
 
   const addIng = (bid: number) => {
     const ingObj = ing.find((i: any) => i.id === Number(iForm.ingredient_id))
@@ -1156,7 +1153,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
     }
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
     const nieuweIng = [
-      ...(r.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
+      ...(r.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: i.ingredient_type || 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
       ...(r.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
       ...(r.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
       ...(r.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),

@@ -1651,6 +1651,18 @@ export const gemAgpInPeriode = (
 
 export type ReceptCategorie = 'mout' | 'hop' | 'gist' | 'overig'
 
+// Map ingredient_type (zoals op Batch) naar de recept-categorie die we voor
+// de planning gebruiken. Suiker (kandij, dextrose, honing) hoort bij 'overig',
+// ook als de regel uit de moutlijst van Brewfather komt. Onbekende types
+// vallen eveneens terug op 'overig'.
+const typeToCategorie = (t?: string): ReceptCategorie => {
+  const s = String(t || '').toLowerCase()
+  if (s.includes('mout')) return 'mout'
+  if (s.includes('hop')) return 'hop'
+  if (s.includes('gist')) return 'gist'
+  return 'overig'
+}
+
 export interface GeschaaldeBehoefte {
   naam: string
   hoeveelheid: number
@@ -1668,7 +1680,7 @@ export const scaleRecipeNeeds = (recept: Recept, targetL: number): GeschaaldeBeh
   const out: GeschaaldeBehoefte[] = []
   const categorieen: ReceptCategorie[] = ['mout', 'hop', 'gist', 'overig']
   for (const cat of categorieen) {
-    const lijst = (recept as any)[cat] as Array<{naam: string, hoeveelheid: number, eenheid: string}> | undefined
+    const lijst = (recept as any)[cat] as Array<{naam: string, hoeveelheid: number, eenheid: string, ingredient_type?: string}> | undefined
     if (!Array.isArray(lijst)) continue
     for (const ri of lijst) {
       const q = Number(ri?.hoeveelheid || 0) * f
@@ -1677,7 +1689,10 @@ export const scaleRecipeNeeds = (recept: Recept, targetL: number): GeschaaldeBeh
         naam: String(ri.naam).trim(),
         hoeveelheid: q,
         eenheid: String(ri.eenheid || ''),
-        categorie: cat,
+        // Een regel met een eigen type (suiker in de moutlijst) telt mee in de
+        // categorie van dát type, zodat dezelfde behoefte via het recept en
+        // via de batchregels in dezelfde regel van de bestellijst landt.
+        categorie: ri.ingredient_type ? typeToCategorie(ri.ingredient_type) : cat,
       })
     }
   }
@@ -1689,16 +1704,6 @@ export interface AggregaatBehoefte {
   eenheid: string
   categorie: ReceptCategorie
   totaal: number
-}
-
-// Map ingredient_type (zoals op Batch) naar de recept-categorie die we voor
-// de planning gebruiken. Onbekende types vallen terug op 'overig'.
-const typeToCategorie = (t?: string): ReceptCategorie => {
-  const s = String(t || '').toLowerCase()
-  if (s.includes('mout')) return 'mout'
-  if (s.includes('hop')) return 'hop'
-  if (s.includes('gist')) return 'gist'
-  return 'overig'
 }
 
 // Aggregeert ingrediëntbehoefte over meerdere batches. Primaire bron: de

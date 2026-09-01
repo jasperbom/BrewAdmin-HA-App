@@ -574,6 +574,11 @@ export interface ReceptIngredient {
   tijd?: number | string            // minuten (kook) of dagen (dry-hop)
   tijdEenheid?: string              // 'min' | 'days'
   ingredient_id?: number | null
+  // Werkelijk ingredienttype van de regel. Brewfather zet mout, suiker en
+  // honing samen in de fermentables-lijst; een suikerregel in de moutsectie
+  // houdt hier zijn eigen type ('Suiker') zodat hij aan het juiste ingredient
+  // gekoppeld wordt. Leeg = het type van de sectie.
+  ingredient_type?: string
   // Brouwkundige eigenschappen voor calculaties (overgenomen uit Brewfather
   // of handmatig ingevuld). Worden bij batch-creatie doorgezet naar
   // batch_ingredienten zodat IBU/efficiency direct werken.

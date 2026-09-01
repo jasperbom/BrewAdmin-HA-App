@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.12.22] — 2026-09-01
+## [1.12.23] — 2026-09-01
 
 ### De melding "tegelijk gewijzigd" verschijnt alleen nog als het écht botst
 
@@ -38,6 +38,34 @@ Twee bronnen van valse conflicten zijn ook weg:
 
 Nieuw: `src/utils/merge.ts` (pure logica, met tests) en het 409-pad van
 `api.ts`.
+
+---
+
+## [1.12.22] — 2026-09-01
+
+### Kandijsuiker in het recept herkent nu het suiker-ingredient
+
+Brewfather zet mout, suiker en honing in één lijst (`fermentables`). De app nam
+die lijst integraal over als type **Mout**, terwijl dezelfde kandijsuiker uit de
+Brewfather-voorraad als **Suiker** binnenkwam — receptregel en voorraad-
+ingredient vonden elkaar dus niet, en de koppel-dropdown liet het suiker-
+ingredient niet eens zien.
+
+- Bij de import houdt een fermentable zijn werkelijke type: `Sugar`/`Honey` →
+  Suiker, `Adjunct`/`Juice`/`Other` → Overig, de rest Mout. Dat geldt voor het
+  recept én voor de batchregels (`bfMapRecipe`, `bfMapBis`), en de nieuwe
+  `bfFermType` is de enige plek waar die vertaling staat.
+- Nieuw: `src/utils/ingTypes.ts` met verwante typegroepen. Bij het koppelen zijn
+  Mout ↔ Suiker en Overig ↔ Suiker uitwisselbaar, dus ook een recept dat nog
+  niet opnieuw gesynct is (suikerregel met type Mout) is aan het juiste
+  ingredient te koppelen. Hop en gist blijven strikt gescheiden.
+- De koppel-dropdowns op de receptpagina, de batchflow en de batchpagina lopen
+  alle drie via dezelfde `ingredientenVoorType` — eigen type eerst, daarna de
+  verwante typen.
+- In de moutlijst van een recept staat voortaan het type erbij als het afwijkt
+  van de sectie, zodat een suikerregel niet als mout leest.
+- De bestellijst telt een suikerregel uit de moutlijst in dezelfde categorie,
+  ongeacht of de behoefte uit het recept of uit de batchregels komt.
 
 ---
 
