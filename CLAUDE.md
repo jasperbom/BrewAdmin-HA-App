@@ -703,7 +703,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - REST API, authenticated via Basic auth (user ID + API key)
 - Used for: recipe list, batch list, batch status sync
 - Credentials stored in `instellingen` data key (`bfUserId`, `bfApiKey`)
-- Auto-sync interval: configurable (default 10 minutes) via App.tsx
+- Auto-sync: draait **één keer per mount** van `App.tsx` (`bfAutoSynced`-ref), niet
+  op een interval; een nieuwe sync vergt een herlaad of de handmatige knop.
+  Let op: de sync overschrijft `vergistingsprofiel`/`maischprofiel`/OG/FG
+  onvoorwaardelijk — zie `docs/ERP-VERBETERPLAN-2.md` W6 (fase 7.4)
 
 ### WooCommerce API
 

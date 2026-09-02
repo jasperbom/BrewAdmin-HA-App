@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.24] — 2026-09-02
+
+### ERP-review ronde 2 vastgelegd (alleen documentatie)
+
+Een nieuwe review van de hele app op logica, veiligheid en werkflow, als vervolg
+op het afgeronde ERP-verbeterplan (fasen 0–4). Bevindingen en een gefaseerd
+plan (fasen 5–8) staan in `docs/ERP-VERBETERPLAN-2.md`; de afvinklijst met
+werkwijze voor volgende sessies in `docs/ERP-STATUS-2.md`. De zwaarste punten:
+
+- Twee test-endpoints (`/api/mail/test`, `/api/woocommerce/test`) vullen de
+  `__SECRET__`-sentinel terug en verbinden met een host uit de request — het
+  SMTP-wachtwoord en WC-secret zijn zo te exfiltreren.
+- De client breekt een atomaire commit bij 409/422/403 op in losse POSTs, wat
+  halve transacties oplevert (uitslag zonder accijns, order zonder factuur).
+- "Oude batches" omzeilt CCP 1/2/3: vrije statuswissel en afvullen zonder
+  afvulsessie, waarna de batch permanent `legacy` is.
+- De accijns neemt het maximum van drie grondslagen; sinds 2024 geldt alleen
+  hl × %vol, en bier ≤ 0,5 %vol is vrijgesteld.
+- De jaarafsluiting bevriest de balans van vandaag onder vorig boekjaar; het
+  eigen vermogen is een sluitpost en gereed product staat niet op de balans.
+- Geen enkele GET heeft een rolcheck; herpicken dupliceert uitslag en accijns;
+  annuleren na picken draait niets terug.
+
+Er is in deze versie geen code gewijzigd. Wel is de CLAUDE.md-claim dat de
+Brewfather-sync elke 10 minuten draait gecorrigeerd: hij draait één keer per
+mount.
+
+---
+
 ## [1.12.23] — 2026-09-01
 
 ### De melding "tegelijk gewijzigd" verschijnt alleen nog als het écht botst
