@@ -3565,5 +3565,12 @@
   "wc_status_cancelled": "Storniert",
   "wc_note_verzonden": "Versendet aus BrewAdmin am {datum}. Track & Trace: {track}",
   "wc_note_verzonden_geen_track": "Versendet aus BrewAdmin am {datum}.",
-  "wc_note_geannuleerd_na_uitslag": "In BrewAdmin storniert, nachdem das Bier den Bestand bereits verlassen hatte. Der Status wurde bewusst nicht auf Storniert gesetzt, weil WooCommerce sonst Bestand zurückbuchen würde, der nicht mehr da ist. Als Rückerstattung abwickeln."
+  "wc_note_geannuleerd_na_uitslag": "In BrewAdmin storniert, nachdem das Bier den Bestand bereits verlassen hatte. Der Status wurde bewusst nicht auf Storniert gesetzt, weil WooCommerce sonst Bestand zurückbuchen würde, der nicht mehr da ist. Als Rückerstattung abwickeln.",
+  "settings_wc_import_interval": "Automatisch abrufen (Minuten)",
+  "settings_wc_import_interval_hint": "0 = aus. Solange BrewAdmin geöffnet ist, importiert die App alle so viel Minuten selbst. Der Server prüft im selben Rhythmus auf neue Shop-Bestellungen und sendet eine HA-Benachrichtigung (Einstellungen → Benachrichtigungen), auch wenn die App geschlossen ist.",
+  "settings_wc_laatste_auto_import": "Letzter automatischer Import",
+  "settings_wc_laatste_servercontrole": "Letzte Serverprüfung",
+  "settings_wc_servercontrole_fout": "Letzter Fehler",
+  "msg_wc_auto_import": "{n} neue Shop-Bestellung(en) importiert",
+  "attentie_webshop_nieuw": "Neue Shop-Bestellungen"
 }

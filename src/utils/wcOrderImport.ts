@@ -24,9 +24,9 @@ import { tod } from './format'
 import { findKlantVoorOrder } from './klant'
 import {
   WcRefs, WC_IMPORT_STATUSSEN_DEFAULT, wcOrdersPad, mapWcOrderRegels,
-  wcBetaalVelden, betaalVeldenGewijzigd,
+  wcBetaalVelden, betaalVeldenGewijzigd, BETAAL_KEYS,
 } from './wcImport'
-import { wcLeveringVelden, leveringVeldenGewijzigd, leveringOmschrijving } from './levering'
+import { wcLeveringVelden, leveringVeldenGewijzigd, leveringOmschrijving, LEVERING_KEYS } from './levering'
 
 // Maximaal 10 pagina's van 100 orders per import; genoeg voor een eerste
 // volledige haal en tegelijk een rem op een winkel met jaren historie.
@@ -155,9 +155,13 @@ export function wcOrderNaarBestelling(
 export function wcOrderUpdate(bestaand: any, o: any): Record<string, any> | null {
   const velden = wcBetaalVelden(o)
   const levering = wcLeveringVelden(o)
+  // Een veld dat in de winkel verdwenen is (afhaallocatie na een wissel naar
+  // bezorgen, betaaldatum na een terugboeking) moet hier ook weg — anders
+  // blijft de order elke ronde opnieuw als "gewijzigd" gelden.
+  const leeg = (keys: string[]) => Object.fromEntries(keys.map(k => [k, null]))
   const upd = {
-    ...(betaalVeldenGewijzigd(bestaand, velden) ? velden : {}),
-    ...(leveringVeldenGewijzigd(bestaand, levering) ? levering : {}),
+    ...(betaalVeldenGewijzigd(bestaand, velden) ? {...leeg(BETAAL_KEYS), ...velden} : {}),
+    ...(leveringVeldenGewijzigd(bestaand, levering) ? {...leeg(LEVERING_KEYS), ...levering} : {}),
   }
   return Object.keys(upd).length ? upd : null
 }
@@ -273,3 +277,30 @@ export function importLeaseVrij(status: WcImportStatus | null | undefined, nu: n
   }
   return true
 }
+
+/**
+ * Vangnet tegen dubbele webshoporders (twee tabbladen die precies tegelijk
+ * importeerden vóór de lease van de ander zichtbaar was). Van twee
+ * bestellingen met dezelfde `wc_order_id` blijft de oudste (laagste id)
+ * staan; een dubbel vervalt alleen zolang er nog niets mee gedaan is —
+ * status `nieuw`, geen picks, geen factuur — want anders zou er voorraad of
+ * een factuur aan een verdwenen order hangen. Geeft `null` als er niets te
+ * schonen valt.
+ */
+export function verwijderDubbeleWcOrders(bestellingen: any[], picks: any[] = []): {lijst: any[], verwijderd: any[]} | null {
+  const lijst = bestellingen || []
+  const metPicks = new Set((picks || []).map((p: any) => p?.bestelling_id))
+  const eerste = new Map<any, any>()
+  const verwijderd: any[] = []
+  for (const b of [...lijst].sort((a, c) => (Number(a?.id) || 0) - (Number(c?.id) || 0))) {
+    const wcId = b?.wc_order_id
+    if (wcId == null) continue
+    if (!eerste.has(wcId)) { eerste.set(wcId, b); continue }
+    const onaangeroerd = b.status === 'nieuw' && !metPicks.has(b.id) && b.factuur_id == null
+    if (onaangeroerd) verwijderd.push(b)
+  }
+  if (!verwijderd.length) return null
+  const weg = new Set(verwijderd.map(b => b.id))
+  return {lijst: lijst.filter((b: any) => !weg.has(b?.id)), verwijderd}
+}
+

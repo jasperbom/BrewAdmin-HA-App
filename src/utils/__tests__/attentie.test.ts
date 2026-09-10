@@ -89,6 +89,14 @@ describe('attentiePosten', () => {
     expect(posten).toEqual([{ id: 'bestellingen', sleutel: 'attentie_bestellingen', pagina: 'bestellingen', filter: 'te_picken', aantal: 1 }])
   })
 
+  it('telt webshoporders die de server zag maar die nog niet geïmporteerd zijn', () => {
+    const bron = leegBron()
+    bron.bestellingen = [{ id: 1, status: 'afgerond', wc_order_id: 5, regels: [] }]
+    bron.wcImportStatus = { nieuw: [{ id: 5 }, { id: 6 }, { id: 7 }] }
+    const posten = attentiePosten(bron).verkoop
+    expect(posten).toEqual([{ id: 'webshop_nieuw', sleutel: 'attentie_webshop_nieuw', pagina: 'bestellingen', aantal: 2 }])
+  })
+
   it('telt openstaande BTW-perioden onder Administratie, over huidig + vorig jaar', () => {
     const bron = leegBron()
     bron.facturen = [{ datum: '2025-11-04' }, { datum: '2026-02-11' }]

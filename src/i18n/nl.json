@@ -3565,5 +3565,12 @@
   "wc_status_cancelled": "Geannuleerd",
   "wc_note_verzonden": "Verzonden vanuit BrewAdmin op {datum}. Track & trace: {track}",
   "wc_note_verzonden_geen_track": "Verzonden vanuit BrewAdmin op {datum}.",
-  "wc_note_geannuleerd_na_uitslag": "In BrewAdmin geannuleerd nadat het bier al was uitgeslagen. De status is bewust niet op Geannuleerd gezet, omdat WooCommerce dan voorraad zou terugboeken die er niet meer is. Handel dit als terugbetaling af."
+  "wc_note_geannuleerd_na_uitslag": "In BrewAdmin geannuleerd nadat het bier al was uitgeslagen. De status is bewust niet op Geannuleerd gezet, omdat WooCommerce dan voorraad zou terugboeken die er niet meer is. Handel dit als terugbetaling af.",
+  "settings_wc_import_interval": "Automatisch ophalen (minuten)",
+  "settings_wc_import_interval_hint": "0 = uit. Zolang BrewAdmin open staat, importeert de app elke zoveel minuten zelf. De server controleert in hetzelfde ritme op nieuwe webshoporders en stuurt een HA-melding (Instellingen → Meldingen), ook als de app dicht is.",
+  "settings_wc_laatste_auto_import": "Laatste automatische import",
+  "settings_wc_laatste_servercontrole": "Laatste servercontrole",
+  "settings_wc_servercontrole_fout": "Laatste fout",
+  "msg_wc_auto_import": "{n} nieuwe webshopbestelling(en) geïmporteerd",
+  "attentie_webshop_nieuw": "Nieuwe webshopbestellingen"
 }

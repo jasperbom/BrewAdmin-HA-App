@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   haalWcOrders, wcOrderNaarBestelling, wcOrderUpdate, importeerWcOrders, pasImportToe,
   importAuditRegels, importMelding, telNieuweWebshopOrders, importLeaseVrij, wcBtwNummer,
-  wcImportSelectie, WC_PER_PAGE, WC_IMPORT_LEASE_MS,
+  wcImportSelectie, verwijderDubbeleWcOrders, WC_PER_PAGE, WC_IMPORT_LEASE_MS,
 } from '../wcOrderImport'
 
 const t = (k: string) => k
@@ -96,6 +96,13 @@ describe('wcOrderUpdate', () => {
       shipping_lines: [{method_id: 'pickup_location', method_title: 'Afhalen', total: '0'}]}))
     expect(upd2).toMatchObject({wc_levering: 'afhalen', wc_afhaalmoment: '2026-09-12 10:00'})
   })
+  it('een verdwenen veld wordt gewist, zodat de order daarna niet elke ronde "gewijzigd" is', () => {
+    const afhaal = {...bestaand, wc_levering: 'afhalen', wc_afhaal_locatie: 'Brouwerij', wc_afhaalmoment: '2026-09-12 10:00'}
+    const upd = wcOrderUpdate(afhaal, order(1))!  // in de winkel nu bezorgen
+    expect(upd).toMatchObject({wc_levering: 'verzenden', wc_afhaal_locatie: null, wc_afhaalmoment: null})
+    const na = {...afhaal, ...upd}
+    expect(wcOrderUpdate(na, order(1))).toBeNull()
+  })
 })
 
 describe('importeerWcOrders + pasImportToe', () => {
@@ -148,3 +155,30 @@ describe('telNieuweWebshopOrders / importLeaseVrij', () => {
     expect(importLeaseVrij({laatste_import: '2026-09-10T09:50:00Z'}, nu, 'ik', 0)).toBe(true)
   })
 })
+
+describe('verwijderDubbeleWcOrders', () => {
+  it('laat de oudste staan en haalt een onaangeroerde dubbel weg', () => {
+    const lijst = [
+      {id: 20, wc_order_id: 5, status: 'nieuw'},
+      {id: 10, wc_order_id: 5, status: 'nieuw'},
+      {id: 30, wc_order_id: 6, status: 'nieuw'},
+    ]
+    const r = verwijderDubbeleWcOrders(lijst, [])!
+    expect(r.verwijderd.map(b => b.id)).toEqual([20])
+    expect(r.lijst.map(b => b.id)).toEqual([10, 30])
+  })
+  it('raakt een dubbel met picks, factuur of andere status niet aan', () => {
+    const lijst = [
+      {id: 10, wc_order_id: 5, status: 'nieuw'},
+      {id: 20, wc_order_id: 5, status: 'gepickt'},
+      {id: 21, wc_order_id: 5, status: 'nieuw', factuur_id: 3},
+      {id: 22, wc_order_id: 5, status: 'nieuw'},
+    ]
+    const r = verwijderDubbeleWcOrders(lijst, [{bestelling_id: 22}])
+    expect(r).toBeNull()
+  })
+  it('handmatige orders zonder wc_order_id tellen nooit als dubbel', () => {
+    expect(verwijderDubbeleWcOrders([{id: 1, status: 'nieuw'}, {id: 2, status: 'nieuw'}])).toBeNull()
+  })
+})
+

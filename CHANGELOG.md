@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.29] — 2026-09-10
+
+### Bestellingen komen vanzelf binnen — en je hoort het als de app dicht is
+
+Nieuwe instelling bij WooCommerce → Orders importeren: **Automatisch ophalen
+(minuten)**, standaard 15, 0 = uit.
+
+- **In de app.** Zolang BrewAdmin open staat, importeert hij elke zoveel
+  minuten zelf (dezelfde import als de knop, ook de verversing van betaling en
+  afhaalmoment van bekende orders). Een blauwe balk meldt "N nieuwe
+  webshopbestelling(en) geïmporteerd", het synchronisatielog krijgt een regel.
+  Twee open tabbladen spreken via een lease af wie importeert; komt er toch
+  een dubbel binnen, dan wordt die opgeruimd zolang hij nog nieuw is en er
+  niets mee gedaan is — nooit een order met picks of factuur. Alleen-lezen
+  gebruikers importeren niet.
+- **Op de server.** Een achtergrondcontrole kijkt in hetzelfde ritme of er
+  webshoporders zijn die hier nog niet staan en stuurt daar één keer een
+  HA-melding over (Instellingen → Meldingen: "#3235 Ans Bakker — 12,50 EUR ·
+  afhalen"), ook als de app dicht is. De Verkoop-header telt ze als *Nieuwe
+  webshopbestellingen*, en zodra je de app opent worden ze meteen
+  geïmporteerd. De instellingen tonen de laatste automatische import en de
+  laatste servercontrole (met de fout, als die er was).
+
+Voorraad: doordat een webshoporder nu binnen minuten als reservering
+meetelt, klopt de voorraadpush naar de winkel beter — zonder import kon een
+push de verlaging die WooCommerce zelf al deed weer ongedaan maken.
+
 ## [1.12.28] — 2026-09-10
 
 ### De webshop weet nu wat je hier met een order doet

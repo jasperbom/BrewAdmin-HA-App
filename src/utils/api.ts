@@ -746,6 +746,8 @@ export interface ServerHealth {
   laatste_backup: string | null
   data_dir: boolean
   uptime_s: number
+  /** Servercontrole op nieuwe webshoporders (server.py _wc_orders_tick). */
+  wc_orders?: {laatste_check: string | null, laatste_fout: string | null}
 }
 
 export const getServerHealth = async (): Promise<ServerHealth | null> => {

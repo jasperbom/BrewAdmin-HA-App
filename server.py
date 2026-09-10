@@ -1164,6 +1164,7 @@ _KEY_TYPES = {
         'accijns_instellingen', 'btw_instellingen', 'ing_type_btw',
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
+        'wc_import_status',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
         'haccp_instellingen',
@@ -2379,6 +2380,216 @@ def _carbonatie_co2_tick() -> None:
     for service, titel, bericht in notify_jobs:
         ok = _ha_notify(service, titel, bericht)
         _log('carb-co2', f"notify {service}: {'ok' if ok else 'mislukt'}", level=logging.ERROR)
+
+
+# ── WooCommerce: nieuwe webshoporders opmerken ──────────────────────────────
+# De import zelf (order → bestelling, met artikel-/merchherkenning) draait in
+# de app (utils/wcOrderImport.ts) — die logica wordt hier bewust niet
+# gedupliceerd. De server kijkt alleen periodiek of er webshoporders zijn die
+# nog niet als bestelling bestaan, stuurt daar één keer een HA-melding over
+# (ook als de app dicht is) en zet ze in `wc_import_status.nieuw`, zodat de
+# app bij het openen meteen importeert en de header een teller toont.
+WC_ORDERS_INTERVAL_DEFAULT_MIN = 15
+WC_ORDERS_PER_PAGE = 50
+# `_fields` beperkt het antwoord (WordPress REST); een winkel die het negeert
+# kost alleen bandbreedte — de samenvatting kiest de velden zelf.
+WC_ORDERS_FIELDS = 'id,number,status,date_created,total,currency,billing,shipping_lines'
+WC_IMPORT_STATUSSEN_DEFAULT = ('pending', 'processing', 'on-hold', 'completed')
+WC_AFHAAL_METHODEN = ('local_pickup', 'pickup_location', 'local_pickup_plus')
+# Wanneer is er voor het laatst gekeken (epoch) en met welk resultaat. Bewust
+# niet per tick in de database: dat zou elke ronde een versiebump (en dus een
+# refetch bij elke open browser) geven. /api/health toont ze wel.
+_wc_orders_laatste_check: float = 0.0
+_wc_orders_laatste_fout: str | None = None
+
+
+def _wc_import_instellingen(creds_raw) -> dict:
+    """Importinstellingen uit `woocommerce_creds`, gevalideerd zoals de app dat
+    doet (utils/wcImport.ts → wcOrdersPad): interval in minuten (0 = uit),
+    statussen alleen uit letters/streepjes, vanaf-datum als JJJJ-MM-DD."""
+    creds = creds_raw if isinstance(creds_raw, dict) else {}
+    ruw = creds.get('importInterval')
+    try:
+        interval = WC_ORDERS_INTERVAL_DEFAULT_MIN if ruw in (None, '') else int(float(ruw))
+    except (TypeError, ValueError):
+        interval = WC_ORDERS_INTERVAL_DEFAULT_MIN
+    statussen = []
+    for st in (creds.get('importStatussen') or []):
+        st = str(st).strip().lower()
+        if re.match(r'^[a-z-]+$', st) and st not in statussen:
+            statussen.append(st)
+    vanaf = str(creds.get('importVanaf') or '').strip()
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', vanaf):
+        vanaf = ''
+    return {
+        'enabled': bool(creds.get('enabled')),
+        'interval_min': max(0, interval),
+        'statussen': statussen or list(WC_IMPORT_STATUSSEN_DEFAULT),
+        'vanaf': vanaf,
+    }
+
+
+def _wc_orders_pad(inst: dict) -> str:
+    """Het orders-pad voor de controle: dezelfde selectie als de app, maar
+    klein (50 per pagina, alleen samenvattingsvelden)."""
+    pad = f"orders?status={','.join(inst['statussen'])}&per_page={WC_ORDERS_PER_PAGE}"
+    if inst.get('vanaf'):
+        pad += f"&after={inst['vanaf']}T00:00:00"
+    return pad + f'&_fields={WC_ORDERS_FIELDS}'
+
+
+def _wc_order_samenvatting(o) -> dict | None:
+    """Wat de app en de melding van een order moeten weten; None als de order
+    geen bruikbaar id heeft."""
+    if not isinstance(o, dict):
+        return None
+    try:
+        oid = int(o.get('id'))
+    except (TypeError, ValueError):
+        return None
+    billing = o.get('billing') if isinstance(o.get('billing'), dict) else {}
+    naam = f"{billing.get('first_name') or ''} {billing.get('last_name') or ''}".strip() \
+        or str(billing.get('company') or '').strip()
+    levering = ''
+    for regel in (o.get('shipping_lines') or []):
+        if not isinstance(regel, dict):
+            continue
+        levering = 'afhalen' if str(regel.get('method_id') or '').lower() in WC_AFHAAL_METHODEN else 'verzenden'
+        if levering == 'afhalen':
+            break
+    return {
+        'id': oid,
+        'nummer': str(o.get('number') or oid),
+        'naam': naam,
+        'totaal': str(o.get('total') or ''),
+        'valuta': str(o.get('currency') or ''),
+        'datum': str(o.get('date_created') or '')[:10],
+        'status': str(o.get('status') or ''),
+        'levering': levering,
+    }
+
+
+def _wc_nieuwe_orders(orders, bekende_ids, gemeld_ids) -> tuple[list, list, list]:
+    """Splits de winkelorders in: nog niet in BrewAdmin (`nieuw`), daarvan nog
+    niet gemeld (`te_melden`), en de gemeld-lijst gesnoeid tot orders die nog
+    steeds nieuw zijn (zodat hij niet eindeloos groeit)."""
+    bekend = {int(x) for x in (bekende_ids or []) if str(x).lstrip('-').isdigit()}
+    gemeld = {int(x) for x in (gemeld_ids or []) if str(x).lstrip('-').isdigit()}
+    nieuw: list = []
+    gezien: set = set()
+    for o in (orders or []):
+        sv = _wc_order_samenvatting(o)
+        if not sv or sv['id'] in bekend or sv['id'] in gezien:
+            continue
+        gezien.add(sv['id'])
+        nieuw.append(sv)
+    te_melden = [sv for sv in nieuw if sv['id'] not in gemeld]
+    gemeld_bijgewerkt = sorted(i for i in gemeld if i in gezien)
+    return nieuw, te_melden, gemeld_bijgewerkt
+
+
+def _wc_order_melding(sv: dict) -> str:
+    delen = [f"#{sv.get('nummer')}"]
+    if sv.get('naam'):
+        delen.append(sv['naam'])
+    bedrag = f"{sv.get('totaal') or ''} {sv.get('valuta') or ''}".strip()
+    staart = [x for x in (bedrag, sv.get('levering') or '') if x]
+    tekst = ' '.join(delen)
+    return f"{tekst} — {' · '.join(staart)}" if staart else tekst
+
+
+def _wc_orders_tick(now: float | None = None, force: bool = False) -> None:
+    """Eén controleronde. Doet niets als WooCommerce uit staat, het interval 0
+    is of het interval nog niet verstreken is (`force` slaat die wachttijd
+    over — voor tests). Netwerk buiten het datalock; schrijft
+    `wc_import_status` alleen als er iets veranderd is."""
+    global _wc_orders_laatste_check, _wc_orders_laatste_fout
+    now = time.time() if now is None else now
+    with _data_lock:
+        creds_raw = _read_json('woocommerce_creds', {}) or {}
+    inst = _wc_import_instellingen(creds_raw)
+    creds = _load_wc_creds()
+    if not creds or not inst['enabled'] or inst['interval_min'] <= 0:
+        return
+    if not force and now - _wc_orders_laatste_check < inst['interval_min'] * 60:
+        return
+    _wc_orders_laatste_check = now
+
+    status, data = _wc_request(creds, 'GET', _wc_orders_pad(inst))
+    orders = None
+    fout: str | None = None
+    if status == 200:
+        try:
+            orders = json.loads(data or b'[]')
+        except (ValueError, TypeError):
+            orders = None
+        if not isinstance(orders, list):
+            orders, fout = None, 'ongeldig antwoord van de winkel'
+    else:
+        try:
+            d = json.loads(data or b'{}')
+            fout = str(d.get('oorzaak') or d.get('message') or f'HTTP {status}') if isinstance(d, dict) else f'HTTP {status}'
+        except (ValueError, TypeError):
+            fout = f'HTTP {status}'
+
+    with _data_lock:
+        huidig = _read_json('wc_import_status', {}) or {}
+        bestellingen = _read_json('bestellingen', []) or []
+        notif = _read_json('notificatie_instellingen', {}) or {}
+    if not isinstance(huidig, dict):
+        huidig = {}
+    bekend = [b.get('wc_order_id') for b in bestellingen if isinstance(b, dict) and b.get('wc_order_id') is not None]
+
+    if orders is None:
+        # Mislukt: houd vast wat we hadden, alleen de fout wordt bijgewerkt.
+        nieuw = huidig.get('nieuw') if isinstance(huidig.get('nieuw'), list) else []
+        gemeld = sorted({int(x) for x in (huidig.get('gemeld_ids') or []) if str(x).lstrip('-').isdigit()})
+    else:
+        nieuw, te_melden, gemeld = _wc_nieuwe_orders(orders, bekend, huidig.get('gemeld_ids') or [])
+        notify_aan = bool(notif.get('enabled') and notif.get('notify_service'))
+        for sv in te_melden:
+            # Zonder meldingen telt de order tóch als gemeld: wie later
+            # meldingen aanzet, wil geen stapel oude orders op zijn telefoon.
+            ok = _ha_notify(notif['notify_service'], 'BrewAdmin — nieuwe webshopbestelling',
+                            _wc_order_melding(sv)) if notify_aan else True
+            if ok:
+                gemeld.append(sv['id'])
+            else:
+                _log('wc-orders', f"notify {notif.get('notify_service')} mislukt voor order {sv['id']}",
+                     level=logging.ERROR)
+        gemeld = sorted(set(gemeld))
+    _wc_orders_laatste_fout = fout
+    if fout:
+        _log('wc-orders', f'controle mislukt: {fout}', level=logging.WARNING)
+
+    veranderd = (huidig.get('nieuw') or []) != nieuw \
+        or [int(x) for x in (huidig.get('gemeld_ids') or []) if str(x).lstrip('-').isdigit()] != gemeld \
+        or (huidig.get('laatste_fout') or None) != (fout or None)
+    if not veranderd:
+        return
+    iso = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+    with _data_lock:
+        # Her-lees onder lock en raak alleen de servervelden aan: de app zet
+        # hier ook haar import-lease (`bezig_tot`/`door`/`laatste_import`).
+        weer = _read_json('wc_import_status', {}) or {}
+        if not isinstance(weer, dict):
+            weer = {}
+        weer.update({'nieuw': nieuw, 'gemeld_ids': gemeld, 'laatste_fout': fout, 'laatste_check': iso})
+        _write_json('wc_import_status', weer)
+
+
+def _wc_orders_loop(interval: float = 60.0) -> None:
+    """Achtergrondloop: elke minuut kijken of de controle aan de beurt is; het
+    ingestelde interval (woocommerce_creds.importInterval, standaard 15 min)
+    zit in de tick zelf, zodat een gewijzigde instelling zonder herstart
+    meetelt."""
+    time.sleep(40)  # kort wachten zodat de server volledig opgestart is
+    while True:
+        try:
+            _wc_orders_tick()
+        except Exception as exc:
+            _log('wc-orders', f'error: {exc}', level=logging.ERROR)
+        time.sleep(interval)
 
 
 def _vergisting_stap_loop(interval: float = 300.0) -> None:
@@ -4373,12 +4584,16 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         threads = {naam: t.is_alive() for naam, t in _threads.items()} or None
         data_ok = DATA_DIR.is_dir()
         ok = data_ok and (threads is None or all(threads.values()))
+        wc_check = (datetime.datetime.fromtimestamp(_wc_orders_laatste_check, datetime.timezone.utc)
+                    .isoformat(timespec='seconds') if _wc_orders_laatste_check else None)
         self._json(200, {
             'ok': ok,
             'threads': threads,
             'laatste_backup': _laatste_backup_datum(),
             'data_dir': data_ok,
             'uptime_s': int(time.monotonic() - _start_tijd),
+            # Servercontrole op nieuwe webshoporders (_wc_orders_tick).
+            'wc_orders': {'laatste_check': wc_check, 'laatste_fout': _wc_orders_laatste_fout},
         })
 
     def _handle_upload(self):
@@ -5024,6 +5239,11 @@ if __name__ == '__main__':
     _threads['sluitcontrole'] = threading.Thread(target=_sluitcontrole_loop, daemon=True)
     _threads['sluitcontrole'].start()
     _log('server', 'Sluitcontrole-herinnering-thread gestart (elke 2 minuten)')
+
+    # Nieuwe webshoporders opmerken + HA-melding (interval uit de instellingen)
+    _threads['wc_orders'] = threading.Thread(target=_wc_orders_loop, daemon=True)
+    _threads['wc_orders'].start()
+    _log('server', 'WooCommerce-ordercontrole-thread gestart (interval uit woocommerce_creds.importInterval)')
 
     # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
     # van buitenaf wanneer de gebruiker de poort bewust publiceert in de

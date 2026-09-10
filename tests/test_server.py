@@ -1404,6 +1404,173 @@ class TestSluitcontroleHerinnering:
             self._clean()
 
 
+class TestWcOrders:
+    """Servercontrole op nieuwe webshoporders (_wc_orders_tick): meldt een
+    order die nog niet als bestelling bestaat één keer via HA en houdt de
+    lijst in `wc_import_status` bij — de import zelf doet de app."""
+
+    CREDS = {'storeUrl': 'https://winkel.example', 'consumerKey': 'ck', 'consumerSecret': 'cs',
+             'enabled': True, 'importInterval': 15}
+
+    @staticmethod
+    def _order(oid, naam=('Ans', 'Bakker'), total='12.50', method='flat_rate'):
+        return {'id': oid, 'number': str(oid), 'status': 'processing', 'total': total, 'currency': 'EUR',
+                'date_created': '2026-09-10T10:00:00',
+                'billing': {'first_name': naam[0], 'last_name': naam[1]},
+                'shipping_lines': [{'method_id': method, 'method_title': 'x'}]}
+
+    @staticmethod
+    def _seed(bestellingen=(), creds=None, notif_enabled=True, status=None):
+        srv._write_json('woocommerce_creds', dict(TestWcOrders.CREDS, **(creds or {})))
+        srv._write_json('notificatie_instellingen',
+                        {'enabled': notif_enabled, 'notify_service': 'mobile_app_test', 'on_screen': True})
+        srv._write_json('bestellingen', list(bestellingen))
+        if status is not None:
+            srv._write_json('wc_import_status', status)
+
+    @staticmethod
+    def _clean():
+        conn = srv._db()
+        with conn:
+            conn.execute("DELETE FROM records WHERE key='bestellingen'")
+            for k in ('woocommerce_creds', 'notificatie_instellingen', 'wc_import_status'):
+                conn.execute("DELETE FROM kv WHERE key=?", (k,))
+            for k in ('bestellingen', 'woocommerce_creds', 'notificatie_instellingen', 'wc_import_status'):
+                conn.execute("DELETE FROM versies WHERE key=?", (k,))
+        srv._wc_orders_laatste_check = 0.0
+        srv._wc_orders_laatste_fout = None
+
+    def test_instellingen_en_pad(self):
+        inst = srv._wc_import_instellingen({'enabled': True, 'importInterval': '30',
+                                            'importStatussen': ['processing', 'x;drop', 'processing'],
+                                            'importVanaf': '2026-01-01'})
+        assert inst == {'enabled': True, 'interval_min': 30, 'statussen': ['processing'], 'vanaf': '2026-01-01'}
+        assert srv._wc_orders_pad(inst) == (
+            'orders?status=processing&per_page=50&after=2026-01-01T00:00:00&_fields=' + srv.WC_ORDERS_FIELDS)
+        leeg = srv._wc_import_instellingen({})
+        assert leeg['interval_min'] == srv.WC_ORDERS_INTERVAL_DEFAULT_MIN
+        assert leeg['statussen'] == list(srv.WC_IMPORT_STATUSSEN_DEFAULT) and leeg['vanaf'] == ''
+        assert srv._wc_import_instellingen({'importInterval': 0})['interval_min'] == 0
+        assert srv._valid_wc_path(srv._wc_orders_pad(inst))
+
+    def test_samenvatting_en_selectie(self):
+        sv = srv._wc_order_samenvatting(self._order(7, method='pickup_location'))
+        assert sv == {'id': 7, 'nummer': '7', 'naam': 'Ans Bakker', 'totaal': '12.50', 'valuta': 'EUR',
+                      'datum': '2026-09-10', 'status': 'processing', 'levering': 'afhalen'}
+        assert srv._wc_order_samenvatting({'id': 'x'}) is None
+        nieuw, te_melden, gemeld = srv._wc_nieuwe_orders(
+            [self._order(1), self._order(2), self._order(2), self._order(3)], bekende_ids=[1], gemeld_ids=[2, 99])
+        assert [o['id'] for o in nieuw] == [2, 3]
+        assert [o['id'] for o in te_melden] == [3]
+        assert gemeld == [2]  # 99 is niet meer nieuw → weg
+        assert '#7' in srv._wc_order_melding(sv) and 'afhalen' in srv._wc_order_melding(sv)
+
+    def test_meldt_nieuwe_order_eenmalig(self, app, monkeypatch):
+        calls, gevraagd = [], []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        winkel = [self._order(100), self._order(101, naam=('Kees', 'Bezorg'), total='19.90')]
+
+        def fake(creds, method, subpath, body=None, herkansing=True):
+            gevraagd.append((method, subpath))
+            return 200, json.dumps(winkel).encode()
+
+        monkeypatch.setattr(srv, '_wc_request', fake)
+        self._seed(bestellingen=[{'id': 1, 'wc_order_id': 100}])
+        try:
+            srv._wc_orders_tick(force=True)
+            assert gevraagd[0][0] == 'GET' and gevraagd[0][1].startswith('orders?status=')
+            assert len(calls) == 1 and '#101' in calls[0][2] and 'Kees Bezorg' in calls[0][2]
+            st = srv._read_json('wc_import_status')
+            assert [o['id'] for o in st['nieuw']] == [101] and st['gemeld_ids'] == [101]
+            assert st['laatste_fout'] is None and st['laatste_check']
+            # Tweede ronde: niets nieuws, geen melding, geen schrijfactie.
+            versie_voor = srv._read_json('wc_import_status')['laatste_check']
+            srv._wc_orders_tick(force=True)
+            assert len(calls) == 1
+            assert srv._read_json('wc_import_status')['laatste_check'] == versie_voor
+            # Zonder force respecteert de tick het interval.
+            srv._wc_orders_tick()
+            assert len(gevraagd) == 2
+            # De app importeert de order → hij verdwijnt uit de lijst.
+            srv._write_json('bestellingen', [{'id': 1, 'wc_order_id': 100}, {'id': 2, 'wc_order_id': 101}])
+            srv._wc_orders_tick(force=True)
+            st = srv._read_json('wc_import_status')
+            assert st['nieuw'] == [] and st['gemeld_ids'] == []
+        finally:
+            self._clean()
+
+    def test_uit_of_interval_nul_doet_niets(self, app, monkeypatch):
+        gevraagd = []
+        monkeypatch.setattr(srv, '_wc_request', lambda *a, **k: (gevraagd.append(1) or (200, b'[]')))
+        for creds in ({'enabled': False}, {'importInterval': 0}):
+            self._seed(creds=creds)
+            try:
+                srv._wc_orders_tick(force=True)
+                assert not gevraagd
+            finally:
+                self._clean()
+
+    def test_fout_vastgelegd_zonder_melding_en_later_gewist(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(1) or True))
+        antwoorden = [(502, b'{"error": "upstream request failed", "oorzaak": "dns"}'),
+                      (200, json.dumps([self._order(5)]).encode())]
+        monkeypatch.setattr(srv, '_wc_request', lambda *a, **k: antwoorden.pop(0))
+        self._seed()
+        try:
+            srv._wc_orders_tick(force=True)
+            assert not calls
+            assert srv._read_json('wc_import_status')['laatste_fout'] == 'dns'
+            assert srv._wc_orders_laatste_fout == 'dns'
+            srv._wc_orders_tick(force=True)
+            st = srv._read_json('wc_import_status')
+            assert st['laatste_fout'] is None and [o['id'] for o in st['nieuw']] == [5]
+            assert len(calls) == 1
+        finally:
+            self._clean()
+
+    def test_mislukte_notify_wordt_herhaald(self, app, monkeypatch):
+        uitkomst = [False, True]
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(1) or uitkomst.pop(0)))
+        monkeypatch.setattr(srv, '_wc_request', lambda *a, **k: (200, json.dumps([self._order(8)]).encode()))
+        self._seed()
+        try:
+            srv._wc_orders_tick(force=True)
+            assert srv._read_json('wc_import_status')['gemeld_ids'] == []
+            srv._wc_orders_tick(force=True)
+            assert len(calls) == 2 and srv._read_json('wc_import_status')['gemeld_ids'] == [8]
+        finally:
+            self._clean()
+
+    def test_zonder_notify_toch_gemeld_en_lease_blijft_staan(self, app, monkeypatch):
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append(1) or True))
+        monkeypatch.setattr(srv, '_wc_request', lambda *a, **k: (200, json.dumps([self._order(9)]).encode()))
+        self._seed(notif_enabled=False, status={'bezig_tot': 123, 'door': 'tab-a', 'laatste_import': 'x'})
+        try:
+            srv._wc_orders_tick(force=True)
+            st = srv._read_json('wc_import_status')
+            assert not calls
+            assert st['gemeld_ids'] == [9] and [o['id'] for o in st['nieuw']] == [9]
+            # De import-lease van de app blijft onaangeroerd.
+            assert st['bezig_tot'] == 123 and st['door'] == 'tab-a' and st['laatste_import'] == 'x'
+        finally:
+            self._clean()
+
+    def test_health_toont_controle(self, app, monkeypatch):
+        srv._wc_orders_laatste_check = 1_757_500_000.0
+        srv._wc_orders_laatste_fout = 'dns'
+        try:
+            status, body, _ = req(app, 'GET', '/api/health')
+            assert status == 200
+            assert body['wc_orders']['laatste_fout'] == 'dns'
+            assert body['wc_orders']['laatste_check'].startswith('2025-09-10')
+        finally:
+            srv._wc_orders_laatste_check = 0.0
+            srv._wc_orders_laatste_fout = None
+
+
 class TestVergistingStap:
     """Server-tick die een HA-push stuurt zodra een vergistingsstap zijn
     geplande dagen bereikt, met dedup via `vergisting_stap_gemeld_start`."""

@@ -3565,5 +3565,12 @@
   "wc_status_cancelled": "Cancelled",
   "wc_note_verzonden": "Shipped from BrewAdmin on {datum}. Track & trace: {track}",
   "wc_note_verzonden_geen_track": "Shipped from BrewAdmin on {datum}.",
-  "wc_note_geannuleerd_na_uitslag": "Cancelled in BrewAdmin after the beer had already left stock. The status was deliberately not set to Cancelled, because WooCommerce would restock beer that is no longer there. Handle this as a refund."
+  "wc_note_geannuleerd_na_uitslag": "Cancelled in BrewAdmin after the beer had already left stock. The status was deliberately not set to Cancelled, because WooCommerce would restock beer that is no longer there. Handle this as a refund.",
+  "settings_wc_import_interval": "Fetch automatically (minutes)",
+  "settings_wc_import_interval_hint": "0 = off. While BrewAdmin is open, the app imports on its own every so many minutes. The server checks for new shop orders at the same rhythm and sends an HA notification (Settings → Notifications), even when the app is closed.",
+  "settings_wc_laatste_auto_import": "Last automatic import",
+  "settings_wc_laatste_servercontrole": "Last server check",
+  "settings_wc_servercontrole_fout": "Last error",
+  "msg_wc_auto_import": "{n} new shop order(s) imported",
+  "attentie_webshop_nieuw": "New shop orders"
 }

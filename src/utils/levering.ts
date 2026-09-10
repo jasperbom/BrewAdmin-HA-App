@@ -89,7 +89,7 @@ export function wcLeveringVelden(order: any): LeveringVelden {
   return uit
 }
 
-const LEVERING_KEYS: (keyof LeveringVelden)[] = [
+export const LEVERING_KEYS: (keyof LeveringVelden)[] = [
   'wc_levering', 'wc_verzendmethode', 'wc_order_key', 'wc_afhaal_locatie', 'wc_afhaal_adres', 'wc_afhaalmoment',
 ]
 
