@@ -8,6 +8,7 @@
 // picking.ts, btw.ts) — hier worden ze alleen gelabeld en gebundeld.
 
 import { telThtAlerts } from './calculations'
+import { telNieuweWebshopOrders } from './wcOrderImport'
 import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
 import { telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
@@ -47,6 +48,8 @@ export interface AttentieBron {
   lots: any[]
   bestellingen: any[]
   bestellingPicks: any[]
+  /** `wc_import_status` — webshoporders die de server zag maar hier nog niet staan. */
+  wcImportStatus?: any
   btwPeriode: BtwPeriodeType
   btwAangiftes: any[]
   bankKoppelingen: Record<string, any>
@@ -92,6 +95,12 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         // volledig gepickt) — dezelfde selectie als de telling.
         id: 'bestellingen', sleutel: 'attentie_bestellingen', pagina: 'bestellingen', filter: 'te_picken',
         aantal: telOpenstaandeBestellingen(bron.bestellingen, bron.bestellingPicks),
+      },
+      {
+        // Webshoporders die de server heeft gezien maar die hier nog niet
+        // geïmporteerd zijn (utils/wcOrderImport → telNieuweWebshopOrders).
+        id: 'webshop_nieuw', sleutel: 'attentie_webshop_nieuw', pagina: 'bestellingen',
+        aantal: telNieuweWebshopOrders(bron.wcImportStatus, bron.bestellingen),
       },
     ]),
     administratie: nietLeeg([

@@ -708,6 +708,14 @@ export interface WcCreds {
   consumerSecret?: string
   enabled?: boolean
   lastSync?: string | null
+  importStatussen?: string[]
+  importVanaf?: string
+  prijzenInclBtw?: boolean
+  themaVelden?: boolean
+  // Orderstatus terugschrijven naar de winkel (utils/wcTerugschrijven.ts).
+  terugschrijven?: boolean
+  // Automatische orderimport in minuten; 0 = uit (utils/wcOrderImport.ts).
+  importInterval?: number
 }
 
 export interface ClaudeCreds {
@@ -1118,10 +1126,29 @@ export interface Bestelling {
   wc_betaald_datum?: string
   wc_betaal_methode?: string
   wc_transactie_id?: string
+  // Afhalen of verzenden, zoals de klant het in de webshop koos (zie
+  // utils/levering → wcLeveringVelden). Bij een afhaalorder ook de locatie en
+  // het afhaalmoment dat de klant via het Craftery-thema kiest; `wc_order_key`
+  // is nodig voor de link naar zijn afhaalpagina. Bij elke import ververst.
+  wc_levering?: 'afhalen' | 'verzenden'
+  wc_verzendmethode?: string
+  wc_order_key?: string
+  wc_afhaal_locatie?: string
+  wc_afhaal_adres?: string
+  wc_afhaalmoment?: string
   factuur_id?: number | null
   factuur_nummer?: string | null
   pakbon_nummer?: string | null
   verzend_datum?: string | null
+  // Track & trace-link of -code, ingevuld bij "Markeer verzonden"; gaat mee in
+  // de verzendbevestiging.
+  verzend_tracking?: string | null
+  // Datum waarop de verzendbevestiging naar de klant is gemaild.
+  verzendbevestiging_datum?: string | null
+  // Wat er naar WooCommerce is teruggeschreven (utils/wcTerugschrijven.ts):
+  // de status (`completed`/`cancelled`, of null als er alleen een notitie
+  // is geplaatst), wanneer, en de fout als het mislukte.
+  wc_sync?: {status: 'completed' | 'cancelled' | null, datum: string, fout?: string | null, note?: boolean}
 }
 
 export interface GistMeting {

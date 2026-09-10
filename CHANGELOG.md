@@ -4,6 +4,116 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.29] — 2026-09-10
+
+### Bestellingen komen vanzelf binnen — en je hoort het als de app dicht is
+
+Nieuwe instelling bij WooCommerce → Orders importeren: **Automatisch ophalen
+(minuten)**, standaard 15, 0 = uit.
+
+- **In de app.** Zolang BrewAdmin open staat, importeert hij elke zoveel
+  minuten zelf (dezelfde import als de knop, ook de verversing van betaling en
+  afhaalmoment van bekende orders). Een blauwe balk meldt "N nieuwe
+  webshopbestelling(en) geïmporteerd", het synchronisatielog krijgt een regel.
+  Twee open tabbladen spreken via een lease af wie importeert; komt er toch
+  een dubbel binnen, dan wordt die opgeruimd zolang hij nog nieuw is en er
+  niets mee gedaan is — nooit een order met picks of factuur. Alleen-lezen
+  gebruikers importeren niet.
+- **Op de server.** Een achtergrondcontrole kijkt in hetzelfde ritme of er
+  webshoporders zijn die hier nog niet staan en stuurt daar één keer een
+  HA-melding over (Instellingen → Meldingen: "#3235 Ans Bakker — 12,50 EUR ·
+  afhalen"), ook als de app dicht is. De Verkoop-header telt ze als *Nieuwe
+  webshopbestellingen*, en zodra je de app opent worden ze meteen
+  geïmporteerd. De instellingen tonen de laatste automatische import en de
+  laatste servercontrole (met de fout, als die er was).
+
+Voorraad: doordat een webshoporder nu binnen minuten als reservering
+meetelt, klopt de voorraadpush naar de winkel beter — zonder import kon een
+push de verlaging die WooCommerce zelf al deed weer ongedaan maken.
+
+## [1.12.28] — 2026-09-10
+
+### De webshop weet nu wat je hier met een order doet
+
+Nieuwe instelling bij WooCommerce: **Orderstatus terugschrijven naar
+WooCommerce** (standaard uit). Staat hij aan, dan:
+
+- gaat de WooCommerce-order op **Afgerond** zodra je hem hier als verzonden
+  markeert (met datum en track & trace als interne ordernotitie) of afrondt —
+  een afhaalorder wordt nooit "verzonden" en gaat bij het afronden op Afgerond;
+- gaat hij op **Geannuleerd** als je hier annuleert — maar alleen zolang er nog
+  geen bier is uitgeslagen. WooCommerce boekt bij een annulering de voorraad
+  terug, en dat klopt precies zolang BrewAdmin de order nog als reservering
+  telde. Is het bier al uit de voorraad (gepickt met uitlevering, verzonden),
+  dan blijft de status in de winkel staan en komt er alleen een interne
+  notitie: zo'n order is een terugbetaling, geen annulering, en er mag geen
+  bier te koop komen dat er niet meer is.
+
+Op de order zie je een badge *Webshop: Afgerond* (groen) of *Webshop niet
+bijgewerkt* (rood, met de fout) en een knop *Opnieuw naar de webshop*. De
+order in BrewAdmin wacht nooit op de winkel: de status hier verandert meteen,
+het terugschrijven loopt erachteraan.
+
+Let op: WooCommerce mailt de klant zelf een "Voltooide bestelling" zodra een
+order op Afgerond gaat. De verzendbevestiging uit BrewAdmin is leidend — zet
+die WooCommerce-mail uit (de instellingen herinneren je eraan).
+
+## [1.12.27] — 2026-09-10
+
+### Onder de motorkap: de WooCommerce-orderimport als losse logica
+
+Voorbereiding op het automatisch ophalen van bestellingen. De import die tot
+nu toe in de knop op de bestellingenpagina zat, staat nu in
+`src/utils/wcOrderImport.ts` (met tests): pagina's ophalen, een order omzetten
+naar een bestelling, betaal-/leveringsvelden van bekende orders verversen, het
+resultaat in de lijst verwerken (een order die intussen door een ander tabblad
+is toegevoegd komt niet dubbel binnen), logboekregels en de melding. De pagina
+roept die logica alleen nog aan; gedrag ongewijzigd.
+
+`useStore`'s `refresh()` geeft nu de verse serverstand terug als promise, zodat
+een aanroeper er op kan wachten. Bestaande aanroepers merken er niets van.
+
+## [1.12.26] — 2026-09-10
+
+### Afhalen of bezorgen: de bestelbevestiging zegt wat de klant nog moet doen
+
+Een webshopklant kiest in de checkout tussen **afhalen** en **bezorgen**, en
+het Craftery-thema laat een afhaalklant daarna zelf een afhaalmoment kiezen op
+een privépagina (`?afhaalmoment=<order>&sleutel=<order_key>`). BrewAdmin wist
+daar niets van: de bestelbevestiging uit de app zei tegen iedereen "zodra de
+bestelling is verzonden, ontvang je de pakbon en factuur".
+
+- **De import leest de levering mee** (`src/utils/levering.ts`, met tests):
+  afhalen of verzenden (verzendmethode `local_pickup`/`pickup_location` =
+  afhalen), de afhaallocatie, het gekozen afhaalmoment
+  (`_craftery_afhaalmoment`, ook "in overleg") en de `order_key`. Net als de
+  betaalstatus wordt dit bij elke import ververst — een klant kiest of verzet
+  zijn moment meestal pas ná het bestellen.
+- **Bestelbevestiging** — nieuwe variabele `{levering}` in de mailtekst (de
+  standaardtekst gebruikt hem al):
+  - afhalen zonder moment → *kies hier wanneer je langskomt* + de link naar
+    de afhaalpagina van de klant;
+  - afhalen met moment → het moment ("zaterdag 29 augustus om 13:00", bij
+    welke locatie) + de link om te verzetten;
+  - "in overleg" → we nemen contact op;
+  - bezorgen → *zodra het pakket de deur uit is, krijg je een
+    verzendbevestiging*;
+  - handmatige order → de oude neutrale regel.
+  Losse variabelen `{afhaallink}`, `{afhaalmoment}`, `{afhaallocatie}` en
+  `{verzendmethode}` voor wie een eigen tekst schrijft. Kale links in een
+  mailtekst zijn nu in elke mailclient klikbaar.
+- **Verzendbevestiging zo snel mogelijk.** *Markeer verzonden* opent eerst een
+  klein venster: track & trace-link (optioneel) en het vinkje
+  *Verzendbevestiging meteen mailen naar …* — standaard aan bij een
+  bezorgorder met e-mailadres, uit bij een afhaalorder. Bevestigen zet de
+  status op Verzonden en opent direct de mail, met de nieuwe template
+  **Verzendbevestiging-mail** (`{verzenddatum}`, `{trackregel}`, `{track}`).
+  Later opnieuw mailen kan met de knop *Mail verzendbevestiging*; de order
+  toont wanneer de bevestiging is gemaild en de track & trace-link.
+- **Zichtbaar op de order**: badge *Afhalen* / *Verzenden* in de lijst en op
+  het detail (oranje zolang een afhaalklant zijn moment nog niet koos),
+  locatie, afhaalmoment en een link naar de afhaalpagina van de klant.
+
 ## [1.12.25] — 2026-09-08
 
 ### De meldingen in de header brengen je nu precies waar het over gaat

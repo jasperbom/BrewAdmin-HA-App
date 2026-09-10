@@ -35,11 +35,25 @@ const esc = (s: string): string => s
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
 
+/**
+ * Maakt van een kale https-link in (al ge-escapete) tekst een klikbare link.
+ * Een afhaal- of track-&-trace-link in de mailtekst moet in élke mailclient
+ * aanklikbaar zijn; niet alle clients herkennen een losse URL zelf. Leesteken
+ * achter de link (punt, komma, haakje) hoort niet bij het adres.
+ */
+export function linkify(escaped: string): string {
+  return escaped.replace(/https?:\/\/[^\s<]+/g, (m) => {
+    const trail = /[.,;:!?)]+$/.exec(m)?.[0] || ''
+    const url = trail ? m.slice(0, -trail.length) : m
+    return `<a href="${url}" style="color:${ACCENT_DARK};" target="_blank" rel="noopener noreferrer">${url}</a>${trail}`
+  })
+}
+
 /** Zet een platte tekstbody om in HTML-paragraphs met `<br>`s. */
-function textToHtml(text: string): string {
+export function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)
-    .map(p => `<p style="margin:0 0 12px;">${esc(p).replace(/\n/g, '<br>')}</p>`)
+    .map(p => `<p style="margin:0 0 12px;">${linkify(esc(p)).replace(/\n/g, '<br>')}</p>`)
     .join('')
 }
 

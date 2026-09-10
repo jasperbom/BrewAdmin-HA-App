@@ -85,6 +85,16 @@ BrewAdmin-HA-App/
 │   │   │                   # webshopthema. Bewaart zelf niets; alleen deze sleutels worden
 │   │   │                   # gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
+│   │   ├── wcOrderImport.ts # WooCommerce-orderimport (ophalen, order → bestelling, bekende orders
+│   │   │                   # verversen, dedup bij toepassen, lease voor de automatische import) —
+│   │   │                   # gedeeld door de bestellingenknop en de periodieke import in App.tsx
+│   │   ├── wcTerugschrijven.ts # Orderstatus terug naar WooCommerce (completed/cancelled + privé-
+│   │   │                   # notitie); annuleren alleen zolang er niets is uitgeslagen (voorraad)
+│   │   ├── levering.ts     # Afhalen of verzenden per bestelling: uit de WooCommerce-verzendregel
+│   │   │                   # (`local_pickup`/`pickup_location` = afhalen) + het afhaalmoment en de
+│   │   │                   # afhaalpagina van het Craftery-thema (`?afhaalmoment=<id>&sleutel=<order_key>`),
+│   │   │                   # bij elke import ververst; mailvariabelen `{levering}` (bestelbevestiging)
+│   │   │                   # en `{trackregel}` (verzendbevestiging bij "Markeer verzonden")
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval
@@ -214,7 +224,9 @@ key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
 optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
 onder parallelle clients), rate-limiting (429), secrets-maskering, de
 server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export), de
-HACCP-sluitcontrole-herinnering en de tanktemperatuurbewaking (het oordeel
+HACCP-sluitcontrole-herinnering, de WooCommerce-ordercontrole (`_wc_orders_tick`:
+nieuwe webshoporders eenmalig melden, `wc_import_status` alleen bij verandering
+schrijven, de import-lease van de app ongemoeid laten) en de tanktemperatuurbewaking (het oordeel
 zelf, het uitlezen van het werkelijke climate-setpoint én de
 alarmadministratie; tests bewaken dat de drempel-defaults en de
 setpoint-leeftijd in server.py en tankbewaking.ts gelijk blijven).
@@ -532,6 +544,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `klanten` | array | Klanten |
 | `gist_metingen` | array | Gistingsmetingen per batch |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
+| `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |
 | `tank_alarmen` | array | Temperatuurstoringen per tank/batch, geopend en gesloten door de server-tick `_tank_bewaking_tick` (soort `waarschuwing`/`alarm`/`sensor_stil`, reden, piekafwijking, hersteltijdstip). De app leest ze voor de banner en zet `bevestigd` bij wegklikken — nooit zelf openen of sluiten |
 | `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
 | `verlies_registraties` | array | Verliesposten per batch (tankrest, leiding, schuim, monster, afgekeurd, overig) |
@@ -548,7 +561,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
-| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `bestelling`) met `subject`/`body`; leeg = i18n-default |
+| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`) met `subject`/`body`; leeg = i18n-default. `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}` — zie `utils/levering.ts` |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
@@ -579,7 +592,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de backup
-- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`) staat bewust niet in de backup — die regenereert vanzelf
+- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
 
@@ -718,6 +731,41 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   binnenkwam kan later betaald zijn. Een order die in WooCommerce betaald is,
   levert bij afronden een verkoopfactuur met status `betaald` (die factuur
   vraagt niet meer om een overboeking, in de mail noch op de PDF)
+- **Afhalen of verzenden** (`utils/levering.ts`): de verzendregel van de order
+  zegt of de klant afhaalt (`local_pickup`/`pickup_location`) of laat bezorgen.
+  Het Craftery-thema bewaart bij een afhaalorder het gekozen afhaalmoment
+  (`_craftery_afhaalmoment`: `JJJJ-MM-DD UU:MM` of `overleg`) en biedt de
+  klant een privépagina `<winkel>/?afhaalmoment=<order-id>&sleutel=<order_key>`
+  om dat moment te kiezen of te verzetten. De app leest dit bij elke import mee
+  (ook voor bestaande orders — het moment wordt vaak pas later gekozen) en zet
+  het in de bestelbevestiging via `{levering}`. Een bezorgorder krijgt bij
+  *Markeer verzonden* meteen de verzendbevestiging aangeboden (template
+  `verzending`, met track & trace)
+- **Periodiek ophalen** (`woocommerce_creds.importInterval`, minuten, default 15,
+  0 = uit): App.tsx importeert elke N minuten zelf (`autoImportWc`, dezelfde
+  `importeerWcOrders` als de knop) zolang een tabblad open staat en de rol mag
+  schrijven; een lease in `wc_import_status` houdt tabbladen uit elkaar, en
+  `verwijderDubbeleWcOrders` ruimt een onaangeroerde dubbel (status `nieuw`,
+  geen picks, geen factuur) op als twee tabbladen toch tegelijk waren. De
+  server-thread `_wc_orders_loop` kijkt in hetzelfde ritme of er webshoporders
+  zijn die hier nog ontbreken, stuurt daar één HA-melding over en zet ze in
+  `wc_import_status.nieuw`; de app importeert dan meteen en de Verkoop-header
+  telt ze (`attentie_webshop_nieuw`). Een servertick importeert bewust niet
+  zelf: de artikel-/merchherkenning leeft in de app
+- **Terugschrijven** (`utils/wcTerugschrijven.ts`, instelling
+  `woocommerce_creds.terugschrijven`, standaard uit): `verzonden`/`afgerond` →
+  `PUT orders/<id> {status: completed}` (+ privé-ordernotitie met de track &
+  trace via `POST orders/<id>/notes`, `customer_note: false`), `geannuleerd` →
+  `cancelled`. **Voorraadregel:** WooCommerce boekt bij `cancelled` de
+  voorraad terug; dat klopt alleen zolang er in BrewAdmin nog niets is
+  uitgeslagen (dan valt hier de reservering weg en stijgt de volgende
+  voorraadpush evenveel). Is er al uitgeslagen, dan gaat er géén status maar
+  alleen een notitie — anders komt bier te koop dat er niet meer is. De
+  uitkomst staat als `wc_sync` op de bestelling (badge + knop "opnieuw").
+  Altijd fire-and-forget ná de lokale statuswijziging. `completed` laat
+  WooCommerce zelf de klantmail "Voltooide bestelling" sturen — de
+  instellingen vragen die uit te zetten, BrewAdmin's verzendbevestiging is
+  leidend
 - Credentials in `instellingen` (`wcUrl`, `wcKey`, `wcSecret`)
 - **Productbeheer** (v1.12.8): de volledige productkaart per artikel staat in
   `productArtikel.wc` resp. `merchArtikel.wc` (`WcVelden` uit

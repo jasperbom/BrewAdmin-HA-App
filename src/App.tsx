@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami } from './utils/api'
+import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet } from './utils/api'
 import { maakAppIcoon } from './utils/icoon'
 import { tod } from './utils/format'
 import { crafteryLees } from './utils/craftery'
@@ -9,7 +9,12 @@ import { logAudit, setAuditUser } from './utils/audit'
 import { findKlantVoorOrder } from './utils/klant'
 import { accijnsCalc, tariefVoorDatum } from './utils/calculations'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, btwAangifteBoeking, voegBoekingToe } from './utils/journaal'
-import { periodeKeyLabel } from './utils/btw'
+import { periodeKeyLabel, standaardBtwPct } from './utils/btw'
+import { wcFoutMelding } from './utils/wcFout'
+import {
+  importeerWcOrders, pasImportToe, importAuditRegels, importMelding, telNieuweWebshopOrders,
+  importLeaseVrij, verwijderDubbeleWcOrders, WC_IMPORT_LEASE_MS,
+} from './utils/wcOrderImport'
 import { schoonTakenOp, deactiveerStandaardMetingen } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/tankbewaking'
@@ -94,6 +99,12 @@ class PageErrorBoundary extends React.Component<{children: React.ReactNode, page
   }
 }
 
+
+// Kenmerk van dít tabblad, voor de import-lease in `wc_import_status`: twee
+// open tabbladen mogen niet allebei dezelfde webshoporders binnenhalen.
+const TAB_ID: string = (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
+  ? (crypto as any).randomUUID() : String(Math.random()).slice(2)
+
 function App() {
   const [ing, setIng] = useStore('ingredienten');
   const [lots, setLots] = useStore('lots');
@@ -154,7 +165,10 @@ function App() {
   const [ingTypeBtw, setIngTypeBtw] = useStore('ing_type_btw', {});
   const [kostenSoorten, setKostenSoorten] = useStore('kosten_soorten', ['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']);
   const [gnCodes, setGnCodes] = useStore('gn_codes', DEFAULT_GN_CODES);
-  const [bestellingen, setBestellingen] = useStore('bestellingen', []);
+  const [bestellingen, setBestellingen, refreshBestellingen] = useStore('bestellingen', []);
+  // Stand van de automatische WooCommerce-import (server: nieuwe orders +
+  // meldingen; tabbladen: lease en laatste import) — zie utils/wcOrderImport.ts.
+  const [wcImportStatus, setWcImportStatus, refreshWcImportStatus] = useStore('wc_import_status', {});
   const [bestellingPicks, setBestellingPicks] = useStore('bestelling_picks', []);
   const [afboekingen, setAfboekingen] = useStore('afboekingen', []);
   const [breweryDetails, setBreweryDetails] = useStore('brewery_details', {naam:'',straat:'',huisnummer:'',postcode:'',stad:'',btw_nummer:'',kvk_nummer:'',iban:'',betalingstermijn:14});
@@ -1251,6 +1265,91 @@ function App() {
     return () => clearInterval(id)
   }, [bewakingAan, heeftTankBatch])
 
+  // ── Automatische WooCommerce-orderimport ───────────────────────────────────
+  // Zolang een tabblad open staat, importeert de app elke `importInterval`
+  // minuten zelf (dezelfde logica als de knop op de bestellingenpagina). De
+  // server kijkt los daarvan of er nieuwe webshoporders zijn en meldt ze in
+  // `wc_import_status.nieuw` (+ HA-push); staat daar iets in dat hier nog
+  // ontbreekt, dan importeren we meteen. Een lease in diezelfde key houdt
+  // twee tabbladen uit elkaar; de restrace (allebei lezen vóór de ander
+  // schreef) vangt `verwijderDubbeleWcOrders` daarna op.
+  // Nooit in `woocommerce_creds` schrijven: die key is beheer-only.
+  const wcImportInterval = Math.max(0, Number(wcCreds?.importInterval ?? 15) || 0)
+  const wcAutoImportAan = !!(wcCreds?.enabled && wcCreds?.storeUrl && wcImportInterval > 0 && whoami?.rol !== 'alleen_lezen')
+  const [wcAutoMelding, setWcAutoMelding] = React.useState('')
+  const wcImportBezig = React.useRef(false)
+  // De stores die de import nodig heeft, altijd de laatste stand (tegen
+  // verouderde closures in de interval).
+  const wcImportRefs = React.useRef<any>({})
+  wcImportRefs.current = {artikelen, productArtikelen, producten, bat, btwTarieven, merchArtikelen, btwInst,
+    klanten, bestellingen, bestellingPicks, wcCreds, auditLog}
+  const autoImportWc = React.useCallback(async () => {
+    if (wcImportBezig.current) return
+    wcImportBezig.current = true
+    const r0 = wcImportRefs.current
+    const interval = Math.max(0, Number(r0.wcCreds?.importInterval ?? 15) || 0)
+    let leaseGezet = false
+    try {
+      const status = (await refreshWcImportStatus()) ?? wcImportStatus
+      if (!importLeaseVrij(status, Date.now(), TAB_ID, interval)) return
+      setWcImportStatus((prev: any) => ({...(prev || {}), bezig_tot: Date.now() + WC_IMPORT_LEASE_MS, door: TAB_ID}))
+      leaseGezet = true
+      // Verse bestellingen van de server (null = dit tabblad schreef net
+      // zelf, dan is het geheugen de nieuwste stand).
+      const vers = (await refreshBestellingen()) ?? wcImportRefs.current.bestellingen
+      const r = wcImportRefs.current
+      const refs = {artikelen: r.artikelen, productArtikelen: r.productArtikelen, producten: r.producten, bat: r.bat,
+        standaardBtw: standaardBtwPct(r.btwInst, r.btwTarieven), btwTarieven: r.btwTarieven, merch: r.merchArtikelen}
+      const res = await importeerWcOrders({wcGet, refs, bestellingen: vers || [], klanten: r.klanten || [], wcCreds: r.wcCreds, t})
+      if (res.nieuw.length || Object.keys(res.updates).length) {
+        setBestellingen((prev: any[]) => pasImportToe(prev, res))
+        importAuditRegels(res).forEach(a => logAudit(r.auditLog, setAuditLog, {entiteit: 'Bestelling', ...a}))
+        setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'pull',
+          msg: importMelding(res, t), details: ''}, ...(prev || [])].slice(0, 100))
+        if (res.nieuw.length && notificatieInst?.on_screen !== false) {
+          setWcAutoMelding(t('msg_wc_auto_import').replace('{n}', String(res.nieuw.length)))
+          setTimeout(() => setWcAutoMelding(''), 8000)
+        }
+      }
+      setWcImportStatus((prev: any) => ({...(prev || {}), bezig_tot: null, door: null,
+        laatste_import: new Date().toISOString(), laatste_import_door: TAB_ID, laatste_import_aantal: res.nieuw.length}))
+      leaseGezet = false
+      // Vangnet: is er tóch dubbel geïmporteerd (twee tabbladen tegelijk),
+      // ruim de onaangeroerde dubbel op vóór iemand hem gaat picken.
+      const na = await refreshBestellingen()
+      const schoon = verwijderDubbeleWcOrders(na ?? wcImportRefs.current.bestellingen, wcImportRefs.current.bestellingPicks)
+      if (schoon) {
+        setBestellingen(() => schoon.lijst)
+        schoon.verwijderd.forEach((b: any) => logAudit(wcImportRefs.current.auditLog, setAuditLog, {
+          entiteit: 'Bestelling', entiteit_id: b.id, actie: 'verwijderd',
+          omschrijving: `Dubbele webshopimport opgeruimd (WC-${b.wc_order_nummer || b.wc_order_id})`}))
+      }
+    } catch (e: any) {
+      setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'fout',
+        msg: t('msg_wc_import_failed').replace('{msg}', wcFoutMelding(e, t)), details: e?.message || ''}, ...(prev || [])].slice(0, 100))
+      if (leaseGezet) setWcImportStatus((prev: any) => ({...(prev || {}), bezig_tot: null, door: null}))
+    } finally {
+      wcImportBezig.current = false
+    }
+  }, [wcImportStatus, notificatieInst?.on_screen])
+  React.useEffect(() => {
+    if (!wcAutoImportAan) return
+    // Eerste ronde kort na het laden, met wat spreiding zodat twee tabbladen
+    // die tegelijk openen niet op dezelfde tel beginnen.
+    const start = setTimeout(autoImportWc, 20_000 + Math.random() * 20_000)
+    const id = setInterval(autoImportWc, wcImportInterval * 60_000)
+    return () => { clearTimeout(start); clearInterval(id) }
+  }, [wcAutoImportAan, wcImportInterval])
+  React.useEffect(() => {
+    if (!wcAutoImportAan) return
+    const id = setInterval(refreshWcImportStatus, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [wcAutoImportAan])
+  const nieuweWebshopOrders = telNieuweWebshopOrders(wcImportStatus, bestellingen)
+  React.useEffect(() => {
+    if (wcAutoImportAan && nieuweWebshopOrders > 0) void autoImportWc()
+  }, [wcAutoImportAan, nieuweWebshopOrders])
+
   // Live oordeel per tank voor het dashboard. De server-tick rekent hetzelfde
   // uit voor de push; deze memo zorgt dat de kaart ook tussen twee ticks door
   // klopt en dat de status meteen omslaat na het doorschakelen van een stap.
@@ -1601,7 +1700,7 @@ function App() {
     batches: bat, batchTakenItems, batchTakenGroepen,
     schoonmaakTaken: haccpSchoonmaakTaken, schoonmaakLog: haccpSchoonmaakLog,
     lots,
-    bestellingen, bestellingPicks,
+    bestellingen, bestellingPicks, wcImportStatus,
     btwPeriode: btwInst?.periode === 'maand' ? 'maand' : 'kwartaal',
     btwAangiftes, bankKoppelingen,
     facturen: [...(verkoopFacturen || []), ...(inkoopFacturen || [])],
@@ -1700,6 +1799,13 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{backgroundColor:'var(--t-bg)'}}>
+      {wcAutoMelding && (
+        <div className="sticky top-0 z-50 bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
+          <span className="text-sm font-medium">{wcAutoMelding}</span>
+          <button type="button" onClick={() => { setWcAutoMelding(''); setPage('bestellingen') }}
+            className="text-xs font-semibold underline">{t('nav_bestellingen')}</button>
+        </div>
+      )}
       {carbDoelBereikt.length > 0 && (
         <div className="sticky top-0 z-50 space-y-px">
           {carbDoelBereikt.map((s: any) => {
@@ -1903,7 +2009,7 @@ function App() {
         {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsAangiftes={accijnsAangiftes} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} onInitialTabConsumed={() => setBoekhoudingTab(null)} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
-        {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten}} />}
+        {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten}} />}
       </main>
       </PageErrorBoundary>
     </div>

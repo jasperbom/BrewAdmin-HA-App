@@ -8,7 +8,7 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
-import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker } from '../utils/api'
+import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
@@ -473,7 +473,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -661,18 +661,18 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setBfTesting(false);
   };
 
-  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || '', prijzenInclBtw: wcCreds?.prijzenInclBtw !== false, themaVelden: wcCreds?.themaVelden !== false});
+  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || '', prijzenInclBtw: wcCreds?.prijzenInclBtw !== false, themaVelden: wcCreds?.themaVelden !== false, terugschrijven: wcCreds?.terugschrijven === true, importInterval: wcCreds?.importInterval ?? 15});
   const [wcTesting, setWcTesting] = React.useState(false);
   const [wcMsg, setWcMsg] = React.useState('');
   const wcFormInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!wcFormInitialized.current && (wcCreds?.storeUrl || wcCreds?.consumerKey || wcCreds?.enabled)) {
-      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || '', prijzenInclBtw: wcCreds.prijzenInclBtw !== false, themaVelden: wcCreds.themaVelden !== false});
+      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || '', prijzenInclBtw: wcCreds.prijzenInclBtw !== false, themaVelden: wcCreds.themaVelden !== false, terugschrijven: wcCreds.terugschrijven === true, importInterval: wcCreds.importInterval ?? 15});
       wcFormInitialized.current = true;
     }
   }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
   const saveWc = () => {
-    setWcCreds((prev: any) => ({...prev, ...wcForm}));
+    setWcCreds((prev: any) => ({...prev, ...wcForm, importInterval: Math.max(0, Math.round(Number(wcForm.importInterval) || 0))}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`WooCommerce credentials ${wcForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setWcMsg(`✓ ${t('btn_save')}`);
     setTimeout(() => setWcMsg(''), 2000);
@@ -1115,6 +1115,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   ];
 
   const fmtTs = (ts: any) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
+  // Laatste servercontrole op nieuwe webshoporders (/api/health), één keer bij openen.
+  const [serverHealth, setServerHealth] = React.useState<ServerHealth | null>(null);
+  React.useEffect(() => { if (wcCreds?.enabled) getServerHealth().then(setServerHealth); }, [wcCreds?.enabled]);
 
   // ── Alternatieve betaalrekeningen CRUD ─────────────────────────────────────
   const [showAltRekModal, setShowAltRekModal] = React.useState(false)
@@ -1843,7 +1846,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           {/* `factuur_betaald` is de tekst voor een factuur die al voldaan is
               (webshoporder betaald in WooCommerce, kassaverkoop) — die vraagt
               niet om een overboeking. */}
-          {(['pakbon','factuur','factuur_betaald','bestelling'] as const).map((kind) => {
+          {/* `verzending` is de verzendbevestiging die bij "Markeer verzonden"
+              wordt aangeboden (met track & trace); `bestelling` bevat via
+              {levering} de afhaal- of bezorgtekst, incl. de link waarmee een
+              afhaalklant zijn moment kiest (utils/levering.ts). */}
+          {(['pakbon','factuur','factuur_betaald','bestelling','verzending'] as const).map((kind) => {
             const labelKey = `settings_mail_template_${kind}`
             const varsHintKey = `settings_mail_vars_${kind}`
             const defaultSubject = t(`mail_${kind}_subject_default`)
@@ -2099,6 +2106,47 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <input type="date" value={wcForm.importVanaf || ''} onChange={(e: any)=>setWcForm((f: any)=>({...f, importVanaf: e.target.value}))}
               className="border border-gray-300 rounded px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-purple-500" />
             <p className="text-xs text-gray-400 mt-1">{t('settings_wc_import_vanaf_hint')}</p>
+            {/* Automatisch ophalen: de app importeert elke N minuten zolang
+                hij open staat; de server controleert in hetzelfde ritme op
+                nieuwe orders en stuurt een HA-melding (utils/wcOrderImport.ts,
+                server.py _wc_orders_tick). 0 = uit. */}
+            <label className="block text-sm font-medium text-gray-700 mb-1 mt-3">{t('settings_wc_import_interval')}</label>
+            <input type="number" min={0} step={1} value={wcForm.importInterval ?? 15}
+              onChange={(e: any)=>setWcForm((f: any)=>({...f, importInterval: e.target.value}))}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-32 focus:outline-none focus:border-purple-500" />
+            <p className="text-xs text-gray-400 mt-1">{t('settings_wc_import_interval_hint')}</p>
+            {(wcImportStatus?.laatste_import || wcImportStatus?.laatste_fout || serverHealth?.wc_orders?.laatste_check) && (
+              <div className="text-xs text-gray-500 mt-2 space-y-0.5">
+                {wcImportStatus?.laatste_import && (
+                  <div>{t('settings_wc_laatste_auto_import')}: {fmtTs(wcImportStatus.laatste_import)}
+                    {wcImportStatus.laatste_import_aantal != null ? ` (${wcImportStatus.laatste_import_aantal})` : ''}</div>
+                )}
+                {serverHealth?.wc_orders?.laatste_check && (
+                  <div>{t('settings_wc_laatste_servercontrole')}: {fmtTs(serverHealth.wc_orders.laatste_check)}</div>
+                )}
+                {(wcImportStatus?.laatste_fout || serverHealth?.wc_orders?.laatste_fout) && (
+                  <div className="text-red-600">{t('settings_wc_servercontrole_fout')}: {wcImportStatus?.laatste_fout || serverHealth?.wc_orders?.laatste_fout}</div>
+                )}
+              </div>
+            )}
+          </div>
+          {/* Terugschrijven: verzonden/afgerond → voltooid, geannuleerd →
+              geannuleerd (alleen zolang er niets is uitgeslagen — zie
+              utils/wcTerugschrijven.ts over de voorraad). */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('settings_wc_terugschrijven_title')}</h3>
+            <p className="text-xs text-gray-500 mb-3">{t('settings_wc_terugschrijven_hint')}</p>
+            <label className="flex items-center gap-2 cursor-pointer w-fit">
+              <input type="checkbox" checked={!!wcForm.terugschrijven}
+                onChange={(e: any) => setWcForm((f: any) => ({...f, terugschrijven: e.target.checked}))}
+                className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+              <span className="text-sm font-medium text-gray-700">{t('settings_wc_terugschrijven')}</span>
+            </label>
+            {wcForm.terugschrijven && (
+              <div className="mt-3 px-3 py-2 rounded bg-orange-50 border border-orange-200 text-xs text-orange-800">
+                {t('settings_wc_terugschrijven_mail_hint')}
+              </div>
+            )}
           </div>
           {/* Productbeheer: hoe de winkel prijzen invoert. Bepaalt of de app
               haar prijzen (altijd excl. BTW) bij een push omrekent. */}

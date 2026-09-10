@@ -140,6 +140,8 @@ export interface WcBetaalVelden {
   wc_transactie_id?: string
 }
 
+export const BETAAL_KEYS: (keyof WcBetaalVelden)[] = ['wc_betaald', 'wc_betaald_datum', 'wc_betaal_methode', 'wc_transactie_id']
+
 export function wcBetaalVelden(order: any): WcBetaalVelden {
   const b = wcBetaalStatus(order)
   return {
