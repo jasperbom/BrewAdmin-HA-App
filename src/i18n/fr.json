@@ -3552,5 +3552,18 @@
   "recipe_cost_packaging_ref": "calculé avec {v} · {p} par unité",
   "recipe_cost_packaging_units": "≈ {n} unités par brassin",
   "recipe_cost_packaging_no_ref": "Aucun emballage de 33 cl trouvé — calculé avec ton propre mix. Ajoutes-en un dans Ingrédients → Emballages.",
-  "recipe_cost_packaging_actual": "En réalité tu conditionnes cette bière en :"
+  "recipe_cost_packaging_actual": "En réalité tu conditionnes cette bière en :",
+  "settings_wc_terugschrijven_title": "Renvoyer le statut de commande à la boutique",
+  "settings_wc_terugschrijven_hint": "Passe la commande WooCommerce à Terminée dès que vous la marquez expédiée ou la clôturez ici (avec le suivi de colis en note interne), et à Annulée si vous annulez ici. L'annulation n'est transmise que tant qu'aucune bière n'a quitté le stock : la boutique remet le stock en place lors d'une annulation, et une bière déjà sortie ne doit pas être remise en vente — il n'y a alors qu'une note.",
+  "settings_wc_terugschrijven": "Renvoyer le statut de commande à WooCommerce",
+  "settings_wc_terugschrijven_mail_hint": "WooCommerce envoie lui-même au client un e-mail « Commande terminée » dès qu'une commande passe à Terminée. La confirmation d'expédition de BrewAdmin fait foi : désactivez cet e-mail dans WooCommerce → Réglages → E-mails → Commande terminée, sinon le client reçoit deux e-mails.",
+  "orders_wc_sync_ok": "Boutique : {status}",
+  "orders_wc_sync_notitie": "note ajoutée",
+  "orders_wc_sync_fout": "Boutique non mise à jour",
+  "orders_wc_sync_retry": "Renvoyer à la boutique",
+  "orders_wc_sync_retry_tip": "Renvoyer le statut de cette commande à WooCommerce",
+  "wc_status_cancelled": "Annulée",
+  "wc_note_verzonden": "Expédiée depuis BrewAdmin le {datum}. Suivi : {track}",
+  "wc_note_verzonden_geen_track": "Expédiée depuis BrewAdmin le {datum}.",
+  "wc_note_geannuleerd_na_uitslag": "Annulée dans BrewAdmin après que la bière a déjà quitté le stock. Le statut n'a volontairement pas été passé à Annulée, car WooCommerce remettrait en stock de la bière qui n'existe plus. À traiter comme un remboursement."
 }

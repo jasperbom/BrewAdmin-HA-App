@@ -3552,5 +3552,18 @@
   "recipe_cost_packaging_ref": "calculado con {v} · {p} por unidad",
   "recipe_cost_packaging_units": "≈ {n} unidades por elaboración",
   "recipe_cost_packaging_no_ref": "No se encontró envase de 33 cl — calculado con tu propia mezcla. Añade uno en Ingredientes → Envases.",
-  "recipe_cost_packaging_actual": "En realidad envasas esta cerveza como:"
+  "recipe_cost_packaging_actual": "En realidad envasas esta cerveza como:",
+  "settings_wc_terugschrijven_title": "Devolver el estado del pedido a la tienda",
+  "settings_wc_terugschrijven_hint": "Pone el pedido de WooCommerce en Completado cuando lo marcas aquí como enviado o lo cierras (con el seguimiento como nota interna), y en Cancelado si cancelas aquí. La cancelación solo se transmite mientras ninguna cerveza haya salido del stock: la tienda repone el stock al cancelar, y la cerveza que ya salió no debe volver a venderse — entonces solo se añade una nota.",
+  "settings_wc_terugschrijven": "Devolver el estado del pedido a WooCommerce",
+  "settings_wc_terugschrijven_mail_hint": "WooCommerce envía por sí mismo al cliente un correo 'Pedido completado' en cuanto un pedido pasa a Completado. La confirmación de envío de BrewAdmin es la que vale: desactiva ese correo en WooCommerce → Ajustes → Correos → Pedido completado, o el cliente recibirá dos correos.",
+  "orders_wc_sync_ok": "Tienda: {status}",
+  "orders_wc_sync_notitie": "nota añadida",
+  "orders_wc_sync_fout": "Tienda no actualizada",
+  "orders_wc_sync_retry": "Enviar de nuevo a la tienda",
+  "orders_wc_sync_retry_tip": "Enviar otra vez el estado de este pedido a WooCommerce",
+  "wc_status_cancelled": "Cancelado",
+  "wc_note_verzonden": "Enviado desde BrewAdmin el {datum}. Seguimiento: {track}",
+  "wc_note_verzonden_geen_track": "Enviado desde BrewAdmin el {datum}.",
+  "wc_note_geannuleerd_na_uitslag": "Cancelado en BrewAdmin después de que la cerveza ya saliera del stock. El estado no se puso en Cancelado a propósito, porque WooCommerce repondría stock que ya no existe. Trátalo como una devolución."
 }

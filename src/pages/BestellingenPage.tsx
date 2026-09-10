@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { newId, wcGet, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
+import { newId, wcGet, wcPut, wcPost, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
 import { fmt, fmtD, tod } from '../utils/format'
@@ -20,6 +20,7 @@ import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { factuurMailBetaalVars } from '../utils/factuurMail'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
+import { wcTerugschrijfPlan, wcSyncVelden, wcSyncTeHerhalen, wcSyncDoelVoorStatus, WcSyncDoel } from '../utils/wcTerugschrijven'
 import {
   leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging,
 } from '../utils/levering'
@@ -290,6 +291,30 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         {afhalen ? '🏬' : '🚚'} {t(afhalen ? 'orders_levering_afhalen' : 'orders_levering_verzenden')}
       </span>
     )
+  }
+
+  // Stand van de winkel: is de status van deze order in WooCommerce
+  // aangekomen? Groen = ja, rood = mislukt (fout als tooltip), plus een knop
+  // om het opnieuw te proberen zolang de winkel achterloopt.
+  const WcSyncBadge = ({b}: {b: any}) => {
+    if (!b?.wc_order_id) return null
+    const opties = wcTerugschrijfOpties(b)
+    if (!opties.enabled) return null
+    const sync = b.wc_sync
+    const herhalen = wcSyncTeHerhalen(b, opties, t)
+    const doel = wcSyncDoelVoorStatus(b.status)
+    const statusLabel = sync?.status ? t(`wc_status_${sync.status}`) : t('orders_wc_sync_notitie')
+    return (<>
+      {sync && (sync.fout
+        ? <span title={sync.fout} className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">{t('orders_wc_sync_fout')}</span>
+        : <span title={fmtD(sync.datum)} className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">{t('orders_wc_sync_ok').replace('{status}', statusLabel)}</span>)}
+      {herhalen && doel && (
+        <button type="button" onClick={() => { void schrijfTerugNaarWc(b, doel) }}
+          className="text-xs underline" style={{color: 'var(--t-accent)'}} title={t('orders_wc_sync_retry_tip')}>
+          ↻ {t('orders_wc_sync_retry')}
+        </button>
+      )}
+    </>)
   }
 
   // Picks voor een bestelling
@@ -899,6 +924,38 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setDraftPicks({})
   }
 
+  // --- Terugschrijven naar WooCommerce (utils/wcTerugschrijven.ts) ---
+  // Altijd ná de lokale statuswijziging en nooit erop wachten: de order in
+  // BrewAdmin mag niet blijven hangen omdat de winkel traag of onbereikbaar
+  // is. De uitkomst komt als `wc_sync` op de order (badge + knop "opnieuw").
+  // Herhalen na een mislukte notitie kan de privé-notitie dubbel zetten; de
+  // statuswijziging zelf (PUT) is idempotent.
+  const wcTerugschrijfOpties = (order: any) => ({
+    enabled: !!(wcCreds?.enabled && wcCreds?.storeUrl && wcCreds?.terugschrijven),
+    // Is er van deze order al bier uitgeslagen? Dan boekt de winkel bij
+    // `cancelled` voorraad terug die er niet meer is — zie de util.
+    uitgeslagen: picksVoorOrder(order?.id).some((p: any) => pickUitgeslagen(p)),
+  })
+  const schrijfTerugNaarWc = async (order: any, doel: WcSyncDoel) => {
+    const plan = wcTerugschrijfPlan(order, doel, wcTerugschrijfOpties(order), t)
+    if (!plan) return
+    let uitkomst: {ok: true} | {ok: false, fout: string} = {ok: true}
+    try {
+      if (plan.put) await wcPut(`orders/${plan.orderId}`, plan.put)
+      if (plan.note) await wcPost(`orders/${plan.orderId}/notes`, plan.note)
+    } catch (e: any) {
+      uitkomst = {ok: false, fout: wcFoutMelding(e, t)}
+    }
+    const velden = wcSyncVelden(plan, uitkomst, new Date().toISOString())
+    setBestellingen((prev: any[]) => prev.map((b: any) => b.id === order.id ? {...b, ...velden} : b))
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Bestelling', entiteit_id: order.id, actie: 'gewijzigd',
+      omschrijving: uitkomst.ok
+        ? `WooCommerce bijgewerkt — ${plan.wcStatus ? `status ${plan.wcStatus}` : 'notitie'}${plan.note && plan.wcStatus ? ' + notitie' : ''}`
+        : `WooCommerce niet bijgewerkt — ${(uitkomst as {ok: false, fout: string}).fout}`,
+    })
+  }
+
   // --- Markeer als verzonden (logistieke statusovergang — Douane v2.4 §10.2) ---
   // Opent eerst een klein venster voor de track & trace-link en de keuze om de
   // verzendbevestiging meteen te mailen: een klant die voor bezorgen koos,
@@ -929,6 +986,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     })
     setVerzondenModal(null)
     if (verzondenModal.mailen) mailOrderVerzending(bijgewerkt)
+    void schrijfTerugNaarWc(bijgewerkt, 'verzonden')
   }
 
   // --- Order afronden (factuur + pakbon, status → afgerond) ---
@@ -1179,6 +1237,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       factuur_nummer: factuurNummer,
       pakbon_nummer: pakbonNummer,
     } : b))
+    // Winkel op voltooid — een no-op als dat bij "verzonden" al gebeurd is;
+    // een afhaalorder wordt nooit verzonden en gaat hier pas op voltooid.
+    void schrijfTerugNaarWc({...selectedOrder, status: 'afgerond'}, 'afgerond')
     // Log:
     //  - bestaande "uitslaan"-loggregels (van savePicks) krijgen nu het factuurnummer
     //  - eventuele fallback-uitleveringen worden alsnog gelogd
@@ -1221,6 +1282,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       b.id === selectedOrder.id ? {...b, status: 'geannuleerd'} : b
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Geannuleerd — ${selectedOrder.klant_naam}`})
+    void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd')
     setShowAnnuleerModal(false)
     setView('list')
   }
@@ -1714,6 +1776,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           </span>
           <BetaaldBadge b={selectedOrder} />
           <LeveringBadge b={selectedOrder} />
+          <WcSyncBadge b={selectedOrder} />
           {(() => {
             const kType = effectiveKlantType(selectedOrder)
             if (!kType) return null

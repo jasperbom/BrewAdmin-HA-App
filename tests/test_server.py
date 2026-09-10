@@ -1787,6 +1787,29 @@ class TestWooCommerceProxy:
         # POST gaat zonder herkansing de deur uit (niet-idempotent).
         assert gestuurd == [('POST', 'products', b'{"name": "Tripel"}', False)]
 
+    def test_orderstatus_en_notitie_via_proxy(self, app, monkeypatch):
+        """Terugschrijven van de orderstatus (utils/wcTerugschrijven.ts): de
+        status gaat als PUT (met herkansing), de ordernotitie als POST (zonder)."""
+        gestuurd = []
+
+        def fake(creds, method, subpath, body=None, herkansing=True):
+            gestuurd.append((method, subpath, body, herkansing))
+            return 200, b'{"id": 7}'
+
+        monkeypatch.setattr(srv, '_load_wc_creds', lambda: self.CREDS)
+        monkeypatch.setattr(srv, '_wc_request', fake)
+
+        assert srv._valid_wc_path('orders/7') and srv._valid_wc_path('orders/7/notes')
+        status, body, _ = req(app, 'POST', '/api/woocommerce/put/orders/7', b'{"status": "completed"}')
+        assert status == 200 and body['id'] == 7
+        status, _, _ = req(app, 'POST', '/api/woocommerce/create/orders/7/notes',
+                           b'{"note": "Verzonden", "customer_note": false}')
+        assert status == 200
+        assert gestuurd == [
+            ('PUT', 'orders/7', b'{"status": "completed"}', True),
+            ('POST', 'orders/7/notes', b'{"note": "Verzonden", "customer_note": false}', False),
+        ]
+
     def test_aanmaakproxy_zonder_credentials(self, app, monkeypatch):
         monkeypatch.setattr(srv, '_load_wc_creds', lambda: None)
         status, _, _ = req(app, 'POST', '/api/woocommerce/create/products', b'{}')

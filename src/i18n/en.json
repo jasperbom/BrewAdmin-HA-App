@@ -3552,5 +3552,18 @@
   "recipe_cost_packaging_ref": "calculated with {v} · {p} per unit",
   "recipe_cost_packaging_units": "≈ {n} units per brew",
   "recipe_cost_packaging_no_ref": "No 33 cl packaging found — calculated with your own filling mix. Add one under Ingredients → Packaging.",
-  "recipe_cost_packaging_actual": "You actually fill this beer as:"
+  "recipe_cost_packaging_actual": "You actually fill this beer as:",
+  "settings_wc_terugschrijven_title": "Write order status back to the shop",
+  "settings_wc_terugschrijven_hint": "Sets the WooCommerce order to Completed when you mark it as shipped or complete it here (with the track & trace as a private order note), and to Cancelled when you cancel here. Cancellation is only passed on as long as no beer has left stock: the shop restocks on cancellation, and beer that already left stock must not go on sale again — then only a note is added.",
+  "settings_wc_terugschrijven": "Write order status back to WooCommerce",
+  "settings_wc_terugschrijven_mail_hint": "WooCommerce emails the customer a 'Completed order' message as soon as an order is set to Completed. BrewAdmin's shipping confirmation is leading: disable that email under WooCommerce → Settings → Emails → Completed order, or the customer gets two emails.",
+  "orders_wc_sync_ok": "Shop: {status}",
+  "orders_wc_sync_notitie": "note added",
+  "orders_wc_sync_fout": "Shop not updated",
+  "orders_wc_sync_retry": "Send to shop again",
+  "orders_wc_sync_retry_tip": "Send this order's status to WooCommerce once more",
+  "wc_status_cancelled": "Cancelled",
+  "wc_note_verzonden": "Shipped from BrewAdmin on {datum}. Track & trace: {track}",
+  "wc_note_verzonden_geen_track": "Shipped from BrewAdmin on {datum}.",
+  "wc_note_geannuleerd_na_uitslag": "Cancelled in BrewAdmin after the beer had already left stock. The status was deliberately not set to Cancelled, because WooCommerce would restock beer that is no longer there. Handle this as a refund."
 }

@@ -3552,5 +3552,18 @@
   "recipe_cost_packaging_ref": "gerechnet mit {v} · {p} pro Stück",
   "recipe_cost_packaging_units": "≈ {n} Stück pro Sud",
   "recipe_cost_packaging_no_ref": "Keine 33-cl-Verpackung gefunden — gerechnet mit deinem eigenen Abfüllmix. Lege eine an unter Zutaten → Verpackungen.",
-  "recipe_cost_packaging_actual": "Tatsächlich füllst du dieses Bier ab als:"
+  "recipe_cost_packaging_actual": "Tatsächlich füllst du dieses Bier ab als:",
+  "settings_wc_terugschrijven_title": "Bestellstatus an den Shop zurückschreiben",
+  "settings_wc_terugschrijven_hint": "Setzt die WooCommerce-Bestellung auf Abgeschlossen, sobald du sie hier als versendet markierst oder abschließt (mit Track & Trace als interner Bestellnotiz), und auf Storniert, wenn du hier stornierst. Eine Stornierung wird nur weitergegeben, solange noch kein Bier den Bestand verlassen hat: der Shop bucht bei einer Stornierung den Bestand zurück, und Bier, das schon weg ist, darf nicht wieder verkauft werden — dann kommt nur eine Notiz.",
+  "settings_wc_terugschrijven": "Bestellstatus an WooCommerce zurückschreiben",
+  "settings_wc_terugschrijven_mail_hint": "WooCommerce mailt dem Kunden selbst eine 'Abgeschlossene Bestellung', sobald eine Bestellung auf Abgeschlossen geht. Die Versandbestätigung aus BrewAdmin ist maßgeblich: schalte diese Mail unter WooCommerce → Einstellungen → E-Mails → Abgeschlossene Bestellung aus, sonst bekommt der Kunde zwei Mails.",
+  "orders_wc_sync_ok": "Shop: {status}",
+  "orders_wc_sync_notitie": "Notiz gesetzt",
+  "orders_wc_sync_fout": "Shop nicht aktualisiert",
+  "orders_wc_sync_retry": "Erneut an den Shop",
+  "orders_wc_sync_retry_tip": "Den Status dieser Bestellung noch einmal an WooCommerce senden",
+  "wc_status_cancelled": "Storniert",
+  "wc_note_verzonden": "Versendet aus BrewAdmin am {datum}. Track & Trace: {track}",
+  "wc_note_verzonden_geen_track": "Versendet aus BrewAdmin am {datum}.",
+  "wc_note_geannuleerd_na_uitslag": "In BrewAdmin storniert, nachdem das Bier den Bestand bereits verlassen hatte. Der Status wurde bewusst nicht auf Storniert gesetzt, weil WooCommerce sonst Bestand zurückbuchen würde, der nicht mehr da ist. Als Rückerstattung abwickeln."
 }

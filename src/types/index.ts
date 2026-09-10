@@ -708,6 +708,14 @@ export interface WcCreds {
   consumerSecret?: string
   enabled?: boolean
   lastSync?: string | null
+  importStatussen?: string[]
+  importVanaf?: string
+  prijzenInclBtw?: boolean
+  themaVelden?: boolean
+  // Orderstatus terugschrijven naar de winkel (utils/wcTerugschrijven.ts).
+  terugschrijven?: boolean
+  // Automatische orderimport in minuten; 0 = uit (utils/wcOrderImport.ts).
+  importInterval?: number
 }
 
 export interface ClaudeCreds {
@@ -1137,6 +1145,10 @@ export interface Bestelling {
   verzend_tracking?: string | null
   // Datum waarop de verzendbevestiging naar de klant is gemaild.
   verzendbevestiging_datum?: string | null
+  // Wat er naar WooCommerce is teruggeschreven (utils/wcTerugschrijven.ts):
+  // de status (`completed`/`cancelled`, of null als er alleen een notitie
+  // is geplaatst), wanneer, en de fout als het mislukte.
+  wc_sync?: {status: 'completed' | 'cancelled' | null, datum: string, fout?: string | null, note?: boolean}
 }
 
 export interface GistMeting {

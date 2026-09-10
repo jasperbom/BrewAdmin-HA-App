@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.28] — 2026-09-10
+
+### De webshop weet nu wat je hier met een order doet
+
+Nieuwe instelling bij WooCommerce: **Orderstatus terugschrijven naar
+WooCommerce** (standaard uit). Staat hij aan, dan:
+
+- gaat de WooCommerce-order op **Afgerond** zodra je hem hier als verzonden
+  markeert (met datum en track & trace als interne ordernotitie) of afrondt —
+  een afhaalorder wordt nooit "verzonden" en gaat bij het afronden op Afgerond;
+- gaat hij op **Geannuleerd** als je hier annuleert — maar alleen zolang er nog
+  geen bier is uitgeslagen. WooCommerce boekt bij een annulering de voorraad
+  terug, en dat klopt precies zolang BrewAdmin de order nog als reservering
+  telde. Is het bier al uit de voorraad (gepickt met uitlevering, verzonden),
+  dan blijft de status in de winkel staan en komt er alleen een interne
+  notitie: zo'n order is een terugbetaling, geen annulering, en er mag geen
+  bier te koop komen dat er niet meer is.
+
+Op de order zie je een badge *Webshop: Afgerond* (groen) of *Webshop niet
+bijgewerkt* (rood, met de fout) en een knop *Opnieuw naar de webshop*. De
+order in BrewAdmin wacht nooit op de winkel: de status hier verandert meteen,
+het terugschrijven loopt erachteraan.
+
+Let op: WooCommerce mailt de klant zelf een "Voltooide bestelling" zodra een
+order op Afgerond gaat. De verzendbevestiging uit BrewAdmin is leidend — zet
+die WooCommerce-mail uit (de instellingen herinneren je eraan).
+
 ## [1.12.27] — 2026-09-10
 
 ### Onder de motorkap: de WooCommerce-orderimport als losse logica

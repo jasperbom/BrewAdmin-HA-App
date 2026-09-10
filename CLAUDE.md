@@ -85,6 +85,11 @@ BrewAdmin-HA-App/
 │   │   │                   # webshopthema. Bewaart zelf niets; alleen deze sleutels worden
 │   │   │                   # gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
+│   │   ├── wcOrderImport.ts # WooCommerce-orderimport (ophalen, order → bestelling, bekende orders
+│   │   │                   # verversen, dedup bij toepassen, lease voor de automatische import) —
+│   │   │                   # gedeeld door de bestellingenknop en de periodieke import in App.tsx
+│   │   ├── wcTerugschrijven.ts # Orderstatus terug naar WooCommerce (completed/cancelled + privé-
+│   │   │                   # notitie); annuleren alleen zolang er niets is uitgeslagen (voorraad)
 │   │   ├── levering.ts     # Afhalen of verzenden per bestelling: uit de WooCommerce-verzendregel
 │   │   │                   # (`local_pickup`/`pickup_location` = afhalen) + het afhaalmoment en de
 │   │   │                   # afhaalpagina van het Craftery-thema (`?afhaalmoment=<id>&sleutel=<order_key>`),
@@ -732,8 +737,21 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   (ook voor bestaande orders — het moment wordt vaak pas later gekozen) en zet
   het in de bestelbevestiging via `{levering}`. Een bezorgorder krijgt bij
   *Markeer verzonden* meteen de verzendbevestiging aangeboden (template
-  `verzending`, met track & trace). De app schrijft hier niets van terug naar
-  WooCommerce
+  `verzending`, met track & trace)
+- **Terugschrijven** (`utils/wcTerugschrijven.ts`, instelling
+  `woocommerce_creds.terugschrijven`, standaard uit): `verzonden`/`afgerond` →
+  `PUT orders/<id> {status: completed}` (+ privé-ordernotitie met de track &
+  trace via `POST orders/<id>/notes`, `customer_note: false`), `geannuleerd` →
+  `cancelled`. **Voorraadregel:** WooCommerce boekt bij `cancelled` de
+  voorraad terug; dat klopt alleen zolang er in BrewAdmin nog niets is
+  uitgeslagen (dan valt hier de reservering weg en stijgt de volgende
+  voorraadpush evenveel). Is er al uitgeslagen, dan gaat er géén status maar
+  alleen een notitie — anders komt bier te koop dat er niet meer is. De
+  uitkomst staat als `wc_sync` op de bestelling (badge + knop "opnieuw").
+  Altijd fire-and-forget ná de lokale statuswijziging. `completed` laat
+  WooCommerce zelf de klantmail "Voltooide bestelling" sturen — de
+  instellingen vragen die uit te zetten, BrewAdmin's verzendbevestiging is
+  leidend
 - Credentials in `instellingen` (`wcUrl`, `wcKey`, `wcSecret`)
 - **Productbeheer** (v1.12.8): de volledige productkaart per artikel staat in
   `productArtikel.wc` resp. `merchArtikel.wc` (`WcVelden` uit

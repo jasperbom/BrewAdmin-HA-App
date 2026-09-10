@@ -3552,5 +3552,18 @@
   "recipe_cost_packaging_ref": "gerekend met {v} · {p} per stuk",
   "recipe_cost_packaging_units": "≈ {n} stuks per brouw",
   "recipe_cost_packaging_no_ref": "Geen verpakking van 33 cl gevonden — gerekend met je eigen afvulmix. Voeg er een toe bij Ingrediënten → Verpakkingen.",
-  "recipe_cost_packaging_actual": "Je vult dit bier af als:"
+  "recipe_cost_packaging_actual": "Je vult dit bier af als:",
+  "settings_wc_terugschrijven_title": "Status terugschrijven naar de webshop",
+  "settings_wc_terugschrijven_hint": "Zet de WooCommerce-order op Afgerond zodra je hem hier als verzonden markeert of afrondt (met de track & trace als interne ordernotitie), en op Geannuleerd als je hier annuleert. Annuleren wordt alleen doorgegeven zolang er nog geen bier is uitgeslagen: de webshop boekt bij een annulering de voorraad terug, en bier dat al uit de voorraad is mag niet opnieuw te koop komen — dan komt er alleen een notitie.",
+  "settings_wc_terugschrijven": "Orderstatus terugschrijven naar WooCommerce",
+  "settings_wc_terugschrijven_mail_hint": "WooCommerce mailt de klant zelf een 'Voltooide bestelling' zodra een order op Afgerond gaat. De verzendbevestiging uit BrewAdmin is leidend: zet die WooCommerce-mail uit onder WooCommerce → Instellingen → E-mails → Voltooide bestelling, anders krijgt de klant twee mails.",
+  "orders_wc_sync_ok": "Webshop: {status}",
+  "orders_wc_sync_notitie": "notitie geplaatst",
+  "orders_wc_sync_fout": "Webshop niet bijgewerkt",
+  "orders_wc_sync_retry": "Opnieuw naar de webshop",
+  "orders_wc_sync_retry_tip": "De status van deze bestelling nogmaals naar WooCommerce sturen",
+  "wc_status_cancelled": "Geannuleerd",
+  "wc_note_verzonden": "Verzonden vanuit BrewAdmin op {datum}. Track & trace: {track}",
+  "wc_note_verzonden_geen_track": "Verzonden vanuit BrewAdmin op {datum}.",
+  "wc_note_geannuleerd_na_uitslag": "In BrewAdmin geannuleerd nadat het bier al was uitgeslagen. De status is bewust niet op Geannuleerd gezet, omdat WooCommerce dan voorraad zou terugboeken die er niet meer is. Handel dit als terugbetaling af."
 }
