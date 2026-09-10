@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.27] — 2026-09-10
+
+### Onder de motorkap: de WooCommerce-orderimport als losse logica
+
+Voorbereiding op het automatisch ophalen van bestellingen. De import die tot
+nu toe in de knop op de bestellingenpagina zat, staat nu in
+`src/utils/wcOrderImport.ts` (met tests): pagina's ophalen, een order omzetten
+naar een bestelling, betaal-/leveringsvelden van bekende orders verversen, het
+resultaat in de lijst verwerken (een order die intussen door een ander tabblad
+is toegevoegd komt niet dubbel binnen), logboekregels en de melding. De pagina
+roept die logica alleen nog aan; gedrag ongewijzigd.
+
+`useStore`'s `refresh()` geeft nu de verse serverstand terug als promise, zodat
+een aanroeper er op kan wachten. Bestaande aanroepers merken er niets van.
+
 ## [1.12.26] — 2026-09-10
 
 ### Afhalen of bezorgen: de bestelbevestiging zegt wat de klant nog moet doen

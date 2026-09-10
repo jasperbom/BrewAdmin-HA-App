@@ -3,10 +3,6 @@ import { t } from '../i18n'
 import { newId, wcGet, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
-import {
-  mapWcOrderRegels, wcOrdersPad, WC_IMPORT_STATUSSEN_DEFAULT,
-  wcBetaalVelden, betaalVeldenGewijzigd,
-} from '../utils/wcImport'
 import { fmt, fmtD, tod } from '../utils/format'
 import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
 import Btn from '../components/ui/Btn'
@@ -23,9 +19,9 @@ import { bierInvulVelden, bierInfoVoorArtikel } from '../utils/bierinfo'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { factuurMailBetaalVars } from '../utils/factuurMail'
+import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import {
-  wcLeveringVelden, leveringVeldenGewijzigd, leveringMailVars, verzendMailVars,
-  leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging,
+  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging,
 } from '../utils/levering'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
@@ -442,138 +438,20 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // --- WooCommerce import ---
-  // Maximaal 10 pagina's van 100 orders per import; genoeg voor een eerste
-  // volledige haal en tegelijk een rem op een winkel met jaren historie.
-  const WC_PER_PAGE = 100
-  const WC_MAX_PAGINAS = 10
-
+  // De import zelf staat in utils/wcOrderImport.ts, zodat App.tsx hem ook
+  // periodiek kan draaien; hier alleen de knop, de melding en het logboek.
   const importWcOrders = async () => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcMsg(t('error_no_woocommerce')); return }
     setWcImporting(true); setWcMsg('')
     try {
-      // Alle geconfigureerde statussen ophalen (standaard inclusief `completed`
-      // — merch-orders worden in WooCommerce vaak direct afgerond) en pagineren
-      // tot de winkel niets nieuws meer teruggeeft.
-      const statussen = Array.isArray(wcCreds?.importStatussen) && wcCreds.importStatussen.length
-        ? wcCreds.importStatussen : WC_IMPORT_STATUSSEN_DEFAULT
-      const vanaf = String(wcCreds?.importVanaf || '')
-      const orders: any[] = []
-      for (let page = 1; page <= WC_MAX_PAGINAS; page++) {
-        let pagina: any
-        try {
-          pagina = await wcGet(wcOrdersPad({statussen, vanaf, page, perPage: WC_PER_PAGE}))
-        } catch (e) {
-          // Precies een veelvoud van 100 orders: WooCommerce antwoordt op de
-          // pagina daarna met een fout i.p.v. een lege lijst. Wat we al binnen
-          // hebben blijft dan gewoon geldig; alleen een fout op pagina 1 is
-          // een échte importfout.
-          if (page === 1) throw e
-          break
-        }
-        if (!Array.isArray(pagina) || pagina.length === 0) break
-        orders.push(...pagina)
-        if (pagina.length < WC_PER_PAGE) break
-      }
       const refs = {artikelen, productArtikelen, producten, bat, standaardBtw: stdBtw, btwTarieven,
         merch: merchArtikelen}
-      const bestaandeWcIds = new Set((bestellingen||[]).map((b: any) => b.wc_order_id).filter(Boolean))
-      let imported = 0
-      let onbekendeRegels = 0
-      const nieuw: any[] = []
-      // Betaalstatus en levering van orders die we al hebben. Een webshoporder
-      // komt vaak binnen als `pending` (iDEAL nog niet afgerond) en is een uur
-      // later betaald; zonder deze verversing bleef de app voor altijd denken
-      // dat er nog geld moest komen — en zei de factuurmail dat ook. Het
-      // afhaalmoment kiest (of verzet) de klant vaak pas ná het bestellen, dus
-      // dat wordt op dezelfde manier bijgehouden (utils/levering.ts).
-      const betaalUpdates: Record<number, any> = {}
-      for (const o of (orders||[])) {
-        if (bestaandeWcIds.has(o.id)) {
-          const bestaand = (bestellingen||[]).find((b: any) => b.wc_order_id === o.id)
-          if (!bestaand) continue
-          const velden = wcBetaalVelden(o)
-          const levering = wcLeveringVelden(o)
-          const upd = {
-            ...(betaalVeldenGewijzigd(bestaand, velden) ? velden : {}),
-            ...(leveringVeldenGewijzigd(bestaand, levering) ? levering : {}),
-          }
-          if (Object.keys(upd).length) betaalUpdates[bestaand.id] = upd
-          continue
-        }
-        // Productregels + verzendkosten + toeslagen, met autoritatieve
-        // WooCommerce-bedragen. Zie utils/wcImport.ts.
-        const regels = mapWcOrderRegels(o, refs)
-        onbekendeRegels += regels.filter((r: any) => r.wc_onbekend).length
-        const company = (o.billing?.company || '').trim()
-        // BTW-nummer alléén uit échte BTW-nummervelden (bijv. _billing_vat_number,
-        // billing_eu_vat_number, btw_nummer). WooCommerce zet op elke order
-        // standaard meta zoals `is_vat_exempt: "no"` — de eerdere generieke
-        // /vat|btw/-match pakte die key, waardoor élke import onterecht als
-        // zakelijk werd gemarkeerd. De waarde moet bovendien op een BTW-nummer
-        // lijken (bevat cijfers, geen ja/nee-vlag).
-        const vatMeta = (Array.isArray(o.meta_data) ? o.meta_data : []).find((m: any) =>
-          /(vat|btw)[_-]?(number|nummer|nr|id)\b/i.test(String(m?.key || '')))
-        const vatRaw = String(o.billing?.vat_number || vatMeta?.value || '').trim()
-        const vatNr = /\d/.test(vatRaw) && !/^(yes|no|true|false|0|1)$/i.test(vatRaw) ? vatRaw : ''
-        const klantType: 'prive' | 'zakelijk' = (company || vatNr) ? 'zakelijk' : 'prive'
-        const nb: any = {
-          id: newId([...(bestellingen||[]), ...nieuw]),
-          status: 'nieuw',
-          datum: (o.date_created||tod()).slice(0, 10),
-          // Of de klant al betaald heeft, wanneer en waarmee (zie
-          // utils/wcImport → wcBetaalStatus). De betaaldatum is de dag die de
-          // PSP uitbetaalt — niet de dag waarop jij de order afrondt en de
-          // factuur maakt; de bankkoppeling zoekt daarop.
-          ...wcBetaalVelden(o),
-          // Afhalen of verzenden, afhaallocatie/-moment en de order_key voor
-          // de afhaalpagina van de klant (utils/levering.ts).
-          ...wcLeveringVelden(o),
-          klant_naam: `${o.billing?.first_name||''} ${o.billing?.last_name||''}`.trim() || t('lbl_onbekend'),
-          klant_email: o.billing?.email||'',
-          klant_straat: o.billing?.address_1||'',
-          klant_huisnummer: '',
-          klant_postcode: o.billing?.postcode||'',
-          klant_stad: o.billing?.city||'',
-          klant_bedrijf: company,
-          klant_type: klantType,
-          regels,
-          wc_order_id: o.id,
-          wc_order_nummer: String(o.number||o.id),
-        }
-        // Koppel direct aan een bestaande klantkaart (e-mail, of uniek op
-        // naam) zodat de order niet eerst als "ongekoppeld" binnenkomt.
-        const bestaandeKlant = findKlantVoorOrder(nb, klanten)
-        if (bestaandeKlant) nb.klant_id = bestaandeKlant.id
-        nieuw.push(nb)
-        imported++
+      const r = await importeerWcOrders({wcGet, refs, bestellingen: bestellingen || [], klanten: klanten || [], wcCreds, t})
+      if (r.nieuw.length || Object.keys(r.updates).length) {
+        setBestellingen((prev: any[]) => pasImportToe(prev, r))
+        importAuditRegels(r).forEach(a => logAudit(auditLog, setAuditLog, {entiteit: 'Bestelling', ...a}))
       }
-      const bijgewerkt = Object.keys(betaalUpdates).length
-      if (nieuw.length || bijgewerkt) {
-        setBestellingen((prev: any[]) => [
-          ...(prev||[]).map((b: any) => betaalUpdates[b.id] ? {...b, ...betaalUpdates[b.id]} : b),
-          ...nieuw,
-        ])
-        nieuw.forEach((o: any) => logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:o.id, actie:'aangemaakt', omschrijving:`WC import — ${o.klant_naam||'onbekend'}`}))
-        Object.keys(betaalUpdates).forEach(id => {
-          const upd = betaalUpdates[Number(id)]
-          const delen = [
-            'wc_betaald' in upd ? `betaalstatus ${upd.wc_betaald ? 'betaald' : 'open'}` : '',
-            'wc_levering' in upd ? `levering ${leveringOmschrijving(upd)}` : '',
-          ].filter(Boolean)
-          logAudit(auditLog, setAuditLog, {
-            entiteit:'Bestelling', entiteit_id:Number(id), actie:'gewijzigd',
-            omschrijving:`WC bijgewerkt — ${delen.join(' · ')}`,
-          })
-        })
-      }
-      const melding = t('msg_wc_orders_imported').replace('{n}', String(imported))
-      // Niet-herkende regels expliciet melden: die komen als vrije regel binnen
-      // (geen picking) en horen gecontroleerd te worden.
-      const delen = [
-        onbekendeRegels > 0 ? t('msg_wc_regels_onbekend').replace('{n}', String(onbekendeRegels)) : '',
-        bijgewerkt > 0 ? t('msg_wc_betaalstatus_bijgewerkt').replace('{n}', String(bijgewerkt)) : '',
-      ].filter(Boolean)
-      setWcMsg(delen.length ? `${melding} — ${delen.join(' · ')}` : melding)
+      setWcMsg(importMelding(r, t))
     } catch(e: any) {
       setWcMsg(t('msg_wc_import_failed').replace('{msg}', wcFoutMelding(e, t)))
     }

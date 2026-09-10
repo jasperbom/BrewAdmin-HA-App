@@ -570,7 +570,7 @@ const _bulkLoad = (): Promise<{data: any, versions: Record<string, string>} | nu
   return _bulkPromise
 }
 
-export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void, () => void] => {
+export const useStore = (key: string, initial: any = [], opts: {secure?: boolean} = {}): [any, (val: any) => void, () => Promise<any>] => {
   const { secure = false } = opts
   _allKeys.add(key)
   const [data, setData] = useState(() => secure ? initial : lsGet(key, initial))
@@ -692,9 +692,13 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     })
   }
 
-  const refresh = () => {
+  // Geeft de verse serverstand terug (of null als die niet gebruikt is: intussen
+  // zelf geschreven, of server onbereikbaar), zodat een aanroeper die éérst de
+  // laatste stand nodig heeft — de automatische WooCommerce-import — erop kan
+  // wachten. Bestaande aanroepers negeren de waarde.
+  const refresh = (): Promise<any> => {
     const stempel = _versieStempel(key)
-    _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
+    return _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
       .then(r => {
         _serverReachable = true
         // Is er intussen geschreven, dan is dit antwoord verouderd: niets
@@ -708,9 +712,11 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
           _rememberSynced(key, d)
           setData(d)
           if (!secure) lsSet(key, d)
+          return d
         }
+        return null
       })
-      .catch(() => { _serverReachable = false })
+      .catch(() => { _serverReachable = false; return null })
   }
 
   return [data, save, refresh]
