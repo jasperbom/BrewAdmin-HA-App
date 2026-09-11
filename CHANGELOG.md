@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.30] — 2026-09-11
+
+### Afhaalklant niet komen opdagen? Mail hem een nieuwe afspraak
+
+Op een afhaalbestelling waarvan het gekozen afhaalmoment voorbij is terwijl
+de order nog openstaat, verschijnt de knop **Mail afspraak gemist**. De mail
+noemt het gemiste moment, zegt dat de bestelling gereserveerd blijft en geeft
+dezelfde privélink van de afhaalpagina waarmee de klant zelf een nieuw moment
+kiest (zonder winkel-URL vraagt de tekst om even contact op te nemen). Het
+nieuwe moment komt bij de volgende WooCommerce-import vanzelf op de bestelling.
+
+- Nieuwe mailtemplate **Afspraak-gemist-mail (afhalen)** bij Instellingen →
+  E-mailtemplates, met `{afhaalmoment}`, `{afhaalregel}`, `{afhaallink}`,
+  `{afhaallocatie}`, `{naam}`, `{nr}`, `{regels}` en `{brouwerij}`.
+- In de bestellijst kleurt de afhaalbadge rood zodra het moment verstreken is;
+  het orderdetail toont "(verstreken)" en, na verzenden, wanneer de
+  afspraak-gemist-mail is gemaild.
+- Een onleesbaar afhaalmoment (bijv. maand 13) wordt niet meer stilletjes
+  naar een geldige datum doorgerold maar ruw getoond.
+
+---
+
 ## [1.12.29] — 2026-09-10
 
 ### Bestellingen komen vanzelf binnen — en je hoort het als de app dicht is

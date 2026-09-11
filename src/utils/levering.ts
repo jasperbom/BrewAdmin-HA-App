@@ -19,6 +19,12 @@
  *                             de deur uit is
  *  - onbekend (handmatig)   → de neutrale oude regel
  *
+ * Komt de klant niet opdagen, dan is er de **afspraak-gemist-mail**
+ * (`afhaalGemistMailVars`): het gemiste moment plus dezelfde link waarmee de
+ * klant een nieuw moment kiest. `afhaalmomentVerstreken` zegt of een
+ * afhaalorder die nog openstaat zo'n mail verdient (het gekozen moment ligt in
+ * het verleden).
+ *
  * Bewaart zelf niets; de velden staan op de bestelling en worden bij elke
  * import ververst (een klant kiest zijn moment vaak pas ná het bestellen).
  */
@@ -125,6 +131,19 @@ export function afhaalLink(storeUrl: unknown, orderId: unknown, orderKey: unknow
 
 const LOCALES: Record<string, string> = {nl: 'nl-NL', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', es: 'es-ES'}
 
+/** Het afhaalmoment (`JJJJ-MM-DD UU:MM`) als Date in lokale tijd; null bij `overleg`, leeg of onleesbaar. */
+export function afhaalmomentDate(moment: unknown): Date | null {
+  const mt = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(str(moment))
+  if (!mt) return null
+  const [jaar, maand, dag, uur, minuut] = mt.slice(1).map(Number)
+  const d = new Date(jaar, maand - 1, dag, uur, minuut)
+  // JavaScript rolt "maand 13" stilletjes door naar het volgende jaar; zo'n
+  // waarde is onleesbaar, geen datum.
+  const klopt = d.getFullYear() === jaar && d.getMonth() === maand - 1 && d.getDate() === dag
+    && d.getHours() === uur && d.getMinutes() === minuut
+  return klopt ? d : null
+}
+
 /**
  * Het afhaalmoment zoals een mens het leest: "zaterdag 30 augustus om 13:00".
  * De sleutel is lokale tijd van de winkel (`JJJJ-MM-DD UU:MM`); `overleg`
@@ -134,13 +153,28 @@ export function afhaalmomentLabel(moment: unknown, lang: string = getLang()): st
   const m = str(moment)
   if (!m) return ''
   if (m === AFHAAL_OVERLEG) return t('afhaal_in_overleg')
-  const mt = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(m)
-  if (!mt) return m
-  const d = new Date(Number(mt[1]), Number(mt[2]) - 1, Number(mt[3]), Number(mt[4]), Number(mt[5]))
-  if (Number.isNaN(d.getTime())) return m
+  const d = afhaalmomentDate(m)
+  if (!d) return m
   const locale = LOCALES[lang] || LOCALES.nl
   const dag = d.toLocaleDateString(locale, {weekday: 'long', day: 'numeric', month: 'long'})
-  return t('afhaal_moment_om').replace('{dag}', dag).replace('{tijd}', `${mt[4]}:${mt[5]}`)
+  const tijd = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return t('afhaal_moment_om').replace('{dag}', dag).replace('{tijd}', tijd)
+}
+
+/**
+ * Ligt het gekozen afhaalmoment in het verleden terwijl de bestelling nog
+ * niet is afgerond of geannuleerd? Dan is de klant (waarschijnlijk) niet
+ * komen opdagen en verdient de order de afspraak-gemist-mail. Een moment
+ * "in overleg" of nog niet gekozen kan niet gemist worden.
+ */
+export function afhaalmomentVerstreken(
+  bestelling: (Partial<LeveringVelden> & {status?: string, [k: string]: unknown}) | null | undefined,
+  nu: Date = new Date(),
+): boolean {
+  if (!bestelling || bestelling.wc_levering !== 'afhalen') return false
+  if (bestelling.status === 'afgerond' || bestelling.status === 'geannuleerd') return false
+  const d = afhaalmomentDate(bestelling.wc_afhaalmoment)
+  return !!d && d.getTime() < nu.getTime()
 }
 
 /** Korte omschrijving voor een badge of tooltip: "Afhalen · Brouwerij · za 30 aug om 13:00". */
@@ -203,6 +237,36 @@ export function leveringMailVars(
     .split('{link}').join(link)
     .split('{methode}').join(methode)
   return {levering, afhaallink: link, afhaalmoment: moment, afhaallocatie: locatieNaam, verzendmethode: methode}
+}
+
+export interface AfhaalGemistMailVars {
+  /** Het gemiste moment, leesbaar ("zaterdag 30 augustus om 13:00"). */
+  afhaalmoment: string
+  afhaallink: string
+  afhaallocatie: string
+  /** De alinea met de uitnodiging om een nieuw moment te kiezen (mét link, anders "neem contact op"). */
+  afhaalregel: string
+}
+
+/**
+ * De variabelen voor de afspraak-gemist-mail: het moment dat de klant heeft
+ * laten schieten en de link naar zijn afhaalpagina om een nieuw moment te
+ * kiezen. Zonder link (geen winkel-URL, handmatige order) vraagt de tekst de
+ * klant om contact op te nemen.
+ */
+export function afhaalGemistMailVars(
+  bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null}) | null | undefined,
+  opts: {storeUrl?: string} = {},
+): AfhaalGemistMailVars {
+  const b = bestelling || {}
+  const link = afhaalLink(opts.storeUrl, b.wc_order_id, b.wc_order_key)
+  const locatieNaam = str(b.wc_afhaal_locatie)
+  const locatie = locatieNaam ? t('mail_levering_bij_locatie').replace('{locatie}', locatieNaam) : ''
+  const moment = afhaalmomentLabel(b.wc_afhaalmoment)
+  const afhaalregel = t(link ? 'mail_afhaal_gemist_kies' : 'mail_afhaal_gemist_contact')
+    .split('{locatie}').join(locatie)
+    .split('{link}').join(link)
+  return {afhaalmoment: moment, afhaallink: link, afhaallocatie: locatieNaam, afhaalregel}
 }
 
 export interface VerzendMailVars {

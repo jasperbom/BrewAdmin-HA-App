@@ -22,7 +22,7 @@ import { factuurMailBetaalVars } from '../utils/factuurMail'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, wcSyncTeHerhalen, wcSyncDoelVoorStatus, WcSyncDoel } from '../utils/wcTerugschrijven'
 import {
-  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging,
+  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars,
 } from '../utils/levering'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
@@ -285,9 +285,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!b?.wc_levering) return null
     const afhalen = b.wc_levering === 'afhalen'
     const open = afhalen && !b.wc_afhaalmoment
+    // Rood: het gekozen moment is voorbij en de klant is niet geweest —
+    // daar hoort de afspraak-gemist-mail (utils/levering → afhaalmomentVerstreken).
+    const gemist = afhaalmomentVerstreken(b)
     return (
-      <span title={leveringOmschrijving(b)}
-        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${open ? 'bg-orange-100 text-orange-700' : afhalen ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+      <span title={leveringOmschrijving(b) + (gemist ? ` (${t('orders_afhaalmoment_verstreken')})` : '')}
+        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${gemist ? 'bg-red-100 text-red-700' : open ? 'bg-orange-100 text-orange-700' : afhalen ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
         {afhalen ? '🏬' : '🚚'} {t(afhalen ? 'orders_levering_afhalen' : 'orders_levering_verzenden')}
       </span>
     )
@@ -1577,8 +1580,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     attachments?: {filename: string, contentBase64: string, mimeType: string}[]
     /** Type mail — bepaalt het log-bericht en (bij 'bevestiging') een status-
      * overgang van 'nieuw' naar 'bevestigd' na succesvolle verzending; bij
-     * 'verzending' wordt de datum van de verzendbevestiging op de order gezet. */
-    kind?: 'pakbon' | 'factuur' | 'bevestiging' | 'verzending'
+     * 'verzending' wordt de datum van de verzendbevestiging op de order gezet,
+     * bij 'afhaal_gemist' die van de afspraak-gemist-mail. */
+    kind?: 'pakbon' | 'factuur' | 'bevestiging' | 'verzending' | 'afhaal_gemist'
     mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
     regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
   }>(null)
@@ -1592,7 +1596,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // Pakt subject/body uit ingestelde mail_templates; valt terug op de i18n-default
   // wanneer de gebruiker niets heeft ingevuld (lege string of niet aanwezig).
-  const tplOrDefault = (key: 'pakbon'|'factuur'|'factuur_betaald'|'bestelling'|'verzending', field: 'subject'|'body'): string => {
+  const tplOrDefault = (key: 'pakbon'|'factuur'|'factuur_betaald'|'bestelling'|'verzending'|'afhaal_gemist', field: 'subject'|'body'): string => {
     const stored = (mailTemplates as any)?.[key]?.[field]
     if (typeof stored === 'string' && stored.trim()) return stored
     return t(`mail_${key}_${field === 'subject' ? 'subject' : 'body'}_default`)
@@ -1751,6 +1755,28 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     })
   }
 
+  // Afspraak gemist: de afhaalklant is niet komen opdagen. De mail noemt het
+  // gemiste moment en geeft dezelfde afhaalpagina-link waarmee de klant een
+  // nieuw moment kiest (utils/levering.ts). Het nieuwe moment komt bij de
+  // volgende WooCommerce-import vanzelf op de bestelling terecht.
+  const mailOrderAfhaalGemist = () => {
+    if (!selectedOrder) return
+    const vars = {
+      naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
+      nr: orderNummer(selectedOrder),
+      regels: regelLijstVoorMail(selectedOrder),
+      brouwerij: (breweryDetails as any)?.naam || appName || '',
+      ...afhaalGemistMailVars(selectedOrder, {storeUrl: wcCreds?.storeUrl || ''}),
+    }
+    setMailModal({
+      title: t('mail_modal_title_afhaal_gemist'),
+      to: (resolvedSelectedOrder?.klant_email || ''),
+      subject: interpolate(tplOrDefault('afhaal_gemist', 'subject'), vars),
+      text: interpolate(tplOrDefault('afhaal_gemist', 'body'), vars),
+      kind: 'afhaal_gemist',
+    })
+  }
+
   // --- RENDER ---
 
   if (view === 'detail' && selectedOrder) {
@@ -1863,13 +1889,20 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       {!afhalen && selectedOrder.wc_verzendmethode ? ` · ${selectedOrder.wc_verzendmethode}` : ''}
                     </span>
                   </div>
-                  {afhalen && (
-                    <div className="flex justify-between gap-3">
-                      <span className="text-gray-500">{t('orders_afhaalmoment')}</span>
-                      <span className={`text-right ${selectedOrder.wc_afhaalmoment ? '' : 'text-orange-600 italic'}`}>
-                        {selectedOrder.wc_afhaalmoment ? afhaalmomentLabel(selectedOrder.wc_afhaalmoment) : t('orders_afhaalmoment_open')}
-                      </span>
-                    </div>
+                  {afhalen && (() => {
+                    const gemist = afhaalmomentVerstreken(selectedOrder)
+                    return (
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-500">{t('orders_afhaalmoment')}</span>
+                        <span className={`text-right ${gemist ? 'text-red-600' : selectedOrder.wc_afhaalmoment ? '' : 'text-orange-600 italic'}`}>
+                          {selectedOrder.wc_afhaalmoment ? afhaalmomentLabel(selectedOrder.wc_afhaalmoment) : t('orders_afhaalmoment_open')}
+                          {gemist ? ` (${t('orders_afhaalmoment_verstreken')})` : ''}
+                        </span>
+                      </div>
+                    )
+                  })()}
+                  {afhalen && selectedOrder.afhaal_gemist_datum && (
+                    <div className="text-xs text-red-700">{t('orders_afhaal_gemist_op').replace('{datum}', fmtD(selectedOrder.afhaal_gemist_datum))}</div>
                   )}
                   {link && (
                     <div className="text-right">
@@ -2102,6 +2135,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               ✉ {selectedOrder.status === 'bevestigd' ? t('order_mail_bevestiging_resend') : t('order_mail_bevestiging')}
             </Btn>
           )}
+          {/* Afhaalklant niet komen opdagen: mail met de link om een nieuw
+              moment te kiezen. Alleen zolang het gekozen moment voorbij is en
+              de order nog openstaat. */}
+          {afhaalmomentVerstreken(selectedOrder) && (
+            <Btn v="secondary" onClick={mailOrderAfhaalGemist} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              🏬 {t('order_mail_afhaal_gemist')}
+            </Btn>
+          )}
           {selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && (
             <Btn v="danger" onClick={() => setShowAnnuleerModal(true)}>{t('order_cancel')}</Btn>
           )}
@@ -2168,6 +2209,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 mailModal.kind === 'factuur'     ? `Factuur gemaild naar ${naar}` :
                 mailModal.kind === 'bevestiging' ? `Bevestigingsmail verstuurd naar ${naar}` :
                 mailModal.kind === 'verzending'  ? `Verzendbevestiging gemaild naar ${naar}` :
+                mailModal.kind === 'afhaal_gemist' ? `Afspraak-gemist-mail gemaild naar ${naar}` :
                 `Mail verstuurd: ${mailModal.subject}`
               logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id: selectedOrder.id, actie:'gewijzigd', omschrijving})
               // Onthoud wanneer de verzendbevestiging de deur uit ging, zodat
@@ -2175,6 +2217,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               if (mailModal.kind === 'verzending') {
                 setBestellingen((prev: any[]) => prev.map((b: any) =>
                   b.id === selectedOrder.id ? {...b, verzendbevestiging_datum: tod()} : b
+                ))
+              }
+              // Idem voor de afspraak-gemist-mail: zo zie je bij de order dat
+              // de klant al gevraagd is een nieuw moment te kiezen.
+              if (mailModal.kind === 'afhaal_gemist') {
+                setBestellingen((prev: any[]) => prev.map((b: any) =>
+                  b.id === selectedOrder.id ? {...b, afhaal_gemist_datum: tod()} : b
                 ))
               }
               // Status-overgang: een 'nieuw' order wordt 'bevestigd' zodra de

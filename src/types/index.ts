@@ -1145,6 +1145,9 @@ export interface Bestelling {
   verzend_tracking?: string | null
   // Datum waarop de verzendbevestiging naar de klant is gemaild.
   verzendbevestiging_datum?: string | null
+  // Datum waarop de afspraak-gemist-mail is gestuurd (afhaalklant niet
+  // gekomen; de mail bevat de link om een nieuw afhaalmoment te kiezen).
+  afhaal_gemist_datum?: string | null
   // Wat er naar WooCommerce is teruggeschreven (utils/wcTerugschrijven.ts):
   // de status (`completed`/`cancelled`, of null als er alleen een notitie
   // is geplaatst), wanneer, en de fout als het mislukte.

@@ -1849,8 +1849,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           {/* `verzending` is de verzendbevestiging die bij "Markeer verzonden"
               wordt aangeboden (met track & trace); `bestelling` bevat via
               {levering} de afhaal- of bezorgtekst, incl. de link waarmee een
-              afhaalklant zijn moment kiest (utils/levering.ts). */}
-          {(['pakbon','factuur','factuur_betaald','bestelling','verzending'] as const).map((kind) => {
+              afhaalklant zijn moment kiest (utils/levering.ts). `afhaal_gemist`
+              is de mail voor een afhaalklant die niet kwam opdagen, met via
+              {afhaalregel} dezelfde link om een nieuw moment te kiezen. */}
+          {(['pakbon','factuur','factuur_betaald','bestelling','verzending','afhaal_gemist'] as const).map((kind) => {
             const labelKey = `settings_mail_template_${kind}`
             const varsHintKey = `settings_mail_vars_${kind}`
             const defaultSubject = t(`mail_${kind}_subject_default`)

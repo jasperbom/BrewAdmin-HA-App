@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   wcLeveringVelden, leveringVeldenGewijzigd, afhaalLink, afhaalmomentLabel,
   leveringMailVars, verzendMailVars, leveringOmschrijving, wilVerzendbevestiging,
+  afhaalmomentDate, afhaalmomentVerstreken, afhaalGemistMailVars,
   isAfhaalMethode, AFHAAL_OVERLEG,
 } from '../levering'
 
@@ -150,6 +151,64 @@ describe('leveringMailVars', () => {
     expect(v.levering.length).toBeGreaterThan(0)
     expect(v.levering).not.toContain('{')
     expect(v.afhaallink).toBe('')
+  })
+})
+
+describe('afhaalmomentVerstreken', () => {
+  const nu = new Date(2026, 7, 30, 14, 0)  // 30 augustus 2026, 14:00
+  const b = {wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder), status: 'bevestigd'}
+
+  it('leest het moment als lokale tijd', () => {
+    expect(afhaalmomentDate('2026-08-30 13:00')?.getTime()).toBe(new Date(2026, 7, 30, 13, 0).getTime())
+    expect(afhaalmomentDate(AFHAAL_OVERLEG)).toBeNull()
+    expect(afhaalmomentDate('')).toBeNull()
+    expect(afhaalmomentDate('2026-13-45 99:00')).toBeNull()
+  })
+  it('een open afhaalorder waarvan het moment voorbij is', () => {
+    expect(afhaalmomentVerstreken(b, nu)).toBe(true)
+    expect(afhaalmomentVerstreken({...b, status: 'gepickt'}, nu)).toBe(true)
+  })
+  it('nog niet voorbij, in overleg of nog niet gekozen: niet gemist', () => {
+    expect(afhaalmomentVerstreken(b, new Date(2026, 7, 30, 12, 59))).toBe(false)
+    expect(afhaalmomentVerstreken({...b, wc_afhaalmoment: AFHAAL_OVERLEG}, nu)).toBe(false)
+    expect(afhaalmomentVerstreken({...b, wc_afhaalmoment: ''}, nu)).toBe(false)
+  })
+  it('afgerond of geannuleerd: de klant is geweest (of komt niet meer)', () => {
+    expect(afhaalmomentVerstreken({...b, status: 'afgerond'}, nu)).toBe(false)
+    expect(afhaalmomentVerstreken({...b, status: 'geannuleerd'}, nu)).toBe(false)
+  })
+  it('een bezorgorder of een handmatige order kan geen afspraak missen', () => {
+    expect(afhaalmomentVerstreken({wc_order_id: 3236, ...wcLeveringVelden(verzendOrder), status: 'nieuw'}, nu)).toBe(false)
+    expect(afhaalmomentVerstreken({status: 'nieuw'}, nu)).toBe(false)
+    expect(afhaalmomentVerstreken(null, nu)).toBe(false)
+  })
+})
+
+describe('afhaalGemistMailVars', () => {
+  const store = {storeUrl: 'https://craftery.nl'}
+  const b = {wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder)}
+
+  it('het gemiste moment plus de link om een nieuw moment te kiezen', () => {
+    const v = afhaalGemistMailVars(b, store)
+    expect(v.afhaalmoment).toContain('13:00')
+    expect(v.afhaallink).toBe('https://craftery.nl/?afhaalmoment=3235&sleutel=wc_order_AbC123xyz')
+    expect(v.afhaallocatie).toBe('Craftery Brewing')
+    expect(v.afhaalregel).toContain(v.afhaallink)
+    expect(v.afhaalregel).toContain('Craftery Brewing')
+    expect(v.afhaalregel).not.toContain('{')
+  })
+  it('zonder winkel-URL: geen link, wel de vraag om contact op te nemen', () => {
+    const v = afhaalGemistMailVars(b, {})
+    expect(v.afhaallink).toBe('')
+    expect(v.afhaalregel).not.toContain('https://')
+    expect(v.afhaalregel).not.toContain('{')
+    expect(v.afhaalregel.length).toBeGreaterThan(0)
+  })
+  it('handmatige order zonder velden', () => {
+    const v = afhaalGemistMailVars({}, store)
+    expect(v.afhaalmoment).toBe('')
+    expect(v.afhaallink).toBe('')
+    expect(v.afhaalregel).not.toContain('{')
   })
 })
 

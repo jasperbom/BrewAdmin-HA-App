@@ -93,8 +93,9 @@ BrewAdmin-HA-App/
 │   │   ├── levering.ts     # Afhalen of verzenden per bestelling: uit de WooCommerce-verzendregel
 │   │   │                   # (`local_pickup`/`pickup_location` = afhalen) + het afhaalmoment en de
 │   │   │                   # afhaalpagina van het Craftery-thema (`?afhaalmoment=<id>&sleutel=<order_key>`),
-│   │   │                   # bij elke import ververst; mailvariabelen `{levering}` (bestelbevestiging)
-│   │   │                   # en `{trackregel}` (verzendbevestiging bij "Markeer verzonden")
+│   │   │                   # bij elke import ververst; mailvariabelen `{levering}` (bestelbevestiging),
+│   │   │                   # `{trackregel}` (verzendbevestiging bij "Markeer verzonden") en
+│   │   │                   # `{afhaalregel}` (afspraak-gemist-mail: moment voorbij, order nog open)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval
@@ -561,7 +562,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
-| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`) met `subject`/`body`; leeg = i18n-default. `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}` — zie `utils/levering.ts` |
+| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`) met `subject`/`body`; leeg = i18n-default. `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
@@ -740,7 +741,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   (ook voor bestaande orders — het moment wordt vaak pas later gekozen) en zet
   het in de bestelbevestiging via `{levering}`. Een bezorgorder krijgt bij
   *Markeer verzonden* meteen de verzendbevestiging aangeboden (template
-  `verzending`, met track & trace)
+  `verzending`, met track & trace). Is het gekozen afhaalmoment voorbij en
+  staat de order nog open, dan biedt de bestelpagina *Mail afspraak gemist*
+  (template `afhaal_gemist`): dezelfde afhaalpagina-link om een nieuw moment
+  te kiezen; het nieuwe moment komt bij de volgende import mee
 - **Periodiek ophalen** (`woocommerce_creds.importInterval`, minuten, default 15,
   0 = uit): App.tsx importeert elke N minuten zelf (`autoImportWc`, dezelfde
   `importeerWcOrders` als de knop) zolang een tabblad open staat en de rol mag
