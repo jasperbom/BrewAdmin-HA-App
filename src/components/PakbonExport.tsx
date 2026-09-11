@@ -7,6 +7,7 @@ import { t } from '../i18n'
 import { fmtQty, fmtEuroDoc, fmtDatumDoc } from '../utils/format'
 import { renderTemplateOfFallback } from '../utils/template'
 import { onGepickteRegels } from '../utils/picking'
+import type { Picklijst, PicklijstRegel, PicklijstOrder } from '../utils/picking'
 import {
   FACTUUR_CSS_DEFAULT,
   FACTUUR_HTML_DEFAULT,
@@ -59,6 +60,11 @@ const CSS = `
   .badge-concept { background: #ffedd5; color: #9a3412; margin-top: 1.5mm; }
   tr.open td { color: #6b7280; font-style: italic; }
   td.muted { color: #9ca3af; font-size: 8.5pt; }
+  .muted { color: #9ca3af; font-size: 8.5pt; }
+  .tekort { color: #b91c1c; font-weight: bold; font-size: 9pt; }
+  th.chk, td.chk { width: 7mm; padding-left: 2mm; padding-right: 0; }
+  .box { display: inline-block; width: 4.5mm; height: 4.5mm; border: 1.5px solid #6b7280; border-radius: 1mm; vertical-align: middle; }
+  .sub-title { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin: 6mm 0 2mm; }
   .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
   .notice-block { background: #fff7ed; border: 1.5px solid #f97316; padding: 3.5mm 4.5mm; border-radius: 3px; margin-bottom: 5mm; }
   .notice-title { font-weight: bold; font-size: 11pt; color: #c2410c; margin-bottom: 2px; }
@@ -355,6 +361,131 @@ export function buildPakbonHTML(
   factuurLogo: string | null | undefined
 ): {html: string, filename: string} {
   const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo)
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  return {html, filename: r.filename}
+}
+
+// ─────────────────────────────────────────────
+// PICKLIJST (meerdere bestellingen in één ronde)
+// ─────────────────────────────────────────────
+// Werkdocument, geen klantdocument: per bier + verpakking het totaal dat je
+// uit de koeling haalt, uit welke batch (FEFO-suggestie) en voor welke
+// bestelling het is. Daaronder de bestellingen zelf voor de inpaktafel.
+// De inhoud komt uit `verzamelPicklijst` (utils/picking.ts).
+
+function buildPicklijstBody(
+  lijst: Picklijst,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): {bodyHtml: string, filename: string} {
+  const vandaag = new Date().toISOString().slice(0, 10)
+  const datum = fmtDate(vandaag)
+
+  const regelRows = lijst.regels.map((g: PicklijstRegel) => {
+    const pakUit = g.suggesties.map(s =>
+      `<div>${esc(s.batch_nummer || '—')} · ${t('lbl_tht')} ${s.tht ? fmtDate(s.tht) : '—'} · <strong>${esc(s.aantal)}×</strong></div>`)
+    if (g.tekort > 0) {
+      pakUit.push(`<div class="tekort">${esc(g.suggesties.length
+        ? t('lbl_picklijst_tekort').replace('{n}', String(g.tekort))
+        : t('lbl_picklijst_geen_voorraad'))}</div>`)
+    }
+    const voor = g.orders.map(o =>
+      `<div>${esc(o.ref)} · ${esc(o.klant || '—')} · <strong>${esc(o.aantal)}×</strong>${o.prive ? ` <span class="muted">${t('lbl_picklijst_prive')}</span>` : ''}</div>`)
+    return `<tr>
+      <td class="chk"><span class="box"></span></td>
+      <td><strong>${esc(g.bier_naam || '—')}</strong>${g.sku ? `<div class="muted">${esc(g.sku)}</div>` : ''}</td>
+      <td>${esc(g.verpakking_type || '—')}</td>
+      <td class="r"><strong>${esc(g.totaal)}</strong></td>
+      <td>${pakUit.join('')}</td>
+      <td>${voor.join('')}</td>
+    </tr>`
+  }).join('')
+
+  const orderRows = lijst.orders.map((o: PicklijstOrder) => {
+    const levering = o.levering === 'afhalen'
+      ? `${t('orders_levering_afhalen')}${o.afhaalmoment ? ` · ${esc(o.afhaalmoment)}` : ''}`
+      : o.levering === 'verzenden' ? t('orders_levering_verzenden') : '—'
+    return `<tr>
+      <td class="chk"><span class="box"></span></td>
+      <td><strong>${esc(o.ref)}</strong></td>
+      <td>${esc(o.klant || '—')}${o.prive ? ` <span class="muted">${t('lbl_picklijst_prive')}</span>` : ''}</td>
+      <td>${levering}</td>
+      <td class="r">${esc(o.regels)}</td>
+      <td class="r">${esc(o.stuks)}</td>
+      <td>${esc(o.opmerkingen)}</td>
+    </tr>`
+  }).join('')
+
+  const bodyHtml = `<div class="page">
+    <div class="hdr">
+      ${breweryBlock(brewery, appName, factuurLogo)}
+      <div class="hdr-right">
+        <div class="doc-title">${t('lbl_picklijst_document')}</div>
+        <div class="doc-nr">${esc(datum)}</div>
+      </div>
+    </div>
+
+    <div class="meta-grid">
+      <div class="meta-block"><div class="ml">${t('lbl_picklijst_orders')}</div><div class="mv">${esc(lijst.orders.length)}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_picklijst_regels')}</div><div class="mv">${esc(lijst.regels.length)}</div></div>
+      <div class="meta-block"><div class="ml">${t('lbl_picklijst_stuks')}</div><div class="mv">${esc(lijst.totaal)}</div></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="chk"></th>
+          <th>${t('lbl_pakbon_bier')}</th>
+          <th>${t('lbl_pakbon_verpakking')}</th>
+          <th class="r">${t('lbl_kol_aantal')}</th>
+          <th>${t('lbl_picklijst_pak_uit')}</th>
+          <th>${t('lbl_picklijst_voor')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${regelRows || `<tr><td colspan="6" style="text-align:center;color:#888;padding:4mm;">${t('msg_picklijst_leeg')}</td></tr>`}
+      </tbody>
+    </table>
+
+    ${orderRows ? `<div class="sub-title">${t('lbl_picklijst_per_order')}</div>
+    <table>
+      <thead>
+        <tr>
+          <th class="chk"></th>
+          <th>${t('lbl_order_ref')}</th>
+          <th>${t('lbl_klant')}</th>
+          <th>${t('lbl_picklijst_levering')}</th>
+          <th class="r">${t('lbl_picklijst_regels')}</th>
+          <th class="r">${t('lbl_picklijst_stuks')}</th>
+          <th>${t('lbl_opmerking')}</th>
+        </tr>
+      </thead>
+      <tbody>${orderRows}</tbody>
+    </table>` : ''}
+  </div>`
+
+  return {bodyHtml, filename: `Picklijst-${vandaag}`}
+}
+
+export function printPicklijst(
+  lijst: Picklijst,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): void {
+  const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo)
+  openPrint(r.bodyHtml, r.filename)
+}
+
+// Volledige standalone HTML (voor tests en een eventuele mail-PDF).
+export function buildPicklijstHTML(
+  lijst: Picklijst,
+  brewery: any,
+  appName: string,
+  factuurLogo: string | null | undefined
+): {html: string, filename: string} {
+  const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo)
   const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }

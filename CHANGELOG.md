@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.31] — 2026-09-11
+
+### Eén picklijst voor alle open bestellingen
+
+Nieuwe knop **Picklijst afdrukken** bovenaan de bestellingenlijst (zichtbaar
+zodra er iets te picken is, met het aantal orders erbij). De lijst telt de nog
+niet gepickte bierregels van alle bestellingen "om te picken" op per bier en
+verpakking, zodat je één rondje door de koeling maakt:
+
+- **Pak uit:** batchsuggestie op kortste THT eerst (dezelfde matcher als de
+  pickmodal, geblokkeerde afvullingen overgeslagen, een afvulling nooit twee
+  keer uitgedeeld) — met een rode melding als de voorraad tekortschiet.
+- **Voor bestelling:** de verdeling per order, met markering *privé — niet uit
+  AGP* waar dat geldt.
+- **Per bestelling:** ordernummer, klant, afhalen (met afhaalmoment) of
+  verzenden, aantal regels/stuks en de opmerking van de klant — voor de
+  inpaktafel. Afvinkhokjes bij elke regel.
+
+Het registreren van de picks blijft per bestelling via de pickmodal; de lijst
+is het papier dat je meeneemt (`verzamelPicklijst` in `utils/picking.ts`, met
+tests).
+
+---
+
 ## [1.12.30] — 2026-09-11
 
 ### Pakbon printen vóór het picken

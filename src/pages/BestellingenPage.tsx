@@ -10,7 +10,7 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
-import { printPakbon, printFactuur, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
+import { printPakbon, printFactuur, printPicklijst, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden } from '../utils/wcProduct'
@@ -29,7 +29,7 @@ import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
 import { regelBedrag, heeftAutoritair } from '../utils/orderRegel'
-import { matchAfvullingenVoorRegel, diagnosePickMatch, bestellingenOmTePicken } from '../utils/picking'
+import { matchAfvullingenVoorRegel, diagnosePickMatch, bestellingenOmTePicken, verzamelPicklijst } from '../utils/picking'
 import type { AttentieDoel } from '../utils/attentie'
 import {
   MerchArtikel, MerchMutatie, merchLabel, onthoudMerch, vergeetMerch, verwijderMerch,
@@ -424,6 +424,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const filtered = (av||[]).filter((a: any) => !a.geblokkeerd && beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
     return matchAfvullingenVoorRegel(filtered, regelBierNaam, regelVerpakking, orderSku,
       {bat, artikelen, producten, productArtikelen, verpakkingen})
+  }
+
+  // Verzamelpicklijst: alle bestellingen "om te picken" in één ronde door de
+  // koeling (utils/picking.ts → verzamelPicklijst). De batchsuggestie rekent
+  // met de totale vrije voorraad (alle locaties); privéorders — die niet uit
+  // AGP mogen — staan op de lijst gemarkeerd, en de pickmodal bewaakt die
+  // regel bij het registreren. Registreren blijft per order.
+  const printVerzamelPicklijst = () => {
+    const lijst = verzamelPicklijst(bestellingen as any, bestellingPicks as any, {
+      afvullingen: av || [],
+      beschikbaar: (a: any) => beschikbaarVoorAfvulling(a),
+      data: {bat, artikelen, producten, productArtikelen, verpakkingen},
+      orderRef: orderNummer,
+      isPrive: (b: any) => effectiveKlantType(b) === 'prive',
+    })
+    if (!lijst.orders.length) { alert(t('msg_picklijst_leeg')); return }
+    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo)
   }
 
   // Beschikbare bieren voor dropdown (vanuit producten + artikelen fallback)
@@ -2612,6 +2629,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             </button>
           )}
           {wcMsg && <span className={`text-xs font-medium ${wcMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcMsg}</span>}
+          {omTePickenIds.size > 0 && (
+            <Btn v="secondary" onClick={printVerzamelPicklijst} title={t('order_print_picklijst_uitleg')}>
+              🖨 {t('order_print_picklijst')} ({omTePickenIds.size})
+            </Btn>
+          )}
           <Btn onClick={() => { setManualForm(emptyManual); setShowManualModal(true) }}>{t('orders_new')}</Btn>
         </div>
       </div>

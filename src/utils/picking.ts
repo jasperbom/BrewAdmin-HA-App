@@ -300,6 +300,142 @@ export const onGepickteRegels = (bestelling: any, picks: any[]): any[] =>
     })
     .filter((r: any) => r.aantal > 0)
 
+// ── Verzamelpicklijst over meerdere bestellingen ────────────────────────────
+// Eén rondje door de koeling voor alle open orders: de nog te picken
+// hoeveelheden van alle bestellingen "om te picken" opgeteld per bier +
+// verpakking, met daaronder de verdeling per bestelling en een FEFO-
+// suggestie uit welke afvulling(en) je pakt (dezelfde matcher als de
+// pickmodal). Eén afvulling wordt over de regels heen niet dubbel
+// uitgedeeld. De registratie zelf blijft per order (de pickmodal); dit is
+// het papier dat je meeneemt.
+export interface PicklijstOrderDeel {
+  bestelling_id: number
+  ref: string
+  klant: string
+  aantal: number
+  /** Privéorder: mag wettelijk niet uit de AGP-voorraad geleverd worden. */
+  prive: boolean
+}
+
+export interface PicklijstSuggestie {
+  afvulling_id: any
+  batch_id: any
+  batch_nummer: string
+  tht: string
+  beschikbaar: number
+  aantal: number
+}
+
+export interface PicklijstRegel {
+  bier_naam: string
+  verpakking_type: string
+  sku: string | null
+  totaal: number
+  orders: PicklijstOrderDeel[]
+  suggesties: PicklijstSuggestie[]
+  /** Wat er na de suggesties nog ontbreekt (0 = alles op voorraad). */
+  tekort: number
+}
+
+export interface PicklijstOrder {
+  bestelling_id: number
+  ref: string
+  klant: string
+  levering: 'afhalen' | 'verzenden' | ''
+  afhaalmoment: string
+  prive: boolean
+  regels: number
+  stuks: number
+  opmerkingen: string
+}
+
+export interface Picklijst {
+  regels: PicklijstRegel[]
+  orders: PicklijstOrder[]
+  totaal: number
+}
+
+export interface PicklijstOpties {
+  afvullingen: any[]
+  /** Beschikbare voorraad van een afvulling, exclusief de picks van open orders. */
+  beschikbaar: (afvulling: any) => number
+  data: PickRefData
+  orderRef?: (bestelling: any) => string
+  isPrive?: (bestelling: any) => boolean
+}
+
+const standaardOrderRef = (b: any): string =>
+  b?.wc_order_nummer ? `WC-${b.wc_order_nummer}` : (b?.bestel_nummer || `M-${b?.id}`)
+
+const standaardIsPrive = (b: any): boolean =>
+  b?.klant_type === 'prive' || (!b?.klant_type && !String(b?.klant_bedrijf || '').trim())
+
+export const verzamelPicklijst = (
+  bestellingen: any[],
+  bestellingPicks: any[],
+  opts: PicklijstOpties,
+): Picklijst => {
+  const orderRef = opts.orderRef || standaardOrderRef
+  const isPrive = opts.isPrive || standaardIsPrive
+  const groepen = new Map<string, PicklijstRegel>()
+  const orders: PicklijstOrder[] = []
+
+  for (const b of bestellingenOmTePicken(bestellingen, bestellingPicks)) {
+    const open = onGepickteRegels(b, (bestellingPicks || []).filter((p: any) => p?.bestelling_id === b.id))
+    if (!open.length) continue
+    const klant = String(b.klant_bedrijf || b.klant_naam || '')
+    const prive = isPrive(b)
+    orders.push({
+      bestelling_id: b.id,
+      ref: orderRef(b),
+      klant,
+      levering: b.wc_levering === 'afhalen' || b.wc_levering === 'verzenden' ? b.wc_levering : '',
+      afhaalmoment: String(b.wc_afhaalmoment || ''),
+      prive,
+      regels: open.length,
+      stuks: open.reduce((s: number, r: any) => s + r.aantal, 0),
+      opmerkingen: String(b.opmerkingen || ''),
+    })
+    for (const r of open) {
+      const key = `${lower(r.bier_naam)}|${lower(r.verpakking_type)}`
+      let g = groepen.get(key)
+      if (!g) {
+        g = {bier_naam: String(r.bier_naam || ''), verpakking_type: String(r.verpakking_type || ''),
+          sku: r.sku || null, totaal: 0, orders: [], suggesties: [], tekort: 0}
+        groepen.set(key, g)
+      }
+      if (!g.sku && r.sku) g.sku = r.sku
+      g.totaal += r.aantal
+      g.orders.push({bestelling_id: b.id, ref: orderRef(b), klant, aantal: r.aantal, prive})
+    }
+  }
+
+  // FEFO-suggestie per groep; wat aan de ene groep is toegewezen is voor de
+  // volgende niet meer beschikbaar (een regel zonder verpakking matcht breed).
+  const bat = opts.data?.bat || []
+  const gebruikt = new Map<any, number>()
+  const voorraad = (opts.afvullingen || []).filter((a: any) => a && !a.geblokkeerd && opts.beschikbaar(a) > 0)
+  const regels = [...groepen.values()].sort((a, b) =>
+    a.bier_naam.localeCompare(b.bier_naam) || a.verpakking_type.localeCompare(b.verpakking_type))
+  for (const g of regels) {
+    let rest = g.totaal
+    for (const a of matchAfvullingenVoorRegel(voorraad, g.bier_naam, g.verpakking_type, g.sku, opts.data)) {
+      if (rest <= 0) break
+      const vrij = opts.beschikbaar(a) - (gebruikt.get(a.id) || 0)
+      if (vrij <= 0) continue
+      const n = Math.min(rest, vrij)
+      const batch = bat.find((x: any) => x.id === a.batch_id)
+      g.suggesties.push({afvulling_id: a.id, batch_id: a.batch_id, batch_nummer: String(batch?.batch_nummer || ''),
+        tht: String(a.tht || ''), beschikbaar: vrij, aantal: n})
+      gebruikt.set(a.id, (gebruikt.get(a.id) || 0) + n)
+      rest -= n
+    }
+    g.tekort = rest
+  }
+
+  return {regels, orders, totaal: regels.reduce((s, g) => s + g.totaal, 0)}
+}
+
 export const telOpenstaandeBestellingen = (
   bestellingen: any[],
   bestellingPicks: any[],
