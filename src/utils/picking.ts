@@ -282,6 +282,24 @@ export const bestellingenOmTePicken = (
     )
     .sort((a: any, b: any) => String(a?.datum || '').localeCompare(String(b?.datum || '')))
 
+// ── Pakbon vóór het picken ──────────────────────────────────────────────────
+// Het nog niet gepickte restant per bierregel van één bestelling: de bestelde
+// hoeveelheid min wat er al in `bestellingPicks` voor die regel staat. Vrije
+// regels, merch, verzendkosten en korting tellen niet mee (die worden nooit
+// gepickt). De pakbon zet deze regels onder de echte picks, zonder batch/THT,
+// zodat hij ook als picklijst dienst kan doen; zolang er zo'n regel is, is
+// het document een concept.
+export const onGepickteRegels = (bestelling: any, picks: any[]): any[] =>
+  (bestelling?.regels || [])
+    .filter((r: any) => r && (r.type || 'bier') === 'bier')
+    .map((r: any) => {
+      const gepickt = (picks || [])
+        .filter((p: any) => p?.regel_id === r.id)
+        .reduce((s: number, p: any) => s + Number(p?.aantal || 0), 0)
+      return {...r, aantal: Number(r.aantal || 0) - gepickt}
+    })
+    .filter((r: any) => r.aantal > 0)
+
 export const telOpenstaandeBestellingen = (
   bestellingen: any[],
   bestellingPicks: any[],

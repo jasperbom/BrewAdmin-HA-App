@@ -6,6 +6,7 @@
 import { t } from '../i18n'
 import { fmtQty, fmtEuroDoc, fmtDatumDoc } from '../utils/format'
 import { renderTemplateOfFallback } from '../utils/template'
+import { onGepickteRegels } from '../utils/picking'
 import {
   FACTUUR_CSS_DEFAULT,
   FACTUUR_HTML_DEFAULT,
@@ -55,6 +56,9 @@ const CSS = `
   .sign-label { font-size: 8pt; color: #888; margin-top: 1mm; }
   .badge { display: inline-block; padding: 0.5mm 2mm; border-radius: 2mm; font-size: 8pt; font-weight: bold; }
   .badge-green { background: #d1fae5; color: #065f46; }
+  .badge-concept { background: #ffedd5; color: #9a3412; margin-top: 1.5mm; }
+  tr.open td { color: #6b7280; font-style: italic; }
+  td.muted { color: #9ca3af; font-size: 8.5pt; }
   .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
   .notice-block { background: #fff7ed; border: 1.5px solid #f97316; padding: 3.5mm 4.5mm; border-radius: 3px; margin-bottom: 5mm; }
   .notice-title { font-weight: bold; font-size: 11pt; color: #c2410c; margin-bottom: 2px; }
@@ -237,7 +241,7 @@ function buildPakbonBody(
   const datum = fmtDate(order.pakbon_datum || order.pick_datum || order.verzend_datum || order.datum)
   const orderRef = order.wc_order_nummer ? `WC #${order.wc_order_nummer}` : `M-${order.id}`
 
-  const rows = picks.map((p: any) => {
+  const pickRows = picks.map((p: any) => {
     const afvulling = av.find((a: any) => a.id === p.afvulling_id)
     const batch = bat.find((b: any) => b.id === p.batch_id)
     // Toon biernaam zoals besteld (orderregel) — viel anders terug op een
@@ -253,7 +257,23 @@ function buildPakbonBody(
       <td>${afvulling?.tht ? fmtDate(afvulling.tht) : '—'}</td>
       <td class="r">${esc(p.aantal)}</td>
     </tr>`
-  }).join('')
+  })
+
+  // Nog niet (volledig) gepickte bierregels: de pakbon mag ook vóór het picken
+  // geprint worden, bijvoorbeeld als picklijst in de koeling. Wat er nog niet
+  // gepickt is staat dan op de bestelde regel zelf — batch, inhoud en THT zijn
+  // nog onbekend. Zolang zo'n regel bestaat is het document een concept.
+  const openRegels = onGepickteRegels(order, picks)
+  const openRows = openRegels.map((r: any) => `<tr class="open">
+      <td>${esc(r.bier_naam || '—')}</td>
+      <td class="muted">${t('lbl_pakbon_nog_te_picken')}</td>
+      <td>${esc(r.verpakking_type || '—')}</td>
+      <td>—</td>
+      <td>—</td>
+      <td class="r">${esc(r.aantal)}</td>
+    </tr>`)
+  const isConcept = openRows.length > 0
+  const rows = [...pickRows, ...openRows].join('')
 
   const bodyHtml = `<div class="page">
     <div class="hdr">
@@ -261,6 +281,7 @@ function buildPakbonBody(
       <div class="hdr-right">
         <div class="doc-title">PAKBON</div>
         <div class="doc-nr">${esc(pakbonNr)}</div>
+        ${isConcept ? `<div class="badge badge-concept">${t('lbl_pakbon_concept')}</div>` : ''}
         <div class="hdr-party">
           <div class="party-label">${t('lbl_bezorgadres')}</div>
           ${klantBlock(order)}

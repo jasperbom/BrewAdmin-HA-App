@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.30] — 2026-09-11
+
+### Pakbon printen vóór het picken
+
+De knop **Pakbon afdrukken** staat nu ook bij een nieuwe, bevestigde of
+half gepickte bestelling. Wat nog niet gepickt is, staat op de bestelde
+regel zelf (bier, verpakking, aantal) zonder batch en THT, cursief en met de
+aanduiding *nog te picken*; de kop draagt dan de markering **Concept — nog
+niet volledig gepickt**. Zo dient de pakbon ook als picklijst in de koeling.
+Na het picken print dezelfde knop de definitieve pakbon, zoals voorheen
+(`onGepickteRegels` in `utils/picking.ts`, met test).
+
+---
+
 ## [1.12.29] — 2026-09-10
 
 ### Bestellingen komen vanzelf binnen — en je hoort het als de app dicht is

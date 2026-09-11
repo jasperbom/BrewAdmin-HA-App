@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -227,5 +227,39 @@ describe('bestellingenOmTePicken', () => {
     const lijst = bestellingenOmTePicken(bestellingen, [])
     expect(telOpenstaandeBestellingen(bestellingen, [])).toBe(lijst.length)
     expect(lijst.map((b: any) => b.id)).toEqual([1])
+  })
+})
+
+describe('onGepickteRegels — pakbon vóór het picken', () => {
+  const order = {
+    id: 7,
+    regels: [
+      {id: 1, bier_naam: 'Blond', verpakking_type: 'fles', aantal: 12},
+      {id: 2, bier_naam: 'IPA', verpakking_type: 'blik', aantal: 6, type: 'bier'},
+      {id: 3, bier_naam: 'T-shirt', aantal: 1, type: 'vrij', merch: true},
+      {id: 4, bier_naam: 'Verzendkosten', aantal: 1, type: 'verzending'},
+    ],
+  }
+
+  it('geeft zonder picks alle bierregels met het volledige aantal terug (vrije regels niet)', () => {
+    const r = onGepickteRegels(order, [])
+    expect(r.map((x: any) => [x.id, x.aantal])).toEqual([[1, 12], [2, 6]])
+  })
+
+  it('trekt het al gepickte aantal af en laat volledig gepickte regels weg', () => {
+    const picks = [
+      {bestelling_id: 7, regel_id: 1, aantal: 8},
+      {bestelling_id: 7, regel_id: 1, aantal: 2},
+      {bestelling_id: 7, regel_id: 2, aantal: 6},
+    ]
+    const r = onGepickteRegels(order, picks)
+    expect(r.map((x: any) => [x.id, x.aantal])).toEqual([[1, 2]])
+  })
+
+  it('is leeg zodra alles gepickt is en bij een order zonder regels', () => {
+    const picks = [{regel_id: 1, aantal: 12}, {regel_id: 2, aantal: 6}]
+    expect(onGepickteRegels(order, picks)).toEqual([])
+    expect(onGepickteRegels({id: 1}, [])).toEqual([])
+    expect(onGepickteRegels(null, [])).toEqual([])
   })
 })

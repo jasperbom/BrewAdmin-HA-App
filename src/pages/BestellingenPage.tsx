@@ -2070,9 +2070,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               + {t('btn_vrije_regel')}
             </Btn>
             <Btn v="secondary" onClick={addVerzendkosten}>🚚 {t('btn_verzendkosten')}</Btn>
+            {/* De pakbon mag ook vóór (of halverwege) het picken geprint worden:
+                de nog niet gepickte regels staan er dan zonder batch/THT op
+                en het document draagt een concept-markering (PakbonExport). */}
+            <Btn v="secondary" onClick={printOrderPakbon} title={!magAfronden ? t('order_print_pakbon_concept_uitleg') : ''}>🖨 {t('order_print_pakbon')}</Btn>
           </>)}
           {magAfronden && (<>
-            <Btn v="secondary" onClick={printOrderPakbon}>🖨 {t('order_print_pakbon')}</Btn>
             <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
               {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
             </Btn>
