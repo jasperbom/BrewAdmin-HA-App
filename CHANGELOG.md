@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.36] — 2026-09-12
+
+### Eén picklijst voor alle open bestellingen
+
+Nieuwe knop **Picklijst afdrukken** bovenaan de bestellingenlijst (zichtbaar
+zodra er iets te picken is, met het aantal orders erbij). De lijst telt de nog
+niet gepickte bierregels van alle bestellingen "om te picken" op per bier en
+verpakking, zodat je één rondje door de koeling maakt:
+
+- **Pak uit:** batchsuggestie op kortste THT eerst (dezelfde matcher als de
+  pickmodal, geblokkeerde afvullingen overgeslagen, een afvulling nooit twee
+  keer uitgedeeld) — met een rode melding als de voorraad tekortschiet.
+- **Voor bestelling:** de verdeling per order, met markering *privé — niet uit
+  AGP* waar dat geldt.
+- **Per bestelling:** ordernummer, klant, afhalen (met afhaalmoment) of
+  verzenden, aantal regels/stuks en de opmerking van de klant — voor de
+  inpaktafel. Afvinkhokjes bij elke regel.
+
+Het registreren van de picks blijft per bestelling via de pickmodal; de lijst
+is het papier dat je meeneemt (`verzamelPicklijst` in `utils/picking.ts`, met
+tests).
+
+---
+
+## [1.12.35] — 2026-09-12
+
+### Pakbon printen vóór het picken
+
+De knop **Pakbon afdrukken** staat nu ook bij een nieuwe, bevestigde of
+half gepickte bestelling. Wat nog niet gepickt is, staat op de bestelde
+regel zelf (bier, verpakking, aantal) zonder batch en THT, cursief en met de
+aanduiding *nog te picken*; de kop draagt dan de markering **Concept — nog
+niet volledig gepickt**. Zo dient de pakbon ook als picklijst in de koeling.
+Na het picken print dezelfde knop de definitieve pakbon, zoals voorheen
+(`onGepickteRegels` in `utils/picking.ts`, met test).
+
+---
+
 ## [1.12.34] — 2026-09-12
 
 ### Knop "Bekijk je bestelling": via Mijn account, zonder te gokken naar de slug
