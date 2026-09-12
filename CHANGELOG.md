@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.34] — 2026-09-12
+
+### Knop "Bekijk je bestelling": via Mijn account, zonder te gokken naar de slug
+
+De link naar de bestelling wordt nu bij de import per order bepaald. De app
+leest daarvoor de pagina-ID's van "Mijn account" en "Afrekenen" en de
+endpoint-slugs uit de winkelinstellingen (`settings/advanced`) en bouwt een
+link op pagina-ID (`?page_id=8&view-order=3235`): WordPress stuurt die zelf
+door naar de mooie URL, welke slug de pagina ook heeft.
+
+- Klant met account: de bestelling in **Mijn account** (na inloggen).
+- Gast: de WooCommerce-bedankpagina met de ordersleutel (uit de `payment_url`
+  van de order, anders via de afreken-pagina-ID).
+- Lukt het lezen van de instellingen niet (API-sleutel zonder beheerrechten),
+  dan gaat de import gewoon door en blijft de bedankpagina-route over.
+- Bestaande orders krijgen de link bij de eerstvolgende import. Het eigen
+  sjabloon in de instellingen blijft voorgaan.
+
+---
+
 ## [1.12.33] — 2026-09-12
 
 ### Afhaalmoment kiezen of verzetten: een knop in plaats van een kale link

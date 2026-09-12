@@ -3584,7 +3584,7 @@
   "settings_wc_import_interval": "Recuperar automáticamente (minutos)",
   "settings_wc_import_interval_hint": "0 = desactivado. Mientras BrewAdmin esté abierto, la app importa por sí sola cada tantos minutos. El servidor comprueba al mismo ritmo si hay pedidos nuevos y envía una notificación HA (Ajustes → Notificaciones), incluso con la app cerrada.",
   "settings_wc_bestel_url": "Página de pedido del cliente",
-  "settings_wc_bestel_url_hint": "El botón \"Ver tu pedido\" en la confirmación del pedido. Vacío = la app deduce la página de agradecimiento de WooCommerce a partir del enlace de pago del pedido, para que el slug de pago de tu tienda sea correcto (se abre sin iniciar sesión con la clave del pedido). Para otra página, indica tu propia dirección con {winkel}, {id} y {sleutel}.",
+  "settings_wc_bestel_url_hint": "El botón \"Ver tu pedido\" en la confirmación del pedido. Vacío = la app determina el enlace por sí sola al importar: un cliente con cuenta recibe el pedido en Mi cuenta, un invitado la página de agradecimiento de WooCommerce con la clave del pedido; los ID de página vienen de la tienda, así que el slug de tu tienda no importa. Para otra página, indica tu propia dirección con {winkel}, {id} y {sleutel}.",
   "settings_wc_laatste_auto_import": "Última importación automática",
   "settings_wc_laatste_servercontrole": "Última comprobación del servidor",
   "settings_wc_servercontrole_fout": "Último error",

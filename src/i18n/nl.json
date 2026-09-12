@@ -3584,7 +3584,7 @@
   "settings_wc_import_interval": "Automatisch ophalen (minuten)",
   "settings_wc_import_interval_hint": "0 = uit. Zolang BrewAdmin open staat, importeert de app elke zoveel minuten zelf. De server controleert in hetzelfde ritme op nieuwe webshoporders en stuurt een HA-melding (Instellingen → Meldingen), ook als de app dicht is.",
   "settings_wc_bestel_url": "Bestelpagina van de klant",
-  "settings_wc_bestel_url_hint": "De knop \"Bekijk je bestelling\" in de bestelbevestiging. Leeg = de app leidt de WooCommerce-bedankpagina af uit de betaallink van de order, zodat de afreken-slug van jouw winkel klopt (de klant opent hem zonder inloggen met de ordersleutel). Wil je een andere pagina, vul dan een eigen adres in met {winkel}, {id} en {sleutel}.",
+  "settings_wc_bestel_url_hint": "De knop \"Bekijk je bestelling\" in de bestelbevestiging. Leeg = de app bepaalt de link zelf bij de import: een klant met account krijgt de bestelling in Mijn account, een gast de WooCommerce-bedankpagina met de ordersleutel; de pagina-ID's komen uit de winkel, dus de slug van je winkel doet er niet toe. Wil je een andere pagina, vul dan een eigen adres in met {winkel}, {id} en {sleutel}.",
   "settings_wc_laatste_auto_import": "Laatste automatische import",
   "settings_wc_laatste_servercontrole": "Laatste servercontrole",
   "settings_wc_servercontrole_fout": "Laatste fout",

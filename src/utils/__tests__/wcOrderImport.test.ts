@@ -120,6 +120,21 @@ describe('importeerWcOrders + pasImportToe', () => {
     const lijst2 = pasImportToe([bestaand, {id: 12, wc_order_id: 2}], r)
     expect(lijst2.map((b: any) => b.wc_order_id)).toEqual([1, 2, 3])
   })
+  it('leest de winkelpagina\'s mee en zet de bestellink op nieuwe én bekende orders', async () => {
+    const settings = [{id: 'woocommerce_myaccount_page_id', value: '8'}, {id: 'woocommerce_checkout_page_id', value: '7'}]
+    const bestaand = {...wcOrderNaarBestelling(order(1, {customer_id: 42, order_key: 'wc_order_A'}), refs, [], [], t), id: 11}
+    expect(bestaand.wc_bestel_url).toBeUndefined()
+    const get = fakeGet({[pad1]: [order(1, {customer_id: 42, order_key: 'wc_order_A'}), order(2, {customer_id: 0, order_key: 'wc_order_B'})], 'settings/advanced': settings})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [bestaand], klanten: [], wcCreds: {storeUrl: 'https://craftery.nl'}, t})
+    expect(r.updates[11]).toMatchObject({wc_bestel_url: 'https://craftery.nl/?page_id=8&view-order=1'})
+    expect(r.nieuw[0].wc_bestel_url).toBe('https://craftery.nl/?page_id=7&order-received=2&key=wc_order_B')
+  })
+  it('zonder toegang tot de instellingen gaat de import gewoon door', async () => {
+    const get = fakeGet({[pad1]: [order(2, {customer_id: 42, order_key: 'wc_order_B'})], 'settings/advanced': new Error('403')})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [], klanten: [], wcCreds: {storeUrl: 'https://craftery.nl'}, t})
+    expect(r.nieuw.length).toBe(1)
+    expect(r.nieuw[0].wc_bestel_url).toBeUndefined()
+  })
   it('audit en melding', async () => {
     const bestaand = {...wcOrderNaarBestelling(order(1), refs, [], [], t), id: 11, wc_betaald: false}
     const r = await importeerWcOrders({wcGet: fakeGet({[pad1]: [order(1), order(2)]}), refs, bestellingen: [bestaand], klanten: [], wcCreds: null, t})
