@@ -96,9 +96,15 @@ BrewAdmin-HA-App/
 │   │   │                   # bij elke import ververst; mailvariabelen `{levering}` (bestelbevestiging),
 │   │   │                   # `{trackregel}` (verzendbevestiging bij "Markeer verzonden") en
 │   │   │                   # `{afhaalregel}` (afspraak-gemist-mail: moment voorbij, order nog open);
-│   │   │                   # `bestelLink` = knop "Bekijk je bestelling": de WooCommerce-bedankpagina,
-│   │   │                   # afgeleid uit de `payment_url` van de order (afreken-slug van de winkel),
-│   │   │                   # of het sjabloon `woocommerce_creds.bestelUrl`; anders géén knop (geen gok)
+│   │   │                   # de afhaalpagina-link zelf komt als knop onder de mail (`afhaalMailKnop`:
+│   │   │                   # kiezen/verzetten, `afhaalGemistMailKnop`: nieuw moment) — `MailKnop`;
+│   │   │                   # `bestelPaginaLink` = link naar de bestelling in de webshop, bij de import
+│   │   │                   # per order bepaald (`wc_bestel_url`): klant met account → Mijn account via
+│   │   │                   # pagina-ID (`?page_id=8&view-order=<id>`, slug-onafhankelijk), gast → de
+│   │   │                   # bedankpagina met ordersleutel (uit `payment_url`, anders afreken-pagina-ID);
+│   │   │                   # pagina-ID's/slugs uit `settings/advanced` (`leesWcPaginas`). `bestelLink` =
+│   │   │                   # knop "Bekijk je bestelling": sjabloon `woocommerce_creds.bestelUrl`, anders
+│   │   │                   # `wc_bestel_url`; anders géén knop (geen gok)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval
@@ -579,7 +585,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
-| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de WooCommerce-bedankpagina afgeleid uit de `payment_url` van de order — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
+| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
 | `mollie_creds` *(secure)* | object | Mollie API-key + `enabled` + `redirectUrl` voor de online betaallink op verkoopfacturen (nooit in backup); server-side proxy voegt de key toe |
@@ -742,18 +748,28 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   klant een privépagina `<winkel>/?afhaalmoment=<order-id>&sleutel=<order_key>`
   om dat moment te kiezen of te verzetten. De app leest dit bij elke import mee
   (ook voor bestaande orders — het moment wordt vaak pas later gekozen) en zet
-  het in de bestelbevestiging via `{levering}`. Een bezorgorder krijgt bij
+  het in de bestelbevestiging via `{levering}`; de link naar die pagina staat
+  niet in de tekst maar als knop onder de mail (`afhaalMailKnop`: *Kies je
+  afhaalmoment* / *Verzet je afhaalmoment*; `MailModal` zet elke `MailKnop`
+  in de platte tekst als regel + kale link). Een bezorgorder krijgt bij
   *Markeer verzonden* meteen de verzendbevestiging aangeboden (template
   `verzending`, met track & trace). Is het gekozen afhaalmoment voorbij en
   staat de order nog open, dan biedt de bestelpagina *Mail afspraak gemist*
-  (template `afhaal_gemist`): dezelfde afhaalpagina-link om een nieuw moment
-  te kiezen; het nieuwe moment komt bij de volgende import mee. De
+  (template `afhaal_gemist`): dezelfde afhaalpagina als knop *Kies een nieuw
+  afhaalmoment* (`afhaalGemistMailKnop`); het nieuwe moment komt bij de
+  volgende import mee. De
   bestelbevestiging van een webshoporder krijgt een knop *Bekijk je
-  bestelling* (`bestelLink`: de bedankpagina `<afrekenpagina>/order-received/<id>/?key=<order_key>`,
-  waarbij de afrekenpagina uit de `payment_url` van de order komt
-  (`wc_betaal_url`, bij elke import ververst) — nooit gegokt: zonder
-  betaallink en zonder sjabloon `woocommerce_creds.bestelUrl` geen knop); `MailModal` rendert zo'n
-  `linkButton` als knop in de HTML en als regel + kale link in de platte tekst
+  bestelling* (`bestelLink`: het sjabloon `woocommerce_creds.bestelUrl`, anders
+  `wc_bestel_url` — bij elke import per order bepaald door `bestelPaginaLink`:
+  een klant met account krijgt de bestelling in Mijn account via de pagina-ID
+  (`?page_id=8&view-order=<id>`; WordPress stuurt door naar de mooie URL, dus
+  de slug van de winkel doet er niet toe), een gast de bedankpagina met
+  ordersleutel (uit `payment_url`, anders via de afreken-pagina-ID). De
+  pagina-ID's en endpoint-slugs komen uit `wc/v3/settings/advanced`
+  (`haalWcPaginas` in `utils/wcOrderImport.ts`, één verzoek per import;
+  mislukt = stil overslaan, nooit de import laten falen). Nooit gegokt:
+  zonder link en zonder sjabloon geen knop); `MailModal` rendert de
+  `linkButtons` (afhaalknop eerst, dan de orderknop) als knoppen in de HTML en als regel + kale link in de platte tekst
 - **Periodiek ophalen** (`woocommerce_creds.importInterval`, minuten, default 15,
   0 = uit): App.tsx importeert elke N minuten zelf (`autoImportWc`, dezelfde
   `importeerWcOrders` als de knop) zolang een tabblad open staat en de rol mag

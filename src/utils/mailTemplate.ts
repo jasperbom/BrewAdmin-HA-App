@@ -63,8 +63,8 @@ export function buildMailHtml(
   opts: {
     logoCid?: string
     footerNote?: string
-    /** Knop naar een pagina van de klant (bijv. "Bekijk je bestelling"). */
-    linkButton?: {url: string, label: string}
+    /** Knoppen naar pagina's van de klant (afhaalmoment kiezen, "Bekijk je bestelling"), in deze volgorde. */
+    linkButtons?: {url: string, label: string}[]
     /** Online-betaalknop (Mollie). */
     payButton?: {url: string, label: string}
   } = {},
@@ -111,7 +111,7 @@ export function buildMailHtml(
            ${esc(b.label)}
          </a>
        </td></tr>`
-  const payBlock = [opts.linkButton, opts.payButton].filter((b): b is {url: string, label: string} => !!b).map(knop).join('')
+  const payBlock = [...(opts.linkButtons || []), opts.payButton].filter((b): b is {url: string, label: string} => !!b).map(knop).join('')
 
   const footer = opts.footerNote
     ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;">

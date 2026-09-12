@@ -22,7 +22,7 @@ import { factuurMailBetaalVars } from '../utils/factuurMail'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, wcSyncTeHerhalen, wcSyncDoelVoorStatus, WcSyncDoel } from '../utils/wcTerugschrijven'
 import {
-  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink,
+  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, afhaalMailKnop, afhaalGemistMailKnop, MailKnop,
 } from '../utils/levering'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
@@ -1585,8 +1585,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     kind?: 'pakbon' | 'factuur' | 'bevestiging' | 'verzending' | 'afhaal_gemist'
     mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
     regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
-    /** Knop "Bekijk je bestelling" naar de webshop (utils/levering → bestelLink). */
-    linkButton?: {url: string, label: string, textLine: string} | null
+    /** Knoppen onder de mail: afhaalmoment kiezen/verzetten en "Bekijk je
+     * bestelling" (utils/levering → afhaalMailKnop, bestelLink). */
+    linkButtons?: MailKnop[] | null
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
 
@@ -1717,10 +1718,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const mailOrderBevestiging = () => {
     if (!selectedOrder) return
     const orderRef = orderNummer(selectedOrder)
-    // {levering}: afhalen (mét de link waarmee de klant zijn afhaalmoment
-    // kiest of verzet) of bezorgen (er volgt een verzendbevestiging) — zie
-    // utils/levering.ts. De winkel-URL is nodig om die link na te bouwen.
-    const levering = leveringMailVars(selectedOrder, {storeUrl: wcCreds?.storeUrl || ''})
+    // {levering}: afhalen of bezorgen (er volgt een verzendbevestiging) — zie
+    // utils/levering.ts. De link waarmee de afhaalklant zijn moment kiest of
+    // verzet staat niet in de tekst maar als knop onder de mail; de
+    // winkel-URL is nodig om die link na te bouwen.
+    const storeUrl = wcCreds?.storeUrl || ''
+    const levering = leveringMailVars(selectedOrder, {storeUrl})
+    const afhaalKnop = afhaalMailKnop(selectedOrder, {storeUrl})
     const vars = {
       naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
       nr: orderRef,
@@ -1728,19 +1732,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       brouwerij: (breweryDetails as any)?.naam || appName || '',
       ...levering,
     }
-    // Knop naar de bestelpagina van de klant in de webshop: de WooCommerce-
-    // bedankpagina, afgeleid uit de payment_url van de order (zo klopt de
-    // afreken-slug van de winkel), of het eigen sjabloon uit de instellingen.
-    // Zonder een van beide géén knop — een gegokte URL wordt een 404.
+    // Knop naar de bestelling in de webshop: het eigen sjabloon uit de
+    // instellingen, anders de link die de import per order bepaalde
+    // ("Mijn account → bestelling" voor een klant met account, anders de
+    // bedankpagina met ordersleutel). Zonder een van beide géén knop — een
+    // gegokte URL wordt een 404.
     const orderUrl = bestelLink(wcCreds?.storeUrl, selectedOrder.wc_order_id, selectedOrder.wc_order_key,
-      {sjabloon: wcCreds?.bestelUrl, betaalUrl: selectedOrder.wc_betaal_url})
+      {sjabloon: wcCreds?.bestelUrl, bestelUrl: selectedOrder.wc_bestel_url})
     setMailModal({
       title: t('mail_modal_title_bestelling'),
       to: (resolvedSelectedOrder?.klant_email || ''),
       subject: interpolate(tplOrDefault('bestelling', 'subject'), vars),
       text: interpolate(tplOrDefault('bestelling', 'body'), vars),
       kind: 'bevestiging',
-      linkButton: orderUrl ? {url: orderUrl, label: t('mail_bestelling_knop'), textLine: t('mail_bestelling_knop_regel')} : null,
+      linkButtons: [
+        afhaalKnop,
+        orderUrl ? {url: orderUrl, label: t('mail_bestelling_knop'), textLine: t('mail_bestelling_knop_regel')} : null,
+      ].filter((k): k is MailKnop => !!k),
     })
   }
 
@@ -1765,24 +1773,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // Afspraak gemist: de afhaalklant is niet komen opdagen. De mail noemt het
-  // gemiste moment en geeft dezelfde afhaalpagina-link waarmee de klant een
-  // nieuw moment kiest (utils/levering.ts). Het nieuwe moment komt bij de
-  // volgende WooCommerce-import vanzelf op de bestelling terecht.
+  // gemiste moment en heeft onderaan dezelfde afhaalpagina-knop waarmee de
+  // klant een nieuw moment kiest (utils/levering.ts). Het nieuwe moment komt
+  // bij de volgende WooCommerce-import vanzelf op de bestelling terecht.
   const mailOrderAfhaalGemist = () => {
     if (!selectedOrder) return
+    const storeUrl = wcCreds?.storeUrl || ''
     const vars = {
       naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
       nr: orderNummer(selectedOrder),
       regels: regelLijstVoorMail(selectedOrder),
       brouwerij: (breweryDetails as any)?.naam || appName || '',
-      ...afhaalGemistMailVars(selectedOrder, {storeUrl: wcCreds?.storeUrl || ''}),
+      ...afhaalGemistMailVars(selectedOrder, {storeUrl}),
     }
+    const knop = afhaalGemistMailKnop(selectedOrder, {storeUrl})
     setMailModal({
       title: t('mail_modal_title_afhaal_gemist'),
       to: (resolvedSelectedOrder?.klant_email || ''),
       subject: interpolate(tplOrDefault('afhaal_gemist', 'subject'), vars),
       text: interpolate(tplOrDefault('afhaal_gemist', 'body'), vars),
       kind: 'afhaal_gemist',
+      linkButtons: knop ? [knop] : [],
     })
   }
 
@@ -2207,7 +2218,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             smtpReady={!!smtpCreds?.enabled}
             mollie={mailModal.mollie}
             regenerateAttachments={mailModal.regenerateAttachments}
-            linkButton={mailModal.linkButton}
+            linkButtons={mailModal.linkButtons}
             onClose={() => setMailModal(null)}
             onSent={(sentTo) => {
               // Per maild-type een leesbare log-omschrijving — wordt onderaan de

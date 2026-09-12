@@ -38,11 +38,16 @@ describe('buildMailHtml', () => {
   })
   it('knop naar de bestelling en betaalknop, met ge-escapete URL en label', () => {
     const html = buildMailHtml('Hoi', {naam: 'Craftery'}, {
-      linkButton: {url: 'https://craftery.nl/checkout/order-received/3235/?key=wc_order_A&b', label: 'Bekijk <je> bestelling'},
+      linkButtons: [
+        {url: 'https://craftery.nl/?afhaalmoment=3235&sleutel=k', label: 'Kies je afhaalmoment'},
+        {url: 'https://craftery.nl/checkout/order-received/3235/?key=wc_order_A&b', label: 'Bekijk <je> bestelling'},
+      ],
       payButton: {url: 'https://pay.mollie.com/x', label: 'Betaal online'},
     })
+    expect(html).toContain('href="https://craftery.nl/?afhaalmoment=3235&amp;sleutel=k"')
     expect(html).toContain('href="https://craftery.nl/checkout/order-received/3235/?key=wc_order_A&amp;b"')
     expect(html).toContain('Bekijk &lt;je&gt; bestelling')
+    expect(html.indexOf('afhaalmoment')).toBeLessThan(html.indexOf('order-received'))
     expect(html.indexOf('order-received')).toBeLessThan(html.indexOf('pay.mollie.com'))
   })
   it('zonder knoppen geen knopblok', () => {

@@ -717,8 +717,8 @@ export interface WcCreds {
   // Automatische orderimport in minuten; 0 = uit (utils/wcOrderImport.ts).
   importInterval?: number
   // Eigen sjabloon voor de bestelpagina van de klant ({winkel}, {id},
-  // {sleutel}); leeg = afgeleid uit de payment_url van de order
-  // (utils/levering → bestelLink).
+  // {sleutel}); leeg = de link die de import per order bepaalt
+  // (utils/levering → bestelPaginaLink).
   bestelUrl?: string
 }
 
@@ -1140,9 +1140,13 @@ export interface Bestelling {
   wc_afhaal_locatie?: string
   wc_afhaal_adres?: string
   wc_afhaalmoment?: string
-  // WooCommerce payment_url van de order; bron voor de knop "Bekijk je
-  // bestelling" (utils/levering → bestelLink leidt er de bedankpagina uit af).
+  // WooCommerce payment_url van de order (terugval voor wc_bestel_url).
   wc_betaal_url?: string
+  // Link naar de bestelling in de webshop, bij de import bepaald: "Mijn
+  // account → bestelling" voor een klant met account, anders de bedankpagina
+  // met ordersleutel (utils/levering → bestelPaginaLink). Knop "Bekijk je
+  // bestelling" in de bestelbevestiging.
+  wc_bestel_url?: string
   factuur_id?: number | null
   factuur_nummer?: string | null
   pakbon_nummer?: string | null

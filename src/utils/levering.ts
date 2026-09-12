@@ -12,16 +12,18 @@
  * link na (`afhaalLink`) en levert de tekstvariabelen voor de bestel- en
  * verzendbevestiging (`leveringMailVars`, `verzendMailVars`):
  *
- *  - afhalen zonder moment  → de uitnodiging mét link om een moment te kiezen
- *  - afhalen met moment     → het moment, plus de link om te verzetten
+ *  - afhalen zonder moment  → de uitnodiging om een moment te kiezen (knop)
+ *  - afhalen met moment     → het moment, plus de knop om te verzetten
  *  - afhalen "in overleg"   → we nemen contact op
  *  - verzenden              → er volgt een verzendbevestiging zodra het pakket
  *                             de deur uit is
  *  - onbekend (handmatig)   → de neutrale oude regel
  *
- * Komt de klant niet opdagen, dan is er de **afspraak-gemist-mail**
- * (`afhaalGemistMailVars`): het gemiste moment plus dezelfde link waarmee de
- * klant een nieuw moment kiest. `afhaalmomentVerstreken` zegt of een
+ * De link naar de afhaalpagina staat niet in de tekst maar onder de mail als
+ * knop (`afhaalMailKnop`: kiezen of verzetten; `MailModal` zet hem in de
+ * platte tekst als regel + kale link). Komt de klant niet opdagen, dan is er
+ * de **afspraak-gemist-mail** (`afhaalGemistMailVars` + `afhaalGemistMailKnop`):
+ * het gemiste moment plus dezelfde knop om een nieuw moment te kiezen. `afhaalmomentVerstreken` zegt of een
  * afhaalorder die nog openstaat zo'n mail verdient (het gekozen moment ligt in
  * het verleden).
  *
@@ -54,9 +56,58 @@ export interface LeveringVelden {
   /** `JJJJ-MM-DD UU:MM`, `overleg`, of leeg = nog niet gekozen. */
   wc_afhaalmoment?: string
   /** WooCommerce `payment_url` (`<afrekenpagina>/order-pay/<id>/?pay_for_order=true&key=…`):
-   *  verraadt de afrekenpagina van de winkel, waaruit `bestelLink` de
-   *  bedankpagina afleidt. */
+   *  verraadt de afrekenpagina van de winkel (terugval voor `wc_bestel_url`). */
   wc_betaal_url?: string
+  /** Kant-en-klare link naar de bestelling in de webshop, bij de import
+   *  bepaald (`bestelPaginaLink`): "Mijn account → bestelling" voor een
+   *  klant met account, anders de bedankpagina met de ordersleutel. */
+  wc_bestel_url?: string
+}
+
+/**
+ * Wat de winkel over zijn eigen pagina's zegt (`wc/v3/settings/advanced`):
+ * de pagina-ID's van "Mijn account" en "Afrekenen" en de endpoint-slugs.
+ * Met een pagina-ID bouwt de app een link die op élke winkel werkt, welke
+ * slug de pagina ook heeft (`?page_id=8&view-order=3235`): WordPress stuurt
+ * hem zelf door naar de mooie URL en WooCommerce leest het endpoint uit de
+ * query — precies zoals bij platte permalinks.
+ */
+export interface WcPaginas {
+  mijn_account_id?: number
+  afreken_id?: number
+  /** Endpoint-slugs (standaard `view-order` en `order-received`; instelbaar in WooCommerce). */
+  view_order?: string
+  order_received?: string
+}
+
+/** Leest de pagina-ID's en endpoint-slugs uit het antwoord van `settings/advanced`. */
+export function leesWcPaginas(settings: unknown): WcPaginas {
+  const lijst = Array.isArray(settings) ? settings : []
+  const waarde = (id: string): string => str(lijst.find((s: any) => str(s?.id) === id)?.value)
+  const nummer = (id: string): number | undefined => {
+    const n = Number(waarde(id))
+    return Number.isInteger(n) && n > 0 ? n : undefined
+  }
+  const slug = (id: string): string | undefined => {
+    const v = waarde(id)
+    return /^[a-z0-9_-]+$/i.test(v) ? v : undefined
+  }
+  const uit: WcPaginas = {}
+  const acc = nummer('woocommerce_myaccount_page_id')
+  const afr = nummer('woocommerce_checkout_page_id')
+  const vo = slug('woocommerce_myaccount_view_order_endpoint')
+  const or = slug('woocommerce_checkout_order_received_endpoint')
+  if (acc) uit.mijn_account_id = acc
+  if (afr) uit.afreken_id = afr
+  if (vo) uit.view_order = vo
+  if (or) uit.order_received = or
+  return uit
+}
+
+/** Wat de import over de winkel weet, om per order de bestellink te bouwen. */
+export interface WcLinkContext {
+  storeUrl?: string
+  paginas?: WcPaginas | null
 }
 
 const str = (x: unknown): string => String(x ?? '').trim()
@@ -71,13 +122,15 @@ export const isAfhaalMethode = (methodId: unknown): boolean =>
   WC_AFHAAL_METHODEN.includes(str(methodId).toLowerCase())
 
 /** Leest afhalen/verzenden, locatie, afhaalmoment en order_key uit een WooCommerce-order. */
-export function wcLeveringVelden(order: any): LeveringVelden {
+export function wcLeveringVelden(order: any, ctx: WcLinkContext = {}): LeveringVelden {
   const shipping: any[] = Array.isArray(order?.shipping_lines) ? order.shipping_lines : []
   const uit: LeveringVelden = {}
   const orderKey = str(order?.order_key)
   if (orderKey) uit.wc_order_key = orderKey
   const betaalUrl = str(order?.payment_url)
   if (/^https?:\/\//i.test(betaalUrl)) uit.wc_betaal_url = betaalUrl
+  const bestelUrl = bestelPaginaLink(ctx.storeUrl, order, ctx.paginas)
+  if (bestelUrl) uit.wc_bestel_url = bestelUrl
 
   const afhaal = shipping.find(s => isAfhaalMethode(s?.method_id))
   if (afhaal) {
@@ -103,7 +156,7 @@ export function wcLeveringVelden(order: any): LeveringVelden {
 
 export const LEVERING_KEYS: (keyof LeveringVelden)[] = [
   'wc_levering', 'wc_verzendmethode', 'wc_order_key', 'wc_afhaal_locatie', 'wc_afhaal_adres', 'wc_afhaalmoment',
-  'wc_betaal_url',
+  'wc_betaal_url', 'wc_bestel_url',
 ]
 
 /**
@@ -167,35 +220,64 @@ export function afrekenPaginaUitBetaalUrl(betaalUrl: unknown): string {
 }
 
 /**
- * De link waarmee de klant zijn bestelling in de webshop bekijkt (knop in de
- * bestelbevestiging). Volgorde:
- *  1. het eigen sjabloon uit de instellingen (`opts.sjabloon`), als dat er is
- *  2. afgeleid uit de `payment_url` van de order (`opts.betaalUrl`): dezelfde
- *     afrekenpagina, endpoint `order-received` i.p.v. `order-pay`
+ * De link naar de bestelling in de webshop, bij de import per order bepaald:
+ *  1. klant met account (`customer_id` > 0) en de "Mijn account"-pagina bekend
+ *     → `<winkel>/?page_id=<id>&view-order=<order>`: de bestelling in
+ *     Mijn account (na inloggen), welke slug de pagina ook heeft
+ *  2. anders de bedankpagina met de ordersleutel (zonder inloggen): uit de
+ *     `payment_url` van de order (dezelfde afrekenpagina, endpoint
+ *     `order-received`), of via de afreken-pagina-ID
  *  3. anders géén link — een gegokte URL leidt tot een 404 in de klantmail
- * Zonder winkel-URL, order-ID of order_key is er nooit een link.
+ * Zonder winkel-URL of order-ID is er nooit een link.
+ */
+export function bestelPaginaLink(storeUrl: unknown, order: any, paginas?: WcPaginas | null): string {
+  const basis = normWinkelUrl(storeUrl)
+  const id = str(order?.id)
+  if (!basis || !id) return ''
+  const idEnc = encodeURIComponent(id)
+  const klantId = Number(order?.customer_id) || 0
+  if (klantId > 0 && paginas?.mijn_account_id) {
+    const ep = paginas.view_order || 'view-order'
+    return `${basis}/?page_id=${paginas.mijn_account_id}&${ep}=${idEnc}`
+  }
+  const key = str(order?.order_key)
+  if (!key) return ''
+  const keyEnc = encodeURIComponent(key)
+  const ep = paginas?.order_received || 'order-received'
+  const afreken = afrekenPaginaUitBetaalUrl(order?.payment_url)
+  if (afreken) {
+    return afreken.includes('?')
+      ? `${afreken}&${ep}=${idEnc}&key=${keyEnc}`
+      : `${afreken}/${ep}/${idEnc}/?key=${keyEnc}`
+  }
+  if (paginas?.afreken_id) return `${basis}/?page_id=${paginas.afreken_id}&${ep}=${idEnc}&key=${keyEnc}`
+  return ''
+}
+
+/**
+ * De link voor de knop "Bekijk je bestelling" in de bestelbevestiging: het
+ * eigen sjabloon uit de instellingen (`{winkel}`, `{id}`, `{sleutel}`) als
+ * dat er is, anders de bij de import bepaalde `wc_bestel_url`. Zonder
+ * winkel-URL, order-ID of order_key is er nooit een link.
  */
 export function bestelLink(
   storeUrl: unknown, orderId: unknown, orderKey: unknown,
-  opts: {sjabloon?: unknown, betaalUrl?: unknown} = {},
+  opts: {sjabloon?: unknown, bestelUrl?: unknown} = {},
 ): string {
   const basis = normWinkelUrl(storeUrl)
   const id = str(orderId)
   const key = str(orderKey)
   if (!basis || !id || !key) return ''
-  const idEnc = encodeURIComponent(id)
-  const keyEnc = encodeURIComponent(key)
   const tpl = str(opts.sjabloon)
   if (tpl) {
-    const url = tpl.split('{winkel}').join(basis).split('{id}').join(idEnc).split('{sleutel}').join(keyEnc)
+    const url = tpl.split('{winkel}').join(basis)
+      .split('{id}').join(encodeURIComponent(id))
+      .split('{sleutel}').join(encodeURIComponent(key))
     // Een sjabloon zonder {winkel} en zonder protocol is een pad in de winkel.
     return /^https?:\/\//i.test(url) ? url : `${basis}/${url.replace(/^\/+/, '')}`
   }
-  const afreken = afrekenPaginaUitBetaalUrl(opts.betaalUrl)
-  if (!afreken) return ''
-  return afreken.includes('?')
-    ? `${afreken}&order-received=${idEnc}&key=${keyEnc}`
-    : `${afreken}/order-received/${idEnc}/?key=${keyEnc}`
+  const vast = str(opts.bestelUrl)
+  return /^https?:\/\//i.test(vast) ? vast : ''
 }
 
 const LOCALES: Record<string, string> = {nl: 'nl-NL', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', es: 'es-ES'}
@@ -257,6 +339,43 @@ export function leveringOmschrijving(b: Partial<LeveringVelden> | null | undefin
     delen.push(b.wc_verzendmethode)
   }
   return delen.join(' · ')
+}
+
+/** Een knop onder de HTML-mail; in de platte tekst `textLine` + de kale link. */
+export interface MailKnop {
+  url: string
+  label: string
+  textLine: string
+}
+
+/**
+ * De knop waarmee een afhaalklant zijn moment kiest (nog niet gekozen) of
+ * verzet (al gekozen) — onder de bestelbevestiging. Geen knop bij "in
+ * overleg", bij een bezorgorder of zonder link naar de afhaalpagina.
+ */
+export function afhaalMailKnop(
+  bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null}) | null | undefined,
+  opts: {storeUrl?: string} = {},
+): MailKnop | null {
+  const b = bestelling || {}
+  if (b.wc_levering !== 'afhalen') return null
+  if (str(b.wc_afhaalmoment) === AFHAAL_OVERLEG) return null
+  const url = afhaalLink(opts.storeUrl, b.wc_order_id, b.wc_order_key)
+  if (!url) return null
+  const label = t(str(b.wc_afhaalmoment) ? 'mail_knop_afhaal_verzetten' : 'mail_knop_afhaal_kies')
+  return {url, label, textLine: `${label}:`}
+}
+
+/** De knop "Kies een nieuw afhaalmoment" onder de afspraak-gemist-mail. */
+export function afhaalGemistMailKnop(
+  bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null}) | null | undefined,
+  opts: {storeUrl?: string} = {},
+): MailKnop | null {
+  const b = bestelling || {}
+  const url = afhaalLink(opts.storeUrl, b.wc_order_id, b.wc_order_key)
+  if (!url) return null
+  const label = t('mail_knop_afhaal_nieuw')
+  return {url, label, textLine: `${label}:`}
 }
 
 export interface LeveringMailVars {

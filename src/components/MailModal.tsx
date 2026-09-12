@@ -12,6 +12,7 @@ import Modal from './ui/Modal'
 import Btn from './ui/Btn'
 import { mailSendApi, mollieCreatePayment, MailAttachment, MailInlineImage } from '../utils/api'
 import { buildMailHtml, dataUriToInlineImage, MailBrewery } from '../utils/mailTemplate'
+import { MailKnop } from '../utils/levering'
 import { t } from '../i18n'
 
 /** Context om een Mollie-betaallink aan de mail toe te voegen. Aanwezig
@@ -42,9 +43,10 @@ interface Props {
    *  link op de factuur-PDF). Alleen aangeroepen als er een betaallink is
    *  aangemaakt; faalt dit, dan wordt de oorspronkelijke PDF verstuurd. */
   regenerateAttachments?: (payUrl: string) => Promise<MailAttachment[] | null>
-  /** Knop naar een pagina van de klant (bijv. "Bekijk je bestelling"): in de
-   *  HTML een knop, in de platte tekst `textLine` + de kale link eronder. */
-  linkButton?: {url: string, label: string, textLine: string} | null
+  /** Knoppen naar pagina's van de klant (afhaalmoment kiezen, "Bekijk je
+   *  bestelling"): in de HTML knoppen, in de platte tekst per knop
+   *  `textLine` + de kale link eronder. */
+  linkButtons?: MailKnop[] | null
   onClose: () => void
   /** Aangeroepen na succesvol verzenden, met het werkelijk gebruikte
    *  ontvanger-adres (zoals in de modal bewerkt) — zodat de aanroeper het
@@ -56,7 +58,7 @@ const LOGO_CID = 'brewadmin-logo'
 
 export default function MailModal({
   title, initialTo, initialSubject, initialText, attachments,
-  brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, linkButton, onClose, onSent,
+  brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, linkButtons, onClose, onSent,
 }: Props) {
   const [to, setTo] = React.useState(initialTo || '')
   const [subject, setSubject] = React.useState(initialSubject || '')
@@ -86,10 +88,10 @@ export default function MailModal({
   const htmlBody = React.useMemo(
     () => buildMailHtml(text, brewery || {}, {
       logoCid: inlineLogo ? LOGO_CID : undefined,
-      linkButton: linkButton || undefined,
+      linkButtons: linkButtons || undefined,
       payButton: wantMollie ? {url: '#', label: t('mollie_pay_button')} : undefined,
     }),
-    [text, brewery, inlineLogo, wantMollie, linkButton],
+    [text, brewery, inlineLogo, wantMollie, linkButtons],
   )
   // Voor de iframe-preview gebruiken we een variant met data:-URI logo, omdat
   // `cid:`-verwijzingen in een browser-iframe niet werken.
@@ -128,11 +130,11 @@ export default function MailModal({
       }
       // In de HTML komen nette knoppen; in de platte tekst de kale links.
       const finalText = text
-        + (linkButton ? `\n\n${linkButton.textLine}\n${linkButton.url}` : '')
+        + (linkButtons || []).map(k => `\n\n${k.textLine}\n${k.url}`).join('')
         + (payUrl ? `\n\n${t('mollie_pay_line')}\n${payUrl}` : '')
       const finalHtml = buildMailHtml(text, brewery || {}, {
         logoCid: inlineLogo ? LOGO_CID : undefined,
-        linkButton: linkButton || undefined,
+        linkButtons: linkButtons || undefined,
         payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
       })
       // Bijlagen: bij een betaallink de factuur-PDF opnieuw bouwen mét QR +

@@ -26,7 +26,7 @@ import {
   WcRefs, WC_IMPORT_STATUSSEN_DEFAULT, wcOrdersPad, mapWcOrderRegels,
   wcBetaalVelden, betaalVeldenGewijzigd, BETAAL_KEYS,
 } from './wcImport'
-import { wcLeveringVelden, leveringVeldenGewijzigd, leveringOmschrijving, LEVERING_KEYS } from './levering'
+import { wcLeveringVelden, leveringVeldenGewijzigd, leveringOmschrijving, LEVERING_KEYS, leesWcPaginas, WcPaginas, WcLinkContext } from './levering'
 
 // Maximaal 10 pagina's van 100 orders per import; genoeg voor een eerste
 // volledige haal en tegelijk een rem op een winkel met jaren historie.
@@ -40,6 +40,7 @@ export type WcGet = (pad: string) => Promise<any>
 type Vertaal = (key: string) => string
 
 export interface WcImportInstellingen {
+  storeUrl?: string
   importStatussen?: string[]
   importVanaf?: string
 }
@@ -104,9 +105,25 @@ export function wcBtwNummer(order: any): string {
   return /\d/.test(vatRaw) && !/^(yes|no|true|false|0|1)$/i.test(vatRaw) ? vatRaw : ''
 }
 
+/**
+ * De pagina-ID's en endpoint-slugs van de winkel, voor de bestellink per
+ * order (utils/levering → bestelPaginaLink). `settings/advanced` vraagt
+ * beheerrechten op de API-sleutel; lukt het niet, dan `null` en valt de
+ * link terug op de payment_url van de order. Nooit een reden om de
+ * orderimport te laten mislukken.
+ */
+export async function haalWcPaginas(wcGet: WcGet): Promise<WcPaginas | null> {
+  try {
+    const p = leesWcPaginas(await wcGet('settings/advanced'))
+    return Object.keys(p).length ? p : null
+  } catch {
+    return null
+  }
+}
+
 /** Eén WooCommerce-order → een nieuwe BrewAdmin-bestelling (status `nieuw`). */
 export function wcOrderNaarBestelling(
-  o: any, refs: WcRefs, bestaand: any[], klanten: any[], t: Vertaal, vandaag: string = tod(),
+  o: any, refs: WcRefs, bestaand: any[], klanten: any[], t: Vertaal, vandaag: string = tod(), link: WcLinkContext = {},
 ): any {
   // Productregels + verzendkosten + toeslagen, met autoritatieve
   // WooCommerce-bedragen. Zie utils/wcImport.ts.
@@ -122,9 +139,10 @@ export function wcOrderNaarBestelling(
     // PSP uitbetaalt — niet de dag waarop jij de order afrondt en de
     // factuur maakt; de bankkoppeling zoekt daarop.
     ...wcBetaalVelden(o),
-    // Afhalen of verzenden, afhaallocatie/-moment en de order_key voor
-    // de afhaalpagina van de klant (utils/levering.ts).
-    ...wcLeveringVelden(o),
+    // Afhalen of verzenden, afhaallocatie/-moment, de order_key voor de
+    // afhaalpagina van de klant en de link naar de bestelling in de
+    // webshop (utils/levering.ts).
+    ...wcLeveringVelden(o, link),
     klant_naam: `${o?.billing?.first_name || ''} ${o?.billing?.last_name || ''}`.trim() || t('lbl_onbekend'),
     klant_email: o?.billing?.email || '',
     klant_straat: o?.billing?.address_1 || '',
@@ -152,9 +170,9 @@ export function wcOrderNaarBestelling(
  * verzet) de klant vaak pas ná het bestellen, dus dat gaat op dezelfde manier.
  * Geeft `null` als er niets veranderd is.
  */
-export function wcOrderUpdate(bestaand: any, o: any): Record<string, any> | null {
+export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}): Record<string, any> | null {
   const velden = wcBetaalVelden(o)
-  const levering = wcLeveringVelden(o)
+  const levering = wcLeveringVelden(o, link)
   // Een veld dat in de winkel verdwenen is (afhaallocatie na een wissel naar
   // bezorgen, betaaldatum na een terugboeking) moet hier ook weg — anders
   // blijft de order elke ronde opnieuw als "gewijzigd" gelden.
@@ -169,6 +187,9 @@ export function wcOrderUpdate(bestaand: any, o: any): Record<string, any> | null
 /** De hele import: ophalen, nieuwe orders omzetten, bekende orders verversen. */
 export async function importeerWcOrders(invoer: WcImportInvoer): Promise<WcImportResultaat> {
   const orders = await haalWcOrders(invoer.wcGet, wcImportSelectie(invoer.wcCreds))
+  // De winkelpagina's voor de bestellink per order; één klein verzoek per
+  // import, en bij een bestaande order alleen een update als de link wijzigt.
+  const link: WcLinkContext = {storeUrl: invoer.wcCreds?.storeUrl || '', paginas: orders.length ? await haalWcPaginas(invoer.wcGet) : null}
   const bestellingen = invoer.bestellingen || []
   const opWcId = new Map<any, any>()
   for (const b of bestellingen) if (b?.wc_order_id != null) opWcId.set(b.wc_order_id, b)
@@ -178,12 +199,12 @@ export async function importeerWcOrders(invoer: WcImportInvoer): Promise<WcImpor
   for (const o of orders) {
     const bestaand = opWcId.get(o?.id)
     if (bestaand) {
-      const upd = wcOrderUpdate(bestaand, o)
+      const upd = wcOrderUpdate(bestaand, o, link)
       if (upd) updates[bestaand.id] = upd
       continue
     }
     if (o?.id != null && nieuw.some(n => n.wc_order_id === o.id)) continue
-    const nb = wcOrderNaarBestelling(o, invoer.refs, [...bestellingen, ...nieuw], invoer.klanten || [], invoer.t, invoer.vandaag)
+    const nb = wcOrderNaarBestelling(o, invoer.refs, [...bestellingen, ...nieuw], invoer.klanten || [], invoer.t, invoer.vandaag, link)
     onbekendeRegels += (nb.regels || []).filter((r: any) => r.wc_onbekend).length
     nieuw.push(nb)
   }
