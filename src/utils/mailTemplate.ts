@@ -60,7 +60,14 @@ export function textToHtml(text: string): string {
 export function buildMailHtml(
   textBody: string,
   brewery: MailBrewery,
-  opts: {logoCid?: string, footerNote?: string, payButton?: {url: string, label: string}} = {},
+  opts: {
+    logoCid?: string
+    footerNote?: string
+    /** Knop naar een pagina van de klant (bijv. "Bekijk je bestelling"). */
+    linkButton?: {url: string, label: string}
+    /** Online-betaalknop (Mollie). */
+    payButton?: {url: string, label: string}
+  } = {},
 ): string {
   const naam = brewery?.naam || 'BrewAdmin'
   // Normaliseer website-URL: voeg https:// toe als gebruiker zonder protocol invult,
@@ -94,16 +101,17 @@ export function buildMailHtml(
        </td></tr>`
     : ''
 
-  // Optionele online-betaalknop (Mollie). URL is een https-checkout-link; esc()
-  // maakt hem veilig voor in het href-attribuut.
-  const payBlock = opts.payButton
-    ? `<tr><td style="padding:4px 32px 24px;text-align:center;">
-         <a href="${esc(opts.payButton.url)}" target="_blank" rel="noopener noreferrer"
+  // Optionele knoppen: naar de bestelpagina van de klant en/of de online-
+  // betaalknop (Mollie). De URL is een https-link; esc() maakt hem veilig
+  // voor in het href-attribuut.
+  const knop = (b: {url: string, label: string}): string =>
+    `<tr><td style="padding:4px 32px 24px;text-align:center;">
+         <a href="${esc(b.url)}" target="_blank" rel="noopener noreferrer"
             style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;line-height:1;padding:14px 32px;border-radius:6px;">
-           ${esc(opts.payButton.label)}
+           ${esc(b.label)}
          </a>
        </td></tr>`
-    : ''
+  const payBlock = [opts.linkButton, opts.payButton].filter((b): b is {url: string, label: string} => !!b).map(knop).join('')
 
   const footer = opts.footerNote
     ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;">

@@ -42,6 +42,9 @@ interface Props {
    *  link op de factuur-PDF). Alleen aangeroepen als er een betaallink is
    *  aangemaakt; faalt dit, dan wordt de oorspronkelijke PDF verstuurd. */
   regenerateAttachments?: (payUrl: string) => Promise<MailAttachment[] | null>
+  /** Knop naar een pagina van de klant (bijv. "Bekijk je bestelling"): in de
+   *  HTML een knop, in de platte tekst `textLine` + de kale link eronder. */
+  linkButton?: {url: string, label: string, textLine: string} | null
   onClose: () => void
   /** Aangeroepen na succesvol verzenden, met het werkelijk gebruikte
    *  ontvanger-adres (zoals in de modal bewerkt) — zodat de aanroeper het
@@ -53,7 +56,7 @@ const LOGO_CID = 'brewadmin-logo'
 
 export default function MailModal({
   title, initialTo, initialSubject, initialText, attachments,
-  brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, onClose, onSent,
+  brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, linkButton, onClose, onSent,
 }: Props) {
   const [to, setTo] = React.useState(initialTo || '')
   const [subject, setSubject] = React.useState(initialSubject || '')
@@ -83,9 +86,10 @@ export default function MailModal({
   const htmlBody = React.useMemo(
     () => buildMailHtml(text, brewery || {}, {
       logoCid: inlineLogo ? LOGO_CID : undefined,
+      linkButton: linkButton || undefined,
       payButton: wantMollie ? {url: '#', label: t('mollie_pay_button')} : undefined,
     }),
-    [text, brewery, inlineLogo, wantMollie],
+    [text, brewery, inlineLogo, wantMollie, linkButton],
   )
   // Voor de iframe-preview gebruiken we een variant met data:-URI logo, omdat
   // `cid:`-verwijzingen in een browser-iframe niet werken.
@@ -122,10 +126,13 @@ export default function MailModal({
           return
         }
       }
-      // In de HTML komt een nette knop; in de platte tekst de kale link.
-      const finalText = payUrl ? `${text}\n\n${t('mollie_pay_line')}\n${payUrl}` : text
+      // In de HTML komen nette knoppen; in de platte tekst de kale links.
+      const finalText = text
+        + (linkButton ? `\n\n${linkButton.textLine}\n${linkButton.url}` : '')
+        + (payUrl ? `\n\n${t('mollie_pay_line')}\n${payUrl}` : '')
       const finalHtml = buildMailHtml(text, brewery || {}, {
         logoCid: inlineLogo ? LOGO_CID : undefined,
+        linkButton: linkButton || undefined,
         payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
       })
       // Bijlagen: bij een betaallink de factuur-PDF opnieuw bouwen mét QR +
