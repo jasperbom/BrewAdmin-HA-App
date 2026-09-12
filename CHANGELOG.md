@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.32] — 2026-09-12
+
+### Knop "Bekijk je bestelling": geen gok meer naar de afrekenpagina
+
+De knop wees standaard naar `/checkout/order-received/…`, maar de afreken-
+slug verschilt per winkel (`/afrekenen/` …) en dat gaf een 404. De app leidt
+de bedankpagina nu af uit de `payment_url` die WooCommerce bij elke order
+meegeeft (zelfde afrekenpagina, endpoint `order-received` in plaats van
+`order-pay`), ook bij platte permalinks. Bestaande orders krijgen dat veld
+bij de volgende import. Is er geen betaallink en geen eigen sjabloon, dan
+komt er géén knop in de mail: liever geen knop dan een 404.
+
+---
+
 ## [1.12.31] — 2026-09-12
 
 ### Knop "Bekijk je bestelling" in de bestelbevestiging

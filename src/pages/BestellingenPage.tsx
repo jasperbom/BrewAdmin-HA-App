@@ -1728,10 +1728,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       brouwerij: (breweryDetails as any)?.naam || appName || '',
       ...levering,
     }
-    // Knop naar de bestelpagina van de klant in de webshop (de WooCommerce-
-    // bedankpagina, of het eigen sjabloon uit de instellingen). Alleen voor
-    // een webshoporder: een handmatige order heeft geen pagina.
-    const orderUrl = bestelLink(wcCreds?.storeUrl, selectedOrder.wc_order_id, selectedOrder.wc_order_key, wcCreds?.bestelUrl)
+    // Knop naar de bestelpagina van de klant in de webshop: de WooCommerce-
+    // bedankpagina, afgeleid uit de payment_url van de order (zo klopt de
+    // afreken-slug van de winkel), of het eigen sjabloon uit de instellingen.
+    // Zonder een van beide géén knop — een gegokte URL wordt een 404.
+    const orderUrl = bestelLink(wcCreds?.storeUrl, selectedOrder.wc_order_id, selectedOrder.wc_order_key,
+      {sjabloon: wcCreds?.bestelUrl, betaalUrl: selectedOrder.wc_betaal_url})
     setMailModal({
       title: t('mail_modal_title_bestelling'),
       to: (resolvedSelectedOrder?.klant_email || ''),

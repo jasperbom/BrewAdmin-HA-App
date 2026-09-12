@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   wcLeveringVelden, leveringVeldenGewijzigd, afhaalLink, afhaalmomentLabel,
   leveringMailVars, verzendMailVars, leveringOmschrijving, wilVerzendbevestiging,
-  afhaalmomentDate, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, BESTEL_URL_STANDAARD,
+  afhaalmomentDate, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, BESTEL_URL_STANDAARD, afrekenPaginaUitBetaalUrl,
   isAfhaalMethode, AFHAAL_OVERLEG,
 } from '../levering'
 
@@ -27,6 +27,14 @@ const verzendOrder = {
 }
 
 describe('wcLeveringVelden', () => {
+  it('leest de payment_url van de order (voor de knop naar de bestelling)', () => {
+    const v = wcLeveringVelden({...afhaalOrder, payment_url: 'https://craftery.nl/afrekenen/order-pay/3235/?pay_for_order=true&key=wc_order_AbC123xyz'})
+    expect(v.wc_betaal_url).toBe('https://craftery.nl/afrekenen/order-pay/3235/?pay_for_order=true&key=wc_order_AbC123xyz')
+    expect(wcLeveringVelden(afhaalOrder).wc_betaal_url).toBeUndefined()
+    expect(wcLeveringVelden({...afhaalOrder, payment_url: 'javascript:alert(1)'}).wc_betaal_url).toBeUndefined()
+    // Een order van vóór dit veld wordt bij de volgende import aangevuld.
+    expect(leveringVeldenGewijzigd(wcLeveringVelden(afhaalOrder), v)).toBe(true)
+  })
   it('herkent afhalen: methode, locatie, adres, moment en order_key', () => {
     expect(wcLeveringVelden(afhaalOrder)).toEqual({
       wc_levering: 'afhalen',
@@ -93,25 +101,49 @@ describe('afhaalLink', () => {
   })
 })
 
+describe('afrekenPaginaUitBetaalUrl', () => {
+  it('mooie permalinks: het pad vóór order-pay, welke slug de winkel ook heeft', () => {
+    expect(afrekenPaginaUitBetaalUrl('https://craftery.nl/afrekenen/order-pay/3235/?pay_for_order=true&key=wc_order_A'))
+      .toBe('https://craftery.nl/afrekenen')
+    expect(afrekenPaginaUitBetaalUrl('https://shop.nl/checkout/order-pay/12')).toBe('https://shop.nl/checkout')
+  })
+  it('platte permalinks: pagina-id blijft staan', () => {
+    expect(afrekenPaginaUitBetaalUrl('https://shop.nl/?page_id=8&order-pay=3235&pay_for_order=true&key=k'))
+      .toBe('https://shop.nl/?page_id=8')
+  })
+  it('geen betaallink of geen order-pay erin: leeg', () => {
+    expect(afrekenPaginaUitBetaalUrl('')).toBe('')
+    expect(afrekenPaginaUitBetaalUrl('https://shop.nl/winkelmand/')).toBe('')
+    expect(afrekenPaginaUitBetaalUrl('niet-een-url')).toBe('')
+  })
+})
+
 describe('bestelLink', () => {
-  it('bouwt standaard de WooCommerce-bedankpagina met de order_key', () => {
-    expect(bestelLink('https://craftery.nl', 3235, 'wc_order_AbC123xyz'))
-      .toBe('https://craftery.nl/checkout/order-received/3235/?key=wc_order_AbC123xyz')
-    expect(BESTEL_URL_STANDAARD).toContain('{sleutel}')
+  const betaalUrl = 'https://craftery.nl/afrekenen/order-pay/3235/?pay_for_order=true&key=wc_order_AbC123xyz'
+
+  it('leidt de bedankpagina af uit de betaallink van de order (eigen afreken-slug)', () => {
+    expect(bestelLink('https://craftery.nl', 3235, 'wc_order_AbC123xyz', {betaalUrl}))
+      .toBe('https://craftery.nl/afrekenen/order-received/3235/?key=wc_order_AbC123xyz')
+    expect(bestelLink('https://shop.nl', 3235, 'k', {betaalUrl: 'https://shop.nl/?page_id=8&order-pay=3235&key=k'}))
+      .toBe('https://shop.nl/?page_id=8&order-received=3235&key=k')
   })
-  it('eigen sjabloon: met {winkel}, als absoluut adres of als pad in de winkel', () => {
-    expect(bestelLink('craftery.nl/', 3235, 'k', '{winkel}/afrekenen/bestelling-ontvangen/{id}/?key={sleutel}'))
-      .toBe('https://craftery.nl/afrekenen/bestelling-ontvangen/3235/?key=k')
-    expect(bestelLink('https://craftery.nl', 3235, 'k', 'https://shop.craftery.nl/order/{id}?key={sleutel}'))
+  it('zonder betaallink en zonder sjabloon geen link — liever geen knop dan een 404', () => {
+    expect(bestelLink('https://craftery.nl', 3235, 'wc_order_AbC123xyz')).toBe('')
+    expect(bestelLink('https://craftery.nl', 3235, 'k', {betaalUrl: 'https://craftery.nl/winkelmand/'})).toBe('')
+  })
+  it('eigen sjabloon wint: met {winkel}, als absoluut adres of als pad in de winkel', () => {
+    expect(bestelLink('craftery.nl/', 3235, 'k', {sjabloon: BESTEL_URL_STANDAARD, betaalUrl}))
+      .toBe('https://craftery.nl/checkout/order-received/3235/?key=k')
+    expect(bestelLink('https://craftery.nl', 3235, 'k', {sjabloon: 'https://shop.craftery.nl/order/{id}?key={sleutel}'}))
       .toBe('https://shop.craftery.nl/order/3235?key=k')
-    expect(bestelLink('https://craftery.nl', 3235, 'k', '/mijn-account/bestelling/{id}/'))
+    expect(bestelLink('https://craftery.nl', 3235, 'k', {sjabloon: '/mijn-account/bestelling/{id}/'}))
       .toBe('https://craftery.nl/mijn-account/bestelling/3235/')
+    expect(bestelLink('https://craftery.nl', 3235, 'k', {sjabloon: '   ', betaalUrl})).toContain('/afrekenen/order-received/')
   })
-  it('zonder winkel, id of sleutel is er geen link; een leeg sjabloon is de standaard', () => {
-    expect(bestelLink('', 3235, 'k')).toBe('')
-    expect(bestelLink('https://craftery.nl', null, 'k')).toBe('')
-    expect(bestelLink('https://craftery.nl', 3235, '')).toBe('')
-    expect(bestelLink('https://craftery.nl', 3235, 'k', '   ')).toBe(bestelLink('https://craftery.nl', 3235, 'k'))
+  it('zonder winkel, id of sleutel is er geen link', () => {
+    expect(bestelLink('', 3235, 'k', {betaalUrl})).toBe('')
+    expect(bestelLink('https://craftery.nl', null, 'k', {betaalUrl})).toBe('')
+    expect(bestelLink('https://craftery.nl', 3235, '', {betaalUrl})).toBe('')
   })
 })
 
