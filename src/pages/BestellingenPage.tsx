@@ -22,7 +22,7 @@ import { factuurMailBetaalVars } from '../utils/factuurMail'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, wcSyncTeHerhalen, wcSyncDoelVoorStatus, WcSyncDoel } from '../utils/wcTerugschrijven'
 import {
-  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars,
+  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink,
 } from '../utils/levering'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
@@ -1585,6 +1585,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     kind?: 'pakbon' | 'factuur' | 'bevestiging' | 'verzending' | 'afhaal_gemist'
     mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
     regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
+    /** Knop "Bekijk je bestelling" naar de webshop (utils/levering → bestelLink). */
+    linkButton?: {url: string, label: string, textLine: string} | null
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
 
@@ -1726,12 +1728,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       brouwerij: (breweryDetails as any)?.naam || appName || '',
       ...levering,
     }
+    // Knop naar de bestelpagina van de klant in de webshop (de WooCommerce-
+    // bedankpagina, of het eigen sjabloon uit de instellingen). Alleen voor
+    // een webshoporder: een handmatige order heeft geen pagina.
+    const orderUrl = bestelLink(wcCreds?.storeUrl, selectedOrder.wc_order_id, selectedOrder.wc_order_key, wcCreds?.bestelUrl)
     setMailModal({
       title: t('mail_modal_title_bestelling'),
       to: (resolvedSelectedOrder?.klant_email || ''),
       subject: interpolate(tplOrDefault('bestelling', 'subject'), vars),
       text: interpolate(tplOrDefault('bestelling', 'body'), vars),
       kind: 'bevestiging',
+      linkButton: orderUrl ? {url: orderUrl, label: t('mail_bestelling_knop'), textLine: t('mail_bestelling_knop_regel')} : null,
     })
   }
 
@@ -2198,6 +2205,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             smtpReady={!!smtpCreds?.enabled}
             mollie={mailModal.mollie}
             regenerateAttachments={mailModal.regenerateAttachments}
+            linkButton={mailModal.linkButton}
             onClose={() => setMailModal(null)}
             onSent={(sentTo) => {
               // Per maild-type een leesbare log-omschrijving — wordt onderaan de

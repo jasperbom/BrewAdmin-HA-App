@@ -716,6 +716,9 @@ export interface WcCreds {
   terugschrijven?: boolean
   // Automatische orderimport in minuten; 0 = uit (utils/wcOrderImport.ts).
   importInterval?: number
+  // Eigen sjabloon voor de bestelpagina van de klant ({winkel}, {id},
+  // {sleutel}); leeg = de WooCommerce-bedankpagina (utils/levering → bestelLink).
+  bestelUrl?: string
 }
 
 export interface ClaudeCreds {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { t, getLang } from '../i18n'
 import { landOpties } from '../utils/btwCategorie'
+import { BESTEL_URL_STANDAARD } from '../utils/levering'
 import { peppolSchemaVoor } from '../utils/ubl'
 import { controleerTemplate } from '../utils/template'
 import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
@@ -661,18 +662,18 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setBfTesting(false);
   };
 
-  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || '', prijzenInclBtw: wcCreds?.prijzenInclBtw !== false, themaVelden: wcCreds?.themaVelden !== false, terugschrijven: wcCreds?.terugschrijven === true, importInterval: wcCreds?.importInterval ?? 15});
+  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || '', prijzenInclBtw: wcCreds?.prijzenInclBtw !== false, themaVelden: wcCreds?.themaVelden !== false, terugschrijven: wcCreds?.terugschrijven === true, importInterval: wcCreds?.importInterval ?? 15, bestelUrl: wcCreds?.bestelUrl || ''});
   const [wcTesting, setWcTesting] = React.useState(false);
   const [wcMsg, setWcMsg] = React.useState('');
   const wcFormInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!wcFormInitialized.current && (wcCreds?.storeUrl || wcCreds?.consumerKey || wcCreds?.enabled)) {
-      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || '', prijzenInclBtw: wcCreds.prijzenInclBtw !== false, themaVelden: wcCreds.themaVelden !== false, terugschrijven: wcCreds.terugschrijven === true, importInterval: wcCreds.importInterval ?? 15});
+      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || '', prijzenInclBtw: wcCreds.prijzenInclBtw !== false, themaVelden: wcCreds.themaVelden !== false, terugschrijven: wcCreds.terugschrijven === true, importInterval: wcCreds.importInterval ?? 15, bestelUrl: wcCreds.bestelUrl || ''});
       wcFormInitialized.current = true;
     }
   }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
   const saveWc = () => {
-    setWcCreds((prev: any) => ({...prev, ...wcForm, importInterval: Math.max(0, Math.round(Number(wcForm.importInterval) || 0))}));
+    setWcCreds((prev: any) => ({...prev, ...wcForm, importInterval: Math.max(0, Math.round(Number(wcForm.importInterval) || 0)), bestelUrl: String(wcForm.bestelUrl || '').trim()}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`WooCommerce credentials ${wcForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setWcMsg(`✓ ${t('btn_save')}`);
     setTimeout(() => setWcMsg(''), 2000);
@@ -2117,6 +2118,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               onChange={(e: any)=>setWcForm((f: any)=>({...f, importInterval: e.target.value}))}
               className="border border-gray-300 rounded px-3 py-1.5 text-sm w-32 focus:outline-none focus:border-purple-500" />
             <p className="text-xs text-gray-400 mt-1">{t('settings_wc_import_interval_hint')}</p>
+            {/* Bestelpagina van de klant: de knop "Bekijk je bestelling" in de
+                bestelbevestiging. Leeg = de WooCommerce-bedankpagina
+                (utils/levering → bestelLink). */}
+            <label className="block text-sm font-medium text-gray-700 mb-1 mt-3">{t('settings_wc_bestel_url')}</label>
+            <input type="text" value={wcForm.bestelUrl || ''} placeholder={BESTEL_URL_STANDAARD}
+              onChange={(e: any)=>setWcForm((f: any)=>({...f, bestelUrl: e.target.value}))}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full font-mono focus:outline-none focus:border-purple-500" />
+            <p className="text-xs text-gray-400 mt-1">{t('settings_wc_bestel_url_hint')}</p>
             {(wcImportStatus?.laatste_import || wcImportStatus?.laatste_fout || serverHealth?.wc_orders?.laatste_check) && (
               <div className="text-xs text-gray-500 mt-2 space-y-0.5">
                 {wcImportStatus?.laatste_import && (

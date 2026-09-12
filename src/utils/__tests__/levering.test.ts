@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   wcLeveringVelden, leveringVeldenGewijzigd, afhaalLink, afhaalmomentLabel,
   leveringMailVars, verzendMailVars, leveringOmschrijving, wilVerzendbevestiging,
-  afhaalmomentDate, afhaalmomentVerstreken, afhaalGemistMailVars,
+  afhaalmomentDate, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, BESTEL_URL_STANDAARD,
   isAfhaalMethode, AFHAAL_OVERLEG,
 } from '../levering'
 
@@ -90,6 +90,28 @@ describe('afhaalLink', () => {
     expect(afhaalLink('', 1, 'k')).toBe('')
     expect(afhaalLink('https://craftery.nl', null, 'k')).toBe('')
     expect(afhaalLink('https://craftery.nl', 1, '')).toBe('')
+  })
+})
+
+describe('bestelLink', () => {
+  it('bouwt standaard de WooCommerce-bedankpagina met de order_key', () => {
+    expect(bestelLink('https://craftery.nl', 3235, 'wc_order_AbC123xyz'))
+      .toBe('https://craftery.nl/checkout/order-received/3235/?key=wc_order_AbC123xyz')
+    expect(BESTEL_URL_STANDAARD).toContain('{sleutel}')
+  })
+  it('eigen sjabloon: met {winkel}, als absoluut adres of als pad in de winkel', () => {
+    expect(bestelLink('craftery.nl/', 3235, 'k', '{winkel}/afrekenen/bestelling-ontvangen/{id}/?key={sleutel}'))
+      .toBe('https://craftery.nl/afrekenen/bestelling-ontvangen/3235/?key=k')
+    expect(bestelLink('https://craftery.nl', 3235, 'k', 'https://shop.craftery.nl/order/{id}?key={sleutel}'))
+      .toBe('https://shop.craftery.nl/order/3235?key=k')
+    expect(bestelLink('https://craftery.nl', 3235, 'k', '/mijn-account/bestelling/{id}/'))
+      .toBe('https://craftery.nl/mijn-account/bestelling/3235/')
+  })
+  it('zonder winkel, id of sleutel is er geen link; een leeg sjabloon is de standaard', () => {
+    expect(bestelLink('', 3235, 'k')).toBe('')
+    expect(bestelLink('https://craftery.nl', null, 'k')).toBe('')
+    expect(bestelLink('https://craftery.nl', 3235, '')).toBe('')
+    expect(bestelLink('https://craftery.nl', 3235, 'k', '   ')).toBe(bestelLink('https://craftery.nl', 3235, 'k'))
   })
 })
 

@@ -129,6 +129,33 @@ export function afhaalLink(storeUrl: unknown, orderId: unknown, orderKey: unknow
   return `${basis}/?afhaalmoment=${encodeURIComponent(id)}&sleutel=${encodeURIComponent(key)}`
 }
 
+/**
+ * Standaard-URL van de bestelpagina van de klant: de WooCommerce-bedankpagina
+ * ("order-received"), zonder inloggen te openen met de order_key. Wijkt de
+ * winkel af (andere afreken-slug, ander endpoint), dan geeft
+ * `woocommerce_creds.bestelUrl` een eigen sjabloon met `{winkel}`, `{id}`
+ * en `{sleutel}`.
+ */
+export const BESTEL_URL_STANDAARD = '{winkel}/checkout/order-received/{id}/?key={sleutel}'
+
+/**
+ * De link waarmee de klant zijn bestelling in de webshop bekijkt (knop in de
+ * bestelbevestiging). Zonder winkel-URL, order-ID of order_key is er geen link.
+ */
+export function bestelLink(storeUrl: unknown, orderId: unknown, orderKey: unknown, sjabloon?: unknown): string {
+  const basis = normWinkelUrl(storeUrl)
+  const id = str(orderId)
+  const key = str(orderKey)
+  if (!basis || !id || !key) return ''
+  const tpl = str(sjabloon) || BESTEL_URL_STANDAARD
+  const url = tpl
+    .split('{winkel}').join(basis)
+    .split('{id}').join(encodeURIComponent(id))
+    .split('{sleutel}').join(encodeURIComponent(key))
+  // Een sjabloon zonder {winkel} en zonder protocol is een pad in de winkel.
+  return /^https?:\/\//i.test(url) ? url : `${basis}/${url.replace(/^\/+/, '')}`
+}
+
 const LOCALES: Record<string, string> = {nl: 'nl-NL', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', es: 'es-ES'}
 
 /** Het afhaalmoment (`JJJJ-MM-DD UU:MM`) als Date in lokale tijd; null bij `overleg`, leeg of onleesbaar. */

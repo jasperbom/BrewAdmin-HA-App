@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.31] — 2026-09-12
+
+### Knop "Bekijk je bestelling" in de bestelbevestiging
+
+De bestelbevestiging van een webshoporder krijgt onderaan een knop naar de
+bestelpagina van de klant in de webshop; in de platte tekst staat dezelfde
+link onder de regel "Bekijk je bestelling online:". Standaard is dat de
+WooCommerce-bedankpagina, die de klant zonder inloggen opent met de
+ordersleutel. Handmatige orders hebben geen pagina en dus geen knop.
+
+- Nieuwe instelling **Bestelpagina van de klant** bij WooCommerce → Orders
+  importeren: leeg = standaard, anders een eigen adres met `{winkel}`, `{id}`
+  en `{sleutel}` (voor een winkel met een andere afreken-slug of endpoint).
+- De HTML-mailbouwer kent nu naast de Mollie-betaalknop een algemene knop;
+  beide gebruiken dezelfde stijl.
+
+---
+
 ## [1.12.30] — 2026-09-11
 
 ### Afhaalklant niet komen opdagen? Mail hem een nieuwe afspraak
