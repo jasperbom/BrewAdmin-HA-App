@@ -12,16 +12,18 @@
  * link na (`afhaalLink`) en levert de tekstvariabelen voor de bestel- en
  * verzendbevestiging (`leveringMailVars`, `verzendMailVars`):
  *
- *  - afhalen zonder moment  → de uitnodiging mét link om een moment te kiezen
- *  - afhalen met moment     → het moment, plus de link om te verzetten
+ *  - afhalen zonder moment  → de uitnodiging om een moment te kiezen (knop)
+ *  - afhalen met moment     → het moment, plus de knop om te verzetten
  *  - afhalen "in overleg"   → we nemen contact op
  *  - verzenden              → er volgt een verzendbevestiging zodra het pakket
  *                             de deur uit is
  *  - onbekend (handmatig)   → de neutrale oude regel
  *
- * Komt de klant niet opdagen, dan is er de **afspraak-gemist-mail**
- * (`afhaalGemistMailVars`): het gemiste moment plus dezelfde link waarmee de
- * klant een nieuw moment kiest. `afhaalmomentVerstreken` zegt of een
+ * De link naar de afhaalpagina staat niet in de tekst maar onder de mail als
+ * knop (`afhaalMailKnop`: kiezen of verzetten; `MailModal` zet hem in de
+ * platte tekst als regel + kale link). Komt de klant niet opdagen, dan is er
+ * de **afspraak-gemist-mail** (`afhaalGemistMailVars` + `afhaalGemistMailKnop`):
+ * het gemiste moment plus dezelfde knop om een nieuw moment te kiezen. `afhaalmomentVerstreken` zegt of een
  * afhaalorder die nog openstaat zo'n mail verdient (het gekozen moment ligt in
  * het verleden).
  *
@@ -257,6 +259,43 @@ export function leveringOmschrijving(b: Partial<LeveringVelden> | null | undefin
     delen.push(b.wc_verzendmethode)
   }
   return delen.join(' · ')
+}
+
+/** Een knop onder de HTML-mail; in de platte tekst `textLine` + de kale link. */
+export interface MailKnop {
+  url: string
+  label: string
+  textLine: string
+}
+
+/**
+ * De knop waarmee een afhaalklant zijn moment kiest (nog niet gekozen) of
+ * verzet (al gekozen) — onder de bestelbevestiging. Geen knop bij "in
+ * overleg", bij een bezorgorder of zonder link naar de afhaalpagina.
+ */
+export function afhaalMailKnop(
+  bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null}) | null | undefined,
+  opts: {storeUrl?: string} = {},
+): MailKnop | null {
+  const b = bestelling || {}
+  if (b.wc_levering !== 'afhalen') return null
+  if (str(b.wc_afhaalmoment) === AFHAAL_OVERLEG) return null
+  const url = afhaalLink(opts.storeUrl, b.wc_order_id, b.wc_order_key)
+  if (!url) return null
+  const label = t(str(b.wc_afhaalmoment) ? 'mail_knop_afhaal_verzetten' : 'mail_knop_afhaal_kies')
+  return {url, label, textLine: `${label}:`}
+}
+
+/** De knop "Kies een nieuw afhaalmoment" onder de afspraak-gemist-mail. */
+export function afhaalGemistMailKnop(
+  bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null}) | null | undefined,
+  opts: {storeUrl?: string} = {},
+): MailKnop | null {
+  const b = bestelling || {}
+  const url = afhaalLink(opts.storeUrl, b.wc_order_id, b.wc_order_key)
+  if (!url) return null
+  const label = t('mail_knop_afhaal_nieuw')
+  return {url, label, textLine: `${label}:`}
 }
 
 export interface LeveringMailVars {

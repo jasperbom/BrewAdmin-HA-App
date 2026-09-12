@@ -96,6 +96,8 @@ BrewAdmin-HA-App/
 │   │   │                   # bij elke import ververst; mailvariabelen `{levering}` (bestelbevestiging),
 │   │   │                   # `{trackregel}` (verzendbevestiging bij "Markeer verzonden") en
 │   │   │                   # `{afhaalregel}` (afspraak-gemist-mail: moment voorbij, order nog open);
+│   │   │                   # de afhaalpagina-link zelf komt als knop onder de mail (`afhaalMailKnop`:
+│   │   │                   # kiezen/verzetten, `afhaalGemistMailKnop`: nieuw moment) — `MailKnop`;
 │   │   │                   # `bestelLink` = knop "Bekijk je bestelling": de WooCommerce-bedankpagina,
 │   │   │                   # afgeleid uit de `payment_url` van de order (afreken-slug van de winkel),
 │   │   │                   # of het sjabloon `woocommerce_creds.bestelUrl`; anders géén knop (geen gok)
@@ -742,18 +744,22 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   klant een privépagina `<winkel>/?afhaalmoment=<order-id>&sleutel=<order_key>`
   om dat moment te kiezen of te verzetten. De app leest dit bij elke import mee
   (ook voor bestaande orders — het moment wordt vaak pas later gekozen) en zet
-  het in de bestelbevestiging via `{levering}`. Een bezorgorder krijgt bij
+  het in de bestelbevestiging via `{levering}`; de link naar die pagina staat
+  niet in de tekst maar als knop onder de mail (`afhaalMailKnop`: *Kies je
+  afhaalmoment* / *Verzet je afhaalmoment*; `MailModal` zet elke `MailKnop`
+  in de platte tekst als regel + kale link). Een bezorgorder krijgt bij
   *Markeer verzonden* meteen de verzendbevestiging aangeboden (template
   `verzending`, met track & trace). Is het gekozen afhaalmoment voorbij en
   staat de order nog open, dan biedt de bestelpagina *Mail afspraak gemist*
-  (template `afhaal_gemist`): dezelfde afhaalpagina-link om een nieuw moment
-  te kiezen; het nieuwe moment komt bij de volgende import mee. De
+  (template `afhaal_gemist`): dezelfde afhaalpagina als knop *Kies een nieuw
+  afhaalmoment* (`afhaalGemistMailKnop`); het nieuwe moment komt bij de
+  volgende import mee. De
   bestelbevestiging van een webshoporder krijgt een knop *Bekijk je
   bestelling* (`bestelLink`: de bedankpagina `<afrekenpagina>/order-received/<id>/?key=<order_key>`,
   waarbij de afrekenpagina uit de `payment_url` van de order komt
   (`wc_betaal_url`, bij elke import ververst) — nooit gegokt: zonder
-  betaallink en zonder sjabloon `woocommerce_creds.bestelUrl` geen knop); `MailModal` rendert zo'n
-  `linkButton` als knop in de HTML en als regel + kale link in de platte tekst
+  betaallink en zonder sjabloon `woocommerce_creds.bestelUrl` geen knop); `MailModal` rendert de
+  `linkButtons` (afhaalknop eerst, dan de orderknop) als knoppen in de HTML en als regel + kale link in de platte tekst
 - **Periodiek ophalen** (`woocommerce_creds.importInterval`, minuten, default 15,
   0 = uit): App.tsx importeert elke N minuten zelf (`autoImportWc`, dezelfde
   `importeerWcOrders` als de knop) zolang een tabblad open staat en de rol mag

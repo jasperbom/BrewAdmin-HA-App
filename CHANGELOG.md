@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.33] — 2026-09-12
+
+### Afhaalmoment kiezen of verzetten: een knop in plaats van een kale link
+
+In de bestelbevestiging van een afhaalorder staat de link naar de afhaalpagina
+niet meer als kaal adres in de tekst, maar als knop onder de mail: **Kies je
+afhaalmoment** zolang de klant nog niets koos, **Verzet je afhaalmoment** als
+er al een moment staat. De afspraak-gemist-mail krijgt op dezelfde plek de
+knop **Kies een nieuw afhaalmoment**. Bij "in overleg", een bezorgorder of
+zonder winkel-URL is er geen knop. In de platte tekstversie staat de link
+onder een eigen regel. De knop "Bekijk je bestelling" staat eronder.
+
+---
+
 ## [1.12.32] — 2026-09-12
 
 ### Knop "Bekijk je bestelling": geen gok meer naar de afrekenpagina

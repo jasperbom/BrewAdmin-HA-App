@@ -3,6 +3,7 @@ import {
   wcLeveringVelden, leveringVeldenGewijzigd, afhaalLink, afhaalmomentLabel,
   leveringMailVars, verzendMailVars, leveringOmschrijving, wilVerzendbevestiging,
   afhaalmomentDate, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, BESTEL_URL_STANDAARD, afrekenPaginaUitBetaalUrl,
+  afhaalMailKnop, afhaalGemistMailKnop,
   isAfhaalMethode, AFHAAL_OVERLEG,
 } from '../levering'
 
@@ -164,20 +165,21 @@ describe('afhaalmomentLabel', () => {
 describe('leveringMailVars', () => {
   const store = {storeUrl: 'https://craftery.nl'}
 
-  it('afhalen zonder moment: uitnodiging mét link', () => {
+  it('afhalen zonder moment: uitnodiging om te kiezen; de link zit in de knop, niet in de tekst', () => {
     const b = {wc_order_id: 3235, ...wcLeveringVelden({...afhaalOrder, meta_data: []})}
     const v = leveringMailVars(b, store)
     expect(v.afhaallink).toBe('https://craftery.nl/?afhaalmoment=3235&sleutel=wc_order_AbC123xyz')
-    expect(v.levering).toContain(v.afhaallink)
+    expect(v.levering).not.toContain('https://')
     expect(v.levering).toContain('Craftery Brewing')
     expect(v.levering).not.toContain('{')
     expect(v.afhaalmoment).toBe('')
   })
-  it('afhalen met moment: het moment plus de verzet-link', () => {
+  it('afhalen met moment: het moment plus de verzet-uitnodiging, zonder kale link', () => {
     const b = {wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder)}
     const v = leveringMailVars(b, store)
     expect(v.levering).toContain('13:00')
-    expect(v.levering).toContain(v.afhaallink)
+    expect(v.levering).not.toContain('https://')
+    expect(v.levering).not.toContain('{')
     expect(v.afhaalmoment).toContain('13:00')
     expect(v.afhaallocatie).toBe('Craftery Brewing')
   })
@@ -242,12 +244,12 @@ describe('afhaalGemistMailVars', () => {
   const store = {storeUrl: 'https://craftery.nl'}
   const b = {wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder)}
 
-  it('het gemiste moment plus de link om een nieuw moment te kiezen', () => {
+  it('het gemiste moment plus de uitnodiging; de link zit in de knop, niet in de tekst', () => {
     const v = afhaalGemistMailVars(b, store)
     expect(v.afhaalmoment).toContain('13:00')
     expect(v.afhaallink).toBe('https://craftery.nl/?afhaalmoment=3235&sleutel=wc_order_AbC123xyz')
     expect(v.afhaallocatie).toBe('Craftery Brewing')
-    expect(v.afhaalregel).toContain(v.afhaallink)
+    expect(v.afhaalregel).not.toContain('https://')
     expect(v.afhaalregel).toContain('Craftery Brewing')
     expect(v.afhaalregel).not.toContain('{')
   })
@@ -263,6 +265,32 @@ describe('afhaalGemistMailVars', () => {
     expect(v.afhaalmoment).toBe('')
     expect(v.afhaallink).toBe('')
     expect(v.afhaalregel).not.toContain('{')
+  })
+})
+
+describe('afhaalMailKnop / afhaalGemistMailKnop', () => {
+  const store = {storeUrl: 'https://craftery.nl'}
+  const link = 'https://craftery.nl/?afhaalmoment=3235&sleutel=wc_order_AbC123xyz'
+
+  it('nog geen moment: knop om te kiezen; wel een moment: knop om te verzetten', () => {
+    const kies = afhaalMailKnop({wc_order_id: 3235, ...wcLeveringVelden({...afhaalOrder, meta_data: []})}, store)
+    const verzet = afhaalMailKnop({wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder)}, store)
+    expect(kies?.url).toBe(link)
+    expect(verzet?.url).toBe(link)
+    expect(kies?.label).not.toBe(verzet?.label)
+    expect(kies?.textLine).toBe(`${kies?.label}:`)
+  })
+  it('geen knop bij overleg, bezorgen, handmatige order of zonder winkel-URL', () => {
+    expect(afhaalMailKnop({wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder), wc_afhaalmoment: AFHAAL_OVERLEG}, store)).toBeNull()
+    expect(afhaalMailKnop({wc_order_id: 3236, ...wcLeveringVelden(verzendOrder)}, store)).toBeNull()
+    expect(afhaalMailKnop({}, store)).toBeNull()
+    expect(afhaalMailKnop({wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder)}, {})).toBeNull()
+  })
+  it('afspraak gemist: knop voor een nieuw moment, alleen met link', () => {
+    const k = afhaalGemistMailKnop({wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder)}, store)
+    expect(k?.url).toBe(link)
+    expect(k?.label.length).toBeGreaterThan(0)
+    expect(afhaalGemistMailKnop({wc_order_id: 3235, ...wcLeveringVelden(afhaalOrder)}, {})).toBeNull()
   })
 })
 
