@@ -74,7 +74,9 @@ BrewAdmin-HA-App/
 │   │   │                   # verpakking over de liters ná verlies, en de kostprijs per
 │   │   │                   # brouwzaalliter, per verkoopbare liter én per verpakte eenheid
 │   │   │                   # (`kostprijsPerEenheid`: bier per liter + de échte verpakkingsprijs
-│   │   │                   # van díe eenheid; het recept rekent op de 33 cl-fles)
+│   │   │                   # van díe eenheid; het recept rekent op de 33 cl-fles). `receptAccijns`
+│   │   │                   # geeft de accijns per liter uit ABV/Plato + tarief — apart van
+│   │   │                   # `totaal`, want die schuld ontstaat pas bij uitslag
 │   │   ├── bierinfo.ts     # Bierinformatie: één definitie van alle eigenschappen van een bier
 │   │   │                   # (kcal, ingrediënten, smaakprofiel, serveertip, smaakassen, Untappd,
 │   │   │                   # uit roulatie, extra regels) en van een verpakking (maat/aantal,
@@ -467,6 +469,15 @@ bron wordt een extra stap in `postCijfer` (of een extra post in
 de batchkostprijs, de W&V — erft de verbetering dan automatisch. Nergens anders
 hoort een eigen sommetje over energie of water te staan.
 
+Zelfde principe, andere hoek: `berekenBatchKostprijs` in `utils/calculations.ts`
+neemt een **optionele** `accijnsInst` mee. Krijgt hij die, dan schat hij de
+accijns van afvullingen die noch een uitslag noch een bevroren
+voorcalc-snapshot hebben (van vóór v2.4) uit ABV/Plato, in plaats van ze stil
+als nul mee te tellen; het resultaat zegt via `accijns_bron` of het cijfer
+`geboekt`, `voorcalc`, `geschat` of `geen` is. **Geef dat argument alleen mee in
+schermen, nooit in de W&V of de COGS** — die mogen niet op een schatting
+draaien, en zonder het argument is het gedrag ongewijzigd.
+
 Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
 verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de
 ingrediëntprijs (`ingredientPrijs`, uit de lots), de verpakkingsmix
@@ -730,7 +741,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - REST API, authenticated via Basic auth (user ID + API key)
 - Used for: recipe list, batch list, batch status sync
 - Credentials stored in `instellingen` data key (`bfUserId`, `bfApiKey`)
-- Auto-sync interval: configurable (default 10 minutes) via App.tsx
+- Auto-sync: draait **één keer per mount** van `App.tsx` (`bfAutoSynced`-ref), niet
+  op een interval; een nieuwe sync vergt een herlaad of de handmatige knop.
+  Let op: de sync overschrijft `vergistingsprofiel`/`maischprofiel`/OG/FG
+  onvoorwaardelijk — zie `docs/ERP-VERBETERPLAN-2.md` W6 (fase 7.4)
 
 ### WooCommerce API
 

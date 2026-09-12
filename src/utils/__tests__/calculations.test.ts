@@ -248,6 +248,57 @@ describe('batchkostprijs en COGS (ERP 2.6)', () => {
     {id: 12, batch_id: 1, verpakking_type: 'Fust 20', inhoud_per_eenheid: 20, hoeveelheid: 1},
   ]
 
+  it('berekenBatchKostprijs: splitst de accijns uit de kostprijs', () => {
+    const batch = {id: 501, datum: '2026-03-01', ABV: 8.1, liter_vergist: 400}
+    const afv = [{id: 1, batch_id: 501, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33, hoeveelheid: 1000}]
+
+    // Zonder uitslag, zonder snapshot en zonder instellingen: accijns telt nul.
+    const kaal = berekenBatchKostprijs(batch, [], [], afv, [], [], [])
+    expect(kaal.accijns).toBe(0)
+    expect(kaal.accijns_bron).toBe('geen')
+
+    // Met de accijnsinstellingen erbij wordt hij alsnog geschat.
+    const geschat = berekenBatchKostprijs(batch, [], [], afv, [], [], [], {})
+    expect(geschat.accijns).toBeCloseTo(330 * 0.6083, 1)
+    expect(geschat.accijns_bron).toBe('geschat')
+    expect(geschat.totaal_kosten_excl_accijns).toBe(0)
+    expect(geschat.kostprijs_per_liter_excl_accijns).toBe(0)
+    expect(geschat.kostprijs_per_liter).toBeCloseTo(0.6083, 3)
+  })
+
+  it('berekenBatchKostprijs: geboekte accijns wint van de snapshot en van een schatting', () => {
+    const batch = {id: 502, datum: '2026-03-01', ABV: 8.1}
+    const afv = [{id: 1, batch_id: 502, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33,
+                  hoeveelheid: 1000, voorcalc_accijns_totaal: 150}]
+    const metSnapshot = berekenBatchKostprijs(batch, [], [], afv, [], [], [], {})
+    expect(metSnapshot.accijns).toBe(150)
+    expect(metSnapshot.accijns_bron).toBe('voorcalc')
+
+    const acc = [{batch_id: 502, verpakking_type: 'Fles 33cL', accijns: 175}]
+    const metUitslag = berekenBatchKostprijs(batch, [], [], afv, [], [], acc, {})
+    expect(metUitslag.accijns).toBe(175)
+    expect(metUitslag.accijns_bron).toBe('geboekt')
+  })
+
+  it('berekenBatchKostprijs: bij meerdere verpakkingen wint de zwakste bron', () => {
+    const batch = {id: 503, datum: '2026-03-01', ABV: 8.1}
+    const afv = [
+      {id: 1, batch_id: 503, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33, hoeveelheid: 900, voorcalc_accijns_totaal: 180},
+      {id: 2, batch_id: 503, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 5},
+    ]
+    const uit = berekenBatchKostprijs(batch, [], [], afv, [], [], [], {})
+    expect(uit.accijns_bron).toBe('geschat')
+    expect(uit.accijns).toBeCloseTo(180 + 100 * 0.6083, 1)
+  })
+
+  it('berekenBatchKostprijs: schat niets zonder ABV en zonder Plato', () => {
+    const batch = {id: 504, datum: '2026-03-01'}
+    const afv = [{id: 1, batch_id: 504, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33, hoeveelheid: 1000}]
+    const uit = berekenBatchKostprijs(batch, [], [], afv, [], [], [], {})
+    expect(uit.accijns).toBe(0)
+    expect(uit.accijns_bron).toBe('geen')
+  })
+
   it('berekenBatchKostprijs: kosten en liters van één batch', () => {
     const bk = berekenBatchKostprijs(batches[0], bi, lots, afvullingen, [], [], [])
     expect(bk.totaal_kosten).toBe(120)   // 100 utility + 10 × €2 ingrediënt

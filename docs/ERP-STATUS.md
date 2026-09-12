@@ -14,6 +14,9 @@
 
 **Laatst bijgewerkt:** 2026-07-16 · versie 1.11.9 · **ALLE FASEN (0 t/m 4) VOLLEDIG AFGEROND** — het ERP-verbeterplan is compleet uitgevoerd; dit document blijft als naslag en logboek
 
+> **Ronde 2 (vanaf 1.12.24):** nieuwe review + plan in `docs/ERP-VERBETERPLAN-2.md`,
+> voortgang in `docs/ERP-STATUS-2.md`. Nieuw werk hoort dáár, niet hier.
+
 ---
 
 ## Fase 0 — Stop het bloeden

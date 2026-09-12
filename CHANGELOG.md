@@ -4,6 +4,135 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.38] — 2026-09-12
+
+### ERP-review ronde 2 vastgelegd (alleen documentatie)
+
+Een nieuwe review van de hele app op logica, veiligheid en werkflow, als vervolg
+op het afgeronde ERP-verbeterplan (fasen 0–4). Bevindingen en een gefaseerd
+plan (fasen 5–8) staan in `docs/ERP-VERBETERPLAN-2.md`; de afvinklijst met
+werkwijze voor volgende sessies in `docs/ERP-STATUS-2.md`. De zwaarste punten:
+
+- Twee test-endpoints (`/api/mail/test`, `/api/woocommerce/test`) vullen de
+  `__SECRET__`-sentinel terug en verbinden met een host uit de request — het
+  SMTP-wachtwoord en WC-secret zijn zo te exfiltreren.
+- De client breekt een atomaire commit bij 409/422/403 op in losse POSTs, wat
+  halve transacties oplevert (uitslag zonder accijns, order zonder factuur).
+- "Oude batches" omzeilt CCP 1/2/3: vrije statuswissel en afvullen zonder
+  afvulsessie, waarna de batch permanent `legacy` is.
+- De accijns neemt het maximum van drie grondslagen; sinds 2024 geldt alleen
+  hl × %vol, en bier ≤ 0,5 %vol is vrijgesteld.
+- De jaarafsluiting bevriest de balans van vandaag onder vorig boekjaar; het
+  eigen vermogen is een sluitpost en gereed product staat niet op de balans.
+- Geen enkele GET heeft een rolcheck; herpicken dupliceert uitslag en accijns;
+  annuleren na picken draait niets terug.
+
+Er is in deze versie geen code gewijzigd. Wel is de CLAUDE.md-claim dat de
+Brewfather-sync elke 10 minuten draait gecorrigeerd: hij draait één keer per
+mount.
+
+---
+
+## [1.12.37] — 2026-09-12
+
+### Accijns voorberekend bij het recept
+
+De voorcalculatie telde ingrediënten, vaste kosten en verpakking — maar niet de
+accijns, terwijl die er voor een tripel van 8,1% ruim 40% bovenop doet. Zonder
+dat getal bepaal je je verkoopprijs op een halve kostprijs.
+
+```
+PER FLES 33CL
+€0,509
+bier €0,189 + verpakking €0,32
+€0,71 incl. accijns
+
+ACCIJNS  €215,09   €0,608 per liter · €0,201 per Fles 33cL
+8,1% vol × €7,51 per hl per volumeprocent. Alleen verschuldigd bij uitslag: over
+export en wat onder schorsing blijft betaal je geen accijns.
+```
+
+- `receptAccijns` leidt het bedrag af uit het doel-ABV van het recept en het
+  Plato-gehalte (uit het begin-SG), tegen het tarief van je eigen
+  accijnsinstellingen — inclusief tariefhistorie per jaar, de Plato-grondslag en
+  een eigen formule. De app kiest, net als de wet, de hoogste grondslag en zegt
+  erbij welke dat is.
+- **Accijns zit bewust niet in `totaal`**: het is geen productiekostenpost maar
+  een belasting die pas bij uitslag ontstaat — op export en onder schorsing
+  betaal je hem niet. De tabel toont daarom eerst de kostprijs, dan de accijns,
+  dan het totaal inclusief.
+- Gerekend over de liters ná verlies: wat in de tank achterblijft slaat je niet
+  uit, dus daar betaal je ook geen accijns over.
+- Zonder ABV én zonder Plato blijft de post weg: dan zou alleen het
+  minimumtarief overblijven, en dat is een ondergrens, geen voorspelling.
+
+Hiermee is de voorcalculatie eindelijk vergelijkbaar met de batchkostprijs, die
+accijns al meetelde.
+
+### Bij het product: kostprijs en accijns uit elkaar, en het gat gedicht
+
+De kostprijs/liter bij een product telde accijns al mee, maar zei dat nergens —
+en het recept houdt hem juist apart. Naast elkaar leggen ging dus mis. Twee
+ingrepen:
+
+- **De strip zegt nu wat je ziet**: `KOSTPRIJS/L · incl. accijns`. En de
+  batchtabel heeft een eigen kolom **Accijns/L**, met de opbouw
+  ("Productie €1,37 + accijns €0,61 per liter") in de tooltip van de
+  kostprijscel.
+- **Afvullingen van vóór v2.4 telden hun accijns als nul.** Die hebben geen
+  uitslag én geen bevroren voorcalculatie, waardoor hun kostprijs stil te laag
+  uitkwam — en de trendlijn een sprong maakte tussen oude en nieuwe batches.
+  `berekenBatchKostprijs` schat die nu alsnog uit ABV/Plato en het tarief van de
+  brouwdatum. In de tabel staat zo'n bedrag cursief met een `~` ervoor, en
+  onder de tabel waarom.
+
+`berekenBatchKostprijs` geeft daarvoor `accijns`, `totaal_kosten_excl_accijns`,
+`kostprijs_per_liter_excl_accijns` en `accijns_bron` terug (`geboekt` →
+`voorcalc` → `geschat` → `geen`; bij meerdere verpakkingstypen wint de zwakste).
+De schatting is **opt-in via een nieuw, optioneel `accijnsInst`-argument**:
+alleen de productpagina geeft dat mee. De W&V en de COGS draaien onveranderd op
+werkelijke cijfers — die mogen nooit op een schatting steunen.
+
+---
+
+## [1.12.36] — 2026-09-12
+
+### Eén picklijst voor alle open bestellingen
+
+Nieuwe knop **Picklijst afdrukken** bovenaan de bestellingenlijst (zichtbaar
+zodra er iets te picken is, met het aantal orders erbij). De lijst telt de nog
+niet gepickte bierregels van alle bestellingen "om te picken" op per bier en
+verpakking, zodat je één rondje door de koeling maakt:
+
+- **Pak uit:** batchsuggestie op kortste THT eerst (dezelfde matcher als de
+  pickmodal, geblokkeerde afvullingen overgeslagen, een afvulling nooit twee
+  keer uitgedeeld) — met een rode melding als de voorraad tekortschiet.
+- **Voor bestelling:** de verdeling per order, met markering *privé — niet uit
+  AGP* waar dat geldt.
+- **Per bestelling:** ordernummer, klant, afhalen (met afhaalmoment) of
+  verzenden, aantal regels/stuks en de opmerking van de klant — voor de
+  inpaktafel. Afvinkhokjes bij elke regel.
+
+Het registreren van de picks blijft per bestelling via de pickmodal; de lijst
+is het papier dat je meeneemt (`verzamelPicklijst` in `utils/picking.ts`, met
+tests).
+
+---
+
+## [1.12.35] — 2026-09-12
+
+### Pakbon printen vóór het picken
+
+De knop **Pakbon afdrukken** staat nu ook bij een nieuwe, bevestigde of
+half gepickte bestelling. Wat nog niet gepickt is, staat op de bestelde
+regel zelf (bier, verpakking, aantal) zonder batch en THT, cursief en met de
+aanduiding *nog te picken*; de kop draagt dan de markering **Concept — nog
+niet volledig gepickt**. Zo dient de pakbon ook als picklijst in de koeling.
+Na het picken print dezelfde knop de definitieve pakbon, zoals voorheen
+(`onGepickteRegels` in `utils/picking.ts`, met test).
+
+---
+
 ## [1.12.34] — 2026-09-12
 
 ### Knop "Bekijk je bestelling": via Mijn account, zonder te gokken naar de slug
