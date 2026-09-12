@@ -53,6 +53,10 @@ export interface LeveringVelden {
   wc_afhaal_adres?: string
   /** `JJJJ-MM-DD UU:MM`, `overleg`, of leeg = nog niet gekozen. */
   wc_afhaalmoment?: string
+  /** WooCommerce `payment_url` (`<afrekenpagina>/order-pay/<id>/?pay_for_order=true&key=…`):
+   *  verraadt de afrekenpagina van de winkel, waaruit `bestelLink` de
+   *  bedankpagina afleidt. */
+  wc_betaal_url?: string
 }
 
 const str = (x: unknown): string => String(x ?? '').trim()
@@ -72,6 +76,8 @@ export function wcLeveringVelden(order: any): LeveringVelden {
   const uit: LeveringVelden = {}
   const orderKey = str(order?.order_key)
   if (orderKey) uit.wc_order_key = orderKey
+  const betaalUrl = str(order?.payment_url)
+  if (/^https?:\/\//i.test(betaalUrl)) uit.wc_betaal_url = betaalUrl
 
   const afhaal = shipping.find(s => isAfhaalMethode(s?.method_id))
   if (afhaal) {
@@ -97,6 +103,7 @@ export function wcLeveringVelden(order: any): LeveringVelden {
 
 export const LEVERING_KEYS: (keyof LeveringVelden)[] = [
   'wc_levering', 'wc_verzendmethode', 'wc_order_key', 'wc_afhaal_locatie', 'wc_afhaal_adres', 'wc_afhaalmoment',
+  'wc_betaal_url',
 ]
 
 /**
@@ -130,30 +137,65 @@ export function afhaalLink(storeUrl: unknown, orderId: unknown, orderKey: unknow
 }
 
 /**
- * Standaard-URL van de bestelpagina van de klant: de WooCommerce-bedankpagina
- * ("order-received"), zonder inloggen te openen met de order_key. Wijkt de
- * winkel af (andere afreken-slug, ander endpoint), dan geeft
- * `woocommerce_creds.bestelUrl` een eigen sjabloon met `{winkel}`, `{id}`
- * en `{sleutel}`.
+ * Voorbeeld-sjabloon voor de bestelpagina van de klant: de WooCommerce-
+ * bedankpagina ("order-received"), zonder inloggen te openen met de
+ * order_key. De app gokt de afreken-slug niet (die verschilt per winkel:
+ * `/checkout/`, `/afrekenen/` …) maar leidt hem af uit de `payment_url` van
+ * de order; dit sjabloon is de placeholder voor wie zelf iets invult in
+ * `woocommerce_creds.bestelUrl` (`{winkel}`, `{id}`, `{sleutel}`).
  */
 export const BESTEL_URL_STANDAARD = '{winkel}/checkout/order-received/{id}/?key={sleutel}'
 
 /**
- * De link waarmee de klant zijn bestelling in de webshop bekijkt (knop in de
- * bestelbevestiging). Zonder winkel-URL, order-ID of order_key is er geen link.
+ * De afrekenpagina van de winkel uit de `payment_url` van een order:
+ * `https://shop.nl/afrekenen/order-pay/3235/?pay_for_order=true&key=…` →
+ * `https://shop.nl/afrekenen`. Bij platte permalinks
+ * (`https://shop.nl/?page_id=8&order-pay=3235&…`) → `https://shop.nl/?page_id=8`.
+ * Leeg als er geen order-pay in zit.
  */
-export function bestelLink(storeUrl: unknown, orderId: unknown, orderKey: unknown, sjabloon?: unknown): string {
+export function afrekenPaginaUitBetaalUrl(betaalUrl: unknown): string {
+  const u = str(betaalUrl)
+  if (!/^https?:\/\//i.test(u)) return ''
+  const mooi = /^(.*?)\/order-pay\/\d+\/?(?:[?#].*)?$/i.exec(u)
+  if (mooi) return mooi[1]
+  try {
+    const url = new URL(u)
+    if (!url.searchParams.has('order-pay')) return ''
+    const pageId = url.searchParams.get('page_id')
+    return `${url.origin}${url.pathname}${pageId ? `?page_id=${encodeURIComponent(pageId)}` : ''}`
+  } catch { return '' }
+}
+
+/**
+ * De link waarmee de klant zijn bestelling in de webshop bekijkt (knop in de
+ * bestelbevestiging). Volgorde:
+ *  1. het eigen sjabloon uit de instellingen (`opts.sjabloon`), als dat er is
+ *  2. afgeleid uit de `payment_url` van de order (`opts.betaalUrl`): dezelfde
+ *     afrekenpagina, endpoint `order-received` i.p.v. `order-pay`
+ *  3. anders géén link — een gegokte URL leidt tot een 404 in de klantmail
+ * Zonder winkel-URL, order-ID of order_key is er nooit een link.
+ */
+export function bestelLink(
+  storeUrl: unknown, orderId: unknown, orderKey: unknown,
+  opts: {sjabloon?: unknown, betaalUrl?: unknown} = {},
+): string {
   const basis = normWinkelUrl(storeUrl)
   const id = str(orderId)
   const key = str(orderKey)
   if (!basis || !id || !key) return ''
-  const tpl = str(sjabloon) || BESTEL_URL_STANDAARD
-  const url = tpl
-    .split('{winkel}').join(basis)
-    .split('{id}').join(encodeURIComponent(id))
-    .split('{sleutel}').join(encodeURIComponent(key))
-  // Een sjabloon zonder {winkel} en zonder protocol is een pad in de winkel.
-  return /^https?:\/\//i.test(url) ? url : `${basis}/${url.replace(/^\/+/, '')}`
+  const idEnc = encodeURIComponent(id)
+  const keyEnc = encodeURIComponent(key)
+  const tpl = str(opts.sjabloon)
+  if (tpl) {
+    const url = tpl.split('{winkel}').join(basis).split('{id}').join(idEnc).split('{sleutel}').join(keyEnc)
+    // Een sjabloon zonder {winkel} en zonder protocol is een pad in de winkel.
+    return /^https?:\/\//i.test(url) ? url : `${basis}/${url.replace(/^\/+/, '')}`
+  }
+  const afreken = afrekenPaginaUitBetaalUrl(opts.betaalUrl)
+  if (!afreken) return ''
+  return afreken.includes('?')
+    ? `${afreken}&order-received=${idEnc}&key=${keyEnc}`
+    : `${afreken}/order-received/${idEnc}/?key=${keyEnc}`
 }
 
 const LOCALES: Record<string, string> = {nl: 'nl-NL', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', es: 'es-ES'}

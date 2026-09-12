@@ -3581,7 +3581,7 @@
   "settings_wc_import_interval": "Récupération automatique (minutes)",
   "settings_wc_import_interval_hint": "0 = désactivé. Tant que BrewAdmin est ouvert, l'application importe elle-même toutes les X minutes. Le serveur vérifie au même rythme s'il y a de nouvelles commandes et envoie une notification HA (Réglages → Notifications), même si l'application est fermée.",
   "settings_wc_bestel_url": "Page de commande du client",
-  "settings_wc_bestel_url_hint": "Le bouton « Voir votre commande » dans la confirmation de commande. Vide = la page de remerciement WooCommerce (accessible sans connexion grâce à la clé de commande). Si votre boutique diffère, indiquez votre propre adresse avec {winkel}, {id} et {sleutel}.",
+  "settings_wc_bestel_url_hint": "Le bouton « Voir votre commande » dans la confirmation de commande. Vide = l'application déduit la page de remerciement WooCommerce du lien de paiement de la commande, pour que le slug de paiement de votre boutique soit correct (accessible sans connexion grâce à la clé de commande). Pour une autre page, indiquez votre propre adresse avec {winkel}, {id} et {sleutel}.",
   "settings_wc_laatste_auto_import": "Dernier import automatique",
   "settings_wc_laatste_servercontrole": "Dernière vérification serveur",
   "settings_wc_servercontrole_fout": "Dernière erreur",

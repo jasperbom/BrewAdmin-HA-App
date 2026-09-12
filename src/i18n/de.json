@@ -3581,7 +3581,7 @@
   "settings_wc_import_interval": "Automatisch abrufen (Minuten)",
   "settings_wc_import_interval_hint": "0 = aus. Solange BrewAdmin geöffnet ist, importiert die App alle so viel Minuten selbst. Der Server prüft im selben Rhythmus auf neue Shop-Bestellungen und sendet eine HA-Benachrichtigung (Einstellungen → Benachrichtigungen), auch wenn die App geschlossen ist.",
   "settings_wc_bestel_url": "Bestellseite des Kunden",
-  "settings_wc_bestel_url_hint": "Der Button „Bestellung ansehen“ in der Bestellbestätigung. Leer = die WooCommerce-Dankeseite (ohne Anmeldung, über den Bestellschlüssel). Weicht Ihr Shop ab, tragen Sie eine eigene Adresse mit {winkel}, {id} und {sleutel} ein.",
+  "settings_wc_bestel_url_hint": "Der Button „Bestellung ansehen“ in der Bestellbestätigung. Leer = die App leitet die WooCommerce-Dankeseite aus dem Zahlungslink der Bestellung ab, sodass der Checkout-Slug Ihres Shops stimmt (ohne Anmeldung, über den Bestellschlüssel). Für eine andere Seite tragen Sie eine eigene Adresse mit {winkel}, {id} und {sleutel} ein.",
   "settings_wc_laatste_auto_import": "Letzter automatischer Import",
   "settings_wc_laatste_servercontrole": "Letzte Serverprüfung",
   "settings_wc_servercontrole_fout": "Letzter Fehler",

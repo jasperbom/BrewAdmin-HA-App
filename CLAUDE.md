@@ -96,8 +96,9 @@ BrewAdmin-HA-App/
 │   │   │                   # bij elke import ververst; mailvariabelen `{levering}` (bestelbevestiging),
 │   │   │                   # `{trackregel}` (verzendbevestiging bij "Markeer verzonden") en
 │   │   │                   # `{afhaalregel}` (afspraak-gemist-mail: moment voorbij, order nog open);
-│   │   │                   # `bestelLink` = knop "Bekijk je bestelling" (WooCommerce-bedankpagina,
-│   │   │                   # of het sjabloon `woocommerce_creds.bestelUrl`)
+│   │   │                   # `bestelLink` = knop "Bekijk je bestelling": de WooCommerce-bedankpagina,
+│   │   │                   # afgeleid uit de `payment_url` van de order (afreken-slug van de winkel),
+│   │   │                   # of het sjabloon `woocommerce_creds.bestelUrl`; anders géén knop (geen gok)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval
@@ -578,7 +579,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
-| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = WooCommerce-bedankpagina — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
+| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de WooCommerce-bedankpagina afgeleid uit de `payment_url` van de order — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
 | `mollie_creds` *(secure)* | object | Mollie API-key + `enabled` + `redirectUrl` voor de online betaallink op verkoopfacturen (nooit in backup); server-side proxy voegt de key toe |
@@ -748,8 +749,10 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   (template `afhaal_gemist`): dezelfde afhaalpagina-link om een nieuw moment
   te kiezen; het nieuwe moment komt bij de volgende import mee. De
   bestelbevestiging van een webshoporder krijgt een knop *Bekijk je
-  bestelling* (`bestelLink`: de bedankpagina `checkout/order-received/<id>/?key=<order_key>`,
-  of het sjabloon uit `woocommerce_creds.bestelUrl`); `MailModal` rendert zo'n
+  bestelling* (`bestelLink`: de bedankpagina `<afrekenpagina>/order-received/<id>/?key=<order_key>`,
+  waarbij de afrekenpagina uit de `payment_url` van de order komt
+  (`wc_betaal_url`, bij elke import ververst) — nooit gegokt: zonder
+  betaallink en zonder sjabloon `woocommerce_creds.bestelUrl` geen knop); `MailModal` rendert zo'n
   `linkButton` als knop in de HTML en als regel + kale link in de platte tekst
 - **Periodiek ophalen** (`woocommerce_creds.importInterval`, minuten, default 15,
   0 = uit): App.tsx importeert elke N minuten zelf (`autoImportWc`, dezelfde

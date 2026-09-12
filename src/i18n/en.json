@@ -3581,7 +3581,7 @@
   "settings_wc_import_interval": "Fetch automatically (minutes)",
   "settings_wc_import_interval_hint": "0 = off. While BrewAdmin is open, the app imports on its own every so many minutes. The server checks for new shop orders at the same rhythm and sends an HA notification (Settings → Notifications), even when the app is closed.",
   "settings_wc_bestel_url": "Customer's order page",
-  "settings_wc_bestel_url_hint": "The \"View your order\" button in the order confirmation. Empty = the WooCommerce thank-you page (opens without logging in, using the order key). If your shop differs, enter your own address with {winkel}, {id} and {sleutel}.",
+  "settings_wc_bestel_url_hint": "The \"View your order\" button in the order confirmation. Empty = the app derives the WooCommerce thank-you page from the order's payment link, so your shop's checkout slug is correct (opens without logging in, using the order key). For a different page, enter your own address with {winkel}, {id} and {sleutel}.",
   "settings_wc_laatste_auto_import": "Last automatic import",
   "settings_wc_laatste_servercontrole": "Last server check",
   "settings_wc_servercontrole_fout": "Last error",
