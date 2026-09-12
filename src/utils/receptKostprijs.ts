@@ -21,6 +21,7 @@
 // Puur rekenwerk: geen React, geen opslag.
 
 import { convertEenheid } from './constants'
+import { accijnsCalc, tariefVoorDatum, sgToPlato } from './calculations'
 
 const getal = (x: any): number | null => {
   if (x === null || x === undefined || String(x).trim() === '') return null
@@ -247,7 +248,15 @@ export interface ReceptKostprijs {
    * Rekent over `litersNaVerlies`: wat in de tank achterblijft verpak je niet.
    */
   verpakkingKosten: number
+  /** Ingrediënten + vaste kosten + verpakking. Zonder accijns. */
   totaal: number
+  /**
+   * Accijns over de verkoopbare liters. Bewust géén onderdeel van `totaal`:
+   * het is geen productiekostenpost maar een belasting die pas bij uitslag
+   * ontstaat — op export of eigen gebruik betaal je hem niet.
+   */
+  accijns: number
+  totaalMetAccijns: number
   /** Batchgrootte volgens het recept, in liters. */
   liters: number
   verliesPct: number
@@ -256,6 +265,7 @@ export interface ReceptKostprijs {
   /** Kostprijs per liter uit de gistkuip, en per liter die je écht verkoopt. */
   perLiterBrouwzaal: number | null
   perLiterVerkoopbaar: number | null
+  perLiterVerkoopbaarMetAccijns: number | null
 }
 
 export interface ReceptKostprijsInvoer {
@@ -271,6 +281,8 @@ export interface ReceptKostprijsInvoer {
    * Wordt toegepast op de liters die na verlies overblijven.
    */
   verpakkingPerLiter?: number
+  /** Accijns per liter (uit `receptAccijns`), over de verkoopbare liters. */
+  accijnsPerLiter?: number
   /** Batchgrootte overschrijven (bijv. om een grotere brouw door te rekenen). */
   liters?: number
 }
@@ -350,6 +362,8 @@ export function receptKostprijs(invoer: ReceptKostprijsInvoer): ReceptKostprijs 
   // Alleen wat je daadwerkelijk afvult kost verpakking.
   const verpakkingKosten = rond(Math.max(0, invoer.verpakkingPerLiter ?? 0) * litersNaVerlies, 2)
   const totaal = rond(ingredientKosten + overigeKosten + verpakkingKosten, 2)
+  const accijns = rond(Math.max(0, invoer.accijnsPerLiter ?? 0) * litersNaVerlies, 2)
+  const totaalMetAccijns = rond(totaal + accijns, 2)
 
   return {
     regels,
@@ -359,11 +373,14 @@ export function receptKostprijs(invoer: ReceptKostprijsInvoer): ReceptKostprijs 
     overigeKosten,
     verpakkingKosten,
     totaal,
+    accijns,
+    totaalMetAccijns,
     liters: rond(liters, 1),
     verliesPct: rond(verliesPct, 1),
     litersNaVerlies,
     perLiterBrouwzaal: liters > 0 ? rond(totaal / liters, 3) : null,
     perLiterVerkoopbaar: litersNaVerlies > 0 ? rond(totaal / litersNaVerlies, 3) : null,
+    perLiterVerkoopbaarMetAccijns: litersNaVerlies > 0 ? rond(totaalMetAccijns / litersNaVerlies, 3) : null,
   }
 }
 
@@ -380,7 +397,11 @@ export interface EenheidKostprijs {
   bier: number
   /** De verpakking zelf: fles + kroonkurk + etiket, of het fust. */
   verpakking: number
+  /** Bier + verpakking, zonder accijns. */
   totaal: number
+  /** Accijns over deze inhoud. */
+  accijns: number
+  totaalMetAccijns: number
 }
 
 /** Eén verpakking om mee te rekenen. `VerpakkingMixRegel` past hier zo in. */
@@ -415,18 +436,84 @@ export function kostprijsPerEenheid(
   if (liters <= 0) return []
   const bierPerLiter = (kostprijs.ingredientKosten + kostprijs.overigeKosten) / liters
 
+  const accijnsPerLiter = kostprijs.litersNaVerlies > 0 ? kostprijs.accijns / kostprijs.litersNaVerlies : 0
+
   const regels = (eenheden || []).filter(r => r && r.inhoud > 0)
   if (!regels.length) {
     const bier = rond(bierPerLiter * standaardInhoud, 3)
-    return [{naam: '', inhoud: standaardInhoud, aandeel: 0, bier, verpakking: 0, totaal: bier}]
+    const accijns = rond(accijnsPerLiter * standaardInhoud, 3)
+    return [{naam: '', inhoud: standaardInhoud, aandeel: 0, bier, verpakking: 0,
+             totaal: bier, accijns, totaalMetAccijns: rond(bier + accijns, 3)}]
   }
 
   return regels.map(r => {
     const bier = rond(bierPerLiter * r.inhoud, 3)
     const verpakking = rond(r.kostenPerStuk, 3)
+    const accijns = rond(accijnsPerLiter * r.inhoud, 3)
+    const totaal = rond(bier + verpakking, 3)
     return {
       naam: r.naam, inhoud: r.inhoud, aandeel: r.aandeel ?? 0,
-      bier, verpakking, totaal: rond(bier + verpakking, 3),
+      bier, verpakking, totaal, accijns, totaalMetAccijns: rond(totaal + accijns, 3),
     }
   })
+}
+
+// ── Accijns ─────────────────────────────────────────────────────────────────
+
+export interface ReceptAccijns {
+  /** Accijns per liter, tegen het geldende tarief. */
+  perLiter: number
+  /** Waar de berekening op steunt. */
+  abv: number
+  plato: number
+  r1: number
+  r2: number
+  /**
+   * Welke grondslag de hoogste uitkomst gaf — de wet rekent met de hoogste:
+   * `abv` = per volumeprocent, `plato` = per graad Plato, `minimum` = het
+   * vaste minimumtarief, `formule` = je eigen formule, `geen` = te weinig
+   * gegevens (geen ABV en geen Plato).
+   */
+  grondslag: 'abv' | 'plato' | 'minimum' | 'formule' | 'geen'
+}
+
+/**
+ * De accijns per liter volgens dit recept.
+ *
+ * Het alcoholpercentage komt uit het recept (het doel-ABV), het Plato-gehalte
+ * uit het begin-SG. Zonder allebei valt er niets te rekenen: dan zou alleen het
+ * minimumtarief overblijven en dat is geen voorspelling maar een ondergrens.
+ *
+ * Let op: accijns is geen productiekostenpost. De schuld ontstaat pas bij
+ * uitslag uit het AGP; op export en op wat je onder schorsing verplaatst betaal
+ * je hem niet. Daarom telt de voorcalculatie hem apart — zie
+ * `ReceptKostprijs.accijns` naast `totaal`.
+ */
+export function receptAccijns(
+  recept: any,
+  accijnsInst?: any | null,
+  datum?: string,
+): ReceptAccijns {
+  const tar = tariefVoorDatum(accijnsInst, datum)
+  const abv = getal(recept?.ABV) ?? 0
+  const og = getal(recept?.OG) ?? 0
+  const plato = getal(recept?.platogehalte) ?? (og > 1 ? rond(sgToPlato(og), 1) : 0)
+  const leeg: ReceptAccijns = {perLiter: 0, abv, plato, r1: tar.r1, r2: tar.r2, grondslag: 'geen'}
+  if (abv <= 0 && plato <= 0) return leeg
+
+  const eff = {...(accijnsInst || {}), tarief_per_hl_plato: tar.r3}
+  const perLiter = accijnsCalc(1, abv, tar.r1, tar.r2, eff, plato)
+  if (!(perLiter > 0)) return leeg
+
+  // Welke grondslag won? Zelfde termen als in `accijnsCalc`.
+  const hl = 0.01
+  const abvBased = hl * abv * tar.r1
+  const platoBased = tar.r3 && plato ? hl * plato * tar.r3 : 0
+  const grondslag: ReceptAccijns['grondslag'] =
+    accijnsInst?.customFormulaEnabled && accijnsInst?.customFormula ? 'formule'
+      : platoBased >= abvBased && platoBased >= hl * tar.r2 ? 'plato'
+      : abvBased >= hl * tar.r2 ? 'abv'
+      : 'minimum'
+
+  return {perLiter: rond(perLiter, 4), abv, plato, r1: tar.r1, r2: tar.r2, grondslag}
 }
