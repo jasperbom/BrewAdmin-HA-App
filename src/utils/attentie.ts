@@ -7,11 +7,12 @@
 // springen. De tellingen zelf blijven waar ze horen (taken.ts, calculations.ts,
 // picking.ts, btw.ts) — hier worden ze alleen gelabeld en gebundeld.
 
-import { telThtAlerts } from './calculations'
+import { telThtAlerts, telOpenAccijnsMaanden } from './calculations'
 import { telNieuweWebshopOrders } from './wcOrderImport'
 import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
 import { telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
+import { vervallenVerkoopFacturen, achterstalligeInkoopFacturen } from './facturen'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -53,9 +54,20 @@ export interface AttentieBron {
   btwPeriode: BtwPeriodeType
   btwAangiftes: any[]
   bankKoppelingen: Record<string, any>
-  facturen: any[]
-  /** Vandaag als Date (batchtaken/THT/schoonmaak) — de BTW-telling krijgt de
-      'YYYY-MM-DD'-variant hieronder, zelfde formaat als de periodegrenzen. */
+  /** Verkoop- en inkoopfacturen apart: de BTW-telling neemt ze samen (alleen
+      de datum telt), de vervallen-/achterstallig-tellingen elk hun eigen lijst. */
+  verkoopFacturen: any[]
+  inkoopFacturen: any[]
+  /** Accijnsaangiftes per maand + de accijnsrecords (uitslagen) — samen bepalen
+      ze welke afgelopen maanden nog aangegeven moeten worden. */
+  accijnsAangiftes?: any[]
+  accijns?: any[]
+  /** Klantkaarten + brouwerijgegevens: de betalingstermijn voor de vervaldatum. */
+  klanten?: any[]
+  breweryDetails?: any
+  /** Vandaag als Date (batchtaken/THT/schoonmaak/accijns) — de BTW- en
+      factuurtellingen krijgen de 'YYYY-MM-DD'-variant hieronder, zelfde
+      formaat als de periodegrenzen en de factuurdatums. */
   vandaag: Date
   vandaagIso: string
 }
@@ -103,14 +115,36 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         aantal: telNieuweWebshopOrders(bron.wcImportStatus, bron.bestellingen),
       },
     ]),
+    // Administratie: eerst wat geld kost als je het laat liggen (vervallen
+    // facturen), dan de aangiftes, dan de eigen betalingen. Elke post landt
+    // op het tabblad van Boekhouding waar hij afgehandeld wordt. Het
+    // Administratie-dashboard toont dezelfde lijst — één bron, één getal.
     administratie: nietLeeg([
+      {
+        // Boekhouding → Verkoop: de rode "Vervallen facturen"-lijst bovenaan.
+        id: 'verkoop_vervallen', sleutel: 'attentie_verkoop_vervallen', pagina: 'boekhouding', tab: 'verkoop',
+        aantal: vervallenVerkoopFacturen(bron.verkoopFacturen, bron.klanten || [], bron.breweryDetails, bron.vandaagIso).length,
+      },
       {
         // Boekhouding → tabblad BTW-aangifte.
         id: 'btw', sleutel: 'attentie_btw', pagina: 'boekhouding', tab: 'btw_aangifte',
         aantal: telOpenstaandeBtwPerioden(
           [bron.vandaag.getFullYear() - 1, bron.vandaag.getFullYear()],
-          bron.btwPeriode, bron.btwAangiftes, bron.bankKoppelingen, bron.facturen, bron.vandaagIso,
+          bron.btwPeriode, bron.btwAangiftes, bron.bankKoppelingen,
+          [...(bron.verkoopFacturen || []), ...(bron.inkoopFacturen || [])], bron.vandaagIso,
         ),
+      },
+      {
+        // Boekhouding → tabblad Accijns: afgelopen maanden met uitslagen
+        // waarvan de aangifte nog niet ingediend of betaald is.
+        id: 'accijns', sleutel: 'attentie_accijns', pagina: 'boekhouding', tab: 'accijns',
+        aantal: telOpenAccijnsMaanden(bron.accijnsAangiftes || [], bron.accijns || [], bron.vandaag),
+      },
+      {
+        // Boekhouding → Inkoop: onbetaald en ouder dan de vuistregel-termijn
+        // (INKOOP_ACHTERSTALLIG_DAGEN in utils/facturen.ts).
+        id: 'inkoop_achterstallig', sleutel: 'attentie_inkoop_achterstallig', pagina: 'boekhouding', tab: 'inkoop',
+        aantal: achterstalligeInkoopFacturen(bron.inkoopFacturen, bron.vandaagIso).length,
       },
     ]),
   }

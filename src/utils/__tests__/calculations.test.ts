@@ -3,6 +3,7 @@ import {
   accijnsCalc, tariefVoorDatum, accijnsMaandGesloten, berekenWinstVerlies,
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
   berekenProductKostprijs, berekenCogs, telThtAlerts, thtAlertLots, laatsteOpenAccijnsMaand,
+  openAccijnsMaanden, telOpenAccijnsMaanden,
   productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
   registreerTankReiniging, laatsteTankReiniging,
   berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht, berekenAccijnsImpact,
@@ -471,9 +472,39 @@ describe('laatsteOpenAccijnsMaand', () => {
     expect(laatsteOpenAccijnsMaand([], [], vandaag)).toBeNull()
   })
 
-  it('kijkt alleen naar de vorige kalendermaand, niet naar oudere openstaande maanden', () => {
-    const acc = [{ datum: '2026-01-15' }] // januari, niet de vorige maand (juni)
-    expect(laatsteOpenAccijnsMaand([], acc, vandaag)).toBeNull()
+  it('geeft de meest recente openstaande maand, ook als dat niet de vorige kalendermaand is', () => {
+    const acc = [{ datum: '2026-01-15' }, { datum: '2026-03-02' }]
+    expect(laatsteOpenAccijnsMaand([], acc, vandaag)).toEqual({ maand: '2026-03' })
+  })
+
+  it('negeert de lopende maand: die kan nog niet aangegeven worden', () => {
+    expect(laatsteOpenAccijnsMaand([], [{ datum: '2026-07-01' }], vandaag)).toBeNull()
+  })
+})
+
+describe('openAccijnsMaanden / telOpenAccijnsMaanden', () => {
+  const vandaag = new Date('2026-07-20T12:00:00Z')
+
+  it('geeft elke afgelopen maand met uitslagen en zonder ingediende/betaalde aangifte, nieuwste eerst', () => {
+    const acc = [
+      { datum: '2026-02-03' }, { datum: '2026-02-20' },
+      { datum: '2026-04-10' },
+      { created_at: '2026-06-01T10:00:00' }, // oudere records zonder datumveld
+      { datum: '2026-07-05' },               // lopende maand
+    ]
+    const aangiftes = [{ maand: '2026-04', status: 'betaald' }, { maand: '2026-02', status: 'berekend' }]
+    expect(openAccijnsMaanden(aangiftes, acc, vandaag)).toEqual(['2026-06', '2026-02'])
+    expect(telOpenAccijnsMaanden(aangiftes, acc, vandaag)).toBe(2)
+  })
+
+  it('kijkt niet verder terug dan het vorige kalenderjaar', () => {
+    const acc = [{ datum: '2024-12-15' }, { datum: '2025-01-15' }]
+    expect(openAccijnsMaanden([], acc, vandaag)).toEqual(['2025-01'])
+  })
+
+  it('is leeg zonder uitslagen of met rommelige datums', () => {
+    expect(openAccijnsMaanden([], [], vandaag)).toEqual([])
+    expect(openAccijnsMaanden([], [{ datum: '' }, { datum: 'gisteren' }, {}], vandaag)).toEqual([])
   })
 })
 

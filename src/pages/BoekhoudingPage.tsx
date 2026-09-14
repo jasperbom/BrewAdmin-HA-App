@@ -4,6 +4,7 @@ import { tod, ymd, r2, r3, fmtD } from '../utils/format'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
 import { nextKlantnummer, resolveKlantSnapshot, findLiveKlant } from '../utils/klant'
+import { vervallenVerkoopFacturen, dagenTeLaat as dagenTeLaatUtil } from '../utils/facturen'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../utils/constants'
 import { berekenWinstVerlies, ouderdomsAnalyse, berekenCogs } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
@@ -906,31 +907,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     else markeerAanmaning(f.id)
   };
 
-  // Alle onbetaalde facturen die de vervaldatum gepasseerd zijn (onafhankelijk van datumfilter)
-  const verkoopVervallen = React.useMemo(() => {
-    const nu = new Date(); nu.setHours(0,0,0,0)
-    return (verkoopFacturen||[])
-      .filter((f: any) => {
-        if (f.status === 'betaald' || f.status === 'credit') return false
-        if (!f.datum) return false
-        const klant = (klanten||[]).find((k:any) => k.id === f.klant_id)
-        const termijn = klant?.betalingstermijn ?? (breweryDetails as any)?.betalingstermijn ?? 14
-        const verval = new Date(f.datum)
-        verval.setDate(verval.getDate() + Number(termijn))
-        return verval < nu
-      })
-      .sort((a: any, b: any) => a.datum.localeCompare(b.datum))
-  }, [verkoopFacturen, klanten, breweryDetails]);
+  // Alle onbetaalde facturen die de vervaldatum gepasseerd zijn (onafhankelijk
+  // van datumfilter). Dezelfde selectie als de attentie-badge van de werkruimte
+  // Administratie en het Administratie-dashboard (utils/facturen.ts), zodat de
+  // rode lijst hier en het getal in de header nooit uiteenlopen.
+  const verkoopVervallen = React.useMemo(
+    () => vervallenVerkoopFacturen(verkoopFacturen, klanten, breweryDetails, ymd(now)),
+    [verkoopFacturen, klanten, breweryDetails]);
 
   // Helper: dagen te laat
-  const dagenTeLaat = (f: any) => {
-    const klant = (klanten||[]).find((k:any) => k.id === f.klant_id)
-    const termijn = klant?.betalingstermijn ?? (breweryDetails as any)?.betalingstermijn ?? 14
-    const verval = new Date(f.datum)
-    verval.setDate(verval.getDate() + Number(termijn))
-    const nu = new Date(); nu.setHours(0,0,0,0)
-    return Math.ceil((nu.getTime() - verval.getTime()) / 86400000)
-  };
+  const dagenTeLaat = (f: any) => dagenTeLaatUtil(f, klanten, breweryDetails, ymd(now));
 
   // Status badge helper voor verkoopfacturen
   const statusBadge = (f: any) => {

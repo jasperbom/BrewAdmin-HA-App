@@ -233,24 +233,47 @@ export const accijnsMaandGesloten = (datum: string, accijnsAangiftes: any[]): bo
   return !!a && (a.status === 'ingediend' || a.status === 'betaald')
 }
 
-// ── Werkruimte-dashboard (Administratie) ────────────────────────────────────
-// Laatste afgelopen accijnsmaand (kalendermaand vóór vandaag) waarvan de
-// aangifte nog niet is ingediend — alleen als er ook daadwerkelijk
-// accijnsboekingen in die maand staan (anders is er niets aan te geven).
+// ── Werkruimte-badge en -dashboard (Administratie) ──────────────────────────
+// Afgelopen accijnsmaanden ('YYYY-MM', nieuwste eerst) waarvan de aangifte
+// nog niet is ingediend of betaald, en waarin daadwerkelijk accijns is geboekt
+// (anders valt er niets aan te geven). De maand moet voorbij zijn — de lopende
+// maand kan nog niet aangegeven worden. Zelfde venster als de BTW-telling
+// (telOpenstaandeBtwPerioden): het huidige en het vorige kalenderjaar, zodat
+// een maand die over de jaarwisseling nog openstaat niet gemist wordt en
+// accijns van vóór de administratie in de app niet eindeloos blijft tellen.
 // Hergebruikt accijnsMaandGesloten voor de ingediend/betaald-check.
 export interface OpenAccijnsMaand { maand: string }
 
+export const openAccijnsMaanden = (
+  accijnsAangiftes: any[],
+  acc: any[],
+  vandaag: Date = new Date(),
+): string[] => {
+  const huidigeMaand = `${vandaag.getFullYear()}-${String(vandaag.getMonth() + 1).padStart(2, '0')}`
+  const ondergrens = `${vandaag.getFullYear() - 1}-01`
+  const maanden = new Set<string>()
+  for (const a of (acc || [])) {
+    const maand = String(a?.datum || a?.created_at || '').slice(0, 7)
+    if (!/^\d{4}-\d{2}$/.test(maand)) continue
+    if (maand >= huidigeMaand || maand < ondergrens) continue
+    if (accijnsMaandGesloten(`${maand}-01`, accijnsAangiftes)) continue
+    maanden.add(maand)
+  }
+  return [...maanden].sort((a, b) => b.localeCompare(a))
+}
+
+export const telOpenAccijnsMaanden = (accijnsAangiftes: any[], acc: any[], vandaag: Date = new Date()): number =>
+  openAccijnsMaanden(accijnsAangiftes, acc, vandaag).length
+
+// Meest recente openstaande accijnsmaand (of null): voor een dashboard-widget
+// die één concrete actie toont i.p.v. alleen een telling.
 export const laatsteOpenAccijnsMaand = (
   accijnsAangiftes: any[],
   acc: any[],
   vandaag: Date = new Date(),
 ): OpenAccijnsMaand | null => {
-  const vorigeMaand = new Date(vandaag.getFullYear(), vandaag.getMonth() - 1, 1)
-  const maand = `${vorigeMaand.getFullYear()}-${String(vorigeMaand.getMonth() + 1).padStart(2, '0')}`
-  if (accijnsMaandGesloten(`${maand}-01`, accijnsAangiftes)) return null
-  const heeftAccijnsInPeriode = (acc || []).some((a: any) => String(a?.datum || a?.created_at || '').slice(0, 7) === maand)
-  if (!heeftAccijnsInPeriode) return null
-  return { maand }
+  const [maand] = openAccijnsMaanden(accijnsAangiftes, acc, vandaag)
+  return maand ? { maand } : null
 }
 
 // Impact-rapport voor een tariefwijziging in een specifiek jaar.
