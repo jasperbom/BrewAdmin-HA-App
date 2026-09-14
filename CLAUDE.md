@@ -107,6 +107,16 @@ BrewAdmin-HA-App/
 │   │   │                   # pagina-ID's/slugs uit `settings/advanced` (`leesWcPaginas`). `bestelLink` =
 │   │   │                   # knop "Bekijk je bestelling": sjabloon `woocommerce_creds.bestelUrl`, anders
 │   │   │                   # `wc_bestel_url`; anders géén knop (geen gok)
+│   │   ├── attentie.ts     # Attentieposten per werkruimte (badge op de werkruimte-knop + de
+│   │   │                   # "Vraagt om aandacht"-lijst op de dashboards): per post een id,
+│   │   │                   # i18n-sleutel, aantal en navigatiedoel (pagina + tab/filter). De
+│   │   │                   # tellingen zelf leven in taken/calculations/picking/btw/facturen —
+│   │   │                   # een nieuw aandachtspunt = een post hier, nooit een los sommetje in
+│   │   │                   # App.tsx of een dashboard
+│   │   ├── facturen.ts     # Vervallen verkoopfacturen (factuurdatum + betalingstermijn klant →
+│   │   │                   # brouwerij → 14 dagen, dagen te laat) en achterstallige
+│   │   │                   # inkoopfacturen (onbetaald > `INKOOP_ACHTERSTALLIG_DAGEN`); gedeeld
+│   │   │                   # door de badge, het Administratie-dashboard en de boekhoudpagina
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval

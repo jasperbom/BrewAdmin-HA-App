@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.39] — 2026-09-14
+
+### Administratie: badge telt alles wat achterstallig is, dashboard toont het
+
+Het getal op de werkruimte-knop Administratie telde alleen openstaande
+BTW-periodes. Het telt nu ook:
+
+- **Vervallen verkoopfacturen** — open én voorbij de betalingstermijn van de
+  klantkaart (anders die van de brouwerij, anders 14 dagen). Klik → Boekhouding
+  → Verkoop, de rode lijst bovenaan.
+- **Openstaande accijnsaangiftes** — elke afgelopen maand met uitslagen waarvan
+  de aangifte nog niet is ingediend of betaald, niet meer alleen de vorige
+  kalendermaand (zelfde venster als de BTW: huidig + vorig jaar). Klik →
+  Boekhouding → Accijns.
+- **Achterstallige inkoopfacturen** — onbetaald en ouder dan 30 dagen (vaste
+  vuistregel; inkoopfacturen kennen in de app geen betalingstermijn). Klik →
+  Boekhouding → Inkoop.
+
+Het Administratie-dashboard opent nu met dezelfde lijst als de badge
+("Vraagt om aandacht", of "Niets vraagt om aandacht"), met daaronder per punt
+een kaart: de vervallen verkoopfacturen met dagen te laat en bedrag, de
+BTW-periode, de accijnsmaand (met het aantal open maanden) en de openstaande
+inkoopfacturen met per factuur het aantal dagen open (rood bij achterstallig).
+Badge, dashboard en de rode "Vervallen facturen"-lijst op Boekhouding rekenen
+allemaal met dezelfde functies in `utils/facturen.ts`, dus ze kunnen niet meer
+uiteenlopen.
+
+---
+
 ## [1.12.38] — 2026-09-12
 
 ### ERP-review ronde 2 vastgelegd (alleen documentatie)
