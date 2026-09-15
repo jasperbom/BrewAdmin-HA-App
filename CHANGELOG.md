@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.40] — 2026-09-15
+
+### Batch-flow: een foute meting kun je weer verwijderen
+
+Bij Vergisten en Conditioneren stond het metingenlog onder de grafiek
+standaard dichtgeklapt, en de verwijderknop erin was een lichtgrijs kruisje
+dat pas bij hoveren rood werd — op een telefoon dus onvindbaar. Een verkeerd
+ingevoerde SG-, pH- of temperatuurmeting leek daardoor niet meer weg te
+kunnen.
+
+- Het metingenlog staat in de batch-flow nu standaard open en klapt na het
+  toevoegen van een meting altijd open, zodat je de nieuwe regel meteen ziet.
+- Elke handmatige meting heeft een duidelijke rode verwijderknop (dezelfde
+  als bij het koellog en de wateradditie), ook op de Batches-pagina.
+- De FG-regel blijft zoals hij was: die volgt het FG-veld en verwijder je
+  daar.
+
+---
+
 ## [1.12.39] — 2026-09-14
 
 ### Administratie: badge telt alles wat achterstallig is, dashboard toont het
