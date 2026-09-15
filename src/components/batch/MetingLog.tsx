@@ -1,6 +1,7 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { metingWaarde } from '../../utils/metingen'
+import Btn from '../ui/Btn'
 
 // Inklapbaar logje met de metingen van één batch onder de fermentatiegrafiek.
 // De automatische temperatuurmetingen (elke 10 minuten uit de HA-sensor)
@@ -83,12 +84,13 @@ const MetingLog: React.FC<{
                   <td className="px-2 py-1.5 text-right font-mono text-red-500">{getal(m.temp, 1, '°')}</td>
                   <td className="px-2 py-1.5 text-gray-400 italic">{m.opmerking || ''}</td>
                   {onDelete && (
-                    <td className="px-2 py-1.5">
-                      {/* De FG-rij hoort bij het FG-veld: daar haal je hem weg */}
+                    <td className="px-2 py-1 text-right">
+                      {/* De FG-rij hoort bij het FG-veld: daar haal je hem weg.
+                          Een echte knop (niet alleen een grijs kruisje dat pas
+                          bij hoveren kleurt): op een telefoon is er geen hover
+                          en moet een foute meting ook weg kunnen. */}
                       {m.bron !== 'fg' && (
-                        <button type="button" onClick={() => onDelete(m.id)}
-                          title={t('btn_delete')}
-                          className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
+                        <Btn s="sm" v="danger" onClick={() => onDelete(m.id)} title={t('btn_delete')}>×</Btn>
                       )}
                     </td>
                   )}

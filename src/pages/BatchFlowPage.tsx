@@ -407,6 +407,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Zoekterm voor de gesloten batches.
   const [zoekGesloten, setZoekGesloten] = useState('')
   const [mForm, setMForm] = useState({sg: '', temp: '', ph: ''})
+  // Het metingenlog onder de grafiek staat standaard open: een verkeerd
+  // ingevoerde meting moet je meteen terugzien én kunnen verwijderen. Na een
+  // nieuwe meting gaat het log altijd open, ook als je het had dichtgeklapt.
+  const [metingLogOpen, setMetingLogOpen] = useState(true)
   // Verliesregistratie (per fase hetzelfde formulier)
   const [verliesForm, setVerliesForm] = useState<any>({datum: tod(), bron: 'monster', liter: '', notitie: ''})
   // Carbonatie
@@ -1162,6 +1166,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     logAudit(auditLog, setAuditLog, {entiteit: 'Gistmeting', entiteit_id: nieuw.id, actie: 'aangemaakt',
       omschrijving: `Batch ${selB?.naam || ''}: SG=${nieuw.sg} pH=${nieuw.ph ?? '-'} T=${nieuw.temp ?? '-'}°C`})
     setMForm({sg: '', temp: '', ph: ''})
+    setMetingLogOpen(true)
   }
 
   const deleteMeting = (id: number) => {
@@ -3465,7 +3470,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     <>
       {renderMetingForm()}
       {renderGrafiek()}
-      <MetingLog metingen={mijnMetingen} onDelete={deleteMeting} />
+      <MetingLog metingen={mijnMetingen} onDelete={deleteMeting}
+        open={metingLogOpen} onToggle={() => setMetingLogOpen(v => !v)} />
     </>
   )
 
