@@ -13,6 +13,7 @@ import {
   carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols,
   carbRangeForStyle, CARB_STYLE_OPTIONS,
   berekenVoorcalcVoorAfvulling, nextBatchNummer, berekenTanktijd, sumVergistingDagen,
+  tankBezetter, tankReserveringen, tankClaimCheck, laatsteTankReiniging,
 } from '../utils/calculations'
 import { logAudit } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
@@ -40,6 +41,7 @@ import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
 import VrijgaveSectie from '../components/batch/VrijgaveSectie'
 import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
+import TankReinigingForm from '../components/TankReinigingForm'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { actieveSessie, magAfvullingRegistreren } from '../utils/afvulsessie'
@@ -571,30 +573,32 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       .sort((a: any, b: any) => String(a.naam || '').localeCompare(String(b.naam || ''))),
     [recepten])
 
-  // Beschikbaarheid per tank voor de tankkeuze bij het plannen. Een tank met
-  // bier erin (Vergisten/Conditioneren) is niet selecteerbaar; een tank die al
-  // door een geplande batch geclaimd is, tonen we als waarschuwing maar mag
-  // wel (dubbel plannen kan bewust zijn). De reinigingsstatus is puur
-  // informatief — ontsmetten gebeurt pas op de brouwdag zelf, dus een vuile
-  // tank inplannen is gewoon toegestaan.
-  const tankOpties = useMemo(() => (tanks || []).map((tk: any) => {
+  // Beschikbaarheid per tank voor de tankkeuze bij het plannen én op de
+  // brouwdag. Een tank met bier erin (Vergisten/Conditioneren) is niet
+  // selecteerbaar; een tank die al door een geplande of brouwende batch
+  // gereserveerd is, tonen we als waarschuwing maar mag wel (dubbel plannen
+  // kan bewust zijn). De reinigingsstatus is puur informatief — ontsmetten
+  // gebeurt pas op de brouwdag zelf, dus een vuile tank inplannen is gewoon
+  // toegestaan. `behalveId` = de batch waarvoor gekozen wordt (telt zelf niet
+  // als reservering).
+  const tankOptiesVoor = (behalveId: number | null) => (tanks || []).map((tk: any) => {
     const naam = tk.naam || tk.id
-    const bezet = (bat || []).find((b: any) => b.tank === tk.id && ['Vergisten', 'Conditioneren'].includes(b.status))
-    const gepland = !bezet ? (bat || []).find((b: any) =>
-      b.tank === tk.id && ['Gepland', 'Brouwen'].includes(b.status)) : null
+    const bezet = tankBezetter(tk.id, bat, behalveId)
+    const gereserveerd = bezet ? null : (tankReserveringen(tk.id, bat, behalveId)[0] || null)
     const st = tankStatussen?.[tk.id]?.status
     const stLabel = st && st !== 'Ontsmet' ? (t(TANK_REINIGING_LABEL_KEY[st] || '') || st) : null
     const beschikbaarheid = bezet
       ? `${t('tank_bezet')} ${bezet.naam || bezet.batch_nummer || ''}`
-      : gepland
-        ? t('flow_nieuw_tank_gepland').replace('{naam}', gepland.naam || gepland.batch_nummer || '')
+      : gereserveerd
+        ? `${t('tank_gereserveerd')} ${gereserveerd.naam || gereserveerd.batch_nummer || ''}`
         : t('tank_vrij')
     return {
       v: tk.id,
       l: `${naam}${tk.soort ? ` (${tk.soort})` : ''} — ${beschikbaarheid}${stLabel ? ` · ${stLabel}` : ''}`,
       d: !!bezet,
     }
-  }), [tanks, bat, tankStatussen])
+  })
+  const tankOpties = useMemo(() => tankOptiesVoor(null), [tanks, bat, tankStatussen])
 
   const maakNieuweBatch = () => {
     const recept = nieuwForm.recept_id
@@ -605,7 +609,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     // Alleen actief gebruik blokkeert (er zit bier in de tank). Geen
     // ontsmet-eis bij het plannen: de tank wordt op de brouwdag ontsmet.
     if (nieuwForm.tank) {
-      const bezet = (bat || []).find((b: any) => b.tank === nieuwForm.tank && ['Vergisten', 'Conditioneren'].includes(b.status))
+      const bezet = tankBezetter(nieuwForm.tank, bat)
       if (bezet) { alert(t('err_tank_occupied').replace('{tank}', nieuwForm.tank).replace('{name}', bezet.naam)); return }
     }
     // Rond gravity (3 dec) en ABV (2 dec) af: recept-waarden uit Brewfather
@@ -989,7 +993,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (fase === 'Brouwen') {
       const brouwBi = mijnBi.filter((x: any) => !isDryHopRij(x))
       const afgeboekt = brouwBi.filter((x: any) => x.afgeboekt).length
+      // De gisttank is op de brouwdag alleen gereserveerd — hij wordt tijdens
+      // het brouwen gereinigd en ontsmet en pas bij de stap naar Vergisten
+      // bezet. Dit vinkje is dus: tank gekozen én aantoonbaar ontsmet.
+      const gistTankStatus = selB.tank ? tankStatussen?.[selB.tank]?.status : null
+      const gistTankLabel = selB.tank
+        ? (gistTankStatus ? (t(TANK_REINIGING_LABEL_KEY[gistTankStatus] || '') || gistTankStatus) : t('dash_tank_status_onbekend'))
+        : null
       const items: (ChecklistItem | null)[] = [
+        {key: 'tank', label: t('flow_chk_gisttank'), done: !!selB.tank && gistTankStatus === 'Ontsmet',
+         detail: selB.tank ? `${selB.tank} · ${gistTankLabel}` : undefined},
         {key: 'afgeboekt', label: t('flow_chk_afgeboekt'), done: brouwBi.length > 0 && afgeboekt === brouwBi.length,
          detail: `${afgeboekt}/${brouwBi.length}`},
         {key: 'og', label: t('flow_chk_og'), done: Number(selB.OG) > 1,
@@ -1085,14 +1098,22 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const nieuweStatus = STATUSSEN[nieuweIdx]
     const oudeStatus = selB.status
     if (oudeStatus === nieuweStatus) return
-    // Ontsmet-check op het moment dat het bier de tank in gaat: plannen mag
-    // op elke tank (ontsmetten gebeurt op de brouwdag), maar bij de overgang
-    // naar Vergisten hoort de tank ontsmet te zijn. Niet blokkerend — de
-    // gebruiker kan bewust doorgaan (bv. als de status niet is bijgewerkt).
+    // Dít is het moment waarop de tank geclaimd wordt: tot nu toe was hij
+    // alleen gereserveerd (plannen en brouwen mag op elke tank, ontsmetten
+    // gebeurt tijdens de brouwdag). Zit er al een andere batch in, dan kan het
+    // wort er niet in — harde blokkade. Is de tank niet aantoonbaar ontsmet,
+    // dan mag de gebruiker bewust doorgaan (bv. als de status niet is
+    // bijgewerkt).
     if (nieuweStatus === 'Vergisten' && nieuweIdx > faseIndex(oudeStatus) && selB.tank) {
-      const st = tankStatussen?.[selB.tank]?.status
-      if (st && st !== 'Ontsmet') {
-        const stLabel = t(TANK_REINIGING_LABEL_KEY[st] || '') || st
+      const claim = tankClaimCheck(selB.tank, selB.id, bat, tankStatussen)
+      if (claim.reden === 'bezet') {
+        alert(t('err_tank_occupied').replace('{tank}', selB.tank).replace('{name}', claim.bezetter?.naam || ''))
+        return
+      }
+      if (claim.reden === 'niet_ontsmet') {
+        const stLabel = claim.status
+          ? (t(TANK_REINIGING_LABEL_KEY[claim.status] || '') || claim.status)
+          : t('dash_tank_status_onbekend')
         if (!confirm(t('flow_confirm_tank_ontsmet').replace('{tank}', selB.tank).replace('{status}', stLabel))) return
       }
     }
@@ -1541,7 +1562,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         return
       }
     }
-    const bezet = bat.find((b: any) => b.tank === moveTankTarget && b.id !== selB.id && ['Vergisten', 'Conditioneren'].includes(b.status))
+    const bezet = tankBezetter(moveTankTarget, bat, selB.id)
     if (bezet) { alert(t('err_tank_occupied').replace('{tank}', moveTankTarget).replace('{name}', bezet.naam)); return }
     const oudeTank = selB.tank || '—'
     const oudeStatus = selB.status
@@ -3044,9 +3065,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         <Sel label={t('batch_move_tank_label')} value={moveTankTarget} onChange={setMoveTankTarget}
           cls="w-56"
           opts={[{v: '', l: t('batch_move_tank_choose')}, ...(tanks || []).filter((tk: any) => tk.id !== selB.tank).map((tk: any) => {
+            const bezet = tankBezetter(tk.id, bat, selB.id)
             const st = tankStatussen?.[tk.id]?.status
             const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : null
-            return {v: tk.id, l: `${tk.naam || tk.id}${tk.soort ? ` (${tk.soort})` : ''}${stLabel ? ` — ${stLabel}` : ''}`}
+            const extra = bezet ? ` — ${t('tank_bezet')} ${bezet.naam || ''}` : stLabel ? ` — ${stLabel}` : ''
+            return {v: tk.id, l: `${tk.naam || tk.id}${tk.soort ? ` (${tk.soort})` : ''}${extra}`, d: !!bezet}
           })]} />
         <Btn s="sm" disabled={!moveTankTarget} onClick={verplaatsTank}>{t('batch_move_tank_confirm')}</Btn>
       </div>
@@ -3550,12 +3573,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <FlowStap title={t('flow_stap_planning')} done={planningDone} detail={planningDetail || undefined} {...so('planning', planningDone)}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
-                    opts={(tanks || []).map((tk: any) => {
-                      const naam = tk.naam ?? String(tk.id)
-                      const st = tankStatussen?.[naam]?.status
-                      const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : null
-                      return { v: naam, l: stLabel ? `${naam} — ${stLabel}` : naam }
-                    })} />
+                    opts={tankOptiesVoor(selB.id)} />
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
                     <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
@@ -3604,27 +3622,82 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             zitten verweven in de wizard (afboekSlot resp. koelstap), zodat je
             van boven naar beneden werkt. De losse Water-additie-sectie is
             vervallen — ingrediënten voeg je nu direct in het afboek-blok toe. */}
-        {faseStatus === 'Brouwen' && (
-          <>
-            <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
-              stappen={brouwdagStappen} setStappen={setBrouwdagStappen}
-              tanks={tanks} lots={lots} ingredienten={ing}
-              hopStorageDefault={brouwprocesInst?.hop_storage}
-              recepten={recepten}
-              koelLogs={koelLogs} setKoelLogs={setKoelLogs}
-              afboekSlot={
-                <div className="bg-white rounded-xl shadow-card overflow-hidden">
-                  <SectionHeader title={t('flow_sectie_afboeken')} info={clMap.afgeboekt?.detail || null} />
-                  <div className="p-4">{renderAfboekTabel(brouwBi, true)}</div>
+        {faseStatus === 'Brouwen' && (() => {
+          // De gisttank is op de brouwdag alleen gereserveerd, nog niet bezet:
+          // het wort gaat er pas na het koelen in. Tot die tijd kun je hem hier
+          // (om)kiezen en de reiniging/ontsmetting vastleggen — precies wat je
+          // tijdens het maischen en koken doet.
+          const gistTank = selB.tank ? (tanks || []).find((tk: any) => tk.id === selB.tank) : null
+          const gistEntry = selB.tank ? tankStatussen?.[selB.tank] : null
+          const gistStatus = gistEntry?.status || null
+          const gistLabel = gistStatus
+            ? (t(TANK_REINIGING_LABEL_KEY[gistStatus] || '') || gistStatus)
+            : t('dash_tank_status_onbekend')
+          const gistPill = gistStatus === 'Ontsmet' ? 'bg-green-100 text-green-700'
+            : gistStatus === 'Schoon' ? 'bg-blue-100 text-blue-700'
+            : gistStatus === 'Vuil' ? 'bg-red-100 text-red-700'
+            : 'bg-gray-100 text-gray-500'
+          const laatsteReiniging = selB.tank ? laatsteTankReiniging(selB.tank, tankLog) : null
+          const tankDone = !!clMap.tank?.done
+          return (
+            <>
+              <FlowStap title={t('flow_stap_gisttank')} done={tankDone} detail={clMap.tank?.detail} {...so('gisttank', tankDone)}>
+                <p className="text-xs text-gray-500">{t('flow_gisttank_uitleg')}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
+                    opts={tankOptiesVoor(selB.id)} />
+                  {selB.tank && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_status')}</label>
+                      <div className="flex flex-wrap items-center gap-2 min-h-[38px]">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${gistPill}`}>{gistLabel}</span>
+                        {gistEntry?.sinds && <span className="text-xs text-gray-500">{t('dash_tank_sinds').replace('{d}', fmtD(gistEntry.sinds))}</span>}
+                      </div>
+                      {laatsteReiniging && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          {t('dash_tank_laatste_reiniging')}: {fmtD(laatsteReiniging.datum)} · {laatsteReiniging.uitgevoerd_door}
+                          {laatsteReiniging.middel ? ` · ${laatsteReiniging.middel}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              } />
-            {takenVoorFase('Brouwen').length > 0 && (
-              <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
-                {renderTaken('Brouwen')}
+                {selB.tank && gistStatus !== 'Ontsmet' && (
+                  <div className="text-xs px-3 py-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-700">
+                    {t('flow_tank_niet_ontsmet').replace('{status}', gistLabel)}
+                  </div>
+                )}
+                {selB.tank && (
+                  <TankReinigingForm tankId={selB.tank} tankNaam={gistTank?.naam}
+                    tankStatussen={tankStatussen} setTankStatussen={setTankStatussen}
+                    tankLog={tankLog} setTankLog={setTankLog}
+                    auditLog={auditLog} setAuditLog={setAuditLog}
+                    standaardDoor={(whoami?.gebruiker || '').trim()}
+                    onOpgeslagen={(status) => addLog({type: 'hygiene', batch_id: selB.id,
+                      referentie: `${t(TANK_REINIGING_LABEL_KEY[status] || '') || status} — ${gistTank?.naam || selB.tank}`})} />
+                )}
               </FlowStap>
-            )}
-          </>
-        )}
+              <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
+                stappen={brouwdagStappen} setStappen={setBrouwdagStappen}
+                tanks={tanks} batches={bat} tankStatussen={tankStatussen}
+                lots={lots} ingredienten={ing}
+                hopStorageDefault={brouwprocesInst?.hop_storage}
+                recepten={recepten}
+                koelLogs={koelLogs} setKoelLogs={setKoelLogs}
+                afboekSlot={
+                  <div className="bg-white rounded-xl shadow-card overflow-hidden">
+                    <SectionHeader title={t('flow_sectie_afboeken')} info={clMap.afgeboekt?.detail || null} />
+                    <div className="p-4">{renderAfboekTabel(brouwBi, true)}</div>
+                  </div>
+                } />
+              {takenVoorFase('Brouwen').length > 0 && (
+                <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                  {renderTaken('Brouwen')}
+                </FlowStap>
+              )}
+            </>
+          )
+        })()}
 
         {/* ── Vergisten ───────────────────────────────────────────────────── */}
         {/* Volle-breedte metingen-band (SG-form + grafiek) direct onder de

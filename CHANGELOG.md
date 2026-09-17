@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.41] — 2026-09-17
+
+### Tank pas bezet als het wort erin gaat — reinigen kan tijdens het brouwen
+
+Zodra een batch op Brouwen stond, gold zijn tank als bezet: hij verdween van
+de vrije tanks op het Productie-dashboard en daarmee ook de knop om een
+reiniging vast te leggen. Terwijl je juist tíjdens het brouwen de gisttank
+reinigt en ontsmet — het wort gaat er pas na het koelen in.
+
+- **Gereserveerd versus bezet.** Bij Gepland en Brouwen is de toegewezen tank
+  alleen gereserveerd: hij staat bij de vrije tanks, met de batch en de
+  brouwdag erbij, en de reiniging is gewoon vast te leggen. Bezet is hij pas
+  bij Vergisten en Conditioneren.
+- **De claim valt bij de stap naar Vergisten.** Zit er al een andere batch in
+  de tank, dan blokkeert de app (ook op de Batches-pagina, waar dit nog niet
+  gecontroleerd werd); is de tank niet aantoonbaar ontsmet, dan vraagt hij om
+  bevestiging — ook als er nog nooit een status voor de tank is vastgelegd.
+- **Brouwdagfase: stap "Gisttank gereed".** Bovenaan de brouwdag staat de
+  gekozen tank met zijn reinigingsstatus, de laatste reiniging en de knop
+  *Reiniging vastleggen*; het vinkje staat pas op groen als de tank ontsmet
+  is. De tankkeuzes (planning, brouwdag, koelstap, verplaatsen) laten zien
+  welke tank bezet is (niet kiesbaar) of door wie hij gereserveerd is.
+- Een gereserveerde tank die je vóór de brouwdag omwisselt (batchformulier)
+  wordt niet meer ten onrechte op Vuil gezet — daar heeft nooit bier in
+  gezeten.
+- De planning-tijdlijn toont een batch in Brouwen weer op zijn tankrij; die
+  viel weg zodra de brouwdag begon.
+
+---
+
 ## [1.12.40] — 2026-09-15
 
 ### Batch-flow: een foute meting kun je weer verwijderen

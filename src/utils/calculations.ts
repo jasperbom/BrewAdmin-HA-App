@@ -1145,9 +1145,78 @@ export const nextBatchNummer = (batches: any[]): string => {
 }
 
 // ── AGP-voorraad helpers ─────────────────────────────────────────────────────
-// Statussen waarbij bier nog "in tank" zit (gistend / lagering / brouwen).
+// Statussen waarbij het bier nog "in proces" is voor de accijnsgoederenplaats
+// (brouwzaal, gisting, lagering). Dit is de AGP-blik — niet de fysieke
+// tankbezetting; daarvoor zie TANK_BEZET_STATUSSEN hieronder.
 // Let op: het echte gistingsstatus-label in de app is 'Vergisten' (niet 'Gisten').
 export const TANK_STATUSSEN = ['Brouwen', 'Vergisten', 'Conditioneren']
+
+// ── Tankbezetting: gereserveerd versus bezet ────────────────────────────────
+// Een tank is pas *bezet* zodra er bier in zit: Vergisten of Conditioneren.
+// Bij Gepland en Brouwen is de toegewezen tank alleen *gereserveerd*: hij is
+// nog leeg en mag (moet) op de brouwdag nog gereinigd en ontsmet worden —
+// het wort gaat er pas na het koelen in. De claim valt dus samen met de stap
+// naar Vergisten (`tankClaimCheck`), niet met de brouwdag zelf. Bezetting is
+// afgeleid uit de batches; er staat niets op de tank zelf.
+export const TANK_BEZET_STATUSSEN = ['Vergisten', 'Conditioneren']
+export const TANK_RESERVERING_STATUSSEN = ['Gepland', 'Brouwen']
+
+export const isTankBezetStatus = (status: any): boolean =>
+  TANK_BEZET_STATUSSEN.includes(String(status))
+
+// De batch die de tank fysiek bezet houdt (bier erin), of null. `behalveId`
+// sluit de batch uit die zelf de vraag stelt.
+export const tankBezetter = (
+  tankId: string | undefined | null,
+  batches: any[] | undefined | null,
+  behalveId?: number | null,
+): any | null => {
+  if (!tankId) return null
+  return (batches || []).find((b: any) => b && b.tank === tankId
+    && (behalveId == null || b.id !== behalveId)
+    && isTankBezetStatus(b.status)) || null
+}
+
+// Batches die de tank gereserveerd hebben (toegewezen, nog leeg), op brouwdatum.
+export const tankReserveringen = (
+  tankId: string | undefined | null,
+  batches: any[] | undefined | null,
+  behalveId?: number | null,
+): any[] => {
+  if (!tankId) return []
+  return (batches || [])
+    .filter((b: any) => b && b.tank === tankId
+      && (behalveId == null || b.id !== behalveId)
+      && TANK_RESERVERING_STATUSSEN.includes(String(b.status)))
+    .sort((a: any, b: any) => String(a.datum || '').localeCompare(String(b.datum || '')))
+}
+
+// Toets op het moment dat het bier de tank in gaat (Gepland/Brouwen →
+// Vergisten, of een tankwissel mét bier). Twee uitkomsten:
+//  • `bezet`        — een ándere batch zit al in de tank: harde blokkade
+//  • `niet_ontsmet` — de tank is niet aantoonbaar ontsmet: de gebruiker mag
+//                     bewust doorgaan (het scherm vraagt om bevestiging)
+// Geen tankstatus geregistreerd = niet aantoonbaar ontsmet.
+export interface TankClaimUitkomst {
+  ok: boolean
+  reden: 'bezet' | 'niet_ontsmet' | null
+  bezetter: any | null
+  status: string | null
+}
+
+export const tankClaimCheck = (
+  tankId: string | undefined | null,
+  batchId: number | null | undefined,
+  batches: any[] | undefined | null,
+  statussen: Record<string, { status?: string }> | undefined | null,
+): TankClaimUitkomst => {
+  const status = tankId ? ((statussen || {})[tankId]?.status || null) : null
+  if (!tankId) return { ok: true, reden: null, bezetter: null, status }
+  const bezetter = tankBezetter(tankId, batches, batchId)
+  if (bezetter) return { ok: false, reden: 'bezet', bezetter, status }
+  if (status !== 'Ontsmet') return { ok: false, reden: 'niet_ontsmet', bezetter: null, status }
+  return { ok: true, reden: null, bezetter: null, status }
+}
 
 // ── Lege tanks + hun reinigingsstatus ───────────────────────────────────────
 // Het dashboard toonde alleen tanks met een batch erin, waardoor een tank
@@ -1155,11 +1224,14 @@ export const TANK_STATUSSEN = ['Brouwen', 'Vergisten', 'Conditioneren']
 // al schoon?" gaat spelen. Deze helper levert de lege tanks mét hun
 // reinigingsstatus, gesorteerd op wat aandacht vraagt: eerst vuil, dan
 // onbekend (nooit geregistreerd = niet aantoonbaar schoon), dan schoon en
-// tenslotte ontsmet.
+// tenslotte ontsmet. Een tank die alleen gereserveerd is (Gepland/Brouwen)
+// blijft hier staan — hij is nog leeg — mét de reserveringen erbij, zodat de
+// kaart kan zeggen voor wie hij klaar moet staan.
 export interface VrijeTank {
   tank: any
   status: string | null
   sinds?: string
+  reserveringen: any[]
 }
 
 const VRIJE_TANK_VOLGORDE: Record<string, number> = { Vuil: 0, Schoon: 2, Ontsmet: 3 }
@@ -1169,11 +1241,10 @@ export const vrijeTanksMetStatus = (
   batches: any[],
   statussen: Record<string, { status?: string, sinds?: string }> | undefined | null,
 ): VrijeTank[] => (tanks || [])
-  .filter((tk: any) => tk && !(batches || []).some((b: any) =>
-    b?.tank === tk.id && TANK_STATUSSEN.includes(String(b?.status))))
+  .filter((tk: any) => tk && !tankBezetter(tk.id, batches))
   .map((tk: any) => {
     const entry = (statussen || {})[tk.id]
-    return { tank: tk, status: entry?.status || null, sinds: entry?.sinds }
+    return { tank: tk, status: entry?.status || null, sinds: entry?.sinds, reserveringen: tankReserveringen(tk.id, batches) }
   })
   .sort((a: VrijeTank, b: VrijeTank) => {
     const va = a.status ? (VRIJE_TANK_VOLGORDE[a.status] ?? 1) : 1

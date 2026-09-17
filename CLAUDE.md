@@ -522,6 +522,20 @@ Gepland → Aan het brouwen → Aan het gisten → Conditioning → Afgevuld →
 (Planned)   (Brewing)        (Fermenting)     (Conditioning)  (Packaged)  (Closed)
 ```
 
+### Tankbezetting: gereserveerd ≠ bezet
+
+Een tank is pas **bezet** als er bier in zit (`Vergisten`/`Conditioneren` —
+`TANK_BEZET_STATUSSEN`, `tankBezetter` in `utils/calculations.ts`). Bij
+`Gepland`/`Brouwen` is de toegewezen tank alleen **gereserveerd**
+(`tankReserveringen`): hij is nog leeg, reinigen/ontsmetten gebeurt tijdens de
+brouwdag (stap "Gisttank gereed" in de batch-flow, of de vrije-tankkaart op het
+Productie-dashboard) en het omwisselen van een reservering maakt de oude tank
+níét vuil. De claim valt bij de stap naar `Vergisten` (`tankClaimCheck`: een
+andere batch erin = harde blokkade, niet aantoonbaar ontsmet = bevestiging
+vragen). `TANK_STATUSSEN` (mét `Brouwen`) is de AGP-blik "bier in proces", niet
+de fysieke bezetting. server.py (tankbewaking, auto-metingen) kijkt alleen naar
+`Vergisten`/`Conditioneren` — houd die twee kanten gelijk.
+
 ### Data keys (opgeslagen in SQLite, `/data/brewadmin.db`)
 
 Key names are alphanumeric + underscore only (enforced by server). All active keys:

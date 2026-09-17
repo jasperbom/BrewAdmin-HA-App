@@ -5,6 +5,7 @@ import {
   berekenProductKostprijs, berekenCogs, telThtAlerts, thtAlertLots, laatsteOpenAccijnsMaand,
   openAccijnsMaanden, telOpenAccijnsMaanden,
   productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
+  tankBezetter, tankReserveringen, tankClaimCheck, isTankBezetStatus,
   registreerTankReiniging, laatsteTankReiniging,
   berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht, berekenAccijnsImpact,
 } from '../calculations'
@@ -516,7 +517,13 @@ describe('vrijeTanksMetStatus', () => {
     { id: 'T3', naam: 'Bright tank' },
     { id: 'T4', naam: 'Lagertank' },
   ]
-  const batches = [{ id: 1, tank: 'T1', status: 'Vergisten' }, { id: 2, tank: 'T4', status: 'Gesloten' }]
+  const batches = [
+    { id: 1, tank: 'T1', status: 'Vergisten' },
+    { id: 2, tank: 'T4', status: 'Gesloten' },
+    // Brouwdag bezig: de tank is gereserveerd maar nog leeg — hij moet juist
+    // nú nog gereinigd en ontsmet kunnen worden.
+    { id: 3, tank: 'T3', status: 'Brouwen', naam: 'Tripel', datum: '2026-09-17' },
+  ]
   const statussen = {
     T2: { status: 'Ontsmet', sinds: '2026-07-01' },
     T3: { status: 'Vuil', sinds: '2026-07-20' },
@@ -525,6 +532,14 @@ describe('vrijeTanksMetStatus', () => {
   it('laat tanks met bier erin weg en lege tanks staan', () => {
     const res = vrijeTanksMetStatus(tanks, batches, statussen)
     expect(res.map(r => r.tank.id)).toEqual(['T3', 'T4', 'T2'])
+  })
+
+  it('een tank van een batch in Brouwen blijft vrij (gereserveerd, nog leeg)', () => {
+    const res = vrijeTanksMetStatus(tanks, batches, statussen)
+    const t3 = res.find(r => r.tank.id === 'T3')!
+    expect(t3.status).toBe('Vuil')
+    expect(t3.reserveringen.map((b: any) => b.id)).toEqual([3])
+    expect(res.find(r => r.tank.id === 'T2')!.reserveringen).toEqual([])
   })
 
   it('zet vuil bovenaan, dan onbekend, dan schoon/ontsmet', () => {
@@ -542,6 +557,88 @@ describe('vrijeTanksMetStatus', () => {
   it('is robuust voor lege input', () => {
     expect(vrijeTanksMetStatus([], [], null)).toEqual([])
     expect(vrijeTanksMetStatus(tanks, [], undefined)).toHaveLength(4)
+  })
+})
+
+describe('tankbezetting: gereserveerd versus bezet', () => {
+  const batches = [
+    { id: 1, tank: 'T1', status: 'Vergisten', naam: 'IPA' },
+    { id: 2, tank: 'T2', status: 'Conditioneren', naam: 'Stout' },
+    { id: 3, tank: 'T3', status: 'Brouwen', naam: 'Tripel', datum: '2026-09-17' },
+    { id: 4, tank: 'T3', status: 'Gepland', naam: 'Blond', datum: '2026-10-01' },
+    { id: 5, tank: 'T3', status: 'Gepland', naam: 'Weizen', datum: '2026-09-24' },
+    { id: 6, tank: 'T1', status: 'Gesloten', naam: 'Oud' },
+    { id: 7, tank: 'T1', status: 'Gepland', naam: 'Volgende', datum: '2026-11-01' },
+  ]
+
+  it('alleen Vergisten en Conditioneren tellen als bezet', () => {
+    expect(isTankBezetStatus('Vergisten')).toBe(true)
+    expect(isTankBezetStatus('Conditioneren')).toBe(true)
+    expect(isTankBezetStatus('Brouwen')).toBe(false)
+    expect(isTankBezetStatus('Gepland')).toBe(false)
+    expect(isTankBezetStatus('Afgevuld')).toBe(false)
+  })
+
+  it('tankBezetter vindt de batch met bier erin, niet de reservering', () => {
+    expect(tankBezetter('T1', batches)?.id).toBe(1)
+    expect(tankBezetter('T2', batches)?.id).toBe(2)
+    expect(tankBezetter('T3', batches)).toBeNull()      // alleen Brouwen/Gepland
+    expect(tankBezetter('T9', batches)).toBeNull()
+    expect(tankBezetter('', batches)).toBeNull()
+    expect(tankBezetter('T1', null)).toBeNull()
+  })
+
+  it('tankBezetter sluit de vragende batch zelf uit', () => {
+    expect(tankBezetter('T1', batches, 1)).toBeNull()
+    expect(tankBezetter('T1', batches, 7)?.id).toBe(1)
+  })
+
+  it('tankReserveringen geeft Gepland/Brouwen op brouwdatum, zonder de batch zelf', () => {
+    expect(tankReserveringen('T3', batches).map(b => b.id)).toEqual([3, 5, 4])
+    expect(tankReserveringen('T3', batches, 3).map(b => b.id)).toEqual([5, 4])
+    expect(tankReserveringen('T1', batches).map(b => b.id)).toEqual([7])  // niet de bezetter, niet Gesloten
+    expect(tankReserveringen('T2', batches)).toEqual([])
+    expect(tankReserveringen(null, batches)).toEqual([])
+  })
+
+  describe('tankClaimCheck — het moment dat het wort de tank in gaat', () => {
+    const statussen = { T1: { status: 'Ontsmet' }, T3: { status: 'Vuil' }, T4: { status: 'Ontsmet' } }
+
+    it('blokkeert hard op een tank waar een andere batch in zit', () => {
+      const r = tankClaimCheck('T1', 7, batches, statussen)
+      expect(r.ok).toBe(false)
+      expect(r.reden).toBe('bezet')
+      expect(r.bezetter?.id).toBe(1)
+    })
+
+    it('een reservering van een andere batch blokkeert niet', () => {
+      // T3 is gereserveerd door 4 en 5, maar leeg: batch 3 mag erin — alleen
+      // de ontsmet-status staat nog in de weg.
+      const r = tankClaimCheck('T3', 3, batches, statussen)
+      expect(r.reden).toBe('niet_ontsmet')
+      expect(r.status).toBe('Vuil')
+      expect(r.bezetter).toBeNull()
+    })
+
+    it('zonder geregistreerde status is de tank niet aantoonbaar ontsmet', () => {
+      const r = tankClaimCheck('T9', 3, batches, statussen)
+      expect(r.ok).toBe(false)
+      expect(r.reden).toBe('niet_ontsmet')
+      expect(r.status).toBeNull()
+    })
+
+    it('is in orde bij een lege, ontsmette tank', () => {
+      expect(tankClaimCheck('T4', 3, batches, statussen)).toEqual({ ok: true, reden: null, bezetter: null, status: 'Ontsmet' })
+    })
+
+    it('de eigen tank telt niet als bezet (statuswissel Vergisten → Conditioneren)', () => {
+      expect(tankClaimCheck('T1', 1, batches, statussen).ok).toBe(true)
+    })
+
+    it('zonder tank valt er niets te claimen', () => {
+      expect(tankClaimCheck('', 3, batches, statussen).ok).toBe(true)
+      expect(tankClaimCheck(undefined, 3, batches, null).ok).toBe(true)
+    })
   })
 })
 

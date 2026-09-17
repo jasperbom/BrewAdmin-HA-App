@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { useStore, newId, bfFetch, bfGetBatches, bfMapBatch, bfMapBis, bfNumSafe, haGetState, ADDON_BASE } from '../utils/api'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
 import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
-import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling, effectiefOG, effectiefFG } from '../utils/calculations'
+import { resolveTankHistorie, appendTankHistorie, markTankVuilBijVertrek, tankBezetter, tankClaimCheck, isTankBezetStatus, carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols, carbRangeForStyle, CARB_STYLE_OPTIONS, verliesAfgeleid, verliesTotaal, verliesPerBron, verliesOngeregistreerd, nextBatchNummer, berekenLiveABV, berekenTanktijd, sumVergistingDagen, berekenVoorcalcVoorAfvulling, effectiefOG, effectiefFG } from '../utils/calculations'
 import { STATUSSEN, BUILTIN_ING_TYPES, EENHEDEN, BF_TO_APP, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, convertEenheid, VERLIES_BRONNEN, TANK_REINIGING_LABEL_KEY } from '../utils/constants'
 import { logAudit } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
@@ -753,6 +753,22 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
   const handleStatusChange = (nieuweStatus: string) => {
     const oudeStatus = selB?.status
     if (oudeStatus === nieuweStatus) return
+    // Het wort gaat de tank in: tot nu toe was de tank alleen gereserveerd
+    // (zelfde regels als de batch-flow). Een andere batch erin = harde
+    // blokkade; niet aantoonbaar ontsmet = bevestiging vragen.
+    if (isTankBezetStatus(nieuweStatus) && !isTankBezetStatus(oudeStatus) && selB?.tank) {
+      const claim = tankClaimCheck(selB.tank, selB.id, bat, tankStatussen)
+      if (claim.reden === 'bezet') {
+        alert(t('err_tank_occupied').replace('{tank}', selB.tank).replace('{name}', claim.bezetter?.naam || ''))
+        return
+      }
+      if (claim.reden === 'niet_ontsmet') {
+        const stLabel = claim.status
+          ? (t(TANK_REINIGING_LABEL_KEY[claim.status] || '') || claim.status)
+          : t('dash_tank_status_onbekend')
+        if (!confirm(t('flow_confirm_tank_ontsmet').replace('{tank}', selB.tank).replace('{status}', stLabel))) return
+      }
+    }
     // Bij overgang naar 'Afgevuld' of 'Gesloten' verlaat de batch impliciet zijn
     // tank — zet die tank automatisch op Vuil voor HACCP-traceerbaarheid.
     const leegtTank = ['Afgevuld','Verpakt','Gesloten'].includes(nieuweStatus) && !['Afgevuld','Verpakt','Gesloten'].includes(oudeStatus) && selB?.tank
@@ -783,7 +799,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         return
       }
     }
-    const bezet = bat.find((b: any) => b.tank===moveTankTarget && b.id!==selB.id && ['Vergisten','Conditioneren'].includes(b.status))
+    const bezet = tankBezetter(moveTankTarget, bat, selB.id)
     if (bezet) { alert(t('err_tank_occupied').replace('{tank}',moveTankTarget).replace('{name}',bezet.naam)); return }
     const oudeTank = selB.tank || '—'
     const oudeStatus = selB.status
@@ -828,8 +844,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
         }
       }
       // Blokkerend: lopend gebruik (Vergisten/Conditioneren) door een andere batch.
-      const bezet = bat.find((b: any) => b.tank===bForm.tank && b.id!==editId && ['Vergisten','Conditioneren'].includes(b.status))
-      if (bezet && ['Vergisten','Conditioneren'].includes(bForm.status)) {
+      const bezet = tankBezetter(bForm.tank, bat, editId)
+      if (bezet && isTankBezetStatus(bForm.status)) {
         alert(t('err_tank_occupied').replace('{tank}',bForm.tank).replace('{name}',bezet.naam)); return
       }
       // Waarschuwing (niet-blokkerend): datum-overlap met andere batches in de planning.
@@ -864,8 +880,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
       if (tankGewijzigd && bForm.tank) {
         extraPatch.tank_historie = appendTankHistorie(oud, bForm.tank, tod(), bForm.status)
       }
-      // Oude tank gaat automatisch op Vuil (HACCP) wanneer batch hem verlaat
-      if (tankGewijzigd && oud?.tank) {
+      // Oude tank gaat automatisch op Vuil (HACCP) wanneer de batch hem
+      // verlaat — alleen als er ook echt bier in zat. Een reservering
+      // (Gepland/Brouwen) omwisselen laat de oude tank met rust: die was leeg.
+      if (tankGewijzigd && oud?.tank && isTankBezetStatus(oud.status)) {
         const res = markTankVuilBijVertrek(oud.tank, tankStatussen, tankLog, tod())
         if (res.changed) { setTankStatussen(res.statussen); setTankLog(res.log) }
       }
@@ -1447,7 +1465,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                     className="border border-gray-300 rounded px-2 py-1 text-sm bg-white t-input">
                     <option value="">{t('batch_move_tank_choose')}</option>
                     {(tanks||[]).filter((tk: any) => tk.id !== selB.tank).map((tk: any) => {
-                      const bezet = bat.find((b: any) => b.tank===tk.id && b.id!==selB.id && ['Vergisten','Conditioneren'].includes(b.status))
+                      const bezet = tankBezetter(tk.id, bat, selB.id)
                       const soort = tk.soort || 'fermentatie'
                       const soortLbl = soort==='bright' ? t('tank_soort_bright')
                                       : soort==='barrel' ? t('tank_soort_barrel')
@@ -3695,9 +3713,11 @@ const BatchesPage: React.FC<BatchesPageProps> = ({
                         // zodra het bier de tank in gaat (zie saveBatch).
                         const tStatus = tankStatussen?.[tk.id]?.status || 'Ontsmet'
                         const stTag = tStatus !== 'Ontsmet' ? ` · ${t(TANK_REINIGING_LABEL_KEY[tStatus] || '')}` : ''
+                        // Bezet = er zit bier in; een geplande/brouwende batch heeft
+                        // de tank alleen gereserveerd (nog leeg).
                         const tag = vrij
                           ? ` · ${t('tank_vrij')}${stTag}`
-                          : ` · ${t('tank_bezet')} ${eerste?.naam || ''}${eersteP ? ` (${fmtD(eersteP.van)}→${fmtD(eersteP.tot)})` : ''}${stTag}`
+                          : ` · ${isTankBezetStatus(eerste?.status) ? t('tank_bezet') : t('tank_gereserveerd')} ${eerste?.naam || ''}${eersteP ? ` (${fmtD(eersteP.van)}→${fmtD(eersteP.tot)})` : ''}${stTag}`
                         return <option key={tk.id} value={tk.id}>
                           {label}{tag}
                         </option>

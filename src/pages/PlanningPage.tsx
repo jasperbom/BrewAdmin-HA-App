@@ -46,9 +46,12 @@ const toISO = (d: Date): string => {
 // Tank-id voor de bovenste rij met batches zonder toegewezen tank.
 const UNASSIGNED = '__unassigned__'
 
-// Tanks die een batch fysiek vasthoudt op de agenda. Alleen Gepland-batches
-// zijn klik- en sleepbaar; lopende batches staan informatief in de tijdlijn.
-const TANK_STATUSES = ['Gepland', 'Vergisten', 'Conditioneren']
+// Batches die een tank op de agenda innemen: gereserveerd (Gepland/Brouwen —
+// de tank is nog leeg) of bezet (Vergisten/Conditioneren — er zit bier in).
+// Alleen Gepland-batches zijn klik- en sleepbaar; lopende batches staan
+// informatief in de tijdlijn. Brouwen hoort erbij: de brouwdag zelf is de
+// eerste dag van de tankbezetting, dus die batch mag niet van de rij vallen.
+const TANK_STATUSES = ['Gepland', 'Brouwen', 'Vergisten', 'Conditioneren']
 
 function PlanningPage({
   bat,
