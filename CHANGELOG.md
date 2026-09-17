@@ -4,6 +4,79 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.43] — 2026-09-17
+
+### Batch verwijderen met bier in de tank zet de tank op Vuil
+
+Werd een batch verwijderd terwijl hij nog aan het vergisten of conditioneren
+was, dan bleef zijn tank stilzwijgend op *Ontsmet* en "vrij" staan — terwijl
+er net bier uit kwam. Een volgende batch kon er zo zonder reiniging in
+(HACCP-fout). Bij de overgang naar Afgevuld/Gesloten en bij een
+tankverplaatsing ging de tank wél automatisch op Vuil; verwijderen was het
+gat.
+
+- **Verwijderen = vertrek uit de tank.** Het verwijderen van een batch in
+  Vergisten/Conditioneren zet de tank op *Vuil*, met dezelfde automatische
+  regel in het reinigingslog (`automatisch_leeg`) als bij afvullen of
+  verplaatsen.
+- **Alleen als er bier in zat.** Een batch in Gepland of Brouwen heeft zijn
+  tank alleen gereserveerd (nog leeg, zie 1.12.41) — die verwijderen laat de
+  tank met rust. Afgevuld/Gesloten heeft de tank al verlaten en die is toen al
+  op Vuil gezet.
+- Nieuwe pure helper `markTankVuilBijVerwijderen` in `utils/calculations.ts`
+  (bouwt op `isTankBezetStatus` en `markTankVuilBijVertrek`), met tests — ook
+  voor `markTankVuilBijVertrek` zelf, dat nog geen test had.
+
+---
+
+## [1.12.42] — 2026-09-17
+
+### Oude Batches-pagina verwijderd, BÈTA-label van de batch-flow af
+
+- De **oude Batches-pagina** is uit de productie-navigatie én uit de code
+  gehaald (`src/pages/BatchesPage.tsx`, ruim 4.000 regels). De batch-flow is
+  al maanden de enige werkwijze; de oude pagina had een vrije statusdropdown
+  zonder validatie en een afvulregistratie die de CCP-blokkades omzeilde
+  (verbeterplan 2, bevinding W1). De knop *Open op oude batches-pagina* in de
+  batch-flow is mee verdwenen.
+- De batch-flow heet niet langer bèta: het **BÈTA-label** op het overzicht en
+  op de batchkop is weg.
+- Legacy CCP-metingen (`haccp_ccp_metingen`, van vóór opschoning v4) waren
+  alleen nog op de oude pagina te zien; de data blijft in de database en de
+  Excel-backup, maar is nergens meer zichtbaar.
+
+---
+
+## [1.12.41] — 2026-09-17
+
+### Tank pas bezet als het wort erin gaat — reinigen kan tijdens het brouwen
+
+Zodra een batch op Brouwen stond, gold zijn tank als bezet: hij verdween van
+de vrije tanks op het Productie-dashboard en daarmee ook de knop om een
+reiniging vast te leggen. Terwijl je juist tíjdens het brouwen de gisttank
+reinigt en ontsmet — het wort gaat er pas na het koelen in.
+
+- **Gereserveerd versus bezet.** Bij Gepland en Brouwen is de toegewezen tank
+  alleen gereserveerd: hij staat bij de vrije tanks, met de batch en de
+  brouwdag erbij, en de reiniging is gewoon vast te leggen. Bezet is hij pas
+  bij Vergisten en Conditioneren.
+- **De claim valt bij de stap naar Vergisten.** Zit er al een andere batch in
+  de tank, dan blokkeert de app (ook op de Batches-pagina, waar dit nog niet
+  gecontroleerd werd); is de tank niet aantoonbaar ontsmet, dan vraagt hij om
+  bevestiging — ook als er nog nooit een status voor de tank is vastgelegd.
+- **Brouwdagfase: stap "Gisttank gereed".** Bovenaan de brouwdag staat de
+  gekozen tank met zijn reinigingsstatus, de laatste reiniging en de knop
+  *Reiniging vastleggen*; het vinkje staat pas op groen als de tank ontsmet
+  is. De tankkeuzes (planning, brouwdag, koelstap, verplaatsen) laten zien
+  welke tank bezet is (niet kiesbaar) of door wie hij gereserveerd is.
+- Een gereserveerde tank die je vóór de brouwdag omwisselt (batchformulier)
+  wordt niet meer ten onrechte op Vuil gezet — daar heeft nooit bier in
+  gezeten.
+- De planning-tijdlijn toont een batch in Brouwen weer op zijn tankrij; die
+  viel weg zodra de brouwdag begon.
+
+---
+
 ## [1.12.40] — 2026-09-15
 
 ### Batch-flow: een foute meting kun je weer verwijderen

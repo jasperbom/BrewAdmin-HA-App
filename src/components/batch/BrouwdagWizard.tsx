@@ -5,8 +5,9 @@ import { tod, r3, fmtD } from '../../utils/format'
 import { convertEenheid } from '../../utils/constants'
 import {
   mashEfficiency, brouwzaalEfficiency, kookVerdampingPct,
-  iBUTinseth, totaalMaxExtract, hopVerouderdeAlpha
+  iBUTinseth, totaalMaxExtract, hopVerouderdeAlpha, tankBezetter
 } from '../../utils/calculations'
+import { TANK_REINIGING_LABEL_KEY } from '../../utils/constants'
 import { getEffectiveBrewProp } from '../../utils/brewProps'
 import Btn from '../ui/Btn'
 import SectionHeader from '../ui/SectionHeader'
@@ -20,6 +21,11 @@ interface Props {
   stappen: BrouwdagStap[]
   setStappen: any
   tanks?: any[]
+  // Alle batches + de reinigingsstatus per tank: de tankkeuze bij het koelen
+  // (het moment dat het wort de tank in gaat) laat zien welke tank al bezet
+  // is door een andere batch en of de tank ontsmet is.
+  batches?: any[]
+  tankStatussen?: Record<string, { status?: string }> | null
   lots?: any[]
   ingredienten?: any[]
   // Globale fallback voor opslag-conditie (uit instellingen). Lots met
@@ -147,7 +153,7 @@ const effectieveAlpha = (
   return {alpha: 0, bron: 'none'}
 }
 
-const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel', recepten = [], afboekSlot, koelLogs, setKoelLogs}) => {
+const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], batches = [], tankStatussen = null, lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel', recepten = [], afboekSlot, koelLogs, setKoelLogs}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
@@ -1059,9 +1065,17 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                                 onChange={e => updField('tank', e.target.value)}
                                 className="w-full border border-gray-200 rounded px-2 py-1 t-input">
                                 <option value="">{t('batch_no_tank')}</option>
-                                {tanks.map((tk: any) => (
-                                  <option key={tk.id} value={tk.id}>{tk.naam || tk.id}</option>
-                                ))}
+                                {tanks.map((tk: any) => {
+                                  // Bezet = er zit al bier van een andere batch in;
+                                  // een reservering telt niet, de tank is nog leeg.
+                                  const bezet = tankBezetter(tk.id, batches, batch.id)
+                                  const st = tankStatussen?.[tk.id]?.status
+                                  const stLabel = st && st !== 'Ontsmet' ? (t(TANK_REINIGING_LABEL_KEY[st] || '') || st) : null
+                                  const extra = bezet ? ` — ${t('tank_bezet')} ${bezet.naam || ''}` : stLabel ? ` — ${stLabel}` : ''
+                                  return (
+                                    <option key={tk.id} value={tk.id} disabled={!!bezet}>{(tk.naam || tk.id) + extra}</option>
+                                  )
+                                })}
                               </select>
                             ) : (
                               <input value={batch.tank || ''}

@@ -308,7 +308,7 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
 
 | Pattern | Example |
 |---------|---------|
-| React component files | `PascalCase.tsx` — `BatchesPage.tsx` |
+| React component files | `PascalCase.tsx` — `BatchFlowPage.tsx` |
 | Utility files | `camelCase.ts` — `api.ts`, `format.ts` |
 | TypeScript interfaces/types | `PascalCase` — `Batch`, `InkoopFactuur` |
 | Variables/functions | `camelCase` — `ingTypes`, `bfCreds` |
@@ -522,6 +522,20 @@ Gepland → Aan het brouwen → Aan het gisten → Conditioning → Afgevuld →
 (Planned)   (Brewing)        (Fermenting)     (Conditioning)  (Packaged)  (Closed)
 ```
 
+### Tankbezetting: gereserveerd ≠ bezet
+
+Een tank is pas **bezet** als er bier in zit (`Vergisten`/`Conditioneren` —
+`TANK_BEZET_STATUSSEN`, `tankBezetter` in `utils/calculations.ts`). Bij
+`Gepland`/`Brouwen` is de toegewezen tank alleen **gereserveerd**
+(`tankReserveringen`): hij is nog leeg, reinigen/ontsmetten gebeurt tijdens de
+brouwdag (stap "Gisttank gereed" in de batch-flow, of de vrije-tankkaart op het
+Productie-dashboard) en het omwisselen van een reservering maakt de oude tank
+níét vuil. De claim valt bij de stap naar `Vergisten` (`tankClaimCheck`: een
+andere batch erin = harde blokkade, niet aantoonbaar ontsmet = bevestiging
+vragen). `TANK_STATUSSEN` (mét `Brouwen`) is de AGP-blik "bier in proces", niet
+de fysieke bezetting. server.py (tankbewaking, auto-metingen) kijkt alleen naar
+`Vergisten`/`Conditioneren` — houd die twee kanten gelijk.
+
 ### Data keys (opgeslagen in SQLite, `/data/brewadmin.db`)
 
 Key names are alphanumeric + underscore only (enforced by server). All active keys:
@@ -554,7 +568,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_schoonmaak_taken` | array | Schoonmaakschema (object, frequentie, middel) |
 | `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie |
 | `haccp_ccp_definities` | array | *(legacy)* Generieke CCP-definities — gemigreerd naar `batch_taken_items` (`type: 'meting'`) en sinds opschoning v4 uitgezet: de kritische beheerspunten zijn CCP 1/2/3 |
-| `haccp_ccp_metingen` | array | *(legacy)* Metingen op die definities, met limietcheck en automatische CAPA. Alleen nog zichtbaar/registreerbaar op de oude batchpagina |
+| `haccp_ccp_metingen` | array | *(legacy)* Metingen op die definities, met limietcheck en automatische CAPA. Sinds het verwijderen van de oude Batches-pagina (1.12.42) nergens meer zichtbaar of registreerbaar; de data blijft in de database en de Excel-backup |
 | `haccp_capa` | array | Corrigerende en preventieve maatregelen |
 | `haccp_waterkwaliteit` | array | Watermonsters tappunt brouwerij |
 | `haccp_ongedierte` | array | Ongediertecontroles en -waarnemingen |
