@@ -1072,6 +1072,25 @@ export const markTankVuilBijVertrek = (
   return { statussen: st, log: lg, changed: true }
 }
 
+// Een batch verwijderen terwijl er bier in zijn tank zit (Vergisten/
+// Conditioneren) is óók een vertrek uit die tank — alleen zonder afvulling.
+// De tank gaat dan op Vuil, precies zoals bij Afgevuld/Gesloten en bij een
+// tankverplaatsing; anders staat hij stil op Ontsmet en "vrij" terwijl er net
+// bier uit kwam (HACCP). Een batch in Gepland/Brouwen heeft zijn tank alleen
+// gereserveerd (`isTankBezetStatus`) — die is nog leeg en blijft met rust;
+// Afgevuld/Gesloten heeft de tank al verlaten (en die is toen al op Vuil gezet).
+export const markTankVuilBijVerwijderen = (
+  batch: { tank?: string | null, status?: string | null } | undefined | null,
+  statussen: TankStatusMap | undefined | null,
+  log: TankReinigingLog[] | undefined | null,
+  datum: string
+): { statussen: TankStatusMap, log: TankReinigingLog[], changed: boolean } => {
+  if (!batch?.tank || !isTankBezetStatus(batch.status)) {
+    return { statussen: { ...(statussen || {}) }, log: Array.isArray(log) ? [...log] : [], changed: false }
+  }
+  return markTankVuilBijVertrek(batch.tank, statussen, log, datum)
+}
+
 // Leg een reiniging/desinfectie van een tank vast: zet de status én schrijft
 // de log-entry die het bewijs vormt (HACCP-handboek hoofdstuk 6 — reiniging
 // moet aantoonbaar zijn, niet alleen gedaan). Tegenhanger van

@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.43] — 2026-09-17
+
+### Batch verwijderen met bier in de tank zet de tank op Vuil
+
+Werd een batch verwijderd terwijl hij nog aan het vergisten of conditioneren
+was, dan bleef zijn tank stilzwijgend op *Ontsmet* en "vrij" staan — terwijl
+er net bier uit kwam. Een volgende batch kon er zo zonder reiniging in
+(HACCP-fout). Bij de overgang naar Afgevuld/Gesloten en bij een
+tankverplaatsing ging de tank wél automatisch op Vuil; verwijderen was het
+gat.
+
+- **Verwijderen = vertrek uit de tank.** Het verwijderen van een batch in
+  Vergisten/Conditioneren zet de tank op *Vuil*, met dezelfde automatische
+  regel in het reinigingslog (`automatisch_leeg`) als bij afvullen of
+  verplaatsen.
+- **Alleen als er bier in zat.** Een batch in Gepland of Brouwen heeft zijn
+  tank alleen gereserveerd (nog leeg, zie 1.12.41) — die verwijderen laat de
+  tank met rust. Afgevuld/Gesloten heeft de tank al verlaten en die is toen al
+  op Vuil gezet.
+- Nieuwe pure helper `markTankVuilBijVerwijderen` in `utils/calculations.ts`
+  (bouwt op `isTankBezetStatus` en `markTankVuilBijVertrek`), met tests — ook
+  voor `markTankVuilBijVertrek` zelf, dat nog geen test had.
+
+---
+
 ## [1.12.42] — 2026-09-17
 
 ### Oude Batches-pagina verwijderd, BÈTA-label van de batch-flow af

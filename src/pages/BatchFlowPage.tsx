@@ -9,7 +9,7 @@ import {
   BUILTIN_ING_TYPES, EENHEDEN,
 } from '../utils/constants'
 import {
-  markTankVuilBijVertrek, fgStabiel, tankRestVolume, appendTankHistorie,
+  markTankVuilBijVertrek, markTankVuilBijVerwijderen, fgStabiel, tankRestVolume, appendTankHistorie,
   carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols,
   carbRangeForStyle, CARB_STYLE_OPTIONS,
   berekenVoorcalcVoorAfvulling, nextBatchNummer, berekenTanktijd, sumVergistingDagen,
@@ -1206,8 +1206,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       return
     }
     if (confirm(t('error_confirm_delete_batch'))) {
-      const naam = bat.find((b: any) => b.id === id)?.naam || ''
+      const batch = bat.find((b: any) => b.id === id)
+      const naam = batch?.naam || ''
       logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: id, actie: 'verwijderd', omschrijving: naam })
+      // Zat er bier in de tank (Vergisten/Conditioneren), dan verlaat het die
+      // tank nu zonder afvulling: tank op Vuil, net als bij Afgevuld/Gesloten
+      // en bij een verplaatsing (HACCP). Gepland/Brouwen = alleen gereserveerd,
+      // nog leeg — die tank blijft met rust.
+      const tankRes = markTankVuilBijVerwijderen(batch, tankStatussen, tankLog, tod())
+      if (tankRes.changed) { setTankStatussen(tankRes.statussen); setTankLog(tankRes.log) }
       setBat((prev: any[]) => prev.filter((b: any) => b.id !== id))
       setBi((prev: any[]) => prev.filter((x: any) => x.batch_id !== id))
       setAv((prev: any[]) => (prev || []).filter((x: any) => x.batch_id !== id))

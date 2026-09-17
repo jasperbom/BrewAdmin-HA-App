@@ -6,6 +6,7 @@ import {
   openAccijnsMaanden, telOpenAccijnsMaanden,
   productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
   tankBezetter, tankReserveringen, tankClaimCheck, isTankBezetStatus,
+  markTankVuilBijVertrek, markTankVuilBijVerwijderen,
   registreerTankReiniging, laatsteTankReiniging,
   berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht, berekenAccijnsImpact,
 } from '../calculations'
@@ -642,6 +643,75 @@ describe('tankbezetting: gereserveerd versus bezet', () => {
   })
 })
 
+describe('markTankVuilBijVertrek', () => {
+  it('zet de tank op Vuil met een automatische logregel', () => {
+    const res = markTankVuilBijVertrek('T1', { T1: { status: 'Ontsmet', sinds: '2026-09-01' } }, [], '2026-09-17')
+    expect(res.changed).toBe(true)
+    expect(res.statussen.T1).toEqual({ status: 'Vuil', sinds: '2026-09-17', laatste_log_id: 1 })
+    expect(res.log).toHaveLength(1)
+    expect(res.log[0]).toMatchObject({ tank_id: 'T1', nieuwe_status: 'Vuil', uitgevoerd_door: 'systeem', oorzaak: 'automatisch_leeg' })
+  })
+
+  it('is idempotent: een tank die al Vuil is krijgt geen tweede logregel', () => {
+    const log = [{ id: 3, tank_id: 'T1', datum: '2026-09-10', uitgevoerd_door: 'systeem', nieuwe_status: 'Vuil' as const }]
+    const res = markTankVuilBijVertrek('T1', { T1: { status: 'Vuil', sinds: '2026-09-10', laatste_log_id: 3 } }, log, '2026-09-17')
+    expect(res.changed).toBe(false)
+    expect(res.log).toHaveLength(1)
+  })
+
+  it('doet niets zonder tank', () => {
+    expect(markTankVuilBijVertrek('', {}, [], '2026-09-17').changed).toBe(false)
+    expect(markTankVuilBijVertrek(null, {}, [], '2026-09-17').changed).toBe(false)
+  })
+})
+
+describe('markTankVuilBijVerwijderen — batch verwijderen met bier in de tank', () => {
+  const statussen = { T1: { status: 'Ontsmet' as const, sinds: '2026-09-01', laatste_log_id: 1 } }
+  const log = [{ id: 1, tank_id: 'T1', datum: '2026-09-01', uitgevoerd_door: 'Jasper', nieuwe_status: 'Ontsmet' as const }]
+
+  it('zet de tank op Vuil bij Vergisten', () => {
+    const res = markTankVuilBijVerwijderen({ tank: 'T1', status: 'Vergisten' }, statussen, log, '2026-09-17')
+    expect(res.changed).toBe(true)
+    expect(res.statussen.T1).toEqual({ status: 'Vuil', sinds: '2026-09-17', laatste_log_id: 2 })
+    expect(res.log).toHaveLength(2)
+    expect(res.log[1]).toMatchObject({ id: 2, tank_id: 'T1', nieuwe_status: 'Vuil', oorzaak: 'automatisch_leeg', datum: '2026-09-17' })
+  })
+
+  it('zet de tank op Vuil bij Conditioneren', () => {
+    const res = markTankVuilBijVerwijderen({ tank: 'T1', status: 'Conditioneren' }, statussen, log, '2026-09-17')
+    expect(res.changed).toBe(true)
+    expect(res.statussen.T1.status).toBe('Vuil')
+  })
+
+  it.each(['Gepland', 'Brouwen', 'Afgevuld', 'Gesloten'])('laat een tank met rust bij status %s', (status) => {
+    // Gepland/Brouwen: tank alleen gereserveerd, nog leeg. Afgevuld/Gesloten:
+    // de tank is al verlaten en toen al op Vuil gezet.
+    const res = markTankVuilBijVerwijderen({ tank: 'T1', status }, statussen, log, '2026-09-17')
+    expect(res.changed).toBe(false)
+    expect(res.statussen.T1.status).toBe('Ontsmet')
+    expect(res.log).toHaveLength(1)
+  })
+
+  it('doet niets zonder tank of zonder batch', () => {
+    expect(markTankVuilBijVerwijderen({ tank: '', status: 'Vergisten' }, statussen, log, '2026-09-17').changed).toBe(false)
+    expect(markTankVuilBijVerwijderen({ status: 'Vergisten' }, statussen, log, '2026-09-17').changed).toBe(false)
+    expect(markTankVuilBijVerwijderen(null, statussen, log, '2026-09-17').changed).toBe(false)
+    expect(markTankVuilBijVerwijderen(undefined, null, null, '2026-09-17')).toEqual({ statussen: {}, log: [], changed: false })
+  })
+
+  it('muteert de invoer niet', () => {
+    markTankVuilBijVerwijderen({ tank: 'T1', status: 'Vergisten' }, statussen, log, '2026-09-17')
+    expect(statussen.T1.status).toBe('Ontsmet')
+    expect(log).toHaveLength(1)
+  })
+
+  it('is idempotent als de tank al Vuil staat', () => {
+    const vuil = { T1: { status: 'Vuil' as const, sinds: '2026-09-10', laatste_log_id: 5 } }
+    const res = markTankVuilBijVerwijderen({ tank: 'T1', status: 'Vergisten' }, vuil, [], '2026-09-17')
+    expect(res.changed).toBe(false)
+    expect(res.log).toHaveLength(0)
+  })
+})
 
 describe('registreerTankReiniging', () => {
   const basis = { datum: '2026-07-30', uitgevoerd_door: 'Jasper', middel: 'Chemipro OXI', cip: true }
