@@ -124,7 +124,7 @@ redirects, `target` in HA-calls, backup-permissies, SVG-icoon, CORS, security-he
 
 | # | Bevinding | Locatie |
 |---|---|---|
-| W1 | **"Oude batches"** staat in de productie-nav met een vrije statusdropdown zonder validatie (Gepland → Gesloten in één klik) en een `doAfvullen` dat `magAfvullingRegistreren` niet kent: afvulling zonder `sessie_id`, lotcode, CCP2, CCP3. Eén zo'n afvulling maakt de batch `legacy` en vrij van álle blokkades. | `src/App.tsx:1548`, `src/pages/BatchesPage.tsx:753-772, 1221-1230, 1410`, `src/utils/haccp.ts:332` |
+| W1 | **"Oude batches"** staat in de productie-nav met een vrije statusdropdown zonder validatie (Gepland → Gesloten in één klik) en een `doAfvullen` dat `magAfvullingRegistreren` niet kent: afvulling zonder `sessie_id`, lotcode, CCP2, CCP3. Eén zo'n afvulling maakt de batch `legacy` en vrij van álle blokkades. **Opgelost in 1.12.42:** de pagina is uit de navigatie en de code verwijderd; de batch-flow is de enige weg. | `src/App.tsx:1548`, `src/pages/BatchesPage.tsx:753-772, 1221-1230, 1410`, `src/utils/haccp.ts:332` |
 | W2 | **Geen serverhandhaving** op `afvullingen`, `uitleveringen`, `bestellingen`, `batches`: elk record wordt geaccepteerd. | `server.py:1135` |
 | W3 | **Commit-bundel opgebroken** bij 409/422/403 (`_flushCommitBuffer`): niet-geraakte keys gaan alsnog los. Productie die pickt: uitleveringen en voorraad geboekt, accijns niet; afronden: order afgerond, geen factuur, geen journaal. | `src/utils/api.ts:457-474` |
 | W4 | **Herpicken** bij status `gepickt` voegt nieuwe `uitleveringen` + `accijns` toe zonder de oude te verwijderen. **Annuleren** zet alleen de status; bier blijft uitgeslagen. Geen retourpad voor bier. | `BestellingenPage.tsx:806-920, 1263-1274, 1966` |

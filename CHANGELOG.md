@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.42] — 2026-09-17
+
+### Oude Batches-pagina verwijderd, BÈTA-label van de batch-flow af
+
+- De **oude Batches-pagina** is uit de productie-navigatie én uit de code
+  gehaald (`src/pages/BatchesPage.tsx`, ruim 4.000 regels). De batch-flow is
+  al maanden de enige werkwijze; de oude pagina had een vrije statusdropdown
+  zonder validatie en een afvulregistratie die de CCP-blokkades omzeilde
+  (verbeterplan 2, bevinding W1). De knop *Open op oude batches-pagina* in de
+  batch-flow is mee verdwenen.
+- De batch-flow heet niet langer bèta: het **BÈTA-label** op het overzicht en
+  op de batchkop is weg.
+- Legacy CCP-metingen (`haccp_ccp_metingen`, van vóór opschoning v4) waren
+  alleen nog op de oude pagina te zien; de data blijft in de database en de
+  Excel-backup, maar is nergens meer zichtbaar.
+
+---
+
 ## [1.12.41] — 2026-09-17
 
 ### Tank pas bezet als het wort erin gaat — reinigen kan tijdens het brouwen

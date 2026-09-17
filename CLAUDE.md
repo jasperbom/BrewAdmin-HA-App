@@ -308,7 +308,7 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
 
 | Pattern | Example |
 |---------|---------|
-| React component files | `PascalCase.tsx` — `BatchesPage.tsx` |
+| React component files | `PascalCase.tsx` — `BatchFlowPage.tsx` |
 | Utility files | `camelCase.ts` — `api.ts`, `format.ts` |
 | TypeScript interfaces/types | `PascalCase` — `Batch`, `InkoopFactuur` |
 | Variables/functions | `camelCase` — `ingTypes`, `bfCreds` |
@@ -568,7 +568,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_schoonmaak_taken` | array | Schoonmaakschema (object, frequentie, middel) |
 | `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie |
 | `haccp_ccp_definities` | array | *(legacy)* Generieke CCP-definities — gemigreerd naar `batch_taken_items` (`type: 'meting'`) en sinds opschoning v4 uitgezet: de kritische beheerspunten zijn CCP 1/2/3 |
-| `haccp_ccp_metingen` | array | *(legacy)* Metingen op die definities, met limietcheck en automatische CAPA. Alleen nog zichtbaar/registreerbaar op de oude batchpagina |
+| `haccp_ccp_metingen` | array | *(legacy)* Metingen op die definities, met limietcheck en automatische CAPA. Sinds het verwijderen van de oude Batches-pagina (1.12.42) nergens meer zichtbaar of registreerbaar; de data blijft in de database en de Excel-backup |
 | `haccp_capa` | array | Corrigerende en preventieve maatregelen |
 | `haccp_waterkwaliteit` | array | Watermonsters tappunt brouwerij |
 | `haccp_ongedierte` | array | Ongediertecontroles en -waarnemingen |

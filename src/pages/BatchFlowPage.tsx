@@ -1196,12 +1196,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setGistMetingen((prev: any[]) => (prev || []).filter((m: any) => m.id !== id))
   }
 
-  const openInBatches = () => {
-    if (!selB) return
-    setNavBatchId(selB.id)
-    setPage('batches')
-  }
-
   // Batch verwijderen — 1-op-1 overgenomen van de oude Batches-pagina, incl.
   // de fiscale integriteitsguard (blokkeert bij uitleveringen/accijns) en de
   // cascade-cleanup van alle gekoppelde records (anders plakken verweesde
@@ -1816,12 +1810,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setAv((prev: any[]) => (prev || []).filter((a: any) => a.id !== id))
   }
 
-  const betaBadge = (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider bg-purple-100 text-purple-700 ring-1 ring-purple-200">
-      {t('flow_beta')}
-    </span>
-  )
-
   // ── Batch-kaart in het overzicht ──────────────────────────────────────────
   const BatchKaart = ({b}: {b: any}) => {
     const idx = faseIndex(b.status)
@@ -1884,7 +1872,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return (
       <div className="space-y-4">
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <SectionHeader title={t('flow_titel')} info={betaBadge} />
+          <SectionHeader title={t('flow_titel')} />
           <div className="p-4 text-sm text-gray-600">{t('flow_intro')}</div>
         </div>
 
@@ -3953,7 +3941,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
         <SectionHeader
           title={<>{selB.naam || t('lbl_naamloos')}{selB.batch_nummer ? ` · ${selB.batch_nummer}` : ''}</>}
-          info={betaBadge}
         />
         <div className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -3967,7 +3954,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 <Btn v="secondary" s="sm" onClick={() => setReceptPickerOpen(true)}>{t('batch_sync_recept')}</Btn>
               )}
               <Btn v="danger" s="sm" onClick={() => removeBatch(selB.id)}>{t('btn_delete')}</Btn>
-              <Btn v="secondary" s="sm" onClick={openInBatches}>{t('flow_open_batches')}</Btn>
             </div>
           </div>
 
