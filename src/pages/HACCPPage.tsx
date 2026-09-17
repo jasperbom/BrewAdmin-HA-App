@@ -152,7 +152,7 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
           {aandacht.map(p=>(
             <div key={p.key} onClick={()=>setTab(p.tab)}
               className={`rounded-xl border-l-4 p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition-shadow ${p.kleur}`}>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{p.label}</div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">{p.label}</div>
               <div className="text-2xl font-bold text-gray-800">{p.waarde}</div>
               {p.sub && <div className="text-xs text-gray-500 mt-1">{p.sub}</div>}
             </div>
@@ -162,7 +162,7 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
 
       {!!inOrde.length && !!aandacht.length && (
         <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('haccp_dash_in_orde')}</div>
+          <div className="text-xs font-semibold text-gray-500 mb-2">{t('haccp_dash_in_orde')}</div>
           <div className="flex flex-wrap gap-2">
             {inOrde.map(p=>(
               <button key={p.key} onClick={()=>setTab(p.tab)}
@@ -343,7 +343,7 @@ function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, a
               ) : <p className="text-sm text-gray-500">{t('haccp_allergen_batch_geen')}</p>}
               {selBatchObj && (
                 <div className="mt-3">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_allergen_notities')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_allergen_notities')}</label>
                   <textarea value={selBatchObj.allergeen_notities||''} onChange={e=>{
                     const v = e.target.value
                     setBat((prev:any[])=>(prev||[]).map((b:any)=>b.id===selBatch?{...b,allergeen_notities:v}:b))
@@ -372,7 +372,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
 
   const batchNaam = (id:number) => (bat||[]).find((b:any)=>b.id===id)?.naam || t('lbl_onbekend')
   // Waar in de workflow de blokkade omzeild is — leesbaar, niet de ruwe code.
-  const bronLabel = (bron:string) => t(`haccp_bron_${bron}`) || bron
+  const bronLabel = (bron:string) => t(`haccp_bron_${bron}`, bron)
   const inPeriode = (d?:string) => (!fVan || (d||'') >= fVan) && (!fTot || (d||'') <= fTot)
   const tijd = (iso?:string) => iso ? new Date(iso).toLocaleString() : '—'
 
@@ -644,7 +644,7 @@ function CAPALijst({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit,
             <Inp label={t('haccp_capa_actie')} value={edit.actie||''} onChange={v=>setEdit({...edit,actie:v})} />
             <Inp label={t('haccp_capa_verantwoordelijke')} value={edit.verantwoordelijke||''} onChange={v=>setEdit({...edit,verantwoordelijke:v})} />
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_capa_status')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_capa_status')}</label>
               <select value={edit.status||'open'} onChange={e=>setEdit({...edit,status:e.target.value,afgerond_datum:e.target.value==='afgerond'?tod():edit.afgerond_datum})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 <option value="open">{t('haccp_capa_status_open')}</option>
                 <option value="in_behandeling">{t('haccp_capa_status_in_behandeling')}</option>

@@ -82,11 +82,11 @@ const PrimingSugarCalc: React.FC<Props> = ({batch, afvullingen, verliesRegistrat
 
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="bg-emerald-50 border border-emerald-200 rounded p-3">
-            <div className="text-xs text-emerald-700 uppercase font-semibold">{t('priming_resultaat_totaal')}</div>
+            <div className="text-xs text-emerald-700 font-semibold">{t('priming_resultaat_totaal')}</div>
             <div className="text-2xl font-bold text-emerald-800">{gramTotaal > 0 ? `${gramTotaal.toFixed(1)} g` : '—'}</div>
           </div>
           <div className="bg-emerald-50 border border-emerald-200 rounded p-3">
-            <div className="text-xs text-emerald-700 uppercase font-semibold">{t('priming_resultaat_per_liter')}</div>
+            <div className="text-xs text-emerald-700 font-semibold">{t('priming_resultaat_per_liter')}</div>
             <div className="text-2xl font-bold text-emerald-800">{gramPerL > 0 ? `${gramPerL.toFixed(2)} g/L` : '—'}</div>
           </div>
         </div>

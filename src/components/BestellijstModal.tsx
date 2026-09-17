@@ -57,13 +57,13 @@ const BestellijstModal: React.FC<BestellijstModalProps> = ({ shortages, lots = [
               if (rijen.length === 0) return null
               return (
                 <div key={cat}>
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <div className="text-xs font-semibold text-gray-500 mb-2">
                     {t(CATEGORIE_LABEL_KEY[cat])}
                   </div>
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
-                        <tr className="text-gray-500 text-xs uppercase tracking-wide">
+                        <tr className="text-gray-500 text-xs">
                           <th className="text-left px-3 py-2 font-medium w-8"></th>
                           <th className="text-left px-3 py-2 font-medium">{t('lbl_name')}</th>
                           <th className="text-right px-3 py-2 font-medium">{t('plan_tekort')}</th>

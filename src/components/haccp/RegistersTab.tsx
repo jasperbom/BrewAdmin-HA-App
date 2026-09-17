@@ -109,7 +109,7 @@ function WaterLijst({waterkwaliteit, setWaterkwaliteit, auditLog, setAuditLog, m
           <div className="space-y-3">
             <Inp label={t('lbl_datum')} type="date" value={edit.datum || ''} onChange={v => setEdit({...edit, datum: v})} req />
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_water_bron')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_water_bron')}</label>
               <select value={edit.bron || 'leidingwater'} onChange={e => setEdit({...edit, bron: e.target.value})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 <option value="leidingwater">{t('haccp_water_bron_leiding')}</option>
                 <option value="bron">{t('haccp_water_bron_bron')}</option>
@@ -122,7 +122,7 @@ function WaterLijst({waterkwaliteit, setWaterkwaliteit, auditLog, setAuditLog, m
               <Inp label={t('haccp_water_chlor')} type="number" value={edit.chlor ?? ''} onChange={v => setEdit({...edit, chlor: v ? Number(v) : undefined})} step="0.01" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_water_resultaat')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_water_resultaat')}</label>
               <select value={edit.resultaat || 'goed'} onChange={e => setEdit({...edit, resultaat: e.target.value})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 <option value="goed">{t('haccp_water_goed')}</option>
                 <option value="afwijkend">{t('haccp_water_afwijkend')}</option>
@@ -189,7 +189,7 @@ function OngedierteLijst({ongedierte, setOngedierte, auditLog, setAuditLog, moda
           <div className="space-y-3">
             <Inp label={t('lbl_datum')} type="date" value={edit.datum || ''} onChange={v => setEdit({...edit, datum: v})} req />
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_ongd_type')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_ongd_type')}</label>
               <select value={edit.type || 'controle'} onChange={e => setEdit({...edit, type: e.target.value})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 <option value="controle">{t('haccp_ongd_controle')}</option>
                 <option value="waarneming">{t('haccp_ongd_waarneming')}</option>

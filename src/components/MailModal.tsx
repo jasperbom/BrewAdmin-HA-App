@@ -174,23 +174,23 @@ export default function MailModal({
 
       <div className="space-y-3">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('mail_to')}</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">{t('mail_to')}</label>
           <input type="text" value={to} onChange={e => setTo(e.target.value)} className={inputCls}
             placeholder="naam@example.com" />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('mail_subject')}</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">{t('mail_subject')}</label>
           <input type="text" value={subject} onChange={e => setSubject(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('mail_body')}</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">{t('mail_body')}</label>
           <textarea value={text} onChange={e => setText(e.target.value)} rows={8}
             className={inputCls + ' font-mono'} />
         </div>
 
         {attachments && attachments.length > 0 && (
           <div className="text-xs text-gray-500">
-            <span className="font-semibold uppercase tracking-wide">{t('mail_attachments')}: </span>
+            <span className="font-semibold">{t('mail_attachments')}: </span>
             {attachments.map(a => a.filename).join(', ')}
           </div>
         )}

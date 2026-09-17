@@ -530,28 +530,28 @@ const KlantenPage: React.FC<Props> = ({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
               <div className="text-2xl font-bold text-gray-800">{selectedStats.bestellingen.length}</div>
-              <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_orders')}</div>
+              <div className="text-xs text-gray-500 mt-1">{t('klanten_stat_orders')}</div>
               {selectedStats.laatsteDatum && (
                 <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_stat_last_order')}: {fmtD(selectedStats.laatsteDatum)}</div>
               )}
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_omzet_tooltip')}>
               <div className="text-2xl font-bold text-green-700">{fmt(selectedStats.omzet)}</div>
-              <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_omzet')}</div>
+              <div className="text-xs text-gray-500 mt-1">{t('klanten_stat_omzet')}</div>
               <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_omzet_sub')}</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_open_orders_tooltip')}>
               <div className={`text-2xl font-bold ${selectedStats.openOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
                 {selectedStats.openOrders > 0 ? fmt(selectedStats.openOrders) : '—'}
               </div>
-              <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_open_orders')}</div>
+              <div className="text-xs text-gray-500 mt-1">{t('klanten_stat_open_orders')}</div>
               <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_open_orders_sub')}</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
               <div className={`text-2xl font-bold ${selectedStats.openstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
                 {selectedStats.openstaand > 0 ? fmt(selectedStats.openstaand) : '—'}
               </div>
-              <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_openstaand')}</div>
+              <div className="text-xs text-gray-500 mt-1">{t('klanten_stat_openstaand')}</div>
             </div>
           </div>
         )}
@@ -563,7 +563,7 @@ const KlantenPage: React.FC<Props> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
               <Inp label={t('lbl_name') + ' *'} value={form.naam} onChange={v => update({naam: v})} />
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                <label className="block text-xs font-semibold text-gray-500 mb-1">
                   {t('klanten_klantnummer')}
                 </label>
                 <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700 font-mono flex items-center justify-between">
@@ -572,13 +572,13 @@ const KlantenPage: React.FC<Props> = ({
                       ? (selected?.klantnummer || nextKlantnummer(klanten))
                       : nextKlantnummer(klanten)}
                   </span>
-                  <span className="text-[11px] text-gray-500 uppercase tracking-wide font-sans">
+                  <span className="text-[11px] text-gray-500 font-sans">
                     {t('klanten_klantnummer_auto_label')}
                   </span>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('klanten_type')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('klanten_type')}</label>
                 <select value={form.klant_type}
                   onChange={(e: any) => update({klant_type: e.target.value})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none">
@@ -588,7 +588,7 @@ const KlantenPage: React.FC<Props> = ({
               </div>
               <Inp label={t('klanten_bedrijf')} value={form.bedrijf} onChange={v => update({bedrijf: v})} />
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_email')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_email')}</label>
                 <input type="email" value={form.email} onChange={(e: any) => update({email: e.target.value})}
                   placeholder="naam@example.com"
                   className={`w-full border rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all ${
@@ -621,7 +621,7 @@ const KlantenPage: React.FC<Props> = ({
               <Inp label={t('lbl_kvk')} value={form.kvk_nummer} onChange={v => update({kvk_nummer: v})} />
             </div>
             <div className="mt-3">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('klanten_notities')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('klanten_notities')}</label>
               <textarea value={form.notities} onChange={(e: any) => update({notities: e.target.value})} rows={3}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none" />
             </div>
@@ -652,7 +652,7 @@ const KlantenPage: React.FC<Props> = ({
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="text-xs text-gray-500 bg-gray-50 uppercase tracking-wide">
+                    <thead className="text-xs text-gray-500 bg-gray-50">
                       <tr>
                         <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                         <th className="px-3 py-2 text-left">{t('factuur_number')}</th>
@@ -675,7 +675,7 @@ const KlantenPage: React.FC<Props> = ({
                               </td>
                               <td className="px-3 py-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status] || 'bg-gray-100'}`}>
-                                  {t(`orders_status_${b.status}`) || b.status}
+                                  {t(`orders_status_${b.status}`, b.status)}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{fmt(totaal)}</td>
@@ -695,7 +695,7 @@ const KlantenPage: React.FC<Props> = ({
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="text-xs text-gray-500 bg-gray-50 uppercase tracking-wide">
+                    <thead className="text-xs text-gray-500 bg-gray-50">
                       <tr>
                         <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                         <th className="px-3 py-2 text-left">{t('factuur_number')}</th>
@@ -717,7 +717,7 @@ const KlantenPage: React.FC<Props> = ({
                                 : f.status === 'credit' ? 'bg-purple-100 text-purple-700'
                                 : 'bg-orange-100 text-orange-700'
                               }`}>
-                                {t(`factuur_${f.status}`) || f.status}
+                                {t(`factuur_${f.status}`, f.status)}
                               </span>
                             </td>
                             <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{fmt(f.bruto || 0)}</td>
@@ -792,25 +792,25 @@ const KlantenPage: React.FC<Props> = ({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
           <div className="text-2xl font-bold text-gray-800">{klanten.length}{synthCount > 0 && <span className="text-base text-blue-600 ml-1">+{synthCount}</span>}</div>
-          <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_totaal')}</div>
+          <div className="text-xs text-gray-500 mt-1">{t('klanten_totaal')}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_omzet_tooltip')}>
           <div className="text-2xl font-bold text-green-700">{fmt(totaalOmzet)}</div>
-          <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_omzet_totaal')}</div>
+          <div className="text-xs text-gray-500 mt-1">{t('klanten_stat_omzet_totaal')}</div>
           <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_omzet_sub')}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_open_orders_tooltip')}>
           <div className={`text-2xl font-bold ${totaalOpenOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
             {totaalOpenOrders > 0 ? fmt(totaalOpenOrders) : '—'}
           </div>
-          <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_open_orders_totaal')}</div>
+          <div className="text-xs text-gray-500 mt-1">{t('klanten_stat_open_orders_totaal')}</div>
           <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_open_orders_sub')}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
           <div className={`text-2xl font-bold ${totaalOpenstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
             {totaalOpenstaand > 0 ? fmt(totaalOpenstaand) : '—'}
           </div>
-          <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_openstaand_totaal')}</div>
+          <div className="text-xs text-gray-500 mt-1">{t('klanten_stat_openstaand_totaal')}</div>
         </div>
       </div>
 
@@ -826,7 +826,7 @@ const KlantenPage: React.FC<Props> = ({
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[800px]">
-              <thead className="text-xs text-gray-500 bg-gray-50 uppercase tracking-wide">
+              <thead className="text-xs text-gray-500 bg-gray-50">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium">{t('lbl_name')}</th>
                   <th className="px-3 py-2.5 text-left font-medium">{t('lbl_email')}</th>

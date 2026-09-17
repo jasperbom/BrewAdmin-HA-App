@@ -73,14 +73,22 @@ function AdministratieDashboard({
        bankKoppelingen, accijnsAangiftes, acc, aansluitverschilCent, vandaag])
 
   // Placeholders invullen; een lege naam/nummer wordt nooit een gat in de zin.
+  // Een ontbrekend factuurnummer laten we wegvallen in plaats van er een
+  // liggend streepje neer te zetten: "Factuur — · Cafe De Zwaan" leest als een
+  // weergavefout. Het losse scheidingsteken dat dan overblijft ruimen we op.
   const vul = (sleutel: string, vars?: Record<string, string>): string => {
     let s = t(sleutel)
     if (!vars) return s
     for (const [k, v] of Object.entries(vars)) {
-      const waarde = v || (k === 'nr' ? '—' : k === 'klant' || k === 'leverancier' ? t('lbl_onbekend') : '')
+      const waarde = v || (k === 'klant' || k === 'leverancier' ? t('lbl_onbekend') : '')
       s = s.split(`{${k}}`).join(waarde)
     }
     return s
+      .replace(/\s*·\s*·\s*/g, ' · ')   // twee scheidingstekens naast elkaar
+      .replace(/\s*·\s*$/, '')          // scheidingsteken aan het eind
+      .replace(/^\s*·\s*/, '')          // scheidingsteken aan het begin
+      .replace(/\s{2,}/g, ' ')
+      .trim()
   }
 
   // ── Deze maand ─────────────────────────────────────────────────────────────
@@ -159,7 +167,7 @@ function AdministratieDashboard({
 
       {/* ── Deze maand ───────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('besl_maand_titel')}</h3>
+        <h3 className="text-xs font-semibold text-gray-500 mb-2">{t('besl_maand_titel')}</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label={t('besl_stat_omzet')} value={fmt(cijfers.omzet)} sub={t('besl_stat_omzet_sub')}
             onClick={() => gaNaarBoekhouding('verkoop')} />

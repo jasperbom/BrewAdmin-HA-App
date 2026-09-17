@@ -49,7 +49,7 @@ const EtiketAllergenen: React.FC<Props> = ({product, onOpslaan}) => {
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-2.5 space-y-2">
-      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      <div className="text-xs font-semibold text-gray-500">
         {t('haccp_ccp3_etiket_vastleggen')}
       </div>
       <p className="text-xs text-gray-500 max-w-prose">{t('haccp_ccp3_etiket_vastleggen_uitleg')}</p>

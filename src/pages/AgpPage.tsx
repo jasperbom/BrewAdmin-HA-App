@@ -179,11 +179,11 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
       {/* Liter-tegels */}
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-white rounded-xl shadow-card p-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('agp_kpi_liter_verpakt')}</div>
+          <div className="text-xs font-semibold text-gray-500">{t('agp_kpi_liter_verpakt')}</div>
           <div className="text-2xl font-bold mt-1" style={{color:'var(--t-accent)'}}>{ovz.totaal_liter_agp.toFixed(1)}L</div>
         </div>
         <div className="bg-white rounded-xl shadow-card p-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('agp_kpi_liter_tank')}</div>
+          <div className="text-xs font-semibold text-gray-500">{t('agp_kpi_liter_tank')}</div>
           <div className="text-2xl font-bold mt-1" style={{color:'var(--t-accent)'}}>{ovz.totaal_liter_tank.toFixed(1)}L</div>
         </div>
       </div>
@@ -196,8 +196,8 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
           { label: t('agp_kpi_accijns_totaal'),  waarde: totaal_accijns_agp,      vm: histAvg.vorigeMaand.totaal,  dj: histAvg.ditJaar.totaal,  vj: histAvg.vorigJaar?.totaal },
         ].map((tile, i) => (
           <div key={i} className="bg-white rounded-xl shadow-card p-4">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{tile.label}</div>
-            <div className="text-2xl font-bold mt-1 text-amber-700">{fmt(tile.waarde)}</div>
+            <div className="text-xs font-semibold text-gray-500">{tile.label}</div>
+            <div className="text-2xl font-bold mt-1 t-accent-text">{fmt(tile.waarde)}</div>
             <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
               <div>{t('agp_kpi_gem_vorige_maand')}: <span className="font-medium text-gray-700">{fmt(tile.vm)}</span></div>
               <div>{t('agp_kpi_gem_dit_jaar').replace('{jaar}', String(histAvg.year))}: <span className="font-medium text-gray-700">{fmt(tile.dj)}</span></div>
@@ -242,7 +242,7 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
                       <td className="px-3 py-2 text-gray-600">{r.batch.tank || '—'}</td>
                       <td className="px-3 py-2 text-right">{r.liter.toFixed(1)}L</td>
                       <td className="px-3 py-2 text-right">{r.abv ? `${r.abv.toFixed(2)}%` : '—'}{r.geschat ? <span className="ml-1 text-xs text-gray-400">({t('agp_geschat')})</span> : null}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(r.accijns)}</td>
+                      <td className="px-3 py-2 text-right font-semibold t-accent-text">{fmt(r.accijns)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -286,7 +286,7 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
                       <td className="px-3 py-2 text-right">{r.in_agp}</td>
                       <td className="px-3 py-2 text-right">{r.liter_in_agp.toFixed(1)}L</td>
                       <td className="px-3 py-2 text-right">{r.abv ? `${r.abv}%` : '—'}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(r.accijns_in_agp)}</td>
+                      <td className="px-3 py-2 text-right font-semibold t-accent-text">{fmt(r.accijns_in_agp)}</td>
                       <td className="px-3 py-2 text-right">
                         <Btn v="secondary" onClick={()=>openVerplaats(r.afv, agp.id)}>{t('agp_verplaatsen')}</Btn>
                       </td>
@@ -391,7 +391,7 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
                             <td className="px-3 py-2 text-right">{v.aantal}</td>
                             <td className="px-3 py-2 text-gray-600">{locById(v.van_locatie_id).naam}</td>
                             <td className="px-3 py-2 text-gray-600">{locById(v.naar_locatie_id).naam}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-amber-700">{v.accijns ? fmt(v.accijns) : '—'}</td>
+                            <td className="px-3 py-2 text-right font-semibold t-accent-text">{v.accijns ? fmt(v.accijns) : '—'}</td>
                             <td className="px-3 py-2 text-right">
                               <Btn s="sm" v="danger" onClick={()=>deleteVerplaats(v)}>{t('btn_delete')}</Btn>
                             </td>
@@ -423,12 +423,12 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
         <Modal title={t('agp_locaties_beheren')} onClose={()=>setLocModal(null)}>
           <div className="space-y-4 text-sm">
             <div className="border border-gray-200 rounded">
-              <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('agp_bestaande_locaties')}</div>
+              <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500">{t('agp_bestaande_locaties')}</div>
               <div className="divide-y divide-gray-100">
                 {(locaties||[]).map((l: any) => (
                   <div key={l.id} className="flex items-center justify-between px-3 py-2">
                     <div>
-                      <div className="font-medium">{l.naam}{l.is_agp ? <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">AGP</span> : null}</div>
+                      <div className="font-medium">{l.naam}{l.is_agp ? <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-semibold">AGP</span> : null}</div>
                       {l.adres && <div className="text-xs text-gray-500">{l.adres}</div>}
                     </div>
                     <div className="flex gap-2">
@@ -440,7 +440,7 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
               </div>
             </div>
             <div className="border border-gray-200 rounded p-3 space-y-2">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{locModal.id ? t('agp_locatie_bewerken') : t('agp_locatie_nieuw')}</div>
+              <div className="text-xs font-semibold text-gray-500">{locModal.id ? t('agp_locatie_bewerken') : t('agp_locatie_nieuw')}</div>
               <Inp label={t('lbl_naam')} value={locModal.naam||''} onChange={(v: string)=>setLocModal((f: any)=>({...f, naam: v}))} />
               <Inp label={t('lbl_adres')} value={locModal.adres||''} onChange={(v: string)=>setLocModal((f: any)=>({...f, adres: v}))} />
               <Inp label={t('lbl_opmerking')} value={locModal.opmerking||''} onChange={(v: string)=>setLocModal((f: any)=>({...f, opmerking: v}))} />

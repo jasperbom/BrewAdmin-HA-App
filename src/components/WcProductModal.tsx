@@ -431,7 +431,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                 het artikel — hier zie je alleen wat er gepusht wordt. */}
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-gray-500">
                   {t('bier_gaat_mee')}
                 </span>
                 <span className="text-[11px] text-gray-400">{t('bier_gaat_mee_hint')}</span>
@@ -453,7 +453,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
       {/* Verschillen met de winkel */}
       {gekoppeld && (
         <div className="mt-4 border-t border-gray-200 pt-3">
-          <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+          <div className="text-[11px] font-semibold text-gray-500 mb-1">
             {t('wc_lbl_verschillen')} ({verschillen.length})
           </div>
           {verschillen.length === 0

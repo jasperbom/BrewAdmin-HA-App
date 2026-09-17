@@ -6,6 +6,9 @@ interface SectionHeaderProps {
   onToggle?: () => void
   info?: React.ReactNode
   rounded?: 'top' | 'full'
+  /** Geverfde themabalk in plaats van de rustige default. Alleen voor het
+      onderwerp van de pagina zelf (de productkaart, het formulier) — niet voor
+      elke sectie: gestapelde gekleurde balken maken alles even belangrijk. */
   solid?: boolean
   cls?: string
 }
@@ -19,32 +22,40 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
   solid = false,
   cls = '',
 }) => {
-  const bg = solid ? 't-hdr-solid' : 't-hdr'
   const round = rounded === 'full' ? 'rounded-xl' : 'rounded-t-xl'
   const showArrow = !!onToggle
-  const rotate = open ? 'rotate(90deg)' : 'none'
+  // Rustige default: de sectie hangt aan zijn kaart met een haarlijn, niet aan
+  // een gekleurde balk. `rounded="full"` staat los, dus die krijgt geen lijn.
+  const skin = solid
+    ? 't-hdr-solid text-white'
+    : `bg-white text-gray-800 ${rounded === 'full' ? 'border border-gray-200' : 'border-b border-gray-200'}`
   const titleContent = (
-    <span className="flex items-center gap-2 min-w-0">
+    <span className="flex items-center gap-1.5 min-w-0">
       {showArrow && (
-        <span
-          className="text-white/70 text-xs inline-block"
-          style={{ transform: rotate, transition: 'transform 150ms ease' }}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className={`w-3.5 h-3.5 flex-shrink-0 ${solid ? 'text-white/70' : 'text-gray-400'}`}
+          style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 150ms ease' }}
           aria-hidden="true"
-        >▶</span>
+        >
+          <path fillRule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+        </svg>
       )}
       <span className="truncate">{title}</span>
     </span>
   )
   return (
     <div
-      className={`px-4 py-2.5 ${bg} text-white font-medium text-sm flex items-center justify-between select-none ${round} ${cls}`}
+      className={`px-4 py-2.5 font-semibold text-sm flex items-center justify-between select-none ${skin} ${round} ${cls}`}
     >
       {onToggle ? (
         <button
           type="button"
           aria-expanded={open}
           onClick={onToggle}
-          className="flex-1 min-w-0 flex items-center text-left cursor-pointer hover:opacity-90"
+          className={`flex-1 min-w-0 flex items-center text-left cursor-pointer ${solid ? 'hover:opacity-90' : 'hover:text-gray-950'}`}
         >
           {titleContent}
         </button>
@@ -52,7 +63,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
         titleContent
       )}
       {info !== undefined && info !== null && info !== false && (
-        <span className="text-xs font-normal text-white/70 ml-3 flex-shrink-0 flex items-center gap-2">
+        <span className={`text-xs font-normal ml-3 flex-shrink-0 flex items-center gap-2 ${solid ? 'text-white/70' : 'text-gray-500'}`}>
           {info}
         </span>
       )}

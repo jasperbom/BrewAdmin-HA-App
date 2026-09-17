@@ -304,7 +304,7 @@ function buildPakbonBody(
       <thead>
         <tr>
           <th>${t('lbl_pakbon_bier')}</th>
-          <th>Batch #</th>
+          <th>${t('lbl_batch_nr')}</th>
           <th>${t('lbl_pakbon_verpakking')}</th>
           <th>${t('lbl_pakbon_inhoud')}</th>
           <th>${t('lbl_tht')}</th>

@@ -24,7 +24,7 @@ const Sel: React.FC<SelProps> = ({label, value, onChange, opts, ph, cls='', id, 
   return (
     <div className={cls}>
       {label && (
-        <label htmlFor={selectId} className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+        <label htmlFor={selectId} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       )}
       <select
         id={selectId}

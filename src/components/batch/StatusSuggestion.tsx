@@ -61,8 +61,8 @@ const StatusSuggestion: React.FC<Props> = ({batch, setBat, gistMetingen, afvulli
   if (!suggestie) return null
 
   return (
-    <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-center justify-between gap-3 shadow-sm">
-      <div className="text-sm text-amber-900 font-medium flex-1">{suggestie.label}</div>
+    <div className="bg-orange-50 border border-orange-300 rounded-xl px-4 py-3 flex items-center justify-between gap-3 shadow-sm">
+      <div className="text-sm t-accent-text font-medium flex-1">{suggestie.label}</div>
       <div className="flex gap-2">
         <Btn s="sm" v="secondary" onClick={() => negeer(suggestie!.key)}>{t('status_suggest_negeer')}</Btn>
         <Btn s="sm" v="green" onClick={() => bevestig(suggestie!.naarStatus)}>{t('status_suggest_bevestig')}</Btn>

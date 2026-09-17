@@ -99,7 +99,7 @@ const DryHopSection: React.FC<Props> = ({batch, dryHops, setDryHops, ingrediente
               return (
                 <div key={h.id} className={`flex items-center justify-between px-3 py-2 rounded text-sm border ${
                   h.verwijderd ? 'bg-gray-50 border-gray-200 text-gray-500' :
-                  teVerwijderen ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-200'
+                  teVerwijderen ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-200'
                 }`}>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{h.ingredient_naam} <span className="text-gray-500 font-normal">— {h.gram}g</span></div>

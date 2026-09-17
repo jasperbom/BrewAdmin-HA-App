@@ -14,8 +14,8 @@ const StatCard: React.FC<StatCardProps> = ({label, value, sub, icon, onClick, cl
   const content = (
     <div className="flex items-start justify-between">
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</p>
-        <p className="text-2xl font-bold text-gray-800">{value}</p>
+        <p className="text-sm text-gray-600 mb-1">{label}</p>
+        <p className="text-2xl font-semibold text-gray-900 tabular-nums">{value}</p>
         {sub && <p className="text-xs text-gray-500 mt-1">{sub}</p>}
       </div>
       {icon && <span className="text-2xl opacity-60">{icon}</span>}

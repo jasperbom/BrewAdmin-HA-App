@@ -167,7 +167,7 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
             <Inp label={t('haccp_schoonmaak_naam')} value={edit.naam || ''} onChange={v => setEdit({...edit, naam: v})} req />
             <Inp label={t('haccp_schoonmaak_omschrijving')} value={edit.omschrijving || ''} onChange={v => setEdit({...edit, omschrijving: v})} />
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_schoonmaak_frequentie')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_schoonmaak_frequentie')}</label>
               <select value={edit.frequentie || 'wekelijks'} onChange={e => setEdit({...edit, frequentie: e.target.value})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 {SCHOONMAAK_FREQUENTIES.map(f => <option key={f.key} value={f.key}>{t(f.label)}</option>)}
               </select>
@@ -175,7 +175,7 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
             <Inp label={t('haccp_schoonmaak_locatie')} value={edit.locatie || ''} onChange={v => setEdit({...edit, locatie: v})} />
             <Inp label={t('haccp_schoonmaak_verantwoordelijke')} value={edit.verantwoordelijke || ''} onChange={v => setEdit({...edit, verantwoordelijke: v})} />
             {(tanks || []).length > 0 && <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_schoonmaak_tank')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_schoonmaak_tank')}</label>
               <select value={edit.tank_id || ''} onChange={e => setEdit({...edit, tank_id: e.target.value || undefined})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 <option value="">-</option>
                 {(tanks || []).map((tk: any) => <option key={tk.id} value={tk.id}>{tk.naam || tk.id}</option>)}
@@ -193,7 +193,7 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
         <Modal title={t('haccp_schoonmaak_log_nieuw')} onClose={() => {setModal(null); setEdit(null)}}>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('haccp_schoonmaak_taak')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_schoonmaak_taak')}</label>
               <select value={edit.taak_id || ''} onChange={e => setEdit({...edit, taak_id: Number(e.target.value)})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 {(schoonmaakTaken || []).map((tk: any) => <option key={tk.id} value={tk.id}>{tk.naam}</option>)}
               </select>
@@ -272,7 +272,7 @@ function TankReinigingLijst({tanks, tankLog}: any) {
       {!!rijen.length && (
         <div className="overflow-x-auto bg-white rounded-lg border border-gray-200">
           <table className="min-w-full text-xs">
-            <thead className="bg-gray-50 text-gray-600 uppercase tracking-wide">
+            <thead className="bg-gray-50 text-gray-600">
               <tr>
                 <th className="text-left px-3 py-2">{t('lbl_datum')}</th>
                 <th className="text-left px-3 py-2">{t('nav_tanks')}</th>

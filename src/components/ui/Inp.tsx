@@ -22,7 +22,7 @@ const Inp: React.FC<InpProps> = ({label, value, onChange, type='text', placehold
   return (
     <div className={cls}>
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">
           {label}{req && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}

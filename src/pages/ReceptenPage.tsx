@@ -282,7 +282,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
           <td className="px-3 py-2 text-xs text-gray-300 text-center">{ingLots.length>0?(open?'▲':'▼'):''}</td>
         </tr>
         {open && ingLots.map((l: any)=>(
-          <tr key={l.id} className="bg-amber-50 text-xs border-b border-amber-100">
+          <tr key={l.id} className="bg-orange-50 text-xs border-b border-orange-100">
             <td className="pl-6 pr-3 py-1.5 text-gray-500">
               <span className="font-mono text-gray-700">{l.lotnummer||'—'}</span>
               {l.leverancier&&<span className="text-gray-400 ml-2">({l.leverancier})</span>}
@@ -323,7 +323,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
         <div className="rounded-lg border border-gray-200 overflow-x-auto">
           <table className="w-full min-w-[640px]">
             <thead>
-              <tr className="bg-gray-50 text-xs text-gray-400 uppercase">
+              <tr className="bg-gray-50 text-xs text-gray-400">
                 <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('recipe_linked_to')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('recipe_needed')}</th>
@@ -358,7 +358,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-800">{t('nav_recepten')}</h2>
         <div className="flex items-center gap-3">
-          {msg && <span className={`text-sm ${msg.startsWith('✓')?'text-green-600':'text-amber-600'}`}>{msg}</span>}
+          {msg && <span className={`text-sm ${msg.startsWith('✓')?'text-green-600':'text-orange-600'}`}>{msg}</span>}
           <Btn onClick={runSync} disabled={syncing||!bfCreds?.enabled}
             cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
             {syncing?t('recipe_syncing'):t('recipe_sync_brewfather')}
@@ -372,7 +372,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
             <SearchInput placeholder={t('search_recipe')} value={zoek} onChange={setZoek} />
           </div>
           <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 uppercase tracking-wide border-b">
+          <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 border-b">
             <span>{t('lbl_name')}</span><span>{t('lbl_stock')}</span>
           </div>
           {zichtbaar.length===0 && verborgenLijst.length===0 && (
@@ -447,7 +447,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                 <div>
                   <div className="flex items-center group/tag bg-gray-50 border-b px-3 py-1.5 hover:bg-gray-100">
                     <button onClick={()=>toggleGroep(tag)}
-                      className="flex-1 flex items-center justify-between text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      className="flex-1 flex items-center justify-between text-xs font-medium text-gray-500">
                       <span className="flex items-center gap-1">
                         <span className="text-gray-400 inline-block" style={{transition:'transform 150ms ease',transform:gesloten?'none':'rotate(90deg)'}}>▶</span>
                         <span>{tag}</span>
@@ -486,7 +486,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                 {archiefTags.length>0 && (
                   <div className="border-t">
                     <button onClick={()=>setGearchiveerdTagsOpen((o: any)=>!o)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
                       <span className="text-gray-400 text-sm">{gearchiveerdTagsOpen?'▼':'▶'}</span>
                       <span>{t('lbl_archived_tags')} ({archiefTags.length})</span>
                     </button>
@@ -499,7 +499,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
           {verborgenLijst.length>0&&(
             <div className="border-t">
               <button onClick={()=>setVerborgenOpen((o: any)=>!o)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
                 <span className="text-gray-400 text-sm">{verborgenOpen?'▼':'▶'}</span>
                 <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
               </button>
@@ -605,7 +605,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
             </div>
             {selRec.maischprofiel && selRec.maischprofiel.length > 0 && (
               <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_mash_profile')}</div>
+                <div className="text-xs font-semibold text-gray-400 mb-2">{t('recipe_mash_profile')}</div>
                 <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -650,7 +650,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
             <IngSection titel={t('recipe_section_other')}  items={selRec.overig} cat="overig"/>
             {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('recipe_ferm_profile')}</div>
+                <div className="text-xs font-semibold text-gray-400 mb-2">{t('recipe_ferm_profile')}</div>
                 <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -677,7 +677,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
             )}
             {selRec.notities&&(
               <div className="mt-2 p-4 bg-gray-50 rounded-lg">
-                <div className="text-xs font-semibold text-gray-400 uppercase mb-1">{t('lbl_notes')}</div>
+                <div className="text-xs font-semibold text-gray-400 mb-1">{t('lbl_notes')}</div>
                 <div className="text-sm text-gray-700 whitespace-pre-wrap">{selRec.notities}</div>
               </div>
             )}

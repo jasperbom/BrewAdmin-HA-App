@@ -31,7 +31,7 @@ const BlokkadeKaart: React.FC<Props> = ({blok, titel, onAfwijking, compact = fal
   return (
     <div className={`rounded-lg border border-red-200 bg-red-50 ${compact ? 'p-2.5' : 'p-3'}`}>
       {titel && (
-        <div className="text-xs font-semibold text-red-800 uppercase tracking-wide mb-1">
+        <div className="text-xs font-semibold text-red-800 mb-1">
           {titel}
         </div>
       )}

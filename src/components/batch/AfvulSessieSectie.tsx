@@ -453,7 +453,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   }
 
   const Label = ({children}: {children: React.ReactNode}) => (
-    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{children}</div>
+    <div className="text-xs font-semibold text-gray-500 mb-1">{children}</div>
   )
 
   // ── Startformulier ───────────────────────────────────────────────────────
@@ -1061,7 +1061,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         <div className={`rounded-lg border p-2.5 text-xs space-y-1 ${
           !ec.product_id ? 'border-gray-200 bg-gray-50'
             : etiketBlok.toegestaan ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-          <div className="font-semibold text-gray-600 uppercase tracking-wide">
+          <div className="font-semibold text-gray-600">
             {t('haccp_ccp3_vergelijking')}
           </div>
           <div>

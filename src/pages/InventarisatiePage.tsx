@@ -335,7 +335,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+                <tr className="bg-gray-50 text-gray-500 text-xs">
                   <th className="text-left px-4 py-2.5 font-semibold">Item</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_administratief')}</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_geteld')}</th>
@@ -410,17 +410,17 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
             return (
               <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                 <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wide">Tekort (vermis-equivalent)</div>
+                  <div className="text-xs text-gray-500">{t('inv_tekort_label')}</div>
                   <div className="font-semibold text-red-700">€ {tekort.toFixed(2)}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Accijnsplichtig in volgende aangifte</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{t('inv_tekort_sub')}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wide">Overschot (correctie)</div>
+                  <div className="text-xs text-gray-500">{t('inv_overschot_label')}</div>
                   <div className="font-semibold text-blue-700">€ {overschot.toFixed(2)}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Administratieve correctie</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{t('inv_overschot_sub')}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wide">Saldo accijnsimpact</div>
+                  <div className="text-xs text-gray-500">{t('inv_saldo_label')}</div>
                   <div className={`font-semibold ${overschot - tekort >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
                     € {(overschot - tekort).toFixed(2)}
                   </div>
@@ -432,7 +432,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
 
         {/* Opmerkingen */}
         <div className="bg-white rounded-xl shadow-card p-4">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('inv_opmerkingen')}</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1">{t('inv_opmerkingen')}</label>
           {isOpen ? (
             <textarea
               value={selected.opmerkingen || ''}
@@ -466,7 +466,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
           <Modal title={t('inv_afronden')} onClose={() => setShowConfirm(false)}>
             <p className="text-sm text-gray-600 mb-4">{t('inv_bevestig_afronden')}</p>
             {correcties && (
-              <p className="text-sm text-amber-600 mb-4">
+              <p className="text-sm t-accent-text mb-4">
                 {t('inv_correcties_doorvoeren')}: {selected.tellingen.filter(tel => tel.verschil !== 0 && tel.ref_type === 'lot').length} items
               </p>
             )}
@@ -512,7 +512,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 {diffs > 0 && (
-                  <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
                     {diffs} {t('inv_verschil').toLowerCase()}
                   </span>
                 )}
@@ -535,7 +535,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
         <Modal title={t('inv_nieuwe_telling')} onClose={() => setShowNew(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Type</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-2">Type</label>
               <div className="flex flex-col gap-2">
                 {(['ingredienten', 'bier', 'volledig'] as const).map(tp => (
                   <label key={tp} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
