@@ -709,7 +709,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   // kolom 1 half in kolom 2 doorlopen.
   const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid';
 
-  const [activeSection, setActiveSection] = React.useState('app');
+  const [activeSection, setActiveSection] = React.useState('brouwerij');
   const [bijlagenJaar, setBijlagenJaar] = React.useState(new Date().getFullYear());
   const [bijlagenStatus, setBijlagenStatus] = React.useState('');
   const bijlagenPerJaar = React.useMemo(() => {
@@ -3823,7 +3823,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 setTimeout(()=>setBijlagenStatus(''),4000);
               }
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-700 text-white rounded text-sm font-medium hover:bg-amber-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="flex items-center gap-2 px-4 py-2 tbtn text-white rounded text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             {bijlagenStatus==='busy' ? t('lbl_bezig') : t('btn_zip_download')}
           </button>
           {bijlagenStatus && bijlagenStatus!=='busy' && <span className="text-sm text-gray-500">{bijlagenStatus}</span>}

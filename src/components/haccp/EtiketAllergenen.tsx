@@ -52,7 +52,7 @@ const EtiketAllergenen: React.FC<Props> = ({product, onOpslaan}) => {
       <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
         {t('haccp_ccp3_etiket_vastleggen')}
       </div>
-      <p className="text-xs text-gray-500">{t('haccp_ccp3_etiket_vastleggen_uitleg')}</p>
+      <p className="text-xs text-gray-500 max-w-prose">{t('haccp_ccp3_etiket_vastleggen_uitleg')}</p>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {ALLERGENEN_LIJST.map(a => (
           <label key={a.key} className="flex items-center gap-1.5 text-sm text-gray-700">

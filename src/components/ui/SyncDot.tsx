@@ -29,10 +29,13 @@ const SyncDot: React.FC = () => {
   const c = cfg[s] || { cls: 'bg-gray-400', title: '' }
 
   return (
-    <span
-      title={c.title}
-      className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 cursor-help ${c.cls}`}
-    />
+    <span role="status" className="relative inline-flex items-center">
+      <span
+        title={c.title}
+        className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 cursor-help ${c.cls}`}
+      />
+      <span className="sr-only">{c.title}</span>
+    </span>
   )
 }
 

@@ -9,11 +9,9 @@ interface StatCardProps {
   cls?: string
 }
 
-const StatCard: React.FC<StatCardProps> = ({label, value, sub, icon, onClick, cls=''}) => (
-  <div
-    className={`bg-white rounded-xl p-4 shadow-card border border-gray-100 ${onClick ? 'cursor-pointer hover:shadow-card-md transition-shadow' : ''} ${cls}`}
-    onClick={onClick}
-  >
+const StatCard: React.FC<StatCardProps> = ({label, value, sub, icon, onClick, cls=''}) => {
+  const className = `bg-white rounded-xl p-4 shadow-card border border-gray-100 ${onClick ? 'cursor-pointer hover:shadow-card-md transition-shadow text-left w-full' : ''} ${cls}`
+  const content = (
     <div className="flex items-start justify-between">
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</p>
@@ -22,7 +20,12 @@ const StatCard: React.FC<StatCardProps> = ({label, value, sub, icon, onClick, cl
       </div>
       {icon && <span className="text-2xl opacity-60">{icon}</span>}
     </div>
-  </div>
-)
+  )
+  return onClick ? (
+    <button type="button" className={className} onClick={onClick}>{content}</button>
+  ) : (
+    <div className={className}>{content}</div>
+  )
+}
 
 export default StatCard

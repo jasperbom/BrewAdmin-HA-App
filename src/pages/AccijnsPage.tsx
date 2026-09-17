@@ -340,7 +340,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                       <span className="text-xs text-amber-700 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
                       {(bankDebets||[]).length > 0 ? (
                         <select onChange={(e: any) => { if (e.target.value) koppelAccijnsBetaling(e.target.value, monthKey) }} defaultValue=""
-                          className="border border-amber-200 rounded px-2 py-0.5 text-xs focus:outline-none flex-1 min-w-0 bg-white">
+                          className="border border-amber-200 rounded px-2 py-0.5 text-xs focus:outline-none t-input flex-1 min-w-0 bg-white">
                           <option value="">— {t('lbl_selecteer_transactie')} —</option>
                           {nearMatches.length > 0 && (
                             <optgroup label={t('lbl_match_voorgesteld')}>

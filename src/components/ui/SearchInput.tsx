@@ -19,8 +19,9 @@ const SearchInput: React.FC<SearchInputProps> = ({ value, onChange, placeholder 
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
+      aria-label={placeholder}
       onKeyDown={onKeyDown}
-      className={`w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-300 ${cls}`}
+      className={`w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-500 ${cls}`}
     />
   </div>
 )

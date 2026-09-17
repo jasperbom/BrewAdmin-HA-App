@@ -50,6 +50,17 @@ function RegistersTab(props: any) {
   )
 }
 
+// Sleutels van de bron-select (zie hieronder); alleen deze drie waarden
+// hebben een vertaling. Oudere/geïmporteerde records kunnen vrije tekst
+// bevatten — die tonen we dan letterlijk in plaats van een rauwe i18n-sleutel
+// (t() valt bij een onbekende sleutel terug op de sleutelnaam zelf, dus
+// `t(...) || w.bron` greep nooit in).
+const HACCP_WATER_BRON_KEYS: Record<string, string> = {
+  leidingwater: 'haccp_water_bron_leiding',
+  bron: 'haccp_water_bron_bron',
+  osmose: 'haccp_water_bron_osmose',
+}
+
 function WaterLijst({waterkwaliteit, setWaterkwaliteit, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const sorted = (waterkwaliteit || []).slice().sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || '')))
@@ -82,7 +93,7 @@ function WaterLijst({waterkwaliteit, setWaterkwaliteit, auditLog, setAuditLog, m
             <div className="flex items-center justify-between">
               <div>
                 <span className="font-medium text-sm">{fmtD(w.datum)}</span>
-                {w.bron && <span className="text-xs text-gray-500 ml-2">{t(`haccp_water_bron_${w.bron}`) || w.bron}</span>}
+                {w.bron && <span className="text-xs text-gray-500 ml-2">{HACCP_WATER_BRON_KEYS[w.bron] ? t(HACCP_WATER_BRON_KEYS[w.bron]) : w.bron}</span>}
                 <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${w.resultaat === 'goed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t(`haccp_water_${w.resultaat}`)}</span>
                 {w.ph && <span className="text-xs text-gray-500 ml-2">pH {w.ph}</span>}
               </div>

@@ -232,7 +232,7 @@ const StatiegeldPage: React.FC<Props> = ({
         {/* TAB: Configuratie */}
         {tab === 'config' && (
           <div className="p-4">
-            <p className="text-sm text-gray-600 mb-3">{t('statiegeld_config_help')}</p>
+            <p className="text-sm text-gray-600 mb-3 max-w-prose">{t('statiegeld_config_help')}</p>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
@@ -435,7 +435,7 @@ const StatiegeldPage: React.FC<Props> = ({
       {retourFor && (
         <Modal title={`${t('statiegeld_retour_btn')} – ${retourFor.label}`} onClose={() => setRetourFor(null)}>
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">{t('statiegeld_retour_help')}</p>
+            <p className="text-sm text-gray-600 max-w-prose">{t('statiegeld_retour_help')}</p>
             {Object.values(retourFor.perVerpakking).map((p: any) => (
               <div key={p.verpakking_id} className="flex items-center justify-between gap-3">
                 <div className="flex-1">

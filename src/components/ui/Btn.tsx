@@ -12,7 +12,11 @@ interface BtnProps {
 }
 
 const Btn: React.FC<BtnProps> = ({children, onClick, v='primary', s='md', cls='', disabled=false, type='button', title}) => {
-  const sz: Record<string,string> = {sm:'px-2.5 py-1 text-xs', md:'px-4 py-1.5 text-sm', lg:'px-5 py-2 text-sm'}
+  const sz: Record<string,string> = {
+    sm:'px-2.5 py-1 text-xs min-h-[30px] sm:min-h-0',
+    md:'px-4 py-1.5 text-sm min-h-[40px] sm:min-h-0',
+    lg:'px-5 py-2 text-sm min-h-[44px] sm:min-h-0'
+  }
   const vr: Record<string,string> = {
     primary:'tbtn text-white shadow-sm',
     secondary:'bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-700 border border-gray-300 shadow-sm transition-colors duration-150',
@@ -29,7 +33,7 @@ const Btn: React.FC<BtnProps> = ({children, onClick, v='primary', s='md', cls=''
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`rounded-lg font-medium ${sz[s]} ${vr[v]} ${disabled?'opacity-50 cursor-not-allowed':'cursor-pointer'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-current ${cls}`}
+      className={`rounded-lg font-medium ${sz[s]} ${vr[v]} ${disabled?'opacity-50 cursor-not-allowed':'cursor-pointer'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--t-accent)] ${cls}`}
     >
       {children}
     </button>

@@ -2,10 +2,11 @@
 <html lang="nl">
   <head>
     <meta charset="UTF-8" />
-    <!-- maximum-scale=1 voorkomt de iOS-autozoom bij focus op invoervelden
-         (<16px); pinch-zoomen door de gebruiker blijft op iOS gewoon werken.
+    <!-- Geen maximum-scale meer: dat blokkeerde pinch-zoom (ook op Android).
+         De iOS-autozoom bij focus op een invoerveld wordt nu voorkomen door
+         de 16px-minimum font-size in src/index.css, niet door de viewport.
          viewport-fit=cover laat de app onder de statusbalk/notch doorlopen. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- Default vóór de app laadt; App.tsx werkt dit bij naar het actieve thema -->
     <meta name="theme-color" content="#451a03" />
     <!-- Home-screen-app (iOS/Android): statusbalk transparant over de

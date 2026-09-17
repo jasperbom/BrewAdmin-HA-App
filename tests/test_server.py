@@ -12,15 +12,18 @@
 
 import base64
 import datetime
+import gzip
 import hashlib
 import http.client
 import http.server
 import io
 import json
+import os
 import re
 import socket
 import ssl
 import threading
+import time
 import urllib.error
 import urllib.request
 import sys
@@ -2389,3 +2392,98 @@ class TestTankBewaking:
             assert len(srv._read_json('tank_alarmen', [])) == 1
         finally:
             self._clean()
+
+
+# ── SPA-statische-cache (performance-audit: gzip + ETag/304) ────────────────
+
+class TestStaticCaching:
+    """GET / (SPA-fallback): tot dusver werd `dist/index.html` bij élk
+    verzoek van schijf gelezen en ongecomprimeerd geserveerd zonder
+    validator (geen ETag/Last-Modified, dus nooit een 304). Deze klasse
+    leidt STATIC_FILE om naar een eigen tijdelijk bestand — los van de
+    echte 6,5 MB build — en reset de module-cache (`srv._static_cache`)
+    zodat elke test met een schone lei begint. urllib volgt 304 niet netjes
+    (het gooit een HTTPError of leest gewoon door), dus http.client zoals
+    de andere integratietests hierboven."""
+
+    INHOUD = b'<html><body>eerste-versie ' + b'x' * 500 + b'</body></html>'
+
+    @pytest.fixture()
+    def static(self, app, tmp_path, monkeypatch):
+        pad = tmp_path / 'index.html'
+        pad.write_bytes(self.INHOUD)
+        monkeypatch.setattr(srv, 'STATIC_FILE', pad)
+        # Verse cache-entry per test — anders zou een gelijke mtime uit een
+        # vorige test (of de echte build) hier per ongeluk hergebruikt worden.
+        srv._static_cache['mtime'] = None
+        srv._static_cache['body'] = b''
+        srv._static_cache['gzip'] = b''
+        srv._static_cache['etag'] = ''
+        host, poort = app.replace('http://', '').split(':')
+        yield pad, host, int(poort)
+
+    @staticmethod
+    def _get(host, poort, headers=None):
+        conn = http.client.HTTPConnection(host, poort, timeout=10)
+        conn.request('GET', '/', headers=headers or {})
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        return resp, body
+
+    def test_200_heeft_etag_en_vary_maar_geen_content_encoding(self, static):
+        _, host, poort = static
+        resp, body = self._get(host, poort)
+        assert resp.status == 200
+        assert body == self.INHOUD
+        assert resp.getheader('Content-Length') == str(len(self.INHOUD))
+        assert resp.getheader('ETag')
+        assert resp.getheader('Vary') == 'Accept-Encoding'
+        assert resp.getheader('Content-Encoding') is None
+        # De validerende Cache-Control blijft ongewijzigd (altijd revalideren,
+        # met een 304 als het antwoord dat toelaat) — geen max-age erbij.
+        assert resp.getheader('Cache-Control') == 'no-cache, must-revalidate'
+
+    def test_accept_encoding_gzip_geeft_gecomprimeerde_body(self, static):
+        _, host, poort = static
+        resp, body = self._get(host, poort, headers={'Accept-Encoding': 'gzip'})
+        assert resp.status == 200
+        assert resp.getheader('Content-Encoding') == 'gzip'
+        assert resp.getheader('Vary') == 'Accept-Encoding'
+        assert gzip.decompress(body) == self.INHOUD
+
+    def test_if_none_match_geeft_304_zonder_body(self, static):
+        _, host, poort = static
+        eerste, _ = self._get(host, poort)
+        etag = eerste.getheader('ETag')
+        assert etag
+        tweede, body2 = self._get(host, poort, headers={'If-None-Match': etag})
+        assert tweede.status == 304
+        assert body2 == b''
+        assert tweede.getheader('ETag') == etag
+
+    def test_onbekende_if_none_match_blijft_200(self, static):
+        _, host, poort = static
+        resp, body = self._get(host, poort, headers={'If-None-Match': '"niet-de-juiste"'})
+        assert resp.status == 200
+        assert body == self.INHOUD
+
+    def test_gewijzigd_bestand_geeft_nieuwe_etag_en_inhoud(self, static):
+        pad, host, poort = static
+        eerste, _ = self._get(host, poort)
+        etag1 = eerste.getheader('ETag')
+        nieuwe_inhoud = self.INHOUD + b'-gewijzigd'
+        pad.write_bytes(nieuwe_inhoud)
+        # mtime-resolutie op sommige bestandssystemen is grof (1s) — zet de
+        # mtime expliciet in de toekomst zodat de cache de wijziging altijd ziet.
+        toekomst = time.time() + 5
+        os.utime(pad, (toekomst, toekomst))
+        tweede, body2 = self._get(host, poort)
+        assert tweede.status == 200
+        assert body2 == nieuwe_inhoud
+        etag2 = tweede.getheader('ETag')
+        assert etag2 and etag2 != etag1
+        # De oude ETag hoort nu niet meer te matchen
+        derde, body3 = self._get(host, poort, headers={'If-None-Match': etag1})
+        assert derde.status == 200
+        assert body3 == nieuwe_inhoud
