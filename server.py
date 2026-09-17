@@ -13,6 +13,7 @@ import base64
 import datetime
 import email.message
 import email.utils
+import gzip
 import hashlib
 import http.cookies
 import http.server
@@ -275,6 +276,33 @@ _TRUSTED_ORIGINS = frozenset((
 def _trusted_origin(origin: str) -> str | None:
     """Return origin if it is a known dev/preview origin, else None."""
     return origin if origin in _TRUSTED_ORIGINS else None
+
+
+# ── Statische SPA-cache (single-file build, ~6,5 MB) ──────────────────────
+# De SPA-fallback in do_GET las dit bestand tot dusver bij élk verzoek
+# opnieuw van schijf en stuurde het ongecomprimeerd, zonder validator — dus
+# nooit een 304. Deze cache leest/comprimeert/hasht het bestand precies één
+# keer per wijziging (mtime) en bewaart body, gzip-variant en een sterke
+# ETag in het geheugen. De mtime-check (i.p.v. eenmalig bij import) laat een
+# addon-update (nieuwe index.html) meteen doorkomen, zonder herstart-aanname.
+_static_cache: dict = {'mtime': None, 'body': b'', 'gzip': b'', 'etag': ''}
+_static_cache_lock = threading.Lock()
+
+
+def _laad_static() -> dict:
+    """Geeft de actuele cache-entry terug (kopie) en ververst hem bij een
+    gewijzigde mtime of de eerste aanroep. Thread-safe voor de
+    ThreadingHTTPServer. Laat FileNotFoundError ongemoeid doorlopen naar de
+    aanroeper, zoals de vorige `STATIC_FILE.read_bytes()`."""
+    mtime = STATIC_FILE.stat().st_mtime
+    with _static_cache_lock:
+        if _static_cache['mtime'] != mtime:
+            body = STATIC_FILE.read_bytes()
+            _static_cache['mtime'] = mtime
+            _static_cache['body'] = body
+            _static_cache['gzip'] = gzip.compress(body, compresslevel=6)
+            _static_cache['etag'] = '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+        return dict(_static_cache)
 
 
 # Wanneer de app als HA-addon draait (SUPERVISOR_TOKEN aanwezig) mag alleen de
@@ -3876,10 +3904,26 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         # Serve the SPA for all other GET requests
         try:
-            body = STATIC_FILE.read_bytes()
+            cache = _laad_static()
+            etag = cache['etag']
+            # Sterke ETag-match; If-None-Match kan een komma-lijst zijn.
+            ontvangen = [w.strip() for w in self.headers.get('If-None-Match', '').split(',')]
+            if etag and etag in ontvangen:
+                self.send_response(304)
+                self.send_header('ETag', etag)
+                self.send_header('Vary', 'Accept-Encoding')
+                self._add_security_headers(html=True)
+                self.end_headers()
+                return
+            gzip_ok = 'gzip' in self.headers.get('Accept-Encoding', '')
+            body = cache['gzip'] if gzip_ok else cache['body']
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.send_header('Content-Length', len(body))
+            self.send_header('ETag', etag)
+            self.send_header('Vary', 'Accept-Encoding')
+            if gzip_ok:
+                self.send_header('Content-Encoding', 'gzip')
             self._add_security_headers(html=True)
             self.end_headers()
             self.wfile.write(body)

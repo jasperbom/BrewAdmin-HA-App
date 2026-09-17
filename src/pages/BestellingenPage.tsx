@@ -36,6 +36,7 @@ import {
   volgtVoorraad, merchVoorraad, merchVoorraadWaarde, merchLogVoorArtikel,
   boekMerchMutaties, merchAfboekingenVoorRegels, merchTekorten,
 } from '../utils/merch'
+import BierKleur from '../components/ui/BierKleur'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -466,6 +467,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       if (pa) return pa;
     }
     return (artikelen||[]).find((a: any) => a.biernaam === biernaam && a.verpakking_type === verpakking);
+  }
+  // Bierkleur bij een orderregel: dezelfde koppeling regel → product op naam
+  // als hierboven. Geen `recepten`-prop op deze pagina — val terug op het
+  // eigen EBC-veld van het product (zie utils/bierKleur.ts productEbc).
+  const ebcVoorRegel = (r: any): number | null => {
+    const prod = (producten||[]).find((p: any) => p.naam === r?.bier_naam);
+    return prod?.ebc ?? null;
   }
 
   // Factuurnummering: server-side via volgendFactuurNummer() (ERP-plan 0.2) —
@@ -2010,6 +2018,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 return (
                   <tr key={r.id} className={isVrij ? 'bg-blue-50' : volledig ? 'bg-green-50' : ''}>
                     <td className="px-3 py-2 font-medium">
+                      {soort === 'bier' && <BierKleur ebc={ebcVoorRegel(r)} s="sm" cls="mr-1.5" />}
                       {r.bier_naam}
                       {r.sku && <span className="ml-1 font-mono text-xs text-gray-400">[{r.sku}]</span>}
                       {soort === 'verzending' && <span className="ml-1 text-xs text-blue-500">🚚</span>}
@@ -2206,10 +2215,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     e.actie === 'aangemaakt' ? 'bg-blue-500'   :
                     e.actie === 'verwijderd' ? 'bg-red-500'    :
                     e.actie === 'ingelogd'   ? 'bg-gray-400'   :
-                                                'bg-amber-500'
+                                                ''
                   return (
                     <li key={e.id} className="px-5 py-2.5 flex items-start gap-3">
-                      <span className={`inline-block w-2 h-2 mt-1.5 rounded-full ${dot} flex-shrink-0`} aria-hidden="true" />
+                      <span className={`inline-block w-2 h-2 mt-1.5 rounded-full ${dot} flex-shrink-0`}
+                        style={dot ? undefined : {backgroundColor: 'var(--t-accent)'}} aria-hidden="true" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-800">{e.omschrijving || t(`audit_actie_${e.actie}`) || e.actie}</div>
                         <div className="text-xs text-gray-400 mt-0.5">
@@ -2356,7 +2366,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-gray-800">{r.bier_naam} – {r.verpakking_type}{r.sku && <span className="ml-1 font-mono text-xs font-normal text-gray-400">[{r.sku}]</span>}</span>
+                      <span className="font-semibold text-gray-800 flex items-center gap-1.5">
+                        <BierKleur ebc={ebcVoorRegel(r)} s="sm" />
+                        {r.bier_naam} – {r.verpakking_type}{r.sku && <span className="ml-1 font-mono text-xs font-normal text-gray-400">[{r.sku}]</span>}
+                      </span>
                       <div className="flex gap-3 text-xs">
                         <span className="text-gray-500">{t('picking_needed')}: <strong>{r.aantal}×</strong></span>
                         <span className={totaalGepickt >= r.aantal ? 'text-green-600 font-semibold' : 'text-orange-500 font-semibold'}>
@@ -2956,10 +2969,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500">{fmtD(b.datum)} · {t('lbl_n_regels').replace('{n}', String((b.regels||[]).length))}</div>
+                  <div className="text-xs text-gray-500">{fmtD(b.datum)} · {(b.regels||[]).length === 1 ? t('lbl_n_regels_1') : t('lbl_n_regels_n').replace('{n}', String((b.regels||[]).length))}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center flex-wrap gap-3">
                 {picks.length > 0 && <span className="text-xs text-gray-400">{t('msg_stuks_gepickt').replace('{n}', String(picks.reduce((s: number, p: any) => s+p.aantal,0)))}</span>}
                 <BetaaldBadge b={b} />
                 <LeveringBadge b={b} />

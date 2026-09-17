@@ -69,7 +69,7 @@ const PhCorrectieTool: React.FC = () => {
           <TabKnop m="water" label={t('tool_ph_modus_water')} />
         </div>
 
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-600 max-w-prose">
           {modus === 'maisch' ? t('tool_ph_uitleg_maisch') : t('tool_ph_uitleg_water')}
         </p>
 
@@ -399,7 +399,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
       <div className="bg-white rounded-xl shadow-card overflow-hidden t-card-l">
         <SectionHeader solid title={t('tool_water_titel')} />
         <div className="p-4 space-y-4">
-          <p className="text-sm text-gray-600">{t('tool_water_uitleg')}</p>
+          <p className="text-sm text-gray-600 max-w-prose">{t('tool_water_uitleg')}</p>
 
           <div className="flex flex-wrap items-center gap-2">
             <input ref={fileRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={onFile} />
@@ -482,7 +482,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
             <div className="text-sm text-gray-400 italic">{t('tool_water_kies_profiel')}</div>
           ) : (
             <>
-              <p className="text-sm text-gray-600">{t('tool_water_aanpassen_uitleg')}</p>
+              <p className="text-sm text-gray-600 max-w-prose">{t('tool_water_aanpassen_uitleg')}</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Inp label={t('tool_water_volume')} value={volume} onChange={setVolume} type="number" step="1" placeholder="30" />

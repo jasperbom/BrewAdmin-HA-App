@@ -518,33 +518,44 @@ const IngredientenPage: React.FC<Props> = ({
     setShowO(false)
   }
 
-  const tabBtn = (tabId: string, label: string) => (
+  const verpakkingLeegChip = <span className="text-xs font-semibold text-red-700 bg-red-100 rounded px-1.5 py-0.5">{t('ing_verpakking_leeg_chip')}</span>
+
+  const tabBtn = (tabId: string, label: string, badge?: React.ReactNode) => (
     <button onClick={() => setTab(tabId)}
-      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === tabId ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-      {label}
+      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-1.5 ${tab === tabId ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+      {label}{badge}
     </button>
   )
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-1">
-          <h2 className="text-xl font-bold text-gray-800 mr-4">
-            {tab === 'verpakkingen' ? `${t('ing_tab_packaging')}${verpakkingen.some((v: any) => Number(v.voorraad || 0) === 0) ? ' ⚠️' : ''}` : tab === 'mutaties' ? t('ing_tab_mutations') : t('ing_tab_ingredients')}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-1">
+          <h2 className="text-xl font-bold text-gray-800 mr-4 flex items-center gap-1.5">
+            {tab === 'verpakkingen' ? t('ing_tab_packaging') : tab === 'mutaties' ? t('ing_tab_mutations') : t('ing_tab_ingredients')}
+            {tab === 'verpakkingen' && verpakkingen.some((v: any) => Number(v.voorraad || 0) === 0) && verpakkingLeegChip}
           </h2>
           {tabBtn('ingredienten', t('ing_tab_ingredients'))}
-          {tabBtn('verpakkingen', `${t('ing_tab_packaging')}${verpakkingen.some((v: any) => Number(v.voorraad || 0) === 0) ? ' ⚠️' : ''}`)}
+          {tabBtn('verpakkingen', t('ing_tab_packaging'), verpakkingen.some((v: any) => Number(v.voorraad || 0) === 0) ? verpakkingLeegChip : undefined)}
           {tabBtn('mutaties', t('ing_tab_mutations'))}
         </div>
         {tab === 'ingredienten' && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {bfMsg && <span className={`text-xs ${bfMsg.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>{bfMsg}</span>}
             {bfCreds?.enabled && <Btn v="secondary" onClick={runBfIngSync} disabled={bfSyncing}>{bfSyncing ? t('ing_bf_syncing') : t('ing_bf_sync')}</Btn>}
             <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>
           </div>
         )}
-        {tab === 'verpakkingen' && <Btn onClick={() => { setOntvangstInitTab('verpakkingen'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>}
-        {tab === 'mutaties' && <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>}
+        {tab === 'verpakkingen' && (
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <Btn onClick={() => { setOntvangstInitTab('verpakkingen'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>
+          </div>
+        )}
+        {tab === 'mutaties' && (
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>
+          </div>
+        )}
       </div>
 
       {tab === 'ingredienten' && (thtAlerts.verlopen.length > 0 || thtAlerts.binnenkort.length > 0) && (

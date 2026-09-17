@@ -26,6 +26,7 @@ import AttentieBadge from './components/ui/AttentieBadge'
 import ProductieDashboard from './pages/ProductieDashboard'
 import VerkoopDashboard from './pages/VerkoopDashboard'
 import AdministratieDashboard from './pages/AdministratieDashboard'
+import RapportenPage from './pages/RapportenPage'
 import IngredientenPage from './pages/IngredientenPage'
 import BatchFlowPage from './pages/BatchFlowPage'
 import BestellingenPage from './pages/BestellingenPage'
@@ -66,7 +67,14 @@ const PAGINA_WERKRUIMTE: Record<string, WerkruimteId> = {
   ingredienten: 'productie', recepten: 'productie', batches: 'productie', batchflow: 'productie',
   planning: 'productie', haccp: 'productie', tool_phcorrectie: 'productie', tool_waterprofiel: 'productie',
   producten: 'verkoop', bestellingen: 'verkoop', kassa: 'verkoop', klanten: 'verkoop', statiegeld: 'verkoop',
-  boekhouding: 'administratie', agp: 'administratie', inventarisatie: 'administratie', voorraadverloop: 'administratie',
+  boekhouding: 'administratie', rapporten: 'administratie', agp: 'administratie', inventarisatie: 'administratie', voorraadverloop: 'administratie',
+};
+// Stipkleur per chip in de "Nu actief"-regel: ambient chips staan op de
+// donkere nav (lichte tinten), actiegerichte chips op wit (semantische
+// statuskleuren uit CLAUDE.md).
+const NU_ACTIEF_DOT: Record<string, string> = {
+  brouwen: 'bg-blue-300', carboniseren: 'bg-purple-300',
+  stap: 'bg-orange-600', carb_doel: 'bg-green-600', alarm: 'bg-red-600', waarschuwing: 'bg-orange-600', webshop: 'bg-blue-600',
 };
 // Per-apparaat, bewust NIET via useStore/server gesynchroniseerd (zelfde
 // rechtstreekse localStorage-patroon als de negeer-lijst in
@@ -351,11 +359,23 @@ function App() {
   const menuRefs = useRef<Record<string, HTMLDivElement|null>>({});
   const [openOrderId, setOpenOrderId] = useState<number | null>(null);
   const [navBatchId, setNavBatchId] = useState<number | null>(null);
+  // Snelkoppeling naar een lopende batch: altijd op de brouwzaal (het
+  // Productie-dashboard), waar de batch als paneel onder zijn tankkaart
+  // opent. Bewust niet via setPage: die wist bij "zelfde pagina" juist de
+  // batchselectie.
+  const openBatchOpBrouwzaal = (id: number) => {
+    if (werkruimte !== 'productie') kiesWerkruimte('productie');
+    setNavBatchId(id);
+    setPageIntern('dashboard');
+  };
   const [preNieuwBatch, setPreNieuwBatch] = useState<any>(null);
   // Deep-link naar een specifieke Boekhouding-tab (bv. vanuit het
   // Administratie-dashboard) — eenmalig signaal; BoekhoudingPage consumeert
   // en wist het.
   const [boekhoudingTab, setBoekhoudingTab] = useState<string|null>(null);
+  // Sub-tab binnen Boekhouding → Rapporten (W&V, balans, …) — de rapportkaarten
+  // op de Rapporten-pagina wijzen er rechtstreeks naar.
+  const [boekhoudingRapportTab, setBoekhoudingRapportTab] = useState<string|null>(null);
   // Deep-link vanuit de attentie-uitklap in de header (en de THT-regels op het
   // productie-dashboard): welk tabblad/filter/record de doelpagina bij het
   // openen moet tonen, zodat een klik op "Lots over de THT-datum" precies op
@@ -364,7 +384,10 @@ function App() {
   // in zijn useState-initializer en wist het daarna via onNavDoelConsumed.
   const [navDoel, setNavDoel] = useState<AttentieDoel|null>(null);
   const gaNaarDoel = (d: AttentieDoel) => {
-    if (d.pagina === 'boekhouding') setBoekhoudingTab(d.tab || null);
+    if (d.pagina === 'boekhouding') {
+      setBoekhoudingTab(d.tab || null);
+      setBoekhoudingRapportTab(d.tab === 'rapporten' && d.filter ? d.filter : null);
+    }
     else setNavDoel(d);
     setPage(d.pagina);
   };
@@ -1389,33 +1412,75 @@ function App() {
   const bevestigTankAlarm = (id: number) =>
     setTankAlarmen((p: any[]) => (p || []).map(a => a?.id === id ? {...a, bevestigd: true} : a))
 
-  // Snelkoppeling-banner voor een batch die aan het brouwen is (brouwdag bezig).
-  const [brouwAcked, setBrouwAcked] = React.useState<number[]>([])
-  const brouwendeBatches = React.useMemo(() => {
-    if (notificatieInst?.on_screen === false) return []
-    return (bat || [])
-      .filter((b: any) => b.status === 'Brouwen' && !brouwAcked.includes(b.id))
-      .map((b: any) => ({ id: b.id as number, naam: b.naam || b.biernaam || t('lbl_naamloos') }))
-  }, [bat, brouwAcked, notificatieInst?.on_screen])
-
-  // Snelkoppeling-banner voor een batch die tijdens het conditioneren wordt
-  // gecarboniseerd (actieve sessie die z'n doel nog niet heeft bereikt — de
-  // "doel bereikt"-banner hierboven dekt het voltooien).
-  const [carbActiefAcked, setCarbActiefAcked] = React.useState<number[]>([])
+  // ── Nu actief ─────────────────────────────────────────────────────────────
+  // Eén regel onder de navigatie met snelkoppelingen naar wat er nú loopt.
+  // Twee soorten chips: ambient (brouwdag bezig, carbonisatie loopt — dat is
+  // wéten, geen melding: geen accent, niet weg te klikken, één tik naar de
+  // batch) en actiegericht (gistingsstap gereed, CO₂-doel bereikt, tankalarm,
+  // nieuwe webshoporders — dat is móéten doen: accent + knop, weg te klikken).
+  // Vervangt de gestapelde sticky meldingsbalken die de nav afdekten.
+  type NuActiefChip = {
+    key: string
+    soort: 'brouwen' | 'carboniseren' | 'stap' | 'carb_doel' | 'alarm' | 'waarschuwing' | 'webshop'
+    tekst: string
+    actie: boolean
+    knop?: string
+    batchId?: number
+    onOpen: () => void
+    onSluit?: () => void
+  }
+  const brouwendeBatches = React.useMemo(() => (bat || [])
+    .filter((b: any) => b.status === 'Brouwen')
+    .map((b: any) => ({ id: b.id as number, naam: b.naam || b.biernaam || t('lbl_naamloos') })), [bat])
   const carboniserendeBatches = React.useMemo(() => {
-    if (notificatieInst?.on_screen === false) return []
     const seen = new Set<number>()
     const out: Array<{ id: number, naam: string }> = []
     for (const s of (carbSessies || [])) {
       if (s.status !== 'actief' || s.doel_bereikt_op) continue
       const b = (bat || []).find((x: any) => x.id === s.batch_id)
-      if (!b || b.status !== 'Conditioneren') continue
-      if (seen.has(b.id) || carbActiefAcked.includes(b.id)) continue
+      if (!b || b.status !== 'Conditioneren' || seen.has(b.id)) continue
       seen.add(b.id)
       out.push({ id: b.id as number, naam: b.naam || b.biernaam || t('lbl_naamloos') })
     }
     return out
-  }, [bat, carbSessies, carbActiefAcked, notificatieInst?.on_screen])
+  }, [bat, carbSessies])
+  const nuActief: NuActiefChip[] = React.useMemo(() => {
+    const chips: NuActiefChip[] = []
+    for (const a of openTankAlarmen) chips.push({
+      key: `alarm:${a.id}`, soort: a.soort === 'alarm' ? 'alarm' : 'waarschuwing', actie: true,
+      tekst: t('nu_chip_alarm').replace('{tank}', a.tank).replace('{batch}', a.naam).replace('{melding}', a.tekst),
+      knop: t('nu_btn_bekijken'), batchId: a.batchId,
+      onOpen: () => openBatchOpBrouwzaal(a.batchId), onSluit: () => bevestigTankAlarm(a.id),
+    })
+    for (const x of stapGereedBatches) chips.push({
+      key: `stap:${x.ackKey}`, soort: 'stap', actie: true,
+      tekst: t('nu_chip_stap_gereed').replace('{batch}', x.naam).replace('{stap}', x.stap).replace('{dag}', String(x.dag)),
+      knop: t('nu_btn_controleren'), batchId: x.id,
+      onOpen: () => openBatchOpBrouwzaal(x.id), onSluit: () => setStapAcked((p: string[]) => [...p, x.ackKey]),
+    })
+    for (const s of carbDoelBereikt) {
+      const b = (bat || []).find((x: any) => x.id === s.batch_id)
+      chips.push({
+        key: `carbdoel:${s.id}`, soort: 'carb_doel', actie: true,
+        tekst: t('nu_chip_carb_doel').replace('{batch}', b?.naam || b?.biernaam || t('lbl_naamloos')),
+        knop: t('nu_btn_afronden'), batchId: s.batch_id,
+        onOpen: () => openBatchOpBrouwzaal(s.batch_id), onSluit: () => setCarbAcked((p: number[]) => [...p, s.id]),
+      })
+    }
+    if (wcAutoMelding) chips.push({
+      key: 'webshop', soort: 'webshop', actie: true, tekst: wcAutoMelding, knop: t('nav_bestellingen'),
+      onOpen: () => { setWcAutoMelding(''); setPage('bestellingen') }, onSluit: () => setWcAutoMelding(''),
+    })
+    for (const x of brouwendeBatches) chips.push({
+      key: `brouwen:${x.id}`, soort: 'brouwen', actie: false, batchId: x.id,
+      tekst: t('nu_chip_brouwen').replace('{batch}', x.naam), onOpen: () => openBatchOpBrouwzaal(x.id),
+    })
+    for (const x of carboniserendeBatches) chips.push({
+      key: `carb:${x.id}`, soort: 'carboniseren', actie: false, batchId: x.id,
+      tekst: t('nu_chip_carboniseren').replace('{batch}', x.naam), onOpen: () => openBatchOpBrouwzaal(x.id),
+    })
+    return chips
+  }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat])
 
   const doExport = () => {
     excelExport({
@@ -1656,7 +1721,7 @@ function App() {
     productie: [
       {id:'ingredienten',l:t('nav_ingredienten')},
       {id:'recepten',l:t('nav_recepten')},
-      {id:'batchflow',l:t('nav_batches')},
+      {id:'batchflow',l:t('nav_planning')},
       {id:'haccp',l:t('nav_haccp')},
       {id:'gereedschap',l:t('nav_gereedschap'),sub:[
         {id:'tool_phcorrectie',l:t('nav_tool_phcorrectie')},
@@ -1670,11 +1735,14 @@ function App() {
       {id:'klanten',l:t('nav_klanten')},
       {id:'statiegeld',l:t('nav_statiegeld')},
     ],
+    // Administratie heeft twee ingangen: het dashboard (beslissingen) en
+    // Rapporten (terugkijken/exporteren). Voorraadverloop is een rapport en
+    // staat daaronder; de pagina zelf blijft via deep-links bereikbaar.
     administratie: [
       {id:'boekhouding',l:t('nav_boekhouding')},
+      {id:'rapporten',l:t('nav_rapporten')},
       {id:'agp',l:t('nav_agp')},
       {id:'inventarisatie',l:t('nav_inventarisatie')},
-      {id:'voorraadverloop',l:t('nav_voorraadverloop')},
     ],
   };
   const nav = navPerWerkruimte[werkruimte];
@@ -1797,114 +1865,94 @@ function App() {
     link.href = logo;
   }, [logo]);
 
+  // Eén props-set voor de batchflow: als eigen pagina (Planning + deep-links)
+  // én als paneel onder de tankkaart op de brouwzaal.
+  const batchFlowProps = {
+    bat,
+    setBat,
+    bi,
+    setBi,
+    ing,
+    setIng,
+    lots,
+    setLots,
+    av,
+    setAv,
+    uit,
+    verpakkingen,
+    setVerpakkingen,
+    onderdelen,
+    setOnderdelen,
+    producten,
+    setProducten,
+    productArtikelen,
+    artikelen,
+    accijnsInst,
+    acc,
+    recepten,
+    gistMetingen,
+    setGistMetingen,
+    carbSessies,
+    setCarbSessies,
+    verliesRegistraties,
+    setVerliesRegistraties,
+    dryHops,
+    setDryHops,
+    brouwdagStappen,
+    setBrouwdagStappen,
+    waterAddities,
+    setWaterAddities,
+    koelLogs,
+    setKoelLogs,
+    batchNotities,
+    setBatchNotities,
+    batchTakenItems,
+    batchTakenGroepen,
+    brouwprocesInst,
+    coldcrashInst,
+    planningInst,
+    haInst,
+    haTankTemps,
+    tanks,
+    tankStatussen,
+    setTankStatussen,
+    tankLog: tankReinigingLog,
+    setTankLog: setTankReinigingLog,
+    log,
+    setLog,
+    auditLog,
+    setAuditLog,
+    haccpVrijgaven,
+    setHaccpVrijgaven,
+    afvulSessies,
+    setAfvulSessies,
+    haccpSluitcontroles,
+    setHaccpSluitcontroles,
+    haccpEtiketcontroles,
+    setHaccpEtiketcontroles,
+    haccpAfwijkingen,
+    setHaccpAfwijkingen,
+    haccpInst,
+    schoonmaakTaken: haccpSchoonmaakTaken,
+    schoonmaakLog: haccpSchoonmaakLog,
+    setSchoonmaakLog: setHaccpSchoonmaakLog,
+    capa: haccpCapa,
+    setCapa: setHaccpCapa,
+    whoami,
+    setPage,
+    setNavBatchId,
+    openBatchId: navBatchId,
+    preNieuwBatch,
+    setPreNieuwBatch,
+    setProductArtikelen,
+    ccpMetingen: haccpCcpMetingen,
+    setCcpMetingen: setHaccpCcpMetingen,
+    navDoel: doelVoor('batchflow'),
+    onNavDoelConsumed: wisNavDoel,
+  };
+
   return (
     <div className="min-h-screen" style={{backgroundColor:'var(--t-bg)'}}>
-      {wcAutoMelding && (
-        <div className="sticky top-0 z-50 bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
-          <span className="text-sm font-medium">{wcAutoMelding}</span>
-          <button type="button" onClick={() => { setWcAutoMelding(''); setPage('bestellingen') }}
-            className="text-xs font-semibold underline">{t('nav_bestellingen')}</button>
-        </div>
-      )}
-      {carbDoelBereikt.length > 0 && (
-        <div className="sticky top-0 z-50 space-y-px">
-          {carbDoelBereikt.map((s: any) => {
-            const b = (bat || []).find((x: any) => x.id === s.batch_id)
-            const bnaam = b?.naam || b?.biernaam || t('lbl_naamloos')
-            return (
-              <div key={s.id} className="bg-green-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                  <span>{t('carb_notify_screen').replace('{batch}', bnaam)
-                    .replace('{verbruikt}', String(Math.round(Number(s.verbruikt_co2_gram_live) || 0)))
-                    .replace('{doel}', String(Math.round(Number(s.doel_co2_gram_verbruik) || 0)))}</span>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => { setNavBatchId(s.batch_id); setPage('batchflow') }}
-                    className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('carb_notify_open_batch')}</button>
-                  <button onClick={() => setCarbAcked((p: number[]) => [...p, s.id])}
-                    className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {openTankAlarmen.length > 0 && (
-        <div className="sticky top-0 z-50 space-y-px">
-          {openTankAlarmen.map((a: any) => (
-            <div key={a.id} className={`${a.soort === 'alarm' ? 'bg-red-600' : 'bg-orange-500'} text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow`}>
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                <span>{t('tank_alarm_screen')
-                  .replace('{tank}', a.tank).replace('{batch}', a.naam)
-                  .replace('{melding}', a.tekst)}</span>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => { setNavBatchId(a.batchId); setPage('batchflow') }}
-                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
-                <button onClick={() => bevestigTankAlarm(a.id)}
-                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {stapGereedBatches.length > 0 && (
-        <div className="sticky top-0 z-50 space-y-px">
-          {stapGereedBatches.map((x: any) => (
-            <div key={x.ackKey} className="bg-amber-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                <span>{t('verg_notify_screen').replace('{batch}', x.naam)
-                  .replace('{stap}', x.stap).replace('{dag}', String(x.dag))}</span>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => { setNavBatchId(x.id); setPage('batchflow') }}
-                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
-                <button onClick={() => setStapAcked((p: string[]) => [...p, x.ackKey])}
-                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {brouwendeBatches.length > 0 && (
-        <div className="sticky top-0 z-50 space-y-px">
-          {brouwendeBatches.map((x: any) => (
-            <div key={x.id} className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                <span>{t('brouw_notify_screen').replace('{batch}', x.naam)}</span>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => { setNavBatchId(x.id); setPage('batchflow') }}
-                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
-                <button onClick={() => setBrouwAcked((p: number[]) => [...p, x.id])}
-                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {carboniserendeBatches.length > 0 && (
-        <div className="sticky top-0 z-50 space-y-px">
-          {carboniserendeBatches.map((x: any) => (
-            <div key={x.id} className="bg-purple-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                <span>{t('carb_actief_notify_screen').replace('{batch}', x.naam)}</span>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => { setNavBatchId(x.id); setPage('batchflow') }}
-                  className="text-xs font-semibold underline hover:no-underline whitespace-nowrap">{t('verg_notify_open_batch')}</button>
-                <button onClick={() => setCarbActiefAcked((p: number[]) => [...p, x.id])}
-                  className="text-white/80 hover:text-white text-lg leading-none px-1" title={t('btn_sluiten')}>×</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
       <nav className="text-white sticky top-0 z-40 shadow-lg border-b" style={navStyle}>
         <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-2 overflow-x-auto">
           <img
@@ -1979,10 +2027,34 @@ function App() {
             <button key={n.id} onClick={()=>setPage(n.id)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all duration-150 relative ${page===n.id?'bg-white/20 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
               {n.l}
-              {n.id==='bestellingen'&&openBestellingen>0&&<span title={t('attentie_openstaande_bestellingen').replace('{n}', String(openBestellingen))} className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{openBestellingen}</span>}
+              {n.id==='bestellingen'&&openBestellingen>0&&<span title={t('attentie_openstaande_bestellingen').replace('{n}', String(openBestellingen))} className="absolute -top-1 -right-1 bg-orange-700 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{openBestellingen}</span>}
             </button>
           ))}
         </div>
+        {nuActief.length > 0 && (
+          <div role="status" aria-live="polite" className="border-t border-white/10 bg-black/20">
+            <div className="max-w-7xl mx-auto px-4 min-h-[2.5rem] py-1 flex items-center gap-2 overflow-x-auto">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-white/60 flex-shrink-0">{t('nu_actief')}</span>
+              {nuActief.map(c => {
+                const open = navBatchId != null && c.batchId === navBatchId && (page === 'dashboard' || page === 'batchflow');
+                return (
+                  <span key={c.key} className={`flex items-center flex-shrink-0 rounded-full transition-colors ${c.actie ? 'bg-white text-gray-900 shadow-sm' : 'bg-white/10 text-white/85 hover:bg-white/20'} ${open ? 'ring-2 ring-white/70' : ''}`}>
+                    <button type="button" onClick={c.onOpen} title={t('nu_chip_open_title')}
+                      className={`flex items-center gap-1.5 pl-2.5 py-1 text-xs whitespace-nowrap ${c.actie ? 'font-semibold pr-1' : 'font-medium pr-2.5'}`}>
+                      <span className={`inline-block w-2 h-2 rounded-full ${NU_ACTIEF_DOT[c.soort]} ${c.actie ? 'animate-pulse' : ''}`} aria-hidden="true" />
+                      <span>{c.tekst}</span>
+                      {c.actie && c.knop && <span className="ml-1 tbtn text-white rounded-full px-2 py-0.5 text-[11px] font-semibold">{c.knop} ›</span>}
+                    </button>
+                    {c.actie && c.onSluit && (
+                      <button type="button" onClick={c.onSluit} aria-label={t('nu_chip_wegklikken')} title={t('nu_chip_wegklikken')}
+                        className="w-7 h-7 mr-0.5 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 text-base leading-none">×</button>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </nav>
       <PageErrorBoundary page={page}>
       <main key={`${page}-${navNonce}`} className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -1990,13 +2062,14 @@ function App() {
             van de actieve werkruimte — zo landt de werkruimte-wisselaar (die
             bij een echte wissel naar 'dashboard' springt) altijd op de juiste,
             kleine "dagelijkse takenlijst" voor die pet. */}
-        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} gaNaarDoel={gaNaarDoel} />}
+        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} gaNaarDoel={gaNaarDoel} producten={producten} recepten={recepten} carbSessies={carbSessies} geselecteerdeBatchId={navBatchId} onSelecteerBatch={setNavBatchId}
+          batchPaneel={navBatchId != null ? <BatchFlowPage key={`paneel-${navBatchId}`} {...batchFlowProps} embedded onSluit={() => setNavBatchId(null)} /> : null} />}
         {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard bestellingen={bestellingen} bestellingPicks={bestellingPicks} setOpenOrderId={setOpenOrderId} av={av} producten={producten} locaties={locaties} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} wcCreds={wcCreds} wcSyncLog={wcSyncLog} setPage={setPage} />}
         {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaarDoel} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} navDoel={doelVoor('ingredienten')} onNavDoelConsumed={wisNavDoel} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} av={av} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} />}
-        {(page==='batchflow' || page==='planning') && <BatchFlowPage bat={bat} setBat={setBat} bi={bi} setBi={setBi} ing={ing} setIng={setIng} lots={lots} setLots={setLots} av={av} setAv={setAv} uit={uit} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} artikelen={artikelen} accijnsInst={accijnsInst} acc={acc} recepten={recepten} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} carbSessies={carbSessies} setCarbSessies={setCarbSessies} verliesRegistraties={verliesRegistraties} setVerliesRegistraties={setVerliesRegistraties} dryHops={dryHops} setDryHops={setDryHops} brouwdagStappen={brouwdagStappen} setBrouwdagStappen={setBrouwdagStappen} waterAddities={waterAddities} setWaterAddities={setWaterAddities} koelLogs={koelLogs} setKoelLogs={setKoelLogs} batchNotities={batchNotities} setBatchNotities={setBatchNotities} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwprocesInst={brouwprocesInst} coldcrashInst={coldcrashInst} planningInst={planningInst} haInst={haInst} haTankTemps={haTankTemps} tanks={tanks} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} haccpVrijgaven={haccpVrijgaven} setHaccpVrijgaven={setHaccpVrijgaven} afvulSessies={afvulSessies} setAfvulSessies={setAfvulSessies} haccpSluitcontroles={haccpSluitcontroles} setHaccpSluitcontroles={setHaccpSluitcontroles} haccpEtiketcontroles={haccpEtiketcontroles} setHaccpEtiketcontroles={setHaccpEtiketcontroles} haccpAfwijkingen={haccpAfwijkingen} setHaccpAfwijkingen={setHaccpAfwijkingen} haccpInst={haccpInst} schoonmaakTaken={haccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} whoami={whoami} setPage={setPage} setNavBatchId={setNavBatchId} openBatchId={navBatchId} preNieuwBatch={preNieuwBatch} setPreNieuwBatch={setPreNieuwBatch} setProductArtikelen={setProductArtikelen} ccpMetingen={haccpCcpMetingen} setCcpMetingen={setHaccpCcpMetingen} navDoel={doelVoor('batchflow')} onNavDoelConsumed={wisNavDoel} />}
+        {(page==='batchflow' || page==='planning') && <BatchFlowPage {...batchFlowProps} onTerug={() => { setNavBatchId(null); setPageIntern('dashboard') }} />}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} />}
@@ -2005,9 +2078,10 @@ function App() {
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} setAfboekingen={setAfboekingen} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsInst={accijnsInst} />}
         {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} locaties={locaties} verplaatsingen={verplaatsingen} />}
+        {page==='rapporten' && <RapportenPage gaNaarDoel={gaNaarDoel} />}
         {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsAangiftes={accijnsAangiftes} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} onInitialTabConsumed={() => setBoekhoudingTab(null)} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} initialRapportTab={boekhoudingRapportTab} onInitialTabConsumed={() => { setBoekhoudingTab(null); setBoekhoudingRapportTab(null) }} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
         {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten}} />}
       </main>
       </PageErrorBoundary>

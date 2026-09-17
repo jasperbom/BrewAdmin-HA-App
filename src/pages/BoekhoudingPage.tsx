@@ -26,7 +26,7 @@ import { qrDataUrl } from '../utils/qr'
 import { factuurMailBetaalVars } from '../utils/factuurMail'
 
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, onInitialTabConsumed=()=>{}, merchArtikelen=[], setMerchArtikelen=()=>{}, merchVoorraadLog=[], setMerchVoorraadLog=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, initialRapportTab=null, onInitialTabConsumed=()=>{}, merchArtikelen=[], setMerchArtikelen=()=>{}, merchVoorraadLog=[], setMerchVoorraadLog=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -47,7 +47,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   // dus de useState-initializer volstaat voor de starttab; de consumed-
   // callback wist alleen het App.tsx-signaal zodat een latere, gewone
   // navigatie naar Boekhouding niet per ongeluk dezelfde tab hergebruikt.
-  const [mainTab, setMainTab] = React.useState(initialTab || 'verkoop');
+  // initialRapportTab: optionele deep-link naar één rapport binnen het
+  // tabblad Rapporten (vanaf de Rapporten-pagina in de werkruimte
+  // Administratie). Is hij gezet, dan start de pagina op 'rapporten' met dat
+  // rapport open; hij initialiseert `rapportTab` hieronder.
+  const [mainTab, setMainTab] = React.useState(initialRapportTab ? 'rapporten' : (initialTab || 'verkoop'));
   React.useEffect(() => {
     if (initialTab) onInitialTabConsumed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -211,7 +215,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   }
 
   // ── Rapporten tab state ────────────────────────────────────────────────────
-  const [rapportTab, setRapportTab] = React.useState('wv')
+  const [rapportTab, setRapportTab] = React.useState(initialRapportTab || 'wv')
   const [rapportVan, setRapportVan] = React.useState(() => ymd(new Date(new Date().getFullYear(), 0, 1)))
   const [rapportTot, setRapportTot] = React.useState(() => tod())
 
@@ -1391,7 +1395,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
         {herkend && <span className="text-xs text-orange-600 font-medium whitespace-nowrap">⚡ {t('lbl_belastingdienst')}</span>}
         <select defaultValue="" title={t('tip_btw_koppel_transactie')}
           onChange={(e: any) => { if (e.target.value) koppelBtwBetaling(i, e.target.value) }}
-          className={`border rounded px-2 py-0.5 text-xs focus:outline-none max-w-[190px] ${herkend
+          className={`border rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[190px] ${herkend
             ? 'border-orange-300 bg-orange-50 text-orange-800'
             : 'border-gray-200 text-gray-600 bg-white'}`}>
           <option value="">{t('lbl_koppel_btw_aangifte')}</option>
@@ -2039,7 +2043,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   : f.status === 'herinnering' ? 'tweede_herinnering'
                   : 'herinnering'
                 return (
-                  <div key={f.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <div key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm text-gray-900">{klantNaamVoor(f)||'—'}</span>
@@ -2049,7 +2053,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       </div>
                     </div>
                     <div className="font-semibold text-sm text-gray-900 whitespace-nowrap">{fmt(f.bruto||0)}</div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex flex-wrap items-center gap-1 w-full sm:w-auto">
                       <button onClick={()=>genereerFactuurPDF(f)}
                         className="px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200 transition-colors">
                         {t('btn_pdf')}
@@ -2317,7 +2321,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
               </thead>
               <tbody>
                 {inkoopGefilterd.map((f: any) => (<React.Fragment key={f.id}>
-                  <tr className="border-b border-gray-50 hover:bg-amber-50 transition-colors cursor-pointer"
+                  <tr className="border-b border-gray-50 t-hover transition-colors cursor-pointer"
                       onClick={()=>{const bd=getBetaaldDatum(f);setEditingFactuur(bd?{...f,betaald_datum:bd}:f)}}>
                     <td className="py-2 pr-2 text-gray-400 text-xs text-center">✎</td>
                     <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
@@ -3813,7 +3817,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     className="ml-auto px-4 py-1.5 tbtn rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
                     {aangifteLoading ? t('btn_aangifte_loading') : aangifteFetched ? t('btn_aangifte_refresh') : t('btn_aangifte_fetch')}
                   </button>
-                : <span className="ml-auto text-xs text-orange-600 italic">{t('msg_wc_inactive_vat')}</span>
+                : <span className="ml-auto text-xs text-gray-500">{t('msg_wc_inactive_vat')}</span>
               }
             </div>
             {aangifteError && <p className="mt-2 text-sm text-red-600">{aangifteError}</p>}
@@ -4022,7 +4026,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         <div className="border-t border-orange-200 pt-2 flex items-center justify-between gap-2" onClick={(e: any)=>e.stopPropagation()}>
                           <span className="text-xs text-orange-600 font-medium">{t('lbl_aangifte_nog_indienen')}</span>
                           <button onClick={()=>markeerAangifteIngediend(p.key, teBetalen)}
-                            className="text-xs font-medium px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors">
+                            className="text-xs font-medium px-3 py-1 rounded-lg tbtn text-white transition-colors">
                             {t('btn_aangifte_ingediend')}
                           </button>
                         </div>
@@ -4058,7 +4062,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                               const idx = bankTransacties.findIndex((tx: any) => txKey(tx) === e.target.value);
                               if (idx >= 0) koppelBtwBetaling(idx, p.key);
                             }} defaultValue=""
-                              className="border border-amber-200 rounded px-2 py-0.5 text-xs focus:outline-none flex-1 min-w-0">
+                              className="border border-amber-200 rounded px-2 py-0.5 text-xs t-input focus:outline-none flex-1 min-w-0">
                               <option value="">— {t('lbl_selecteer_transactie')} —</option>
                               {nearMatches.length > 0 && (
                                 <optgroup label={t('lbl_match_voorgesteld')}>

@@ -102,6 +102,13 @@ interface BatchFlowPageProps {
       pagina consumeert en wist het via onNavDoelConsumed. */
   navDoel?: AttentieDoel | null,
   onNavDoelConsumed?: () => void,
+  /** Paneel-modus: de batch opent onder zijn tankkaart op de brouwzaal
+      (Productie-dashboard). Zonder geselecteerde batch rendert de pagina dan
+      niets, en "terug" wordt "sluiten". */
+  embedded?: boolean,
+  onSluit?: () => void,
+  /** Als eigen pagina: waar "← Brouwzaal" heen gaat (App.tsx: dashboard). */
+  onTerug?: () => void,
 }
 
 interface ChecklistItem {
@@ -379,8 +386,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   preNieuwBatch, setPreNieuwBatch,
   ccpMetingen, setCcpMetingen,
   navDoel = null, onNavDoelConsumed = () => {},
+  embedded = false, onSluit, onTerug,
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
+  // Paneel-modus: valt de selectie weg (batch verwijderd, of "terug" vanuit
+  // een sub-actie), dan sluit het paneel — de brouwzaal weet anders van niets.
+  React.useEffect(() => {
+    if (embedded && sel == null && openBatchId != null) onSluit && onSluit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel])
   // Paneel "openstaande batchtaken" in het overzicht: álle batches met open
   // taken op een rij, klik = de batch op zijn actieve fase. Standaard
   // ingeklapt (het dashboard toont ze ook), open bij binnenkomst via de
@@ -395,7 +409,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Handmatig open/dicht-geklapte stappen. Zolang een stap hier niet in staat,
   // volgt hij de default (open = niet-afgerond).
   const [openStappen, setOpenStappen] = useState<Record<string, boolean>>({})
-  const [geslotenOpen, setGeslotenOpen] = useState(false)
+  // Archief: open bij binnenkomst via de archieflink op de brouwzaal.
+  const [geslotenOpen, setGeslotenOpen] = useState(navDoel?.filter === 'gesloten')
   const [notitiesOpen, setNotitiesOpen] = useState(false)
   // Inklapbaar batch-gegevens-bewerkblok (naam/stijl/liters/product/gn-code),
   // het logboek en de recept-opnieuw-picker in de detail — overgenomen van de
@@ -403,9 +418,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [gegevensOpen, setGegevensOpen] = useState(false)
   const [logIngeklapt, setLogIngeklapt] = useState(true)
   const [receptPickerOpen, setReceptPickerOpen] = useState(false)
-  // Inklapbare planning-tijdlijn bovenaan het overzicht (samengevoegd met de
-  // vroegere losse Planning-pagina). Standaard ingeklapt.
-  const [tijdlijnOpen, setTijdlijnOpen] = useState(false)
+  // Planning-tijdlijn in het overzicht (samengevoegd met de vroegere losse
+  // Planning-pagina). Sinds de brouwzaal de lopende batches toont, is dit
+  // overzicht de planningspagina en staat de tijdlijn standaard open.
+  const [tijdlijnOpen, setTijdlijnOpen] = useState(true)
   // Zoekterm voor de gesloten batches.
   const [zoekGesloten, setZoekGesloten] = useState('')
   const [mForm, setMForm] = useState({sg: '', temp: '', ph: ''})
@@ -547,7 +563,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const productNaam = prod?.naam || null
     const receptNaam = recept?.naam || null
     const titel = productNaam || receptNaam || b.naam || t('lbl_naamloos')
-    return { titel, subRecept: productNaam && receptNaam ? receptNaam : null, productNaam, receptNaam }
+    // Zelfde naam voor product en recept = één keer tonen.
+    const subRecept = productNaam && receptNaam && receptNaam !== productNaam ? receptNaam : null
+    return { titel, subRecept, productNaam, receptNaam }
   }
 
   // Gesloten batches gefilterd op de zoekterm (naam/product/recept/nummer/stijl).
@@ -1868,6 +1886,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   }
 
   // ── Overzicht (geen batch geselecteerd) ───────────────────────────────────
+  // In paneel-modus is er geen overzicht: de brouwzaal ís het overzicht.
+  if (!selB && embedded) return null
   if (!selB) {
     const nieuwRecept = nieuwForm.recept_id
       ? beschikbareRecepten.find((r: any) => String(r.id) === String(nieuwForm.recept_id))
@@ -1878,9 +1898,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const openTakenTotaal = openTaken.reduce((s, r) => s + r.taken.length, 0)
     return (
       <div className="space-y-4">
-        <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <SectionHeader title={t('flow_titel')} />
-          <div className="p-4 text-sm text-gray-600">{t('flow_intro')}</div>
+        {/* Planning: plannen, open taken, tijdlijn en archief. De lopende
+            batches leven op de brouwzaal (Productie-dashboard) — hier geen
+            tweede kaartenwand en geen uitlegbanner meer. */}
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">{t('nav_planning')}</h2>
+          <p className="text-sm text-gray-500 max-w-prose mt-0.5">{t('flow_planning_intro')}</p>
         </div>
 
         {openTaken.length > 0 && (
@@ -1934,12 +1957,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         </div>
 
         <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_actieve')}</div>
-          {actieveBatches.length === 0 && (
-            <div className="text-sm text-gray-500 italic mb-2">{t('flow_geen_batches')}</div>
-          )}
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_nieuw_titel')}</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {actieveBatches.map((b: any) => <BatchKaart key={b.id} b={b} />)}
             {nieuwOpen ? (
               <div className="bg-white rounded-xl p-4 shadow-card t-card-l">
                 <div className="flex items-start justify-between gap-2 mb-3">
@@ -3952,7 +3971,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         <div className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-2">
-              <Btn v="secondary" s="sm" onClick={() => setSel(null)}>← {t('flow_terug')}</Btn>
+              {embedded
+                ? <Btn v="secondary" s="sm" onClick={() => onSluit && onSluit()}>{t('btn_sluiten')}</Btn>
+                : <Btn v="secondary" s="sm" onClick={() => onTerug ? onTerug() : setSel(null)}>← {t('flow_terug_brouwzaal')}</Btn>}
               <Badge s={selB.status} />
               {selB.stijl && <span className="text-xs text-gray-500">{selB.stijl}</span>}
             </div>

@@ -107,6 +107,13 @@ BrewAdmin-HA-App/
 │   │   │                   # pagina-ID's/slugs uit `settings/advanced` (`leesWcPaginas`). `bestelLink` =
 │   │   │                   # knop "Bekijk je bestelling": sjabloon `woocommerce_creds.bestelUrl`, anders
 │   │   │                   # `wc_bestel_url`; anders géén knop (geen gok)
+│   │   ├── bierKleur.ts    # EBC → bierkleur (één tabel voor tank-SVG, productlijst, kassa,
+│   │   │                   # orderregels, tankkaarten): `productEbc`/`batchEbc` (eigen veld →
+│   │   │                   # product → recept), `tekstKleurOp`. Component: ui/BierKleur.tsx
+│   │   ├── beslissingen.ts # Administratie-dashboard: één beslissing per rij (urgentie te_laat/
+│   │   │                   # klopt_niet/wacht_op_jou/deadline, bedrag, actie + doel) uit de
+│   │   │                   # bestaande selecties in facturen/btw/calculations — nooit een eigen
+│   │   │                   # sommetje; de Rapporten-pagina is de andere ingang (terugkijken)
 │   │   ├── attentie.ts     # Attentieposten per werkruimte (badge op de werkruimte-knop + de
 │   │   │                   # "Vraagt om aandacht"-lijst op de dashboards): per post een id,
 │   │   │                   # i18n-sleutel, aantal en navigatiedoel (pagina + tab/filter). De
@@ -363,6 +370,7 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 |----------|---------------|
 | Sectie-header (statisch of klikbaar) | Gebruik `<SectionHeader>` uit `src/components/ui/SectionHeader.tsx` — geen inline `t-hdr` meer |
 | Zoek/filter-invoer | Gebruik `<SearchInput>` uit `src/components/ui/SearchInput.tsx` |
+| Bierkleur (wélk bier) | `<BierKleur ebc={…} s="sm|md|lg">` uit `src/components/ui/BierKleur.tsx`; EBC via `productEbc`/`batchEbc` — nooit een eigen stip |
 | Accent-kleur inline tekst/link | `style={{color: 'var(--t-accent)'}}` — nooit `text-amber-*` hardcoden |
 | Sectie-label binnen een card | `text-xs font-semibold text-gray-500 uppercase tracking-wide` |
 | Fallback tekst (onbekende naam) | Altijd via i18n: `t('lbl_onbekend')` of `t('lbl_naamloos')` |

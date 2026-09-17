@@ -21,6 +21,7 @@ import {
 import { totaliseerRegels } from '../utils/centen'
 import { afvullingHoortBijBierNaam } from '../utils/picking'
 import { standaardBtwPct } from '../utils/btw'
+import BierKleur from '../components/ui/BierKleur'
 
 interface KassaPageProps {
   bat: any[]
@@ -117,6 +118,9 @@ const KassaPage: React.FC<KassaPageProps> = ({
   const [productZoek, setProductZoek] = useState('')
   // Prijsweergave in de productkaarten: excl. (opgeslagen prijs) of incl. BTW
   const [toonInclBtw, setToonInclBtw] = useState(false)
+  // Uitverkochte tegels staan standaard verborgen — anders vervuilt de kassa
+  // met bier dat toch niet verkocht kan worden.
+  const [toonUitverkocht, setToonUitverkocht] = useState(false)
   const [showAfrekenen, setShowAfrekenen] = useState(false)
   const [betaalwijze, setBetaalwijze] = useState<Betaalwijze>('pin')
   const [showNieuweKlant, setShowNieuweKlant] = useState(false)
@@ -291,6 +295,9 @@ const KassaPage: React.FC<KassaPageProps> = ({
           artikel_id: art?.id ?? null,
           artikel_key: art?.key ?? null,
           sku,
+          // Geen `recepten`-prop op deze pagina — val terug op het eigen
+          // EBC-veld van het product (zie utils/bierKleur.ts productEbc).
+          ebc: prod?.ebc ?? null,
           prijs: art?.verkoopprijs != null && art.verkoopprijs !== '' ? Number(art.verkoopprijs) : null,
           b2bPrijs: art?.b2b_prijs != null && art.b2b_prijs !== '' ? Number(art.b2b_prijs) : null,
           btw_pct: art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : stdBtw,
@@ -330,6 +337,17 @@ const KassaPage: React.FC<KassaPageProps> = ({
   const catalogusGefilterd = catalogus.filter((c: any) =>
     !productZoek.trim() ||
     `${c.bier_naam} ${c.verpakking_type}`.toLowerCase().includes(productZoek.trim().toLowerCase()))
+
+  // Uitverkocht = geen stuks meer beschikbaar voor dit klanttype (merch: geen
+  // prijs). Standaard verborgen, tenzij de kassa dan helemaal leeg zou zijn —
+  // dan is tonen zonder uitleg erger dan tonen mét de rode "geen voorraad".
+  const itemUitverkocht = (item: any): boolean =>
+    item.merch ? item.prijs == null : (isPrive ? item.buitenAgp : item.voorraad) <= 0
+  const catalogusOpVoorraad = catalogusGefilterd.filter((c: any) => !itemUitverkocht(c))
+  const aantalUitverkocht = catalogusGefilterd.length - catalogusOpVoorraad.length
+  const catalogusZichtbaar = (toonUitverkocht || catalogusOpVoorraad.length === 0)
+    ? catalogusGefilterd
+    : catalogusOpVoorraad
 
   // ── Klantstatistieken: terugkerende klanten snel in beeld ───────────────────
 
@@ -1088,9 +1106,11 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
           {/* Producten */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex-shrink-0">{t('nav_producten')}</div>
-              <SearchInput value={productZoek} onChange={setProductZoek} placeholder={t('pos_zoek_product_ph')} />
+              <div className="basis-full sm:basis-auto sm:flex-1">
+                <SearchInput value={productZoek} onChange={setProductZoek} placeholder={t('pos_zoek_product_ph')} />
+              </div>
               <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden flex-shrink-0 text-xs">
                 {([[false, t('pos_prijs_excl')], [true, t('pos_prijs_incl')]] as Array<[boolean, string]>).map(([incl, l]) => (
                   <button key={String(incl)} onClick={() => setToonInclBtw(incl)}
@@ -1103,11 +1123,18 @@ const KassaPage: React.FC<KassaPageProps> = ({
                 ))}
               </div>
             </div>
-            {catalogusGefilterd.length === 0 ? (
+            {aantalUitverkocht > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-gray-500 select-none cursor-pointer">
+                <input type="checkbox" className="t-checkbox" checked={toonUitverkocht}
+                  onChange={e => setToonUitverkocht(e.target.checked)} />
+                {t('pos_toon_uitverkocht').replace('{n}', String(aantalUitverkocht))}
+              </label>
+            )}
+            {catalogusZichtbaar.length === 0 ? (
               <div className="text-sm text-gray-400 py-6 text-center">{t('pos_geen_producten')}</div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
-                {catalogusGefilterd.map((item: any) => {
+                {catalogusZichtbaar.map((item: any) => {
                   const max = maxVoorItem(item)
                   const inCart = cart.find(r => r.key === item.key)?.aantal || 0
                   const uitverkocht = max <= 0 || (item.merch && item.prijs == null)
@@ -1124,7 +1151,10 @@ const KassaPage: React.FC<KassaPageProps> = ({
                         <span className="absolute -top-1.5 -right-1.5 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center font-bold shadow"
                           style={{backgroundColor: 'var(--t-accent)'}}>{inCart}</span>
                       )}
-                      <div className="font-semibold text-sm text-gray-800 leading-tight">{item.bier_naam}</div>
+                      <div className="flex items-center gap-2">
+                        {!item.merch && <BierKleur ebc={item.ebc} s="md" />}
+                        <div className="font-semibold text-sm text-gray-800 leading-tight">{item.bier_naam}</div>
+                      </div>
                       <div className="text-xs text-gray-400 mb-1.5">{item.verpakking_type}</div>
                       <div className="flex items-baseline justify-between gap-1">
                         <span className="font-bold text-sm" style={{color: 'var(--t-accent)'}}>
@@ -1133,17 +1163,17 @@ const KassaPage: React.FC<KassaPageProps> = ({
                         </span>
                         {/* Merch heeft geen harde grens: de stand is informatief
                             (oranje bij nul of minder), bier blokkeert wél. */}
-                        <span className={`text-[10px] ${
+                        <span className={`text-xs ${
                           item.merch
-                            ? (item.prijs == null ? 'text-red-500 font-medium' : Number(item.voorraad) <= 0 ? 'text-orange-500 font-medium' : 'text-gray-400')
-                            : uitverkocht ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                            ? (item.prijs == null ? 'text-red-500 font-medium' : Number(item.voorraad) <= 0 ? 'text-orange-500 font-medium' : 'text-gray-500')
+                            : uitverkocht ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
                           {item.merch
                             ? (item.prijs == null ? t('pos_merch_geen_prijs') : `${item.voorraad} ${t('pos_voorraad')}`)
                             : uitverkocht ? t('pos_geen_voorraad') : `${max} ${t('pos_voorraad')}`}
                         </span>
                       </div>
                       {agpInfo > 0 && (
-                        <div className="text-[10px] text-gray-400 mt-0.5 text-right"
+                        <div className="text-xs text-gray-500 mt-0.5 text-right"
                           title={t('pos_agp_info_tip').replace('{n}', String(agpInfo))}>
                           {t('pos_agp_info').replace('{n}', String(agpInfo))}
                         </div>

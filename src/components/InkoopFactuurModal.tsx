@@ -1290,7 +1290,7 @@ function InkoopFactuurModal({
                 <input type="number" step="0.01"
                   value={manualNetto !== null ? manualNetto : totaalNetto.toFixed(2)}
                   onChange={e => setManualNetto(e.target.value)}
-                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-gray-800 bg-white focus:outline-none focus:border-amber-400" />
+                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-gray-800 bg-white t-input" />
               </div>
               <div className="flex items-center gap-2">
                 <div>
@@ -1304,14 +1304,14 @@ function InkoopFactuurModal({
                 <input type="number" step="0.01"
                   value={manualBtw !== null ? manualBtw : totaalBtw.toFixed(2)}
                   onChange={e => setManualBtw(e.target.value)}
-                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-blue-700 bg-white focus:outline-none focus:border-amber-400" />
+                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-blue-700 bg-white t-input" />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-500 whitespace-nowrap">{t('lbl_totaal_incl_btw')}</span>
                 <input type="number" step="0.01"
                   value={manualBruto !== null ? manualBruto : (totaalNetto+totaalBtw).toFixed(2)}
                   onChange={e => setManualBruto(e.target.value)}
-                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-bold text-gray-900 bg-white focus:outline-none focus:border-amber-400" />
+                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-bold text-gray-900 bg-white t-input" />
                 {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
                   <button type="button" title={t('title_herbereken')}
                     onClick={() => {setManualNetto(null);setManualBtw(null);setManualBruto(null);}}

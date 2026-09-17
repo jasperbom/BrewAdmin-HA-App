@@ -41,7 +41,7 @@ const AttentieBadge: React.FC<AttentieBadgeProps> = ({
         title={`${titel}: ${samenvatting}`}
         aria-label={`${t('attentie_titel')} — ${titel}: ${samenvatting}`}
         aria-expanded={open}
-        className="absolute -top-1 -right-1 bg-orange-500 hover:bg-orange-400 text-white text-xs rounded-full px-1 min-w-[1.15rem] h-[1.15rem] flex items-center justify-center leading-none font-bold ring-2 ring-white/70 shadow cursor-pointer transition-colors">
+        className="absolute -top-1 -right-1 bg-orange-700 hover:bg-orange-600 text-white text-xs rounded-full px-1 min-w-[1.15rem] h-[1.15rem] flex items-center justify-center leading-none font-bold ring-2 ring-white/70 shadow cursor-pointer transition-colors">
         {totaal}
       </button>
       {open && (
@@ -61,7 +61,7 @@ const AttentieBadge: React.FC<AttentieBadgeProps> = ({
                   type="button"
                   onClick={() => { onSluit(); onGaNaar(p) }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/5 last:border-b-0">
-                  <span className="bg-orange-500 text-white text-xs rounded-full px-1 min-w-[1.15rem] h-[1.15rem] flex items-center justify-center leading-none font-bold flex-shrink-0">{p.aantal}</span>
+                  <span className="bg-orange-700 text-white text-xs rounded-full px-1 min-w-[1.15rem] h-[1.15rem] flex items-center justify-center leading-none font-bold flex-shrink-0">{p.aantal}</span>
                   <span className="flex-1">{t(p.sleutel)}</span>
                   <span className="text-white/40 text-xs">›</span>
                 </button>

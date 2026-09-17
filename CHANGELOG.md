@@ -4,6 +4,92 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.44] — 2026-09-17
+
+### Brouwzaal, bierkleur en beslissingen — het ontwerpvoorstel doorgevoerd
+
+De Impeccable-audit (Nielsen 25/40, audit 10/20, 1 P0 en 11 P1) en de drie
+goedgekeurde ontwerprichtingen zijn in de code gezet.
+
+**Brouwzaal: de tankkaart is de app**
+
+- Het Productie-dashboard heet nu de brouwzaal. Elke tankkaart draagt de drie
+  meetwaarden die op de vloer tellen (SG, temperatuur, pH) in 24 px, de
+  gistingsvoortgang, de bierkleur en de acties van die fase: *Meting*,
+  *Taken (n)* en *Volgende fase*.
+- De batchpagina opent als paneel ónder de kaarten (BatchFlowPage in
+  `embedded`-modus, "Sluiten" i.p.v. "← Alle batches"). Als eigen pagina keert
+  hij terug naar de brouwzaal.
+- Nieuw blok *Buiten de tanks*: geplande batches (*Brouwdag starten*),
+  lopende brouwdagen en afgevulde batches (*Afronden*) — met kleurstip, taken
+  en één knop per rij. Gesloten batches zijn een archieflink.
+- Lege tanks hebben naast *Reiniging vastleggen* nu *Batch inplannen*.
+- Het nav-item *Batches* heet *Planning*: nieuwe batch, open batchtaken, de
+  tijdlijn (standaard open) en het archief. De uitlegbanner en de dubbele
+  kaartenwand zijn weg.
+
+**Nu actief in plaats van meldingsbalken**
+
+- De vijf gestapelde sticky balken (die de navigatie afdekten, z-50 boven
+  z-40) zijn vervangen door één regel *Nu actief* onder de nav: een chip per
+  lopende batch. Ambient (brouwdag bezig, carbonisatie loopt) is neutraal en
+  niet weg te klikken — één tik naar de batch. Actiegericht (gistingsstap
+  gereed, CO₂-doel bereikt, tankalarm, nieuwe webshoporders) krijgt accent,
+  een knop en een ×. De nav is weer het enige sticky element.
+
+**Het bier kleurt zichzelf**
+
+- `utils/bierKleur.ts`: één EBC→kleur-tabel (uit de tank-SVG getrokken) met
+  `productEbc`/`batchEbc` (eigen veld → product → recept) en `tekstKleurOp`.
+- `<BierKleur>`-stip in de productlijst en -kop, op de kassategels, in de
+  orderregels en pickkaarten, op de tankkaarten en in *Buiten de tanks*.
+  Statuschips blijven semantisch; het thema kleurt alleen de chrome.
+- Kassa: uitverkochte tegels staan standaard achter *Toon uitverkocht (n)*.
+
+**Administratie: beslissen en rapporteren zijn twee ingangen**
+
+- `utils/beslissingen.ts` (+ test): één beslissing per rij met urgentie
+  (*te laat*, *klopt niet*, *wacht op jou*, *deadline*), bedrag, context en de
+  actie ernaast — uit dezelfde selecties als de attentie-badge, geen eigen
+  sommetjes. Het dashboard toont die lijst, "verder vraagt niets om een
+  besluit", de maandcijfers en de acties; de vier dubbele kaarten en de
+  serverstatus (staat onder Instellingen › App) zijn weg.
+- Nieuwe pagina *Rapporten* (nav Administratie): W&V, Balans, Journaal,
+  Ouderdom, Omzet per categorie, Transacties, BTW-invulhulp, AGP,
+  Voorraadverloop, Inventarisatie en de HACCP-inspectie-export, elk met één
+  zin en *Bekijken*. Deep-link naar een rapport-subtab via `initialRapportTab`.
+  Voorraadverloop staat daaronder i.p.v. in de nav.
+
+**Toegankelijkheid en contrast (audit P0/P1)**
+
+- `SectionHeader` en `StatCard` zijn echte knoppen (`aria-expanded`),
+  `Inp`/`Sel` koppelen label en veld (`useId`), `SearchInput` heeft een
+  `aria-label`, `Modal` is een dialoog (`role="dialog"`, Escape, focus-trap,
+  focus terug, benoemde ×), `Btn` heeft een zichtbare focusring en grotere
+  tap-doelen op mobiel, `SyncDot` een leesbare status.
+- Contrast op tokenniveau: amber `#b45309` en groen `#15803d` voor knop en
+  accent (5,0:1); `AttentieBadge` en tellers orange-700; placeholders
+  gray-500; hardcoded amber-plekken naar het thema.
+- Mobiel: `maximum-scale` weg (pinch-zoom op Android), 16 px invoervelden
+  tegen de iOS-autozoom, `prefers-reduced-motion`, en de horizontale overflow
+  op Ingrediënten, Productdetail, Bestellingen, Kassa en de vervallen-
+  facturenkaart is verholpen.
+
+**Kopij en kleine fixes**
+
+- Rauwe vertaalsleutel bij de waterbron (HACCP › Registers), "Nog geen
+  producten" naast vijf producten → "Kies een product" (+ eerste product
+  automatisch open op desktop), meervouden (1 batch/1 regel/1 aankoop),
+  *Markeer als ingediend*, BTW-hint naar *Financieel*, trace-labels in het
+  Nederlands, dubbel loep-icoon uit de zoekvelden, *Uitgevoerd*-knop per
+  schoonmaaktaak, Instellingen opent op *Brouwerij*.
+
+**Server**
+
+- `index.html` krijgt een sterke ETag (304 bij `If-None-Match`), wordt gzip
+  geserveerd bij `Accept-Encoding: gzip` (6,6 MB → 1,75 MB) en per mtime
+  gecachet; stdlib-only, met pytest.
+
 ## [1.12.43] — 2026-09-17
 
 ### Batch verwijderen met bier in de tank zet de tank op Vuil

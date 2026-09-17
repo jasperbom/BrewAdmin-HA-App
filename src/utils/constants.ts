@@ -132,9 +132,9 @@ export const ONDERDEEL_TYPES = [
 
 export const NAV_THEMES: Record<string, any> = {
   amber:  {p1:'#451a03',p2:'#78350f',p3:'#d97706',p4:'#fde68a',p5:'#fffbeb',
-           from:'#451a03',to:'#78350f',accent:'#d97706',light:'#fde68a',pale:'#fffbeb',text:'#78350f',btn:'#d97706',btnH:'#b45309',btnA:'#78350f',bg:'#fefdf5'},
+           from:'#451a03',to:'#78350f',accent:'#b45309',light:'#fde68a',pale:'#fffbeb',text:'#78350f',btn:'#b45309',btnH:'#92400e',btnA:'#78350f',bg:'#fefdf5'},
   green:  {p1:'#052e16',p2:'#14532d',p3:'#16a34a',p4:'#bbf7d0',p5:'#f0fdf4',
-           from:'#052e16',to:'#14532d',accent:'#16a34a',light:'#bbf7d0',pale:'#f0fdf4',text:'#14532d',btn:'#16a34a',btnH:'#15803d',btnA:'#14532d',bg:'#f4fcf7'},
+           from:'#052e16',to:'#14532d',accent:'#15803d',light:'#bbf7d0',pale:'#f0fdf4',text:'#14532d',btn:'#15803d',btnH:'#166534',btnA:'#14532d',bg:'#f4fcf7'},
   blue:   {p1:'#172554',p2:'#1e3a8a',p3:'#2563eb',p4:'#bfdbfe',p5:'#eff6ff',
            from:'#172554',to:'#1e3a8a',accent:'#2563eb',light:'#bfdbfe',pale:'#eff6ff',text:'#1e3a8a',btn:'#2563eb',btnH:'#1d4ed8',btnA:'#1e3a8a',bg:'#f4f8ff'},
   slate:  {p1:'#020617',p2:'#1e293b',p3:'#64748b',p4:'#cbd5e1',p5:'#f8fafc',

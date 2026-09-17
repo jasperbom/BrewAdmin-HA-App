@@ -129,8 +129,9 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">{t('haccp_schoonmaak_laatste')}: {last ? fmtD(last.datum) : t('haccp_schoonmaak_nooit')}</span>
+                    <Btn s="sm" onClick={() => {setEdit({taak_id: tk.id, datum: tod(), uitgevoerd_door: '', middel: '', opmerking: '', cip: false}); setModal('log')}}>{t('haccp_btn_uitgevoerd')}</Btn>
                     <Btn s="sm" v="ghost" onClick={() => {setEdit({...tk}); setModal('taak')}}>{t('btn_edit')}</Btn>
-                    <Btn s="sm" v="danger" onClick={() => delTaak(tk)}>{t('btn_delete')}</Btn>
+                    <Btn s="sm" v="ghost" onClick={() => delTaak(tk)}>{t('btn_delete')}</Btn>
                   </div>
                 </div>
               </div>

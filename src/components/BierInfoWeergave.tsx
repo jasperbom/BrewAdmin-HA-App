@@ -111,7 +111,7 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
               <div className={`font-bold leading-none ${compact ? 'text-base' : 'text-xl'}`} style={{color: 'var(--t-accent)'}}>
                 {String(bron[f.veld])}
               </div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">{t(f.label)}</div>
+              <div className="text-[11px] text-gray-500 uppercase tracking-wide mt-0.5">{t(f.label)}</div>
             </div>
           ))}
           {gevuld(score) && (
@@ -120,9 +120,9 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
                 {String(score)}
                 <span className="text-xs text-gray-400 font-normal"> / 5</span>
               </div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">
+              <div className="text-[11px] text-gray-500 uppercase tracking-wide mt-0.5">
                 {untappdUrl ? (
-                  <a href={String(untappdUrl)} target="_blank" rel="noreferrer" className="underline">Untappd</a>
+                  <a href={String(untappdUrl)} target="_blank" rel="noreferrer" className="underline inline-block py-1">Untappd</a>
                 ) : 'Untappd'}
                 {gevuld(aantal) && ` · ${aantal}×`}
               </div>
@@ -143,7 +143,7 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
                 <div className="h-full rounded-full transition-all"
                   style={{width: `${waarde}%`, backgroundColor: veld.strak ? '#4d7c0f' : 'var(--t-accent)'}} />
               </div>
-              <span className="text-[10px] text-gray-400 w-7 text-right">{waarde}</span>
+              <span className="text-[11px] text-gray-500 w-7 text-right">{waarde}</span>
             </div>
           ))}
         </div>

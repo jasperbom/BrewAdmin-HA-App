@@ -532,20 +532,20 @@ const KlantenPage: React.FC<Props> = ({
               <div className="text-2xl font-bold text-gray-800">{selectedStats.bestellingen.length}</div>
               <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_orders')}</div>
               {selectedStats.laatsteDatum && (
-                <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_stat_last_order')}: {fmtD(selectedStats.laatsteDatum)}</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_stat_last_order')}: {fmtD(selectedStats.laatsteDatum)}</div>
               )}
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_omzet_tooltip')}>
               <div className="text-2xl font-bold text-green-700">{fmt(selectedStats.omzet)}</div>
               <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_omzet')}</div>
-              <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_omzet_sub')}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_omzet_sub')}</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_open_orders_tooltip')}>
               <div className={`text-2xl font-bold ${selectedStats.openOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
                 {selectedStats.openOrders > 0 ? fmt(selectedStats.openOrders) : '—'}
               </div>
               <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_open_orders')}</div>
-              <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_open_orders_sub')}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_open_orders_sub')}</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
               <div className={`text-2xl font-bold ${selectedStats.openstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
@@ -572,7 +572,7 @@ const KlantenPage: React.FC<Props> = ({
                       ? (selected?.klantnummer || nextKlantnummer(klanten))
                       : nextKlantnummer(klanten)}
                   </span>
-                  <span className="text-[10px] text-gray-400 uppercase tracking-wide font-sans">
+                  <span className="text-[11px] text-gray-500 uppercase tracking-wide font-sans">
                     {t('klanten_klantnummer_auto_label')}
                   </span>
                 </div>
@@ -797,14 +797,14 @@ const KlantenPage: React.FC<Props> = ({
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_omzet_tooltip')}>
           <div className="text-2xl font-bold text-green-700">{fmt(totaalOmzet)}</div>
           <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_omzet_totaal')}</div>
-          <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_omzet_sub')}</div>
+          <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_omzet_sub')}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center" title={t('klanten_open_orders_tooltip')}>
           <div className={`text-2xl font-bold ${totaalOpenOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
             {totaalOpenOrders > 0 ? fmt(totaalOpenOrders) : '—'}
           </div>
           <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{t('klanten_stat_open_orders_totaal')}</div>
-          <div className="text-[10px] text-gray-400 mt-0.5">{t('klanten_open_orders_sub')}</div>
+          <div className="text-[11px] text-gray-500 mt-0.5">{t('klanten_open_orders_sub')}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-center">
           <div className={`text-2xl font-bold ${totaalOpenstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
