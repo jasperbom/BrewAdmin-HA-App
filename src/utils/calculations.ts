@@ -742,8 +742,17 @@ export const berekenCogs = (
   for (const u of uitleveringen || []) {
     if (!u?.datum || u.datum < van || u.datum > tot) continue
     if (u.type_uitlevering === 'intern') continue
-    const perStuk = Number(u.inhoud_liter)
+    // Inhoud van één verpakking — alleen die mag met `aantal` vermenigvuldigd
+    // worden. `inhoud_liter` op een uitlevering is daar géén betrouwbare bron
+    // voor: de bestellingen- en kassaflow schrijven er het régeltotaal in
+    // (aantal × inhoud), terwijl oudere records er de inhoud per stuk in
+    // hebben staan. Stond dat veld vooraan, dan werd een regel van 24 flesjes
+    // als 24 × (24 × 0,33) geteld — een factor `aantal` te hoog.
+    // Vandaar deze volgorde: eerst het veld dat altijd per stuk is, dan de
+    // afvulling, en pas als die beide ontbreken het oude veld.
+    const perStuk = Number(u.inhoud_per_eenheid)
       || Number((afvullingen||[]).find((a: any) => a.id === u.afvulling_id)?.inhoud_per_eenheid)
+      || Number(u.inhoud_liter)
       || 0
     const l = perStuk * (Number(u.aantal) || 0)
     if (l <= 0) continue

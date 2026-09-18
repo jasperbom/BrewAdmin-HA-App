@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.47] — 2026-09-18
+
+### Opgelost: COGS telde elke uitlevering een factor `aantal` te hoog
+
+De kaart *Marge op werkelijke kostprijs* liet absurde uitkomsten zien
+(−975% bij een van de brouwerijen). De oorzaak zat in `berekenCogs`:
+
+`Uitlevering.inhoud_liter` is bij de bestellingen- en kassaflow het
+**regeltotaal** (`aantal × inhoud`), maar de COGS-berekening las dat veld als
+de inhoud per stuk en vermenigvuldigde het nóg een keer met `aantal`. Een
+regel van 24 flesjes van 33 cl telde daardoor als 24 × 7,92 = 190 L in plaats
+van 7,92 L. De fout schaalt met de regelgrootte, dus hoe groter de order, hoe
+verder de kostprijs ernaast zat.
+
+De volgorde is nu: `inhoud_per_eenheid` (dat veld is altijd per stuk en wordt
+door beide flows meegeschreven) → de gekoppelde afvulling → en pas als die
+beide ontbreken het oude `inhoud_liter`. Oudere records blijven zo precies
+hetzelfde gewaardeerd.
+
+De bestaande test ving dit niet: zijn fixtures gebruikten `inhoud_liter` als
+inhoud per stuk — een conventie die de app zelf nergens wegschrijft. Er is een
+regressietest bij gekomen die een uitlevering opvoert zoals de app hem
+werkelijk opslaat (mét beide velden), en het veld is in `types/index.ts`
+gedocumenteerd zodat de dubbele betekenis niemand meer verrast.
+
+### Statusbalk kleurt mee op de telefoon
+
+Boven het menu stond een lichte rand achter de klok en de batterij-indicator.
+De `<html>`-achtergrond kleurde alleen mee in home-screen-modus; in de
+HA-companion-app is `IS_STANDALONE` onwaar en bleef die strook dus de
+app-achtergrond houden, onder een donkere menubalk.
+
+Er ligt nu een laagje over `env(safe-area-inset-top)` met exact dezelfde
+gradient als de navigatiebalk. Zonder inset (desktop, browser met adresbalk)
+is het nul pixels hoog en verandert er niets; het staat buiten de layout en
+vangt geen aanraking.
+
+---
+
 ## [1.12.46] — 2026-09-18
 
 ### Verrekening is een status geworden, geen bijschrift

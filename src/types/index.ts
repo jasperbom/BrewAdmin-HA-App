@@ -791,6 +791,15 @@ export interface Uitlevering {
   afvulling_id?: number
   batch_naam?: string
   verpakking_naam?: string
+  /** Inhoud van één verpakking in liters. Dit is de betrouwbare bron. */
+  inhoud_per_eenheid?: number
+  /**
+   * LET OP — op een uitlevering is dit het **regeltotaal** (aantal × inhoud),
+   * niet de inhoud per stuk: zo schrijven de bestellingen- en kassaflow hem
+   * weg. Op een *afvulling* betekent hetzelfde veld wél de inhoud per stuk.
+   * Vermenigvuldig dit dus nooit met `aantal` — gebruik `inhoud_per_eenheid`,
+   * of val terug op de gekoppelde afvulling.
+   */
   inhoud_liter?: number
   aantal: number
   verkocht_stuks?: number

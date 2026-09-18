@@ -326,6 +326,22 @@ describe('batchkostprijs en COGS (ERP 2.6)', () => {
     expect(c.litersZonderKostprijs).toBe(10)
     expect(c.aantalUitleveringen).toBe(3)
   })
+  it('berekenCogs: telt een uitlevering zoals de app hem wegschrijft niet dubbel', () => {
+    // De bestellingen- en kassaflow zetten in `inhoud_liter` het regeltotaal
+    // (aantal × inhoud) én in `inhoud_per_eenheid` de inhoud per stuk. Werd
+    // het eerste veld als per-stuk gelezen, dan kwam er `aantal` keer te veel
+    // uit: 24 flesjes telden als 190 L in plaats van 7,92 L.
+    const uit = [
+      {batch_id: 1, afvulling_id: 11, aantal: 24, inhoud_per_eenheid: 0.33, inhoud_liter: 24 * 0.33,
+       datum: '2026-06-10', type_uitlevering: 'binnenland'},
+      {batch_id: 1, afvulling_id: 12, aantal: 3, inhoud_per_eenheid: 20, inhoud_liter: 60,
+       datum: '2026-06-12', type_uitlevering: 'binnenland'},
+    ]
+    const c = berekenCogs(uit, batches, bi, lots, afvullingen, [], [], [], '2026-06-01', '2026-06-30')
+    expect(c.liters).toBeCloseTo(24 * 0.33 + 3 * 20, 9)
+    expect(c.cogs).toBeCloseTo((24 * 0.33 + 3 * 20) * (120 / 53), 9)
+    expect(c.aantalUitleveringen).toBe(2)
+  })
 })
 
 describe('berekenProductKostprijs — verdeling naar afgevuld volume per product', () => {
