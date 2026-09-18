@@ -27,6 +27,7 @@ import { bouwVerplaatsing } from '../utils/agp'
 import { voorraadPerLocatie, getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, berekenBatchKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 import { standaardBtwPct } from '../utils/btw'
+import { SkuEigenaar, skuConflicten, vrijeSku, productVoorRegel } from '../utils/sku'
 import { productEbc } from '../utils/bierKleur'
 import BierKleur from '../components/ui/BierKleur'
 
@@ -244,17 +245,41 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     return (verpakkingen || []).some((v: any) => (v.type || '').toLowerCase() === a && (v.naam || '').toLowerCase() === b);
   };
 
-  // Reserveringen die bij één product horen: match op SKU van de
-  // productartikelen (of legacy artikelen met dezelfde biernaam), anders op
-  // productnaam.
+  // Referentie voor alles wat met SKU's matcht (zie utils/sku.ts).
+  const skuData = useMemo(
+    () => ({producten, productArtikelen, artikelen, merchArtikelen}),
+    [producten, productArtikelen, artikelen, merchArtikelen]
+  );
+
+  // Reserveringen die bij één product horen: de SKU van de orderregel wijst het
+  // product aan (via de productartikelen of een legacy artikel), anders de
+  // biernaam. Hangt dezelfde SKU aan twee producten, dan beslist de biernaam —
+  // anders reserveert een bestelling op het ene bier ook voorraad van het
+  // andere.
   const reserveringenVoorProduct = (p: any) => {
     if (!p) return [];
-    const skus = new Set([
-      ...(productArtikelen || []).filter((pa: any) => pa.product_id === p.id && pa.artikelnummer).map((pa: any) => pa.artikelnummer),
-      ...(artikelen || []).filter((a: any) => a.artikelnummer && (a.biernaam || '').toLowerCase() === (p.naam || '').toLowerCase()).map((a: any) => a.artikelnummer),
-    ]);
     return openReserveringen.filter((r: any) =>
-      (r.sku && skus.has(r.sku)) || (r.bier_naam || '').toLowerCase() === (p.naam || '').toLowerCase()
+      productVoorRegel(r.sku || null, r.bier_naam || '', skuData) === p.id
+    );
+  };
+
+  // Bestaande dubbele SKU's bij dit product: welke andere artikelen dezelfde
+  // SKU al gebruiken. Leeg = niets aan de hand.
+  const skuConflictVoor = (art: any): SkuEigenaar[] =>
+    skuConflicten(art?.artikelnummer, {soort: 'artikel', id: art?.id, product_id: art?.product_id}, skuData);
+
+  // Badge bij een artikelnummer dat een ander artikel ook draagt. Zichtbaar
+  // maken is het halve werk: de gebruiker ziet nergens anders dat twee bieren
+  // dezelfde SKU delen, en merkt het pas aan een voorraad die niet klopt.
+  const skuDubbelBadge = (art: any) => {
+    const conflicten = skuConflictVoor(art);
+    if (!conflicten.length) return null;
+    const namen = conflicten.map(c => c.naam || t('lbl_naamloos')).join(', ');
+    return (
+      <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-medium align-middle"
+        title={t('tip_sku_dubbel').replace('{naam}', namen)}>
+        {t('lbl_sku_dubbel')}
+      </span>
     );
   };
 
@@ -517,8 +542,21 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     }
   };
 
+  // Dubbele SKU tijdens het invullen: één SKU hoort bij één artikel, anders
+  // reserveert een bestelling voorraad van het verkeerde bier, kan de picking
+  // het verkeerde product kiezen en overschrijft een webshop-push de andere
+  // productkaart.
+  const artFormConflicten = useMemo(
+    () => artForm
+      ? skuConflicten(artForm.artikelnummer, {soort: 'artikel', id: artForm.id, product_id: artForm.product_id ?? sel}, skuData)
+      : [],
+    [artForm, skuData, sel]
+  );
+
   const saveArtikel = () => {
     if (!artForm) return;
+    // Vangnet: de knop staat al uit en het formulier toont waaróm.
+    if (artFormConflicten.length) return;
     const vp = (verpakkingen||[]).find((v: any) => v.id === Number(artForm.verpakking_id));
     let prijs = Number(artForm.verkoopprijs || 0);
     if (prijsInclBtw && prijs > 0) {
@@ -1019,7 +1057,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         || (!!artNaam && ((b.naam || '').toLowerCase() === artNaam || (b.biernaam || '').toLowerCase() === artNaam));
       return bierMatch && vpMatch(a);
     }).reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
-    return Math.max(0, fysiek - gereserveerdVoorArtikel(openReserveringen, art));
+    return Math.max(0, fysiek - gereserveerdVoorArtikel(openReserveringen, art, skuData));
   };
 
   // WooCommerce-winkels voeren prijzen doorgaans inclusief BTW in; de
@@ -1797,7 +1835,26 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_sku')}</label>
-                      <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
+                      <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))}
+                        className={`w-full border rounded px-2 py-1.5 sm:py-1 text-xs t-input ${artFormConflicten.length ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
+                      {/* Eén SKU hoort bij één artikel: hij wijst de orderregel,
+                          de picking en de webshop naar dit bier. */}
+                      {artFormConflicten.length > 0 && (() => {
+                        const vrij = vrijeSku(artForm.artikelnummer, {soort: 'artikel', id: artForm.id, product_id: artForm.product_id ?? sel}, skuData);
+                        return (
+                          <div className="mt-1 text-[11px] text-red-600">
+                            {t('msg_sku_dubbel')
+                              .replace('{sku}', String(artForm.artikelnummer || ''))
+                              .replace('{naam}', artFormConflicten[0].naam || t('lbl_naamloos'))}
+                            {vrij && (
+                              <button type="button" onClick={() => setArtForm((f: any) => ({...f, artikelnummer: vrij}))}
+                                className="ml-1 font-medium underline t-accent-text">
+                                {t('btn_sku_gebruik_vrij').replace('{sku}', vrij)}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-500">{t('lbl_product_ean')}</label>
@@ -1920,7 +1977,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     );
                   })()}
                   <div className="flex gap-2 mt-2">
-                    <Btn onClick={saveArtikel} s="sm">{t('btn_product_opslaan')}</Btn>
+                    <Btn onClick={saveArtikel} s="sm" disabled={artFormConflicten.length > 0}>{t('btn_product_opslaan')}</Btn>
                     <Btn onClick={() => setArtForm(null)} s="sm" v="secondary">{t('btn_product_annuleren')}</Btn>
                   </div>
                 </div>
@@ -1964,7 +2021,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                             </div>
                           </div>
                           <div className="mt-2 space-y-1">
-                            {rij(t('lbl_product_sku'), <span className="font-mono">{a.artikelnummer || '-'}</span>)}
+                            {rij(t('lbl_product_sku'), (
+                              <span className="font-mono">
+                                {a.artikelnummer || '-'}
+                                {skuDubbelBadge(a)}
+                              </span>
+                            ))}
                             {a.gn_code && rij(t('lbl_gn_code'), a.gn_code)}
                             {rij(t('lbl_product_prijs'), a.verkoopprijs ? fmt(a.verkoopprijs) : '-')}
                             {rij(t('lbl_product_b2b_prijs'), a.b2b_prijs ? fmt(a.b2b_prijs) : '-')}
@@ -2020,7 +2082,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                 )}
                               </span>
                             </td>
-                            <td className="py-1.5 font-mono">{a.artikelnummer || '-'}</td>
+                            <td className="py-1.5 font-mono">{a.artikelnummer || '-'}{skuDubbelBadge(a)}</td>
                             <td className="py-1.5 text-gray-500">{a.gn_code || '-'}</td>
                             <td className="py-1.5 text-right">{a.verkoopprijs ? fmt(a.verkoopprijs) : '-'}</td>
                             <td className="py-1.5 text-right">{a.b2b_prijs ? fmt(a.b2b_prijs) : '-'}</td>

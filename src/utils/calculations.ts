@@ -2,6 +2,7 @@ import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsin
 import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd, tod } from './format'
 import { verpakkingKostenPerStuk } from './verpakkingKosten'
+import { SkuRefData, skuDubbelzinnig, productVoorRegel, artikelProductId } from './sku'
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────
 // Aanzuren werkt heel anders voor maisch/wort dan voor brouwwater:
@@ -2411,9 +2412,24 @@ export const pickUitgeslagen = (p: any): boolean =>
 
 // Gereserveerd aantal voor één artikel: match primair op SKU, anders op
 // biernaam + verpakkingstype.
-export const gereserveerdVoorArtikel = (reserveringen: OpenReservering[], art: any): number =>
+//
+// `data` is optioneel en alleen nodig wanneer dezelfde SKU per ongeluk aan twee
+// producten hangt: zonder die referentie telt zo'n reservering bij álle
+// artikelen met die SKU mee, en zakt de voorraad van een bier dat niet eens
+// besteld is. Met `data` beslist de biernaam van de regel (zie utils/sku.ts).
+export const gereserveerdVoorArtikel = (
+  reserveringen: OpenReservering[],
+  art: any,
+  data?: SkuRefData,
+): number =>
   (reserveringen || []).filter(r => {
-    if (r.sku && art?.artikelnummer) return r.sku === art.artikelnummer
+    if (r.sku && art?.artikelnummer) {
+      if (r.sku !== art.artikelnummer) return false
+      if (!data || !skuDubbelzinnig(r.sku, data)) return true
+      const pid = productVoorRegel(r.sku, r.bier_naam, data)
+      const artPid = artikelProductId(art, data)
+      return pid != null && artPid != null && pid === artPid
+    }
     return (r.bier_naam || '').toLowerCase() === (art?.biernaam || '').toLowerCase()
       && (r.verpakking_type || '').toLowerCase() === (art?.verpakking_type || '').toLowerCase()
   }).reduce((s, r) => s + r.aantal, 0)

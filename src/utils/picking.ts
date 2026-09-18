@@ -13,6 +13,8 @@
 //   3. product-fallback: zelfde product_id + verpakking (vangt SKU-wijziging)
 //   (geen SKU) → match op bier-/batchnaam + verpakking (ook via product_id)
 
+import { productVoorRegel } from './sku'
+
 export interface PickRefData {
   bat?: any[]
   artikelen?: any[]
@@ -51,21 +53,10 @@ const verpakkingMatcht = (avVerpakkingType: any, regelVerpakking: string, verpak
 
 // Resolve het product-id waar een orderregel bij hoort (voor de product-fallback):
 // via de huidige SKU-mapping (productArtikelen), anders via het artikel → biernaam,
-// anders via de biernaam van de regel zelf.
-export const orderProductId = (orderSku: string | null, regelBierNaam: string, data: PickRefData): number | null => {
-  const { producten = [], productArtikelen = [], artikelen = [] } = data
-  if (orderSku) {
-    const pa = productArtikelen.find((p: any) => p.artikelnummer === orderSku)
-    if (pa?.product_id != null) return pa.product_id
-    const art = artikelen.find((a: any) => a.artikelnummer === orderSku)
-    if (art?.biernaam) {
-      const prod = producten.find((p: any) => lower(p.naam) === lower(art.biernaam))
-      if (prod) return prod.id
-    }
-  }
-  const prod = producten.find((p: any) => lower(p.naam) === lower(regelBierNaam))
-  return prod?.id ?? null
-}
+// anders via de biernaam van de regel zelf. Draagt dezelfde SKU per ongeluk aan
+// twéé producten, dan beslist de biernaam — zie utils/sku.ts.
+export const orderProductId = (orderSku: string | null, regelBierNaam: string, data: PickRefData): number | null =>
+  productVoorRegel(orderSku, regelBierNaam, data)
 
 // `beschikbaar` = reeds op voorraad>0 gefilterde afvullingen. Geeft de gesorteerde
 // (FEFO) lijst afvullingen die bij deze orderregel horen.

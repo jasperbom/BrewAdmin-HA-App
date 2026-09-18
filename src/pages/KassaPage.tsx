@@ -286,7 +286,13 @@ const KassaPage: React.FC<KassaPageProps> = ({
         }
         // Zachte reservering van open bestellingen aftrekken (nog niet gepickt),
         // en de netto AGP-voorraad afleiden voor de info-weergave.
-        const gereserveerd = gereserveerdVoorArtikel(openReserveringen, {artikelnummer: sku, biernaam: bier, verpakking_type: vp})
+        // `skuData` erbij: draagt dezelfde SKU per ongeluk aan twee bieren, dan
+        // beslist de biernaam voor welk artikel de reservering telt.
+        const gereserveerd = gereserveerdVoorArtikel(
+          openReserveringen,
+          {artikelnummer: sku, biernaam: bier, verpakking_type: vp},
+          {producten, productArtikelen, artikelen, merchArtikelen},
+        )
         const {voorraad, buitenAgp, agp} = kassaVoorraadNaReservering(voorraadBruto, buitenAgpBruto, gereserveerd)
         items.push({
           key: `${bier}|${vp}`,
