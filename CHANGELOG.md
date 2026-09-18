@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.53] — 2026-09-18
+
+### Twee bieren met dezelfde SKU telden elkaars bestellingen
+
+Wheatstone liet *In bestellingen: 2×* zien voor bier dat nog niet te koop was.
+De oorzaak zat niet in de voorraad maar in het artikelnummer: zowel Witspace
+als Wheatstone had `WSFL033` gekregen (allebei "WS"), en de open bestelling van
+2× Witspace matchte daardoor op beide producten.
+
+De SKU is de enige harde verwijzing van een orderregel — en van de webshop —
+naar wát er verkocht is: de afvulling bevriest hem, de picking zoekt erop, de
+voorraadpush stuurt hem mee. Twee artikelen met dezelfde SKU maken die
+verwijzing dubbelzinnig. Daarom nu:
+
+- **Het artikelformulier weigert een SKU die al bezet is.** Het veld kleurt
+  rood, noemt bij welk bier (of welk merch-artikel) de SKU al hoort en biedt
+  met één klik een vrije variant aan (`WSFL033-1`). Opslaan kan pas als hij
+  vrij is.
+- **Bestaande dubbelen worden zichtbaar** met een rode badge *dubbel* achter
+  het artikelnummer in de artikelenlijst, met in de tooltip het andere bier.
+- **Zolang een dubbele SKU er tóch is, beslist de biernaam van de orderregel**
+  bij welk bier de reservering telt (`utils/sku.ts`). Dezelfde
+  ambiguïteitsregel geldt nu ook voor de picking (`orderProductId`), de
+  voorraadpush naar WooCommerce en de kassavoorraad — die kozen eerder simpelweg
+  het eerste artikel met die SKU.
+
+Nieuwe pure module `src/utils/sku.ts` met testdekking; `gereserveerdVoorArtikel`
+kreeg een optioneel referentie-argument (zonder dat argument is het gedrag
+ongewijzigd).
+
+---
+
 ## [1.12.52] — 2026-09-18
 
 ### Een afboeking legt nu vast wáár het bier lag

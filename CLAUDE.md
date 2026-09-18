@@ -49,6 +49,12 @@ BrewAdmin-HA-App/
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
 │   │   ├── merch.ts        # Merch-artikelen: herkenning op SKU/naam (onthouden vanuit een orderregel) + eigen voorraad (mutaties, tekorten, waardering) voor merch die je zélf op voorraad hebt
+│   │   ├── sku.ts          # SKU-identiteit: één SKU hoort bij één artikel. Spoort dubbele
+│   │   │                   # artikelnummers op (formulier weigert ze, lijst toont ze) en
+│   │   │                   # brengt een orderregel bij het juiste product — bij een SKU die
+│   │   │                   # aan twee bieren hangt beslist de biernaam. Gedeeld door de
+│   │   │                   # picking (`orderProductId`), de reserveringen
+│   │   │                   # (`gereserveerdVoorArtikel`) en de productenpagina
 │   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
