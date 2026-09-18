@@ -31,7 +31,7 @@ const Sel: React.FC<SelProps> = ({label, value, onChange, opts, ph, cls='', id, 
         value={value}
         onChange={e => onChange(e.target.value)}
         aria-label={!label ? ariaLabel : undefined}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none transition-all duration-150 shadow-sm"
       >
         <option value="">{ph || t('ph_choose')}</option>
         {opts.map(o => (

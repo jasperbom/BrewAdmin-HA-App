@@ -1448,7 +1448,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                       return {...DEFAULT_HACCP_INST, ...(prev || {}), toevoeging_per_ing_type: map}
                     })
                   }}
-                  className="border border-gray-300 rounded px-2 py-1 text-xs flex-1 t-input">
+                  className="border border-gray-300 rounded px-2 py-1 text-xs flex-1 min-w-0 t-input">
                   <option value="">{t('haccp_toevoeging_geen')}</option>
                   {TOEVOEGING_SOORTEN.map(x => <option key={x.key} value={x.key}>{t(x.label)}</option>)}
                 </select>

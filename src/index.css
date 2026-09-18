@@ -31,6 +31,36 @@
   }
 }
 
+/* Maten van de schil. Elke pagina en elke vaste actiebalk rekent met deze
+   twee getallen; de safe-area van een home-screen-app (notch, home-indicator)
+   zit er al in. App.tsx zet --safe-top/--safe-bottom alleen in
+   standalone-modus op env(): in een browser en in een HA-ingress-iframe zijn
+   die insets van het omsluitende document. */
+:root {
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+  --kopbalk: calc(56px + var(--safe-top));
+  --onderbalk: calc(60px + var(--safe-bottom));
+  --kb-inset: 0px;
+}
+@media (min-width: 768px) {
+  :root { --kopbalk: 48px; --onderbalk: 0px; }
+}
+/* Toetsenbord open (zie components/ui/toetsenbord.ts): de onderbalk is dan
+   toch onbruikbaar en iOS zou hem midden in beeld tillen. */
+body.kb-open { --onderbalk: 0px; }
+body.kb-open [data-onderbalk] { display: none; }
+/* Inhoud houdt ruimte voor de onderbalk (telefoon) en de rail (bureau). */
+.schil-inhoud { padding-bottom: calc(var(--onderbalk) + 1rem); }
+/* Vangnet: een pagina die horizontaal overloopt mag de layout-viewport niet
+   verbreden — een mobiele browser zoomt dan uit en de vaste balken zakken
+   onder de visuele viewport. `clip` snijdt af zonder scroll-container te
+   worden, zodat sticky-koppen blijven werken. */
+.schil-wortel { overflow-x: clip; }
+@media (min-width: 768px) {
+  .schil-rail { padding-left: 84px; }
+}
+
 :root {
   --t-accent: #b45309;
   --t-light: #fde68a;
@@ -56,7 +86,7 @@
 }
 
 /* Navigatie en tabs */
-.t-tab { border-bottom-color: var(--t-accent) !important; color: var(--t-text) !important; }
+.t-tab { border-bottom-color: var(--t-accent-edge, var(--t-accent)) !important; color: var(--t-text) !important; }
 .t-sel { background-color: var(--t-light) !important; border-left-color: var(--t-accent) !important; }
 .t-hover:hover { background-color: var(--t-light); }
 
@@ -92,9 +122,12 @@
 .t-icon-hover:hover { color: var(--t-accent); transition: color 150ms ease; }
 
 /* Themakleur als tekstkleur. Vervangt de hardcoded `text-amber-*`: die zag er
-   in het amberthema goed uit, maar bleef amber in de vijf andere thema's. */
-.t-accent-text { color: var(--t-accent); }
-.t-accent-text-h:hover { color: var(--t-accent); }
+   in het amberthema goed uit, maar bleef amber in de vijf andere thema's.
+   --t-accent-text is het accent, waar nodig donkerder gemaakt tot 4,5:1 op
+   wit, de pagina-achtergrond en de themakaart (utils/kleurContrast.ts);
+   --t-accent-edge is dezelfde tint op 3:1 voor randen en tab-strepen. */
+.t-accent-text { color: var(--t-accent-text, var(--t-accent)); }
+.t-accent-text-h:hover { color: var(--t-accent-text, var(--t-accent)); }
 
 /* WooCommerce knoppen */
 .wc-btn {
@@ -109,3 +142,10 @@
    voegt daar niets toe (de half zichtbare volgende knop is de aanwijzing). */
 .nav-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .nav-scroll::-webkit-scrollbar { display: none; }
+/* De chiprij op een telefoon vervaagt aan de rechterrand: de aanwijzing dat
+   er meer volgt, zonder scrollbalk of pijl. */
+.chips-vervaag {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+  padding-right: 28px;
+}

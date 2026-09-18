@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
+import { WerkruimteId, WERKRUIMTE_IDS, PAGINA_WERKRUIMTE, Route, parseRoute, bouwHash, routeGelijk, isDetailRoute } from './utils/route'
+import { afgeleideThemaKleuren } from './utils/kleurContrast'
 import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet } from './utils/api'
 import { maakAppIcoon } from './utils/icoon'
 import { tod } from './utils/format'
@@ -21,8 +23,14 @@ import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/ta
 import { attentiePosten, attentieDoel, AttentieDoel } from './utils/attentie'
 import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
 import type { HAUser } from './types'
-import SyncDot from './components/ui/SyncDot'
-import AttentieBadge from './components/ui/AttentieBadge'
+import Rail from './components/ui/Rail'
+import Onderbalk from './components/ui/Onderbalk'
+import Kopbalk from './components/ui/Kopbalk'
+import PaginaNav, { PaginaNavItem } from './components/ui/PaginaNav'
+import UndoBar, { UndoProvider, useUitgesteldeActie } from './components/ui/UndoBar'
+import { LaadFout } from './components/ui/FoutKaart'
+import { useToetsenbordInset } from './components/ui/toetsenbord'
+import MeerPage from './pages/MeerPage'
 import ProductieDashboard from './pages/ProductieDashboard'
 import VerkoopDashboard from './pages/VerkoopDashboard'
 import AdministratieDashboard from './pages/AdministratieDashboard'
@@ -56,24 +64,19 @@ const IS_STANDALONE = typeof window !== 'undefined' && (
 // voor de eenmanszaak — Productie/Verkoop/Administratie. Dit zijn
 // context-filters om snel te schakelen, GEEN toegangsbeheer (dat blijft
 // volledig bij het bestaande rollensysteem in server.py). Elke pagina hoort
-// bij precies één werkruimte; dashboard/instellingen zijn werkruimte-loos en
-// blijven altijd bereikbaar.
-type WerkruimteId = 'productie' | 'verkoop' | 'administratie';
-const WERKRUIMTE_IDS: WerkruimteId[] = ['productie', 'verkoop', 'administratie'];
+// bij precies één werkruimte (PAGINA_WERKRUIMTE in utils/route.ts);
+// dashboard/instellingen/meer zijn werkruimte-loos en blijven altijd
+// bereikbaar. De schil: op een bureau een rail links (hoofdmenu) met de
+// pagina's als tabs bovenin, op een telefoon een onderbalk (hoofdmenu) met
+// de pagina's als chips onder de kopbalk. Eén omslagpunt: 768 px.
 const WERKRUIMTE_LABEL_KEYS: Record<WerkruimteId, string> = {
   productie: 'werkruimte_productie', verkoop: 'werkruimte_verkoop', administratie: 'werkruimte_administratie',
 };
-const PAGINA_WERKRUIMTE: Record<string, WerkruimteId> = {
-  ingredienten: 'productie', recepten: 'productie', batches: 'productie', batchflow: 'productie',
-  planning: 'productie', haccp: 'productie', tool_phcorrectie: 'productie', tool_waterprofiel: 'productie',
-  producten: 'verkoop', bestellingen: 'verkoop', kassa: 'verkoop', klanten: 'verkoop', statiegeld: 'verkoop',
-  boekhouding: 'administratie', rapporten: 'administratie', agp: 'administratie', inventarisatie: 'administratie', voorraadverloop: 'administratie',
-};
-// Stipkleur per chip in de "Nu actief"-regel: ambient chips staan op de
-// donkere nav (lichte tinten), actiegerichte chips op wit (semantische
-// statuskleuren uit CLAUDE.md).
+const WERKRUIMTE_ICOON = { productie: 'factory', verkoop: 'store', administratie: 'euro' } as const;
+// Stipkleur per chip in de "Nu actief"-strook (lichte strook onder de
+// bovenbalk): semantische statuskleuren uit CLAUDE.md, ambient wat rustiger.
 const NU_ACTIEF_DOT: Record<string, string> = {
-  brouwen: 'bg-blue-300', carboniseren: 'bg-purple-300',
+  brouwen: 'bg-blue-500', carboniseren: 'bg-purple-500',
   stap: 'bg-orange-600', carb_doel: 'bg-green-600', alarm: 'bg-red-600', waarschuwing: 'bg-orange-600', webshop: 'bg-blue-600',
 };
 // Per-apparaat, bewust NIET via useStore/server gesynchroniseerd (zelfde
@@ -316,8 +319,12 @@ function App() {
     }
   }, [auditLog, breweryDetails?.accijns_verantwoordelijke]);
 
-  const [werkruimte, setWerkruimteState] = useState<WerkruimteId>(leesWerkruimte);
-  const [page, setPageIntern] = useState('dashboard');
+  // Startpunt: de URL-hash (`#/verkoop/bestellingen`) wint van de per-apparaat
+  // onthouden werkruimte — een gedeelde link of een herlaad landt dan precies
+  // waar je was.
+  const [startRoute] = useState<Route | null>(() => (typeof window !== 'undefined' ? parseRoute(window.location.hash) : null));
+  const [werkruimte, setWerkruimteState] = useState<WerkruimteId>(() => startRoute?.werkruimte ?? leesWerkruimte());
+  const [page, setPageIntern] = useState(() => startRoute?.pagina ?? 'dashboard');
   // Wisselt van werkruimte. Bij een ECHTE wissel (niet opnieuw op de al
   // actieve werkruimte tikken) springt de pagina mee naar het dashboard van
   // die werkruimte — anders zou de vorige pagina (uit de oude werkruimte)
@@ -353,12 +360,57 @@ function App() {
     }
     setPageIntern(id);
   };
-  const [openMenu, setOpenMenu] = useState<string|null>(null);
   // Welke werkruimte-badge zijn uitklap ("wat vraagt om aandacht?") toont.
   const [openAttentie, setOpenAttentie] = useState<WerkruimteId|null>(null);
-  const menuRefs = useRef<Record<string, HTMLDivElement|null>>({});
   const [openOrderId, setOpenOrderId] = useState<number | null>(null);
-  const [navBatchId, setNavBatchId] = useState<number | null>(null);
+  const [navBatchId, setNavBatchId] = useState<number | null>(() => startRoute?.batchId ?? null);
+  // Teller voor de Meten-knop in de onderbalk: het Productie-dashboard opent
+  // bij elke ophoging zijn meting-modal.
+  const [metingSignaal, setMetingSignaal] = useState(0);
+
+  // ── Hash-routing ──────────────────────────────────────────────────────────
+  // State → hash: elke wissel van werkruimte, pagina of geopende batch wordt
+  // een history-entry, zodat de terugknop van het toestel het detailscherm
+  // sluit in plaats van de app. Hash → state: de terugknop (hashchange) zet
+  // de state terug. De vergelijking via routeGelijk voorkomt de lus.
+  const huidigeRoute: Route = {
+    werkruimte, pagina: page,
+    batchId: ((page === 'dashboard' && werkruimte === 'productie') || page === 'batchflow') ? navBatchId : null,
+  };
+  const routeRef = useRef(huidigeRoute);
+  routeRef.current = huidigeRoute;
+  const eersteHashRef = useRef(true);
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const h = bouwHash(huidigeRoute);
+    if (window.location.hash === h) { eersteHashRef.current = false; return; }
+    if (eersteHashRef.current) {
+      // De eerste normalisatie (lege of onbekende hash) mag geen extra
+      // history-entry maken: anders sluit "terug" niets.
+      eersteHashRef.current = false;
+      try { window.history.replaceState(null, '', h); } catch (_) { window.location.hash = h; }
+    } else {
+      window.location.hash = h;
+    }
+  }, [werkruimte, page, huidigeRoute.batchId]);
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const bijHash = () => {
+      const r = parseRoute(window.location.hash);
+      if (!r || routeGelijk(r, routeRef.current)) return;
+      setWerkruimteState(r.werkruimte);
+      try { localStorage.setItem(WERKRUIMTE_KEY, r.werkruimte); } catch (_) { /* localStorage niet beschikbaar */ }
+      setPageIntern(r.pagina);
+      setNavBatchId(r.batchId ?? null);
+    };
+    window.addEventListener('hashchange', bijHash);
+    return () => window.removeEventListener('hashchange', bijHash);
+  }, []);
+
+  // Toetsenbord open → onderbalk weg (zie components/ui/toetsenbord.ts).
+  useToetsenbordInset();
+  // Eén terugweg voor de hele app: pagina's plannen via useUndo().
+  const undo = useUitgesteldeActie(5000);
   // Snelkoppeling naar een lopende batch: altijd op de brouwzaal (het
   // Productie-dashboard), waar de batch als paneel onder zijn tankkaart
   // opent. Bewust niet via setPage: die wist bij "zelfde pagina" juist de
@@ -1746,8 +1798,26 @@ function App() {
     ],
   };
   const nav = navPerWerkruimte[werkruimte];
-  const subIds = new Map<string, string>();
-  for (const n of nav) if (n.sub) for (const s of n.sub) subIds.set(s.id, n.id);
+  const paginaItems: PaginaNavItem[] = nav.map(n => ({
+    id: n.id, label: n.l,
+    sub: n.sub?.map(s => ({ id: s.id, label: s.l })),
+    badge: n.id === 'bestellingen' ? openBestellingen : undefined,
+    badgeTitel: n.id === 'bestellingen' ? t('attentie_openstaande_bestellingen').replace('{n}', String(openBestellingen)) : undefined,
+  }));
+  // Titel van het huidige scherm: de werkruimte op haar dashboard, anders de
+  // naam van de pagina (ook een sub-item van een groep).
+  const paginaLabel = (() => {
+    if (page === 'dashboard') return t(WERKRUIMTE_LABEL_KEYS[werkruimte]);
+    if (page === 'instellingen') return t('nav_instellingen');
+    if (page === 'meer') return t('nav_meer');
+    for (const n of nav) {
+      if (n.id === page) return n.l;
+      const s = n.sub?.find(x => x.id === page);
+      if (s) return s.l;
+    }
+    return appName || t('app_title');
+  })();
+  const isDetail = isDetailRoute(huidigeRoute);
 
   const today = new Date(); today.setHours(0,0,0,0);
 
@@ -1785,7 +1855,8 @@ function App() {
   // dan het gebied achter de klok. Alléén in standalone-modus: in de
   // HA-companion-app erft het ingress-iframe de inset van de webview en
   // zou de header onterecht hoog worden.
-  const navStyle = {background:`linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`, borderBottomColor: nt.accent, ...(IS_STANDALONE ? {paddingTop: 'env(safe-area-inset-top)'} : {})};
+  const kopStyle = {background:`linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`, paddingTop: 'var(--safe-top, 0px)'};
+  const railStyle = {background:`linear-gradient(to bottom, ${nt.from}, ${nt.to})`};
   React.useEffect(() => {
     const th = NAV_THEMES[navTheme] || NAV_THEMES.amber;
     const r = document.documentElement.style;
@@ -1797,6 +1868,14 @@ function App() {
     r.setProperty('--t-btn-h',  th.btnH);
     r.setProperty('--t-btn-a',  th.btnA);
     r.setProperty('--t-bg',     th.bg);
+    // Het accent als tekst en als rand: berekend tot het contrast op wit, de
+    // pagina-achtergrond en de themakaart klopt (utils/kleurContrast.ts).
+    const afg = afgeleideThemaKleuren(th.accent, ['#ffffff', th.bg, th.pale]);
+    r.setProperty('--t-accent-text', afg.accentTekst);
+    r.setProperty('--t-accent-edge', afg.accentRand);
+    // Safe-area alleen als geïnstalleerde webapp (zie IS_STANDALONE).
+    r.setProperty('--safe-top', IS_STANDALONE ? 'env(safe-area-inset-top, 0px)' : '0px');
+    r.setProperty('--safe-bottom', IS_STANDALONE ? 'env(safe-area-inset-bottom, 0px)' : '0px');
     // Browser-/statusbalk (mobiel, PWA) meekleuren met de headergradient —
     // zonder deze meta blijft de bovenkant grijs terwijl de app van thema
     // wisselt.
@@ -1957,127 +2036,93 @@ function App() {
     onNavDoelConsumed: wisNavDoel,
   };
 
-  return (
-    <div className="min-h-screen" style={{backgroundColor:'var(--t-bg)'}}>
-      {/* Geen eigen strook achter de statusbalk meer (stond hier kort in
-          1.12.47). Het ingress-iframe erft de safe-area-inset van de webview,
-          dus daar tekende dat laagje een losse gekleurde band bóven de
-          navigatiebalk in plaats van achter de klok. En in Safari haalde het
-          niets uit: de statusbalk en de adresbalk horen bij het ómsluitende
-          document (dat van Home Assistant), niet bij dit iframe — alleen de
-          `theme-color` van het bovenste document telt daar. Zie
-          `IS_STANDALONE` hierboven: als geïnstalleerde webapp vult de
-          `<html>`-achtergrond die strook al. */}
-      <nav className="text-white sticky top-0 z-40 shadow-lg border-b" style={navStyle}>
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 flex items-center h-14 gap-1.5 sm:gap-2">
-          <img
-            src={logo || (logoIcoonFout ? "data:image/png;base64,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" : "api/app_icoon")}
-            alt="logo"
-            onError={()=>setLogoIcoonFout(true)}
-            onClick={()=>setPage('dashboard')}
-            className="h-8 w-auto max-w-[44px] sm:max-w-[80px] object-contain cursor-pointer flex-shrink-0"
-          />
+  // Het logo: zolang de data nog laadt uit de HTTP-cache via api/app_icoon
+  // (ETag); pas als dat 404't de ingebouwde terugval.
+  const logoImg = (cls: string) => (
+    <img
+      src={logo || (logoIcoonFout ? "data:image/png;base64,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" : "api/app_icoon")}
+      alt="logo"
+      onError={()=>setLogoIcoonFout(true)}
+      onClick={()=>setPage('dashboard')}
+      className={`object-contain cursor-pointer flex-shrink-0 ${cls}`}
+    />
+  );
+  // Onder een icoon van 84 px past "Administratie" niet; de korte vorm staat
+  // alleen in rail en onderbalk, de bovenbalk en de kopbalk zeggen het voluit.
+  const kortLabel = (w: WerkruimteId) => w === 'administratie' ? t('onderbalk_administratie') : t(WERKRUIMTE_LABEL_KEYS[w]);
+  const railItems = WERKRUIMTE_IDS.map(w => ({ id: w, label: kortLabel(w), icoon: WERKRUIMTE_ICOON[w], posten: attentie[w] }));
+  const onderbalkItems = WERKRUIMTE_IDS.map(w => ({ id: w, label: kortLabel(w), icoon: WERKRUIMTE_ICOON[w], aantal: attentie[w].reduce((s, p) => s + p.aantal, 0) }));
+  // Op de werkruimte waar je al bent tikken = terug naar haar dashboard.
+  const kiesVanuitSchil = (w: WerkruimteId) => { if (werkruimte === w && page !== 'instellingen' && page !== 'meer') setPage('dashboard'); else { kiesWerkruimte(w); setPageIntern('dashboard'); } };
+  // De Meten-knop: altijd de brouwzaal, en daar de meting-modal.
+  const openMeting = () => { if (werkruimte !== 'productie') kiesWerkruimte('productie'); setNavBatchId(null); setPageIntern('dashboard'); setMetingSignaal(n => n + 1); };
+  const schilZonderPaginas = page === 'instellingen' || page === 'meer';
 
-          <button onClick={()=>setPage('dashboard')} className="font-bold text-sm mr-3 hidden sm:block px-2 py-1 rounded-lg transition-colors tracking-wide text-white hover:bg-white/20">
-            {appName || t('app_title')}
-          </button>
-          <div className="flex items-center gap-2 flex-shrink-0" role="group" aria-label={t('werkruimte_wissel_label')}>
-            {WERKRUIMTE_IDS.map(w => (
-              <div key={w} className="relative flex-shrink-0">
-                {/* Op de werkruimte waar je al bent tikken = terug naar het
-                    dashboard van die werkruimte (zelfde logica als de
-                    nav-knoppen hieronder). */}
-                <button onClick={()=>{ if (werkruimte===w) setPage('dashboard'); else kiesWerkruimte(w) }} aria-pressed={werkruimte===w}
-                  className={`px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 ${werkruimte===w?'bg-white/25 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
-                  {t(WERKRUIMTE_LABEL_KEYS[w])}
-                </button>
-                <AttentieBadge
-                  titel={t(WERKRUIMTE_LABEL_KEYS[w])}
-                  posten={attentie[w]}
-                  achtergrond={nt.from}
-                  open={openAttentie===w}
-                  onToggle={()=>setOpenAttentie(v => v===w ? null : w)}
-                  onSluit={()=>setOpenAttentie(null)}
-                  onGaNaar={p=>gaNaarDoel(attentieDoel(p))}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="ml-auto flex items-center gap-1">
-            <SyncDot />
-            <button onClick={()=>setPage('instellingen')} title={t('nav_instellingen')} className={`px-2 py-1 rounded-lg transition-colors flex items-center justify-center ${page==='instellingen'?'text-white':'text-white/70 hover:text-white'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" width="20" height="20">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-              </svg>
-            </button>
+  return (
+    <UndoProvider value={undo}>
+    <div className="min-h-screen schil-rail schil-wortel" style={{backgroundColor:'var(--t-bg)'}}>
+      {/* Bureau: de rail links is het hoofdmenu (werkruimtes, instellingen). */}
+      <Rail
+        items={railItems}
+        actief={werkruimte}
+        pagina={page}
+        onKies={kiesVanuitSchil}
+        onInstellingen={()=>setPage('instellingen')}
+        logo={logoImg('h-9 w-auto max-w-[64px]')}
+        badgeAchtergrond={nt.from}
+        openAttentie={openAttentie}
+        setOpenAttentie={setOpenAttentie}
+        onGaNaar={p=>gaNaarDoel(attentieDoel(p))}
+        style={railStyle}
+      />
+      {/* Telefoon: kopbalk (waar je bent) met de pagina's als chips eronder. */}
+      <Kopbalk
+        titel={paginaLabel}
+        style={kopStyle}
+        onTerug={isDetail ? () => setNavBatchId(null) : page === 'instellingen' ? () => setPage('meer') : undefined}
+        logo={logoImg('h-8 w-auto max-w-[44px]')}
+      >
+        {!schilZonderPaginas && !isDetail && <PaginaNav items={paginaItems} pagina={page} onKies={setPage} variant="chips" />}
+      </Kopbalk>
+      {/* Bureau: bovenbalk met de naam van de werkruimte en de pagina's als tabs. */}
+      <header className="hidden md:block sticky top-0 z-30 bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 flex items-center gap-5 h-12">
+          <h1 className="text-base font-bold text-gray-900 whitespace-nowrap">{schilZonderPaginas ? paginaLabel : t(WERKRUIMTE_LABEL_KEYS[werkruimte])}</h1>
+          {!schilZonderPaginas && <PaginaNav items={paginaItems} pagina={page} onKies={setPage} variant="tabs" cls="flex-1 min-w-0 self-stretch" />}
+        </div>
+      </header>
+      {nuActief.length > 0 && (
+        <div role="status" aria-live="polite" className="bg-gray-50 border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 min-h-[2.5rem] py-1 flex items-center gap-2 overflow-x-auto nav-scroll">
+            <span className="text-[11px] font-semibold text-gray-500 flex-shrink-0">{t('nu_actief')}</span>
+            {nuActief.map(c => {
+              const open = navBatchId != null && c.batchId === navBatchId && (page === 'dashboard' || page === 'batchflow');
+              return (
+                <span key={c.key} className={`flex items-center flex-shrink-0 rounded-full transition-colors ${c.actie ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'bg-gray-200/70 text-gray-700 hover:bg-gray-200'} ${open ? 'ring-2 ring-[var(--t-accent-edge,var(--t-accent))]' : ''}`}>
+                  <button type="button" onClick={c.onOpen} title={t('nu_chip_open_title')}
+                    className={`flex items-center gap-1.5 pl-2.5 py-1 min-h-[32px] text-xs whitespace-nowrap ${c.actie ? 'font-semibold pr-1' : 'font-medium pr-2.5'}`}>
+                    <span className={`inline-block w-2 h-2 rounded-full ${NU_ACTIEF_DOT[c.soort]} ${c.actie ? 'animate-pulse' : ''}`} aria-hidden="true" />
+                    <span>{c.tekst}</span>
+                    {c.actie && c.knop && <span className="ml-1 tbtn text-white rounded-full px-2 py-0.5 text-[11px] font-semibold">{c.knop} ›</span>}
+                  </button>
+                  {c.actie && c.onSluit && (
+                    <button type="button" onClick={c.onSluit} aria-label={t('nu_chip_wegklikken')} title={t('nu_chip_wegklikken')}
+                      className="w-8 h-8 mr-0.5 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 text-base leading-none">×</button>
+                  )}
+                </span>
+              );
+            })}
           </div>
         </div>
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 flex items-center h-11 gap-2 overflow-x-auto nav-scroll border-t border-white/10">
-          {nav.map(n => n.sub ? (
-            <div key={n.id} ref={el => { menuRefs.current[n.id] = el }} className="relative flex-shrink-0">
-              <button
-                onClick={() => setOpenMenu(v => v === n.id ? null : n.id)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all duration-150 flex items-center gap-1 ${subIds.get(page)===n.id?'bg-white/20 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
-                {n.l}
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 opacity-60 transition-transform ${openMenu===n.id?'rotate-180':''}`}><path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" /></svg>
-              </button>
-              {openMenu===n.id && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} />
-                  <div className="fixed z-50 min-w-[160px] mt-1" style={{top: (menuRefs.current[n.id]?.getBoundingClientRect().bottom ?? 56) + 'px', left: (menuRefs.current[n.id]?.getBoundingClientRect().left ?? 0) + 'px'}}>
-                    <div className="rounded-lg shadow-xl border border-white/10 overflow-hidden" style={{background: nt.from}}>
-                      {n.sub.map(s => (
-                        <button key={s.id} onClick={()=>{setPage(s.id);setOpenMenu(null)}}
-                          className={`block w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${page===s.id?'bg-white/20 text-white':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
-                          {s.l}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <button key={n.id} onClick={()=>setPage(n.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all duration-150 relative ${page===n.id?'bg-white/20 text-white shadow-inner':'text-white/70 hover:bg-white/10 hover:text-white'}`}>
-              {n.l}
-              {n.id==='bestellingen'&&openBestellingen>0&&<span title={t('attentie_openstaande_bestellingen').replace('{n}', String(openBestellingen))} className="absolute -top-1 -right-1 bg-orange-700 text-white text-xs rounded-full px-1 min-w-4 h-4 flex items-center justify-center leading-none font-bold">{openBestellingen}</span>}
-            </button>
-          ))}
-        </div>
-        {nuActief.length > 0 && (
-          <div role="status" aria-live="polite" className="border-t border-white/10 bg-black/20">
-            <div className="max-w-7xl mx-auto px-4 min-h-[2.5rem] py-1 flex items-center gap-2 overflow-x-auto">
-              <span className="text-[11px] font-semibold text-white/60 flex-shrink-0">{t('nu_actief')}</span>
-              {nuActief.map(c => {
-                const open = navBatchId != null && c.batchId === navBatchId && (page === 'dashboard' || page === 'batchflow');
-                return (
-                  <span key={c.key} className={`flex items-center flex-shrink-0 rounded-full transition-colors ${c.actie ? 'bg-white text-gray-900 shadow-sm' : 'bg-white/10 text-white/85 hover:bg-white/20'} ${open ? 'ring-2 ring-white/70' : ''}`}>
-                    <button type="button" onClick={c.onOpen} title={t('nu_chip_open_title')}
-                      className={`flex items-center gap-1.5 pl-2.5 py-1 text-xs whitespace-nowrap ${c.actie ? 'font-semibold pr-1' : 'font-medium pr-2.5'}`}>
-                      <span className={`inline-block w-2 h-2 rounded-full ${NU_ACTIEF_DOT[c.soort]} ${c.actie ? 'animate-pulse' : ''}`} aria-hidden="true" />
-                      <span>{c.tekst}</span>
-                      {c.actie && c.knop && <span className="ml-1 tbtn text-white rounded-full px-2 py-0.5 text-[11px] font-semibold">{c.knop} ›</span>}
-                    </button>
-                    {c.actie && c.onSluit && (
-                      <button type="button" onClick={c.onSluit} aria-label={t('nu_chip_wegklikken')} title={t('nu_chip_wegklikken')}
-                        className="w-7 h-7 mr-0.5 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 text-base leading-none">×</button>
-                    )}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </nav>
+      )}
       <PageErrorBoundary page={page}>
-      <main key={`${page}-${navNonce}`} className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      <main key={`${page}-${navNonce}`} className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 schil-inhoud">
+        <LaadFout />
         {/* Dashboard-pad is werkruimte-loos qua route maar toont het dashboard
             van de actieve werkruimte — zo landt de werkruimte-wisselaar (die
             bij een echte wissel naar 'dashboard' springt) altijd op de juiste,
             kleine "dagelijkse takenlijst" voor die pet. */}
-        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} gaNaarDoel={gaNaarDoel} producten={producten} recepten={recepten} carbSessies={carbSessies} geselecteerdeBatchId={navBatchId} onSelecteerBatch={setNavBatchId}
+        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} gaNaarDoel={gaNaarDoel} producten={producten} recepten={recepten} carbSessies={carbSessies} geselecteerdeBatchId={navBatchId} onSelecteerBatch={setNavBatchId} metingSignaal={metingSignaal}
           batchPaneel={navBatchId != null ? <BatchFlowPage key={`paneel-${navBatchId}`} {...batchFlowProps} embedded onSluit={() => setNavBatchId(null)} /> : null} />}
         {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard bestellingen={bestellingen} bestellingPicks={bestellingPicks} setOpenOrderId={setOpenOrderId} av={av} producten={producten} locaties={locaties} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} wcCreds={wcCreds} wcSyncLog={wcSyncLog} setPage={setPage} />}
         {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaarDoel} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
@@ -2098,9 +2143,25 @@ function App() {
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} initialRapportTab={boekhoudingRapportTab} onInitialTabConsumed={() => { setBoekhoudingTab(null); setBoekhoudingRapportTab(null) }} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
         {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten}} />}
+        {page==='meer' && <MeerPage whoami={whoami} appName={appName} onInstellingen={()=>setPage('instellingen')} />}
       </main>
       </PageErrorBoundary>
+      {/* Telefoon: de onderbalk is het hoofdmenu; op een detailscherm (batch
+          als eigen pagina) verdwijnt hij, die heeft zijn eigen actiebalk. */}
+      {!isDetail && (
+        <Onderbalk
+          items={onderbalkItems}
+          actief={werkruimte}
+          pagina={page}
+          onKies={kiesVanuitSchil}
+          onActie={openMeting}
+          actieLabel={t('nav_meten')}
+          onMeer={()=>setPage('meer')}
+        />
+      )}
+      <UndoBar undo={undo} />
     </div>
+    </UndoProvider>
   );
 }
 

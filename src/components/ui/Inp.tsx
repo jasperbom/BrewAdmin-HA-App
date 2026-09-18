@@ -37,7 +37,7 @@ const Inp: React.FC<InpProps> = ({label, value, onChange, type='text', placehold
         max={max}
         step={step}
         aria-label={!label ? ariaLabel : undefined}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-500"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-500"
       />
     </div>
   )
