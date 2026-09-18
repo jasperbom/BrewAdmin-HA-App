@@ -67,7 +67,7 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) =>
     setOpen(v => !v)
   }
 
-  const knopCls = 'px-2 py-0.5 rounded text-xs font-medium border transition-colors ' +
+  const knopCls = 'px-2 py-0.5 min-h-[40px] sm:min-h-0 rounded text-xs font-medium border transition-colors ' +
     'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 ' +
     'disabled:opacity-40 disabled:cursor-not-allowed'
 
@@ -93,7 +93,7 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) =>
           aria-expanded={open}
           aria-label={t('btn_meer_acties')}
           title={t('btn_meer_acties')}
-          className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+          className="w-10 h-10 sm:w-7 sm:h-7 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
             <path d="M6 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM17 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />

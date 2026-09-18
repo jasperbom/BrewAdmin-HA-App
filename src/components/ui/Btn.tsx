@@ -12,10 +12,13 @@ interface BtnProps {
 }
 
 const Btn: React.FC<BtnProps> = ({children, onClick, v='primary', s='md', cls='', disabled=false, type='button', title}) => {
+  // Op een aanraakscherm (onder 640 px) is 44 px de ondergrens voor alles wat
+  // een vinger raakt; `sm` blijft daar 40 px omdat hij in rijen en tabellen
+  // staat waar 44 px de regel te hoog maakt. Op een bureau bepaalt de padding.
   const sz: Record<string,string> = {
-    sm:'px-2.5 py-1 text-xs min-h-[30px] sm:min-h-0',
-    md:'px-4 py-1.5 text-sm min-h-[40px] sm:min-h-0',
-    lg:'px-5 py-2 text-sm min-h-[44px] sm:min-h-0'
+    sm:'px-2.5 py-1 text-xs min-h-[40px] sm:min-h-0',
+    md:'px-4 py-1.5 text-sm min-h-tap sm:min-h-0',
+    lg:'px-5 py-2 text-sm min-h-tapLg sm:min-h-0'
   }
   const vr: Record<string,string> = {
     primary:'tbtn text-white shadow-sm',

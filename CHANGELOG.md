@@ -4,6 +4,46 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.56] — 2026-09-18
+
+### Nieuwe schil: rail op het bureau, onderbalk op de telefoon
+
+De drie gestapelde, horizontaal scrollende balken zijn vervangen door één
+schil met één omslagpunt (768 px). Het hoofdmenu zijn de werkruimtes, het
+tweede menu de pagina's van de gekozen werkruimte.
+
+- **Bureau:** een rail van 84 px links (Productie · Verkoop · Admin, onderaan
+  Instellingen en de verbindingsstip) en de pagina's als tabs in een witte
+  bovenbalk. Groepen (Gereedschap) blijven een uitklapmenu.
+- **Telefoon:** een onderbalk met vijf vaste vakjes — Productie · Verkoop ·
+  **Meten** (verhoogde knop, opent de meting op de brouwzaal) · Admin · Meer —
+  en de pagina's als chips onder de kopbalk. De kopbalk zegt waar je bent;
+  op een subscherm (Instellingen, batch als eigen pagina) een terugknop. De
+  attentie-badge staat als stip op het vakje.
+- **Meer** (`src/pages/MeerPage.tsx`): wie je bent en je rol, de verbinding,
+  Instellingen en op de directe poort Uitloggen.
+- **Hash-routing** (`src/utils/route.ts`): werkruimte, pagina en geopende
+  batch staan in de URL (`#/productie/batchflow/12`). De terugknop van het
+  toestel sluit het scherm in plaats van de app, een herlaad landt waar je
+  was, een tank of batch is als link te delen.
+- **Safe-area en toetsenbord:** `--kopbalk`/`--onderbalk` (incl. de insets
+  van een home-screen-app) en `--kb-inset`; bij een open toetsenbord
+  verdwijnt de onderbalk (`components/ui/toetsenbord.ts`). Een pagina die
+  horizontaal overloopt kan de vaste balken niet meer uit beeld duwen.
+- **Themacontrast** (`src/utils/kleurContrast.ts`): `--t-accent-text` en
+  `--t-accent-edge` worden berekend tot het accent als tekst 4,5:1 en als
+  rand 3:1 haalt op wit, de pagina-achtergrond en de themakaart. Een thema
+  dat het al haalt verandert niet.
+- **Primitieven voor de volgende ronde:** `UndoBar` + `useUndo()` (een
+  terugweg van vijf seconden in plaats van `confirm()`, planner in
+  `src/utils/undo.ts`), `BevestigKnop` (bevestiging ín de knop), `LegeStaat`,
+  `FoutKaart` + `LaadFout` ("Kon niet laden, opnieuw proberen" als de eerste
+  lading mislukt). Tapdoelen: `min-h-tap` (44 px) op knoppen, inputs en
+  zoekvelden onder 640 px; het ⋯-menu van rijen 40 px.
+- Tests: `route`, `kleurContrast` (alle zeven thema's), `undo`.
+
+---
+
 ## [1.12.55] — 2026-09-18
 
 ### Emoji's vervangen door lijn-iconen

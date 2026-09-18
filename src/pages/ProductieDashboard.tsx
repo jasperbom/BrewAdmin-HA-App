@@ -58,6 +58,9 @@ interface ProductieDashboardProps {
   onSelecteerBatch?: (id: number | null) => void
   /** Het paneel zelf (BatchFlowPage in embedded-modus), gerenderd door App.tsx. */
   batchPaneel?: React.ReactNode
+  /** Teller uit de schil: elke ophoging opent de meting-modal (de Meten-knop
+      in de onderbalk landt hier, ook vanuit een andere werkruimte). */
+  metingSignaal?: number
 }
 
 type MetingForm = { sg: string, ph: string, temp: string }
@@ -90,7 +93,7 @@ function ProductieDashboard({
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
   producten = [], recepten = [],
   setPage, setNavBatchId, setPreNieuwBatch = () => {},
-  gaNaarDoel, geselecteerdeBatchId = null, onSelecteerBatch, batchPaneel,
+  gaNaarDoel, geselecteerdeBatchId = null, onSelecteerBatch, batchPaneel, metingSignaal = 0,
 }: ProductieDashboardProps) {
   const batchNaam = (b: any) => b?.naam || b?.biernaam || t('lbl_naamloos')
   const FASE_LABEL: Record<string, string> = {
@@ -200,6 +203,10 @@ function ProductieDashboard({
     setMetingForm(LEGE_METING)
     setMetingOpen(true)
   }
+  useEffect(() => {
+    if (metingSignaal > 0) openMetingModal()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metingSignaal])
 
   const nieuweBatch = (tankId?: string) => {
     setNavBatchId(null)

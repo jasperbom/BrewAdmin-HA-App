@@ -32,6 +32,9 @@ BrewAdmin-HA-App/
 │   ├── pages/              # Feature pages (one per domain)
 │   ├── utils/
 │   │   ├── api.ts          # API client & state management
+│   │   ├── route.ts        # Hash-routing van de schil: werkruimte/pagina/batch ↔ `#/…`, PAGINA_WERKRUIMTE, isDetailRoute
+│   │   ├── kleurContrast.ts # WCAG-luminantie/contrast; `afgeleideThemaKleuren` maakt het accent donkerder tot het als tekst (4,5:1) en rand (3:1) leesbaar is
+│   │   ├── undo.ts         # `UitgesteldeActiePlanner`: terugweg van vijf seconden i.p.v. confirm() (UI: components/ui/UndoBar.tsx)
 │   │   ├── merge.ts        # Conflict-samenvoeging bij een 409: lokale en serverwijziging op
 │   │   │                   # verschillende records gaan beide mee; alleen hetzelfde record aan
 │   │   │                   # beide kanten is een botsing (server wint). Arrays met `id` + objecten
@@ -154,6 +157,34 @@ BrewAdmin-HA-App/
 └── tsconfig.json
 ```
 
+### De schil (navigatie) — v1.12.56
+
+Eén schil, één omslagpunt (768 px). Het **hoofdmenu** zijn de drie
+werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
+
+- **Bureau:** `Rail` (84 px links: werkruimtes, onderaan Instellingen +
+  `SyncDot`) en `PaginaNav variant="tabs"` in een witte bovenbalk. Bewust
+  géén tekstkolom van 216 px: de pagina's zijn brede tabellen.
+- **Telefoon:** `Onderbalk` (Productie · Verkoop · **Meten** · Admin · Meer;
+  vast, hooguit vijf vakjes, attentie als stip) en `Kopbalk` met
+  `PaginaNav variant="chips"` eronder. Een subscherm (Instellingen, batch als
+  eigen pagina) krijgt een terugknop; een detailscherm (`isDetailRoute`)
+  géén onderbalk. `MeerPage` = wie je bent, verbinding, Instellingen,
+  Uitloggen.
+- **Hash-routing** (`utils/route.ts`): `#/<werkruimte>/<pagina>[/<batchId>]`;
+  `PAGINA_WERKRUIMTE` staat dáár. State → hash is een history-entry, hash →
+  state via `hashchange`; nooit zelf `location.hash` zetten in een pagina —
+  navigeer via `setPage`.
+- **Maten:** `--kopbalk`, `--onderbalk` (incl. `--safe-top`/`--safe-bottom`,
+  alleen in standalone-modus op `env()`), `--kb-inset`; toetsenbord open =
+  `body.kb-open` (`components/ui/toetsenbord.ts`). Elke vaste actiebalk
+  rekent met `var(--onderbalk)`; `.schil-inhoud` houdt de ruimte onderaan.
+- **Themacontrast:** `--t-accent-text`/`--t-accent-edge` uit
+  `utils/kleurContrast.ts` — gebruik die (via `.t-accent-text`) voor het
+  accent als tekst of rand, nooit `--t-accent` rechtstreeks op wit.
+- De "Nu actief"-strook blijft in de schil (lichte strook onder de
+  bovenbalk), want tankalarmen horen op élk scherm zichtbaar te zijn.
+
 ### Frontend → Backend communication
 
 - All HTTP via `/api/` prefix
@@ -252,7 +283,9 @@ de koeling) en de HACCP-beheerspunten
 (risicoclassificatie, stabiliteit, vrijgave-oordeel, sluitcontrole,
 allergenenvergelijking, lotcode en THT), de traceerbaarheid
 (één stap terug/vooruit, massabalans, traceergaten, oefeningstatus) en de
-conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`).
+conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`), de hash-routing
+van de schil (`route.ts`), het themacontrast (`kleurContrast.ts`, alle zeven
+thema's) en de undo-planner (`undo.ts`).
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
@@ -382,6 +415,9 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 | Sectie-label binnen een card | `text-sm font-semibold text-gray-800` — géén `uppercase tracking-wide` |
 | Veldlabel in een formulier | `text-sm font-medium text-gray-700` (zit al in `Inp`/`Sel`) |
 | Fallback tekst (onbekende naam) | Altijd via i18n: `t('lbl_onbekend')` of `t('lbl_naamloos')` |
+| Destructieve of statuswijzigende actie | Geen `confirm()`: `const undo = useUndo(); undo.plan(id, label, uitvoeren)` (`UndoBar.tsx`, vijf seconden terugweg) of `<BevestigKnop vraag=…>` (bevestiging ín de knop) |
+| Lege lijst / mislukte lading | `<LegeStaat titel tekst icoon>` met de knop als kind; `<FoutKaart onOpnieuw>` — nooit een lege tabel die "geen …" zegt terwijl het bereik weg is |
+| Tapdoel op een telefoon | `min-h-tap` (44 px) / `min-h-tapLg` (48 px), `sm:min-h-0` op een bureau — zit al in `Btn`/`Inp`/`Sel`/`SearchInput` |
 
 **Regels:**
 - Gebruik `<SectionHeader title=... open=... onToggle=... info=... solid? rounded?>`
