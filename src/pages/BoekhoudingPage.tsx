@@ -26,6 +26,7 @@ import MailModal from '../components/MailModal'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { factuurMailBetaalVars } from '../utils/factuurMail'
+import Icon from '../components/ui/Icon'
 
 
 function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, initialRapportTab=null, onInitialTabConsumed=()=>{}, merchArtikelen=[], setMerchArtikelen=()=>{}, merchVoorraadLog=[], setMerchVoorraadLog=()=>{}}: any) {
@@ -1414,7 +1415,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     }
     return (
       <div className="flex items-center gap-1">
-        {herkend && <span className="text-xs text-orange-600 font-medium whitespace-nowrap">⚡ {t('lbl_belastingdienst')}</span>}
+        {herkend && <span className="text-xs text-orange-600 font-medium whitespace-nowrap"><Icon n="bolt" /> {t('lbl_belastingdienst')}</span>}
         <select defaultValue="" title={t('tip_btw_koppel_transactie')}
           onChange={(e: any) => { if (e.target.value) koppelBtwBetaling(i, e.target.value) }}
           className={`border rounded px-2 py-0.5 text-xs t-input focus:outline-none max-w-[190px] ${herkend
@@ -2333,7 +2334,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                         <a href={`${ADDON_BASE}api/file/${f.bijlage.bestand}`} target="_blank" rel="noopener noreferrer"
                           onClick={(e: any)=>e.stopPropagation()}
                           title={f.bijlage.naam}
-                          className="text-gray-400 hover:text-blue-600 text-sm transition-colors px-1">📎</a>
+                          className="text-gray-400 hover:text-blue-600 text-sm transition-colors px-1"><Icon n="paperclip" /></a>
                       )}
                       <button onClick={(e: any)=>{e.stopPropagation();deleteFactuur(f.id);}}
                         className="text-gray-300 hover:text-red-500 text-xs transition-colors px-1">✕</button>
@@ -2356,7 +2357,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
         {inkoopFacturen.length===0 && (
           <div className={card + ' text-center py-14'}>
-            <div className="text-4xl mb-3">🧾</div>
+            <div className="text-4xl mb-3 text-gray-300"><Icon n="receipt" /></div>
             <p className="text-gray-600 font-medium mb-1">{t('msg_no_inkoop_facturen')}</p>
             <p className="text-gray-400 text-sm">{t('msg_inkoop_facturen_hint_1')}<br/>{t('msg_inkoop_facturen_hint_2')}</p>
           </div>
@@ -2471,7 +2472,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                             <button onClick={()=>mailVerkoopFactuur(f)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                               title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_factuur')}
                               className="text-xs px-2 py-0.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded text-blue-700 transition-colors mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
-                              {mailGenerating === f.id ? '⏳' : t('btn_mail_short')}
+                              {mailGenerating === f.id ? '…' : t('btn_mail_short')}
                             </button>
                             {f.status !== 'betaald' && f.status !== 'credit' && (() => {
                               const volg = f.status === 'aanmaning' ? null
@@ -2487,7 +2488,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 <button onClick={()=>mailHerinnering(f, volg)} disabled={!smtpCreds?.enabled || mailGenerating === f.id}
                                   title={!smtpCreds?.enabled ? t('mail_no_smtp') : t('btn_mail_herinnering')}
                                   className={`text-xs px-2 py-0.5 rounded border transition-colors mr-1 disabled:opacity-40 disabled:cursor-not-allowed ${volg==='aanmaning'?'bg-red-50 hover:bg-red-100 text-red-700 border-red-300':volg==='tweede_herinnering'?'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300':'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-300'}`}>
-                                  {mailGenerating === f.id ? '⏳' : '✉'}
+                                  {mailGenerating === f.id ? '…' : '✉'}
                                 </button>
                                 </>
                               ) : null
@@ -2701,7 +2702,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
           {!bankAfschrift ? (
             <div className="text-center py-10 text-gray-400 text-sm">
-              <div className="text-3xl mb-2">🏦</div>
+              <div className="text-3xl mb-2 text-gray-300"><Icon n="bank" /></div>
               <p>{t('msg_no_bank')}</p>
               <p className="text-xs mt-1 italic">{t('msg_bank_sessie_hint')}</p>
             </div>
@@ -2822,7 +2823,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                                 <>
                                   {btwKoppelControl(tx, i)}
                                   {tx.pspHerkend && (
-                                    <span className="text-xs text-blue-600 font-medium whitespace-nowrap">⚡ {t('lbl_psp_herkend')}</span>
+                                    <span className="text-xs text-blue-600 font-medium whitespace-nowrap"><Icon n="bolt" /> {t('lbl_psp_herkend')}</span>
                                   )}
                                   <button onClick={()=>openPspModal(i)}
                                     className={`px-2 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap border ${tx.pspHerkend ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'}`}>
@@ -4262,7 +4263,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
           {!wcCreds?.enabled && inkoopFacturen.length === 0 && (
             <div className={card + ' text-center py-14'}>
-              <div className="text-4xl mb-3">📋</div>
+              <div className="text-4xl mb-3 text-gray-300"><Icon n="clipboard" /></div>
               <p className="text-gray-600 font-medium mb-1">{t('msg_no_aangifte_data')}</p>
               <p className="text-gray-400 text-sm">{t('msg_no_aangifte_hint')}</p>
             </div>

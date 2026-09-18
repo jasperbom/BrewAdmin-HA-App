@@ -626,7 +626,7 @@ const IngredientenPage: React.FC<Props> = ({
                           </td>
                           <td className="px-3 py-2 text-xs">{lot.lotnummer || '—'}</td>
                           <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{fmtQty(lot.hoeveelheid)} <span className="text-xs text-gray-400">{lot.eenheid}</span></td>
-                          <td className={`px-3 py-2 text-xs whitespace-nowrap ${exp ? 'text-red-600 font-semibold' : 'text-yellow-700'}`}>{fmtD(lot.houdbaarheid)}{exp ? ' ⚠️' : ''}</td>
+                          <td className={`px-3 py-2 text-xs whitespace-nowrap ${exp ? 'text-red-600 font-semibold' : 'text-yellow-700'}`}>{fmtD(lot.houdbaarheid)}{exp ? ' ⚠' : ''}</td>
                           <td className={`px-3 py-2 text-xs whitespace-nowrap ${exp ? 'text-red-600' : 'text-yellow-700'}`}>{thtDagenLabel(dagen)}</td>
                         </tr>
                       )
@@ -739,7 +739,7 @@ const IngredientenPage: React.FC<Props> = ({
                       {selIng.type === 'Hop' && <td className="px-3 py-2 text-right text-xs font-mono">{alpha !== undefined ? `${formatBrewValue(alpha)}%` : '—'}</td>}
                       {selIng.type === 'Hop' && <td className="px-3 py-2 text-right text-xs font-mono">{year !== undefined ? formatBrewValue(year) : '—'}</td>}
                       <td className={`px-3 py-2 text-xs ${exp ? 'text-red-600' : soon ? 'text-yellow-600' : 'text-gray-500'}`}>
-                        {lot.houdbaarheid ? fmtD(lot.houdbaarheid) : '—'}{exp ? ' ⚠️' : soon ? ` (${days}d)` : ''}
+                        {lot.houdbaarheid ? fmtD(lot.houdbaarheid) : '—'}{exp ? ' ⚠' : soon ? ` (${days}d)` : ''}
                       </td>
                       <td className="px-3 py-2 text-right text-xs">{lot.prijs_per_eenheid ? fmt(lot.prijs_per_eenheid) : '—'}</td>
                     </tr>
@@ -855,7 +855,7 @@ const IngredientenPage: React.FC<Props> = ({
                         <td className="px-3 py-2.5 text-right font-semibold text-sm">{totk > 0 ? <span className="t-accent-text">{fmt(totk)}</span> : <span className="text-gray-300">—</span>}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1 justify-end">
-                            <Btn s="sm" v="ghost" onClick={() => openVTEdit(v)}>✏️</Btn>
+                            <Btn s="sm" v="ghost" onClick={() => openVTEdit(v)}>✎</Btn>
                             <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) { logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: v.id, actie: 'verwijderd', omschrijving: v.naam }); setVerpakkingen((prev: any[]) => prev.filter((x: any) => x.id !== v.id)) } }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                           </div>
                         </td>
@@ -901,7 +901,7 @@ const IngredientenPage: React.FC<Props> = ({
                       <td className="px-3 py-2.5 text-right text-xs text-gray-500">{Number(od.kosten_per_stuk || 0) > 0 ? fmt(od.kosten_per_stuk) : <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1 justify-end">
-                          <Btn s="sm" v="ghost" onClick={() => { setOdEditForm({ od_id: String(od.id ?? ''), lotnr: od.lotnr || '', naam: od.naam, type: od.type || '', kosten_per_stuk: String(od.kosten_per_stuk || ''), leverancier: od.leverancier || '', factuurnummer: od.factuurnummer || '', voorraad: String(od.voorraad || 0) }); setShowODEdit(od) }}>✏️</Btn>
+                          <Btn s="sm" v="ghost" onClick={() => { setOdEditForm({ od_id: String(od.id ?? ''), lotnr: od.lotnr || '', naam: od.naam, type: od.type || '', kosten_per_stuk: String(od.kosten_per_stuk || ''), leverancier: od.leverancier || '', factuurnummer: od.factuurnummer || '', voorraad: String(od.voorraad || 0) }); setShowODEdit(od) }}>✎</Btn>
                           <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) { logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: od.id, actie: 'verwijderd', omschrijving: od.naam }); setOnderdelen((prev: any[]) => prev.filter((x: any) => x.id !== od.id)) } }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                       </td>

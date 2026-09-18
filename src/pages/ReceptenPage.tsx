@@ -7,6 +7,7 @@ import SearchInput from '../components/ui/SearchInput'
 import ReceptKostprijs from '../components/ReceptKostprijs'
 import { logAudit } from '../utils/audit'
 import { ingredientenVoorType } from '../utils/ingTypes'
+import Icon from '../components/ui/Icon'
 
 function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], accijnsInst=null, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
   const {useState} = React;
@@ -214,7 +215,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
           <span onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
             className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'':'cursor-pointer hover:bg-gray-100'} ${explicit?'bg-blue-50 text-blue-700':'text-gray-500'}`}
             title={readOnly ? '' : t('recipe_link_edit')}>
-            {explicit && <span className="mr-1">🔗</span>}{ingMatch.naam}
+            {explicit && <span className="mr-1"><Icon n="link" /></span>}{ingMatch.naam}
           </span>
         ) : (
           <button onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
@@ -386,8 +387,6 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
               const anyRed  = stocks.some((s: any)=>s.ok===false&&!s.bijna);
               const anyYel  = stocks.some((s: any)=>s.bijna);
               const allGreen= stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-              // @ts-ignore
-              const dot = anyRed?'🔴':anyYel?'🟡':allGreen?'🟢':'⚪';
               const versies = versiesPerParent[r.id] || [];
               const open = !!versiesOpen[r.id];
               return (
@@ -440,8 +439,6 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
               const stocks = items.flatMap((r: any)=>cardStocks(r));
               const anyRed   = stocks.some((s: any)=>s.ok===false&&!s.bijna);
               const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-              // @ts-ignore
-              const groepDot = anyRed?'🔴':allGreen?'🟢':'⚪';
               const idxInActive = activeTags.indexOf(tag);
               return (
                 <div>

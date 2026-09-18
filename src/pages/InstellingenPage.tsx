@@ -19,6 +19,7 @@ import { standaardBtwPct } from '../utils/btw'
 import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
 import { taakReinigingStatus } from '../utils/ontsmetting'
 import { BEWAKING_DEFAULTS } from '../utils/tankbewaking'
+import Icon from '../components/ui/Icon'
 
 // Instelbare drempels van de temperatuurbewaking. De volgorde is die van het
 // oordeel zelf: eerst wat "normaal" is, dan wanneer het meldenswaardig wordt,
@@ -98,7 +99,7 @@ const JaarRow = ({entry, uitslagenInJaar, onSave, onDelete, onImpact}: {
             disabled={!valid || uitslagenInJaar === 0}
             title={t('settings_excise_historie_impact_tip').replace('{n}', String(uitslagenInJaar))}
             className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
-            📊 {t('settings_excise_historie_impact')}
+            <Icon n="chart" /> {t('settings_excise_historie_impact')}
           </button>
           <button onClick={() => valid && dirty && onSave(toPatch())}
             disabled={!valid || !dirty}
@@ -1104,15 +1105,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const navItems = [
-    {id:'brouwerij',     label:t('settings_brewery'),      icon:'🏭'},
-    {id:'bedrijf',       label:t('settings_bedrijf'),      icon:'🏢'},
-    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
-    {id:'koppelingen',   label:t('settings_koppelingen'),  icon:'🔗'},
-    {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
-    {id:'meldingen',     label:t('settings_meldingen'),    icon:'🔔'},
-    {id:'categorieen',   label:t('settings_categorieen'),  icon:'🗂'},
-    {id:'taken',         label:t('settings_batch_taken'),  icon:'📋'},
-    {id:'app',           label:t('settings_app'),          icon:'⚙️'},
+    {id:'brouwerij',     label:t('settings_brewery'),      icon: <Icon n="factory" />},
+    {id:'bedrijf',       label:t('settings_bedrijf'),      icon: <Icon n="building" />},
+    {id:'financieel',    label:t('settings_financieel'),   icon: <Icon n="euro" />},
+    {id:'koppelingen',   label:t('settings_koppelingen'),  icon: <Icon n="link" />},
+    {id:'homeassistant', label:'Home Assistant',            icon: <Icon n="home" />},
+    {id:'meldingen',     label:t('settings_meldingen'),    icon: <Icon n="bell" />},
+    {id:'categorieen',   label:t('settings_categorieen'),  icon: <Icon n="folder" />},
+    {id:'taken',         label:t('settings_batch_taken'),  icon: <Icon n="clipboard" />},
+    {id:'app',           label:t('settings_app'),          icon: <Icon n="gear" />},
   ];
 
   const fmtTs = (ts: any) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
@@ -1240,15 +1241,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('lbl_language')}</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            {code:'nl', label:'Nederlands', flag:'🇳🇱'},
-            {code:'en', label:'English',    flag:'🇬🇧'},
-            {code:'de', label:'Deutsch',    flag:'🇩🇪'},
-            {code:'fr', label:'Français',   flag:'🇫🇷'},
-            {code:'es', label:'Español',    flag:'🇪🇸'},
+            {code:'nl', label:'Nederlands', kort:'NL'},
+            {code:'en', label:'English',    kort:'EN'},
+            {code:'de', label:'Deutsch',    kort:'DE'},
+            {code:'fr', label:'Français',   kort:'FR'},
+            {code:'es', label:'Español',    kort:'ES'},
           ].map(lng => (
             <button key={lng.code} onClick={()=>{setLang(lng.code);logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Taal → ${lng.code}`})}}
               className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${lang===lng.code ? 't-nav' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-              <span className="text-xl">{lng.flag}</span>
+              <span className="text-[11px] font-semibold tracking-wide w-8 text-center rounded bg-gray-100 text-gray-600 py-0.5 flex-shrink-0">{lng.kort}</span>
               <span>{lng.label}</span>
               {lang===lng.code && <span className="ml-auto" style={{color:'var(--t-accent)'}}>✓</span>}
             </button>
@@ -3299,10 +3300,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
             <div className="p-6 border-t border-gray-200 flex flex-wrap items-center gap-2">
               <Btn v="secondary" s="sm" onClick={impactExportCsv} disabled={impactModal.resultaat.rijen.length === 0}>
-                💾 {t('btn_export_csv')}
+                <Icon n="download" /> {t('btn_export_csv')}
               </Btn>
               <Btn v="secondary" s="sm" onClick={() => window.print()} disabled={impactModal.resultaat.rijen.length === 0}>
-                🖨 {t('btn_print')}
+                <Icon n="printer" /> {t('btn_print')}
               </Btn>
               {impactModal.nogOpslaan && (
                 <Btn v="primary" s="sm" onClick={() => {

@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.55] — 2026-09-18
+
+### Emoji's vervangen door lijn-iconen
+
+Alle pictogram-emoji's in de app (📦 📎 📋 🖨 🚚 🏠 …, zo'n 250 plekken plus
+65 vertaalstrings per taal) zijn weg. Emoji's tekenen op elke telefoon anders,
+kleuren niet mee met het thema en zijn het duidelijkste "gegenereerd"-signaal
+in een scherm.
+
+- **`<Icon n="…">`** (`src/components/ui/Icon.tsx`): één set monochrome
+  lijn-iconen op 1em in de tekstkleur, voor knoppen, logboektypen, de tabbladen
+  van Instellingen, bijlagen en de lege staten. Nieuw icoon = één pad-string.
+- **Vertaalstrings zonder emoji.** Koppen en knopteksten zijn nu gewoon tekst
+  (*Hygiëne*, *Archiveren*, *Bekijken*); het icoon staat, waar dat iets
+  toevoegt, in de component ervoor. Zuiver typografische tekens (✓ ✕ ✎ ✉ ⚠)
+  blijven; de emoji-varianten ⚠️ ✏️ ℹ️ zijn naar hun tekstvorm gezet.
+- **Taalkeuze** toont NL / EN / DE / FR / ES als kort label in plaats van
+  vlaggen; wachtstanden tonen de tekst *Bezig…* zonder zandloper.
+
+---
+
 ## [1.12.54] — 2026-09-18
 
 ### Statusbalk van de iPhone-home-screen-app kleurt weer mee

@@ -30,6 +30,7 @@ import { standaardBtwPct } from '../utils/btw'
 import { SkuEigenaar, skuConflicten, vrijeSku, productVoorRegel } from '../utils/sku'
 import { productEbc } from '../utils/bierKleur'
 import BierKleur from '../components/ui/BierKleur'
+import Icon from '../components/ui/Icon'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -1181,7 +1182,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         // Merch mag negatief staan (waarschuwing, geen blokkade); WooCommerce
         // wil geen negatieve voorraad, dus daar wordt nul gepusht.
         const beschikbaar = art._merch ? Math.max(0, merchVoorraad(art)) : wcBeschikbaarVoorArt(art);
-        addWcLog('debug', `🔍 ${naam} → ${beschikbaar}×`, '');
+        addWcLog('debug', `${naam} → ${beschikbaar}×`, '');
         try {
           const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
           if (!prods?.length) {
@@ -1318,10 +1319,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     .filter((l: any) => ['afvullen','uitslaan','afboeking','rebrand'].includes(l.type))
     .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''));
 
-  const LOG_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
-    afvullen:  {icon:'🍺', cls:'text-green-700 bg-green-50',  label: t('log_type_afvullen')},
-    uitslaan:  {icon:'🚛', cls:'text-purple-700 bg-purple-50', label: t('log_type_uitslaan')},
-    afboeking: {icon:'🗑️', cls:'text-red-700 bg-red-50',      label: t('log_type_afboeking')},
+  const LOG_TYPE_STYLES: Record<string, {icon: React.ReactNode, cls: string, label: string}> = {
+    afvullen:  {icon: <Icon n="beer" />, cls:'text-green-700 bg-green-50',  label: t('log_type_afvullen')},
+    uitslaan:  {icon: <Icon n="truck" />, cls:'text-purple-700 bg-purple-50', label: t('log_type_uitslaan')},
+    afboeking: {icon: <Icon n="trash" />, cls:'text-red-700 bg-red-50',      label: t('log_type_afboeking')},
     rebrand:   {icon:'↪', cls:'text-blue-700 bg-blue-50',     label: t('log_type_rebrand')},
   };
 
@@ -1356,7 +1357,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             <button onClick={() => wcPushAll(false)} disabled={wcSyncing}
               title={t('wc_push_stock_title')}
               className="wc-btn flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
-              {wcSyncing ? `⏳ ${t('lbl_bezig')}` : t('btn_wc_push_stock')}
+              {wcSyncing ? t('lbl_bezig') : t('btn_wc_push_stock')}
             </button>
             <button onClick={() => wcPushAll(true)} disabled={wcSyncing}
               title={t('wc_push_alles_title')}
@@ -2566,7 +2567,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_verklaring_pdf')} <span className="text-red-400">*</span></label>
                   <div className="flex items-center gap-2 flex-wrap">
                     <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
-                      <span>📎</span>
+                      <span><Icon n="paperclip" /></span>
                       <span>{afboekUploading ? t('lbl_uploading') : t('verlies_vern_verklaring_upload')}</span>
                       <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                         className="hidden" disabled={afboekUploading}
@@ -2579,7 +2580,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                       {afboekForm.bijlagen.map((b, i) => (
                         <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                           <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
-                            📎 <span className="truncate">{b.naam}</span>
+                            <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
                             {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? 'verklaring' : 'bewijs'}</span>}
                           </a>
                           <button onClick={() => doAfboekRemoveBijlage(i)} className="text-gray-400 hover:text-red-500 ml-2" title={t('btn_remove_bijlage')}>✕</button>
@@ -2729,7 +2730,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   <ul className="mt-1 space-y-0.5">
                     {(ab.bijlagen||[]).map((b: Bijlage, i: number) => (
                       <li key={i} className="text-xs">
-                        <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">📎 {b.naam}</a>
+                        <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline"><Icon n="paperclip" /> {b.naam}</a>
                         {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? 'verklaring' : 'bewijs'}</span>}
                       </li>
                     ))}
@@ -2771,7 +2772,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_bewijs')} <span className="text-red-400">*</span></label>
                     <div className="flex items-center gap-2 flex-wrap">
                       <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
-                        <span>📎</span>
+                        <span><Icon n="paperclip" /></span>
                         <span>{vernietigReviewUploading ? t('lbl_uploading') : t('verlies_vern_bewijs_upload')}</span>
                         <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                           className="hidden" disabled={vernietigReviewUploading}
@@ -2784,7 +2785,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                         {vernietigReviewForm.bewijsBijlagen.map((b, i) => (
                           <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                             <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
-                              📎 <span className="truncate">{b.naam}</span>
+                              <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
                               <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] uppercase tracking-wide">bewijs</span>
                             </a>
                             <button onClick={() => doVernietigBewijsRemove(i)} className="text-gray-400 hover:text-red-500 ml-2">✕</button>

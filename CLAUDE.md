@@ -395,6 +395,11 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 - **Geen `uppercase tracking-wide` op labels.** Klein-kapitaal is voorbehouden
   aan badges (een afgeronde chip mét eigen achtergrond). Gewone zinsvorm leest
   rustiger en is in vijf talen beter te zetten.
+- **Geen emoji's, nergens** (ook niet in i18n-strings). Een pictogram is een
+  monochroom lijn-icoon via `<Icon n="…">` uit `src/components/ui/Icon.tsx`
+  (nieuw icoon = één pad-string daar); puur typografische tekens (✓ ✕ ✎ ✉ ⚠)
+  blijven tekst. Emoji's tekenen per platform anders, kleuren niet mee met het
+  thema en zijn een "gegenereerd"-signaal.
 - Zet **geen emoji's of icon-afbeeldingen** in de bruine headerbalk; gebruik
   tekstlabels via `t()`.
 - Zoekbalken altijd via `<SearchInput value onChange placeholder cls? onKeyDown?>`.

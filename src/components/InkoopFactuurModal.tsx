@@ -12,6 +12,7 @@ import { tod } from '../utils/format'
 
 // PDF-tekstextractie is gedeeld met het waterprofiel-gereedschap.
 import { extractPdfText } from '../utils/pdfText'
+import Icon from './ui/Icon'
 
 function parseFactuurTekstLokaal(text: string) {
   const result: any = { leverancier: null, factuurnummer: null, datum: null, regels: [], _source: 'lokaal' }
@@ -736,7 +737,7 @@ function InkoopFactuurModal({
       <div className={`space-y-4 ${showPdfViewer ? 'order-1 overflow-y-auto' : ''}`} style={showPdfViewer ? {maxHeight:'85vh'} : {}}>
         {initialData && (
           <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-800">
-            <span className="mt-0.5 flex-shrink-0">⚠️</span>
+            <span className="mt-0.5 flex-shrink-0">⚠</span>
             <span>{t('modal_edit_warning')}</span>
           </div>
         )}
@@ -817,7 +818,7 @@ function InkoopFactuurModal({
           })()}
           {!leverancier && !factuurNr.trim() && (
             <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-              <span className="mt-0.5 flex-shrink-0">ℹ️</span>
+              <span className="mt-0.5 flex-shrink-0">ℹ</span>
               <span>{t('hint_correctie_geen_factuur')}</span>
             </div>
           )}
@@ -826,7 +827,7 @@ function InkoopFactuurModal({
             <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_bijlage')}</label>
             <div className="flex items-center gap-2 flex-wrap">
               <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer">
-                <span>📎</span>
+                <span><Icon n="paperclip" /></span>
                 <span>{bijlageFile ? bijlageFile.name : existingBijlage ? t('lbl_replace_file') : t('lbl_choose_file')}</span>
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                   className="hidden" onChange={e => {
@@ -839,7 +840,7 @@ function InkoopFactuurModal({
               </label>
               {!bijlageFile && existingBijlage?.bestand && (
                 <a href={`${ADDON_BASE}api/file/${existingBijlage.bestand}`} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline flex items-center gap-1">📎 {existingBijlage.naam}</a>
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Icon n="paperclip" /> {existingBijlage.naam}</a>
               )}
               {!bijlageFile && existingBijlage && (
                 <button onClick={() => setExistingBijlage(null)} className="text-gray-400 hover:text-red-500 text-xs" title={t('btn_remove_bijlage')}>✕</button>
@@ -852,7 +853,7 @@ function InkoopFactuurModal({
                   <button onClick={doScanFactuur}
                     className="flex items-center gap-1.5 px-3 py-1.5 tbtn rounded-lg text-xs font-medium"
                     title={t('title_scan_factuur')}>
-                    {isPdf ? '📄' : '🤖'} {t('btn_scan_factuur')}
+                    <Icon n={isPdf ? 'file' : 'scan'} /> {t('btn_scan_factuur')}
                   </button>
                 )
                 return null
