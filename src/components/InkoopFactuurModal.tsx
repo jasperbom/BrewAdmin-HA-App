@@ -735,7 +735,7 @@ function InkoopFactuurModal({
       )}
       <div className={`space-y-4 ${showPdfViewer ? 'order-1 overflow-y-auto' : ''}`} style={showPdfViewer ? {maxHeight:'85vh'} : {}}>
         {initialData && (
-          <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+          <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-800">
             <span className="mt-0.5 flex-shrink-0">⚠️</span>
             <span>{t('modal_edit_warning')}</span>
           </div>
@@ -749,10 +749,10 @@ function InkoopFactuurModal({
 
         {/* Factuurgegevens */}
         <div className="t-panel border rounded-lg p-3">
-          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">{t('modal_invoice_details')}</p>
+          <p className="text-xs font-semibold t-accent-text mb-2">{t('modal_invoice_details')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_supplier')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_supplier')}</label>
               {knownLeveranciers.length > 0 ? (<>
                 <select value={leverancierSel} onChange={e => setLeverancierSel(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm">
@@ -775,7 +775,7 @@ function InkoopFactuurModal({
             <Inp label={t('lbl_invoice_date')} type="date" value={datum} onChange={setDatum} />
           </div>
           <div className="mt-3">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_btw_soort')}</label>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_btw_soort')}</label>
             <select value={btwSoort} onChange={e => {
                 const v = e.target.value as any
                 setBtwSoort(v)
@@ -865,7 +865,7 @@ function InkoopFactuurModal({
               )}
             </div>
             {isScanning && (
-              <div className="mt-2 flex items-center gap-2 text-sm text-amber-700">
+              <div className="mt-2 flex items-center gap-2 text-sm t-accent-text">
                 <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
@@ -895,14 +895,14 @@ function InkoopFactuurModal({
         {/* Ingrediënten tab */}
         {tab==='ingredienten' && (
           <div className="border border-gray-200 rounded-lg p-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_add_product')}</p>
+            <p className="text-xs font-semibold text-gray-500 mb-2">{t('modal_add_product')}</p>
             <div className="space-y-2">
               <Sel label={t('lbl_ingredient_type')} value={productForm.type}
                 onChange={v => setProductForm((f: any) => ({...f,type:v,ing_id:'',nieuw:'',btw_tarief:ingTypeBtw[v]!=null?String(ingTypeBtw[v]):f.btw_tarief}))}
                 opts={ingTypes.map((ty: string) => ({v:ty, l:BUILTIN_ING_TYPES.includes(ty)?t('ing_type_'+ty.toLowerCase()):ty}))} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('modal_existing_ingredient')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('modal_existing_ingredient')}</label>
                   <select className="w-full border rounded px-2 py-1.5 text-sm"
                     value={productForm.ing_id}
                     onChange={e => setProductForm((f: any) => ({...f,ing_id:e.target.value,nieuw:''}))}>
@@ -969,7 +969,7 @@ function InkoopFactuurModal({
                   <div className="flex items-center justify-between">
                     <button type="button"
                       onClick={() => setBrewPropsOpen(o => !o)}
-                      className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700">
+                      className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700">
                       <span className="text-gray-400">{brewPropsOpen ? '▼' : '▶'}</span>
                       <span>{t('brew_props_section')}</span>
                     </button>
@@ -1053,11 +1053,11 @@ function InkoopFactuurModal({
         {/* Verpakkingen tab */}
         {tab==='verpakkingen' && (
           <div className="border border-gray-200 rounded-lg p-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('onderdeel_add_btn')}</p>
+            <p className="text-xs font-semibold text-gray-500 mb-2">{t('onderdeel_add_btn')}</p>
             <div className="space-y-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_bestaand_onderdeel')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_bestaand_onderdeel')}</label>
                   <select className="w-full border rounded px-2 py-1.5 text-sm"
                     value={vOntvForm.od_id}
                     onChange={e => { const od=onderdelen.find((o: any)=>o.id===Number(e.target.value)); od?setVOntvForm((f: any)=>({...f,od_id:String(od.id),naam:od.naam,type:od.type||''})):setVOntvForm((f: any)=>({...f,od_id:'',naam:'',type:''})); }}>
@@ -1119,7 +1119,7 @@ function InkoopFactuurModal({
         {/* Vrije regels tab */}
         {tab==='vrije' && (
           <div className="border border-gray-200 rounded-lg p-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('lbl_vrije_regel_toevoegen')}</p>
+            <p className="text-xs font-semibold text-gray-500 mb-2">{t('lbl_vrije_regel_toevoegen')}</p>
             <div className="space-y-2">
               <Inp label={t('lbl_omschrijving')} value={String(vrijeForm.naam)} onChange={v => setVrijeForm((f: any)=>({...f,naam:v}))} placeholder={t('ph_vrije_regel')} />
               <Sel label={t('lbl_kostensoort')} value={vrijeForm.kostensoort || 'Overig'}
@@ -1195,7 +1195,7 @@ function InkoopFactuurModal({
         {/* Gecombineerde productenlijst */}
         {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeList.length > 0) && (
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length + vrijeList.length})</p>
+            <p className="text-xs font-semibold text-gray-500 mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length + vrijeList.length})</p>
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
@@ -1210,7 +1210,7 @@ function InkoopFactuurModal({
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {productLijst.map((p: any, i: number) => (
-                    <tr key={p._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingProductIdx===i ? 'bg-amber-50 ring-1 ring-amber-300' : 'bg-white hover:bg-gray-50'}`}
+                    <tr key={p._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingProductIdx===i ? 't-panel ring-1 t-border' : 'bg-white hover:bg-gray-50'}`}
                       onClick={() => {setProductForm({...p});setProductTotInclBtw(false);setProductBrutoStr('');setTab('ingredienten');setEditingProductIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{p._naam}</td>
                       <td className="px-3 py-2">{p.qty} {p.eenh}</td>
@@ -1232,7 +1232,7 @@ function InkoopFactuurModal({
                     </tr>
                   ))}
                   {verpakkingLijst.map((v: any, i: number) => (
-                    <tr key={v._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingVerpakkingIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-blue-50 hover:bg-blue-100'}`}
+                    <tr key={v._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingVerpakkingIdx===i ? 't-panel ring-1 t-border' : 'bg-blue-50 hover:bg-blue-100'}`}
                       onClick={() => {setVOntvForm({...v});setVerpakTotInclBtw(false);setVerpakBrutoStr('');setTab('verpakkingen');setEditingVerpakkingIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{v._naam} <span className="text-xs text-blue-400">{t('lbl_tag_verpakking')}</span></td>
                       <td className="px-3 py-2">{v.aantal} {t('unit_stuks')}</td>
@@ -1254,7 +1254,7 @@ function InkoopFactuurModal({
                     </tr>
                   ))}
                   {vrijeList.map((r: any, i: number) => (
-                    <tr key={r._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingVrijeIdx===i ? 'ring-1 ring-amber-300 bg-amber-50' : 'bg-yellow-50 hover:bg-yellow-100'}`}
+                    <tr key={r._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingVrijeIdx===i ? 't-panel ring-1 t-border' : 'bg-yellow-50 hover:bg-yellow-100'}`}
                       onClick={() => {setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief,kostensoort:r.kostensoort||'Overig'});setTab('vrije');setEditingVrijeIdx(i);}}>
                       <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">{t('lbl_tag_vrij')}</span>{r.kostensoort && r.kostensoort !== 'Overig' && <span className="ml-1 text-xs text-gray-400">{BUILTIN_KOSTEN_SOORTEN.includes(r.kostensoort) ? t('ks_'+r.kostensoort.toLowerCase()) : r.kostensoort}</span>}</td>
                       <td className="px-3 py-2 text-gray-400">—</td>
@@ -1315,12 +1315,12 @@ function InkoopFactuurModal({
                 {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
                   <button type="button" title={t('title_herbereken')}
                     onClick={() => {setManualNetto(null);setManualBtw(null);setManualBruto(null);}}
-                    className="text-sm text-gray-400 hover:text-amber-600 transition-colors">↺</button>
+                    className="text-sm text-gray-400 t-accent-text-h transition-colors">↺</button>
                 )}
               </div>
             </div>
             {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
-              <p className="text-xs text-amber-600 mt-1.5">{t('msg_manual_adjusted')}</p>
+              <p className="text-xs t-accent-text mt-1.5">{t('msg_manual_adjusted')}</p>
             )}
             {isVerlegd && (
               <div className="mt-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-800">

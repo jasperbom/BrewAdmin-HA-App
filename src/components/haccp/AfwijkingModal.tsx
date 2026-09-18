@@ -28,7 +28,7 @@ const AfwijkingModal: React.FC<Props> = ({blok, titel, onBevestig, onClose}) => 
         <p className="text-sm text-gray-600">{t('haccp_afw_waarschuwing')}</p>
 
         <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-          <div className="text-xs font-semibold text-red-800 uppercase tracking-wide mb-1">
+          <div className="text-xs font-semibold text-red-800 mb-1">
             {t('haccp_afw_geblokkeerd_omdat')}
           </div>
           <ul className="space-y-0.5">
@@ -42,7 +42,7 @@ const AfwijkingModal: React.FC<Props> = ({blok, titel, onBevestig, onClose}) => 
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+          <label className="block text-xs font-semibold text-gray-500 mb-1">
             {t('haccp_afw_onderbouwing')}<span className="text-red-500 ml-0.5">*</span>
           </label>
           <textarea

@@ -140,7 +140,7 @@ const FlowVeld: React.FC<{
   const ph = verwacht != null && verwacht !== '' ? verwacht : placeholder
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      <label className="block text-xs font-semibold text-gray-500 mb-1">{label}</label>
       <input
         type="number"
         value={v}
@@ -295,7 +295,7 @@ const TempControl: React.FC<{
 
   return (
     <div className="border border-gray-200 rounded-lg p-3">
-      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_temp_titel')}</div>
+      <div className="text-xs font-semibold text-gray-500 mb-2">{t('flow_temp_titel')}</div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
         <div>
           <div className="text-xs text-gray-500">{t('flow_temp_gemeten')}</div>
@@ -1420,7 +1420,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       rebrand:      {icon: '↪',  label: t('log_type_rebrand'),       cls: 'text-blue-700 bg-blue-50'},
       status:       {icon: '🔄', label: t('lbl_status'),             cls: 'text-gray-700 bg-gray-100'},
       aangemaakt:   {icon: '✨', label: t('batch_log_type_created'), cls: 'text-indigo-700 bg-indigo-50'},
-      gewijzigd:    {icon: '✏️', label: t('batch_log_type_changed'), cls: 'text-amber-700 bg-amber-50'},
+      gewijzigd:    {icon: '✏️', label: t('batch_log_type_changed'), cls: 'text-orange-700 bg-orange-50'},
       hygiene:      {icon: '🧹', label: t('batch_log_type_hygiene'), cls: 'text-teal-700 bg-teal-50'},
       ccp:          {icon: '🎯', label: 'CCP',                        cls: 'text-blue-700 bg-blue-50'},
     }
@@ -1957,7 +1957,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         </div>
 
         <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_nieuw_titel')}</div>
+          <div className="text-xs font-semibold text-gray-500 mb-2">{t('flow_nieuw_titel')}</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {nieuwOpen ? (
               <div className="bg-white rounded-xl p-4 shadow-card t-card-l">
@@ -2094,7 +2094,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       }))
       .filter(g => g.items.length > 0)
     const msgCls = reinigingMsg?.soort === 'warn'
-      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      ? 'bg-orange-50 text-orange-700 border-orange-200'
       : reinigingMsg?.soort === 'info'
         ? 'bg-gray-50 text-gray-600 border-gray-200'
         : 'bg-green-50 text-green-700 border-green-200'
@@ -2109,7 +2109,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         {perGroep.map(({groep, items: gItems}) => (
             <div key={groep?.id}>
               {perGroep.length > 1 && groep && (
-                <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{groep.naam}</div>
+                <div className="text-[11px] font-semibold text-gray-400 mb-1">{groep.naam}</div>
               )}
               <div className="space-y-1">
                 {gItems.map((item: any) => {
@@ -2272,7 +2272,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const receptAfwijking = (afwijkend: boolean, receptQty: number | null, eenheid: string) => {
     if (!afwijkend || receptQty === null) return null
     return (
-      <span className="text-[10px] text-amber-600 whitespace-nowrap"
+      <span className="text-[10px] t-accent-text whitespace-nowrap"
         title={t('batch_ing_recept_afwijking_title').replace('{n}', String(receptQty)).replace('{unit}', eenheid)}>
         ≠ {t('batch_ing_recept_afwijking').replace('{n}', String(receptQty)).replace('{unit}', eenheid)}
       </span>
@@ -2331,7 +2331,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           ) : rowLots.length > 0 ? (
             <select value={row.lot_id || ''}
               onChange={e => kiesLot(row, e.target.value ? Number(e.target.value) : null)}
-              className={`border rounded px-1.5 py-0.5 text-xs bg-white t-input max-w-[14rem] ${lotTekort ? 'border-amber-300' : 'border-gray-200'}`}>
+              className={`border rounded px-1.5 py-0.5 text-xs bg-white t-input max-w-[14rem] ${lotTekort ? 'border-orange-300' : 'border-gray-200'}`}>
               <option value="">{t('ing_choose_lot')}</option>
               {rowLots.map((l: any) => {
                 const avBi = r3(convertEenheid(Number(l.hoeveelheid || 0), l.eenheid, row.eenheid) ?? Number(l.hoeveelheid || 0))
@@ -2349,7 +2349,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           )}
           {!row.afgeboekt && <VoorraadChip row={row} />}
           {lotTekort && (
-            <span className="text-xs text-amber-600">
+            <span className="text-xs t-accent-text">
               {t('lot_partial_warning').replace('{n}', String(selLotAvailBi)).replace('{unit}', row.eenheid)}
             </span>
           )}
@@ -2403,7 +2403,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 return s + (l?.prijs_per_eenheid ? l.prijs_per_eenheid * Number(r.hoeveelheid || 0) : 0)
               }, 0)
               return (
-                <div key={g.key} className="rounded border border-amber-200 bg-amber-50/50">
+                <div key={g.key} className="rounded border border-orange-200 bg-orange-50/50">
                   <div className="px-2 pt-1.5 flex items-center gap-2 text-sm">
                     <span className="flex-1 min-w-0 truncate font-medium text-gray-800">
                       {g.naam}
@@ -2413,13 +2413,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">{totalQty} {g.eenheid}</span>
                   </div>
                   <div className="px-2 pb-1.5 pt-0.5 flex items-center gap-2 flex-wrap text-xs">
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">
                       {t('flow_ing_lots_verdeeld').replace('{n}', String(g.rows.length))}
                     </span>
                     {bookedQty > 0 && <span className="text-green-700">✓ {bookedQty} {g.eenheid} {t('ing_booked_suffix')}</span>}
                     {volledig
                       ? <span className="text-green-600 font-semibold">· {t('batch_ingredient_all_booked')}</span>
-                      : <span className="text-amber-700 font-medium">· {t('batch_ingredient_still_needed')} {remainQty} {g.eenheid} {t('batch_ingredient_still_needed_text')}</span>}
+                      : <span className="t-accent-text font-medium">· {t('batch_ingredient_still_needed')} {remainQty} {g.eenheid} {t('batch_ingredient_still_needed_text')}</span>}
                     {receptAfwijking(afwijkend, receptQty, g.eenheid)}
                     <span className="ml-auto font-semibold text-gray-700">{totalKost > 0 ? fmt(totalKost) : ''}</span>
                   </div>
@@ -2492,7 +2492,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {doelen.filter(([, v]) => v !== '' && v != null).map(([l, v]) => (
                 <div key={l} className="rounded bg-gray-50 border border-gray-100 px-2 py-1.5">
-                  <div className="text-[10px] font-semibold text-gray-400 uppercase">{l}</div>
+                  <div className="text-[10px] font-semibold text-gray-400">{l}</div>
                   <div className="text-sm font-bold text-gray-700">{v}</div>
                 </div>
               ))}
@@ -2510,7 +2510,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         )}
         {/* Ingrediënten met voorraadstatus */}
         <div>
-          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{t('flow_sectie_ingredienten')}</div>
+          <div className="text-[11px] font-semibold text-gray-400 mb-1">{t('flow_sectie_ingredienten')}</div>
           {mijnBi.length === 0 ? (
             <div className="text-sm text-gray-400 italic">{t('flow_afboek_geen')}</div>
           ) : (
@@ -2669,16 +2669,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         <div className="flex items-center justify-between gap-4 mb-2 flex-wrap">
           <div className="flex items-baseline gap-4">
             <div>
-              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{t('flow_progressie_sg')}</div>
+              <div className="text-[11px] font-semibold text-gray-400">{t('flow_progressie_sg')}</div>
               <div className="text-2xl font-bold font-mono text-gray-800">{huidige != null ? huidige.toFixed(3) : '—'}</div>
             </div>
             <div>
-              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{t('flow_temp_gemeten')}</div>
+              <div className="text-[11px] font-semibold text-gray-400">{t('flow_temp_gemeten')}</div>
               <div className="text-2xl font-bold text-gray-800">{temp != null ? `${temp.toFixed(1)}°C` : '—'}</div>
             </div>
             {doelTemp != null && (
               <div>
-                <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{t('flow_temp_doel')}</div>
+                <div className="text-[11px] font-semibold text-gray-400">{t('flow_temp_doel')}</div>
                 <div className="text-2xl font-bold" style={{color: 'var(--t-accent)'}}>{doelTemp}°C</div>
               </div>
             )}
@@ -2820,25 +2820,25 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           <div className="border border-green-200 bg-green-50 rounded-lg p-3 space-y-2">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
               <div>
-                <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_method')}</div>
+                <div className="text-[10px] font-semibold text-gray-500">{t('carb_method')}</div>
                 <div className="font-medium">{actief.methode === 'stone' ? t('carb_method_stone') : t('carb_method_kopdruk')}</div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_started')}</div>
+                <div className="text-[10px] font-semibold text-gray-500">{t('carb_started')}</div>
                 <div className="font-medium">{fmtD(actief.start_datum)} {actief.start_tijd || ''}</div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_target_label')}</div>
+                <div className="text-[10px] font-semibold text-gray-500">{t('carb_target_label')}</div>
                 <div className="font-medium">{Number(actief.doel_co2_vol).toFixed(1)} vols @ {Number(actief.tank_temp_c).toFixed(1)}°C</div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_pressure_label')}</div>
+                <div className="text-[10px] font-semibold text-gray-500">{t('carb_pressure_label')}</div>
                 <div className="font-medium" style={{color: 'var(--t-accent)'}}>
                   {Number(actief.doel_druk_bar).toFixed(2)} bar <span className="text-xs opacity-75">({barToPsi(actief.doel_druk_bar).toFixed(1)} PSI)</span>
                 </div>
               </div>
               <div className="col-span-2 sm:col-span-4">
-                <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_co2_label')}</div>
+                <div className="text-[10px] font-semibold text-gray-500">{t('carb_co2_label')}</div>
                 <div className="font-medium">
                   {Number(actief.doel_co2_gram_opgelost).toFixed(0)} {t('carb_g_dissolved_short')}
                   <span className="mx-2 text-gray-300">|</span>
@@ -2858,7 +2858,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               return (
                 <div className="pt-2 border-t border-green-200">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_co2_monitor_label')}</span>
+                    <span className="text-[10px] font-semibold text-gray-500">{t('carb_co2_monitor_label')}</span>
                     {bereikt
                       ? <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">{t('carb_co2_monitor_reached')}</span>
                       : <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">{pct}%</span>}
@@ -2883,7 +2883,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 onChange={(v: string) => setCarbComplete((f: any) => ({...f, werkelijke_druk_bar: v}))}
                 placeholder={Number(actief.doel_druk_bar).toFixed(2)} />
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('carb_co2_used_gram')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('carb_co2_used_gram')}</label>
                 <div className="flex items-center gap-2">
                   <input type="number" value={carbComplete.verbruikt_co2_gram} onChange={e => setCarbComplete((f: any) => ({...f, verbruikt_co2_gram: e.target.value}))} placeholder={Number(actief.doel_co2_gram_verbruik).toFixed(0)} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none shadow-sm placeholder-gray-300" />
                   {actieveIndicator && <span className={`text-xs px-2 py-1 rounded ${actieveIndicator.cls} whitespace-nowrap`}>{actieveIndicator.label}</span>}
@@ -2893,7 +2893,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 onChange={(v: string) => setCarbComplete((f: any) => ({...f, gemeten_co2_vol: v}))} placeholder="2.5" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('carb_remark')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('carb_remark')}</label>
               <input type="text" value={carbComplete.opmerking} onChange={e => setCarbComplete((f: any) => ({...f, opmerking: e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none shadow-sm" />
             </div>
             <div className="flex gap-2 pt-1">
@@ -2903,7 +2903,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </div>
         ) : (
           <div className="space-y-2">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_new_session')}</div>
+            <div className="text-[10px] font-semibold text-gray-500">{t('carb_new_session')}</div>
             <div className="flex items-center gap-4 text-sm">
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="radio" name="flow_carb_methode" checked={carbForm.methode === 'stone'}
@@ -2989,14 +2989,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             </div>
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_calculated_pressure')}</span>
+                <span className="text-[10px] font-semibold text-gray-500">{t('carb_calculated_pressure')}</span>
                 <span className="font-medium" style={{color: 'var(--t-accent)'}}>
                   {previewDruk.toFixed(2)} bar <span className="text-xs opacity-75">({barToPsi(previewDruk).toFixed(1)} PSI)</span>
                 </span>
               </div>
               {batchLiter > 0 && (
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-gray-500 uppercase">{t('carb_co2_label')}</span>
+                  <span className="text-[10px] font-semibold text-gray-500">{t('carb_co2_label')}</span>
                   <span className="font-medium">
                     {previewOpgelost.toFixed(0)} {t('carb_g_dissolved_short')}
                     <span className="mx-2 text-gray-300">|</span>
@@ -3191,7 +3191,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               onChange={(v: string) => setAvF((f: any) => ({...f, tht: v}))} />
           ) : (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">
                 {t('batch_filling_tht')}
               </label>
               <div className="text-sm text-gray-700 py-2">
@@ -3224,7 +3224,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             }
             if (avSkuForm) {
               return (
-                <div className="px-2.5 py-2 bg-amber-50 border border-amber-200 rounded space-y-2">
+                <div className="px-2.5 py-2 bg-orange-50 border border-orange-200 rounded space-y-2">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <input type="text" value={avSkuForm.artikelnummer || ''} onChange={e => setAvSkuForm((f: any) => ({...f, artikelnummer: e.target.value}))} placeholder={t('ph_artikelnummer')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
                     <input type="text" value={avSkuForm.ean || ''} onChange={e => setAvSkuForm((f: any) => ({...f, ean: e.target.value}))} placeholder={t('ph_ean_optioneel')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
@@ -3243,8 +3243,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               )
             }
             return (
-              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-sm">
-                <span className="text-amber-700">{t('lbl_geen_sku')}</span>
+              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-orange-50 border border-orange-200 rounded text-sm">
+                <span className="t-accent-text">{t('lbl_geen_sku')}</span>
                 <button type="button" onClick={() => {
                   setAvSkuForm({id: newId(productArtikelen || []), product_id: Number(avF.product_id), verpakking_id: Number(avF.verpakking_id), artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: '', gn_code: avF.gn_code || ''})
                 }} className="text-xs font-medium underline" style={{color: 'var(--t-accent)'}}>{t('btn_sku_toevoegen')}</button>
@@ -3344,7 +3344,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const marge = opbrengst - totaalKost
     return (
       <div className="border border-gray-200 rounded-lg p-3 space-y-2 text-sm">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('flow_fin_titel')}</div>
+        <div className="text-xs font-semibold text-gray-500">{t('flow_fin_titel')}</div>
         {/* Overhead-kosten invoeren (overgenomen van de Batches-pagina) — direct
             bewerkbaar; worden meegeteld in de brouwkost hieronder. */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -3361,10 +3361,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <div className="flex justify-between text-gray-600"><span>{t('flow_fin_brouwkosten')}</span><span>{fmt(totBrouw)}</span></div>
               <div className="flex justify-between text-gray-600"><span>{t('flow_fin_verpakking')}</span><span>{verpK > 0 ? fmt(verpK) : <span className="text-gray-400">{t('lbl_not_specified')}</span>}</span></div>
               <div className="flex justify-between text-gray-600">
-                <span>{t('flow_fin_accijns')}{accIsVoorcalc && <span className="ml-1 text-xs text-amber-600">({t('lbl_voorcalc')})</span>}</span>
+                <span>{t('flow_fin_accijns')}{accIsVoorcalc && <span className="ml-1 text-xs t-accent-text">({t('lbl_voorcalc')})</span>}</span>
                 <span>{fmt(accijnsK)}</span>
               </div>
-              <div className="flex justify-between font-semibold border-t pt-1"><span>{t('flow_fin_kostprijs_tot')}</span><span className="text-amber-700">{fmt(totaalKost)}</span></div>
+              <div className="flex justify-between font-semibold border-t pt-1"><span>{t('flow_fin_kostprijs_tot')}</span><span className="t-accent-text">{fmt(totaalKost)}</span></div>
               <div className="flex gap-6 text-xs text-gray-500">
                 {afgevuldL > 0 && <span>{t('flow_fin_per_liter')}: <strong className="text-gray-700">{fmt(totaalKost / afgevuldL)}</strong></span>}
                 {afgevuldStuks > 0 && <span>{t('flow_fin_per_stuk')}: <strong className="text-gray-700">{fmt(totaalKost / afgevuldStuks)}</strong></span>}
@@ -3403,7 +3403,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (!tl.brouwdatum && !tl.vergistStart && !tl.verpaktDatum) {
       return (
         <div className="border border-gray-200 rounded-lg p-3 text-sm">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('flow_tijdlijn_titel')}</div>
+          <div className="text-xs font-semibold text-gray-500 mb-1">{t('flow_tijdlijn_titel')}</div>
           <div className="text-sm text-gray-400 italic">{t('flow_tijdlijn_geen')}</div>
         </div>
       )
@@ -3419,7 +3419,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     ]
     return (
       <div className="border border-gray-200 rounded-lg p-3 text-sm">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('flow_tijdlijn_titel')}</div>
+        <div className="text-xs font-semibold text-gray-500 mb-2">{t('flow_tijdlijn_titel')}</div>
         <div>
           {nodes.map((n, i) => (
             <div key={n.key} className="flex gap-3">
@@ -3589,13 +3589,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
                     opts={tankOptiesVoor(selB.id)} />
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_datum')}</label>
                     <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
                   </div>
                   {/* Tanktijd + auto-bereken (overgenomen van de Batches-pagina) */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('plan_tank_tijd')}</label>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">{t('plan_tank_tijd')}</label>
                     <div className="flex items-center gap-1">
                       <input type="number" value={String(selB.tank_dagen ?? '')}
                         onChange={e => updateBatch({ tank_dagen: e.target.value === '' ? '' : Number(e.target.value) })}
@@ -3662,7 +3662,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     opts={tankOptiesVoor(selB.id)} />
                   {selB.tank && (
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_status')}</label>
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_status')}</label>
                       <div className="flex flex-wrap items-center gap-2 min-h-[38px]">
                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${gistPill}`}>{gistLabel}</span>
                         {gistEntry?.sinds && <span className="text-xs text-gray-500">{t('dash_tank_sinds').replace('{d}', fmtD(gistEntry.sinds))}</span>}
@@ -3926,7 +3926,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 {l: t('flow_sum_stuks'), v: String(afgevuldStuks)},
               ].map(x => (
                 <div key={x.l} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{x.l}</div>
+                  <div className="text-[11px] font-semibold text-gray-500">{x.l}</div>
                   <div className="text-lg font-bold text-gray-800">{x.v}</div>
                 </div>
               ))}

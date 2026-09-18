@@ -87,7 +87,7 @@ function VerkoopDashboard({
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
                   b.status === 'nieuw' ? 'bg-blue-100 text-blue-700' : 'bg-cyan-100 text-cyan-700'
                 }`}>
-                  {t(`orders_status_${b.status}`) || b.status}
+                  {t(`orders_status_${b.status}`, b.status)}
                 </span>
               </div>
             ))}

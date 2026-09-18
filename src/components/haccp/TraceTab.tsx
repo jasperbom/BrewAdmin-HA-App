@@ -186,7 +186,7 @@ const TraceTab: React.FC<any> = (p) => {
   // ── Presentatie ──
   const Blok: React.FC<{titel: string, children: React.ReactNode}> = ({titel, children}) => (
     <div>
-      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{titel}</h4>
+      <h4 className="text-xs font-semibold text-gray-500 mb-1">{titel}</h4>
       {children}
     </div>
   )
@@ -208,7 +208,7 @@ const TraceTab: React.FC<any> = (p) => {
       <div className={`rounded-xl border-l-4 p-3 bg-white shadow-sm ${status.verlopen ? 'border-orange-500' : 'border-green-500'}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div className="text-xs font-semibold text-gray-500">
               {t('haccp_trace_oefening_laatste')}
             </div>
             <div className="text-sm font-medium text-gray-800">
@@ -258,7 +258,7 @@ const TraceTab: React.FC<any> = (p) => {
               {/* De lotcodes staan bovenaan: dat is wat de brouwer bij een
                   terugroepactie moet doorgeven. */}
               <div className="rounded-lg p-3 t-panel">
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                <h4 className="text-xs font-semibold text-gray-500 mb-1">
                   {t('haccp_trace_lotcodes')}
                 </h4>
                 {res.lotcodes.length ? (
@@ -431,7 +431,7 @@ const TraceTab: React.FC<any> = (p) => {
             </div>
 
             <div className={`rounded-lg p-3 border ${oordeel?.geslaagd ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'}`}>
-              <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${oordeel?.geslaagd ? 'text-green-800' : 'text-orange-800'}`}>
+              <div className={`text-xs font-semibold tracking-wide mb-1 ${oordeel?.geslaagd ?'text-green-800' : 'text-orange-800'}`}>
                 {oordeel?.geslaagd ? t('haccp_trace_oefening_geslaagd') : t('haccp_trace_oefening_niet_geslaagd')}
               </div>
               {!oordeel?.geslaagd && (
@@ -447,7 +447,7 @@ const TraceTab: React.FC<any> = (p) => {
               value={oef.duur} onChange={v => setOef({...oef, duur: v})} />
 
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">
                 {t('haccp_trace_oefening_conclusie')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <textarea rows={3} value={oef.conclusie}

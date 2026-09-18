@@ -1843,7 +1843,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             {orderNummer(selectedOrder)}
           </h2>
           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[selectedOrder.status]||'bg-gray-100'}`}>
-            {t(`orders_status_${selectedOrder.status}`)||selectedOrder.status}
+            {t(`orders_status_${selectedOrder.status}`, selectedOrder.status)}
           </span>
           <BetaaldBadge b={selectedOrder} />
           <LeveringBadge b={selectedOrder} />
@@ -1893,7 +1893,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             const stad     = r.klant_stad     || ''
             return (
               <div className="bg-white rounded-xl shadow-card p-4">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('orders_klant')}</div>
+                <div className="text-xs font-semibold text-gray-500 mb-2">{t('orders_klant')}</div>
                 <div className="font-semibold text-gray-800">{naam}</div>
                 {bedrijf && <div className="text-sm text-gray-600">{bedrijf}</div>}
                 {email && <div className="text-sm text-gray-500">{email}</div>}
@@ -1909,7 +1909,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
           {/* Orderinfo */}
           <div className="bg-white rounded-xl shadow-card p-4">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Order</div>
+            <div className="text-xs font-semibold text-gray-500 mb-2">Order</div>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">{t('orders_date')}</span><span>{fmtD(selectedOrder.datum)}</span></div>
               {(() => {
@@ -2001,7 +2001,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <th className="px-3 py-2 text-right">{t('manual_order_qty')}</th>
                 <th className="px-3 py-2 text-right">{t('manual_order_price')}</th>
                 <th className="px-3 py-2 text-right">{t('manual_order_btw')}</th>
-                <th className="px-3 py-2 text-right">Totaal excl.</th>
+                <th className="px-3 py-2 text-right">{t('lbl_totaal_excl')}</th>
                 <th className="px-3 py-2 text-center">{t('picking_picked')}</th>
               </tr>
             </thead>
@@ -2221,7 +2221,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       <span className={`inline-block w-2 h-2 mt-1.5 rounded-full ${dot} flex-shrink-0`}
                         style={dot ? undefined : {backgroundColor: 'var(--t-accent)'}} aria-hidden="true" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-gray-800">{e.omschrijving || t(`audit_actie_${e.actie}`) || e.actie}</div>
+                        <div className="text-sm text-gray-800">{e.omschrijving || t(`audit_actie_${e.actie}`, e.actie)}</div>
                         <div className="text-xs text-gray-400 mt-0.5">
                           {tsLabel}
                           {e.gebruiker && <span className="ml-2">· {e.gebruiker}</span>}
@@ -2295,17 +2295,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           <Modal title={t('order_complete')} onClose={() => setShowAfrondModal(false)}>
             <div className="space-y-4">
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
-                <p>Je staat op het punt om deze bestelling af te ronden.</p>
-                <p className="mt-2 text-xs text-green-700">Het belastbaar feit is al vastgelegd bij het bevestigen van de picks (Douane v2.4 §10.2). Bij afronden wordt nu nog:</p>
+                <p>{t('order_afrond_intro')}</p>
+                <p className="mt-2 text-xs text-green-700">{t('order_afrond_uitleg')}</p>
                 <ul className="mt-1 space-y-1 list-disc list-inside text-xs">
-                  <li>Verkoopfactuur aangemaakt in de boekhouding</li>
-                  <li>Pakbon- en factuurnummer gegenereerd</li>
-                  <li>Status van de bestelling op 'Afgerond' gezet</li>
+                  <li>{t('order_afrond_punt_factuur')}</li>
+                  <li>{t('order_afrond_punt_nummers')}</li>
+                  <li>{t('order_afrond_punt_status')}</li>
                 </ul>
               </div>
               {/* AGP: Type uitlevering en bestemmingsgegevens */}
               <div className="border border-gray-200 rounded-lg p-3 space-y-3">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_type_uitlevering')}</div>
+                <div className="text-xs font-semibold text-gray-500">{t('lbl_type_uitlevering')}</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <select value={uitleveringForm.type_uitlevering} onChange={e => setUitleveringForm(f => ({...f, type_uitlevering: e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
@@ -2536,11 +2536,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
             {/* AGP / uitleveringsgegevens — gebruikt zodra alle picks compleet zijn
                 (Douane v2.4 §10.2: belastbaar feit op moment van picken). */}
-            <div className="mt-4 border border-amber-200 rounded-lg p-3 bg-amber-50/40 space-y-3">
-              <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+            <div className="mt-4 border border-orange-200 rounded-lg p-3 bg-orange-50/40 space-y-3">
+              <div className="text-xs font-semibold t-accent-text">
                 Uitslag uit AGP — bestemming &amp; vervoerder
               </div>
-              <div className="text-[11px] text-amber-700">
+              <div className="text-[11px] t-accent-text">
                 Bij volledige picking ontstaat het belastbaar feit. Vul hier het type uitlevering en (voor intra-EU/export) de bestemming in.
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -2589,7 +2589,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">{t('verzonden_modal_intro')}</p>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verzonden_modal_track')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verzonden_modal_track')}</label>
                   <Inp value={verzondenModal.tracking} onChange={(v: string) => setVerzondenModal(m => m && ({...m, tracking: v}))} placeholder="https://…" />
                 </div>
                 {email ? (
@@ -2633,20 +2633,20 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           <Modal title={t('btn_vrije_regel')} onClose={() => setShowVrijeRegelModal(false)}>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_description')} <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_description')} <span className="text-red-400">*</span></label>
                 <Inp value={vrijeRegelForm.omschrijving} onChange={(v: string) => setVrijeRegelForm(f => ({...f, omschrijving: v}))} placeholder={t('ph_vrije_regel')} />
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('manual_order_qty')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('manual_order_qty')}</label>
                   <Inp type="number" value={vrijeRegelForm.aantal} onChange={(v: string) => setVrijeRegelForm(f => ({...f, aantal: v}))} placeholder="1" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('manual_order_price')} (excl.)</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('manual_order_price')} (excl.)</label>
                   <Inp type="number" value={vrijeRegelForm.prijs_per_stuk} onChange={(v: string) => setVrijeRegelForm(f => ({...f, prijs_per_stuk: v}))} placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('manual_order_btw')}%</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('manual_order_btw')}%</label>
                   <Inp type="number" value={vrijeRegelForm.btw_pct} onChange={(v: string) => setVrijeRegelForm(f => ({...f, btw_pct: v}))} placeholder="21" />
                 </div>
               </div>
@@ -2663,16 +2663,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           <Modal title={t('verzendkosten_modal_title')} onClose={() => setShowVerzendkostenModal(false)}>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_description')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_description')}</label>
                 <Inp value={verzendkostenForm.naam} onChange={(v: string) => setVerzendkostenForm(f => ({...f, naam: v}))} placeholder={t('lbl_verzendkosten')} />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verzendkosten_prijs')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verzendkosten_prijs')}</label>
                   <Inp type="number" value={verzendkostenForm.prijs_per_stuk} onChange={(v: string) => setVerzendkostenForm(f => ({...f, prijs_per_stuk: v}))} placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('manual_order_btw')}%</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('manual_order_btw')}%</label>
                   <Inp type="number" value={verzendkostenForm.btw_pct} onChange={(v: string) => setVerzendkostenForm(f => ({...f, btw_pct: v}))} placeholder="21" />
                 </div>
               </div>
@@ -2698,7 +2698,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             return (
               <button key={s} onClick={() => setStatusFilter(s)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${statusFilter===s ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {t(`orders_filter_${s}`)||s}
+                {t(`orders_filter_${s}`, s)}
                 {count > 0 && <span className="ml-1 opacity-70">({count})</span>}
               </button>
             )
@@ -2829,7 +2829,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                               {merchLogOpen === m.id && (
                                 <tr className="bg-gray-50">
                                   <td colSpan={wcCreds?.enabled ? 8 : 7} className="px-3 py-2">
-                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_log_titel')}</div>
+                                    <div className="text-xs font-semibold text-gray-500 mb-1">{t('merch_log_titel')}</div>
                                     <div className="space-y-0.5 max-h-48 overflow-y-auto">
                                       {mutaties.map((r: MerchMutatie) => (
                                         <div key={r.id} className="flex items-center gap-2 text-xs text-gray-600">
@@ -2855,11 +2855,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 )}
               <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-gray-100">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_sku')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('merch_sku')}</label>
                   <Inp value={merchForm.sku} onChange={(v: string) => setMerchForm(f => ({...f, sku: v}))} placeholder={t('ph_merch_sku')} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_naam')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('merch_naam')}</label>
                   <Inp value={merchForm.naam} onChange={(v: string) => setMerchForm(f => ({...f, naam: v}))} placeholder={t('ph_merch_naam')} />
                 </div>
                 <Btn v="secondary" onClick={() => {
@@ -2907,13 +2907,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 {t('merch_huidige_voorraad')}: <strong className="text-gray-800">{merchVoorraad(artikel)}×</strong>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_mutatie_reden')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('merch_mutatie_reden')}</label>
                 <Sel value={reden} onChange={(v: string) => setMerchMutatieForm(f => ({...f, reden: v as MerchMutatie['reden']}))}
                   opts={(['inkoop', 'verkoop', 'retour', 'correctie', 'telling'] as const)
                     .map(r => ({v: r, l: t(`merch_reden_${r}`)}))} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                <label className="block text-xs font-semibold text-gray-500 mb-1">
                   {reden === 'telling' ? t('merch_getelde_stand') : t('manual_order_qty')}
                 </label>
                 <Inp type="number" value={merchMutatieForm.aantal}
@@ -2924,13 +2924,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               </div>
               {reden === 'inkoop' && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('merch_inkoopprijs')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('merch_inkoopprijs')}</label>
                   <Inp type="number" value={merchMutatieForm.prijs}
                     onChange={(v: string) => setMerchMutatieForm(f => ({...f, prijs: v}))} placeholder="0.00" />
                 </div>
               )}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_opmerking')}</label>
                 <Inp value={merchMutatieForm.notitie}
                   onChange={(v: string) => setMerchMutatieForm(f => ({...f, notitie: v}))} placeholder={t('ph_merch_notitie')} />
               </div>
@@ -2945,7 +2945,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
       {filtered.length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">
-          {statusFilter === 'alle' ? t('msg_no_orders') : t('msg_no_orders_status').replace('{status}', t(`orders_filter_${statusFilter}`)||statusFilter)}
+          {statusFilter === 'alle' ? t('msg_no_orders') : t('msg_no_orders_status').replace('{status}', t(`orders_filter_${statusFilter}`, statusFilter))}
         </div>
       )}
 
@@ -2978,7 +2978,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <LeveringBadge b={b} />
                 <span className="font-semibold text-gray-800">{fmt(totaal)}</span>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status]||'bg-gray-100'}`}>
-                  {t(`orders_status_${b.status}`)||b.status}
+                  {t(`orders_status_${b.status}`, b.status)}
                 </span>
               </div>
             </div>
@@ -2992,7 +2992,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
             {/* Klantgegevens */}
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('orders_klant')}</div>
+              <div className="text-xs font-semibold text-gray-500 mb-2">{t('orders_klant')}</div>
               {/* Klant-type toggle: privé vs. zakelijk */}
               <div className="mb-3">
                 <label className="block text-xs text-gray-500 mb-1">{t('lbl_klant_type')}</label>
@@ -3042,7 +3042,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
             {/* Regels */}
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('orders_lines')}</div>
+              <div className="text-xs font-semibold text-gray-500 mb-2">{t('orders_lines')}</div>
               {manualForm.regels.length > 0 && (
                 <div className="mb-3 divide-y divide-gray-100 border rounded-lg overflow-hidden">
                   {manualForm.regels.map((r: any, idx: number) => (
@@ -3134,7 +3134,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <input type="checkbox" checked={manualVerzending.enabled}
                   onChange={e => setManualVerzending(f => ({...f, enabled: e.target.checked}))}
                   className="t-checkbox" />
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_verzendkosten')}</span>
+                <span className="text-xs font-semibold text-gray-500">{t('lbl_verzendkosten')}</span>
               </label>
               {manualVerzending.enabled && (
                 <div className="grid grid-cols-3 gap-2">

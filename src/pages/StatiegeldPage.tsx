@@ -235,7 +235,7 @@ const StatiegeldPage: React.FC<Props> = ({
             <p className="text-sm text-gray-600 mb-3 max-w-prose">{t('statiegeld_config_help')}</p>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <thead className="bg-gray-50 text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('lbl_name')}</th>
                     <th className="px-3 py-2 text-left">{t('lbl_type')}</th>
@@ -307,7 +307,7 @@ const StatiegeldPage: React.FC<Props> = ({
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <thead className="bg-gray-50 text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('lbl_periode')}</th>
                     <th className="px-3 py-2 text-right">{t('statiegeld_stuks')}</th>
@@ -355,7 +355,7 @@ const StatiegeldPage: React.FC<Props> = ({
           <div className="p-4">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <thead className="bg-gray-50 text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('orders_klant')}</th>
                     <th className="px-3 py-2 text-left">{t('statiegeld_uit')}</th>
@@ -394,7 +394,7 @@ const StatiegeldPage: React.FC<Props> = ({
           <div className="p-4">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <thead className="bg-gray-50 text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                     <th className="px-3 py-2 text-left">{t('lbl_invoice')}</th>

@@ -24,10 +24,10 @@ const ControleBlok: React.FC<{
   return (
     <div className={`mt-4 rounded-lg border p-3 text-sm ${
       status === 'akkoord' ? 'border-green-200 bg-green-50' :
-      status === 'opmerkingen' ? 'border-amber-200 bg-amber-50' :
+      status === 'opmerkingen' ? 'border-orange-200 bg-orange-50' :
       'border-gray-200 bg-gray-50'
     }`}>
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">
+      <div className="text-xs font-semibold text-gray-600 mb-2">
         {t('controle_titel_accijns')}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -81,7 +81,7 @@ const ControleBlok: React.FC<{
         )}
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
           status === 'akkoord' ? 'bg-green-100 text-green-700' :
-          status === 'opmerkingen' ? 'bg-amber-100 text-amber-700' :
+          status === 'opmerkingen' ? 'bg-orange-100 text-orange-700' :
           'bg-gray-100 text-gray-600'
         }`}>
           {status === 'akkoord' ? t('controle_status_akkoord') : status === 'opmerkingen' ? t('controle_status_opmerkingen') : t('controle_status_open')}
@@ -282,16 +282,16 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                 <td className="px-3 py-2 text-right">{r.abv?`${r.abv}%`:'—'}</td>
                 <td className="px-3 py-2 text-right">{r.liter.toFixed(1)}L</td>
                 <td className="px-3 py-2 text-right text-gray-500">{r.liter>0?`${fmt(r.accijns/r.liter)}/L`:'—'}</td>
-                <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(r.accijns)}</td>
+                <td className="px-3 py-2 text-right font-semibold t-accent-text">{fmt(r.accijns)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-gray-200 bg-gray-50">
-              <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('excise_month_total')}</td>
+              <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500">{t('excise_month_total')}</td>
               <td className="px-3 py-2.5 text-right font-bold text-gray-700">{totLiter.toFixed(1)}L</td>
               <td></td>
-              <td className="px-3 py-2.5 text-right font-bold text-lg text-amber-700">{fmt(monthTotal)}</td>
+              <td className="px-3 py-2.5 text-right font-bold text-lg t-accent-text">{fmt(monthTotal)}</td>
             </tr>
           </tfoot>
         </table>
@@ -334,13 +334,13 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                 const nearMatches = (bankDebets||[]).filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00)
                 const others = (bankDebets||[]).filter((tx: any) => !nearMatches.includes(tx))
                 return (
-                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
-                    {retro && <p className="text-xs text-amber-700">{t('msg_accijns_koppel_achteraf')}</p>}
+                  <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-1.5">
+                    {retro && <p className="text-xs t-accent-text">{t('msg_accijns_koppel_achteraf')}</p>}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-amber-700 font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
+                      <span className="text-xs t-accent-text font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
                       {(bankDebets||[]).length > 0 ? (
                         <select onChange={(e: any) => { if (e.target.value) koppelAccijnsBetaling(e.target.value, monthKey) }} defaultValue=""
-                          className="border border-amber-200 rounded px-2 py-0.5 text-xs focus:outline-none t-input flex-1 min-w-0 bg-white">
+                          className="border t-border rounded px-2 py-0.5 text-xs focus:outline-none t-input flex-1 min-w-0 bg-white">
                           <option value="">— {t('lbl_selecteer_transactie')} —</option>
                           {nearMatches.length > 0 && (
                             <optgroup label={t('lbl_match_voorgesteld')}>
@@ -360,7 +360,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                           )}
                         </select>
                       ) : (
-                        <span className="text-xs text-amber-600 italic">{t('msg_geen_banktxn_geladen')}</span>
+                        <span className="text-xs t-accent-text italic">{t('msg_geen_banktxn_geladen')}</span>
                       )}
                     </div>
                   </div>
@@ -509,16 +509,16 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                                 <td className="px-3 py-2 text-gray-600">{fmtD(a.datum)}</td>
                                 <td className="px-3 py-2 text-right">{getLiter(a).toFixed(1)}L</td>
                                 <td className="px-3 py-2 text-right">{a.abv?`${a.abv}%`:'—'}</td>
-                                <td className="px-3 py-2 text-right font-semibold text-amber-700">{fmt(getAccijns(a))}</td>
+                                <td className="px-3 py-2 text-right font-semibold t-accent-text">{fmt(getAccijns(a))}</td>
                               </tr>
                             ))}
                           </tbody>
                           <tfoot>
                             <tr className="border-t-2 border-gray-200 bg-gray-50">
-                              <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('excise_month_total')}</td>
+                              <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500">{t('excise_month_total')}</td>
                               <td className="px-3 py-2.5 text-right font-bold text-gray-700">{totLiter.toFixed(1)}L</td>
                               <td></td>
-                              <td className="px-3 py-2.5 text-right font-bold text-lg text-amber-700">{fmt(monthTotal)}</td>
+                              <td className="px-3 py-2.5 text-right font-bold text-lg t-accent-text">{fmt(monthTotal)}</td>
                             </tr>
                           </tfoot>
                         </table>

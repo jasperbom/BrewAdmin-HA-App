@@ -20,7 +20,22 @@ export const lsGet2 = lsGet
 
 let _lang: string = lsGet('lang', 'nl') || 'nl'
 export const getLang = () => _lang
-export const setLang = (l: string) => { _lang = l; lsSet('lang', l) }
-export const t = (key: string): string =>
-  BREW_TRANS[_lang]?.[key] ?? BREW_TRANS['nl']?.[key] ?? key
+export const setLang = (l: string) => {
+  _lang = l
+  lsSet('lang', l)
+  // Zonder dit blijft het document 'nl' claimen in elke taal: schermlezers
+  // spreken de tekst dan met de verkeerde fonetiek uit.
+  try { document.documentElement.lang = l } catch { /* geen DOM (tests) */ }
+}
+/**
+ * Vertaalt `key`. Ontbreekt de sleutel in de actieve taal én in het Nederlands,
+ * dan wint `fallback` — en pas als die er niet is de sleutelnaam zelf.
+ *
+ * Die `fallback` is er omdat een sleutel vaak uit data wordt opgebouwd
+ * (`orders_status_${b.status}`). Bestond de sleutel niet, dan kwam de rauwe
+ * `orders_status_iets` in beeld: `t(...) || waarde` ving dat niet af, want een
+ * sleutelnaam is een niet-lege string en dus truthy.
+ */
+export const t = (key: string, fallback?: string): string =>
+  BREW_TRANS[_lang]?.[key] ?? BREW_TRANS['nl']?.[key] ?? fallback ?? key
 export const LANGUAGES = ['nl', 'en', 'de', 'fr', 'es'] as const

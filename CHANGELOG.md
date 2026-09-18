@@ -4,6 +4,76 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.45] — 2026-09-17
+
+### UI-opschoning: rustiger, moderner, minder "gegenereerd"
+
+Een beoordeling van de draaiende app (drie werkruimtes, twee thema's, desktop
+en mobiel) wees drie patronen aan die het geheel er machinaal uit lieten zien.
+Die zijn nu bij de bron aangepakt, in de gedeelde componenten, zodat elk scherm
+meeprofiteert.
+
+**Sectiekoppen zijn standaard rustig.** `SectionHeader` gebruikte op élke sectie
+dezelfde verzadigde themabalk; de productpagina telde er vijf onder elkaar,
+waarvan drie boven een lege sectie. De geverfde balk (`solid`) is nu de
+uitzondering voor het onderwerp van de pagina zelf. De gradient-variant
+(`.t-hdr`) is vervallen. Het `▶`-tekstpijltje is een echte chevron geworden.
+
+**Rij-acties zitten achter een `⋯`-menu.** Nieuw: `components/ui/RowActions.tsx`.
+Elke factuurregel in de boekhouding had zes knoppen (PDF, XML, Mail,
+herinnering, herinnering-mailen, Betaald); met de vervallen-lijst erbij stonden
+er ruim 35 tegelijk in beeld en waren de bedragen niet meer te lezen. Nu is één
+actie zichtbaar en zit de rest in het menu.
+
+**Geen uppercase micro-labels meer.** 268 labels stonden in `uppercase
+tracking-wide`. Dat is nu zinsvorm; klein-kapitaal blijft voorbehouden aan
+badges. `StatCard`, `Inp` en `Sel` kregen een leesbaarder labelschaal.
+
+### Verder opgeruimd
+
+- **Dubbele weergave weg in de boekhouding.** De vervallen facturen stonden als
+  volledige lijst mét acties bóven dezelfde tabel; nu is het één signaalbalk met
+  een filterknop. De drie totaalkaarten boven de tabel herhaalden letterlijk de
+  tabelvoet en zijn vervallen.
+- **Kleur betekent weer iets.** 107 hardcoded `amber`-klassen weg: een
+  waarschuwingspaneel werd `orange` (semantiek), themakleur werd `t-accent-text`
+  / `t-border` (nieuwe klassen in `index.css`), en een rij-in-bewerking of een
+  sleepdoel werd `t-panel` — dat is een selectie, geen waarschuwing. BTW-bedragen
+  in de tabellen zijn niet langer blauw. De BTW-periodes *Openstaand* en
+  *Ingediend* hadden bijna dezelfde tint en zijn weer te onderscheiden
+  (oranje = actie nodig, blauw = wacht op betaling).
+- **Lege staten met een knop in plaats van uitleg.** "Klik op Bewerken om ze bij
+  de productgegevens toe te voegen" is een lege staat met de knop er direct in
+  geworden. Een productstatrij van vijf nullen en een lege receptensectie worden
+  niet meer getoond.
+- **Ingrediënten opent het eerste ingrediënt** op een breed scherm, net als de
+  productenpagina — de rechterhelft stond leeg.
+- **Rapporten-hub compacter:** de kaart is zelf de knop (de losse
+  "Bekijken"-knop verdween), de intro-alinea is weg en de tab in Boekhouding
+  heet nu *Financieel*, zodat hij niet meer dezelfde naam draagt als het
+  navigatie-item één niveau hoger.
+- **Mobiele navigatie past.** De werkruimtekiezer scrollde half uit beeld;
+  rij 1 scrollt niet meer, knoppen en logo zijn op smal scherm compacter.
+
+### Opgelost
+
+- `t()` gaf bij een missende sleutel de sleutelnaam terug — truthy, dus
+  `t(\`orders_status_${s}\`) || s` viel nooit terug en zette een rauwe
+  `orders_status_…` in beeld. `t()` heeft nu een tweede argument
+  (`t(key, fallback)`); de tien dode fallbacks zijn omgezet.
+- `document.documentElement.lang` bleef altijd `nl`, ook in de vier andere
+  talen. `setLang` werkt hem nu bij.
+- ~28 hardcoded Nederlandse teksten gingen niet door `t()` en bleven dus
+  Nederlands in EN/DE/FR/ES — onder meer de afrondbevestiging van een
+  bestelling, de accijnsimpact bij inventarisatie en de hele
+  vernietigingsprocedure (die de bestaande `verlies_vern_*`-sleutels naast zich
+  neer legde). 24 nieuwe sleutels, in alle vijf de talen.
+- Een verdwaalde NUL-byte in `ReceptKostprijs.tsx` stond in de stringvergelijking
+  van het recept-id (`|| '\0'` in plaats van `|| ''`) en maakte het bestand
+  onleesbaar voor ripgrep.
+
+---
+
 ## [1.12.44] — 2026-09-17
 
 ### Brouwzaal, bierkleur en beslissingen — het ontwerpvoorstel doorgevoerd

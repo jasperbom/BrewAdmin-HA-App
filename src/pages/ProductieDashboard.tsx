@@ -210,7 +210,7 @@ function ProductieDashboard({
   // Eén grote meetwaarde op de kaart: leesbaar op een meter afstand.
   const Metriek = ({ label, waarde, sub, cls = '' }: { label: string, waarde: string | null, sub?: string | null, cls?: string }) => (
     <div className="min-w-0">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-[11px] font-semibold text-gray-500">{label}</div>
       <div className={`text-2xl font-bold tabular-nums leading-tight ${waarde ? 'text-gray-900' : 'text-gray-300'} ${cls}`}>{waarde ?? '—'}</div>
       {sub && <div className="text-[11px] text-gray-500 truncate">{sub}</div>}
     </div>
@@ -235,7 +235,7 @@ function ProductieDashboard({
       {/* ── Actieve tanks: de tankkaart is de app ─────────────────────────── */}
       {actieveTanks.length > 0 && (
         <div className="mb-6">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">{t('dash_actieve_tanks')}</div>
+          <div className="text-sm font-semibold text-gray-800 mb-2 px-1">{t('dash_actieve_tanks')}</div>
           <div className="flex flex-wrap gap-4">
             {actieveTanks.map(({ tank, batch }: any) => {
               const inTank = batch?.liter_vergist ? tankRestVolume(batch, av, verliesRegistraties) : 0
@@ -368,7 +368,7 @@ function ProductieDashboard({
       {/* ── Vrije tanks + reinigingsstatus ───────────────────────────────── */}
       {vrijeTanks.length > 0 && (
         <div className="mb-6">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">{t('dash_vrije_tanks')}</div>
+          <div className="text-sm font-semibold text-gray-800 mb-2 px-1">{t('dash_vrije_tanks')}</div>
           <div className="flex flex-wrap gap-4">
             {vrijeTanks.map(({ tank, status, sinds, reserveringen }: any) => {
               const laatste = laatsteTankReiniging(tank.id, tankLog)

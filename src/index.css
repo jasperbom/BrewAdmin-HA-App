@@ -60,8 +60,10 @@
 .t-sel { background-color: var(--t-light) !important; border-left-color: var(--t-accent) !important; }
 .t-hover:hover { background-color: var(--t-light); }
 
-/* Headers */
-.t-hdr { background: linear-gradient(to right, var(--t-btn-a), var(--t-btn-h)); }
+/* Headers — alleen nog de effen variant: de gradient-balk werd op élke sectie
+   gebruikt, waardoor een pagina een zebrapad van gekleurde banden werd. Een
+   sectie krijgt nu standaard een rustige kop (zie SectionHeader); deze balk is
+   er voor het onderwerp van de pagina zelf. */
 .t-hdr-solid { background-color: var(--t-btn-a); }
 
 /* Nav, panels, cards */
@@ -89,6 +91,11 @@
 /* Icon hover */
 .t-icon-hover:hover { color: var(--t-accent); transition: color 150ms ease; }
 
+/* Themakleur als tekstkleur. Vervangt de hardcoded `text-amber-*`: die zag er
+   in het amberthema goed uit, maar bleef amber in de vijf andere thema's. */
+.t-accent-text { color: var(--t-accent); }
+.t-accent-text-h:hover { color: var(--t-accent); }
+
 /* WooCommerce knoppen */
 .wc-btn {
   background-color: #7f54b3;
@@ -97,3 +104,8 @@
 }
 .wc-btn:hover:not(:disabled) { background-color: #6d4499; }
 .wc-btn:active:not(:disabled) { background-color: #5c3a82; }
+
+/* Navigatiebalk die op een smal scherm horizontaal schuift: de scrollbalk zelf
+   voegt daar niets toe (de half zichtbare volgende knop is de aanwijzing). */
+.nav-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+.nav-scroll::-webkit-scrollbar { display: none; }

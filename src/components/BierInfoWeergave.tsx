@@ -111,7 +111,7 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
               <div className={`font-bold leading-none ${compact ? 'text-base' : 'text-xl'}`} style={{color: 'var(--t-accent)'}}>
                 {String(bron[f.veld])}
               </div>
-              <div className="text-[11px] text-gray-500 uppercase tracking-wide mt-0.5">{t(f.label)}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{t(f.label)}</div>
             </div>
           ))}
           {gevuld(score) && (
@@ -120,7 +120,7 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
                 {String(score)}
                 <span className="text-xs text-gray-400 font-normal"> / 5</span>
               </div>
-              <div className="text-[11px] text-gray-500 uppercase tracking-wide mt-0.5">
+              <div className="text-[11px] text-gray-500 mt-0.5">
                 {untappdUrl ? (
                   <a href={String(untappdUrl)} target="_blank" rel="noreferrer" className="underline inline-block py-1">Untappd</a>
                 ) : 'Untappd'}
@@ -166,7 +166,7 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {kaarten.map(k => (
             <div key={k.sleutel} className="rounded-lg border border-gray-200 p-3">
-              <div className="text-[10px] uppercase tracking-wide mb-1" style={{color: 'var(--t-accent)'}}>{k.kop}</div>
+              <div className="text-[10px] mb-1" style={{color: 'var(--t-accent)'}}>{k.kop}</div>
               <div className="text-sm text-gray-700 whitespace-pre-wrap">{k.tekst}</div>
             </div>
           ))}

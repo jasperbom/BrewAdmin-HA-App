@@ -63,7 +63,7 @@ const MetingLog: React.FC<{
             <thead className="bg-gray-50 text-gray-500 border-b">
               <tr>
                 <th className="px-2 py-1.5 text-left font-medium">{t('batch_gist_date_time')}</th>
-                <th className="px-2 py-1.5 text-right font-medium text-amber-600">SG</th>
+                <th className="px-2 py-1.5 text-right font-medium t-accent-text">SG</th>
                 <th className="px-2 py-1.5 text-right font-medium text-blue-600">pH</th>
                 <th className="px-2 py-1.5 text-right font-medium text-red-500">°C</th>
                 <th className="px-2 py-1.5 text-left font-medium text-gray-400">{t('batch_gist_remark')}</th>
@@ -79,7 +79,7 @@ const MetingLog: React.FC<{
                     {/* De FG-meting volgt het FG-veld en is dus geen losse invoer */}
                     {m.bron === 'fg' && <span className="ml-1 text-gray-400 italic">FG</span>}
                   </td>
-                  <td className="px-2 py-1.5 text-right font-mono text-amber-700">{getal(m.sg, 3)}</td>
+                  <td className="px-2 py-1.5 text-right font-mono t-accent-text">{getal(m.sg, 3)}</td>
                   <td className="px-2 py-1.5 text-right font-mono text-blue-700">{getal(m.ph, 1)}</td>
                   <td className="px-2 py-1.5 text-right font-mono text-red-500">{getal(m.temp, 1, '°')}</td>
                   <td className="px-2 py-1.5 text-gray-400 italic">{m.opmerking || ''}</td>

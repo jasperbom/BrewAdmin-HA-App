@@ -92,7 +92,7 @@ const PhCorrectieTool: React.FC = () => {
           </div>
         ) : res ? (
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('tool_ph_resultaat')}</div>
+            <div className="text-xs font-semibold text-gray-500 mb-2">{t('tool_ph_resultaat')}</div>
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <span className="text-3xl font-bold" style={{ color: 'var(--t-accent)' }}>
                 {res.ml.toFixed(res.ml < 10 ? 2 : 1)}
@@ -437,7 +437,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
                   </div>
 
                   <div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('tool_water_waarden_titel')}</div>
+                    <div className="text-xs font-semibold text-gray-500 mb-2">{t('tool_water_waarden_titel')}</div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {WATER_ION_KEYS.map(k => (
                         <Inp key={k} label={WATER_ION_LABELS[k]} value={actief[k] ?? ''} onChange={v => updActief({[k]: numVeld(v)} as any)} type="number" step="0.1" />
@@ -448,7 +448,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
                   </div>
 
                   <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('tool_water_afgeleid')}</div>
+                    <div className="text-xs font-semibold text-gray-500 mb-2">{t('tool_water_afgeleid')}</div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                       <div>
                         <div className="text-gray-500">{t('water_alkaliniteit')}</div>
@@ -504,7 +504,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
               {eigenDoel && (
                 <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('tool_water_doel_bewerken')}</div>
+                    <div className="text-xs font-semibold text-gray-500">{t('tool_water_doel_bewerken')}</div>
                     <Btn v="danger" s="sm" onClick={verwijderEigenDoel}>{t('btn_delete')}</Btn>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -518,7 +518,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
 
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('tool_water_doses')}</div>
+                  <div className="text-xs font-semibold text-gray-500">{t('tool_water_doses')}</div>
                   <div className="flex items-center gap-2">
                     <Btn s="sm" onClick={doeSuggestie} disabled={!(vol > 0) || !doel}>{t('tool_water_stel_voor')}</Btn>
                     <Btn v="ghost" s="sm" onClick={wisDoses}>{t('tool_water_wis')}</Btn>
@@ -536,7 +536,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500">
                         <th className="px-3 py-2">{t('water_col_ion')}</th>
                         <th className="px-3 py-2 text-right">{t('water_col_bron_water')}</th>
                         <th className="px-3 py-2 text-right">{t('water_col_aangepast')}</th>

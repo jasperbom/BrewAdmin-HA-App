@@ -212,20 +212,20 @@ const VernietigingSection: React.FC<{
           {/* Vernietigingsflow stap 1 (Aangevraagd) — altijd getoond: bron = afgekeurd */}
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">{t('verlies_vern_stap1_titel')}</p>
+              <p className="text-xs font-semibold text-orange-700">{t('verlies_vern_stap1_titel')}</p>
               <span className={`text-[10px] px-2 py-0.5 rounded ${VERN_STATUS_COLOR.aangevraagd}`}>{t('verlies_vern_status_aangevraagd')}</span>
             </div>
             <p className="text-xs text-orange-700">{t('verlies_vern_uitleg')}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verlies_vern_datum_indiening')} <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_datum_indiening')} <span className="text-red-400">*</span></label>
                 <input type="date" value={verliesForm.verklaring_ingediend_op}
                   onChange={e => { setVerliesForm((f: any) => ({...f, verklaring_ingediend_op: e.target.value})); setVerliesError('') }}
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verlies_vern_verklaring_pdf')} <span className="text-red-400">*</span></label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_verklaring_pdf')} <span className="text-red-400">*</span></label>
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
                   <span>📎</span>
@@ -285,7 +285,7 @@ const VernietigingSection: React.FC<{
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{bronLbl ? t(bronLbl) : r.bron}</span>
                             {vStatus && (
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide ${VERN_STATUS_COLOR[vStatus]}`}>{t(VERN_STATUS_LABEL_KEY[vStatus])}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] tracking-wide ${VERN_STATUS_COLOR[vStatus]}`}>{t(VERN_STATUS_LABEL_KEY[vStatus])}</span>
                             )}
                             {kanVoort && (
                               <button onClick={() => openVernReview(r)}
@@ -340,16 +340,16 @@ const VernietigingSection: React.FC<{
 
               {naarToegestaan && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
-                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">{t('verlies_vern_stap2_titel')}</p>
+                  <p className="text-xs font-semibold text-blue-700">{t('verlies_vern_stap2_titel')}</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verlies_vern_datum_toestemming')} <span className="text-red-400">*</span></label>
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_datum_toestemming')} <span className="text-red-400">*</span></label>
                       <input type="date" value={vernReviewForm.toestemming_ontvangen_op}
                         onChange={e => { setVernReviewForm((f: any) => ({...f, toestemming_ontvangen_op: e.target.value})); setVernReviewError('') }}
                         className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verlies_vern_kenmerk_optioneel')}</label>
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_kenmerk_optioneel')}</label>
                       <input type="text" value={vernReviewForm.kenmerk_douane}
                         onChange={e => setVernReviewForm((f: any) => ({...f, kenmerk_douane: e.target.value}))}
                         placeholder={t('verlies_vern_kenmerk_ph')}
@@ -361,15 +361,15 @@ const VernietigingSection: React.FC<{
 
               {naarUitgevoerd && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
-                  <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">{t('verlies_vern_stap3_titel')}</p>
+                  <p className="text-xs font-semibold text-green-700">{t('verlies_vern_stap3_titel')}</p>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verlies_vern_datum_uitvoering')} <span className="text-red-400">*</span></label>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_datum_uitvoering')} <span className="text-red-400">*</span></label>
                     <input type="date" value={vernReviewForm.uitgevoerd_op}
                       onChange={e => { setVernReviewForm((f: any) => ({...f, uitgevoerd_op: e.target.value})); setVernReviewError('') }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('verlies_vern_bewijs')} <span className="text-red-400">*</span></label>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_bewijs')} <span className="text-red-400">*</span></label>
                     <div className="flex items-center gap-2 flex-wrap">
                       <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
                         <span>📎</span>

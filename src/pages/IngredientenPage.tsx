@@ -162,6 +162,24 @@ const IngredientenPage: React.FC<Props> = ({
   const archiefLots = (iid: number) => lots.filter((l: any) => l.ingredient_id === iid && (!l.beschikbaar || Number(l.hoeveelheid || 0) === 0))
   const totalQty = (iid: number) => activeLots(iid).reduce((s: number, l: any) => s + Number(l.hoeveelheid || 0), 0)
 
+  // Op een breed scherm meteen het eerste ingrediënt openen, zodat de rechter
+  // helft van de pagina niet leeg staat — hetzelfde gedrag als de
+  // productenpagina, die dezelfde lijst-plus-detail-indeling heeft. Mobiel
+  // houdt de lijst-eerst-flow. Eenmalig per mount.
+  const autoSelGedaan = useRef(false)
+  React.useEffect(() => {
+    if (autoSelGedaan.current) return
+    if (typeof window === 'undefined' || window.innerWidth < 768) return
+    if (sel !== null || tab !== 'ingredienten') return
+    const kandidaten = (ing || [])
+      .filter((i: any) => !alleenOpVoorraad || totalQty(i.id) > 0)
+      .sort((a: any, b: any) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'))
+    if (kandidaten.length === 0) return
+    autoSelGedaan.current = true
+    setSel(kandidaten[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ing, tab])
+
   const runBfIngSync = async () => {
     if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
       setBfMsg('⚠ ' + t('settings_brewfather_section')); return
@@ -541,7 +559,7 @@ const IngredientenPage: React.FC<Props> = ({
         </div>
         {tab === 'ingredienten' && (
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {bfMsg && <span className={`text-xs ${bfMsg.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>{bfMsg}</span>}
+            {bfMsg && <span className={`text-xs ${bfMsg.startsWith('✓') ? 'text-green-600' : 'text-orange-600'}`}>{bfMsg}</span>}
             {bfCreds?.enabled && <Btn v="secondary" onClick={runBfIngSync} disabled={bfSyncing}>{bfSyncing ? t('ing_bf_syncing') : t('ing_bf_sync')}</Btn>}
             <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>
           </div>
@@ -633,7 +651,7 @@ const IngredientenPage: React.FC<Props> = ({
             </div>
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50/80 text-xs text-gray-500 uppercase tracking-widest border-b border-gray-100">
+                <thead className="bg-gray-50/80 text-xs text-gray-500 tracking-widest border-b border-gray-100">
                   <tr><th className="px-3 py-1.5 text-left font-normal">{t('lbl_name')}</th><th className="px-3 py-1.5 text-right font-normal whitespace-nowrap">{t('lbl_stock')}</th></tr>
                 </thead>
                 {ing.length === 0
@@ -642,7 +660,7 @@ const IngredientenPage: React.FC<Props> = ({
                     const zoek = ingZoek.trim().toLowerCase()
                     let filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek) || (i.fabrikant || '').toLowerCase().includes(zoek)) : ing
                     if (alleenOpVoorraad) filtered = filtered.filter((i: any) => totalQty(i.id) > 0)
-                    if (filtered.length === 0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">Geen resultaten voor "{ingZoek}"</td></tr></tbody>
+                    if (filtered.length === 0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_geen_zoekresultaten')}</td></tr></tbody>
                     const allTypes = [...ingTypes, ...filtered.map((i: any) => i.type || 'Overig').filter((tp: string) => !ingTypes.includes(tp)).filter((tp: string, i: number, a: string[]) => a.indexOf(tp) === i)]
                     return allTypes.map((ingTyp: string) => {
                       const groep = [...filtered.filter((i: any) => (i.type || 'Overig') === ingTyp)].sort((a: any, b: any) => a.naam.localeCompare(b.naam, 'nl'))
@@ -652,7 +670,7 @@ const IngredientenPage: React.FC<Props> = ({
                       return (
                         <tbody key={ingTyp} className="divide-y divide-gray-100">
                           <tr className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100" onClick={() => setGroepDicht((p: any) => ({ ...p, [ingTyp]: !p[ingTyp] }))}>
-                            <td colSpan={2} className="px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            <td colSpan={2} className="px-3 py-1.5 text-xs font-medium text-gray-500">
                               <div className="flex items-center">
                                 <span className="mr-1.5 text-gray-400">{dicht ? '▶' : '▼'}</span>{typeLabel}
                                 <span className="ml-1.5 font-normal text-gray-400">({groep.length})</span>
@@ -728,7 +746,7 @@ const IngredientenPage: React.FC<Props> = ({
                   })}
                   {archiefLots(sel).length > 0 && (
                     <tr><td colSpan={cols} className="px-3 py-1">
-                      <button className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 py-1" onClick={() => setArchiefOpen((p: any) => ({ ...p, [sel]: !p[sel] }))}>
+                      <button className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 py-1" onClick={() => setArchiefOpen((p: any) => ({ ...p, [sel]: !p[sel] }))}>
                         <span className="text-gray-400">{archiefOpen[sel] ? '▼' : '▶'}</span>
                         <span>{t('ing_archived_lots').replace('{n}', String(archiefLots(sel).length))}</span>
                       </button>
@@ -757,7 +775,7 @@ const IngredientenPage: React.FC<Props> = ({
                 <button type="button"
                   onClick={() => setBfPanelOpen((o: boolean) => !o)}
                   className="w-full px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between hover:bg-gray-100 transition-colors">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-gray-500 flex items-center gap-1.5">
                     <span className="text-gray-400">{bfPanelOpen ? '▼' : '▶'}</span>
                     Brewfather
                   </span>
@@ -773,7 +791,7 @@ const IngredientenPage: React.FC<Props> = ({
                       const isLong = typeof v === 'string' && (v.length > 60 || /^note/i.test(k))
                       return (
                         <div key={k} className="flex flex-col min-w-0">
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
+                          <span className="text-[10px] text-gray-400">{label}</span>
                           {isLong ? (
                             <button type="button"
                               onClick={() => setShowNote({ label, text: display })}
@@ -807,7 +825,7 @@ const IngredientenPage: React.FC<Props> = ({
                 info={<span onClick={(e: any) => e.stopPropagation()}><Btn s="sm" v="header" onClick={() => { setVtForm(emptyVT); setVtOnderdeel({ onderdeel_id: '', aantal: '1' }); setShowVEdit(null); setShowVTAdd(true) }}>{t('verpakking_add_btn')}</Btn></span>}
               />
               {!vtIngeklapt && <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <thead className="bg-gray-50 text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('lbl_packaging')}</th>
                     <th className="px-3 py-2 text-right">{t('lbl_content')}</th>
@@ -834,7 +852,7 @@ const IngredientenPage: React.FC<Props> = ({
                           {stock === 0 && <span className="ml-1 text-xs text-red-400 font-normal">{t('packaging_empty')}</span>}
                           {stock > 0 && stock <= 5 && <span className="ml-1 text-xs text-yellow-500 font-normal">{t('packaging_low')}</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-sm">{totk > 0 ? <span className="text-amber-700">{fmt(totk)}</span> : <span className="text-gray-300">—</span>}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-sm">{totk > 0 ? <span className="t-accent-text">{fmt(totk)}</span> : <span className="text-gray-300">—</span>}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1 justify-end">
                             <Btn s="sm" v="ghost" onClick={() => openVTEdit(v)}>✏️</Btn>
@@ -858,7 +876,7 @@ const IngredientenPage: React.FC<Props> = ({
                 info={<span onClick={(e: any) => e.stopPropagation()}><Btn s="sm" v="header" onClick={() => { setOdAddForm(emptyOD); setOdQty(''); setOdPrijs(''); setOdTotaalprijs(''); setShowODAdd(true) }}>{t('onderdeel_add_btn')}</Btn></span>}
               />
               {!odIngeklapt && <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <thead className="bg-gray-50 text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2 text-left">{t('lbl_onderdeel')}</th>
                     <th className="px-3 py-2 text-left">{t('onderdeel_type')}</th>
@@ -900,7 +918,7 @@ const IngredientenPage: React.FC<Props> = ({
         <div>
           <div className="bg-white rounded-xl shadow-card overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+              <thead className="bg-gray-50 text-xs text-gray-500">
                 <tr>
                   <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
                   <th className="px-3 py-2 text-left">{t('log_ingredient')}</th>
@@ -976,7 +994,7 @@ const IngredientenPage: React.FC<Props> = ({
                 <Inp label={t('lbl_invoice')} value={le('factuur_nummer')} onChange={(v: string) => setLe('factuur_nummer', v)} placeholder="—" />
                 <Inp label={t('ing_buy_date')} type="date" value={le('aankoop_datum')} onChange={(v: string) => setLe('aankoop_datum', v)} />
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_quantity')}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_quantity')}</label>
                   <div className="flex gap-2">
                     <input type="number" className="flex-1 border rounded px-2 py-1.5 text-sm" value={le('hoeveelheid')} onChange={e => setLe('hoeveelheid', e.target.value)} placeholder="0" />
                     <select className="border rounded px-2 py-1.5 text-sm" value={le('eenheid')} onChange={e => setLe('eenheid', e.target.value)}>
@@ -992,7 +1010,7 @@ const IngredientenPage: React.FC<Props> = ({
                 <div className="border-t pt-3">
                   <button type="button"
                     onClick={() => setLotBrewOpen((o: boolean) => !o)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 hover:text-gray-700">
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-2 hover:text-gray-700">
                     <span className="text-gray-400">{lotBrewOpen ? '▼' : '▶'}</span>
                     <span>{t('brew_props_section')}</span>
                   </button>
@@ -1063,7 +1081,7 @@ const IngredientenPage: React.FC<Props> = ({
                               const badgeCls = info.source === 'lot' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
                               return (
                                 <div key={k} className="flex flex-col min-w-0">
-                                  <span className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</span>
+                                  <span className="text-[10px] text-gray-400">{label}</span>
                                   <span className="text-sm text-gray-700 flex items-center gap-1.5">
                                     {isLong ? (
                                       <button type="button"
@@ -1074,7 +1092,7 @@ const IngredientenPage: React.FC<Props> = ({
                                     ) : (
                                       <span className="truncate">{display}{unit ? ` ${unit}` : ''}</span>
                                     )}
-                                    <span className={`text-[9px] px-1 py-0.5 rounded ${badgeCls} uppercase tracking-wide flex-shrink-0`}>{badge}</span>
+                                    <span className={`text-[9px] px-1 py-0.5 rounded ${badgeCls} tracking-wide flex-shrink-0`}>{badge}</span>
                                   </span>
                                 </div>
                               )
@@ -1087,12 +1105,12 @@ const IngredientenPage: React.FC<Props> = ({
                 </div>
               )}
               <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase mb-1.5">{t('ing_used_in_batches')}</div>
+                <div className="text-xs font-semibold text-gray-500 mb-1.5">{t('ing_used_in_batches')}</div>
                 {gebruiktIn.length === 0 ? <p className="text-gray-400 text-xs italic">{t('ing_not_used')}</p> : <div className="space-y-1">{gebruiktIn.map((u: any, i: number) => <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5"><span className="font-medium">{u.batch?.naam || t('lbl_onbekend')}{u.batch?.batch_nummer ? ` #${u.batch.batch_nummer}` : ''}</span><span className="font-mono text-gray-600 text-xs">{u.hoeveelheid} {u.eenheid}</span></div>)}</div>}
               </div>
               {!isArchief && (
                 <div className="border-t pt-3">
-                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">{t('ing_correction')}</div>
+                  <div className="text-xs font-semibold text-gray-500 mb-2">{t('ing_correction')}</div>
                   <div className="flex gap-2 items-end flex-wrap">
                     <div className="flex rounded overflow-hidden border text-sm">
                       <button className={`px-3 py-1.5 font-bold ${lotCorr.richting === '+' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'}`} onClick={() => setLotCorr(p => ({ ...p, richting: '+' }))}>+</button>
@@ -1199,7 +1217,7 @@ const IngredientenPage: React.FC<Props> = ({
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Bestaand onderdeel</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('lbl_bestaand_onderdeel')}</label>
                 <select className="w-full border rounded px-2 py-1.5 text-sm" value={odAddForm.od_id} onChange={e => { const od = onderdelen.find((o: any) => o.id === Number(e.target.value)); od ? setOdAddForm((f: any) => ({ ...f, od_id: String(od.id), naam: od.naam, type: od.type || '' })) : setOdAddForm((f: any) => ({ ...f, od_id: '', naam: '', type: '' })) }}>
                   <option value="">— {t('lbl_or_new_ingredient')} —</option>
                   {[...onderdelen].sort((a: any, b: any) => a.naam.localeCompare(b.naam, 'nl')).map((o: any) => <option key={o.id} value={String(o.id)}>{o.naam}</option>)}
@@ -1237,7 +1255,7 @@ const IngredientenPage: React.FC<Props> = ({
               <Inp label={t('statiegeld_bedrag')} type="number" value={vtForm.statiegeld_bedrag} onChange={(v: string) => setVtForm(f => ({ ...f, statiegeld_bedrag: v }))} placeholder="0.00" />
             </div>
             <div className="border-t pt-3">
-              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">{t('packaging_components')}</p>
+              <p className="text-xs font-medium text-gray-500 mb-2">{t('packaging_components')}</p>
               {(Array.isArray(vtForm.onderdelen) ? vtForm.onderdelen : []).length > 0 && (
                 <div className="mb-3 space-y-1">
                   {(Array.isArray(vtForm.onderdelen) ? vtForm.onderdelen : []).map((o: any, i: number) => {

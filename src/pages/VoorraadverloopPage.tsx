@@ -606,11 +606,11 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
             <table className="w-full text-sm">
               <thead className="text-xs text-gray-500 bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left">Ingredi&euml;nt</th>
+                  <th className="px-3 py-2 text-left">{t('vv_ingredient')}</th>
                   <th className="px-3 py-2 text-left">Eenheid</th>
                   <th className="px-3 py-2 text-right">{t('gpa_beginvoorraad')}</th>
                   <th className="px-3 py-2 text-right">{t('gpa_inslagen')}</th>
-                  <th className="px-3 py-2 text-right">Verbruik productie</th>
+                  <th className="px-3 py-2 text-right">{t('vv_verbruik_productie')}</th>
                   <th className="px-3 py-2 text-right">{t('gpa_correcties')}</th>
                   <th className="px-3 py-2 text-right">{t('gpa_eindvoorraad')}</th>
                 </tr>
@@ -690,7 +690,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
                     <td className="px-3 py-2 text-right border-l border-gray-100">{r.agpBegin}</td>
                     <td className="px-3 py-2 text-right">{r.agpUitgeslagen || '—'}</td>
                     <td className="px-3 py-2 text-right font-semibold" style={{color: 'var(--t-accent)'}}>{r.agpEind}</td>
-                    <td className="px-3 py-2 text-right text-amber-700 border-l border-gray-100" title={r.voorcalcPerEenheid > 0 ? `€ ${r.voorcalcPerEenheid.toFixed(4)} ${t('gpa_per_eenheid')}` : ''}>
+                    <td className="px-3 py-2 text-right t-accent-text border-l border-gray-100" title={r.voorcalcPerEenheid > 0 ? `€ ${r.voorcalcPerEenheid.toFixed(4)} ${t('gpa_per_eenheid')}` : ''}>
                       {r.accijnsLatentEind > 0 ? `€ ${fmtN(r.accijnsLatentEind)}` : '—'}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-red-700">
@@ -713,7 +713,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
                   <td className="px-3 py-2.5 text-right font-bold text-gray-700 border-l border-gray-200">{gereedTotals.agpBegin}</td>
                   <td className="px-3 py-2.5 text-right font-bold">{gereedTotals.agpUitgeslagen || '—'}</td>
                   <td className="px-3 py-2.5 text-right font-bold" style={{color: 'var(--t-accent)'}}>{gereedTotals.agpEind}</td>
-                  <td className="px-3 py-2.5 text-right font-bold text-amber-700 border-l border-gray-200">€ {fmtN(gereedTotals.accijnsLatentEind)}</td>
+                  <td className="px-3 py-2.5 text-right font-bold t-accent-text border-l border-gray-200">€ {fmtN(gereedTotals.accijnsLatentEind)}</td>
                   <td className="px-3 py-2.5 text-right font-bold text-red-700">€ {fmtN(gereedTotals.accijnsTeBetalen)}</td>
                 </tr>
               </tfoot>

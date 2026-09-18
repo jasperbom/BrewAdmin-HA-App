@@ -393,7 +393,7 @@ function PlanningPage({
               <div style={{ minWidth: `${Math.max(720, totaalDagen * 14)}px` }}>
                 {/* Tijd-as header */}
                 <div className="flex bg-gray-50 border-b border-gray-200">
-                  <div className="shrink-0 w-32 px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-r border-gray-200">
+                  <div className="shrink-0 w-32 px-3 py-2 text-xs font-semibold text-gray-500 border-r border-gray-200">
                     {t('lbl_tank')}
                   </div>
                   <div className="relative flex-1 h-8">
@@ -418,7 +418,7 @@ function PlanningPage({
                   if (row.isUnassigned && row.bars.length === 0) return null
                   const isDropTarget = dragInfo != null && dropPreview?.tankId === row.tankId
                   return (
-                    <div key={row.tankId} className={`flex border-b border-gray-100 last:border-b-0 ${isDropTarget ? 'bg-amber-50/60' : 'hover:bg-gray-50/40'} ${row.isUnassigned ? 'bg-gray-50/60' : ''}`}>
+                    <div key={row.tankId} className={`flex border-b border-gray-100 last:border-b-0 ${isDropTarget ? 't-panel' : 'hover:bg-gray-50/40'} ${row.isUnassigned ? 'bg-gray-50/60' : ''}`}>
                       <div className={`shrink-0 w-32 px-3 py-2 text-sm border-r border-gray-200 flex items-center ${row.isUnassigned ? 'text-gray-500 italic' : 'text-gray-700'}`}>
                         <span className="truncate">{row.label}</span>
                       </div>
@@ -448,7 +448,7 @@ function PlanningPage({
                           return (
                             <div className="absolute top-0 h-full pointer-events-none"
                               style={{ left: `${off}%`, width: '2px', background: '#d97706' }}>
-                              <span className="absolute -top-0.5 left-1 text-[10px] font-semibold text-amber-700 whitespace-nowrap bg-white/90 px-1 rounded shadow-sm">
+                              <span className="absolute -top-0.5 left-1 text-[10px] font-semibold t-accent-text whitespace-nowrap bg-white/90 px-1 rounded shadow-sm">
                                 {fmtD(dropPreview.dateISO)}
                               </span>
                             </div>
@@ -534,12 +534,12 @@ function PlanningPage({
               if (rijen.length === 0) return null
               return (
                 <div key={cat}>
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <div className="text-xs font-semibold text-gray-500 mb-2">
                     {t(CATEGORIE_LABEL_KEY[cat])}
                   </div>
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <thead className="bg-gray-50 text-xs text-gray-500">
                         <tr>
                           <th className="text-left px-3 py-2">{t('lbl_name')}</th>
                           <th className="text-right px-3 py-2">{t('plan_nodig')}</th>

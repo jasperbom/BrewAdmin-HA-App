@@ -1013,7 +1013,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
           {/* Klant */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('pos_klant')}</div>
+              <div className="text-xs font-semibold text-gray-500">{t('pos_klant')}</div>
               <Btn v="ghost" s="sm" onClick={() => setShowNieuweKlant(true)}>+ {t('klanten_new')}</Btn>
             </div>
 
@@ -1046,7 +1046,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                 )}
                 {vorigeAankopen.length > 0 && (
                   <div className="mt-3">
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{t('pos_vorige_aankopen')}</div>
+                    <div className="text-xs font-semibold text-gray-500 mb-1.5">{t('pos_vorige_aankopen')}</div>
                     <div className="flex flex-wrap gap-1.5">
                       {vorigeAankopen.map(v => (
                         <button key={v.key} onClick={() => addToCart(v.item)}
@@ -1107,7 +1107,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
           {/* Producten */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex-shrink-0">{t('nav_producten')}</div>
+              <div className="text-xs font-semibold text-gray-500 flex-shrink-0">{t('nav_producten')}</div>
               <div className="basis-full sm:basis-auto sm:flex-1">
                 <SearchInput value={productZoek} onChange={setProductZoek} placeholder={t('pos_zoek_product_ph')} />
               </div>
@@ -1189,7 +1189,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
         {/* ── Rechterkolom: bon ── */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3 lg:sticky lg:top-20">
           <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('pos_bon')}</div>
+            <div className="text-xs font-semibold text-gray-500">{t('pos_bon')}</div>
             <div className="flex gap-1">
               <Btn v="ghost" s="sm" onClick={() => setShowKorting(true)} disabled={cart.length === 0}>+ {t('pos_korting')}</Btn>
               <Btn v="ghost" s="sm" onClick={() => setShowVrijeRegel(true)}>+ {t('pos_vrije_regel')}</Btn>
@@ -1295,7 +1295,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
               {' — '}{cart.reduce((s, r) => s + r.aantal, 0)}× · <span className="font-bold">{fmt(bonTotalen.bruto)}</span>
             </div>
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('pos_betaalwijze')}</div>
+              <div className="text-xs font-semibold text-gray-500 mb-2">{t('pos_betaalwijze')}</div>
               <div className="grid grid-cols-3 gap-2">
                 {([['contant', t('pos_contant')], ['pin', t('pos_pin')], ['rekening', t('pos_op_rekening')]] as Array<[Betaalwijze, string]>).map(([w, l]) => (
                   <button key={w} onClick={() => setBetaalwijze(w)}

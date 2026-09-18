@@ -34,10 +34,12 @@ type BijlageRol = 'douane_verklaring' | 'bewijs'
 type Bijlage = { naam: string; bestand: string; rol?: BijlageRol; geupload_op?: string }
 type VernietigingStatus = 'aangevraagd' | 'toegestaan' | 'uitgevoerd'
 
+// i18n-sleutels, geen kant-en-klare tekst: de labels moeten met de taalkeuze
+// meebewegen en worden pas bij het renderen door t() gehaald.
 const VERNIETIGING_STATUS_LABEL: Record<VernietigingStatus, string> = {
-  aangevraagd: 'Aangevraagd',
-  toegestaan: 'Toegestaan',
-  uitgevoerd: 'Uitgevoerd',
+  aangevraagd: 'verlies_vern_status_aangevraagd',
+  toegestaan: 'verlies_vern_status_toegestaan',
+  uitgevoerd: 'verlies_vern_status_uitgevoerd',
 }
 
 const VERNIETIGING_STATUS_COLOR: Record<VernietigingStatus, string> = {
@@ -1290,7 +1292,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           </div>
 
           <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-            <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 uppercase tracking-wide border-b">
+            <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 border-b">
               <span>{t('lbl_name')}</span><span>{t('lbl_stock')}</span>
             </div>
             {actieveProducten.length === 0 && <div className="p-6 text-center text-gray-400 text-sm">{t('lbl_geen_producten')}</div>}
@@ -1321,7 +1323,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   rounded="full"
                   open={toonGearchiveerd}
                   onToggle={() => setToonGearchiveerd(!toonGearchiveerd)}
-                  title={<span className="text-xs font-medium uppercase tracking-wide">{t('lbl_product_toon_gearchiveerd')}</span>}
+                  title={<span className="text-xs font-medium">{t('lbl_product_toon_gearchiveerd')}</span>}
                   info={gearchiveerdeProducten.length}
                 />
                 {toonGearchiveerd && gearchiveerdeProducten.map((p: any) => {
@@ -1366,46 +1368,46 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_naam')}</label>
+                  <label className="text-xs font-semibold text-gray-500">{t('lbl_product_naam')}</label>
                   <input type="text" value={form.naam||''} onChange={e => setForm((f: any) => ({...f, naam: e.target.value}))} placeholder={t('ph_product_naam')} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_stijl')}</label>
+                  <label className="text-xs font-semibold text-gray-500">{t('lbl_product_stijl')}</label>
                   <input type="text" value={form.stijl||''} onChange={e => setForm((f: any) => ({...f, stijl: e.target.value}))} placeholder={t('ph_product_stijl')} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_categorie')}</label>
+                  <label className="text-xs font-semibold text-gray-500">{t('lbl_product_categorie')}</label>
                   <input type="text" value={form.categorie||''} onChange={e => setForm((f: any) => ({...f, categorie: e.target.value}))} placeholder={t('ph_product_categorie')} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_abv')}</label>
+                    <label className="text-xs font-semibold text-gray-500">{t('lbl_product_abv')}</label>
                     <input type="number" step="0.1" value={form.abv||''} onChange={e => setForm((f: any) => ({...f, abv: e.target.value}))} placeholder="5.5" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_ebc')}</label>
+                    <label className="text-xs font-semibold text-gray-500">{t('lbl_product_ebc')}</label>
                     <input type="number" step="1" value={form.ebc||''} onChange={e => setForm((f: any) => ({...f, ebc: e.target.value}))} placeholder="12" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_ibu')}</label>
+                    <label className="text-xs font-semibold text-gray-500">{t('lbl_product_ibu')}</label>
                     <input type="number" step="1" value={form.ibu||''} onChange={e => setForm((f: any) => ({...f, ibu: e.target.value}))} placeholder="35" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_omschrijving')}</label>
+                <label className="text-xs font-semibold text-gray-500">{t('lbl_product_omschrijving')}</label>
                 <textarea value={form.omschrijving||''} onChange={e => setForm((f: any) => ({...f, omschrijving: e.target.value}))} rows={2} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_notities')}</label>
+                <label className="text-xs font-semibold text-gray-500">{t('lbl_product_notities')}</label>
                 <textarea value={form.notities||''} onChange={e => setForm((f: any) => ({...f, notities: e.target.value}))} rows={2} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
               </div>
 
               {/* Foto's */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_afbeeldingen')}</label>
+                <label className="text-xs font-semibold text-gray-500">{t('lbl_product_afbeeldingen')}</label>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {(form.afbeeldingen||[]).map((img: string, idx: number) => (
                     <div key={idx} className="relative group">
@@ -1427,7 +1429,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               {/* Recepten koppelen */}
               <div>
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('lbl_product_recepten')}</label>
+                  <label className="text-xs font-semibold text-gray-500">{t('lbl_product_recepten')}</label>
                   <Btn onClick={() => setReceptSelectOpen(!receptSelectOpen)} s="sm" v="ghost">{t('btn_koppel_recept')}</Btn>
                 </div>
                 {receptSelectOpen && beschikbareRecepten.length > 0 && (
@@ -1526,12 +1528,20 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   return w === undefined || w === null || w === '' ||
                     (Array.isArray(w) ? w.length === 0 : typeof w === 'boolean' ? !w : String(w).trim() === '');
                 }) && (
-                  <p className="mt-3 text-xs text-gray-400 italic">{t('bier_leeg_uitleg')}</p>
+                  // Lege staat met de knop erin, niet een zin die uitlegt waar
+                  // de knop staat: dan hoef je niet eerst te lezen wat je moet
+                  // zoeken.
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <p className="text-sm text-gray-500">{t('bier_leeg_titel')}</p>
+                    <Btn onClick={() => startEdit(selProduct)} s="sm" v="secondary">{t('bier_leeg_actie')}</Btn>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Statistieken */}
+            {/* Statistieken — alleen zodra er iets te tellen valt. Vijf vakjes
+                met een nul erin zeggen niets en vullen wel een hele rij. */}
+            {(productStats[sel]?.batches || 0) > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
                 {label: t('lbl_product_batches'), value: productStats[sel]?.batches || 0},
@@ -1541,11 +1551,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 {label: t('lbl_product_kostprijs_liter'), value: productStats[sel]?.kostprijs > 0 ? fmt(productStats[sel].kostprijs) : '-'},
               ].map((s, i) => (
                 <div key={i} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
-                  <div className="text-xs text-gray-500 uppercase tracking-wide">{s.label}</div>
+                  <div className="text-xs text-gray-500">{s.label}</div>
                   <div className="text-lg font-bold mt-1" style={{color: 'var(--t-accent)'}}>{s.value}</div>
                 </div>
               ))}
             </div>
+            )}
 
             {/* Voorraad overzicht */}
             {selVoorraad.length > 0 && (
@@ -1672,8 +1683,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                       {t(AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.lKey || ab.reden)}
                                     </span>
                                     {status && (
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide ${VERNIETIGING_STATUS_COLOR[status]}`} title={t('tooltip_status_per_douane')}>
-                                        {VERNIETIGING_STATUS_LABEL[status]}
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] tracking-wide ${VERNIETIGING_STATUS_COLOR[status]}`} title={t('tooltip_status_per_douane')}>
+                                        {t(VERNIETIGING_STATUS_LABEL[status])}
                                       </span>
                                     )}
                                     <span className="text-red-500 font-semibold">−{ab.aantal}×</span>
@@ -1682,7 +1693,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                       <button
                                         onClick={() => openVernietigReview(ab)}
                                         className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-orange-300 text-orange-600 hover:bg-orange-50">
-                                        {status === 'aangevraagd' ? '→ Toestemming verwerken' : '→ Uitvoeren registreren'}
+                                        {status === 'aangevraagd' ? t('verlies_vern_btn_toestemming') : t('verlies_vern_btn_uitvoeren')}
                                       </button>
                                     )}
                                   </div>
@@ -1698,11 +1709,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               </div>
             )}
 
-            {/* Recepten */}
+            {/* Recepten — pas tonen als er recepten hangen. Een kop met "geen
+                recepten gekoppeld" eronder is alleen omlijsting: koppelen doe
+                je in het productformulier, hier valt niets te doen. */}
+            {selRecepten.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <SectionHeader title={t('lbl_product_recepten')} />
               <div className="p-3">
-                {selRecepten.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_recepten_gekoppeld')}</div>}
                 {selRecepten.map((r: any) => (
                   <div key={r.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
                     <div>
@@ -1713,12 +1726,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 ))}
               </div>
             </div>
+            )}
 
             {/* Artikelen / SKU's */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <SectionHeader
                 title={t('lbl_product_artikelen')}
-                info={<Btn onClick={() => startArtEdit()} s="sm" v="header">{t('btn_artikel_toevoegen')}</Btn>}
+                info={<Btn onClick={() => startArtEdit()} s="sm" v="secondary">{t('btn_artikel_toevoegen')}</Btn>}
               />
 
               {artForm && (
@@ -2059,7 +2073,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">
+                                  <div className="text-[10px] text-gray-400">
                                     {r.label}
                                     {r.bij && <span className="normal-case"> · {r.bij}</span>}
                                     {r.m.aantal > 1 && r.m.spreiding > 0 && (
@@ -2347,7 +2361,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               <span>{t('voorraad_beschikbaar')}: <strong className="text-green-600">{beschikbaarVoorAfvulling(afboekModal)}×</strong></span>
               {afboekModal.tht && <span>{t('lbl_tht')}: <strong>{fmtD(afboekModal.tht)}</strong></span>}
               {perEenheid > 0 && (
-                <span>{t('voorcalc_label')}: <strong className="text-amber-700">€ {perEenheid.toFixed(4)}</strong> {t('voorcalc_per_eenheid_unit')}</span>
+                <span>{t('voorcalc_label')}: <strong className="t-accent-text">€ {perEenheid.toFixed(4)}</strong> {t('voorcalc_per_eenheid_unit')}</span>
               )}
             </div>
 
@@ -2369,19 +2383,19 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
                 <input type="number" value={afboekForm.aantal} onChange={e => { setAfboekForm(f => ({...f, aantal: e.target.value})); setAfboekError(''); }} placeholder="1"
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_datum')}</label>
                 <input type="date" value={tod()} readOnly
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-500" />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking_required')} <span className="text-red-400">*</span></label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_opmerking_required')} <span className="text-red-400">*</span></label>
               <textarea value={afboekForm.opmerking} onChange={e => { setAfboekForm(f => ({...f, opmerking: e.target.value})); setAfboekError(''); }} rows={3}
                 placeholder={afboekForm.reden === 'vernietiging' ? t('ph_opmerking_vernietiging') : afboekForm.reden === 'vermis' ? t('ph_opmerking_vermis') : t('ph_opmerking_overig')}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm t-input resize-none" />
@@ -2393,29 +2407,25 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             {afboekForm.reden === 'vernietiging' && (
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Verklaring vernietiging — stap 1: Aangevraagd</p>
-                  <span className={`text-[10px] px-2 py-0.5 rounded ${VERNIETIGING_STATUS_COLOR.aangevraagd}`}>Aangevraagd</span>
+                  <p className="text-xs font-semibold text-orange-700">{t('verlies_vern_stap1_titel')}</p>
+                  <span className={`text-[10px] px-2 py-0.5 rounded ${VERNIETIGING_STATUS_COLOR.aangevraagd}`}>{t('verlies_vern_status_aangevraagd')}</span>
                 </div>
                 <p className="text-xs text-orange-700">
-                  Voor vernietiging van onveraccijnsde goederen binnen de AGP moet vooraf de
-                  <em> "Verklaring vernietiging accijns- of verbruiksbelastinggoederen vanuit een
-                  schorsingsregeling/vrijstelling"</em> bij de Douane worden ingediend (download op
-                  <a href="https://www.douane.nl" target="_blank" rel="noopener noreferrer" className="underline ml-1">www.douane.nl</a>).
-                  Upload de ingediende PDF hieronder. De voorraad wordt gereserveerd; de definitieve
-                  afboeking en het vervallen van de potentiële accijnsschuld vinden plaats bij status <strong>Uitgevoerd</strong>.
+                  {t('vrd_vern_uitleg')}
+                  <a href="https://www.douane.nl" target="_blank" rel="noopener noreferrer" className="underline ml-1">{t('vrd_vern_download')}</a>
                 </p>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Datum indiening verklaring <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_datum_indiening')} <span className="text-red-400">*</span></label>
                   <input type="date" value={afboekForm.verklaring_ingediend_op}
                     onChange={e => { setAfboekForm(f => ({...f, verklaring_ingediend_op: e.target.value})); setAfboekError(''); }}
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Verklaring vernietiging (PDF) <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_verklaring_pdf')} <span className="text-red-400">*</span></label>
                   <div className="flex items-center gap-2 flex-wrap">
                     <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
                       <span>📎</span>
-                      <span>{afboekUploading ? t('lbl_uploading') : 'Verklaring uploaden (rol: douane_verklaring)'}</span>
+                      <span>{afboekUploading ? t('lbl_uploading') : t('verlies_vern_verklaring_upload')}</span>
                       <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                         className="hidden" disabled={afboekUploading}
                         onChange={e => { doAfboekUpload(e.target.files, 'douane_verklaring'); e.target.value = ''; }} />
@@ -2475,7 +2485,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_rebrand_doelproduct')} <span className="text-red-400">*</span></label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_rebrand_doelproduct')} <span className="text-red-400">*</span></label>
               {!rebrandForm.toonNieuwProduct ? (
                 <div className="flex gap-1">
                   <select value={rebrandForm.product_id || ''} onChange={e => {
@@ -2516,21 +2526,21 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
                 <input type="number" min={1} max={beschikbaar} value={rebrandForm.aantal}
                   onChange={e => { setRebrandForm(f => ({...f, aantal: e.target.value})); setRebrandError(''); }}
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                 <p className="text-xs text-gray-400 mt-1">{t('err_afboeking_max_available').replace('{max}', String(beschikbaar)).replace('{unit}', t('unit_stuks'))}</p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_datum')}</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_datum')}</label>
                 <input type="date" value={tod()} readOnly
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-500" />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_opmerking')}</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_opmerking')}</label>
               <textarea value={rebrandForm.opmerking} onChange={e => setRebrandForm(f => ({...f, opmerking: e.target.value}))} rows={2}
                 placeholder={t('ph_rebrand_opmerking')}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm t-input resize-none" />
@@ -2571,7 +2581,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   {ab.kenmerk_douane && <> · Kenmerk: {ab.kenmerk_douane}</>}
                 </div>
                 {Number(ab.voorcalc_accijns_totaal||0) > 0 && (
-                  <div className="text-xs text-amber-700">Potentiële accijnsschuld onder schorsing: € {Number(ab.voorcalc_accijns_totaal).toFixed(2)} — vervalt bij correct uitgevoerde vernietiging.</div>
+                  <div className="text-xs t-accent-text">Potentiële accijnsschuld onder schorsing: € {Number(ab.voorcalc_accijns_totaal).toFixed(2)} — vervalt bij correct uitgevoerde vernietiging.</div>
                 )}
                 {(ab.bijlagen||[]).length > 0 && (
                   <ul className="mt-1 space-y-0.5">
@@ -2587,19 +2597,19 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
               {naarToegestaan && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
-                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Stap 2: schriftelijke toestemming Douane verwerken</p>
+                  <p className="text-xs font-semibold text-blue-700">{t('verlies_vern_stap2_titel')}</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Datum toestemming <span className="text-red-400">*</span></label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_datum_toestemming')} <span className="text-red-400">*</span></label>
                       <input type="date" value={vernietigReviewForm.toestemming_ontvangen_op}
                         onChange={e => { setVernietigReviewForm(f => ({...f, toestemming_ontvangen_op: e.target.value})); setVernietigReviewError(''); }}
                         className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Kenmerk Douane (optioneel)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_kenmerk_optioneel')}</label>
                       <input type="text" value={vernietigReviewForm.kenmerk_douane}
                         onChange={e => setVernietigReviewForm(f => ({...f, kenmerk_douane: e.target.value}))}
-                        placeholder="bijv. referentienummer brief"
+                        placeholder={t('verlies_vern_kenmerk_ph')}
                         className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                     </div>
                   </div>
@@ -2608,19 +2618,19 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
               {naarUitgevoerd && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
-                  <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Stap 3: vernietiging uitgevoerd — bewijs uploaden</p>
+                  <p className="text-xs font-semibold text-green-700">{t('verlies_vern_stap3_titel')}</p>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Datum uitvoering <span className="text-red-400">*</span></label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_datum_uitvoering')} <span className="text-red-400">*</span></label>
                     <input type="date" value={vernietigReviewForm.uitgevoerd_op}
                       onChange={e => { setVernietigReviewForm(f => ({...f, uitgevoerd_op: e.target.value})); setVernietigReviewError(''); }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Bewijs van vernietiging (foto's / video) <span className="text-red-400">*</span></label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('verlies_vern_bewijs')} <span className="text-red-400">*</span></label>
                     <div className="flex items-center gap-2 flex-wrap">
                       <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
                         <span>📎</span>
-                        <span>{vernietigReviewUploading ? t('lbl_uploading') : 'Bewijs uploaden (rol: bewijs)'}</span>
+                        <span>{vernietigReviewUploading ? t('lbl_uploading') : t('verlies_vern_bewijs_upload')}</span>
                         <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                           className="hidden" disabled={vernietigReviewUploading}
                           onChange={e => { doVernietigBewijsUpload(e.target.files); e.target.value = ''; }} />
@@ -2641,18 +2651,15 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                       </ul>
                     )}
                   </div>
-                  <p className="text-[11px] text-green-700">
-                    Bij bevestigen wordt de voorraad definitief afgeboekt en vervalt de potentiële
-                    accijnsschuld voor deze hoeveelheid onder de schorsingsregeling.
-                  </p>
+                  <p className="text-[11px] text-green-700">{t('vrd_vern_stap3_info')}</p>
                 </div>
               )}
 
               {vernietigReviewError && <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">{vernietigReviewError}</div>}
               <div className="flex justify-end gap-2 pt-1 border-t">
                 <Btn v="secondary" onClick={() => setVernietigReviewModal(null)}>{t('btn_cancel')}</Btn>
-                {naarToegestaan && <Btn onClick={markVernietigingToegestaan} v="primary">Markeer Toegestaan</Btn>}
-                {naarUitgevoerd && <Btn onClick={markVernietigingUitgevoerd} v="green" disabled={vernietigReviewUploading}>Markeer Uitgevoerd</Btn>}
+                {naarToegestaan && <Btn onClick={markVernietigingToegestaan} v="primary">{t('verlies_vern_markeer_toegestaan')}</Btn>}
+                {naarUitgevoerd && <Btn onClick={markVernietigingUitgevoerd} v="green" disabled={vernietigReviewUploading}>{t('verlies_vern_markeer_uitgevoerd')}</Btn>}
               </div>
             </div>
           </Modal>

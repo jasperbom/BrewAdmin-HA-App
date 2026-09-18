@@ -1,8 +1,6 @@
 import React from 'react'
 import { t } from '../i18n'
 import type { AttentieDoel } from '../utils/attentie'
-import SectionHeader from '../components/ui/SectionHeader'
-import Btn from '../components/ui/Btn'
 
 // ── Rapporten ───────────────────────────────────────────────────────────────
 // De tweede ingang van de werkruimte Administratie. Het dashboard toont wat om
@@ -42,18 +40,23 @@ const VOORRAAD: RapportKaart[] = [
 ]
 
 function RapportenPage({ gaNaarDoel }: RapportenPageProps) {
+  // De kaart is zelf de knop. Een aparte "Bekijken"-knop onder een kaart die
+  // verder niets doet, verdubbelt alleen het klikdoel; de uitleg blijft, want
+  // "ouderdomsanalyse" zegt niet iedereen iets.
   const groep = (titel: string, kaarten: RapportKaart[]) => (
     <div className="mb-6">
-      <SectionHeader title={titel} rounded="full" cls="mb-3" />
+      <h2 className="text-sm font-semibold text-gray-800 mb-2 px-1">{titel}</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {kaarten.map(k => (
-          <div key={k.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col">
+          <button
+            key={k.id}
+            type="button"
+            onClick={() => gaNaarDoel(k.doel)}
+            className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 text-left hover:border-gray-300 hover:shadow-card-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]"
+          >
             <p className="text-sm font-semibold text-gray-800">{t(k.sleutel)}</p>
-            <p className="text-xs text-gray-500 mt-1 flex-1">{t(`${k.sleutel}_uitleg`)}</p>
-            <div className="mt-3">
-              <Btn v="secondary" s="sm" onClick={() => gaNaarDoel(k.doel)}>{t('btn_bekijken')}</Btn>
-            </div>
-          </div>
+            <p className="text-xs text-gray-500 mt-1">{t(`${k.sleutel}_uitleg`)}</p>
+          </button>
         ))}
       </div>
     </div>
@@ -61,7 +64,6 @@ function RapportenPage({ gaNaarDoel }: RapportenPageProps) {
 
   return (
     <div>
-      <p className="text-sm text-gray-600 mb-5">{t('rapporten_intro')}</p>
       {groep(t('rapporten_groep_financieel'), FINANCIEEL)}
       {groep(t('rapporten_groep_voorraad'), VOORRAAD)}
     </div>

@@ -613,7 +613,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     if (!setKoelLogs) return null
     return (
       <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
-        <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{t('koel_log_titel')}</div>
+        <div className="text-[11px] font-semibold text-gray-400 mb-1.5">{t('koel_log_titel')}</div>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
           <input type="number" step="0.1" value={koelForm.start_temp}
             onChange={e => setKoelForm({ ...koelForm, start_temp: e.target.value })}
@@ -772,7 +772,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                   return (
                     <div className="mb-3 flex items-baseline justify-between bg-gray-50 border border-gray-200 rounded px-3 py-2"
                       title={tooltip}>
-                      <div className="text-xs text-gray-500 uppercase font-semibold tracking-wide">
+                      <div className="text-xs text-gray-500 font-semibold tracking-wide">
                         {t('brouwdag_calc_ibu_tinseth')}
                       </div>
                       <div className="flex items-baseline gap-3">
@@ -785,7 +785,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                           {ibu > 0 ? ibu.toFixed(1) : '—'}
                         </div>
                         {verschil != null && Math.abs(verschil) >= 0.5 && (
-                          <div className={`text-xs ${verschil > 0 ? 'text-amber-600' : 'text-blue-600'}`}>
+                          <div className={`text-xs ${verschil > 0 ? 'text-orange-600' : 'text-blue-600'}`}>
                             ({verschil > 0 ? '+' : ''}{verschil.toFixed(1)})
                           </div>
                         )}
@@ -886,7 +886,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                                     ))}
                                   </select>
                                   {lotTekort && (
-                                    <div className="text-[10px] text-amber-700 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                    <div className="text-[10px] t-accent-text mt-0.5 flex items-center gap-1.5 flex-wrap">
                                       <span>{t('hop_schema_lot_tekort')
                                         .replace('{beschikbaar}', String(r3(Math.max(0, lotBesch as number))))
                                         .replace('{nodig}', String(r3(nodigQty)))
@@ -922,14 +922,14 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                                   : ''}
                                 className={`w-16 border border-gray-200 rounded px-1.5 py-0.5 text-right t-input ${
                                   eff.bron === 'lot' ? 'bg-emerald-50'
-                                    : eff.bron === 'lot_verouderd' ? 'bg-amber-50'
+                                    : eff.bron === 'lot_verouderd' ? 'bg-orange-50'
                                     : eff.bron === 'ingredient' ? 'bg-blue-50' : ''
                                 }`} />
                               {eff.bron === 'lot' && (
                                 <div className="text-[10px] text-emerald-600 mt-0.5">{t('hop_schema_bron_lot')}</div>
                               )}
                               {eff.bron === 'lot_verouderd' && (
-                                <div className="text-[10px] text-amber-700 mt-0.5">
+                                <div className="text-[10px] t-accent-text mt-0.5">
                                   {t('hop_schema_bron_lot_verouderd').replace('{behoud}', String(Math.round(eff.behoudPct || 0)))}
                                 </div>
                               )}
@@ -1038,7 +1038,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                 if (!items.length && !velden.length && !toonTank) return null
                 return (
                   <div key={fase} className="border-l-4 pl-3" style={{borderColor: 'var(--t-accent)'}}>
-                    <div className="text-xs font-semibold text-gray-500 uppercase mb-2 flex items-center justify-between">
+                    <div className="text-xs font-semibold text-gray-500 mb-2 flex items-center justify-between">
                       <span>{t(FASE_LABEL[fase])}</span>
                       <button onClick={() => voegStapToe(fase)} className="text-xs text-gray-400 hover:text-gray-600">+ {t('brouwdag_voeg_stap_toe')}</button>
                     </div>
@@ -1095,7 +1095,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
 
             {/* Live calculaties — afgeleid uit de hierboven ingevulde metingen */}
             <div className="mt-4 pt-3 border-t border-gray-100">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              <div className="text-xs font-semibold text-gray-500 mb-2">
                 {t('brouwdag_kerngegevens')}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -1110,7 +1110,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                 />
               </div>
               {maxExtract === 0 && (fermentables.length > 0) && (
-                <div className="mt-3 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                <div className="mt-3 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-3 py-2">
                   ⚠ {t('calc_geen_data')}: extract% (yield) ontbreekt op mout. Voeg toe via Brewfather-sync of handmatig in batch-ingrediënten.
                 </div>
               )}

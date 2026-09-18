@@ -226,7 +226,7 @@ const VrijgaveSectie: React.FC<Props> = ({
     <div className="space-y-3">
       {/* Automatisch afgeleid — read-only, met de herkomst erbij */}
       <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+        <div className="text-xs font-semibold text-gray-500 mb-1">
           {t('haccp_ccp1_automatisch')}
         </div>
         <Rij
@@ -323,7 +323,7 @@ const VrijgaveSectie: React.FC<Props> = ({
 
       {/* Sensorisch — volgt op de stabiliteitsbeoordeling, niet andersom */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+        <label className="block text-xs font-semibold text-gray-500 mb-1">
           {t('haccp_ccp1_sensorisch')}<span className="text-red-500 ml-0.5">*</span>
         </label>
         <textarea value={form.sensorisch} rows={2}
@@ -335,7 +335,7 @@ const VrijgaveSectie: React.FC<Props> = ({
       {/* Voorgesteld oordeel */}
       <div className="rounded-lg border border-gray-200 p-3 space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <span className="text-xs font-semibold text-gray-500">
             {t('haccp_ccp1_voorgesteld')}
           </span>
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${

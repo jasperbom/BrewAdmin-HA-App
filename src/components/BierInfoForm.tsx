@@ -67,7 +67,7 @@ const BierInfoForm: React.FC<BierInfoFormProps> = ({
 
       {groepen.map(groep => (
         <div key={groep}>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{t(groep)}</div>
+          <div className="text-xs font-semibold text-gray-500 mb-1.5">{t(groep)}</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {velden.filter(f => f.groep === groep).map(f => {
               const w = waarde(f.veld)

@@ -98,7 +98,7 @@ const VerplaatsModal: React.FC<VerplaatsModalProps> = ({ afv, batch, naam, vanLo
         </div>
         <Inp label={t('lbl_opmerking')} value={form.opmerking || ''} onChange={(v: string) => setForm(f => ({...f, opmerking: v}))} />
         {bedrag > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
+          <div className="bg-orange-50 border border-orange-200 rounded p-3 text-xs text-orange-800">
             {t('agp_info_accijns_boeken')} <span className="font-bold">{fmt(bedrag)}</span> ({liter.toFixed(1)}L × {batch?.ABV || 0}% ABV)
           </div>
         )}

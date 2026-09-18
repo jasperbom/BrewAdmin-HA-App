@@ -370,19 +370,35 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 |----------|---------------|
 | Sectie-header (statisch of klikbaar) | Gebruik `<SectionHeader>` uit `src/components/ui/SectionHeader.tsx` — geen inline `t-hdr` meer |
 | Zoek/filter-invoer | Gebruik `<SearchInput>` uit `src/components/ui/SearchInput.tsx` |
+| Rij-acties in een lijst/tabel | Gebruik `<RowActions primair={…} acties={[…]}>` uit `src/components/ui/RowActions.tsx` |
 | Bierkleur (wélk bier) | `<BierKleur ebc={…} s="sm|md|lg">` uit `src/components/ui/BierKleur.tsx`; EBC via `productEbc`/`batchEbc` — nooit een eigen stip |
-| Accent-kleur inline tekst/link | `style={{color: 'var(--t-accent)'}}` — nooit `text-amber-*` hardcoden |
-| Sectie-label binnen een card | `text-xs font-semibold text-gray-500 uppercase tracking-wide` |
+| Accent-kleur inline tekst/link | `t-accent-text` (of `style={{color: 'var(--t-accent)'}}`) — nooit `text-amber-*` hardcoden |
+| Sectie-label binnen een card | `text-sm font-semibold text-gray-800` — géén `uppercase tracking-wide` |
+| Veldlabel in een formulier | `text-sm font-medium text-gray-700` (zit al in `Inp`/`Sel`) |
 | Fallback tekst (onbekende naam) | Altijd via i18n: `t('lbl_onbekend')` of `t('lbl_naamloos')` |
 
 **Regels:**
 - Gebruik `<SectionHeader title=... open=... onToggle=... info=... solid? rounded?>`
-  voor alle sectie-headers. Eén links-roterend `▶` toont automatisch bij `onToggle`;
+  voor alle sectie-headers. Een chevron verschijnt automatisch bij `onToggle`;
   extra info (telling, voortgang, status-pill) gaat rechts via `info`.
+- **`solid` is de uitzondering, niet de regel.** Standaard is een sectiekop
+  rustig (donkere tekst op wit met een haarlijn). De geverfde themabalk is er
+  alleen voor het onderwerp van de pagina zelf — één per scherm. Meerdere
+  gekleurde balken onder elkaar maken elke sectie even belangrijk en zijn het
+  duidelijkste "gegenereerd"-signaal in een UI.
+- **Geen `uppercase tracking-wide` op labels.** Klein-kapitaal is voorbehouden
+  aan badges (een afgeronde chip mét eigen achtergrond). Gewone zinsvorm leest
+  rustiger en is in vijf talen beter te zetten.
 - Zet **geen emoji's of icon-afbeeldingen** in de bruine headerbalk; gebruik
   tekstlabels via `t()`.
 - Zoekbalken altijd via `<SearchInput value onChange placeholder cls? onKeyDown?>`.
-- Gebruik `style={{color: 'var(--t-accent)'}}` voor themagevoelige kleuren — dit werkt correct bij alle 6 thema's
+- **Maximaal één actieknop per rij zichtbaar**; de rest hoort in het
+  `⋯`-menu van `RowActions`. Zes knoppen op elke regel maken de inhoud van
+  de rij onleesbaar.
+- Gebruik `t-accent-text` / `var(--t-accent)` voor themagevoelige kleuren — dit werkt correct bij alle 6 thema's
+- **Lege staat = korte regel + de knop zelf**, nooit een zin die uitlegt waar
+  de knop staat. Een sectie die leeg is en waar niets te doen valt, toon je
+  helemaal niet.
 
 ---
 
@@ -926,8 +942,13 @@ Bij elke nieuwe sleutel: voeg toe aan **alle 5** taalbestanden (nl/en/de/fr/es).
 
 - Translation files: `src/i18n/{nl,en,de,fr,es}.json`
 - Access via `t('key')` function from `src/i18n/index.ts`
-- Fallback chain: requested lang → Dutch → key name
-- Language stored in `localStorage` under `lang`
+- Fallback chain: requested lang → Dutch → `fallback`-argument → key name
+- **Sleutel uit data opgebouwd? Geef een fallback mee:** `t(\`orders_status_${s}\`, s)`.
+  `t()` geeft bij een missende sleutel de sleutelnaam terug — een niet-lege,
+  dus truthy string. `t(...) || s` vangt dat níét af en zet een rauwe
+  `orders_status_iets` in beeld. Het tweede argument doet dat wel
+- Language stored in `localStorage` under `lang`; `setLang` zet ook
+  `document.documentElement.lang` (schermlezers)
 - **When adding UI text:** always add keys to all 5 translation files
 
 ---

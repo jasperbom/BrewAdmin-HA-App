@@ -166,7 +166,7 @@ const ServerStatusCard = () => {
 
       {/* Uitleg alle statussen */}
       <div className="border-t pt-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t('settings_status_overview')}</p>
+        <p className="text-xs font-semibold text-gray-400 mb-3">{t('settings_status_overview')}</p>
         <div className="space-y-3">
           {statuses.map(st => (
             <div key={st.key} className={`flex items-start gap-3 transition-opacity ${s===st.key?'opacity-100':'opacity-40'}`}>
@@ -278,7 +278,7 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
         }}>{t('settings_rollen_toevoegen')}</Btn>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('settings_rollen_standaard')}</label>
+        <label className="text-xs font-semibold text-gray-500">{t('settings_rollen_standaard')}</label>
         <select value={conf.standaard_rol || 'beheer'} className={selectCls}
           onChange={(e: any) => opslaan({...conf, standaard_rol: e.target.value})}>
           {rolOpties.map(r => <option key={r} value={r}>{t('rol_' + r)}</option>)}
@@ -330,7 +330,7 @@ const LoginStyleCard = ({inst, setInst}: {inst: any, setInst: (v: any) => void})
         <div>
           <label className={lbl}>{t('lbl_login_ondertitel')}</label>
           <input value={draft.ondertitel} onChange={(e: any) => setDraft({...draft, ondertitel: e.target.value})}
-            maxLength={120} placeholder="Log in met je Home Assistant-account" className={veld} />
+            maxLength={120} placeholder={t('login_ph_ha_account')} className={veld} />
         </div>
         <div>
           <label className={lbl}>{t('lbl_login_knop')}</label>
@@ -447,7 +447,7 @@ const BackupCard = () => {
         {msg && <span className="text-sm text-gray-600">{msg}</span>}
       </div>
 
-      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_backup_geschiedenis')}</div>
+      <div className="text-xs font-semibold text-gray-500 mb-2">{t('settings_backup_geschiedenis')}</div>
 
       {loading ? (
         <p className="text-sm text-gray-400 italic">...</p>
@@ -1189,7 +1189,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
       {/* ── Links navigatie ── */}
       <div className="w-full md:w-44 md:flex-shrink-0 bg-white rounded-xl shadow-card overflow-hidden">
-        <div className="hidden md:block"><SectionHeader title={<span className="text-xs uppercase tracking-widest">{t('nav_instellingen')}</span>} /></div>
+        <div className="hidden md:block"><SectionHeader title={<span className="text-xs tracking-widest">{t('nav_instellingen')}</span>} /></div>
         <div className="flex md:block overflow-x-auto">
           {navItems.map(n => (
             <button key={n.id} onClick={()=>setActiveSection(n.id)}
@@ -1271,7 +1271,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <label className="block text-sm font-medium text-gray-600 mb-1">{t('settings_app_name_label')}</label>
           <input type="text" value={appName} onChange={(e: any)=>setAppName(e.target.value)}
             placeholder={t('settings_app_name_placeholder')}
-            className="w-full max-w-xs border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            className="w-full max-w-xs border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2" />
         </div>
         <div className="flex items-center gap-4 flex-wrap">
           {logo && (
@@ -1792,7 +1792,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 )}
               </div>
               <details className="mt-3">
-                <summary className="text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer">
+                <summary className="text-xs font-semibold text-gray-500 cursor-pointer">
                   {t('settings_factuur_template_velden')}
                 </summary>
                 <p className="text-xs text-gray-500 mt-2">{t('settings_factuur_template_velden_hint')}</p>
@@ -1923,7 +1923,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[400px]">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                <tr className="border-b border-gray-100 text-xs text-gray-500">
                   <th className="py-2 pr-3 text-left font-medium">{t('lbl_alt_rekening_naam')}</th>
                   <th className="py-2 pr-3 text-left font-medium">IBAN</th>
                   <th className="py-2 pr-3 text-left font-medium">{t('lbl_eigenaar')}</th>
@@ -2037,7 +2037,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
         </div>
         <div className="mt-4 pt-4 border-t">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{t('settings_bf_status_mapping')}</p>
+          <p className="text-xs font-semibold text-gray-400 mb-2">{t('settings_bf_status_mapping')}</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs text-gray-500">
             {Object.entries(BF_TO_APP).map(([bf,app]) => (
               <span key={bf}><span className="font-medium text-gray-600">{bf}</span> → {({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Afgevuld:t('status_packaged'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')} as any)[app]||app}</span>
@@ -2485,7 +2485,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {BEWAKING_VELDEN.map(veld => (
             <div key={veld.sleutel}>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              <label className="block text-xs font-semibold text-gray-500 mb-1">
                 {t(veld.label)}
               </label>
               <div className="flex items-center gap-2">
@@ -2977,7 +2977,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <div className="overflow-x-auto mb-4">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
                   <th className="px-2 py-2">{t('lbl_jaar')}</th>
                   <th className="px-2 py-2">€/hL × ABV%</th>
                   <th className="px-2 py-2">€/hL {t('settings_excise_base')}</th>
@@ -3126,7 +3126,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* Goederenstroom AGP diagram — volle breedte vanwege horizontale flow */}
       <div className={`${card} [column-span:all]`}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('agp_goederenstroom')}</h2>
-        <p className="text-sm text-gray-500 mb-4">AGP goederenstroomdiagram</p>
+        <p className="text-sm text-gray-500 mb-4">{t('agp_goederenstroom_diagram')}</p>
 
         <div className="overflow-x-auto print:overflow-visible">
           <div className="flex items-start gap-2 min-w-[700px]">
@@ -3226,7 +3226,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <>
                   <table className="min-w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200 sticky top-0 bg-white">
+                      <tr className="text-left text-xs text-gray-500 border-b border-gray-200 sticky top-0 bg-white">
                         <th className="px-2 py-2">{t('lbl_date')}</th>
                         <th className="px-2 py-2">{t('settings_excise_impact_soort')}</th>
                         <th className="px-2 py-2">{t('lbl_batch_nr')}</th>
@@ -3546,7 +3546,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
             {/* Groepen beheer */}
             <div className="mb-5">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_hygiene_groups')}</div>
+              <div className="text-xs font-semibold text-gray-500 mb-2">{t('settings_hygiene_groups')}</div>
               <div className="space-y-1 mb-3">
                 {groups.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_groups_none')}</p>}
                 {[...groups].sort((a: any, b: any)=>(a.volgorde||0)-(b.volgorde||0)).map((g: any, idx: number)=>(
@@ -3589,7 +3589,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
             {/* Items beheer */}
             <div className="mb-4">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings_batch_taken_items')}</div>
+              <div className="text-xs font-semibold text-gray-500 mb-2">{t('settings_batch_taken_items')}</div>
               <div className="space-y-1 mb-3">
                 {items.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_items_none')}</p>}
                 {items.map((item: any, idx: number)=>{
@@ -3598,7 +3598,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   return (
                     <div key={item.id} className={`border rounded-lg px-3 py-1.5 ${isMeting ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${isMeting ? 'bg-purple-200 text-purple-800' : 'bg-teal-200 text-teal-800'}`}>
+                        <span className={`text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded ${isMeting ?'bg-purple-200 text-purple-800' : 'bg-teal-200 text-teal-800'}`}>
                           {isMeting ? t('batch_taken_type_meting') : t('batch_taken_type_check')}
                         </span>
                         {isEditing ? (
@@ -3626,7 +3626,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                         // het reinigingslogboek vastleggen en/of een uitvoering
                         // op een HACCP-schoonmaaktaak loggen.
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{t('settings_taken_reiniging_label')}</span>
+                          <span className="text-[10px] font-semibold text-gray-400">{t('settings_taken_reiniging_label')}</span>
                           <select value={taakReinigingStatus(item)}
                             onChange={(e: any)=>setItemField(item.id, 'tank_reiniging', e.target.value)}
                             title={t('settings_taken_reiniging_hint')}
@@ -3754,7 +3754,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-gray-200 text-gray-500 uppercase tracking-wide text-left">
+                    <tr className="border-b border-gray-200 text-gray-500 text-left">
                       <th className="py-1 pr-3">{t('gezondheid_col_record')}</th>
                       <th className="py-1 pr-3">{t('gezondheid_col_veld')}</th>
                       <th className="py-1 pr-3">{t('gezondheid_col_doel')}</th>
@@ -3789,7 +3789,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('settings_bijlagen_desc')}</p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('lbl_jaar')}</label>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_jaar')}</label>
             <select value={bijlagenJaar} onChange={(e: any)=>setBijlagenJaar(Number(e.target.value))}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none t-input shadow-sm">
               {bijlagenJaren.map((y: any)=>(
@@ -3886,7 +3886,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             })
             .sort((a: any, b: any) => (b.timestamp||'').localeCompare(a.timestamp||''))
           const shown = filtered.slice(0, auditLimit)
-          const actieLabel = (a: string) => t(`audit_${a}`) || a
+          const actieLabel = (a: string) => t(`audit_${a}`, a)
 
           if (!filtered.length) return <p className="text-sm text-gray-400 italic">{t('audit_geen')}</p>
 
@@ -3894,7 +3894,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-gray-500 uppercase border-b">
+                  <tr className="text-left text-xs text-gray-500 border-b">
                     <th className="py-2 pr-3">{t('audit_timestamp')}</th>
                     <th className="py-2 pr-3">{t('audit_gebruiker')}</th>
                     <th className="py-2 pr-3">{t('audit_entiteit')}</th>
