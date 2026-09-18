@@ -1502,9 +1502,40 @@ export const getAgpLocatie = (locaties: Locatie[] = []): Locatie => {
   return { id: 1, naam: 'AGP', is_agp: true }
 }
 
+/** Eén voorraadbeweging: `aantal` gaat van locatie `van` af en, als er een
+ *  bestemming is, op `naar` erbij. Een uitlevering of afboeking heeft geen
+ *  `naar` — die verlaat de voorraad. */
+interface VoorraadBeweging { datum: string; van: number; naar?: number; aantal: number }
+
+/** Verplaatsingen, uitleveringen en afboekingen van één afvulling als één
+ *  lijst op datum. De sortering is stabiel, dus bij een gelijke datum blijft
+ *  de oude volgorde (verplaatsing → uitlevering → afboeking) gelden. */
+const bouwVoorraadBewegingen = (
+  afv: Afvulling,
+  agpId: number,
+  uitleveringen: Uitlevering[] = [],
+  verplaatsingen: Verplaatsing[] = [],
+  afboekingen: Afboeking[] = [],
+): VoorraadBeweging[] => {
+  const uit: VoorraadBeweging[] = []
+  for (const v of (verplaatsingen || [])) {
+    if (v.afvulling_id !== afv?.id) continue
+    uit.push({datum: String(v.datum || ''), van: v.van_locatie_id, naar: v.naar_locatie_id, aantal: Number(v.aantal || 0)})
+  }
+  for (const u of (uitleveringen || [])) {
+    if (u.afvulling_id !== afv?.id) continue
+    uit.push({datum: String(u.datum || ''), van: u.bron_locatie_id ?? agpId, aantal: Number(u.aantal || 0)})
+  }
+  for (const a of (afboekingen || [])) {
+    if (a.afvulling_id !== afv?.id) continue
+    uit.push({datum: String((a as any).datum || ''), van: agpId, aantal: Number(a.aantal || 0)})
+  }
+  return uit.sort((x, y) => x.datum.localeCompare(y.datum))
+}
+
 // Berekent de huidige voorraad per locatie voor één afvulling. Begint met het
-// totale aantal op de AGP-locatie, verwerkt vervolgens alle verplaatsingen
-// (in chronologische volgorde) en trekt uitleveringen + afboekingen af.
+// totale aantal op de AGP-locatie en verwerkt daarna alle bewegingen
+// (verplaatsingen, uitleveringen en afboekingen) in chronologische volgorde.
 //
 // Elke beweging wordt gecapt op wat er werkelijk op de bron-locatie staat.
 // Zonder die cap zou een verplaatsing van 2× terwijl er maar 1× was, de
@@ -1523,38 +1554,20 @@ export const voorraadPerLocatie = (
   // Initieel staat alle voorraad op AGP
   result[agp.id] = afvAantal(afv)
 
-  // Verplaatsingen toepassen (chronologisch), gecapt op bron-beschikbaarheid
-  const verpl = (verplaatsingen || [])
-    .filter(v => v.afvulling_id === afv?.id)
-    .slice()
-    .sort((a, b) => String(a.datum || '').localeCompare(String(b.datum || '')))
-  for (const v of verpl) {
-    const aantal = Number(v.aantal || 0)
-    if (!aantal) continue
-    const beschikbaar = Math.max(0, result[v.van_locatie_id] || 0)
-    const werkelijk = Math.min(aantal, beschikbaar)
+  // Alle bewegingen in één chronologische stroom. Ze per soort verwerken —
+  // eerst álle verplaatsingen, dan de uitleveringen, dan de afboekingen — laat
+  // een verplaatsing van ná een uitlevering putten uit voorraad die toen al
+  // weg was. De verplaatsing lukt dan volledig, de uitlevering wordt gecapt,
+  // en het verschil blijft als phantom voorraad op de bestemming staan: precies
+  // wat de cap hieronder moet voorkomen.
+  const bewegingen = bouwVoorraadBewegingen(afv, agp.id, uitleveringen, verplaatsingen, afboekingen)
+  for (const b of bewegingen) {
+    if (b.aantal <= 0) continue
+    const beschikbaar = Math.max(0, result[b.van] || 0)
+    const werkelijk = Math.min(b.aantal, beschikbaar)
     if (werkelijk <= 0) continue
-    result[v.van_locatie_id] = (result[v.van_locatie_id] || 0) - werkelijk
-    result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + werkelijk
-  }
-
-  // Uitleveringen aftrekken op de bron-locatie (default = AGP), gecapt
-  const uits = (uitleveringen || []).filter(u => u.afvulling_id === afv?.id)
-  for (const u of uits) {
-    const locId = u.bron_locatie_id ?? agp.id
-    const beschikbaar = Math.max(0, result[locId] || 0)
-    const werkelijk = Math.min(Number(u.aantal || 0), beschikbaar)
-    if (werkelijk <= 0) continue
-    result[locId] = (result[locId] || 0) - werkelijk
-  }
-
-  // Afboekingen (verlies/breuk) — gaan af van AGP-locatie, gecapt
-  const afb = (afboekingen || []).filter(a => a.afvulling_id === afv?.id)
-  for (const a of afb) {
-    const beschikbaar = Math.max(0, result[agp.id] || 0)
-    const werkelijk = Math.min(Number(a.aantal || 0), beschikbaar)
-    if (werkelijk <= 0) continue
-    result[agp.id] = (result[agp.id] || 0) - werkelijk
+    result[b.van] = (result[b.van] || 0) - werkelijk
+    if (b.naar !== undefined) result[b.naar] = (result[b.naar] || 0) + werkelijk
   }
 
   // Negatieve waarden naar 0 normaliseren (kan voorkomen bij data-inconsistentie)
@@ -1579,26 +1592,13 @@ export const voorraadPerLocatieRaw = (
   const result: Record<number, number> = {}
   result[agp.id] = afvAantal(afv)
 
-  const verpl = (verplaatsingen || [])
-    .filter(v => v.afvulling_id === afv?.id)
-    .slice()
-    .sort((a, b) => String(a.datum || '').localeCompare(String(b.datum || '')))
-  for (const v of verpl) {
-    const aantal = Number(v.aantal || 0)
-    if (!aantal) continue
-    result[v.van_locatie_id] = (result[v.van_locatie_id] || 0) - aantal
-    result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + aantal
-  }
-
-  const uits = (uitleveringen || []).filter(u => u.afvulling_id === afv?.id)
-  for (const u of uits) {
-    const locId = u.bron_locatie_id ?? agp.id
-    result[locId] = (result[locId] || 0) - Number(u.aantal || 0)
-  }
-
-  const afb = (afboekingen || []).filter(a => a.afvulling_id === afv?.id)
-  for (const a of afb) {
-    result[agp.id] = (result[agp.id] || 0) - Number(a.aantal || 0)
+  // Zelfde bewegingen als de gecapte variant. Zonder cap maakt de volgorde
+  // voor de uitkomst niet uit (het is louter optellen en aftrekken), maar zo
+  // lezen beide functies hun invoer gegarandeerd hetzelfde.
+  for (const b of bouwVoorraadBewegingen(afv, agp.id, uitleveringen, verplaatsingen, afboekingen)) {
+    if (!b.aantal) continue
+    result[b.van] = (result[b.van] || 0) - b.aantal
+    if (b.naar !== undefined) result[b.naar] = (result[b.naar] || 0) + b.aantal
   }
   return result
 }

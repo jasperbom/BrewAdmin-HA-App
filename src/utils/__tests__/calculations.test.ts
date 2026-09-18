@@ -213,6 +213,19 @@ describe('voorraadPerLocatie', () => {
     expect(r[2]).toBe(1)
     expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(1)
   })
+  it('verwerkt bewegingen op datum, niet per soort', () => {
+    // 10 afgevuld. Eerst gaan er 8 de deur uit (5 jan), pas daarna worden er 5
+    // verplaatst (10 jan) — er liggen er dan nog maar 2, dus er kunnen er maar
+    // 2 mee. Werden eerst álle verplaatsingen verwerkt, dan putte die van de
+    // 10e uit voorraad die op de 5e al weg was en bleven er 5 op de opslag
+    // staan die er nooit zijn geweest.
+    const r = voorraadPerLocatie({id: 11, hoeveelheid: 10} as any, locaties,
+      [{id: 1, afvulling_id: 11, batch_id: 1, aantal: 8, datum: '2026-01-05', bron_locatie_id: 1} as any],
+      [{id: 1, afvulling_id: 11, batch_id: 1, datum: '2026-01-10', aantal: 5, van_locatie_id: 1, naar_locatie_id: 2} as any])
+    expect(r[2]).toBe(2)
+    expect(r[1]).toBe(0)
+    expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(2)
+  })
 })
 
 describe('ouderdomsAnalyse (ERP 2.5)', () => {

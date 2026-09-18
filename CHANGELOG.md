@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.50] — 2026-09-18
+
+### Opgelost: fysieke voorraad kon te hoog uitvallen
+
+`voorraadPerLocatie` verwerkte de bewegingen van een afvulling **per soort**:
+eerst álle verplaatsingen, dan de uitleveringen, dan de afboekingen — en pas
+binnen de verplaatsingen op datum. Daardoor kon een verplaatsing van ná een
+uitlevering putten uit voorraad die toen allang weg was. De verplaatsing lukte
+dan volledig, de uitlevering liep tegen de cap aan, en het verschil bleef als
+voorraad op de bestemming staan die daar nooit heeft gelegen — precies de
+phantom voorraad die die cap moet voorkomen.
+
+Voorbeeld: 10 afgevuld, op 5 januari gaan er 8 de deur uit, op 10 januari
+worden er 5 verplaatst. Er liggen er dan nog 2, dus er kunnen er 2 mee. De app
+rekende 5 op de opslag en dus 5 in voorraad in plaats van 2.
+
+Alle drie de soorten bewegingen gaan nu door één chronologische stroom
+(`bouwVoorraadBewegingen`). Bij een gelijke datum blijft de oude volgorde
+gelden (verplaatsing → uitlevering → afboeking), dus bestaande gegevens
+schuiven niet zomaar op. `voorraadPerLocatieRaw` gebruikt dezelfde bouwsteen;
+die kapt niet, dus daar verandert de uitkomst niet — de twee lezen hun invoer
+nu wel gegarandeerd hetzelfde.
+
+---
+
 ## [1.12.49] — 2026-09-18
 
 ### Teruggedraaid: de gekleurde strook achter de statusbalk
