@@ -130,19 +130,34 @@ export const ONDERDEEL_TYPES = [
   {type:'overig',    label:'ing_type_overig'},
 ]
 
+// Kleurenthema's van de navigatiebalk. `p1`…`p5` = het staaltje in de
+// instellingen, `label` = de i18n-sleutel; de rest zijn de CSS-variabelen
+// (`--t-*`) plus de headergradient (`from`/`to`).
+//
+// server.py spiegelt `from`, `bg` en de `--t-*`-kleuren in `_NAV_THEMAS` en
+// zet ze bij het serveren van index.html al in de `<head>`: iOS 26 bemonstert
+// de html-/body-achtergrond van de éérste weergave voor de statusbalk van
+// een home-screen-app en werkt die niet bij zodra de app het thema via JS
+// zet. Een pytest bewaakt dat beide tabellen gelijk blijven — voeg een thema
+// dus aan beide kanten toe.
 export const NAV_THEMES: Record<string, any> = {
-  amber:  {p1:'#451a03',p2:'#78350f',p3:'#d97706',p4:'#fde68a',p5:'#fffbeb',
+  amber:  {label:'nav_color_amber',  p1:'#451a03',p2:'#78350f',p3:'#d97706',p4:'#fde68a',p5:'#fffbeb',
            from:'#451a03',to:'#78350f',accent:'#b45309',light:'#fde68a',pale:'#fffbeb',text:'#78350f',btn:'#b45309',btnH:'#92400e',btnA:'#78350f',bg:'#fefdf5'},
-  green:  {p1:'#052e16',p2:'#14532d',p3:'#16a34a',p4:'#bbf7d0',p5:'#f0fdf4',
+  green:  {label:'nav_color_green',  p1:'#052e16',p2:'#14532d',p3:'#16a34a',p4:'#bbf7d0',p5:'#f0fdf4',
            from:'#052e16',to:'#14532d',accent:'#15803d',light:'#bbf7d0',pale:'#f0fdf4',text:'#14532d',btn:'#15803d',btnH:'#166534',btnA:'#14532d',bg:'#f4fcf7'},
-  blue:   {p1:'#172554',p2:'#1e3a8a',p3:'#2563eb',p4:'#bfdbfe',p5:'#eff6ff',
+  blue:   {label:'nav_color_blue',   p1:'#172554',p2:'#1e3a8a',p3:'#2563eb',p4:'#bfdbfe',p5:'#eff6ff',
            from:'#172554',to:'#1e3a8a',accent:'#2563eb',light:'#bfdbfe',pale:'#eff6ff',text:'#1e3a8a',btn:'#2563eb',btnH:'#1d4ed8',btnA:'#1e3a8a',bg:'#f4f8ff'},
-  slate:  {p1:'#020617',p2:'#1e293b',p3:'#64748b',p4:'#cbd5e1',p5:'#f8fafc',
+  slate:  {label:'nav_color_dark',   p1:'#020617',p2:'#1e293b',p3:'#64748b',p4:'#cbd5e1',p5:'#f8fafc',
            from:'#020617',to:'#1e293b',accent:'#64748b',light:'#cbd5e1',pale:'#f8fafc',text:'#1e293b',btn:'#64748b',btnH:'#475569',btnA:'#334155',bg:'#f5f7f9'},
-  red:    {p1:'#450a0a',p2:'#7f1d1d',p3:'#dc2626',p4:'#fecaca',p5:'#fef2f2',
+  red:    {label:'nav_color_red',    p1:'#450a0a',p2:'#7f1d1d',p3:'#dc2626',p4:'#fecaca',p5:'#fef2f2',
            from:'#450a0a',to:'#7f1d1d',accent:'#dc2626',light:'#fecaca',pale:'#fef2f2',text:'#7f1d1d',btn:'#dc2626',btnH:'#b91c1c',btnA:'#991b1b',bg:'#fff5f5'},
-  purple: {p1:'#2e1065',p2:'#4c1d95',p3:'#7c3aed',p4:'#ddd6fe',p5:'#f5f3ff',
+  purple: {label:'nav_color_purple', p1:'#2e1065',p2:'#4c1d95',p3:'#7c3aed',p4:'#ddd6fe',p5:'#f5f3ff',
            from:'#2e1065',to:'#4c1d95',accent:'#7c3aed',light:'#ddd6fe',pale:'#f5f3ff',text:'#4c1d95',btn:'#7c3aed',btnH:'#6d28d9',btnA:'#5b21b6',bg:'#f8f5ff'},
+  // Zand: warm, gedempt en laag verzadigd — donker taupe in de balk, een
+  // rustig leerbruin als accent (contrast 5,5:1 op wit) en een linnen-
+  // achtige achtergrond. Bewust géén verzadigde tint of steile gradient.
+  sand:   {label:'nav_color_sand',   p1:'#3d3833',p2:'#57504a',p3:'#7d6450',p4:'#e8e0d5',p5:'#f5f1ea',
+           from:'#3d3833',to:'#57504a',accent:'#7d6450',light:'#e8e0d5',pale:'#f5f1ea',text:'#4a3f36',btn:'#7d6450',btnH:'#6a5442',btnA:'#574536',bg:'#faf8f5'},
 }
 
 export const DEFAULT_HYGIENE_GROUPS = [

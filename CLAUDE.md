@@ -14,7 +14,7 @@ Comprehensive guide for AI assistants working on this codebase.
 - Excise duty calculation and declaration tracking
 - Accounting with Claude AI-powered invoice scanning
 - WooCommerce order picking and stock sync
-- 5-language support (NL, EN, DE, FR, ES) with 6 UI themes
+- 5-language support (NL, EN, DE, FR, ES) with 7 UI themes
 
 The app is "fully built with Claude AI" (noted in README). UI text and many code comments are in Dutch.
 
@@ -411,7 +411,7 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 ## Color Conventions
 
 ### Theme-Aware Colors (gebruik altijd voor algemene UI)
-De app ondersteunt 6 kleurenthema's (amber, green, blue, slate, red, purple). Gebruik **altijd** CSS-klassen die op de theemavariabelen steunen voor interactieve elementen:
+De app ondersteunt 7 kleurenthema's (amber, green, blue, slate, red, purple, sand). Gebruik **altijd** CSS-klassen die op de theemavariabelen steunen voor interactieve elementen:
 
 - `.tbtn` — Primaire actieknop (achtergrond = `--t-btn`, hover = `--t-btn-h`)
 - `.t-tab` — Actieve tabbladmarkering

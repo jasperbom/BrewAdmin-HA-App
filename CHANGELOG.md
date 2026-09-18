@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.54] — 2026-09-18
+
+### Statusbalk van de iPhone-home-screen-app kleurt weer mee
+
+Als opgeslagen app op het beginscherm bleef de strook achter de klok crème,
+welk thema er ook actief was. Sinds iOS 26 leest Safari voor die strook niet
+meer de `theme-color`-meta, maar bemonstert hij de html-/body-achtergrond van
+de **eerste weergave** — en die stond statisch op de amber-standaard, omdat de
+app het thema pas na het laden via JS zet. Wat iOS daarna nog wijzigt, neemt
+het niet meer over.
+
+- **De server zet het opgeslagen thema al in de HTML.** `index.html` heeft een
+  lege `<style id="thema-init">`; server.py vult die bij het serveren met de
+  `--t-*`-kleuren en de html-/body-achtergrond van het actieve `nav_theme`
+  (in home-screen-modus donker, zoals de headerbalk) en werkt de
+  `theme-color`-meta mee bij. Per thema één gecachte variant met eigen ETag,
+  dus een themawissel wordt niet door een oude cache-hit weggedrukt.
+- App.tsx zet in home-screen-modus nu ook de body-achtergrond donker (iOS
+  bemonstert html óf body); de root-div houdt de lichte pagina-achtergrond.
+- Een pytest bewaakt dat de thematabel in server.py gelijk blijft aan
+  `NAV_THEMES` in constants.ts.
+
+Een themawissel kleurt de statusbalk pas bij de eerstvolgende start van de
+home-screen-app; dat is een beperking van iOS.
+
+### Nieuw kleurenthema: Zand
+
+Een zevende, zacht thema naast de zes verzadigde: donker taupe in de balk,
+een gedempt leerbruin als accent (contrast 5,5:1 op wit) en een linnenachtige
+achtergrond. Bewust laag verzadigd en zonder steile gradient. De staaltjes in
+de instellingen komen voortaan rechtstreeks uit `NAV_THEMES`, zodat een thema
+maar op één plek in de app gedefinieerd staat.
+
+---
+
 ## [1.12.53] — 2026-09-18
 
 ### Twee bieren met dezelfde SKU telden elkaars bestellingen

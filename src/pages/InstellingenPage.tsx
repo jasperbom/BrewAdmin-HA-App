@@ -7,7 +7,7 @@ import { controleerTemplate } from '../utils/template'
 import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
-import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
+import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
 import Modal from '../components/ui/Modal'
@@ -1218,14 +1218,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_nav_color')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_nav_color_desc')}</p>
         <div className="flex flex-wrap gap-3">
-          {[
-            {id:'amber',  label:t('nav_color_amber'),  colors:['#451a03','#78350f','#d97706','#fde68a','#fffbeb']},
-            {id:'green',  label:t('nav_color_green'),  colors:['#052e16','#14532d','#16a34a','#bbf7d0','#f0fdf4']},
-            {id:'blue',   label:t('nav_color_blue'),   colors:['#172554','#1e3a8a','#2563eb','#bfdbfe','#eff6ff']},
-            {id:'slate',  label:t('nav_color_dark'),   colors:['#020617','#1e293b','#64748b','#cbd5e1','#f8fafc']},
-            {id:'red',    label:t('nav_color_red'),    colors:['#450a0a','#7f1d1d','#dc2626','#fecaca','#fef2f2']},
-            {id:'purple', label:t('nav_color_purple'), colors:['#2e1065','#4c1d95','#7c3aed','#ddd6fe','#f5f3ff']},
-          ].map(c => (
+          {/* Eén bron: de staaltjes komen uit NAV_THEMES (p1…p5), niet uit
+              een tweede kleurenlijst hier. */}
+          {Object.entries(NAV_THEMES).map(([id, th]) => ({
+            id, label: t(th.label), colors: [th.p1, th.p2, th.p3, th.p4, th.p5],
+          })).map(c => (
             <button key={c.id} onClick={()=>{setNavTheme(c.id);logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Thema → ${c.id}`})}}
               className={`flex flex-col items-center gap-1.5 p-1 rounded-xl border-2 transition-all ${navTheme===c.id ? 't-border scale-105' : 'border-transparent hover:border-gray-300'}`}>
               <div className="w-[70px] h-8 rounded-lg shadow-sm overflow-hidden flex">

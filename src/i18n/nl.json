@@ -1229,6 +1229,7 @@
   "nav_color_dark": "Donker",
   "nav_color_red": "Rood",
   "nav_color_purple": "Paars",
+  "nav_color_sand": "Zand",
   "settings_btw_period_title": "BTW aangifte periode",
   "settings_btw_period_desc": "Kies of je BTW-aangifte per maand of per kwartaal wordt ingediend. Dit bepaalt de weergave op de Aangiftes pagina.",
   "settings_btw_period_quarterly": "Per kwartaal",

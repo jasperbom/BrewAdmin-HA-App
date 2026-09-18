@@ -1226,6 +1226,7 @@
   "nav_color_dark": "Oscuro",
   "nav_color_red": "Rojo",
   "nav_color_purple": "Morado",
+  "nav_color_sand": "Arena",
   "settings_btw_period_title": "Período de declaración IVA",
   "settings_btw_period_desc": "Elige si tu declaración de IVA se presenta mensual o trimestralmente. Esto determina la vista en la página de declaraciones.",
   "settings_btw_period_quarterly": "Trimestral",

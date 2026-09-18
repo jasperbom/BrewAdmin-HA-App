@@ -2419,6 +2419,7 @@ class TestStaticCaching:
         srv._static_cache['body'] = b''
         srv._static_cache['gzip'] = b''
         srv._static_cache['etag'] = ''
+        srv._static_cache['themas'] = {}
         host, poort = app.replace('http://', '').split(':')
         yield pad, host, int(poort)
 
@@ -2487,3 +2488,92 @@ class TestStaticCaching:
         derde, body3 = self._get(host, poort, headers={'If-None-Match': etag1})
         assert derde.status == 200
         assert body3 == nieuwe_inhoud
+
+
+# ── Thema in de eerste weergave (iOS-home-screen-statusbalk) ────────────────
+
+class TestThemaInjectie:
+    """iOS 26 bemonstert de html-/body-achtergrond van de éérste weergave voor
+    de statusbalk van een home-screen-app en werkt die niet bij als de app
+    het thema later via JS zet. De server vult daarom de theme-color-meta en
+    de lege `<style id="thema-init">` uit index.html met het opgeslagen
+    `nav_theme` — per thema één gecachte variant met eigen ETag."""
+
+    PLAATSHOUDERS = (b'<html><head><meta name="theme-color" content="#451a03" />'
+                     b'<style id="thema-init"></style></head><body>x</body></html>')
+
+    @pytest.fixture()
+    def static(self, app, tmp_path, monkeypatch):
+        pad = tmp_path / 'index.html'
+        pad.write_bytes(self.PLAATSHOUDERS)
+        monkeypatch.setattr(srv, 'STATIC_FILE', pad)
+        srv._static_cache['mtime'] = None
+        srv._static_cache['themas'] = {}
+        host, poort = app.replace('http://', '').split(':')
+        yield host, int(poort)
+        srv._write_json('nav_theme', 'amber')
+
+    @staticmethod
+    def _get(host, poort, headers=None):
+        conn = http.client.HTTPConnection(host, poort, timeout=10)
+        conn.request('GET', '/', headers=headers or {})
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        return resp, body
+
+    def test_python_en_typescript_thematabellen_zijn_gelijk(self):
+        # Een thema dat alleen in constants.ts staat krijgt bij het openen
+        # amber in de statusbalk; een dat alleen hier staat is onkiesbaar.
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'constants.ts').read_text(encoding='utf-8')
+        blok = bron.split('export const NAV_THEMES')[1].split('\n}\n')[0]
+        ts = {}
+        for naam, inhoud in re.findall(r'^\s+(\w+):\s*\{(.*?)\},?$', blok, re.S | re.M):
+            ts[naam] = dict(re.findall(r"(\w+):'(#[0-9a-fA-F]{6})'", inhoud))
+        assert set(ts) == set(srv._NAV_THEMAS), 'themanamen lopen uiteen'
+        for naam, py in srv._NAV_THEMAS.items():
+            for veld, kleur in py.items():
+                assert ts[naam][veld].lower() == kleur.lower(), f'{naam}.{veld} loopt uiteen'
+
+    def test_opgeslagen_thema_staat_in_de_head(self, static):
+        host, poort = static
+        srv._write_json('nav_theme', 'sand')
+        resp, body = self._get(host, poort)
+        assert resp.status == 200
+        zand = srv._NAV_THEMAS['sand']
+        assert f'<meta name="theme-color" content="{zand["from"]}" />'.encode() in body
+        assert f'--t-bg:{zand["bg"]}'.encode() in body
+        assert f'html{{background:{zand["bg"]}}}'.encode() in body
+        # Home-screen-modus: html én body donker (de strook achter de klok).
+        assert f'(display-mode: standalone){{html,html body{{background:{zand["from"]}}}}}'.encode() in body
+        assert resp.getheader('Content-Length') == str(len(body))
+
+    def test_themawissel_geeft_andere_etag_en_inhoud(self, static):
+        host, poort = static
+        srv._write_json('nav_theme', 'blue')
+        blauw, body_blauw = self._get(host, poort)
+        srv._write_json('nav_theme', 'green')
+        groen, body_groen = self._get(host, poort)
+        assert body_blauw != body_groen
+        assert blauw.getheader('ETag') != groen.getheader('ETag')
+        # De blauwe ETag valideert niet meer tegen de groene variant …
+        nog, _ = self._get(host, poort, headers={'If-None-Match': blauw.getheader('ETag')})
+        assert nog.status == 200
+        # … en gzip levert dezelfde thema-variant.
+        gz, body_gz = self._get(host, poort, headers={'Accept-Encoding': 'gzip'})
+        assert gz.getheader('Content-Encoding') == 'gzip'
+        assert gzip.decompress(body_gz) == body_groen
+
+    def test_onbekend_of_ongeldig_thema_valt_terug_op_amber(self, static):
+        host, poort = static
+        srv._write_json('nav_theme', 'neon')
+        _, body = self._get(host, poort)
+        assert f'--t-bg:{srv._NAV_THEMAS["amber"]["bg"]}'.encode() in body
+        assert srv._thema_naam(['sand']) == 'amber'
+        assert srv._thema_naam(None) == 'amber'
+        assert srv._thema_naam('sand') == 'sand'
+
+    def test_build_zonder_plaatshouders_blijft_ongewijzigd(self):
+        html = b'<html><body>zonder plaatshouders</body></html>'
+        assert srv._pas_thema_toe(html, 'sand') == html
