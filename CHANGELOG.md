@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.49] — 2026-09-18
+
+### Teruggedraaid: de gekleurde strook achter de statusbalk
+
+De strook die in 1.12.47 achter de statusbalk werd getekend is weer weg. Hij
+deed twee dingen verkeerd:
+
+- **In Home Assistant maakte hij de header stuk.** Het ingress-iframe erft de
+  safe-area-inset van de webview, maar staat zelf al ónder de statusbalk. Het
+  laagje tekende daardoor een losse gekleurde band bóven de navigatiebalk in
+  plaats van erachter.
+- **In Safari haalde hij niets uit.** De statusbalk en de adresbalk horen bij
+  het omsluitende document — dat van Home Assistant — en niet bij dit iframe.
+  Alleen de `theme-color` van het bovenste document telt daar, en die is van HA.
+
+Als geïnstalleerde webapp op de directe-toegangspoort werkt het al: daar is
+`IS_STANDALONE` waar en vult de `<html>`-achtergrond die strook met de
+themakleur. Via HA is dit een HA-instelling, niet iets wat de addon kan zetten.
+
+---
+
 ## [1.12.48] — 2026-09-18
 
 ### Opgelost: de artikelmarge liet een fust meebetalen aan de flesjes
