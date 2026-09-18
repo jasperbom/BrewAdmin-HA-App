@@ -55,7 +55,7 @@ const PaginaNav: React.FC<PaginaNavProps> = ({ items, pagina, onKies, variant, c
   }, [pagina, variant])
 
   const badge = (it: PaginaNavItem) => it.badge != null && it.badge > 0 && (
-    <span title={it.badgeTitel} className="absolute -top-1 -right-1 bg-orange-700 text-white text-[10px] rounded-full px-1 min-w-[1rem] h-4 flex items-center justify-center leading-none font-bold">{it.badge}</span>
+    <span title={it.badgeTitel} className="absolute top-0.5 -right-1 bg-orange-700 text-white text-[10px] rounded-full px-1 min-w-[1rem] h-4 flex items-center justify-center leading-none font-bold">{it.badge}</span>
   )
 
   if (variant === 'chips') {

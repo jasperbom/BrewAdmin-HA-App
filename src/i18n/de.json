@@ -3785,5 +3785,6 @@
   "btn_opnieuw": "Erneut versuchen",
   "lege_staat_niets": "Nichts gefunden",
   "attentie_aantal": "{n} Punkte brauchen Aufmerksamkeit",
-  "onderbalk_administratie": "Admin"
+  "onderbalk_administratie": "Admin",
+  "nav_naar_dashboard": "Zum Dashboard von {w}"
 }

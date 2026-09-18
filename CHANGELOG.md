@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.58] — 2026-09-18
+
+### De titel bovenin is de weg terug naar het dashboard
+
+- **Bureau:** de naam van de werkruimte links van de tabs is op een pagina
+  een knop naar het dashboard van die werkruimte; op het dashboard zelf
+  gewone tekst. **Telefoon:** hetzelfde voor de titel in de kopbalk.
+- De badge op een tab (open bestellingen) stond tegen de bovenrand van de
+  balk; hij staat nu binnen de tab.
+
+---
+
 ## [1.12.57] — 2026-09-18
 
 ### Statusbalk van de home-screen-app: geen lichte band meer boven het menu

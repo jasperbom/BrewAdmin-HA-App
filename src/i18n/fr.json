@@ -3785,5 +3785,6 @@
   "btn_opnieuw": "Réessayer",
   "lege_staat_niets": "Rien trouvé",
   "attentie_aantal": "{n} points demandent votre attention",
-  "onderbalk_administratie": "Admin"
+  "onderbalk_administratie": "Admin",
+  "nav_naar_dashboard": "Vers le tableau de bord {w}"
 }
