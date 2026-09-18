@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.58] — 2026-09-18
+
+### De titel bovenin is de weg terug naar het dashboard
+
+- **Bureau:** de naam van de werkruimte links van de tabs is op een pagina
+  een knop naar het dashboard van die werkruimte; op het dashboard zelf
+  gewone tekst. **Telefoon:** hetzelfde voor de titel in de kopbalk.
+- De badge op een tab (open bestellingen) stond tegen de bovenrand van de
+  balk; hij staat nu binnen de tab.
+
+---
+
+## [1.12.57] — 2026-09-18
+
+### Statusbalk van de home-screen-app: geen lichte band meer boven het menu
+
+De strook achter de klok bleef licht, welk thema er ook stond, ook na de
+fix van 1.12.54. De oorzaak zit in iOS 26: bij
+`apple-mobile-web-app-status-bar-style=black-translucent` (webview onder de
+statusbalk door) legt het systeem sinds die versie een "Liquid Glass"-waas
+óver die strook, bóven de webview. Wat de app daar ook tekent, het blijft een
+lichte band; `env(safe-area-inset-top)` zegt er niets over en er is geen
+CSS-schakelaar voor.
+
+- **De stijl is geschrapt** (`index.html` en de loginpagina in `server.py`).
+  Met de standaardstijl staat de webview ónder een ondoorzichtige statusbalk,
+  die de kleur van de `theme-color` en van de kop overneemt: de themakleur
+  van het menu. `viewport-fit=cover` blijft, voor de inset onderin.
+- **Opnieuw toevoegen aan het beginscherm.** iOS leest deze meta bij het
+  toevoegen; een al geïnstalleerde app houdt de oude stijl tot je hem
+  verwijdert en opnieuw toevoegt.
+
+---
+
 ## [1.12.56] — 2026-09-18
 
 ### Nieuwe schil: rail op het bureau, onderbalk op de telefoon

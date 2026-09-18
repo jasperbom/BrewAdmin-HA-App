@@ -3785,5 +3785,6 @@
   "btn_opnieuw": "Opnieuw proberen",
   "lege_staat_niets": "Niets gevonden",
   "attentie_aantal": "{n} punten vragen om aandacht",
-  "onderbalk_administratie": "Admin"
+  "onderbalk_administratie": "Admin",
+  "nav_naar_dashboard": "Naar het dashboard van {w}"
 }

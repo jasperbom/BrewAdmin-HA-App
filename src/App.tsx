@@ -1850,11 +1850,13 @@ function App() {
   // ingebouwde standaardicoon.
   const [logoIcoonFout, setLogoIcoonFout] = React.useState(false);
   const nt = NAV_THEMES[navTheme] || NAV_THEMES.amber;
-  // paddingTop env(safe-area-inset-top): als home-screen-app op iOS loopt de
-  // header onder de statusbalk door (black-translucent) — de gradient vult
-  // dan het gebied achter de klok. Alléén in standalone-modus: in de
-  // HA-companion-app erft het ingress-iframe de inset van de webview en
-  // zou de header onterecht hoog worden.
+  // --safe-top (zie het thema-effect hieronder): als home-screen-app op iOS
+  // staat de webview sinds het schrappen van `black-translucent` (1.12.57)
+  // ónder een ondoorzichtige statusbalk, dus de inset is in staand formaat
+  // nul; in liggend formaat en op Android vult de padding de notch-zijde.
+  // Alléén in standalone-modus: in de HA-companion-app erft het
+  // ingress-iframe de inset van de webview en zou de kop onterecht hoog
+  // worden.
   const kopStyle = {background:`linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`, paddingTop: 'var(--safe-top, 0px)'};
   const railStyle = {background:`linear-gradient(to bottom, ${nt.from}, ${nt.to})`};
   React.useEffect(() => {
@@ -2078,6 +2080,8 @@ function App() {
       {/* Telefoon: kopbalk (waar je bent) met de pagina's als chips eronder. */}
       <Kopbalk
         titel={paginaLabel}
+        onTitel={!schilZonderPaginas && !isDetail && page !== 'dashboard' ? () => setPage('dashboard') : undefined}
+        titelHint={t('nav_naar_dashboard').replace('{w}', t(WERKRUIMTE_LABEL_KEYS[werkruimte]))}
         style={kopStyle}
         onTerug={isDetail ? () => setNavBatchId(null) : page === 'instellingen' ? () => setPage('meer') : undefined}
         logo={logoImg('h-8 w-auto max-w-[44px]')}
@@ -2087,7 +2091,16 @@ function App() {
       {/* Bureau: bovenbalk met de naam van de werkruimte en de pagina's als tabs. */}
       <header className="hidden md:block sticky top-0 z-30 bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 flex items-center gap-5 h-12">
-          <h1 className="text-base font-bold text-gray-900 whitespace-nowrap">{schilZonderPaginas ? paginaLabel : t(WERKRUIMTE_LABEL_KEYS[werkruimte])}</h1>
+          {/* De titel is de weg terug naar het dashboard van de werkruimte:
+              op een pagina is hij een knop, op het dashboard zelf alleen tekst. */}
+          <h1 className="text-base font-bold text-gray-900 whitespace-nowrap">
+            {schilZonderPaginas ? paginaLabel : page === 'dashboard' ? t(WERKRUIMTE_LABEL_KEYS[werkruimte]) : (
+              <button type="button" onClick={() => setPage('dashboard')} title={t('nav_naar_dashboard').replace('{w}', t(WERKRUIMTE_LABEL_KEYS[werkruimte]))}
+                className="-mx-2 px-2 h-9 rounded-lg hover:bg-gray-100 t-accent-text-h transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+                {t(WERKRUIMTE_LABEL_KEYS[werkruimte])}
+              </button>
+            )}
+          </h1>
           {!schilZonderPaginas && <PaginaNav items={paginaItems} pagina={page} onKies={setPage} variant="tabs" cls="flex-1 min-w-0 self-stretch" />}
         </div>
       </header>

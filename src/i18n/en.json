@@ -3785,5 +3785,6 @@
   "btn_opnieuw": "Try again",
   "lege_staat_niets": "Nothing found",
   "attentie_aantal": "{n} items need attention",
-  "onderbalk_administratie": "Admin"
+  "onderbalk_administratie": "Admin",
+  "nav_naar_dashboard": "To the {w} dashboard"
 }

@@ -3785,5 +3785,6 @@
   "btn_opnieuw": "Reintentar",
   "lege_staat_niets": "Nada encontrado",
   "attentie_aantal": "{n} puntos requieren atención",
-  "onderbalk_administratie": "Admin"
+  "onderbalk_administratie": "Admin",
+  "nav_naar_dashboard": "Al panel de {w}"
 }
