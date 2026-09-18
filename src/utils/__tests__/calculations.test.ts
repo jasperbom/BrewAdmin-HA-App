@@ -243,6 +243,16 @@ describe('voorraadPerLocatie', () => {
     // 47 − 43 − 4 = 0: de optelling over alle locaties sluit weer aan op de boeken.
     expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(0)
   })
+  it('boekt een afboeking mét locatie precies daar af, zonder doorschuiven', () => {
+    // Nieuwe afboekingen leggen vast waar het bier lag. Dan is er niets meer
+    // te raden: de 2 gaan van de bijkeuken af, de AGP blijft ongemoeid.
+    const locs: any = [{id: 1, naam: 'AGP', is_agp: true}, {id: 2, naam: 'Bijkeuken'}]
+    const r = voorraadPerLocatie({id: 5, hoeveelheid: 10} as any, locs, [],
+      [{id: 1, afvulling_id: 5, batch_id: 1, datum: '2026-02-01', aantal: 4, van_locatie_id: 1, naar_locatie_id: 2} as any],
+      [{afvulling_id: 5, aantal: 2, datum: '2026-03-01', bron_locatie_id: 2} as any])
+    expect(r[1]).toBe(6)
+    expect(r[2]).toBe(2)
+  })
 })
 
 describe('ouderdomsAnalyse (ERP 2.5)', () => {

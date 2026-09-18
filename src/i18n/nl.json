@@ -3759,5 +3759,8 @@
   "msg_geen_zoekresultaten": "Geen resultaten",
   "btn_ubl_menu": "E-factuur (UBL)",
   "factuur_verrekend": "Verrekend",
-  "btn_verrekening_ongedaan": "Verrekening ongedaan maken"
+  "btn_verrekening_ongedaan": "Verrekening ongedaan maken",
+  "lbl_afboeking_locatie": "Waar lag het bier?",
+  "info_afboeking_accijns_agp": "Uit de AGP: het bier verlaat hiermee de schorsingsregeling, dus de accijns wordt verschuldigd en komt in de maandaangifte.",
+  "info_afboeking_accijns_buiten_agp": "Buiten de AGP: de accijns is bij de uitslag al geboekt, dus die wordt hier niet nog eens berekend."
 }

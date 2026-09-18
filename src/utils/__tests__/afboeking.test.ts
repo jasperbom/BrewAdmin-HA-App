@@ -23,6 +23,18 @@ describe('afboekingAccijnsplichtig', () => {
     expect(afboekingAccijnsplichtig(null)).toBe(false)
     expect(afboekingAccijnsplichtig(undefined)).toBe(false)
   })
+  it('boekt alleen accijns wanneer het bier nog in de AGP lag', () => {
+    const AGP = 1, DEPOT = 2
+    // Uit de AGP: het bier verlaat nu pas de schorsingsregeling.
+    expect(afboekingAccijnsplichtig({reden: 'vermis', aantal: 12, bron_locatie_id: AGP}, AGP)).toBe(true)
+    // Al uitgeslagen naar een eigen locatie: daar is de accijns al geboekt.
+    expect(afboekingAccijnsplichtig({reden: 'vermis', aantal: 12, bron_locatie_id: DEPOT}, AGP)).toBe(false)
+  })
+  it('behandelt een afboeking zonder locatie als AGP (records van vóór v1.12.52)', () => {
+    expect(afboekingAccijnsplichtig({reden: 'vermis', aantal: 12}, 1)).toBe(true)
+    // Zonder AGP-id meegegeven blijft het gedrag ook ongewijzigd.
+    expect(afboekingAccijnsplichtig({reden: 'vermis', aantal: 12, bron_locatie_id: 2})).toBe(true)
+  })
 })
 
 describe('bouwAfboekingAccijnsRecord', () => {
@@ -72,6 +84,11 @@ describe('bouwAfboekingAccijnsRecord', () => {
 
   it('geeft null als er geen liters te bepalen zijn', () => {
     expect(bouwAfboekingAccijnsRecord(vermis, {inhoud_per_eenheid: 0}, batch, null, 1)).toBeNull()
+  })
+  it('bouwt geen record voor een vermissing buiten de AGP', () => {
+    const AGP = 1
+    expect(bouwAfboekingAccijnsRecord({...vermis, bron_locatie_id: 2}, afvulling, batch, null, 1, AGP)).toBeNull()
+    expect(bouwAfboekingAccijnsRecord({...vermis, bron_locatie_id: AGP}, afvulling, batch, null, 1, AGP)).not.toBeNull()
     expect(bouwAfboekingAccijnsRecord(vermis, null, batch, null, 1)).toBeNull()
   })
 })

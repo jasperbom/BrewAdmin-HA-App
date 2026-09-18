@@ -3759,5 +3759,8 @@
   "msg_geen_zoekresultaten": "Sin resultados",
   "btn_ubl_menu": "Factura-e (UBL)",
   "factuur_verrekend": "Compensada",
-  "btn_verrekening_ongedaan": "Deshacer la compensación"
+  "btn_verrekening_ongedaan": "Deshacer la compensación",
+  "lbl_afboeking_locatie": "¿Dónde estaba la cerveza?",
+  "info_afboeking_accijns_agp": "Desde el depósito fiscal: la cerveza sale del régimen suspensivo, por lo que el impuesto se devenga y entra en la declaración mensual.",
+  "info_afboeking_accijns_buiten_agp": "Fuera del depósito fiscal: el impuesto ya se registró en la salida, por lo que aquí no se vuelve a calcular."
 }

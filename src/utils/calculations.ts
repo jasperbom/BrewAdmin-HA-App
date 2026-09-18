@@ -1533,7 +1533,16 @@ const bouwVoorraadBewegingen = (
   }
   for (const a of (afboekingen || [])) {
     if (a.afvulling_id !== afv?.id) continue
-    uit.push({datum: String((a as any).datum || ''), van: agpId, aantal: Number(a.aantal || 0), bronOnbekend: true})
+    // Sinds v1.12.52 legt een afboeking vast waar het bier lag. Staat die
+    // locatie er, dan is het geen gok meer en hoeft er niets doorgeschoven te
+    // worden; oudere records gelden als AGP, met de doorschuif als vangnet.
+    const bron = a.bron_locatie_id
+    uit.push({
+      datum: String((a as any).datum || ''),
+      van: bron ?? agpId,
+      aantal: Number(a.aantal || 0),
+      bronOnbekend: bron == null,
+    })
   }
   return uit.sort((x, y) => x.datum.localeCompare(y.datum))
 }

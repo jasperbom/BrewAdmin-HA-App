@@ -4,6 +4,43 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.52] — 2026-09-18
+
+### Een afboeking legt nu vast wáár het bier lag
+
+De structurele oplossing voor de negatieve AGP-standen. `Afboeking` heeft een
+nieuw veld `bron_locatie_id`, en de afboekmodal vraagt er expliciet naar:
+*Waar lag het bier?*, met per locatie de beschikbare voorraad erbij. Standaard
+staat hij op de AGP zolang daar voorraad ligt, anders op de locatie met de
+meeste — in het normale geval hoef je dus niets te kiezen.
+
+Dat veld stuurt twee dingen die bij elkaar horen:
+
+- **Voorraad.** Het aantal gaat af van díe locatie. Tot nu toe ging elke
+  afboeking van de AGP af, die daardoor door nul zakte terwijl een andere
+  locatie bier bleef tonen dat allang weg was.
+- **Accijns.** De heffing ontstaat zodra het bier de schorsingsregeling
+  verlaat. Uit de AGP is een vermissing dus accijnsplichtig; lag het al
+  daarbuiten, dan is de accijns bij de uitslag al geboekt en wordt hij hier
+  **niet** nog eens berekend. Dat voorkomt dat dezelfde flesjes twee keer
+  belast worden. De modal zegt bij een vermissing welke van de twee geldt.
+
+De periode-lock op een gesloten accijnsmaand geldt voortaan alleen wanneer er
+werkelijk een boeking ontstaat — een afboeking buiten de AGP raakt de aangifte
+niet en wordt dus niet meer geblokkeerd. De hoeveelheid wordt getoetst op de
+gekozen locatie in plaats van op het totaal.
+
+**Bestaande gegevens veranderen niet.** Een afboeking zonder locatie geldt als
+AGP, precies zoals de app hem tot nu toe behandelde: dezelfde accijns, dezelfde
+voorraadaftrek. Alleen voor zulke oude records blijft de doorschuif uit
+v1.12.51 als vangnet bestaan. De inventarisatie telt bewust locatieloos — een
+geteld tekort is daar een AGP-discrepantie — en blijft dus accijnsplichtig.
+
+Meegenomen: twee hardcoded Nederlandse foutmeldingen in de vernietigingsflow
+gaan nu via de al bestaande `verlies_vern_err_*`-sleutels.
+
+---
+
 ## [1.12.51] — 2026-09-18
 
 ### Opgelost: afgeboekt bier bleef op een andere locatie staan

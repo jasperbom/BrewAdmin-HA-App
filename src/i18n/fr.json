@@ -3759,5 +3759,8 @@
   "msg_geen_zoekresultaten": "Aucun résultat",
   "btn_ubl_menu": "Facture-e (UBL)",
   "factuur_verrekend": "Compensée",
-  "btn_verrekening_ongedaan": "Annuler la compensation"
+  "btn_verrekening_ongedaan": "Annuler la compensation",
+  "lbl_afboeking_locatie": "Où se trouvait la bière ?",
+  "info_afboeking_accijns_agp": "Depuis l'entrepôt fiscal : la bière quitte la suspension de droits, les accises deviennent exigibles et entrent dans la déclaration mensuelle.",
+  "info_afboeking_accijns_buiten_agp": "Hors entrepôt fiscal : les accises ont déjà été comptabilisées à la sortie, elles ne sont donc pas refacturées ici."
 }

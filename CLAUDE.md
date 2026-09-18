@@ -557,6 +557,32 @@ Gepland → Aan het brouwen → Aan het gisten → Conditioning → Afgevuld →
 (Planned)   (Brewing)        (Fermenting)     (Conditioning)  (Packaged)  (Closed)
 ```
 
+### Afboeken: de locatie bepaalt de accijns
+
+Een afboeking (`afboekingen`) legt in `bron_locatie_id` vast wáár het bier lag
+toen het brak, vermist raakte of vernietigd werd. Dat veld stuurt twee dingen,
+en die horen bij elkaar te blijven:
+
+- **Voorraad.** `voorraadPerLocatie` haalt het aantal van díe locatie af. Ging
+  het altijd van de AGP af — zoals vóór v1.12.52 — dan zakte die door nul
+  terwijl de andere locatie bier bleef tonen dat allang weg was, en telde de app
+  in totaal méér dan er ooit is afgevuld.
+- **Accijns.** De heffing ontstaat zodra het bier de schorsingsregeling
+  verlaat. Uit de AGP is een vermissing dus accijnsplichtig
+  (`afboekingAccijnsplichtig` → `bouwAfboekingAccijnsRecord`). Lag het al
+  daarbuiten, dan is de accijns bij de uitslag al geboekt en mag hij hier
+  **niet** nog eens: dat belast dezelfde flesjes twee keer.
+
+Geef daarom altijd de AGP-locatie mee aan `afboekingAccijnsplichtig` /
+`bouwAfboekingAccijnsRecord` wanneer je die aanroept. Een afboeking zónder
+locatie geldt als AGP — zo blijven bestaande records exact hetzelfde
+gewaardeerd, en voor de voorraadtelling schuift alleen zo'n oud record nog door
+naar een locatie die wél voorraad heeft.
+
+De inventarisatie (`InventarisatiePage`) telt bewust locatieloos: een geteld
+tekort is daar een AGP-discrepantie, dus die afboekingen krijgen geen locatie
+en blijven accijnsplichtig.
+
 ### Tankbezetting: gereserveerd ≠ bezet
 
 Een tank is pas **bezet** als er bier in zit (`Vergisten`/`Conditioneren` —
@@ -620,7 +646,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `verkoop_facturen` | array | Verkoopfacturen |
 | `bestellingen` | array | WooCommerce-bestellingen |
 | `bestelling_picks` | array | Pickregels per bestelling |
-| `afboekingen` | array | Biervoorraadbewegingen |
+| `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
 | `gist_metingen` | array | Gistingsmetingen per batch |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
