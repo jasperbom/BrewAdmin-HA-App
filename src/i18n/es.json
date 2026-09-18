@@ -3757,5 +3757,7 @@
   "bier_leeg_titel": "Aún no hay información de la cerveza.",
   "bier_leeg_actie": "Añadir información",
   "msg_geen_zoekresultaten": "Sin resultados",
-  "btn_ubl_menu": "Factura-e (UBL)"
+  "btn_ubl_menu": "Factura-e (UBL)",
+  "factuur_verrekend": "Compensada",
+  "btn_verrekening_ongedaan": "Deshacer la compensación"
 }
