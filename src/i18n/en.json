@@ -3757,5 +3757,7 @@
   "bier_leeg_titel": "No beer information recorded yet.",
   "bier_leeg_actie": "Add beer information",
   "msg_geen_zoekresultaten": "No results",
-  "btn_ubl_menu": "E-invoice (UBL)"
+  "btn_ubl_menu": "E-invoice (UBL)",
+  "factuur_verrekend": "Offset",
+  "btn_verrekening_ongedaan": "Undo offset"
 }

@@ -3757,5 +3757,7 @@
   "bier_leeg_titel": "Nog geen bierinformatie vastgelegd.",
   "bier_leeg_actie": "Bierinformatie invullen",
   "msg_geen_zoekresultaten": "Geen resultaten",
-  "btn_ubl_menu": "E-factuur (UBL)"
+  "btn_ubl_menu": "E-factuur (UBL)",
+  "factuur_verrekend": "Verrekend",
+  "btn_verrekening_ongedaan": "Verrekening ongedaan maken"
 }

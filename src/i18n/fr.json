@@ -3757,5 +3757,7 @@
   "bier_leeg_titel": "Aucune information bière enregistrée.",
   "bier_leeg_actie": "Renseigner les informations",
   "msg_geen_zoekresultaten": "Aucun résultat",
-  "btn_ubl_menu": "Facture-e (UBL)"
+  "btn_ubl_menu": "Facture-e (UBL)",
+  "factuur_verrekend": "Compensée",
+  "btn_verrekening_ongedaan": "Annuler la compensation"
 }

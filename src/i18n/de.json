@@ -3757,5 +3757,7 @@
   "bier_leeg_titel": "Noch keine Bierinformationen erfasst.",
   "bier_leeg_actie": "Bierinformationen erfassen",
   "msg_geen_zoekresultaten": "Keine Ergebnisse",
-  "btn_ubl_menu": "E-Rechnung (UBL)"
+  "btn_ubl_menu": "E-Rechnung (UBL)",
+  "factuur_verrekend": "Verrechnet",
+  "btn_verrekening_ongedaan": "Verrechnung rückgängig machen"
 }

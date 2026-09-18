@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.46] — 2026-09-18
+
+### Verrekening is een status geworden, geen bijschrift
+
+Een verkoopfactuur die tegen een alternatieve rekening was weggestreept, kreeg
+in de lijst de badge *Betaald* plus de losse regel "↔ Verrekend met &lt;naam&gt; ×".
+Die zin herhaalde op elke regel dezelfde rekeningnaam en won op een telefoon
+breedte van de klantnaam, die daardoor werd afgekapt.
+
+De statusbadge zegt nu zelf **Verrekend** (paars, de kleur die dit bestand al
+voor het kapitaaldagboek gebruikt) met de naam van de rekening in de tooltip.
+Dat is preciezer dan *Betaald*: er kwam niets binnen op de bank, de schuld aan
+die rekening werd kleiner — precies het onderscheid dat je bij het aflezen van
+de lijst wilt zien. Het terugdraaien zat als kruisje op elke regel en staat nu
+in het ⋯-menu, waar het thuishoort: het zet de factuur terug op *open*.
+
+De rekeningnaam zelf blijft vindbaar waar hij ertoe doet: het verrekende bedrag
+telt mee in het saldo van de alternatieve rekening (Instellingen) en de
+audittrail legt per factuur vast tegen welke rekening is weggestreept.
+
+---
+
 ## [1.12.45] — 2026-09-17
 
 ### UI-opschoning: rustiger, moderner, minder "gegenereerd"

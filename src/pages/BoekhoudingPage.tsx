@@ -933,6 +933,19 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   // Status badge helper voor verkoopfacturen
   const statusBadge = (f: any) => {
+    // Verrekend is een eigen status, geen bijschrift bij "Betaald": er kwam
+    // niets binnen op de bank, de schuld aan de rekening werd kleiner. Dat
+    // onderscheid telt bij het aflezen van de lijst, de naam van de rekening
+    // niet — die staat in de tooltip en op de rekening zelf.
+    if (f.status === 'betaald' && f.verrekend_alt_id != null) {
+      const r = (altRekeningen||[]).find((x: any) => x.id === f.verrekend_alt_id)
+      return (
+        <span
+          className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700"
+          title={`${t('lbl_verrekend_met')} ${r?.naam || t('lbl_onbekend')}`}
+        >{t('factuur_verrekend')}</span>
+      )
+    }
     if (f.status === 'betaald') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">{t('factuur_paid')}</span>
     if (f.status === 'aanmaning') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">{t('lbl_aanmaning')}</span>
     if (f.status === 'tweede_herinnering') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">{t('lbl_tweede_herinnering')}</span>
@@ -2090,18 +2103,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{f.datum}</td>
                       <td className="py-2 pr-3 font-mono text-xs text-gray-700">{f.factuurnummer||'—'}</td>
                       <td className="py-2 pr-3 font-medium text-gray-800">{klantNaamVoor(f)||'—'}</td>
-                      <td className="py-2 pr-3">
-                        {statusBadge(f)}
-                        {f.verrekend_alt_id != null && (() => {
-                          const r = (altRekeningen||[]).find((x: any) => x.id === f.verrekend_alt_id)
-                          return (
-                            <span className="ml-1 text-[10px] text-purple-600 font-medium whitespace-nowrap" onClick={(e: any)=>e.stopPropagation()}>
-                              ↔ {t('lbl_verrekend_met')} {r?.naam||'?'}
-                              <button onClick={()=>ontkoppelVerrekening(f.id)} className="ml-1 text-gray-400 hover:text-red-500 transition-colors" title={t('btn_ontkoppel')}>×</button>
-                            </span>
-                          )
-                        })()}
-                      </td>
+                      <td className="py-2 pr-3">{statusBadge(f)}</td>
                       <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.netto||0)}</td>
                       <td className="py-2 pr-3 text-right text-gray-700 whitespace-nowrap">{fmt(f.btw||0)}</td>
                       <td className="py-2 pr-3 text-right font-semibold text-gray-900 whitespace-nowrap">{fmt(f.bruto||0)}</td>
@@ -2135,6 +2137,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                           if (!betaald && (altRekeningen||[]).length > 0) acties.push(
                             {id:'verreken', label:t('btn_verreken_alt'), title:t('title_verreken_alt'),
                              onClick:()=>setVerrekenFactuurId(f.id)})
+                          // Terugdraaien zet de factuur weer op open; dat hoort
+                          // niet als kruisje op elke regel te staan.
+                          if (f.verrekend_alt_id != null) acties.push(
+                            {id:'ontkoppel_verreken', label:t('btn_verrekening_ongedaan'), soort:'gevaar',
+                             onClick:()=>ontkoppelVerrekening(f.id)})
                           const primair: RowActie = betaald
                             ? {id:'pdf', label:t('btn_pdf'), onClick:()=>genereerFactuurPDF(f)}
                             : {id:'betaald', label:t('btn_mark_paid'), onClick:()=>markeerBetaald(f.id)}
