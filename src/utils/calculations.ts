@@ -1504,8 +1504,13 @@ export const getAgpLocatie = (locaties: Locatie[] = []): Locatie => {
 
 /** Eén voorraadbeweging: `aantal` gaat van locatie `van` af en, als er een
  *  bestemming is, op `naar` erbij. Een uitlevering of afboeking heeft geen
- *  `naar` — die verlaat de voorraad. */
-interface VoorraadBeweging { datum: string; van: number; naar?: number; aantal: number }
+ *  `naar` — die verlaat de voorraad.
+ *
+ *  `bronOnbekend` staat op een afboeking: die legt nergens vast wáár het bier
+ *  stond toen het brak of vermist raakte (`Afboeking` heeft geen locatieveld),
+ *  dus die nemen we standaard van de AGP. Past hij daar niet, dan mag hij
+ *  doorschuiven naar een locatie waar de voorraad wél staat. */
+interface VoorraadBeweging { datum: string; van: number; naar?: number; aantal: number; bronOnbekend?: boolean }
 
 /** Verplaatsingen, uitleveringen en afboekingen van één afvulling als één
  *  lijst op datum. De sortering is stabiel, dus bij een gelijke datum blijft
@@ -1528,7 +1533,7 @@ const bouwVoorraadBewegingen = (
   }
   for (const a of (afboekingen || [])) {
     if (a.afvulling_id !== afv?.id) continue
-    uit.push({datum: String((a as any).datum || ''), van: agpId, aantal: Number(a.aantal || 0)})
+    uit.push({datum: String((a as any).datum || ''), van: agpId, aantal: Number(a.aantal || 0), bronOnbekend: true})
   }
   return uit.sort((x, y) => x.datum.localeCompare(y.datum))
 }
@@ -1561,13 +1566,31 @@ export const voorraadPerLocatie = (
   // en het verschil blijft als phantom voorraad op de bestemming staan: precies
   // wat de cap hieronder moet voorkomen.
   const bewegingen = bouwVoorraadBewegingen(afv, agp.id, uitleveringen, verplaatsingen, afboekingen)
+  const neemAf = (loc: number, hoeveel: number): number => {
+    const beschikbaar = Math.max(0, result[loc] || 0)
+    const werkelijk = Math.min(hoeveel, beschikbaar)
+    if (werkelijk > 0) result[loc] = (result[loc] || 0) - werkelijk
+    return werkelijk
+  }
   for (const b of bewegingen) {
     if (b.aantal <= 0) continue
-    const beschikbaar = Math.max(0, result[b.van] || 0)
-    const werkelijk = Math.min(b.aantal, beschikbaar)
-    if (werkelijk <= 0) continue
-    result[b.van] = (result[b.van] || 0) - werkelijk
-    if (b.naar !== undefined) result[b.naar] = (result[b.naar] || 0) + werkelijk
+    let genomen = neemAf(b.van, b.aantal)
+    // Een afboeking zonder locatie die niet op de AGP past, stond ergens
+    // anders: schuif de rest door naar de locaties die wél voorraad hebben.
+    // Anders zakt de AGP door nul terwijl die andere locatie bier blijft
+    // tonen dat allang kapot of vermist is — en telde de app in totaal méér
+    // dan er ooit is afgevuld.
+    if (b.bronOnbekend && b.naar === undefined && genomen < b.aantal) {
+      const overige = Object.keys(result)
+        .map(Number)
+        .filter(id => id !== b.van && (result[id] || 0) > 0)
+        .sort((x, y) => x - y)
+      for (const loc of overige) {
+        if (genomen >= b.aantal) break
+        genomen += neemAf(loc, b.aantal - genomen)
+      }
+    }
+    if (b.naar !== undefined && genomen > 0) result[b.naar] = (result[b.naar] || 0) + genomen
   }
 
   // Negatieve waarden naar 0 normaliseren (kan voorkomen bij data-inconsistentie)

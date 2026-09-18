@@ -226,6 +226,23 @@ describe('voorraadPerLocatie', () => {
     expect(r[1]).toBe(0)
     expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(2)
   })
+  it('boekt een afboeking die niet op de AGP past af op de locatie waar het bier staat', () => {
+    // Afvulling #117 uit de praktijk: 47 afgevuld, 43 uitgeleverd, 3 naar de
+    // Bijkeuken verplaatst en 4 afgeboekt (1 overig + 3 vermis). Die laatste 3
+    // stonden in de Bijkeuken, maar een afboeking legt geen locatie vast en
+    // ging dus van de AGP af. Die zakte daardoor naar −3 terwijl de Bijkeuken
+    // 3 flesjes bleef tonen die er niet meer waren.
+    const locs: any = [{id: 1, naam: 'AGP', is_agp: true}, {id: 2, naam: 'Bijkeuken'}]
+    const r = voorraadPerLocatie({id: 117, hoeveelheid: 47} as any, locs,
+      [{id: 1, afvulling_id: 117, aantal: 43, datum: '2026-06-01', bron_locatie_id: 1} as any],
+      [{id: 1, afvulling_id: 117, batch_id: 1, datum: '2026-06-15', aantal: 3, van_locatie_id: 1, naar_locatie_id: 2} as any],
+      [{afvulling_id: 117, aantal: 1, datum: '2026-07-14'} as any,
+       {afvulling_id: 117, aantal: 3, datum: '2026-09-12'} as any])
+    expect(r[1]).toBe(0)
+    expect(r[2]).toBe(0)
+    // 47 − 43 − 4 = 0: de optelling over alle locaties sluit weer aan op de boeken.
+    expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(0)
+  })
 })
 
 describe('ouderdomsAnalyse (ERP 2.5)', () => {

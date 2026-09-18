@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.51] — 2026-09-18
+
+### Opgelost: afgeboekt bier bleef op een andere locatie staan
+
+Een afboeking legt niet vast wáár het bier stond toen het brak of vermist
+raakte — `Afboeking` heeft geen locatieveld — en ging daarom altijd van de
+AGP af. Stond dat bier op een andere locatie, dan zakte de AGP door nul
+terwijl die andere locatie flesjes bleef tonen die er allang niet meer waren.
+De app telde in totaal dan méér dan er ooit is afgevuld.
+
+Uit een echte voorraadverloop-export over Q3 2026:
+
+| Bier | AGP-begin | Uitgeslagen | Afgeboekt | AGP-eind |
+|---|---|---|---|---|
+| Sterrenbier Berken Blond | 45 | 44 | 4 | **−3** |
+| Tripel A | 84 | 84 | 1 | **−1** |
+
+Bij Sterrenbier waren precies die 3 vermiste flesjes naar de bijkeuken
+verplaatst. De afboeking ging van de (lege) AGP af, dus bleef de bijkeuken 3
+tonen en klopte de optelling niet meer met de boeken.
+
+Een afboeking die niet op de AGP past schuift nu door naar de locaties waar de
+voorraad wél staat. De AGP-stand zelf verandert daar niet door — alleen de
+andere locaties — dus de accijnsberekening en de uitslagcontrole in
+`utils/agp.ts` rekenen ongewijzigd. De optelling over alle locaties sluit weer
+aan op afgevuld − uitgeleverd − afgeboekt.
+
+`voorraadPerLocatieRaw` schuift bewust niet door: die blijft de ongefilterde
+standen tonen voor de negatieve-voorraadsignalering.
+
+---
+
 ## [1.12.50] — 2026-09-18
 
 ### Opgelost: fysieke voorraad kon te hoog uitvallen
