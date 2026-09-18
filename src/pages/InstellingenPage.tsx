@@ -7,7 +7,7 @@ import { controleerTemplate } from '../utils/template'
 import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
-import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS } from '../utils/constants'
+import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
 import Modal from '../components/ui/Modal'
@@ -19,6 +19,7 @@ import { standaardBtwPct } from '../utils/btw'
 import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
 import { taakReinigingStatus } from '../utils/ontsmetting'
 import { BEWAKING_DEFAULTS } from '../utils/tankbewaking'
+import Icon from '../components/ui/Icon'
 
 // Instelbare drempels van de temperatuurbewaking. De volgorde is die van het
 // oordeel zelf: eerst wat "normaal" is, dan wanneer het meldenswaardig wordt,
@@ -98,7 +99,7 @@ const JaarRow = ({entry, uitslagenInJaar, onSave, onDelete, onImpact}: {
             disabled={!valid || uitslagenInJaar === 0}
             title={t('settings_excise_historie_impact_tip').replace('{n}', String(uitslagenInJaar))}
             className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
-            📊 {t('settings_excise_historie_impact')}
+            <Icon n="chart" /> {t('settings_excise_historie_impact')}
           </button>
           <button onClick={() => valid && dirty && onSave(toPatch())}
             disabled={!valid || !dirty}
@@ -1104,15 +1105,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const navItems = [
-    {id:'brouwerij',     label:t('settings_brewery'),      icon:'🏭'},
-    {id:'bedrijf',       label:t('settings_bedrijf'),      icon:'🏢'},
-    {id:'financieel',    label:t('settings_financieel'),   icon:'💶'},
-    {id:'koppelingen',   label:t('settings_koppelingen'),  icon:'🔗'},
-    {id:'homeassistant', label:'Home Assistant',            icon:'🏠'},
-    {id:'meldingen',     label:t('settings_meldingen'),    icon:'🔔'},
-    {id:'categorieen',   label:t('settings_categorieen'),  icon:'🗂'},
-    {id:'taken',         label:t('settings_batch_taken'),  icon:'📋'},
-    {id:'app',           label:t('settings_app'),          icon:'⚙️'},
+    {id:'brouwerij',     label:t('settings_brewery'),      icon: <Icon n="factory" />},
+    {id:'bedrijf',       label:t('settings_bedrijf'),      icon: <Icon n="building" />},
+    {id:'financieel',    label:t('settings_financieel'),   icon: <Icon n="euro" />},
+    {id:'koppelingen',   label:t('settings_koppelingen'),  icon: <Icon n="link" />},
+    {id:'homeassistant', label:'Home Assistant',            icon: <Icon n="home" />},
+    {id:'meldingen',     label:t('settings_meldingen'),    icon: <Icon n="bell" />},
+    {id:'categorieen',   label:t('settings_categorieen'),  icon: <Icon n="folder" />},
+    {id:'taken',         label:t('settings_batch_taken'),  icon: <Icon n="clipboard" />},
+    {id:'app',           label:t('settings_app'),          icon: <Icon n="gear" />},
   ];
 
   const fmtTs = (ts: any) => { try { return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ts; }};
@@ -1218,14 +1219,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_nav_color')}</h2>
         <p className="text-sm text-gray-500 mb-4">{t('settings_nav_color_desc')}</p>
         <div className="flex flex-wrap gap-3">
-          {[
-            {id:'amber',  label:t('nav_color_amber'),  colors:['#451a03','#78350f','#d97706','#fde68a','#fffbeb']},
-            {id:'green',  label:t('nav_color_green'),  colors:['#052e16','#14532d','#16a34a','#bbf7d0','#f0fdf4']},
-            {id:'blue',   label:t('nav_color_blue'),   colors:['#172554','#1e3a8a','#2563eb','#bfdbfe','#eff6ff']},
-            {id:'slate',  label:t('nav_color_dark'),   colors:['#020617','#1e293b','#64748b','#cbd5e1','#f8fafc']},
-            {id:'red',    label:t('nav_color_red'),    colors:['#450a0a','#7f1d1d','#dc2626','#fecaca','#fef2f2']},
-            {id:'purple', label:t('nav_color_purple'), colors:['#2e1065','#4c1d95','#7c3aed','#ddd6fe','#f5f3ff']},
-          ].map(c => (
+          {/* Eén bron: de staaltjes komen uit NAV_THEMES (p1…p5), niet uit
+              een tweede kleurenlijst hier. */}
+          {Object.entries(NAV_THEMES).map(([id, th]) => ({
+            id, label: t(th.label), colors: [th.p1, th.p2, th.p3, th.p4, th.p5],
+          })).map(c => (
             <button key={c.id} onClick={()=>{setNavTheme(c.id);logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Thema → ${c.id}`})}}
               className={`flex flex-col items-center gap-1.5 p-1 rounded-xl border-2 transition-all ${navTheme===c.id ? 't-border scale-105' : 'border-transparent hover:border-gray-300'}`}>
               <div className="w-[70px] h-8 rounded-lg shadow-sm overflow-hidden flex">
@@ -1243,15 +1241,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('lbl_language')}</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            {code:'nl', label:'Nederlands', flag:'🇳🇱'},
-            {code:'en', label:'English',    flag:'🇬🇧'},
-            {code:'de', label:'Deutsch',    flag:'🇩🇪'},
-            {code:'fr', label:'Français',   flag:'🇫🇷'},
-            {code:'es', label:'Español',    flag:'🇪🇸'},
+            {code:'nl', label:'Nederlands', kort:'NL'},
+            {code:'en', label:'English',    kort:'EN'},
+            {code:'de', label:'Deutsch',    kort:'DE'},
+            {code:'fr', label:'Français',   kort:'FR'},
+            {code:'es', label:'Español',    kort:'ES'},
           ].map(lng => (
             <button key={lng.code} onClick={()=>{setLang(lng.code);logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Taal → ${lng.code}`})}}
               className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${lang===lng.code ? 't-nav' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-              <span className="text-xl">{lng.flag}</span>
+              <span className="text-[11px] font-semibold tracking-wide w-8 text-center rounded bg-gray-100 text-gray-600 py-0.5 flex-shrink-0">{lng.kort}</span>
               <span>{lng.label}</span>
               {lang===lng.code && <span className="ml-auto" style={{color:'var(--t-accent)'}}>✓</span>}
             </button>
@@ -3302,10 +3300,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
             <div className="p-6 border-t border-gray-200 flex flex-wrap items-center gap-2">
               <Btn v="secondary" s="sm" onClick={impactExportCsv} disabled={impactModal.resultaat.rijen.length === 0}>
-                💾 {t('btn_export_csv')}
+                <Icon n="download" /> {t('btn_export_csv')}
               </Btn>
               <Btn v="secondary" s="sm" onClick={() => window.print()} disabled={impactModal.resultaat.rijen.length === 0}>
-                🖨 {t('btn_print')}
+                <Icon n="printer" /> {t('btn_print')}
               </Btn>
               {impactModal.nogOpslaan && (
                 <Btn v="primary" s="sm" onClick={() => {

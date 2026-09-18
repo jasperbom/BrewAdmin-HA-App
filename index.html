@@ -7,8 +7,14 @@
          de 16px-minimum font-size in src/index.css, niet door de viewport.
          viewport-fit=cover laat de app onder de statusbalk/notch doorlopen. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <!-- Default vóór de app laadt; App.tsx werkt dit bij naar het actieve thema -->
+    <!-- Thema vóór de app laadt. server.py vult bij het serveren de
+         theme-color én de lege <style id="thema-init"> hieronder met het
+         opgeslagen thema (`nav_theme`): iOS 26 bemonstert de html-/body-
+         achtergrond van de éérste weergave voor de statusbalk van een
+         home-screen-app en werkt die niet meer bij wanneer App.tsx het thema
+         later via JS zet. Zonder server (dev) blijft amber de default. -->
     <meta name="theme-color" content="#451a03" />
+    <style id="thema-init"></style>
     <!-- Home-screen-app (iOS/Android): statusbalk transparant over de
          gekleurde header (de nav krijgt safe-area-padding in App.tsx). -->
     <meta name="apple-mobile-web-app-capable" content="yes" />

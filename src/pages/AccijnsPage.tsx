@@ -7,6 +7,7 @@ import { logAudit } from '../utils/audit'
 import { accijnsAangifteBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { accijnsMaandKey, groepeerAccijnsPerMaand } from '../utils/afboeking'
 import type { Batch, AccijnsRecord, AccijnsAangifte, AccijnsInst, Uitlevering, Afvulling } from '../types'
+import Icon from '../components/ui/Icon'
 
 // Inline 4-ogen-controleblok (Douane v2.4 §12.2). Reviewer (default Elise Kok) vinkt akkoord
 // of opmerkingen aan, eventueel met bevindingen. Pas bij 'akkoord' kan de aangifte naar
@@ -403,7 +404,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
           <button
             onClick={()=>setAangifteView((v: any)=>!v)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${aangifteView ? 't-nav' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-            📋 {t('excise_aangifte_view')}
+            <Icon n="clipboard" /> {t('excise_aangifte_view')}
           </button>
           {totPaid > 0 && (
             <div className="px-3 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-700">

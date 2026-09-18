@@ -46,6 +46,7 @@ import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/Blokkad
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { actieveSessie, magAfvullingRegistreren } from '../utils/afvulsessie'
 import { metingWaarde, metingenMetFg } from '../utils/metingen'
+import Icon from '../components/ui/Icon'
 
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
@@ -1412,17 +1413,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const renderLogboek = () => {
     if (!selB) return null
     const TYPE: Record<string, any> = {
-      gebruik:      {icon: '📦', label: t('batch_log_ingredient'),   cls: 'text-blue-700 bg-blue-50'},
+      gebruik:      {icon: <Icon n="package" />, label: t('batch_log_ingredient'),   cls: 'text-blue-700 bg-blue-50'},
       terugboeking: {icon: '↩',  label: t('batch_log_type_return'),  cls: 'text-orange-700 bg-orange-50'},
-      afvullen:     {icon: '🍺', label: t('log_type_afvullen'),      cls: 'text-green-700 bg-green-50'},
-      uitslaan:     {icon: '🚛', label: t('log_type_uitslaan'),      cls: 'text-purple-700 bg-purple-50'},
-      afboeking:    {icon: '🗑️', label: t('log_type_afboeking'),     cls: 'text-red-700 bg-red-50'},
+      afvullen:     {icon: <Icon n="beer" />, label: t('log_type_afvullen'),      cls: 'text-green-700 bg-green-50'},
+      uitslaan:     {icon: <Icon n="truck" />, label: t('log_type_uitslaan'),      cls: 'text-purple-700 bg-purple-50'},
+      afboeking:    {icon: <Icon n="trash" />, label: t('log_type_afboeking'),     cls: 'text-red-700 bg-red-50'},
       rebrand:      {icon: '↪',  label: t('log_type_rebrand'),       cls: 'text-blue-700 bg-blue-50'},
-      status:       {icon: '🔄', label: t('lbl_status'),             cls: 'text-gray-700 bg-gray-100'},
-      aangemaakt:   {icon: '✨', label: t('batch_log_type_created'), cls: 'text-indigo-700 bg-indigo-50'},
-      gewijzigd:    {icon: '✏️', label: t('batch_log_type_changed'), cls: 'text-orange-700 bg-orange-50'},
-      hygiene:      {icon: '🧹', label: t('batch_log_type_hygiene'), cls: 'text-teal-700 bg-teal-50'},
-      ccp:          {icon: '🎯', label: 'CCP',                        cls: 'text-blue-700 bg-blue-50'},
+      status:       {icon: <Icon n="refresh" />, label: t('lbl_status'),             cls: 'text-gray-700 bg-gray-100'},
+      aangemaakt:   {icon: <Icon n="sparkles" />, label: t('batch_log_type_created'), cls: 'text-indigo-700 bg-indigo-50'},
+      gewijzigd:    {icon: '✎', label: t('batch_log_type_changed'), cls: 'text-orange-700 bg-orange-50'},
+      hygiene:      {icon: <Icon n="brush" />, label: t('batch_log_type_hygiene'), cls: 'text-teal-700 bg-teal-50'},
+      ccp:          {icon: <Icon n="target" />, label: 'CCP',                        cls: 'text-blue-700 bg-blue-50'},
     }
     const bLog = (log || []).filter((l: any) => l.batch_id === selB.id).slice().reverse()
     if (!bLog.length) return null
@@ -2166,7 +2167,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     if (row.afgeboekt) {
       // Historische regel: alleen tonen wat gekoppeld was, niet meer wijzigen.
       return explicit && match ? (
-        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 ml-2 align-middle">🔗 {match.naam}</span>
+        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 ml-2 align-middle"><Icon n="link" /> {match.naam}</span>
       ) : null
     }
     if (koppelRow === row.id) {
@@ -2192,7 +2193,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         <span onClick={(e: any) => { e.stopPropagation(); setKoppelRow(row.id) }}
           className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 cursor-pointer hover:bg-blue-100 ml-2 align-middle"
           title={t('recipe_link_edit')}>
-          🔗 {match.naam}
+          <Icon n="link" /> {match.naam}
         </span>
       )
     }
@@ -2216,7 +2217,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return (
       <button onClick={(e: any) => { e.stopPropagation(); setKoppelRow(row.id) }}
         className="text-xs px-1 py-0.5 rounded text-gray-400 hover:bg-gray-100 ml-2 align-middle"
-        title={t('recipe_link_edit')}>🔗</button>
+        title={t('recipe_link_edit')}><Icon n="link" /></button>
     )
   }
 
@@ -2978,7 +2979,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   placeholder={sensorTemp != null ? sensorTemp.toFixed(1) : '2'} />
                 {sensorTemp != null && (
                   <button type="button" onClick={() => setCarbForm((f: any) => ({...f, tank_temp_c: sensorTemp.toFixed(1)}))} className="mt-1 text-xs hover:underline" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
-                    🌡 HA: {sensorTemp.toFixed(1)}°C
+                    <Icon n="thermometer" /> HA: {sensorTemp.toFixed(1)}°C
                   </button>
                 )}
               </div>
@@ -3487,7 +3488,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           {mSensor != null && (
             <button type="button" onClick={() => setMForm(f => ({...f, temp: mSensor.toFixed(1)}))}
               className="mt-1 text-xs hover:underline block truncate max-w-full text-left" style={{color: 'var(--t-accent)'}} title={t('carb_use_sensor_tooltip')}>
-              🌡 HA: {mSensor.toFixed(1)}°C
+              <Icon n="thermometer" /> HA: {mSensor.toFixed(1)}°C
             </button>
           )}
         </div>
@@ -3609,7 +3610,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                           <button type="button" onClick={() => updateBatch({ tank_dagen: berekend })}
                             disabled={!Array.isArray(profiel) || profiel.length === 0} title={tooltip}
                             className="text-xs px-2 py-1.5 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
-                            🔢 {t('plan_tanktijd_bereken')}
+                            <Icon n="hash" /> {t('plan_tanktijd_bereken')}
                           </button>
                         )
                       })()}

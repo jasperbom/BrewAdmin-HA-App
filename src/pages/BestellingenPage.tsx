@@ -37,6 +37,7 @@ import {
   boekMerchMutaties, merchAfboekingenVoorRegels, merchTekorten,
 } from '../utils/merch'
 import BierKleur from '../components/ui/BierKleur'
+import Icon from '../components/ui/Icon'
 
 interface BestellingenPageProps {
   bat: any[]
@@ -292,7 +293,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return (
       <span title={leveringOmschrijving(b) + (gemist ? ` (${t('orders_afhaalmoment_verstreken')})` : '')}
         className={`px-2 py-0.5 rounded-full text-xs font-semibold ${gemist ? 'bg-red-100 text-red-700' : open ? 'bg-orange-100 text-orange-700' : afhalen ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-        {afhalen ? '🏬' : '🚚'} {t(afhalen ? 'orders_levering_afhalen' : 'orders_levering_verzenden')}
+        <Icon n={afhalen ? 'store' : 'truck'} /> {t(afhalen ? 'orders_levering_afhalen' : 'orders_levering_verzenden')}
       </span>
     )
   }
@@ -2021,7 +2022,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       {soort === 'bier' && <BierKleur ebc={ebcVoorRegel(r)} s="sm" cls="mr-1.5" />}
                       {r.bier_naam}
                       {r.sku && <span className="ml-1 font-mono text-xs text-gray-400">[{r.sku}]</span>}
-                      {soort === 'verzending' && <span className="ml-1 text-xs text-blue-500">🚚</span>}
+                      {soort === 'verzending' && <span className="ml-1 text-xs text-blue-500"><Icon n="truck" /></span>}
                       {soort === 'vrij' && !r.merch && <span className="ml-1 text-xs text-purple-500">✎</span>}
                       {r.merch && (
                         <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold align-middle"
@@ -2148,34 +2149,34 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             <Btn v="secondary" onClick={() => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setShowVrijeRegelModal(true) }}>
               + {t('btn_vrije_regel')}
             </Btn>
-            <Btn v="secondary" onClick={addVerzendkosten}>🚚 {t('btn_verzendkosten')}</Btn>
+            <Btn v="secondary" onClick={addVerzendkosten}><Icon n="truck" /> {t('btn_verzendkosten')}</Btn>
             {/* De pakbon mag ook vóór (of halverwege) het picken geprint worden:
                 de nog niet gepickte regels staan er dan zonder batch/THT op
                 en het document draagt een concept-markering (PakbonExport). */}
-            <Btn v="secondary" onClick={printOrderPakbon} title={!magAfronden ? t('order_print_pakbon_concept_uitleg') : ''}>🖨 {t('order_print_pakbon')}</Btn>
+            <Btn v="secondary" onClick={printOrderPakbon} title={!magAfronden ? t('order_print_pakbon_concept_uitleg') : ''}><Icon n="printer" /> {t('order_print_pakbon')}</Btn>
           </>)}
           {magAfronden && (<>
             <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
+              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
             </Btn>
-            <Btn v="secondary" onClick={markVerzonden} title={t('tooltip_logistical_status')}>📦 {t('order_mark_shipped')}</Btn>
+            <Btn v="secondary" onClick={markVerzonden} title={t('tooltip_logistical_status')}><Icon n="package" /> {t('order_mark_shipped')}</Btn>
             <Btn v="green" onClick={() => setShowAfrondModal(true)}>{t('order_complete')}</Btn>
           </>)}
           {selectedOrder.status === 'verzonden' && (
             <Btn v="green" onClick={() => setShowAfrondModal(true)}>{t('order_complete')}</Btn>
           )}
           {(selectedOrder.status === 'afgerond' || selectedOrder.status === 'verzonden') && (<>
-            <Btn v="secondary" onClick={printOrderPakbon}>🖨 {t('order_print_pakbon')}</Btn>
-            <Btn v="secondary" onClick={printOrderFactuur}>🖨 {t('order_print_factuur')}</Btn>
+            <Btn v="secondary" onClick={printOrderPakbon}><Icon n="printer" /> {t('order_print_pakbon')}</Btn>
+            <Btn v="secondary" onClick={printOrderFactuur}><Icon n="printer" /> {t('order_print_factuur')}</Btn>
             <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
+              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
             </Btn>
             <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              {mailGenerating ? '⏳ ' + t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
+              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
             </Btn>
             {selectedOrder.wc_levering !== 'afhalen' && (
               <Btn v="secondary" onClick={() => mailOrderVerzending()} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-                📦 {t('order_mail_verzending')}
+                <Icon n="package" /> {t('order_mail_verzending')}
               </Btn>
             )}
           </>)}
@@ -2189,7 +2190,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               de order nog openstaat. */}
           {afhaalmomentVerstreken(selectedOrder) && (
             <Btn v="secondary" onClick={mailOrderAfhaalGemist} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              🏬 {t('order_mail_afhaal_gemist')}
+              <Icon n="store" /> {t('order_mail_afhaal_gemist')}
             </Btn>
           )}
           {selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && (
@@ -2516,7 +2517,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       const toon = kandidaten.length ? kandidaten : diag.regels.slice(0, 8)
                       return (
                         <details className="mt-1 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded p-2">
-                          <summary className="cursor-pointer font-semibold text-gray-600">🔎 Diagnose koppeling (tijdelijk)</summary>
+                          <summary className="cursor-pointer font-semibold text-gray-600">Diagnose koppeling (tijdelijk)</summary>
                           <div className="mt-1 font-mono whitespace-pre-wrap break-all leading-snug">
                             {`order: bier="${diag.regel_bier}" verpakking="${diag.regel_verpakking}" sku=${diag.orderSku ?? '—'} → product_id=${diag.order_product_id ?? '—'}`}
                             {`\nvoorraad-afvullingen bekeken: ${diag.regels.length}, gerelateerd getoond: ${toon.length}`}
@@ -2608,7 +2609,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 )}
                 <div className="flex justify-end gap-2 pt-1 border-t">
                   <Btn v="secondary" onClick={() => setVerzondenModal(null)}>{t('btn_cancel')}</Btn>
-                  <Btn onClick={bevestigVerzonden}>📦 {t('order_mark_shipped')}</Btn>
+                  <Btn onClick={bevestigVerzonden}><Icon n="package" /> {t('order_mark_shipped')}</Btn>
                 </div>
               </div>
             </Modal>
@@ -2708,13 +2709,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           {wcCreds?.enabled && (
             <button onClick={importWcOrders} disabled={wcImporting}
               className="wc-btn flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40">
-              {wcImporting ? `⏳ ${t('wc_importing')}` : t('orders_import_wc')}
+              {wcImporting ? t('wc_importing') : t('orders_import_wc')}
             </button>
           )}
           {wcMsg && <span className={`text-xs font-medium ${wcMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcMsg}</span>}
           {omTePickenIds.size > 0 && (
             <Btn v="secondary" onClick={printVerzamelPicklijst} title={t('order_print_picklijst_uitleg')}>
-              🖨 {t('order_print_picklijst')} ({omTePickenIds.size})
+              <Icon n="printer" /> {t('order_print_picklijst')} ({omTePickenIds.size})
             </Btn>
           )}
           <Btn onClick={() => { setManualForm(emptyManual); setShowManualModal(true) }}>{t('orders_new')}</Btn>

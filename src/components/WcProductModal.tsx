@@ -485,13 +485,13 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
         {gekoppeld && (
           <button onClick={() => schrijf(false)} disabled={bezig || laden}
             className="wc-btn px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
-            {bezig ? `⏳ ${t('lbl_bezig')}` : t('wc_btn_push')}
+            {bezig ? t('lbl_bezig') : t('wc_btn_push')}
           </button>
         )}
         {!gekoppeld && !laden && (
           <button onClick={() => schrijf(true)} disabled={bezig || !sku}
             className="wc-btn px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
-            {bezig ? `⏳ ${t('lbl_bezig')}` : t('wc_btn_aanmaken')}
+            {bezig ? t('lbl_bezig') : t('wc_btn_aanmaken')}
           </button>
         )}
         <Btn onClick={pull} v="secondary" disabled={!gekoppeld || bezig || laden}>{t('wc_btn_pull')}</Btn>

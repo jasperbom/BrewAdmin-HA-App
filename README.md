@@ -98,7 +98,7 @@ The settings page is organised with a sidebar navigation:
 The interface supports five languages: Dutch, English, German, French and Spanish. The app automatically detects the browser/system language on first use and applies it if supported, falling back to English otherwise. The language can be changed at any time in Settings → Language.
 
 ### Colour Themes
-Six colour themes are available and can be switched in Settings → Appearance. The active theme is applied to the navigation bar, section headers, buttons, modals and the page background. All theme colours are CSS-variable based, so switching is instant without a page reload.
+Seven colour themes are available and can be switched in Settings → Appearance. The active theme is applied to the navigation bar, section headers, buttons, modals and the page background. All theme colours are CSS-variable based, so switching is instant without a page reload.
 
 ## Installation
 

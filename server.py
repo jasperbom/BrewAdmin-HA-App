@@ -285,16 +285,83 @@ def _trusted_origin(origin: str) -> str | None:
 # keer per wijziging (mtime) en bewaart body, gzip-variant en een sterke
 # ETag in het geheugen. De mtime-check (i.p.v. eenmalig bij import) laat een
 # addon-update (nieuwe index.html) meteen doorkomen, zonder herstart-aanname.
-_static_cache: dict = {'mtime': None, 'body': b'', 'gzip': b'', 'etag': ''}
+#
+# Per thema één variant (`themas`): het opgeslagen thema (`nav_theme`) gaat
+# al in de <head> mee — zie `_pas_thema_toe`. De ruwe velden `body`/`gzip`/
+# `etag` blijven de ongewijzigde build (terugval en tests).
+_static_cache: dict = {'mtime': None, 'body': b'', 'gzip': b'', 'etag': '', 'themas': {}}
 _static_cache_lock = threading.Lock()
 
+# Spiegel van NAV_THEMES in src/utils/constants.ts (alleen wat de eerste
+# weergave nodig heeft). iOS 26 leest voor de statusbalk van een
+# home-screen-app niet meer de `theme-color`-meta maar bemonstert de
+# html-/body-achtergrond van de éérste weergave — en werkt die niet bij
+# zodra App.tsx het thema via JS zet. Daarom staat het actieve thema al in
+# de HTML die de server uitlevert. tests/test_server.py bewaakt dat deze
+# tabel en de TypeScript-tabel gelijk blijven; een nieuw thema hoort op
+# beide plaatsen.
+_NAV_THEMAS: dict[str, dict[str, str]] = {
+    'amber':  {'from': '#451a03', 'bg': '#fefdf5', 'accent': '#b45309', 'light': '#fde68a',
+               'pale': '#fffbeb', 'text': '#78350f', 'btn': '#b45309', 'btnH': '#92400e', 'btnA': '#78350f'},
+    'green':  {'from': '#052e16', 'bg': '#f4fcf7', 'accent': '#15803d', 'light': '#bbf7d0',
+               'pale': '#f0fdf4', 'text': '#14532d', 'btn': '#15803d', 'btnH': '#166534', 'btnA': '#14532d'},
+    'blue':   {'from': '#172554', 'bg': '#f4f8ff', 'accent': '#2563eb', 'light': '#bfdbfe',
+               'pale': '#eff6ff', 'text': '#1e3a8a', 'btn': '#2563eb', 'btnH': '#1d4ed8', 'btnA': '#1e3a8a'},
+    'slate':  {'from': '#020617', 'bg': '#f5f7f9', 'accent': '#64748b', 'light': '#cbd5e1',
+               'pale': '#f8fafc', 'text': '#1e293b', 'btn': '#64748b', 'btnH': '#475569', 'btnA': '#334155'},
+    'red':    {'from': '#450a0a', 'bg': '#fff5f5', 'accent': '#dc2626', 'light': '#fecaca',
+               'pale': '#fef2f2', 'text': '#7f1d1d', 'btn': '#dc2626', 'btnH': '#b91c1c', 'btnA': '#991b1b'},
+    'purple': {'from': '#2e1065', 'bg': '#f8f5ff', 'accent': '#7c3aed', 'light': '#ddd6fe',
+               'pale': '#f5f3ff', 'text': '#4c1d95', 'btn': '#7c3aed', 'btnH': '#6d28d9', 'btnA': '#5b21b6'},
+    'sand':   {'from': '#3d3833', 'bg': '#faf8f5', 'accent': '#7d6450', 'light': '#e8e0d5',
+               'pale': '#f5f1ea', 'text': '#4a3f36', 'btn': '#7d6450', 'btnH': '#6a5442', 'btnA': '#574536'},
+}
+_THEMA_STANDAARD = 'amber'
+_THEMA_STYLE_RE = re.compile(rb'<style id="thema-init"></style>')
+_THEMA_COLOR_RE = re.compile(rb'(<meta name="theme-color" content=")[^"]*(")')
 
-def _laad_static() -> dict:
-    """Geeft de actuele cache-entry terug (kopie) en ververst hem bij een
-    gewijzigde mtime of de eerste aanroep. Thread-safe voor de
-    ThreadingHTTPServer. Laat FileNotFoundError ongemoeid doorlopen naar de
-    aanroeper, zoals de vorige `STATIC_FILE.read_bytes()`."""
+
+def _thema_naam(waarde) -> str:
+    """Opgeslagen `nav_theme` → een bekende themanaam (anders de standaard)."""
+    return waarde if isinstance(waarde, str) and waarde in _NAV_THEMAS else _THEMA_STANDAARD
+
+
+def _thema_css(naam: str) -> str:
+    """De `--t-*`-variabelen plus de html-/body-achtergrond voor de eerste
+    weergave. `html:root` en `html body` winnen van de `:root`-/`body`-regels
+    in de ingebouwde stylesheet (die staat later in het document). In
+    home-screen-modus (display-mode: standalone) zijn html én body donker,
+    zoals App.tsx ze ook zet: dat is de strook achter de klok; de root-div
+    van de app houdt de lichte pagina-achtergrond."""
+    th = _NAV_THEMAS[naam]
+    return (
+        'html:root{'
+        f"--t-accent:{th['accent']};--t-light:{th['light']};--t-pale:{th['pale']};"
+        f"--t-text:{th['text']};--t-btn:{th['btn']};--t-btn-h:{th['btnH']};"
+        f"--t-btn-a:{th['btnA']};--t-bg:{th['bg']}}}"
+        f"html{{background:{th['bg']}}}"
+        f"@media (display-mode: standalone){{html,html body{{background:{th['from']}}}}}"
+    )
+
+
+def _pas_thema_toe(html: bytes, naam: str) -> bytes:
+    """Vul de theme-color-meta en de lege `<style id="thema-init">` in
+    index.html met het thema. Een build zonder die plaatshouders (of een
+    andere HTML) komt ongewijzigd terug."""
+    css = _thema_css(naam).encode('utf-8')
+    html = _THEMA_STYLE_RE.sub(lambda _m: b'<style id="thema-init">' + css + b'</style>', html, count=1)
+    kleur = _NAV_THEMAS[naam]['from'].encode('utf-8')
+    return _THEMA_COLOR_RE.sub(lambda m: m.group(1) + kleur + m.group(2), html, count=1)
+
+
+def _laad_static(thema: str = _THEMA_STANDAARD) -> dict:
+    """Geeft de cache-entry voor dit thema terug (kopie: body/gzip/etag) en
+    ververst de ruwe build bij een gewijzigde mtime of de eerste aanroep.
+    Thread-safe voor de ThreadingHTTPServer. Laat FileNotFoundError
+    ongemoeid doorlopen naar de aanroeper, zoals de vorige
+    `STATIC_FILE.read_bytes()`."""
     mtime = STATIC_FILE.stat().st_mtime
+    naam = _thema_naam(thema)
     with _static_cache_lock:
         if _static_cache['mtime'] != mtime:
             body = STATIC_FILE.read_bytes()
@@ -302,7 +369,18 @@ def _laad_static() -> dict:
             _static_cache['body'] = body
             _static_cache['gzip'] = gzip.compress(body, compresslevel=6)
             _static_cache['etag'] = '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
-        return dict(_static_cache)
+            _static_cache['themas'] = {}
+        entry = _static_cache['themas'].get(naam)
+        if entry is None:
+            body = _pas_thema_toe(_static_cache['body'], naam)
+            if body == _static_cache['body']:
+                entry = {k: _static_cache[k] for k in ('body', 'gzip', 'etag')}
+            else:
+                entry = {'body': body,
+                         'gzip': gzip.compress(body, compresslevel=6),
+                         'etag': '"' + hashlib.sha256(body).hexdigest()[:32] + '"'}
+            _static_cache['themas'][naam] = entry
+        return dict(entry)
 
 
 # Wanneer de app als HA-addon draait (SUPERVISOR_TOKEN aanwezig) mag alleen de
@@ -3902,9 +3980,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 self._json(404, None, extra_headers=[('X-Data-Version', '0')])
             return
 
-        # Serve the SPA for all other GET requests
+        # Serve the SPA for all other GET requests — met het opgeslagen thema
+        # al in de <head> (statusbalk van een iOS-home-screen-app).
         try:
-            cache = _laad_static()
+            cache = _laad_static(_read_json('nav_theme', _THEMA_STANDAARD))
             etag = cache['etag']
             # Sterke ETag-match; If-None-Match kan een komma-lijst zijn.
             ontvangen = [w.strip() for w in self.headers.get('If-None-Match', '').split(',')]

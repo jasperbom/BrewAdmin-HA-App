@@ -1807,12 +1807,18 @@ function App() {
       document.head.appendChild(meta);
     }
     meta.content = th.from;
-    // Achtergrond van het html-element (zichtbaar in de statusbalkstrook en
-    // bij overscroll/rubber-banding op iOS): ALLEEN donker in
-    // home-screen-modus — daar vult hij het gebied achter de klok. In de
-    // browser en de HA-companion-app (ingress) hoort overscroll juist licht
-    // te blijven, passend bij de app-achtergrond.
+    // Achtergrond van html én body (zichtbaar in de statusbalkstrook en bij
+    // overscroll/rubber-banding op iOS): ALLEEN donker in home-screen-modus —
+    // daar vult hij het gebied achter de klok. iOS 26 leest de theme-color
+    // niet meer maar bemonstert de achtergrond van html/body, dus beide;
+    // de root-div hieronder houdt met `--t-bg` de lichte pagina-achtergrond.
+    // In de browser en de HA-companion-app (ingress) hoort overscroll juist
+    // licht te blijven, passend bij de app-achtergrond. De eerste weergave
+    // krijgt dezelfde kleuren al van server.py (zie index.html), want iOS
+    // bemonstert bij het openen en werkt deze wijziging niet altijd bij —
+    // een themawissel kleurt de statusbalk dan pas bij de volgende start.
     document.documentElement.style.backgroundColor = IS_STANDALONE ? th.from : th.bg;
+    document.body.style.backgroundColor = IS_STANDALONE ? th.from : '';
   }, [navTheme]);
 
   // Home-screen-icoon: iOS accepteert alleen een vierkant PNG-bestand als

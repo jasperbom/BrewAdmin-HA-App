@@ -14,7 +14,7 @@ Comprehensive guide for AI assistants working on this codebase.
 - Excise duty calculation and declaration tracking
 - Accounting with Claude AI-powered invoice scanning
 - WooCommerce order picking and stock sync
-- 5-language support (NL, EN, DE, FR, ES) with 6 UI themes
+- 5-language support (NL, EN, DE, FR, ES) with 7 UI themes
 
 The app is "fully built with Claude AI" (noted in README). UI text and many code comments are in Dutch.
 
@@ -395,6 +395,11 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 - **Geen `uppercase tracking-wide` op labels.** Klein-kapitaal is voorbehouden
   aan badges (een afgeronde chip mét eigen achtergrond). Gewone zinsvorm leest
   rustiger en is in vijf talen beter te zetten.
+- **Geen emoji's, nergens** (ook niet in i18n-strings). Een pictogram is een
+  monochroom lijn-icoon via `<Icon n="…">` uit `src/components/ui/Icon.tsx`
+  (nieuw icoon = één pad-string daar); puur typografische tekens (✓ ✕ ✎ ✉ ⚠)
+  blijven tekst. Emoji's tekenen per platform anders, kleuren niet mee met het
+  thema en zijn een "gegenereerd"-signaal.
 - Zet **geen emoji's of icon-afbeeldingen** in de bruine headerbalk; gebruik
   tekstlabels via `t()`.
 - Zoekbalken altijd via `<SearchInput value onChange placeholder cls? onKeyDown?>`.
@@ -411,7 +416,7 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 ## Color Conventions
 
 ### Theme-Aware Colors (gebruik altijd voor algemene UI)
-De app ondersteunt 6 kleurenthema's (amber, green, blue, slate, red, purple). Gebruik **altijd** CSS-klassen die op de theemavariabelen steunen voor interactieve elementen:
+De app ondersteunt 7 kleurenthema's (amber, green, blue, slate, red, purple, sand). Gebruik **altijd** CSS-klassen die op de theemavariabelen steunen voor interactieve elementen:
 
 - `.tbtn` — Primaire actieknop (achtergrond = `--t-btn`, hover = `--t-btn-h`)
 - `.t-tab` — Actieve tabbladmarkering

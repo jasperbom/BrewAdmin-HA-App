@@ -8,6 +8,7 @@ import Btn from '../ui/Btn'
 import Inp from '../ui/Inp'
 import Modal from '../ui/Modal'
 import SectionHeader from '../ui/SectionHeader'
+import Icon from '../ui/Icon'
 
 // ── Vernietigingsflow bij verlies-bron 'afgekeurd' (Douane §7.2.3) ───────────
 // Zelfde 3-staps-flow als bij afgevuld bier (ProductenPage): bier dat tijdens
@@ -228,7 +229,7 @@ const VernietigingSection: React.FC<{
               <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_verklaring_pdf')} <span className="text-red-400">*</span></label>
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
-                  <span>📎</span>
+                  <span><Icon n="paperclip" /></span>
                   <span>{verliesUploading ? t('lbl_uploading') : t('verlies_vern_verklaring_upload')}</span>
                   <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                     className="hidden" disabled={verliesUploading}
@@ -241,7 +242,7 @@ const VernietigingSection: React.FC<{
                   {verliesForm.bijlagen.map((b: Bijlage, i: number) => (
                     <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                       <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
-                        📎 <span className="truncate">{b.naam}</span>
+                        <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
                         <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{t('verlies_vern_rol_verklaring')}</span>
                       </a>
                       <button onClick={() => doVerliesRemoveBijlage(i)} className="text-gray-400 hover:text-red-500 ml-2">✕</button>
@@ -330,7 +331,7 @@ const VernietigingSection: React.FC<{
                   <ul className="mt-1 space-y-0.5">
                     {(r.bijlagen || []).map((b: Bijlage, i: number) => (
                       <li key={i} className="text-xs">
-                        <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">📎 {b.naam}</a>
+                        <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline"><Icon n="paperclip" /> {b.naam}</a>
                         {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
                       </li>
                     ))}
@@ -372,7 +373,7 @@ const VernietigingSection: React.FC<{
                     <label className="block text-xs font-semibold text-gray-500 mb-1">{t('verlies_vern_bewijs')} <span className="text-red-400">*</span></label>
                     <div className="flex items-center gap-2 flex-wrap">
                       <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
-                        <span>📎</span>
+                        <span><Icon n="paperclip" /></span>
                         <span>{vernReviewUploading ? t('lbl_uploading') : t('verlies_vern_bewijs_upload')}</span>
                         <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
                           className="hidden" disabled={vernReviewUploading}
@@ -385,7 +386,7 @@ const VernietigingSection: React.FC<{
                         {vernReviewForm.bewijsBijlagen.map((b: Bijlage, i: number) => (
                           <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                             <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
-                              📎 <span className="truncate">{b.naam}</span>
+                              <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
                               <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] uppercase tracking-wide">{t('verlies_vern_rol_bewijs')}</span>
                             </a>
                             <button onClick={() => doVernBewijsRemove(i)} className="text-gray-400 hover:text-red-500 ml-2">✕</button>
