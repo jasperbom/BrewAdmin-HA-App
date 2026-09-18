@@ -15,11 +15,16 @@
          later via JS zet. Zonder server (dev) blijft amber de default. -->
     <meta name="theme-color" content="#451a03" />
     <style id="thema-init"></style>
-    <!-- Home-screen-app (iOS/Android): statusbalk transparant over de
-         gekleurde header (de nav krijgt safe-area-padding in App.tsx). -->
+    <!-- Home-screen-app (iOS/Android). Bewust GEEN
+         apple-mobile-web-app-status-bar-style=black-translucent meer: sinds
+         iOS 26 legt het systeem bij die stijl een "Liquid Glass"-waas óver
+         de statusbalkstrook, bóven de webview — een lichte band die de app
+         niet kan overschilderen. Met de standaardstijl staat de webview
+         ónder een ondoorzichtige statusbalk die de theme-color/de kleur van
+         de kop overneemt. iOS leest dit bij het toevoegen aan het
+         beginscherm: na deze wijziging de app opnieuw toevoegen. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <!-- iOS accepteert geen data-URL als home-screen-icoon; dit endpoint
          serveert het ingestelde logo als echt bestand (404 zonder logo). -->
     <link rel="apple-touch-icon" sizes="180x180" href="api/app_icoon" />
