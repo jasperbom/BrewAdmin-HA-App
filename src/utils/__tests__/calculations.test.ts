@@ -312,6 +312,33 @@ describe('batchkostprijs en COGS (ERP 2.6)', () => {
     const pk = berekenProductKostprijs(9, batches, bi, lots, afvullingen, [], [], [])
     expect(pk.kostprijs_per_liter).toBeCloseTo(120 / 53, 9)
   })
+  it('splitst de verpakkingskosten af, zodat een fust niet voor flesjes betaalt', () => {
+    // Eén brouwsel, twee verpakkingen: 47 flesjes van 0,3 L en één fust van
+    // 20 L. Verpakking is de enige post die niet met het volume meeschaalt,
+    // dus die hoort níét in de prijs per liter uitgesmeerd te worden.
+    const batch = {id: 700, datum: '2026-03-01', overige_kosten: 100}
+    const afv = [
+      {id: 1, batch_id: 700, verpakking_id: 1, verpakking_type: 'Fles 30cL', inhoud_per_eenheid: 0.3, hoeveelheid: 47},
+      {id: 2, batch_id: 700, verpakking_id: 2, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 1},
+    ]
+    const vps = [
+      {id: 1, naam: 'Fles 30cL', inhoud_liter: 0.3, kosten_verpakking: 0.30},
+      {id: 2, naam: 'Fust 20L', inhoud_liter: 20, kosten_verpakking: 3},
+    ]
+    const r = berekenBatchKostprijs(batch, [], [], afv, vps, [], [])
+    const liters = 47 * 0.3 + 20            // 34,1 L
+    const verpakking = 47 * 0.30 + 1 * 3    // € 17,10
+    expect(r.verpakking_kosten).toBeCloseTo(verpakking, 9)
+    expect(r.totaal_kosten).toBeCloseTo(100 + verpakking, 9)
+    expect(r.kostprijs_per_liter_excl_verpakking).toBeCloseTo(100 / liters, 9)
+
+    // Zo hoort de kostprijs van één fust eruit te zien: bier per liter over de
+    // 20 L, plus de prijs van dát fust — niet een deel van het flessenglas.
+    const fustEcht = (r.kostprijs_per_liter_excl_verpakking || 0) * 20 + 3
+    const fustOud = r.kostprijs_per_liter * 20
+    expect(fustEcht).toBeCloseTo(100 / liters * 20 + 3, 9)
+    expect(fustOud).toBeGreaterThan(fustEcht)  // het fust betaalde mee aan de flesjes
+  })
   it('berekenCogs: periode-filter, intern uitgesloten, onbekende kostprijs apart', () => {
     const uit = [
       {batch_id: 1, afvulling_id: 11, aantal: 24, datum: '2026-06-10'},

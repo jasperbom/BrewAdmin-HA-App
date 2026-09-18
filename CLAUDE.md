@@ -512,6 +512,17 @@ als nul mee te tellen; het resultaat zegt via `accijns_bron` of het cijfer
 schermen, nooit in de W&V of de COGS** — die mogen niet op een schatting
 draaien, en zonder het argument is het gedrag ongewijzigd.
 
+**Kostprijs van één verpakte eenheid: nooit prijs-per-liter × inhoud.**
+Verpakking is de enige kostenpost die níét met het volume meeschaalt — 20 liter
+in flesjes kost aan glas, kroonkurk en etiket een veelvoud van dezelfde 20 liter
+in één fust. In `kostprijs_per_liter` is die post over álle verpakkingstypen van
+de batch uitgesmeerd, dus daar mag je de prijs van één verpakking niet uit
+afleiden: een fust betaalt dan mee aan de flesjes en de flesjes komen te goedkoop
+uit, waardoor artikelmarges onderling niet meer kloppen. Reken altijd met
+`kostprijs_per_liter_excl_verpakking × inhoud + verpakkingKostenPerStuk(vp,
+onderdelen)` — zo doet `receptKostprijs.ts` het al (`kostprijsPerEenheid`) en
+sinds v1.12.48 ook de artikelmarge op de productenpagina.
+
 Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
 verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de
 ingrediëntprijs (`ingredientPrijs`, uit de lots), de verpakkingsmix

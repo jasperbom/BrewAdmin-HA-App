@@ -543,6 +543,18 @@ export interface ProductKostprijsResult {
   totaal_kosten_excl_accijns?: number
   kostprijs_per_liter_excl_accijns?: number
   /**
+   * Verpakkingskosten van de hele batch, en de kostprijs per liter zónder die
+   * kosten. Verpakking is de enige kostenpost die níét met het volume
+   * meeschaalt: 20 liter in flesjes kost aan glas, kroonkurk en etiket een
+   * veelvoud van dezelfde 20 liter in één fust. In `kostprijs_per_liter` is
+   * die post over alle verpakkingstypen van de batch uitgesmeerd, dus daar mag
+   * je niet de prijs van één specifieke verpakking uit afleiden. Reken voor een
+   * losse verpakte eenheid met:
+   *   `kostprijs_per_liter_excl_verpakking × inhoud + verpakkingKostenPerStuk(...)`
+   */
+  verpakking_kosten?: number
+  kostprijs_per_liter_excl_verpakking?: number
+  /**
    * `geboekt`  = de werkelijke accijns uit de uitslagen;
    * `voorcalc` = de snapshot die bij het afvullen is bevroren;
    * `geschat`  = geen van beide bekend, dus berekend uit ABV/Plato (alleen
@@ -600,6 +612,7 @@ export const berekenBatchKostprijs = (
   // Accijns apart bijhouden, met de zwakste bron over alle verpakkingstypen:
   // één geschat type maakt het hele cijfer een schatting.
   let accijnsTotaal = 0
+  let verpakkingTotaal = 0
   let accijnsBron: ProductKostprijsResult['accijns_bron'] = undefined
   const RANG = {geboekt: 3, voorcalc: 2, geschat: 1, geen: 0} as const
   const noteerBron = (bron: NonNullable<ProductKostprijsResult['accijns_bron']>) => {
@@ -618,6 +631,7 @@ export const berekenBatchKostprijs = (
       : null
     const kPerStuk = verpakkingKostenPerStuk(vp, onderdelen)
     batchKosten += kPerStuk * stuks
+    verpakkingTotaal += kPerStuk * stuks
 
     const accRows = bAcc.filter((a: any) => a.verpakking_type === type)
     const totAccActueel = accRows.reduce((s: number, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0)
@@ -646,6 +660,8 @@ export const berekenBatchKostprijs = (
     accijns: accijnsTotaal,
     totaal_kosten_excl_accijns: batchKosten - accijnsTotaal,
     kostprijs_per_liter_excl_accijns: batchLiter > 0 ? (batchKosten - accijnsTotaal) / batchLiter : 0,
+    verpakking_kosten: verpakkingTotaal,
+    kostprijs_per_liter_excl_verpakking: batchLiter > 0 ? (batchKosten - verpakkingTotaal) / batchLiter : 0,
     accijns_bron: accijnsBron,
   }
 }
@@ -669,15 +685,18 @@ export const berekenProductKostprijs = (
   accijns?: any[]
 ): ProductKostprijsResult => {
   const batchById = new Map((batches||[]).map((b: any) => [b.id, b]))
-  const kplCache = new Map<any, number>()
-  const kplVoorBatch = (b: any): number => {
-    if (kplCache.has(b.id)) return kplCache.get(b.id) as number
-    const kpl = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns).kostprijs_per_liter
-    kplCache.set(b.id, kpl)
-    return kpl
+  const kplCache = new Map<any, {kpl: number, kplExclVerpakking: number}>()
+  const kplVoorBatch = (b: any) => {
+    const gecached = kplCache.get(b.id)
+    if (gecached) return gecached
+    const r = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns)
+    const waarde = {kpl: r.kostprijs_per_liter, kplExclVerpakking: r.kostprijs_per_liter_excl_verpakking || 0}
+    kplCache.set(b.id, waarde)
+    return waarde
   }
   let totaal_kosten = 0
   let totaal_liter = 0
+  let totaal_kosten_excl_verpakking = 0
 
   for (const a of (afvullingen||[])) {
     const b = batchById.get(a.batch_id)
@@ -688,16 +707,18 @@ export const berekenProductKostprijs = (
     if (effProduct == null || Number(effProduct) !== Number(product_id)) continue
     const liters = Number(a.inhoud_per_eenheid ?? a.inhoud_liter ?? 0) * Number(a.hoeveelheid ?? a.aantal ?? 0)
     if (liters <= 0) continue
-    const kpl = kplVoorBatch(b)
+    const {kpl, kplExclVerpakking} = kplVoorBatch(b)
     if (kpl <= 0) continue
     totaal_kosten += liters * kpl
+    totaal_kosten_excl_verpakking += liters * kplExclVerpakking
     totaal_liter += liters
   }
 
   return {
     kostprijs_per_liter: totaal_liter > 0 ? totaal_kosten / totaal_liter : 0,
     totaal_kosten,
-    totaal_liter
+    totaal_liter,
+    kostprijs_per_liter_excl_verpakking: totaal_liter > 0 ? totaal_kosten_excl_verpakking / totaal_liter : 0,
   }
 }
 

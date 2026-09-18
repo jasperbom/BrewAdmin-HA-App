@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.48] — 2026-09-18
+
+### Opgelost: de artikelmarge liet een fust meebetalen aan de flesjes
+
+De kostprijs per stuk op de productenpagina werd berekend als *kostprijs per
+liter × inhoud van de verpakking*. In die prijs per liter zit de verpakking van
+**alle** verpakkingstypen van de batch, uitgesmeerd over het volume — en juist
+verpakking is de enige kostenpost die niet met het volume meeschaalt.
+
+Een brouwsel van 47 flesjes van 0,3 L plus één fust van 20 L belastte dat fust
+daardoor met een deel van het glas, de kroonkurken en de etiketten van die
+flesjes, terwijl de flesjes zelf te goedkoop uitkwamen. Bij €0,30 verpakking per
+flesje en €3 per fust scheelt dat aan beide kanten zo'n 11 tot 13 procent — en
+omdat de fout de ene kant op werkt voor grote verpakkingen en de andere kant op
+voor kleine, waren artikelmarges onderling niet te vergelijken.
+
+De kostprijs van een verpakte eenheid is nu wat hij hoort te zijn: bier,
+utilities en accijns per liter over de inhoud, plus de échte prijs van díe
+verpakking. Dat is dezelfde opbouw die `receptKostprijs.ts` al gebruikte.
+`berekenBatchKostprijs` en `berekenProductKostprijs` geven daarvoor twee nieuwe
+velden terug (`verpakking_kosten` en `kostprijs_per_liter_excl_verpakking`);
+`kostprijs_per_liter` zelf is ongewijzigd, dus de W&V, de COGS en de
+batchkostprijs rekenen precies als voorheen. Zijn de verpakkingskosten
+onbekend, dan valt de berekening terug op het oude gedrag.
+
+De live marge-inschatting in het artikelformulier en de marge bij een opgeslagen
+artikel delen nu één helper, zodat ze niet meer uit elkaar kunnen lopen.
+
+---
+
 ## [1.12.47] — 2026-09-18
 
 ### Opgelost: COGS telde elke uitlevering een factor `aantal` te hoog

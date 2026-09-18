@@ -14,6 +14,7 @@ import Sparkline from '../components/Sparkline'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
+import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
@@ -260,7 +261,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // afgevulde liters. Het `liter`-veld blijft de som van `liter_vergist` voor
   // andere statistieken op deze pagina.
   const productStats = useMemo(() => {
-    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number}> = {};
+    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number, kostprijsExclVerpakking: number}> = {};
     for (const p of (producten||[])) {
       // Batch-set: batches die direct op het product staan (`b.product_id`) én
       // batches die via een afvulling aan het product zijn gekoppeld
@@ -279,8 +280,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const inBestelling = reserveringenVoorProduct(p).reduce((s: number, r: any) => s + r.aantal, 0);
       const voorraad = Math.max(0, pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0) - inBestelling);
       const uitgeleverd = pAv.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
-      const {kostprijs_per_liter} = berekenProductKostprijs(p.id, bat, bi, lots, av, verpakkingen, onderdelen, acc);
-      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: kostprijs_per_liter};
+      const {kostprijs_per_liter, kostprijs_per_liter_excl_verpakking} =
+        berekenProductKostprijs(p.id, bat, bi, lots, av, verpakkingen, onderdelen, acc);
+      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd,
+        kostprijs: kostprijs_per_liter, kostprijsExclVerpakking: kostprijs_per_liter_excl_verpakking || 0};
     }
     return stats;
   }, [producten, bat, av, uit, bi, lots, verpakkingen, onderdelen, acc, bestellingen, bestellingPicks, afboekingen, productArtikelen, artikelen]);
@@ -546,15 +549,38 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       ? {eur: prijsExcl - kostprijsPerEenheid, pct: ((prijsExcl - kostprijsPerEenheid) / prijsExcl) * 100}
       : null;
 
-  // Kostprijs/marge-inschatting per artikel: kostprijs per liter van het
-  // product (ingrediënten + utility + verpakking + accijns, uit
-  // berekenProductKostprijs) × inhoud van de verpakking. Verkoop- en
-  // B2B-prijs staan excl. BTW opgeslagen (saveArtikel normaliseert).
-  const berekenMarge = (art: any) => {
+  /**
+   * Kostprijs van één verpakte eenheid: bier + utilities + accijns per liter
+   * (die schalen mee met de inhoud) plus de échte verpakkingsprijs van déze
+   * verpakking.
+   *
+   * Eerder rekende dit met de kostprijs per liter uit `berekenProductKostprijs`
+   * × inhoud. Daar zit de verpakking van álle verpakkingstypen van de batch in,
+   * uitgesmeerd over het volume — en juist verpakking schaalt niet met liters.
+   * Een batch van 47 flesjes plus één fust van 20 L belastte dat fust zo met
+   * een deel van het glas, de kroonkurken en de etiketten van die flesjes,
+   * terwijl de flesjes juist te goedkoop uitkwamen. Onderling vergelijken van
+   * artikelmarges klopte daardoor niet.
+   */
+  const kostprijsVoorEenheid = (art: any, inhoud: number): number | null => {
     const stats = productStats[sel!];
+    if (!stats || !inhoud) return null;
+    const vp = (verpakkingen||[]).find((v: any) =>
+      v.id === Number(art?.verpakking_id) || v.naam === art?.verpakking_naam);
+    // Zonder bekende verpakkingskosten valt hij terug op het oude gedrag; dan
+    // is de per-liter-prijs nog steeds de beste schatting die er is.
+    if (stats.kostprijsExclVerpakking > 0 && vp) {
+      return stats.kostprijsExclVerpakking * inhoud + verpakkingKostenPerStuk(vp, onderdelen);
+    }
+    return stats.kostprijs > 0 ? stats.kostprijs * inhoud : null;
+  };
+
+  // Marge-inschatting per artikel. Verkoop- en B2B-prijs staan excl. BTW
+  // opgeslagen (saveArtikel normaliseert).
+  const berekenMarge = (art: any) => {
     const inhoud = Number(art.inhoud_liter || 0);
-    if (!stats || stats.kostprijs <= 0 || !inhoud) return null;
-    const kostprijsPerEenheid = stats.kostprijs * inhoud;
+    const kostprijsPerEenheid = kostprijsVoorEenheid(art, inhoud);
+    if (kostprijsPerEenheid == null || kostprijsPerEenheid <= 0) return null;
     return {
       kostprijsPerEenheid,
       consument: margeVoorPrijs(kostprijsPerEenheid, Number(art.verkoopprijs || 0)),
@@ -1846,7 +1872,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                       return <p className="mt-2 text-[11px] text-gray-400 italic">{t('msg_geen_kostprijs_bekend')}</p>;
                     }
                     if (!inhoud) return null;
-                    const kost = stats.kostprijs * inhoud;
+                    const kost = kostprijsVoorEenheid({...artForm, verpakking_id: vp?.id ?? artForm.verpakking_id}, inhoud);
+                    if (kost == null || kost <= 0) return null;
                     const btw = Number(artForm.btw_pct || 0);
                     const naarExcl = (val: any, incl: boolean) => {
                       const n = Number(val || 0);
