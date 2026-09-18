@@ -3759,5 +3759,8 @@
   "msg_geen_zoekresultaten": "No results",
   "btn_ubl_menu": "E-invoice (UBL)",
   "factuur_verrekend": "Offset",
-  "btn_verrekening_ongedaan": "Undo offset"
+  "btn_verrekening_ongedaan": "Undo offset",
+  "lbl_afboeking_locatie": "Where was the beer?",
+  "info_afboeking_accijns_agp": "From the excise warehouse: the beer leaves duty suspension, so excise becomes payable and is added to the monthly return.",
+  "info_afboeking_accijns_buiten_agp": "Outside the excise warehouse: excise was already booked on release, so it is not charged again here."
 }

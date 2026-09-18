@@ -543,6 +543,18 @@ export interface ProductKostprijsResult {
   totaal_kosten_excl_accijns?: number
   kostprijs_per_liter_excl_accijns?: number
   /**
+   * Verpakkingskosten van de hele batch, en de kostprijs per liter zónder die
+   * kosten. Verpakking is de enige kostenpost die níét met het volume
+   * meeschaalt: 20 liter in flesjes kost aan glas, kroonkurk en etiket een
+   * veelvoud van dezelfde 20 liter in één fust. In `kostprijs_per_liter` is
+   * die post over alle verpakkingstypen van de batch uitgesmeerd, dus daar mag
+   * je niet de prijs van één specifieke verpakking uit afleiden. Reken voor een
+   * losse verpakte eenheid met:
+   *   `kostprijs_per_liter_excl_verpakking × inhoud + verpakkingKostenPerStuk(...)`
+   */
+  verpakking_kosten?: number
+  kostprijs_per_liter_excl_verpakking?: number
+  /**
    * `geboekt`  = de werkelijke accijns uit de uitslagen;
    * `voorcalc` = de snapshot die bij het afvullen is bevroren;
    * `geschat`  = geen van beide bekend, dus berekend uit ABV/Plato (alleen
@@ -600,6 +612,7 @@ export const berekenBatchKostprijs = (
   // Accijns apart bijhouden, met de zwakste bron over alle verpakkingstypen:
   // één geschat type maakt het hele cijfer een schatting.
   let accijnsTotaal = 0
+  let verpakkingTotaal = 0
   let accijnsBron: ProductKostprijsResult['accijns_bron'] = undefined
   const RANG = {geboekt: 3, voorcalc: 2, geschat: 1, geen: 0} as const
   const noteerBron = (bron: NonNullable<ProductKostprijsResult['accijns_bron']>) => {
@@ -618,6 +631,7 @@ export const berekenBatchKostprijs = (
       : null
     const kPerStuk = verpakkingKostenPerStuk(vp, onderdelen)
     batchKosten += kPerStuk * stuks
+    verpakkingTotaal += kPerStuk * stuks
 
     const accRows = bAcc.filter((a: any) => a.verpakking_type === type)
     const totAccActueel = accRows.reduce((s: number, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0)
@@ -646,6 +660,8 @@ export const berekenBatchKostprijs = (
     accijns: accijnsTotaal,
     totaal_kosten_excl_accijns: batchKosten - accijnsTotaal,
     kostprijs_per_liter_excl_accijns: batchLiter > 0 ? (batchKosten - accijnsTotaal) / batchLiter : 0,
+    verpakking_kosten: verpakkingTotaal,
+    kostprijs_per_liter_excl_verpakking: batchLiter > 0 ? (batchKosten - verpakkingTotaal) / batchLiter : 0,
     accijns_bron: accijnsBron,
   }
 }
@@ -669,15 +685,18 @@ export const berekenProductKostprijs = (
   accijns?: any[]
 ): ProductKostprijsResult => {
   const batchById = new Map((batches||[]).map((b: any) => [b.id, b]))
-  const kplCache = new Map<any, number>()
-  const kplVoorBatch = (b: any): number => {
-    if (kplCache.has(b.id)) return kplCache.get(b.id) as number
-    const kpl = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns).kostprijs_per_liter
-    kplCache.set(b.id, kpl)
-    return kpl
+  const kplCache = new Map<any, {kpl: number, kplExclVerpakking: number}>()
+  const kplVoorBatch = (b: any) => {
+    const gecached = kplCache.get(b.id)
+    if (gecached) return gecached
+    const r = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns)
+    const waarde = {kpl: r.kostprijs_per_liter, kplExclVerpakking: r.kostprijs_per_liter_excl_verpakking || 0}
+    kplCache.set(b.id, waarde)
+    return waarde
   }
   let totaal_kosten = 0
   let totaal_liter = 0
+  let totaal_kosten_excl_verpakking = 0
 
   for (const a of (afvullingen||[])) {
     const b = batchById.get(a.batch_id)
@@ -688,16 +707,18 @@ export const berekenProductKostprijs = (
     if (effProduct == null || Number(effProduct) !== Number(product_id)) continue
     const liters = Number(a.inhoud_per_eenheid ?? a.inhoud_liter ?? 0) * Number(a.hoeveelheid ?? a.aantal ?? 0)
     if (liters <= 0) continue
-    const kpl = kplVoorBatch(b)
+    const {kpl, kplExclVerpakking} = kplVoorBatch(b)
     if (kpl <= 0) continue
     totaal_kosten += liters * kpl
+    totaal_kosten_excl_verpakking += liters * kplExclVerpakking
     totaal_liter += liters
   }
 
   return {
     kostprijs_per_liter: totaal_liter > 0 ? totaal_kosten / totaal_liter : 0,
     totaal_kosten,
-    totaal_liter
+    totaal_liter,
+    kostprijs_per_liter_excl_verpakking: totaal_liter > 0 ? totaal_kosten_excl_verpakking / totaal_liter : 0,
   }
 }
 
@@ -1481,9 +1502,54 @@ export const getAgpLocatie = (locaties: Locatie[] = []): Locatie => {
   return { id: 1, naam: 'AGP', is_agp: true }
 }
 
+/** Eén voorraadbeweging: `aantal` gaat van locatie `van` af en, als er een
+ *  bestemming is, op `naar` erbij. Een uitlevering of afboeking heeft geen
+ *  `naar` — die verlaat de voorraad.
+ *
+ *  `bronOnbekend` staat op een afboeking: die legt nergens vast wáár het bier
+ *  stond toen het brak of vermist raakte (`Afboeking` heeft geen locatieveld),
+ *  dus die nemen we standaard van de AGP. Past hij daar niet, dan mag hij
+ *  doorschuiven naar een locatie waar de voorraad wél staat. */
+interface VoorraadBeweging { datum: string; van: number; naar?: number; aantal: number; bronOnbekend?: boolean }
+
+/** Verplaatsingen, uitleveringen en afboekingen van één afvulling als één
+ *  lijst op datum. De sortering is stabiel, dus bij een gelijke datum blijft
+ *  de oude volgorde (verplaatsing → uitlevering → afboeking) gelden. */
+const bouwVoorraadBewegingen = (
+  afv: Afvulling,
+  agpId: number,
+  uitleveringen: Uitlevering[] = [],
+  verplaatsingen: Verplaatsing[] = [],
+  afboekingen: Afboeking[] = [],
+): VoorraadBeweging[] => {
+  const uit: VoorraadBeweging[] = []
+  for (const v of (verplaatsingen || [])) {
+    if (v.afvulling_id !== afv?.id) continue
+    uit.push({datum: String(v.datum || ''), van: v.van_locatie_id, naar: v.naar_locatie_id, aantal: Number(v.aantal || 0)})
+  }
+  for (const u of (uitleveringen || [])) {
+    if (u.afvulling_id !== afv?.id) continue
+    uit.push({datum: String(u.datum || ''), van: u.bron_locatie_id ?? agpId, aantal: Number(u.aantal || 0)})
+  }
+  for (const a of (afboekingen || [])) {
+    if (a.afvulling_id !== afv?.id) continue
+    // Sinds v1.12.52 legt een afboeking vast waar het bier lag. Staat die
+    // locatie er, dan is het geen gok meer en hoeft er niets doorgeschoven te
+    // worden; oudere records gelden als AGP, met de doorschuif als vangnet.
+    const bron = a.bron_locatie_id
+    uit.push({
+      datum: String((a as any).datum || ''),
+      van: bron ?? agpId,
+      aantal: Number(a.aantal || 0),
+      bronOnbekend: bron == null,
+    })
+  }
+  return uit.sort((x, y) => x.datum.localeCompare(y.datum))
+}
+
 // Berekent de huidige voorraad per locatie voor één afvulling. Begint met het
-// totale aantal op de AGP-locatie, verwerkt vervolgens alle verplaatsingen
-// (in chronologische volgorde) en trekt uitleveringen + afboekingen af.
+// totale aantal op de AGP-locatie en verwerkt daarna alle bewegingen
+// (verplaatsingen, uitleveringen en afboekingen) in chronologische volgorde.
 //
 // Elke beweging wordt gecapt op wat er werkelijk op de bron-locatie staat.
 // Zonder die cap zou een verplaatsing van 2× terwijl er maar 1× was, de
@@ -1502,38 +1568,38 @@ export const voorraadPerLocatie = (
   // Initieel staat alle voorraad op AGP
   result[agp.id] = afvAantal(afv)
 
-  // Verplaatsingen toepassen (chronologisch), gecapt op bron-beschikbaarheid
-  const verpl = (verplaatsingen || [])
-    .filter(v => v.afvulling_id === afv?.id)
-    .slice()
-    .sort((a, b) => String(a.datum || '').localeCompare(String(b.datum || '')))
-  for (const v of verpl) {
-    const aantal = Number(v.aantal || 0)
-    if (!aantal) continue
-    const beschikbaar = Math.max(0, result[v.van_locatie_id] || 0)
-    const werkelijk = Math.min(aantal, beschikbaar)
-    if (werkelijk <= 0) continue
-    result[v.van_locatie_id] = (result[v.van_locatie_id] || 0) - werkelijk
-    result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + werkelijk
+  // Alle bewegingen in één chronologische stroom. Ze per soort verwerken —
+  // eerst álle verplaatsingen, dan de uitleveringen, dan de afboekingen — laat
+  // een verplaatsing van ná een uitlevering putten uit voorraad die toen al
+  // weg was. De verplaatsing lukt dan volledig, de uitlevering wordt gecapt,
+  // en het verschil blijft als phantom voorraad op de bestemming staan: precies
+  // wat de cap hieronder moet voorkomen.
+  const bewegingen = bouwVoorraadBewegingen(afv, agp.id, uitleveringen, verplaatsingen, afboekingen)
+  const neemAf = (loc: number, hoeveel: number): number => {
+    const beschikbaar = Math.max(0, result[loc] || 0)
+    const werkelijk = Math.min(hoeveel, beschikbaar)
+    if (werkelijk > 0) result[loc] = (result[loc] || 0) - werkelijk
+    return werkelijk
   }
-
-  // Uitleveringen aftrekken op de bron-locatie (default = AGP), gecapt
-  const uits = (uitleveringen || []).filter(u => u.afvulling_id === afv?.id)
-  for (const u of uits) {
-    const locId = u.bron_locatie_id ?? agp.id
-    const beschikbaar = Math.max(0, result[locId] || 0)
-    const werkelijk = Math.min(Number(u.aantal || 0), beschikbaar)
-    if (werkelijk <= 0) continue
-    result[locId] = (result[locId] || 0) - werkelijk
-  }
-
-  // Afboekingen (verlies/breuk) — gaan af van AGP-locatie, gecapt
-  const afb = (afboekingen || []).filter(a => a.afvulling_id === afv?.id)
-  for (const a of afb) {
-    const beschikbaar = Math.max(0, result[agp.id] || 0)
-    const werkelijk = Math.min(Number(a.aantal || 0), beschikbaar)
-    if (werkelijk <= 0) continue
-    result[agp.id] = (result[agp.id] || 0) - werkelijk
+  for (const b of bewegingen) {
+    if (b.aantal <= 0) continue
+    let genomen = neemAf(b.van, b.aantal)
+    // Een afboeking zonder locatie die niet op de AGP past, stond ergens
+    // anders: schuif de rest door naar de locaties die wél voorraad hebben.
+    // Anders zakt de AGP door nul terwijl die andere locatie bier blijft
+    // tonen dat allang kapot of vermist is — en telde de app in totaal méér
+    // dan er ooit is afgevuld.
+    if (b.bronOnbekend && b.naar === undefined && genomen < b.aantal) {
+      const overige = Object.keys(result)
+        .map(Number)
+        .filter(id => id !== b.van && (result[id] || 0) > 0)
+        .sort((x, y) => x - y)
+      for (const loc of overige) {
+        if (genomen >= b.aantal) break
+        genomen += neemAf(loc, b.aantal - genomen)
+      }
+    }
+    if (b.naar !== undefined && genomen > 0) result[b.naar] = (result[b.naar] || 0) + genomen
   }
 
   // Negatieve waarden naar 0 normaliseren (kan voorkomen bij data-inconsistentie)
@@ -1558,26 +1624,13 @@ export const voorraadPerLocatieRaw = (
   const result: Record<number, number> = {}
   result[agp.id] = afvAantal(afv)
 
-  const verpl = (verplaatsingen || [])
-    .filter(v => v.afvulling_id === afv?.id)
-    .slice()
-    .sort((a, b) => String(a.datum || '').localeCompare(String(b.datum || '')))
-  for (const v of verpl) {
-    const aantal = Number(v.aantal || 0)
-    if (!aantal) continue
-    result[v.van_locatie_id] = (result[v.van_locatie_id] || 0) - aantal
-    result[v.naar_locatie_id] = (result[v.naar_locatie_id] || 0) + aantal
-  }
-
-  const uits = (uitleveringen || []).filter(u => u.afvulling_id === afv?.id)
-  for (const u of uits) {
-    const locId = u.bron_locatie_id ?? agp.id
-    result[locId] = (result[locId] || 0) - Number(u.aantal || 0)
-  }
-
-  const afb = (afboekingen || []).filter(a => a.afvulling_id === afv?.id)
-  for (const a of afb) {
-    result[agp.id] = (result[agp.id] || 0) - Number(a.aantal || 0)
+  // Zelfde bewegingen als de gecapte variant. Zonder cap maakt de volgorde
+  // voor de uitkomst niet uit (het is louter optellen en aftrekken), maar zo
+  // lezen beide functies hun invoer gegarandeerd hetzelfde.
+  for (const b of bouwVoorraadBewegingen(afv, agp.id, uitleveringen, verplaatsingen, afboekingen)) {
+    if (!b.aantal) continue
+    result[b.van] = (result[b.van] || 0) - b.aantal
+    if (b.naar !== undefined) result[b.naar] = (result[b.naar] || 0) + b.aantal
   }
   return result
 }

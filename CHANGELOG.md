@@ -4,6 +4,151 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.52] — 2026-09-18
+
+### Een afboeking legt nu vast wáár het bier lag
+
+De structurele oplossing voor de negatieve AGP-standen. `Afboeking` heeft een
+nieuw veld `bron_locatie_id`, en de afboekmodal vraagt er expliciet naar:
+*Waar lag het bier?*, met per locatie de beschikbare voorraad erbij. Standaard
+staat hij op de AGP zolang daar voorraad ligt, anders op de locatie met de
+meeste — in het normale geval hoef je dus niets te kiezen.
+
+Dat veld stuurt twee dingen die bij elkaar horen:
+
+- **Voorraad.** Het aantal gaat af van díe locatie. Tot nu toe ging elke
+  afboeking van de AGP af, die daardoor door nul zakte terwijl een andere
+  locatie bier bleef tonen dat allang weg was.
+- **Accijns.** De heffing ontstaat zodra het bier de schorsingsregeling
+  verlaat. Uit de AGP is een vermissing dus accijnsplichtig; lag het al
+  daarbuiten, dan is de accijns bij de uitslag al geboekt en wordt hij hier
+  **niet** nog eens berekend. Dat voorkomt dat dezelfde flesjes twee keer
+  belast worden. De modal zegt bij een vermissing welke van de twee geldt.
+
+De periode-lock op een gesloten accijnsmaand geldt voortaan alleen wanneer er
+werkelijk een boeking ontstaat — een afboeking buiten de AGP raakt de aangifte
+niet en wordt dus niet meer geblokkeerd. De hoeveelheid wordt getoetst op de
+gekozen locatie in plaats van op het totaal.
+
+**Bestaande gegevens veranderen niet.** Een afboeking zonder locatie geldt als
+AGP, precies zoals de app hem tot nu toe behandelde: dezelfde accijns, dezelfde
+voorraadaftrek. Alleen voor zulke oude records blijft de doorschuif uit
+v1.12.51 als vangnet bestaan. De inventarisatie telt bewust locatieloos — een
+geteld tekort is daar een AGP-discrepantie — en blijft dus accijnsplichtig.
+
+Meegenomen: twee hardcoded Nederlandse foutmeldingen in de vernietigingsflow
+gaan nu via de al bestaande `verlies_vern_err_*`-sleutels.
+
+---
+
+## [1.12.51] — 2026-09-18
+
+### Opgelost: afgeboekt bier bleef op een andere locatie staan
+
+Een afboeking legt niet vast wáár het bier stond toen het brak of vermist
+raakte — `Afboeking` heeft geen locatieveld — en ging daarom altijd van de
+AGP af. Stond dat bier op een andere locatie, dan zakte de AGP door nul
+terwijl die andere locatie flesjes bleef tonen die er allang niet meer waren.
+De app telde in totaal dan méér dan er ooit is afgevuld.
+
+Uit een echte voorraadverloop-export over Q3 2026:
+
+| Bier | AGP-begin | Uitgeslagen | Afgeboekt | AGP-eind |
+|---|---|---|---|---|
+| Sterrenbier Berken Blond | 45 | 44 | 4 | **−3** |
+| Tripel A | 84 | 84 | 1 | **−1** |
+
+Bij Sterrenbier waren precies die 3 vermiste flesjes naar de bijkeuken
+verplaatst. De afboeking ging van de (lege) AGP af, dus bleef de bijkeuken 3
+tonen en klopte de optelling niet meer met de boeken.
+
+Een afboeking die niet op de AGP past schuift nu door naar de locaties waar de
+voorraad wél staat. De AGP-stand zelf verandert daar niet door — alleen de
+andere locaties — dus de accijnsberekening en de uitslagcontrole in
+`utils/agp.ts` rekenen ongewijzigd. De optelling over alle locaties sluit weer
+aan op afgevuld − uitgeleverd − afgeboekt.
+
+`voorraadPerLocatieRaw` schuift bewust niet door: die blijft de ongefilterde
+standen tonen voor de negatieve-voorraadsignalering.
+
+---
+
+## [1.12.50] — 2026-09-18
+
+### Opgelost: fysieke voorraad kon te hoog uitvallen
+
+`voorraadPerLocatie` verwerkte de bewegingen van een afvulling **per soort**:
+eerst álle verplaatsingen, dan de uitleveringen, dan de afboekingen — en pas
+binnen de verplaatsingen op datum. Daardoor kon een verplaatsing van ná een
+uitlevering putten uit voorraad die toen allang weg was. De verplaatsing lukte
+dan volledig, de uitlevering liep tegen de cap aan, en het verschil bleef als
+voorraad op de bestemming staan die daar nooit heeft gelegen — precies de
+phantom voorraad die die cap moet voorkomen.
+
+Voorbeeld: 10 afgevuld, op 5 januari gaan er 8 de deur uit, op 10 januari
+worden er 5 verplaatst. Er liggen er dan nog 2, dus er kunnen er 2 mee. De app
+rekende 5 op de opslag en dus 5 in voorraad in plaats van 2.
+
+Alle drie de soorten bewegingen gaan nu door één chronologische stroom
+(`bouwVoorraadBewegingen`). Bij een gelijke datum blijft de oude volgorde
+gelden (verplaatsing → uitlevering → afboeking), dus bestaande gegevens
+schuiven niet zomaar op. `voorraadPerLocatieRaw` gebruikt dezelfde bouwsteen;
+die kapt niet, dus daar verandert de uitkomst niet — de twee lezen hun invoer
+nu wel gegarandeerd hetzelfde.
+
+---
+
+## [1.12.49] — 2026-09-18
+
+### Teruggedraaid: de gekleurde strook achter de statusbalk
+
+De strook die in 1.12.47 achter de statusbalk werd getekend is weer weg. Hij
+deed twee dingen verkeerd:
+
+- **In Home Assistant maakte hij de header stuk.** Het ingress-iframe erft de
+  safe-area-inset van de webview, maar staat zelf al ónder de statusbalk. Het
+  laagje tekende daardoor een losse gekleurde band bóven de navigatiebalk in
+  plaats van erachter.
+- **In Safari haalde hij niets uit.** De statusbalk en de adresbalk horen bij
+  het omsluitende document — dat van Home Assistant — en niet bij dit iframe.
+  Alleen de `theme-color` van het bovenste document telt daar, en die is van HA.
+
+Als geïnstalleerde webapp op de directe-toegangspoort werkt het al: daar is
+`IS_STANDALONE` waar en vult de `<html>`-achtergrond die strook met de
+themakleur. Via HA is dit een HA-instelling, niet iets wat de addon kan zetten.
+
+---
+
+## [1.12.48] — 2026-09-18
+
+### Opgelost: de artikelmarge liet een fust meebetalen aan de flesjes
+
+De kostprijs per stuk op de productenpagina werd berekend als *kostprijs per
+liter × inhoud van de verpakking*. In die prijs per liter zit de verpakking van
+**alle** verpakkingstypen van de batch, uitgesmeerd over het volume — en juist
+verpakking is de enige kostenpost die niet met het volume meeschaalt.
+
+Een brouwsel van 47 flesjes van 0,3 L plus één fust van 20 L belastte dat fust
+daardoor met een deel van het glas, de kroonkurken en de etiketten van die
+flesjes, terwijl de flesjes zelf te goedkoop uitkwamen. Bij €0,30 verpakking per
+flesje en €3 per fust scheelt dat aan beide kanten zo'n 11 tot 13 procent — en
+omdat de fout de ene kant op werkt voor grote verpakkingen en de andere kant op
+voor kleine, waren artikelmarges onderling niet te vergelijken.
+
+De kostprijs van een verpakte eenheid is nu wat hij hoort te zijn: bier,
+utilities en accijns per liter over de inhoud, plus de échte prijs van díe
+verpakking. Dat is dezelfde opbouw die `receptKostprijs.ts` al gebruikte.
+`berekenBatchKostprijs` en `berekenProductKostprijs` geven daarvoor twee nieuwe
+velden terug (`verpakking_kosten` en `kostprijs_per_liter_excl_verpakking`);
+`kostprijs_per_liter` zelf is ongewijzigd, dus de W&V, de COGS en de
+batchkostprijs rekenen precies als voorheen. Zijn de verpakkingskosten
+onbekend, dan valt de berekening terug op het oude gedrag.
+
+De live marge-inschatting in het artikelformulier en de marge bij een opgeslagen
+artikel delen nu één helper, zodat ze niet meer uit elkaar kunnen lopen.
+
+---
+
 ## [1.12.47] — 2026-09-18
 
 ### Opgelost: COGS telde elke uitlevering een factor `aantal` te hoog

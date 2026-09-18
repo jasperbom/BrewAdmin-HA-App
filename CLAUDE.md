@@ -512,6 +512,17 @@ als nul mee te tellen; het resultaat zegt via `accijns_bron` of het cijfer
 schermen, nooit in de W&V of de COGS** — die mogen niet op een schatting
 draaien, en zonder het argument is het gedrag ongewijzigd.
 
+**Kostprijs van één verpakte eenheid: nooit prijs-per-liter × inhoud.**
+Verpakking is de enige kostenpost die níét met het volume meeschaalt — 20 liter
+in flesjes kost aan glas, kroonkurk en etiket een veelvoud van dezelfde 20 liter
+in één fust. In `kostprijs_per_liter` is die post over álle verpakkingstypen van
+de batch uitgesmeerd, dus daar mag je de prijs van één verpakking niet uit
+afleiden: een fust betaalt dan mee aan de flesjes en de flesjes komen te goedkoop
+uit, waardoor artikelmarges onderling niet meer kloppen. Reken altijd met
+`kostprijs_per_liter_excl_verpakking × inhoud + verpakkingKostenPerStuk(vp,
+onderdelen)` — zo doet `receptKostprijs.ts` het al (`kostprijsPerEenheid`) en
+sinds v1.12.48 ook de artikelmarge op de productenpagina.
+
 Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
 verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de
 ingrediëntprijs (`ingredientPrijs`, uit de lots), de verpakkingsmix
@@ -545,6 +556,32 @@ gebruiker als het al ergens in de administratie staat.
 Gepland → Aan het brouwen → Aan het gisten → Conditioning → Afgevuld → Gesloten
 (Planned)   (Brewing)        (Fermenting)     (Conditioning)  (Packaged)  (Closed)
 ```
+
+### Afboeken: de locatie bepaalt de accijns
+
+Een afboeking (`afboekingen`) legt in `bron_locatie_id` vast wáár het bier lag
+toen het brak, vermist raakte of vernietigd werd. Dat veld stuurt twee dingen,
+en die horen bij elkaar te blijven:
+
+- **Voorraad.** `voorraadPerLocatie` haalt het aantal van díe locatie af. Ging
+  het altijd van de AGP af — zoals vóór v1.12.52 — dan zakte die door nul
+  terwijl de andere locatie bier bleef tonen dat allang weg was, en telde de app
+  in totaal méér dan er ooit is afgevuld.
+- **Accijns.** De heffing ontstaat zodra het bier de schorsingsregeling
+  verlaat. Uit de AGP is een vermissing dus accijnsplichtig
+  (`afboekingAccijnsplichtig` → `bouwAfboekingAccijnsRecord`). Lag het al
+  daarbuiten, dan is de accijns bij de uitslag al geboekt en mag hij hier
+  **niet** nog eens: dat belast dezelfde flesjes twee keer.
+
+Geef daarom altijd de AGP-locatie mee aan `afboekingAccijnsplichtig` /
+`bouwAfboekingAccijnsRecord` wanneer je die aanroept. Een afboeking zónder
+locatie geldt als AGP — zo blijven bestaande records exact hetzelfde
+gewaardeerd, en voor de voorraadtelling schuift alleen zo'n oud record nog door
+naar een locatie die wél voorraad heeft.
+
+De inventarisatie (`InventarisatiePage`) telt bewust locatieloos: een geteld
+tekort is daar een AGP-discrepantie, dus die afboekingen krijgen geen locatie
+en blijven accijnsplichtig.
 
 ### Tankbezetting: gereserveerd ≠ bezet
 
@@ -609,7 +646,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `verkoop_facturen` | array | Verkoopfacturen |
 | `bestellingen` | array | WooCommerce-bestellingen |
 | `bestelling_picks` | array | Pickregels per bestelling |
-| `afboekingen` | array | Biervoorraadbewegingen |
+| `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
 | `gist_metingen` | array | Gistingsmetingen per batch |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |

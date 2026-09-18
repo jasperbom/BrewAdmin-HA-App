@@ -3759,5 +3759,8 @@
   "msg_geen_zoekresultaten": "Keine Ergebnisse",
   "btn_ubl_menu": "E-Rechnung (UBL)",
   "factuur_verrekend": "Verrechnet",
-  "btn_verrekening_ongedaan": "Verrechnung rückgängig machen"
+  "btn_verrekening_ongedaan": "Verrechnung rückgängig machen",
+  "lbl_afboeking_locatie": "Wo lag das Bier?",
+  "info_afboeking_accijns_agp": "Aus dem Steuerlager: Das Bier verlässt das Steueraussetzungsverfahren, die Verbrauchsteuer wird fällig und kommt in die Monatsanmeldung.",
+  "info_afboeking_accijns_buiten_agp": "Außerhalb des Steuerlagers: Die Verbrauchsteuer wurde bei der Auslagerung bereits gebucht und wird hier nicht erneut berechnet."
 }

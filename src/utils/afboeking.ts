@@ -14,10 +14,28 @@
 import type { AccijnsInst, AccijnsRecord, Afboeking } from '../types'
 import { accijnsCalc, tariefVoorDatum } from './calculations'
 
-/** Alleen een echte vermissing (positief aantal) is accijnsplichtig. */
+/**
+ * Alleen een echte vermissing (positief aantal) uit de AGP is accijnsplichtig.
+ *
+ * De heffing ontstaat op het moment dat het bier de schorsingsregeling
+ * verlaat. Lag het al buiten de AGP — uitgeslagen naar een eigen locatie of
+ * naar een klant — dan is de accijns daar al geboekt; hem bij de afboeking
+ * nóg eens boeken belast dezelfde flesjes twee keer.
+ *
+ * `agpLocatieId` weglaten (of een afboeking zonder `bron_locatie_id`) betekent
+ * "onbekend, dus AGP": dat is hoe de app het vóór v1.12.52 altijd deed, en zo
+ * blijven bestaande records exact hetzelfde gewaardeerd.
+ */
 export const afboekingAccijnsplichtig = (
-  afboeking: Pick<Afboeking, 'reden' | 'aantal'> | null | undefined
-): boolean => afboeking?.reden === 'vermis' && Number(afboeking?.aantal || 0) > 0
+  afboeking: Pick<Afboeking, 'reden' | 'aantal' | 'bron_locatie_id'> | null | undefined,
+  agpLocatieId?: number | null
+): boolean => {
+  if (afboeking?.reden !== 'vermis') return false
+  if (!(Number(afboeking?.aantal || 0) > 0)) return false
+  const bron = afboeking?.bron_locatie_id
+  if (bron == null || agpLocatieId == null) return true
+  return Number(bron) === Number(agpLocatieId)
+}
 
 export interface AfboekingAfvulling {
   inhoud_per_eenheid?: number
@@ -43,13 +61,14 @@ export interface AfboekingBatch {
  * schorsingsregeling verlaat.
  */
 export const bouwAfboekingAccijnsRecord = (
-  afboeking: Pick<Afboeking, 'id' | 'batch_id' | 'datum' | 'aantal' | 'reden'>,
+  afboeking: Pick<Afboeking, 'id' | 'batch_id' | 'datum' | 'aantal' | 'reden' | 'bron_locatie_id'>,
   afvulling: AfboekingAfvulling | null | undefined,
   batch: AfboekingBatch | null | undefined,
   accijnsInst: AccijnsInst | null | undefined,
-  nieuwId: number
+  nieuwId: number,
+  agpLocatieId?: number | null
 ): AccijnsRecord | null => {
-  if (!afboekingAccijnsplichtig(afboeking)) return null
+  if (!afboekingAccijnsplichtig(afboeking, agpLocatieId)) return null
   const aantal = Number(afboeking.aantal || 0)
   const inhoud = Number(afvulling?.inhoud_per_eenheid || 0)
   const liter = aantal * inhoud

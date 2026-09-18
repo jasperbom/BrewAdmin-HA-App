@@ -1405,6 +1405,16 @@ export interface Afboeking {
   aantal: number
   reden: AfboekingReden
   opmerking: string
+  /**
+   * Waar het bier lag toen het brak, vermist raakte of vernietigd werd.
+   * Bepaalt twee dingen: van wélke locatie de voorraad afgaat, en of er
+   * accijns verschuldigd wordt — dat laatste alleen vanuit de AGP, want
+   * daarbuiten is de heffing bij de uitslag al gedaan.
+   *
+   * Ontbreekt op records van vóór v1.12.52; die gelden als AGP, zoals de app
+   * ze toen ook behandelde.
+   */
+  bron_locatie_id?: number
   created_at?: string
   // ── Bijzondere mutaties (vernietiging) ─────────────────────────────────────
   // Legacy (M-1, pre-v2.4) — backward compat met oude afboekingen:

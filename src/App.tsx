@@ -1953,20 +1953,15 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{backgroundColor:'var(--t-bg)'}}>
-      {/* Strook achter de statusbalk (notch/Dynamic Island). Die stond op de
-          app-achtergrond terwijl de balk eronder de themakleur heeft: een
-          lichte rand boven een donker menu. De `<html>`-achtergrond kleurde
-          alleen mee in home-screen-modus, en in de HA-companion-app is
-          `IS_STANDALONE` onwaar — vandaar dat hij daar licht bleef.
-          Dit laagje vult die strook altijd met dezelfde gradient als de nav.
-          Is de inset 0 (desktop, browser met adresbalk), dan is het element
-          nul pixels hoog en verandert er niets; `fixed` + `pointer-events-none`
-          houden het buiten de layout en buiten elke aanraking. */}
-      <div
-        aria-hidden="true"
-        className="fixed top-0 inset-x-0 z-50 pointer-events-none"
-        style={{height: 'env(safe-area-inset-top, 0px)', background: `linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`}}
-      />
+      {/* Geen eigen strook achter de statusbalk meer (stond hier kort in
+          1.12.47). Het ingress-iframe erft de safe-area-inset van de webview,
+          dus daar tekende dat laagje een losse gekleurde band bóven de
+          navigatiebalk in plaats van achter de klok. En in Safari haalde het
+          niets uit: de statusbalk en de adresbalk horen bij het ómsluitende
+          document (dat van Home Assistant), niet bij dit iframe — alleen de
+          `theme-color` van het bovenste document telt daar. Zie
+          `IS_STANDALONE` hierboven: als geïnstalleerde webapp vult de
+          `<html>`-achtergrond die strook al. */}
       <nav className="text-white sticky top-0 z-40 shadow-lg border-b" style={navStyle}>
         <div className="max-w-7xl mx-auto px-3 sm:px-4 flex items-center h-14 gap-1.5 sm:gap-2">
           <img

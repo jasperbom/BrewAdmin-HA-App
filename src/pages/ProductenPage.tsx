@@ -14,6 +14,7 @@ import Sparkline from '../components/Sparkline'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
+import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import Btn from '../components/ui/Btn'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
@@ -102,7 +103,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     // v2.4 vernietigingsflow (Douane §7.2.3):
     verklaring_ingediend_op: string;
     bijlagen: Bijlage[];
-  }>({aantal: '1', reden: 'vermis', opmerking: '', toestemming_douane: false, toestemming_datum: '', kenmerk_douane: '', verklaring_ingediend_op: tod(), bijlagen: []});
+    // Waar het bier lag; bepaalt de locatie waar het afgaat én of er accijns
+    // verschuldigd wordt (alleen vanuit de AGP).
+    bron_locatie_id: number | '';
+  }>({aantal: '1', reden: 'vermis', opmerking: '', toestemming_douane: false, toestemming_datum: '', kenmerk_douane: '', verklaring_ingediend_op: tod(), bijlagen: [], bron_locatie_id: ''});
   const [afboekError, setAfboekError] = useState('');
   const [afboekUploading, setAfboekUploading] = useState(false);
   // Rebrand-modal: (deel van) een afvulling naar een ander product verplaatsen.
@@ -260,7 +264,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // afgevulde liters. Het `liter`-veld blijft de som van `liter_vergist` voor
   // andere statistieken op deze pagina.
   const productStats = useMemo(() => {
-    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number}> = {};
+    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number, kostprijsExclVerpakking: number}> = {};
     for (const p of (producten||[])) {
       // Batch-set: batches die direct op het product staan (`b.product_id`) én
       // batches die via een afvulling aan het product zijn gekoppeld
@@ -279,8 +283,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       const inBestelling = reserveringenVoorProduct(p).reduce((s: number, r: any) => s + r.aantal, 0);
       const voorraad = Math.max(0, pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0) - inBestelling);
       const uitgeleverd = pAv.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
-      const {kostprijs_per_liter} = berekenProductKostprijs(p.id, bat, bi, lots, av, verpakkingen, onderdelen, acc);
-      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd, kostprijs: kostprijs_per_liter};
+      const {kostprijs_per_liter, kostprijs_per_liter_excl_verpakking} =
+        berekenProductKostprijs(p.id, bat, bi, lots, av, verpakkingen, onderdelen, acc);
+      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd,
+        kostprijs: kostprijs_per_liter, kostprijsExclVerpakking: kostprijs_per_liter_excl_verpakking || 0};
     }
     return stats;
   }, [producten, bat, av, uit, bi, lots, verpakkingen, onderdelen, acc, bestellingen, bestellingPicks, afboekingen, productArtikelen, artikelen]);
@@ -546,15 +552,38 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       ? {eur: prijsExcl - kostprijsPerEenheid, pct: ((prijsExcl - kostprijsPerEenheid) / prijsExcl) * 100}
       : null;
 
-  // Kostprijs/marge-inschatting per artikel: kostprijs per liter van het
-  // product (ingrediënten + utility + verpakking + accijns, uit
-  // berekenProductKostprijs) × inhoud van de verpakking. Verkoop- en
-  // B2B-prijs staan excl. BTW opgeslagen (saveArtikel normaliseert).
-  const berekenMarge = (art: any) => {
+  /**
+   * Kostprijs van één verpakte eenheid: bier + utilities + accijns per liter
+   * (die schalen mee met de inhoud) plus de échte verpakkingsprijs van déze
+   * verpakking.
+   *
+   * Eerder rekende dit met de kostprijs per liter uit `berekenProductKostprijs`
+   * × inhoud. Daar zit de verpakking van álle verpakkingstypen van de batch in,
+   * uitgesmeerd over het volume — en juist verpakking schaalt niet met liters.
+   * Een batch van 47 flesjes plus één fust van 20 L belastte dat fust zo met
+   * een deel van het glas, de kroonkurken en de etiketten van die flesjes,
+   * terwijl de flesjes juist te goedkoop uitkwamen. Onderling vergelijken van
+   * artikelmarges klopte daardoor niet.
+   */
+  const kostprijsVoorEenheid = (art: any, inhoud: number): number | null => {
     const stats = productStats[sel!];
+    if (!stats || !inhoud) return null;
+    const vp = (verpakkingen||[]).find((v: any) =>
+      v.id === Number(art?.verpakking_id) || v.naam === art?.verpakking_naam);
+    // Zonder bekende verpakkingskosten valt hij terug op het oude gedrag; dan
+    // is de per-liter-prijs nog steeds de beste schatting die er is.
+    if (stats.kostprijsExclVerpakking > 0 && vp) {
+      return stats.kostprijsExclVerpakking * inhoud + verpakkingKostenPerStuk(vp, onderdelen);
+    }
+    return stats.kostprijs > 0 ? stats.kostprijs * inhoud : null;
+  };
+
+  // Marge-inschatting per artikel. Verkoop- en B2B-prijs staan excl. BTW
+  // opgeslagen (saveArtikel normaliseert).
+  const berekenMarge = (art: any) => {
     const inhoud = Number(art.inhoud_liter || 0);
-    if (!stats || stats.kostprijs <= 0 || !inhoud) return null;
-    const kostprijsPerEenheid = stats.kostprijs * inhoud;
+    const kostprijsPerEenheid = kostprijsVoorEenheid(art, inhoud);
+    if (kostprijsPerEenheid == null || kostprijsPerEenheid <= 0) return null;
     return {
       kostprijsPerEenheid,
       consument: margeVoorPrijs(kostprijsPerEenheid, Number(art.verkoopprijs || 0)),
@@ -623,7 +652,17 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // Afboeken
   const openAfboekModal = (a: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    setAfboekForm({aantal: '1', reden: 'vermis', opmerking: '', toestemming_douane: false, toestemming_datum: '', kenmerk_douane: '', verklaring_ingediend_op: tod(), bijlagen: []});
+    // Standaard de AGP zolang daar voorraad ligt; anders de locatie met de
+    // meeste. Zo hoeft de gebruiker in het normale geval niets te kiezen.
+    const perLoc = beschikbaarPerLocatie(a);
+    const agpId = getAgpLocatie(locaties as any)?.id;
+    const metVoorraad = Object.entries(perLoc)
+      .map(([k, n]) => ({id: Number(k), n: Number(n || 0)}))
+      .filter(x => x.n > 0)
+      .sort((x, y) => y.n - x.n);
+    const standaard = (agpId != null && (perLoc[agpId] || 0) > 0) ? agpId
+      : metVoorraad[0]?.id ?? agpId ?? '';
+    setAfboekForm({aantal: '1', reden: 'vermis', opmerking: '', toestemming_douane: false, toestemming_datum: '', kenmerk_douane: '', verklaring_ingediend_op: tod(), bijlagen: [], bron_locatie_id: standaard ?? ''});
     setAfboekError('');
     setAfboekModal(a);
   };
@@ -799,13 +838,22 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const aantal = Number(afboekForm.aantal);
     if (!afboekForm.opmerking.trim()) { setAfboekError(t('err_afboeking_opmerking_required')); return; }
     if (!aantal || aantal === 0) { setAfboekError(t('err_afboeking_aantal_min')); return; }
+    const bronLocId = afboekForm.bron_locatie_id === '' ? undefined : Number(afboekForm.bron_locatie_id);
     if (aantal > 0) {
-      const max = beschikbaarVoorAfvulling(afboekModal);
+      // Toets op de gekozen locatie: je kunt geen flesjes afboeken op een plek
+      // waar ze niet staan. Zonder locaties blijft het de oude totaaltoets.
+      const perLoc = beschikbaarPerLocatie(afboekModal);
+      const max = bronLocId != null && (locaties||[]).length > 1
+        ? Number(perLoc[bronLocId] || 0)
+        : beschikbaarVoorAfvulling(afboekModal);
       if (aantal > max) { setAfboekError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
     }
     // Periode-lock (ERP-plan 0.4): een vermissing boekt accijns in de lopende
     // maand — dat mag niet meer als die aangifte al is ingediend of betaald.
-    if (afboekForm.reden === 'vermis' && aantal > 0 && accijnsMaandGesloten(tod(), accijnsAangiftes)) {
+    const agpLocId = getAgpLocatie(locaties as any)?.id;
+    const boektAccijns = afboekForm.reden === 'vermis' && aantal > 0
+      && (bronLocId == null || agpLocId == null || Number(bronLocId) === Number(agpLocId));
+    if (boektAccijns && accijnsMaandGesloten(tod(), accijnsAangiftes)) {
       setAfboekError(t('err_accijns_maand_gesloten_boeking')); return;
     }
     // Voorcalculatie accijns (Douane v2.4 §7.2.1) — bevroren bedrag per eenheid op afboekmoment
@@ -822,9 +870,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     // Douane v2.4 §7.2.3: vernietiging start in status 'Aangevraagd'.
     // Verplicht: datum indiening verklaring + minimaal 1 bijlage met rol douane_verklaring.
     if (afboekForm.reden === 'vernietiging') {
-      if (!afboekForm.verklaring_ingediend_op) { setAfboekError('Datum indiening verklaring is verplicht.'); return; }
+      if (!afboekForm.verklaring_ingediend_op) { setAfboekError(t('verlies_vern_err_datum_indiening')); return; }
       const verklaringen = (afboekForm.bijlagen||[]).filter(b => b.rol === 'douane_verklaring');
-      if (verklaringen.length === 0) { setAfboekError('Upload de ingediende verklaring vernietiging als bijlage (rol: douane_verklaring).'); return; }
+      if (verklaringen.length === 0) { setAfboekError(t('verlies_vern_err_verklaring_bijlage')); return; }
     }
     const nieuw: any = {
       id: newId(afboekingen||[]),
@@ -834,6 +882,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       aantal,
       reden: afboekForm.reden,
       opmerking: afboekForm.opmerking.trim(),
+      ...(bronLocId != null ? {bron_locatie_id: bronLocId} : {}),
       created_at: new Date().toISOString(),
       voorcalc_accijns_per_eenheid: perEenheid,
       voorcalc_accijns_totaal: totaalVoorcalc,
@@ -847,7 +896,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     // verschuldigd en hoort dus in de maandaangifte, niet alleen als
     // voorcalculatie in de kostprijs.
     const accRecord = bouwAfboekingAccijnsRecord(
-      nieuw, afboekModal, (bat||[]).find((b: any) => b.id === afboekModal.batch_id), accijnsInst, newId(acc||[])
+      nieuw, afboekModal, (bat||[]).find((b: any) => b.id === afboekModal.batch_id), accijnsInst, newId(acc||[]), agpLocId
     );
     if (accRecord) {
       nieuw.accijns_record_id = accRecord.id;
@@ -1846,7 +1895,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                       return <p className="mt-2 text-[11px] text-gray-400 italic">{t('msg_geen_kostprijs_bekend')}</p>;
                     }
                     if (!inhoud) return null;
-                    const kost = stats.kostprijs * inhoud;
+                    const kost = kostprijsVoorEenheid({...artForm, verpakking_id: vp?.id ?? artForm.verpakking_id}, inhoud);
+                    if (kost == null || kost <= 0) return null;
                     const btw = Number(artForm.btw_pct || 0);
                     const naarExcl = (val: any, incl: boolean) => {
                       const n = Number(val || 0);
@@ -2383,16 +2433,46 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
                 <input type="number" value={afboekForm.aantal} onChange={e => { setAfboekForm(f => ({...f, aantal: e.target.value})); setAfboekError(''); }} placeholder="1"
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_datum')}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('lbl_datum')}</label>
                 <input type="date" value={tod()} readOnly
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-500" />
               </div>
             </div>
+
+            {/* Wáár het bier lag. Bepaalt van welke locatie het afgaat en of
+                er accijns verschuldigd wordt: buiten de AGP is die bij de
+                uitslag al geboekt. */}
+            {(locaties||[]).length > 1 && (() => {
+              const perLoc = beschikbaarPerLocatie(afboekModal);
+              const agpId = getAgpLocatie(locaties as any)?.id;
+              const gekozen = afboekForm.bron_locatie_id;
+              const uitAgp = gekozen !== '' && agpId != null && Number(gekozen) === Number(agpId);
+              return (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('lbl_afboeking_locatie')}</label>
+                  <select
+                    value={String(gekozen)}
+                    onChange={e => { setAfboekForm(f => ({...f, bron_locatie_id: e.target.value === '' ? '' : Number(e.target.value)})); setAfboekError(''); }}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input bg-white">
+                    {(locaties||[]).map((l: any) => (
+                      <option key={l.id} value={l.id}>
+                        {l.naam} ({Number(perLoc[l.id] || 0)}×)
+                      </option>
+                    ))}
+                  </select>
+                  {afboekForm.reden === 'vermis' && Number(afboekForm.aantal) > 0 && (
+                    <p className={`text-xs mt-1 ${uitAgp ? 'text-red-700' : 'text-gray-500'}`}>
+                      {uitAgp ? t('info_afboeking_accijns_agp') : t('info_afboeking_accijns_buiten_agp')}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_opmerking_required')} <span className="text-red-400">*</span></label>

@@ -213,6 +213,46 @@ describe('voorraadPerLocatie', () => {
     expect(r[2]).toBe(1)
     expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(1)
   })
+  it('verwerkt bewegingen op datum, niet per soort', () => {
+    // 10 afgevuld. Eerst gaan er 8 de deur uit (5 jan), pas daarna worden er 5
+    // verplaatst (10 jan) — er liggen er dan nog maar 2, dus er kunnen er maar
+    // 2 mee. Werden eerst álle verplaatsingen verwerkt, dan putte die van de
+    // 10e uit voorraad die op de 5e al weg was en bleven er 5 op de opslag
+    // staan die er nooit zijn geweest.
+    const r = voorraadPerLocatie({id: 11, hoeveelheid: 10} as any, locaties,
+      [{id: 1, afvulling_id: 11, batch_id: 1, aantal: 8, datum: '2026-01-05', bron_locatie_id: 1} as any],
+      [{id: 1, afvulling_id: 11, batch_id: 1, datum: '2026-01-10', aantal: 5, van_locatie_id: 1, naar_locatie_id: 2} as any])
+    expect(r[2]).toBe(2)
+    expect(r[1]).toBe(0)
+    expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(2)
+  })
+  it('boekt een afboeking die niet op de AGP past af op de locatie waar het bier staat', () => {
+    // Afvulling #117 uit de praktijk: 47 afgevuld, 43 uitgeleverd, 3 naar de
+    // Bijkeuken verplaatst en 4 afgeboekt (1 overig + 3 vermis). Die laatste 3
+    // stonden in de Bijkeuken, maar een afboeking legt geen locatie vast en
+    // ging dus van de AGP af. Die zakte daardoor naar −3 terwijl de Bijkeuken
+    // 3 flesjes bleef tonen die er niet meer waren.
+    const locs: any = [{id: 1, naam: 'AGP', is_agp: true}, {id: 2, naam: 'Bijkeuken'}]
+    const r = voorraadPerLocatie({id: 117, hoeveelheid: 47} as any, locs,
+      [{id: 1, afvulling_id: 117, aantal: 43, datum: '2026-06-01', bron_locatie_id: 1} as any],
+      [{id: 1, afvulling_id: 117, batch_id: 1, datum: '2026-06-15', aantal: 3, van_locatie_id: 1, naar_locatie_id: 2} as any],
+      [{afvulling_id: 117, aantal: 1, datum: '2026-07-14'} as any,
+       {afvulling_id: 117, aantal: 3, datum: '2026-09-12'} as any])
+    expect(r[1]).toBe(0)
+    expect(r[2]).toBe(0)
+    // 47 − 43 − 4 = 0: de optelling over alle locaties sluit weer aan op de boeken.
+    expect(Object.values(r).reduce((s, v) => s + v, 0)).toBe(0)
+  })
+  it('boekt een afboeking mét locatie precies daar af, zonder doorschuiven', () => {
+    // Nieuwe afboekingen leggen vast waar het bier lag. Dan is er niets meer
+    // te raden: de 2 gaan van de bijkeuken af, de AGP blijft ongemoeid.
+    const locs: any = [{id: 1, naam: 'AGP', is_agp: true}, {id: 2, naam: 'Bijkeuken'}]
+    const r = voorraadPerLocatie({id: 5, hoeveelheid: 10} as any, locs, [],
+      [{id: 1, afvulling_id: 5, batch_id: 1, datum: '2026-02-01', aantal: 4, van_locatie_id: 1, naar_locatie_id: 2} as any],
+      [{afvulling_id: 5, aantal: 2, datum: '2026-03-01', bron_locatie_id: 2} as any])
+    expect(r[1]).toBe(6)
+    expect(r[2]).toBe(2)
+  })
 })
 
 describe('ouderdomsAnalyse (ERP 2.5)', () => {
@@ -311,6 +351,33 @@ describe('batchkostprijs en COGS (ERP 2.6)', () => {
   it('berekenProductKostprijs: batches zonder afvullingen tellen niet mee (refactor-pariteit)', () => {
     const pk = berekenProductKostprijs(9, batches, bi, lots, afvullingen, [], [], [])
     expect(pk.kostprijs_per_liter).toBeCloseTo(120 / 53, 9)
+  })
+  it('splitst de verpakkingskosten af, zodat een fust niet voor flesjes betaalt', () => {
+    // Eén brouwsel, twee verpakkingen: 47 flesjes van 0,3 L en één fust van
+    // 20 L. Verpakking is de enige post die niet met het volume meeschaalt,
+    // dus die hoort níét in de prijs per liter uitgesmeerd te worden.
+    const batch = {id: 700, datum: '2026-03-01', overige_kosten: 100}
+    const afv = [
+      {id: 1, batch_id: 700, verpakking_id: 1, verpakking_type: 'Fles 30cL', inhoud_per_eenheid: 0.3, hoeveelheid: 47},
+      {id: 2, batch_id: 700, verpakking_id: 2, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 1},
+    ]
+    const vps = [
+      {id: 1, naam: 'Fles 30cL', inhoud_liter: 0.3, kosten_verpakking: 0.30},
+      {id: 2, naam: 'Fust 20L', inhoud_liter: 20, kosten_verpakking: 3},
+    ]
+    const r = berekenBatchKostprijs(batch, [], [], afv, vps, [], [])
+    const liters = 47 * 0.3 + 20            // 34,1 L
+    const verpakking = 47 * 0.30 + 1 * 3    // € 17,10
+    expect(r.verpakking_kosten).toBeCloseTo(verpakking, 9)
+    expect(r.totaal_kosten).toBeCloseTo(100 + verpakking, 9)
+    expect(r.kostprijs_per_liter_excl_verpakking).toBeCloseTo(100 / liters, 9)
+
+    // Zo hoort de kostprijs van één fust eruit te zien: bier per liter over de
+    // 20 L, plus de prijs van dát fust — niet een deel van het flessenglas.
+    const fustEcht = (r.kostprijs_per_liter_excl_verpakking || 0) * 20 + 3
+    const fustOud = r.kostprijs_per_liter * 20
+    expect(fustEcht).toBeCloseTo(100 / liters * 20 + 3, 9)
+    expect(fustOud).toBeGreaterThan(fustEcht)  // het fust betaalde mee aan de flesjes
   })
   it('berekenCogs: periode-filter, intern uitgesloten, onbekende kostprijs apart', () => {
     const uit = [
