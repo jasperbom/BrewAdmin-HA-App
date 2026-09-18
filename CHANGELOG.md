@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.59] — 2026-09-18
+
+### De badge in de onderbalk is te tikken
+
+Op de telefoon was het cijfer op Productie, Verkoop en Admin alleen een
+getal; op het bureau opent dezelfde badge de lijst "Vraagt om aandacht".
+Nu ook op de telefoon: een tik opent een onderpaneel (`AttentieSheet`) met
+per regel het aantal en de sprong naar de plek waar je het afhandelt. De
+badge is een eigen knop naast het vakje, met een tapdoel van 36 px rond het
+kleine cijfer; Escape en de achtergrond sluiten het paneel.
+
+---
+
 ## [1.12.58] — 2026-09-18
 
 ### De titel bovenin is de weg terug naar het dashboard

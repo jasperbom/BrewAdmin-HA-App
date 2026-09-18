@@ -25,6 +25,7 @@ import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLI
 import type { HAUser } from './types'
 import Rail from './components/ui/Rail'
 import Onderbalk from './components/ui/Onderbalk'
+import AttentieSheet from './components/ui/AttentieSheet'
 import Kopbalk from './components/ui/Kopbalk'
 import PaginaNav, { PaginaNavItem } from './components/ui/PaginaNav'
 import UndoBar, { UndoProvider, useUitgesteldeActie } from './components/ui/UndoBar'
@@ -409,6 +410,15 @@ function App() {
 
   // Toetsenbord open → onderbalk weg (zie components/ui/toetsenbord.ts).
   useToetsenbordInset();
+  // Hetzelfde omslagpunt als de CSS (768 px): bepaalt of de attentie-lijst
+  // als onderpaneel (telefoon) of als uitklap bij de rail (bureau) opent.
+  const [isMobielScherm, setIsMobielScherm] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const bij = () => setIsMobielScherm(mq.matches);
+    mq.addEventListener('change', bij);
+    return () => mq.removeEventListener('change', bij);
+  }, []);
   // Eén terugweg voor de hele app: pagina's plannen via useUndo().
   const undo = useUitgesteldeActie(5000);
   // Snelkoppeling naar een lopende batch: altijd op de brouwzaal (het
@@ -2167,9 +2177,20 @@ function App() {
           actief={werkruimte}
           pagina={page}
           onKies={kiesVanuitSchil}
+          onBadge={w => setOpenAttentie(w)}
           onActie={openMeting}
           actieLabel={t('nav_meten')}
           onMeer={()=>setPage('meer')}
+        />
+      )}
+      {/* Telefoon: de lijst achter de badge in de onderbalk. Op het bureau
+          opent dezelfde state de uitklap bij de rail (AttentieBadge). */}
+      {openAttentie && isMobielScherm && (
+        <AttentieSheet
+          titel={t(WERKRUIMTE_LABEL_KEYS[openAttentie])}
+          posten={attentie[openAttentie]}
+          onSluit={() => setOpenAttentie(null)}
+          onGaNaar={p => gaNaarDoel(attentieDoel(p))}
         />
       )}
       <UndoBar undo={undo} />
