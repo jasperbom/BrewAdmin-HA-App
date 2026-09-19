@@ -839,7 +839,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const newIng = {id: newId(ing || []), naam: row.ingredient_naam, type: row.ingredient_type || 'Overig', fabrikant: ''}
     setIng((prev: any[]) => [...(prev || []), newIng])
     setBi((prev: any[]) => prev.map((x: any) => x.id === row.id ? {...x, ingredient_id: newIng.id} : x))
-    logAudit(auditLog, setAuditLog, {entiteit: 'Ingredient', entiteit_id: newIng.id, actie: 'aangemaakt', omschrijving: newIng.naam})
+    logAudit(auditLog, setAuditLog, {entiteit: 'Ingrediënt', entiteit_id: newIng.id, actie: 'aangemaakt', omschrijving: newIng.naam})
   }
 
   // Regel verwijderen. Was hij al afgeboekt, dan gaat de hoeveelheid terug naar

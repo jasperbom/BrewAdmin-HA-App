@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.67] — 2026-09-19
+
+### Dezelfde soort stond onder twee namen in het auditlogboek
+
+Vijf soorten werden door verschillende schermen anders gespeld:
+"Ingrediënt" naast "Ingredient", "Verkoopfactuur" naast "VerkoopFactuur",
+"Gistmeting" naast "Meting", "Accijnsaangifte" naast "AccijnsAangifte" en
+"BTW-aangifte" naast "BtwAangifte". Wie in het logboek op soort filtert mist
+dan een deel zonder dat hij het merkt.
+
+De canonieke namen staan nu op één plek (`AUDIT_SOORTEN` in `utils/audit.ts`)
+en de afwijkende schrijfwijzen zijn gelijkgetrokken. Een test leest de
+broncode en faalt zodra er een naam wordt gebruikt die niet in die lijst
+staat, zodat er geen nieuwe variant meer bij kan komen. Bestaande regels in
+het logboek houden hun oude spelling; die zijn historie.
+
+---
+
 ## [1.12.66] — 2026-09-19
 
 ### De batchlijst kon bij het opstarten leeggeschreven worden

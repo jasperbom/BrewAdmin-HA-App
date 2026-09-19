@@ -220,7 +220,7 @@ function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, a
                             e.target.checked ? allergs.add(a.key) : allergs.delete(a.key)
                             const updated = Array.from(allergs)
                             setIng((prev:any[])=>prev.map((x:any)=>x.id===i.id?{...x,allergenen:updated}:x))
-                            logAudit(auditLog,setAuditLog,{entiteit:'Ingredient',entiteit_id:i.id,actie:'gewijzigd',omschrijving:`Allergenen: ${i.naam}`})
+                            logAudit(auditLog,setAuditLog,{entiteit:'Ingrediënt',entiteit_id:i.id,actie:'gewijzigd',omschrijving:`Allergenen: ${i.naam}`})
                           }}
                         />
                       </td>
@@ -230,7 +230,7 @@ function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, a
                         onChange={e=>{
                           const v = e.target.value || undefined
                           setIng((prev:any[])=>prev.map((x:any)=>x.id===i.id?{...x,haccp_toevoeging:v}:x))
-                          logAudit(auditLog,setAuditLog,{entiteit:'Ingredient',entiteit_id:i.id,actie:'gewijzigd',omschrijving:`HACCP: ${i.naam}`})
+                          logAudit(auditLog,setAuditLog,{entiteit:'Ingrediënt',entiteit_id:i.id,actie:'gewijzigd',omschrijving:`HACCP: ${i.naam}`})
                         }}
                         className="t-input text-xs px-2 py-1 rounded border">
                         <option value="">{t('haccp_toevoeging_geen')}</option>

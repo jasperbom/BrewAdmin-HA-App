@@ -215,7 +215,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
     logAudit(auditLog, setAuditLog, {entiteit:'Accijnsaangifte', entiteit_id:0, actie:'gewijzigd', omschrijving:`Aangifte ${monthKey} → ${status}`});
     if (status === 'betaald') markMonthPaid(monthKey)
     logAudit(auditLog, setAuditLog, {
-      entiteit: 'AccijnsAangifte',
+      entiteit: 'Accijnsaangifte',
       entiteit_id: 0,
       actie: 'gewijzigd',
       omschrijving: `Maand ${monthKey} → status ${status}`,
@@ -232,7 +232,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
     })
     if (fields.controle_status) {
       logAudit(auditLog, setAuditLog, {
-        entiteit: 'AccijnsAangifte',
+        entiteit: 'Accijnsaangifte',
         entiteit_id: 0,
         actie: 'gewijzigd',
         omschrijving: `Controle ${fields.controle_status} door ${fields.reviewer || 'reviewer'} — maand ${monthKey}${fields.bevindingen ? ` (bevindingen: ${fields.bevindingen})` : ''}`,

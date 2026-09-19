@@ -126,7 +126,7 @@ function ProductieDashboard({
       temp: form.temp ? Number(form.temp) : undefined,
     }])
     const b = bat.find((x: any) => x.id === batchId)
-    logAudit(auditLog, setAuditLog, { entiteit: 'Meting', entiteit_id: id, actie: 'aangemaakt', omschrijving: `${batchNaam(b)}: SG ${form.sg || '—'}, pH ${form.ph || '—'}, ${form.temp || '—'}°C` })
+    logAudit(auditLog, setAuditLog, { entiteit: 'Gistmeting', entiteit_id: id, actie: 'aangemaakt', omschrijving: `${batchNaam(b)}: SG ${form.sg || '—'}, pH ${form.ph || '—'}, ${form.temp || '—'}°C` })
   }
 
   // Laatste handmatige meting met een waarde voor het gevraagde veld — de
