@@ -52,8 +52,11 @@ const prep = (d: any[]) => (d?.length ? d.map(toRow) : [{}])
 
 // Migratiehulp: oude backup-sheet 'Uitslagen' gebruikt de velden type_uitslag,
 // bron: 'uitslag'. Zet deze om naar type_uitlevering / bron: 'uitlevering'.
-const migreerUitleveringen = (nieuw: any[], oud: any[]): any[] => {
+const migreerUitleveringen = (nieuw: any[] | undefined, oud: any[] | undefined): any[] | undefined => {
   if (nieuw && nieuw.length) return nieuw
+  // Geen van beide tabbladen in de backup → niets te zeggen over deze lijst.
+  if (nieuw === undefined && oud === undefined) return undefined
+  if (!oud || !oud.length) return nieuw
   return (oud || []).map((u: any) => {
     const {type_uitslag, ...rest} = u || {}
     const out: any = {...rest}
@@ -229,7 +232,16 @@ export const excelExport = (data: any) => {
 // Leest een backup-werkboek en geeft hetzelfde object terug als de JSON-backup.
 export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
       const gs   = (n: string): any[] => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n]) : []
-      const parse = (n: string): any[] => gs(n).map(fromRow)
+      // Een tabblad dat níét in het werkboek zit geeft `undefined`, geen lege
+      // lijst. Het verschil is wezenlijk: een leeg tabblad betekent "deze
+      // lijst is leeg" (en hoort dus leeggemaakt te worden), een ontbrekend
+      // tabblad betekent "deze backup weet niets van deze lijst" — dan hoort
+      // de bestaande data te blijven staan. Vóór 1.12.61 werden die twee
+      // gelijkgesteld, waardoor het terugzetten van een oudere backup elke
+      // lijst wiste die toen nog niet bestond (producten, verplaatsingen,
+      // locaties, merch …). `doImport` slaat een `undefined` over.
+      const parse = (n: string): any[] | undefined =>
+        wb.Sheets[n] ? gs(n).map(fromRow) : undefined
 
       // Instellingen-sheet: bouw een sleutel→waarde map
       const instMap: Record<string, any> = {}
@@ -287,6 +299,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         // Tank-reinigingsstatus: vlakke array → object terug
         tank_statussen: (() => {
           const rows = parse('TankStatussen')
+          if (rows === undefined) return undefined
           const out: Record<string, any> = {}
           for (const r of rows) {
             if (!r?.tank_id) continue

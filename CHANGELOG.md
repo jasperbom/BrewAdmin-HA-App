@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.61] — 2026-09-19
+
+### Een ontbrekend tabblad in een backup wiste de hele lijst
+
+De Excel-import las een tabblad dat niet in het werkboek zat als een lege
+lijst en schreef die weg. Het terugzetten van een oudere backup — gemaakt
+vóórdat een functie bestond — wiste daardoor stilzwijgend alle producten,
+verplaatsingen, locaties of merch. Juist wie aan het herstellen is loopt dat
+risico.
+
+Een ontbrekend tabblad geeft nu `undefined`, en `doImport` slaat dat over:
+die lijst blijft staan zoals hij is. Een tabblad dat er wél is maar leeg,
+betekent nog steeds "deze lijst is leeg" en maakt hem dus wel leeg — dat
+onderscheid was precies wat ontbrak. Hetzelfde geldt voor de
+tankreinigingsstatus en voor de uitleveringen (waar een oude backup het
+tabblad `Uitslagen` gebruikte).
+
+De logo's deden dit al goed; de rest van de sleutels volgt nu diezelfde lijn.
+
+---
+
 ## [1.12.60] — 2026-09-19
 
 ### Schrijven vóór het laden viel buiten het versieslot
