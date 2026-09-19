@@ -2,8 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { t } from '../i18n'
 import { newId, volgendFactuurNummer } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, openBestellingReserveringen, gereserveerdVoorArtikel } from '../utils/calculations'
-import { kassaVoorraadNaReservering } from '../utils/kassa'
+import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, openBestellingReserveringen, gereserveerdVoorArtikel, accijnsMaandGesloten } from '../utils/calculations'
+import { kassaVoorraadNaReservering, agpGereserveerdPerAfvulling } from '../utils/kassa'
+import { bouwVerplaatsing } from '../utils/agp'
+import UitslagModal from '../components/UitslagModal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -52,7 +54,9 @@ interface KassaPageProps {
   setKlanten?: any
   locaties?: any[]
   verplaatsingen?: any[]
+  setVerplaatsingen?: any
   afboekingen?: any[]
+  accijnsAangiftes?: any[]
   auditLog?: any[]
   setAuditLog?: any
   setJournaal?: any
@@ -103,7 +107,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
   factuurCounter, setFactuurCounter = () => {},
   log = [], setLog = () => {},
   klanten = [], setKlanten = () => {},
-  locaties = [], verplaatsingen = [], afboekingen = [],
+  locaties = [], verplaatsingen = [], setVerplaatsingen = () => {}, afboekingen = [],
+  accijnsAangiftes = [],
   auditLog = [], setAuditLog = () => {},
   setJournaal = () => {},
   btwInst = {}, btwTarieven = [0, 9, 21],
@@ -239,6 +244,61 @@ const KassaPage: React.FC<KassaPageProps> = ({
         return afvullingHoortBijBierNaam(a, bierNaam, producten || [], bat || [])
       })
       .sort(fefo)
+  }
+
+  // ── Uitslaan uit de AGP vanaf de kassa ─────────────────────────────────────
+  // De vergunning staat geen directe verkoop aan particulieren vanuit de AGP
+  // toe: het bier moet eerst de schorsingsregeling verlaten. Dat betekende tot
+  // nu toe: kassa verlaten, op de AGP- of productpagina verplaatsen, terugkomen
+  // en opnieuw beginnen. Hier kan het ter plekke, met exact dezelfde boeking —
+  // `bouwVerplaatsing` uit `utils/agp.ts`, net als de AGP-pagina.
+  const [uitslagItem, setUitslagItem] = useState<any | null>(null)
+
+  const openUitslag = (item: any) => {
+    // Periode-lock (ERP-plan 0.4): een uitslag boekt accijns op vandaag; dat
+    // mag niet meer wanneer die aangifte al is ingediend of betaald.
+    if (accijnsMaandGesloten(tod(), accijnsAangiftes || [])) {
+      alert(t('err_accijns_maand_gesloten_boeking')); return
+    }
+    if (!(locaties || []).some((l: any) => !l.is_agp)) {
+      alert(t('pos_uitslag_geen_locatie')); return
+    }
+    setUitslagItem(item)
+  }
+
+  // De modal heeft de afvullingen al gekozen (oudste THT eerst); hier worden ze
+  // in één keer geboekt: verplaatsing + accijnsrecord + voorraadlogregel.
+  const saveUitslag = ({allocaties, naar_locatie_id, datum, opmerking}: any) => {
+    const agpId = getAgpLocatie(locaties as any).id
+    const naar = (locaties || []).find((l: any) => l.id === naar_locatie_id)
+    const nieuweVerpl: any[] = [], nieuweAcc: any[] = [], nieuweLog: any[] = []
+    let totaalAccijns = 0
+    for (const alloc of allocaties) {
+      // newId() loopt globaal monotoon op, dus ook binnen deze lus — waar de
+      // vorige records nog niet in de state staan — blijven de ids uniek.
+      const r = bouwVerplaatsing(
+        {
+          afvulling_id: alloc.afv.id, batch_id: alloc.afv.batch_id, datum,
+          aantal: alloc.aantal, van_locatie_id: agpId, naar_locatie_id, opmerking,
+        },
+        {afv: alloc.afv, batch: alloc.batch, locaties, uit, verplaatsingen, afboekingen, accijnsInst},
+        {verplaatsing_id: newId(verplaatsingen || []), accijns_id: newId(acc || []), log_id: newId(log || [])},
+        {logTitel: t('agp_verplaats_titel')}
+      )
+      nieuweVerpl.push(r.verplaatsing)
+      if (r.accijnsRecord) nieuweAcc.push(r.accijnsRecord)
+      if (r.logRegel) nieuweLog.push(r.logRegel)
+      totaalAccijns += r.accijns
+    }
+    if (nieuweVerpl.length) setVerplaatsingen((prev: any[]) => [...(prev || []), ...nieuweVerpl])
+    if (nieuweAcc.length) setAcc((prev: any[]) => [...(prev || []), ...nieuweAcc])
+    if (nieuweLog.length) setLog((prev: any[]) => [...(prev || []), ...nieuweLog])
+    const totaal = allocaties.reduce((som: number, a: any) => som + a.aantal, 0)
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Verplaatsing', entiteit_id: nieuweVerpl[0]?.id, actie: 'aangemaakt',
+      omschrijving: `${t('pos_uitslag_audit')}: ${totaal}\u00d7 ${uitslagItem?.bier_naam || ''} (${uitslagItem?.verpakking_type || ''}) \u2192 ${naar?.naam || ''}${totaalAccijns ? ` (accijns ${fmt(totaalAccijns)})` : ''}`,
+    })
+    setUitslagItem(null)
   }
 
   // ── Catalogus: verkoopbare bier+verpakking-combinaties met prijs en voorraad ─
@@ -1146,13 +1206,22 @@ const KassaPage: React.FC<KassaPageProps> = ({
                   const uitverkocht = max <= 0 || (item.merch && item.prijs == null)
                   const {prijs, prijsType} = prijsVoorItem(item)
                   const prijsToon = toonInclBtw ? rnd2(prijs * (1 + Number(item.btw_pct || 0) / 100)) : prijs
-                  // AGP-voorraad is voor privé/balie niet verkoopbaar — puur ter info tonen.
+                  // AGP-voorraad mag niet rechtstreeks aan een privé-/balieklant
+                  // verkocht worden (vergunning). Ligt er nog wat, dan biedt de
+                  // kaart het uitslaan aan in plaats van dood te staan.
                   const agpInfo = isPrive ? Number(item.agp || 0) : 0
+                  const kanUitslaan = agpInfo > 0 && !item.merch
+                  // Op de grens of uitverkocht wordt tikken "uitslaan" in plaats van
+                  // "op de bon" — zo hoef je de kassa niet te verlaten.
+                  const tikUitslag = kanUitslaan && (uitverkocht || inCart >= max)
+                  const dood = uitverkocht && !kanUitslaan
                   return (
-                    <button key={item.key} onClick={() => addToCart(item)} disabled={uitverkocht}
-                      className={`relative text-left rounded-xl border p-3 transition-all duration-150 ${uitverkocht
+                    <button key={item.key} onClick={() => tikUitslag ? openUitslag(item) : addToCart(item)} disabled={dood}
+                      className={`relative text-left rounded-xl border p-3 transition-all duration-150 ${dood
                         ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-                        : 'border-gray-200 bg-white hover:shadow-md hover:-translate-y-px active:translate-y-0 cursor-pointer'}`}>
+                        : uitverkocht
+                          ? 'border-orange-200 bg-orange-50 hover:shadow-md hover:-translate-y-px active:translate-y-0 cursor-pointer'
+                          : 'border-gray-200 bg-white hover:shadow-md hover:-translate-y-px active:translate-y-0 cursor-pointer'}`}>
                       {inCart > 0 && (
                         <span className="absolute -top-1.5 -right-1.5 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center font-bold shadow"
                           style={{backgroundColor: 'var(--t-accent)'}}>{inCart}</span>
@@ -1172,14 +1241,14 @@ const KassaPage: React.FC<KassaPageProps> = ({
                         <span className={`text-xs ${
                           item.merch
                             ? (item.prijs == null ? 'text-red-500 font-medium' : Number(item.voorraad) <= 0 ? 'text-orange-500 font-medium' : 'text-gray-500')
-                            : uitverkocht ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
+                            : uitverkocht ? (kanUitslaan ? 'text-orange-600 font-medium' : 'text-red-500 font-medium') : 'text-gray-500'}`}>
                           {item.merch
                             ? (item.prijs == null ? t('pos_merch_geen_prijs') : `${item.voorraad} ${t('pos_voorraad')}`)
-                            : uitverkocht ? t('pos_geen_voorraad') : `${max} ${t('pos_voorraad')}`}
+                            : uitverkocht ? (kanUitslaan ? t('pos_uitslaan_actie') : t('pos_geen_voorraad')) : `${max} ${t('pos_voorraad')}`}
                         </span>
                       </div>
                       {agpInfo > 0 && (
-                        <div className="text-xs text-gray-500 mt-0.5 text-right"
+                        <div className={`text-xs mt-0.5 text-right ${kanUitslaan ? 'text-orange-600' : 'text-gray-500'}`}
                           title={t('pos_agp_info_tip').replace('{n}', String(agpInfo))}>
                           {t('pos_agp_info').replace('{n}', String(agpInfo))}
                         </div>
@@ -1389,6 +1458,25 @@ const KassaPage: React.FC<KassaPageProps> = ({
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Uitslaan uit de AGP: dezelfde modal en dezelfde boeking als de
+          productpagina, maar zonder de kassa te verlaten. */}
+      {uitslagItem && (
+        <UitslagModal
+          productNaam={`${uitslagItem.bier_naam} \u2014 ${uitslagItem.verpakking_type}`}
+          afvullingen={matchendeAfvullingen(uitslagItem.bier_naam, uitslagItem.verpakking_type, uitslagItem.sku)}
+          batches={bat || []}
+          locaties={locaties}
+          uit={uit}
+          verplaatsingen={verplaatsingen}
+          afboekingen={afboekingen}
+          accijnsInst={accijnsInst}
+          gereserveerd={agpGereserveerdPerAfvulling(
+            bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id)}
+          onClose={() => setUitslagItem(null)}
+          onOpslaan={saveUitslag}
+        />
       )}
     </div>
   )

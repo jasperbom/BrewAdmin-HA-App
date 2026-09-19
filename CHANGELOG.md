@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.75] — 2026-09-19
+
+### Uitslaan uit de AGP kan nu vanaf de kassa
+
+De vergunning staat geen directe verkoop aan particulieren vanuit de AGP toe:
+het bier moet eerst de schorsingsregeling verlaten. Tot nu toe betekende dat
+midden in een balieverkoop: kassa verlaten, op de AGP- of productpagina
+verplaatsen, terugkomen en opnieuw beginnen. De foutmelding zei het ook
+letterlijk ("Verplaats eerst voorraad uit AGP of zet de order op zakelijk").
+
+Een artikel waarvan alleen nog voorraad in de AGP ligt staat nu niet meer dood
+op de kaart. Het krijgt de regel *uitslaan uit AGP*, en een tik opent dezelfde
+uitslagmodal als de productpagina: de app kiest zelf de afvullingen (oudste THT
+eerst), toont per batch hoeveel er meegaat en wat de accijns wordt, en pas na
+bevestigen wordt er geboekt. Daarna is het bier gewoon verkoopbaar en staat de
+rest nog als "+n in AGP" op de kaart. Hetzelfde geldt wanneer je tijdens het
+aanslaan de voorraad buiten de AGP opmaakt: de volgende tik biedt het uitslaan
+aan in plaats van niets te doen.
+
+De boeking is exact die van de AGP-pagina — `bouwVerplaatsing` uit
+`utils/agp.ts` — dus er komt geen tweede boekingspad bij: verplaatsing,
+accijnsrecord tegen het tarief van de uitslagdatum, regel in het
+voorraadverloop en een auditregel.
+
+Verder:
+
+- Bier dat al voor een open bestelling gepickt is, kan niet mee-uitgeslagen
+  worden. Nieuwe `agpGereserveerdPerAfvulling` in `utils/kassa.ts` telt die
+  reserveringen per afvulling, met tests.
+- De kassa kent nu de periode-lock: een uitslag in een accijnsmaand waarvan de
+  aangifte al is ingediend of betaald wordt geweigerd, zoals op de
+  productpagina.
+- Zonder voorraadlocatie buiten de AGP is er niets om naar uit te slaan; de
+  kassa zegt dat in plaats van een locatie te verzinnen.
+- Voor een zakelijke klant verandert er niets: die verkoop liep al rechtstreeks
+  uit de AGP, inclusief accijnsboeking.
+
+---
+
 ## [1.12.74] — 2026-09-19
 
 ### Losse bestanden uit `.claude/` gehaald
