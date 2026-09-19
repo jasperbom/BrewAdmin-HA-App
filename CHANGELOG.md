@@ -4,6 +4,70 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.74] — 2026-09-19
+
+### Losse bestanden uit `.claude/` gehaald
+
+In de werkmap van Claude Code stonden drie dingen die niet in een publieke
+repository horen: een meegestuurde PDF van 1,2 MB (een naslaggids over
+biertypen — andermans werk, dus niets om te herpubliceren) en drie
+`__pycache__`-bestanden die ooit langs de `.gitignore` zijn geglipt. Alle vier
+staan ze nu niet meer in de repository; op je eigen schijf blijven ze gewoon
+staan. `.claude/upload_*` staat voortaan in `.gitignore`, zodat een volgende
+upload er niet opnieuw in belandt.
+
+---
+
+## [1.12.73] — 2026-09-19
+
+### Mobiele schermafbeeldingen in de README
+
+Drie telefoonschermen naast elkaar (brouwzaal, bestellingen, het
+attentiepaneel) plus de productpagina, en een alinea over waaróm het op een
+telefoon moet werken: een meting invoeren naast de tank, een order picken in
+de koeling, een brouwdagstap afvinken met natte handen.
+
+Ook deze komen uit de draaiende app met de verzonnen brouwerij.
+
+---
+
+## [1.12.72] — 2026-09-19
+
+### README opnieuw geschreven, met schermafbeeldingen
+
+De oude README beschreef nog de Batches-pagina, de hygiënechecklist en de
+JSON-backup — alle drie al een tijd vervangen — en miste alles wat er sinds
+die tekst bij is gekomen: HACCP met de drie kritische beheerspunten,
+traceerbaarheid, de kassa, statiegeld, de planning, de e-factuur, Mollie,
+de rollen en de directe toegangspoort.
+
+De nieuwe tekst volgt de drie werkruimtes van de app, met per werkruimte een
+schermafbeelding en een korte lijst. De knop om de repository aan Home
+Assistant toe te voegen staat nu boven de vouw, met de handmatige weg
+eronder. Verder een kloppende optietabel, een stuk over waar je gegevens
+staan en hoe de backups werken, en een ontwikkelaarsblok.
+
+De schermafbeeldingen in `docs/screenshots/` komen uit de draaiende app met
+een verzonnen brouwerij: geen enkele naam of cijfer komt uit een echte
+administratie.
+
+Verder `.pytest_cache/` aan `.gitignore` toegevoegd.
+
+---
+
+## [1.12.71] — 2026-09-19
+
+### De badge in de onderbalk is te tikken
+
+Op de telefoon was het cijfer op Productie, Verkoop en Admin alleen een
+getal; op het bureau opent dezelfde badge de lijst "Vraagt om aandacht".
+Nu ook op de telefoon: een tik opent een onderpaneel (`AttentieSheet`) met
+per regel het aantal en de sprong naar de plek waar je het afhandelt. De
+badge is een eigen knop naast het vakje, met een tapdoel van 36 px rond het
+kleine cijfer; Escape en de achtergrond sluiten het paneel.
+
+---
+
 ## [1.12.70] — 2026-09-19
 
 ### Neutrale testgegevens
