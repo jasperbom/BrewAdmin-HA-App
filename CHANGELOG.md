@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.73] — 2026-09-19
+
+### Mobiele schermafbeeldingen in de README
+
+Drie telefoonschermen naast elkaar (brouwzaal, bestellingen, het
+attentiepaneel) plus de productpagina, en een alinea over waaróm het op een
+telefoon moet werken: een meting invoeren naast de tank, een order picken in
+de koeling, een brouwdagstap afvinken met natte handen.
+
+Ook deze komen uit de draaiende app met de verzonnen brouwerij.
+
+---
+
 ## [1.12.72] — 2026-09-19
 
 ### README opnieuw geschreven, met schermafbeeldingen

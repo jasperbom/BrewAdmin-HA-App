@@ -69,10 +69,20 @@ what is packaged.
 
 ## On a phone
 
-The same app, one shell: three workspaces in the bottom bar, the page menu above
-it. A badge opens what needs attention right now.
+The same app, one shell. Three workspaces in the bottom bar, the pages of the
+one you picked as chips above it. Tapping the badge on a workspace opens what
+needs your attention right now, with the jump straight to where you handle it.
 
-<img src="docs/screenshots/telefoon.png" alt="Phone view of the brewhouse" width="320">
+| Brewhouse | Orders | Needs attention |
+|---|---|---|
+| <img src="docs/screenshots/telefoon-brouwzaal.png" alt="Brewhouse on a phone" width="240"> | <img src="docs/screenshots/telefoon-bestellingen.png" alt="Orders on a phone" width="240"> | <img src="docs/screenshots/telefoon-attentie.png" alt="Attention panel on a phone" width="240"> |
+
+Everything works on a phone in the brewery: entering a measurement next to the
+tank, picking an order in the cold store, checking off a brew day step with wet
+hands. Tap targets are sized for that, and a detail screen hides the bottom bar
+so the screen is yours.
+
+<img src="docs/screenshots/telefoon-producten.png" alt="Product page on a phone" width="240">
 
 ## HACCP
 
