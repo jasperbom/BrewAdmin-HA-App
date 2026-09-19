@@ -11,6 +11,7 @@ import { verpakProjectie } from '../utils/vergisting'
 import SectionHeader from '../components/ui/SectionHeader'
 import Btn from '../components/ui/Btn'
 import BestellijstModal from '../components/BestellijstModal'
+import { logAudit } from '../utils/audit'
 
 interface PlanningPageProps {
   bat: any[]
@@ -24,6 +25,8 @@ interface PlanningPageProps {
   planningInst?: {conditioneren_dagen: number}
   preselectBatchId?: number | null
   onPreselectConsumed?: () => void
+  auditLog?: any[]
+  setAuditLog?: (fn: (prev: any[]) => any[]) => void
   // Ingebed in de batch-flow-landingspagina: verberg de eigen hoofd-header
   // (de inklapbare 'Tijdlijn'-kop van de flow-pagina neemt die rol over).
   embedded?: boolean
@@ -65,6 +68,8 @@ function PlanningPage({
   planningInst,
   preselectBatchId,
   onPreselectConsumed,
+  auditLog = [],
+  setAuditLog,
   embedded = false,
 }: PlanningPageProps) {
   const conditionerenDagen = Math.max(0, Number(planningInst?.conditioneren_dagen ?? 14) || 0)
@@ -323,6 +328,19 @@ function PlanningPage({
     const newDate = computeDropDate(e, e.currentTarget as HTMLElement)
     const patch: Record<string, any> = { datum: newDate }
     patch.tank = targetTankId === UNASSIGNED ? '' : targetTankId
+    // Een brouwdag verzetten of een andere tank toewijzen verschoof de
+    // planning zonder spoor; juist bij een tankwissel wil je later kunnen
+    // zien wie wat wanneer heeft omgezet.
+    const vorige = (bat || []).find((b: any) => b.id === dragInfo.id)
+    if (setAuditLog && vorige && (vorige.datum !== patch.datum || (vorige.tank || '') !== patch.tank)) {
+      const tankTekst = (vorige.tank || '') === patch.tank
+        ? ''
+        : `, tank ${vorige.tank || '—'} → ${patch.tank || '—'}`
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Batch', entiteit_id: dragInfo.id, actie: 'gewijzigd',
+        omschrijving: `Planning: ${vorige.naam || ''} ${vorige.datum || '—'} → ${patch.datum}${tankTekst}`,
+      })
+    }
     updateBatch(dragInfo.id, patch)
     setDragInfo(null)
     setDropPreview(null)

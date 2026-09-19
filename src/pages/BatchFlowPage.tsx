@@ -1953,6 +1953,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </div>
           {tijdlijnOpen && (
             <PlanningPage embedded bat={bat} setBat={setBat} bi={bi} recepten={recepten}
+              auditLog={auditLog} setAuditLog={setAuditLog}
               ing={ing} lots={lots} producten={producten} tanks={tanks} planningInst={planningInst} />
           )}
         </div>

@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.68] — 2026-09-19
+
+### Backup terugzetten, resetten, locaties en planning laten nu een spoor na
+
+Het auditlogboek wordt met de hand per scherm geschreven, en juist de twee
+ingrijpendste handelingen ontbraken.
+
+- **Een backup terugzetten** vervangt de hele administratie en schreef niets.
+  Er komt nu een regel bij met de bestandsnaam, het aantal teruggezette
+  gegevenssoorten en het aantal records. Die regel wordt als laatste
+  geschreven, ná het teruggezette logboek, zodat hij niet meteen weer
+  verdwijnt.
+- **De fabrieksreset** wist ook het logboek zelf. De regel erover komt nu ná
+  het wissen, als eerste regel van het verse logboek, zodat zichtbaar blijft
+  dát er gereset is en wanneer.
+- **Locaties** aanmaken, hernoemen en verwijderen ging ongemerkt, terwijl
+  `bron_locatie_id` zowel de voorraad per locatie als de accijnsplicht bij een
+  afboeking stuurt.
+- **Een batch verslepen in de planning** (andere brouwdag of andere tank)
+  wordt vastgelegd met de oude en de nieuwe waarde.
+
+De inventarisatie bleef zoals hij was: het starten van een telling en de
+afboekingen die eruit volgen stonden al in het logboek, en elke getypte
+telregel erbij zou het logboek vollopen zonder iets toe te voegen.
+
+---
+
 ## [1.12.67] — 2026-09-19
 
 ### Dezelfde soort stond onder twee namen in het auditlogboek

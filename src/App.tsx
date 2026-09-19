@@ -1758,6 +1758,19 @@ function App() {
       if (d.factuur_logo !== undefined) setFactuurLogo(d.factuur_logo);
       if (d.app_name !== undefined) setAppName(d.app_name);
       if (d.nav_theme) setNavTheme(d.nav_theme);
+      // Een backup terugzetten vervangt de hele administratie en was tot
+      // 1.12.68 de enige ingrijpende handeling die géén spoor naliet. De
+      // regel wordt als láátste geschreven, ná `setAuditLog(d.audit_log)`,
+      // zodat hij niet door het teruggezette logboek wordt overschreven —
+      // en hij hoort juist bij dat teruggezette logboek thuis.
+      const teruggezet = Object.entries(d)
+        .filter(([, v]) => Array.isArray(v))
+        .map(([k, v]) => ({sleutel: k, n: (v as any[]).length}));
+      const records = teruggezet.reduce((n, x) => n + x.n, 0);
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd',
+        omschrijving: `Backup teruggezet uit "${f.name}" — ${teruggezet.length} gegevenssoorten, ${records} records`,
+      });
     }, (msg?: string) => alert(t('err_invalid_backup') + (msg ? `\n\n${msg}` : '')));
     e.target.value = '';
   };
@@ -1780,7 +1793,14 @@ function App() {
     setCarbSessies([]); setVerliesRegistraties([]);
     setBrouwdagStappen([]); setWaterAddities([]); setHopAddities([]); setDryHops([]); setKoelLogs([]); setBatchNotities([]);
     setKapitaalBoekingen([]);
-    setInventarisaties([]); setAuditLog([]); setAccijnsAangiftes([]); setBtwAangiftes([]);
+    setInventarisaties([]); setAccijnsAangiftes([]); setBtwAangiftes([]);
+    // Het logboek gaat zelf ook leeg, dus de regel erover komt ná het wissen:
+    // zo blijft in het verse logboek staan dát er gereset is, en wanneer.
+    setAuditLog([]);
+    logAudit([], setAuditLog, {
+      entiteit: 'Instelling', entiteit_id: 0, actie: 'verwijderd',
+      omschrijving: 'Alle gegevens gewist (fabrieksreset)',
+    });
     setLocaties([{id:1, naam:'AGP', is_agp:true}]); setVerplaatsingen([]);
     setProducten([]); setProductArtikelen([]);
     setBtwInst({periode: 'kwartaal'}); setBtwTarieven([0, 9, 21]);
