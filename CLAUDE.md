@@ -38,6 +38,11 @@ BrewAdmin-HA-App/
 │   │   ├── merge.ts        # Conflict-samenvoeging bij een 409: lokale en serverwijziging op
 │   │   │                   # verschillende records gaan beide mee; alleen hetzelfde record aan
 │   │   │                   # beide kanten is een botsing (server wint). Arrays met `id` + objecten
+│   │   ├── audit.ts        # Auditlogboek: `logAudit` (losse gebeurtenis) en
+│   │   │                   # `logAuditVeld` (velden die tijdens het typen opslaan —
+│   │   │                   # voegt een reeks samen tot één regel per veld). `AUDIT_SOORTEN`
+│   │   │                   # is de enige plek voor soortnamen; een test faalt bij een
+│   │   │                   # naam die daar niet in staat
 │   │   ├── constants.ts    # Enums, mappings, defaults
 │   │   ├── format.ts       # Formatting utilities
 │   │   ├── calculations.ts # Business logic calculations
@@ -816,7 +821,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
 | POST | `/api/nextnr` | Volgend factuur-/creditnotanummer, atomair per reeks/jaar (`{reeks, jaar}` → `{jaar, nr, nummer}`) |
 | POST | `/api/commit` | Meerdere data-keys atomair opslaan (`{data:{key:waarde}, versions:{key:versie}}`), 409 bij versieconflict |
-| POST | `/api/delta/<key>` | Delta-sync per record (ERP 4.3): `{upsert:[records], delete:[ids]}` met verplichte `X-Data-Version`; client valt bij 400/404 automatisch terug op de volledige POST |
+| POST | `/api/delta/<key>` | Delta-sync per record (ERP 4.3): `{upsert:[records], delete:[ids]}` met verplichte `X-Data-Version` (en unieke id's: een dubbele id binnen één upsert, of een id in zowel `upsert` als `delete`, geeft 400 — anders komt hetzelfde record twee keer in de opslag en verliest de key permanent delta-ondersteuning); client valt bij 400/404 automatisch terug op de volledige POST |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
@@ -824,11 +829,17 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | GET | `/api/backups[/<datum>]` | Serverbackups (`/data/backups/JJJJ-MM-DD/`, dagelijks, elke key als `<key>.json` + db-kopie) opsommen of als ZIP downloaden — beheer-only |
 | POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
 | POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys en credentials, zelfde schrijfweg als `/api/data` (schemavalidatie, versie, audit `backup_restore`). De rest van de administratie blijft staan |
-| POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
+| POST | `/api/upload` | File upload (PDF/image, max 20 MB). Overschrijft nooit een bestaande bijlage: bij een botsing wijkt de server uit naar een vrije naam en geeft die terug als `bestand` — de client bewaart díé naam |
+| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, afboeking of verliesregistratie ernaar verwijst (`_bijlage_in_gebruik`) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
 ### Security constraints (do not remove)
 
+- Backup-retentie heeft een ondergrens: `_MIN_BACKUPS_BEWAREN` /
+  `_MIN_AUDIT_BEWAREN` houden de nieuwste backups en auditmaanden altijd
+  overeind. Het beleid zelf hangt aan `date.today()`, dus een klok die
+  vooruitspringt zou anders in één ronde de lokale mappen, de offsite-ZIP's
+  én het auditspoor wissen — nooit weghalen
 - Rate limiting: 600 requests/minute per IP (alle ingress-clients delen één gateway-IP; login op de directe poort heeft een eigen strenge limiet)
 - Request body size: 10 MB general, 20 MB for Claude proxy
 - File upload: only `pdf`, `png`, `jpg`, `jpeg`, `gif`, `webp` allowed

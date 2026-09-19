@@ -1,6 +1,7 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { newId, mapHopGebruik, _fetchedKeys } from '../../utils/api'
+import { logAudit, logAuditVeld } from '../../utils/audit'
 import { tod, r3, fmtD } from '../../utils/format'
 import { convertEenheid } from '../../utils/constants'
 import {
@@ -9,11 +10,20 @@ import {
 } from '../../utils/calculations'
 import { TANK_REINIGING_LABEL_KEY } from '../../utils/constants'
 import { getEffectiveBrewProp } from '../../utils/brewProps'
+
+// Sleutels waaruit de berekende brouwdagwaarden volgen; het effect dat ze
+// vastlegt wacht tot ze alle vier van de server zijn.
+const BEREKEN_SLEUTELS = ['batches', 'batch_ingredienten', 'lots', 'ingredienten']
 import Btn from '../ui/Btn'
 import SectionHeader from '../ui/SectionHeader'
 import type { BrouwdagStap, BrouwdagFase, Batch, BatchIngredient } from '../../types'
 
 interface Props {
+  /** Het auditlogboek: de brouwdag legde tot 1.12.69 niets vast, terwijl juist
+   *  de metingen en het afronden van de brouwdag later terug te vinden horen
+   *  te zijn. Optioneel, zodat de wizard los te gebruiken blijft. */
+  auditLog?: any[]
+  setAuditLog?: (fn: (prev: any[]) => any[]) => void
   batch: Batch
   setBat: any
   bi: BatchIngredient[]
@@ -153,7 +163,7 @@ const effectieveAlpha = (
   return {alpha: 0, bron: 'none'}
 }
 
-const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], batches = [], tankStatussen = null, lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel', recepten = [], afboekSlot, koelLogs, setKoelLogs}) => {
+const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, setStappen, tanks = [], batches = [], tankStatussen = null, lots = [], ingredienten = [], hopStorageDefault = 'vacuum_koel', recepten = [], afboekSlot, koelLogs, setKoelLogs, auditLog = [], setAuditLog}) => {
   const mijnStappen = (stappen || []).filter(s => s.batch_id === batch.id)
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
@@ -272,7 +282,17 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   }
 
   // ── Kerngegevens-velden direct op batch ───────────────────────────────────
+  // Metingen op de brouwdag worden bij elke toetsaanslag opgeslagen; de
+  // auditregel wordt daarom samengevoegd tot één per veld (logAuditVeld).
+  const auditVeld = (veld: string, oud: any, nieuw: any) => {
+    if (!setAuditLog) return
+    logAuditVeld(setAuditLog, {
+      entiteit: 'Batch', entiteit_id: batch.id, veld,
+      oud, nieuw, context: batch.naam || '',
+    })
+  }
   const updField = (veld: keyof Batch, val: any) => {
+    auditVeld(String(veld), (batch as any)[veld], val)
     setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, [veld]: val} : b))
   }
   // OG invullen berekent ook het platogehalte — zelfde kubische benadering als
@@ -284,12 +304,14 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     if (!isNaN(og) && og >= 1 && og <= 1.2) {
       patch.platogehalte = String(Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og) * 10) / 10)
     }
+    auditVeld('OG', batch.OG, val)
     setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, ...patch} : b))
   }
   // 'Volume naar gistvat' is het enige volume-veld op de brouwdag. De brede
   // 'liter_vergist' (accijns/rendement/tankrest) spiegelt mee zodat die
   // afleidingen blijven kloppen zonder een tweede invulveld.
   const updGistVolume = (val: any) => {
+    auditVeld('gist_volume_l', batch.gist_volume_l, val)
     setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, gist_volume_l: val, liter_vergist: val} : b))
   }
 
@@ -387,7 +409,14 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
 
   // Persisteer berekende waarden zodra de inputs aanwezig zijn — zo blijven ze
   // beschikbaar voor overzicht/print zonder steeds herberekenen.
+  //
+  // Dit effect schrijft uit zichzelf, zonder dat de gebruiker iets doet. Het
+  // mag dus pas draaien wanneer álles waaruit die waarden volgen echt van de
+  // server is (1.12.62): anders wordt er een rendement of IBU vastgelegd dat
+  // op halve gegevens is berekend, en wordt de batchlijst als "gewijzigd"
+  // gemarkeerd terwijl het serverantwoord nog onderweg is.
   React.useEffect(() => {
+    if (!BEREKEN_SLEUTELS.every(k => _fetchedKeys.has(k))) return
     const upd: Partial<Batch> = {}
     if (mashEff > 0 && Number(batch.mash_efficiency_pct) !== Math.round(mashEff * 10) / 10) {
       upd.mash_efficiency_pct = Math.round(mashEff * 10) / 10
@@ -416,6 +445,11 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const hopAlphaSyncRef = React.useRef<number | null>(null)
   React.useEffect(() => {
     if (!setBi) return
+    // Pas kijken als de lots en de ingrediënten binnen zijn (1.12.62). Deze
+    // ref werd eerder gezet vóórdat er iets was berekend: draaide het effect
+    // één keer op lege lijsten, dan was hij verbruikt en liep de reparatie
+    // nooit meer — terwijl de deps juist op een herkansing rekenen.
+    if (!_fetchedKeys.has('lots') || !_fetchedKeys.has('ingredienten')) return
     if (hopAlphaSyncRef.current === batch.id) return
     hopAlphaSyncRef.current = batch.id
     const updates = new Map<number, number>()
@@ -584,6 +618,10 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   }
 
   const rondAf = () => {
+    if (setAuditLog) logAudit(auditLog, setAuditLog, {
+      entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd',
+      omschrijving: `Brouwdag afgerond — ${batch.naam || ''}`,
+    })
     setBat((prev: any[]) => prev.map(b => b.id === batch.id ? {...b, brouwdag_voltooid: true} : b))
   }
 
@@ -606,9 +644,19 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
       created_at: new Date().toISOString(),
     }
     setKoelLogs((prev: any[]) => [...(prev || []), nieuw])
+    if (setAuditLog) logAudit(auditLog, setAuditLog, {
+      entiteit: 'Koellog', entiteit_id: nieuw.id, actie: 'aangemaakt',
+      omschrijving: `${batch.naam || ''}: ${nieuw.start_temp ?? '—'}°C → ${nieuw.eind_temp ?? '—'}°C in ${nieuw.duur_min ?? '—'} min (${nieuw.methode})`,
+    })
     setKoelForm({ ...koelForm, start_temp: '', eind_temp: '', duur_min: '', opmerking: '' })
   }
-  const deleteKoel = (id: number) => setKoelLogs && setKoelLogs((prev: any[]) => (prev || []).filter((k: any) => k.id !== id))
+  const deleteKoel = (id: number) => {
+    if (!setKoelLogs) return
+    setKoelLogs((prev: any[]) => (prev || []).filter((k: any) => k.id !== id))
+    if (setAuditLog) logAudit(auditLog, setAuditLog, {
+      entiteit: 'Koellog', entiteit_id: id, actie: 'verwijderd', omschrijving: batch.naam || '',
+    })
+  }
   const renderKoelInline = () => {
     if (!setKoelLogs) return null
     return (

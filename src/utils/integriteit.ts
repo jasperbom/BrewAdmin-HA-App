@@ -29,6 +29,15 @@ export function checkIntegriteit(d: Record<string, any[] | undefined>): Integrit
     bestellingen:     idSet(d.bestellingen),
     verkoop_facturen: idSet(d.verkoop_facturen),
     klanten:          idSet(d.klanten),
+    // Sinds 1.12.63 ook de productlaag en de locaties. Juist hier deed het
+    // ontbreken pijn: toen in 1.12.58 de productenlijst werd overschreven,
+    // wezen de afvullingen en de artikelen naar producten die niet meer
+    // bestonden. Die afvullingen vielen daardoor buiten élk product — nul
+    // voorraad, bieren onvindbaar — en deze controle zweeg erover.
+    producten:        idSet(d.producten),
+    product_artikelen: idSet(d.product_artikelen),
+    locaties:         idSet(d.locaties),
+    verpakkingen:     idSet(d.verpakkingen),
   }
 
   // Eén veld → één doel. Lege/afwezige verwijzingen (null/undefined/'') zijn
@@ -76,6 +85,24 @@ export function checkIntegriteit(d: Record<string, any[] | undefined>): Integrit
   check('verkoop_facturen', 'klant_id', 'klanten')
   check('verkoop_facturen', 'credit_van_factuur_id', 'verkoop_facturen')
   check('bestellingen', 'factuur_id', 'verkoop_facturen')
+
+  // Productlaag: een afvulling of artikel dat naar een verdwenen product
+  // wijst is onzichtbaar in de app zonder dat er iets mis lijkt.
+  check('afvullingen', 'product_id', 'producten')
+  check('product_artikelen', 'product_id', 'producten')
+  check('batches', 'product_id', 'producten')
+  checkLijst('batches', 'product_ids', 'producten')
+  check('afvullingen', 'verpakking_id', 'verpakkingen')
+  check('product_artikelen', 'verpakking_id', 'verpakkingen')
+
+  // Locaties: `bron_locatie_id` stuurt zowel de voorraadtelling per locatie
+  // als de accijns bij een afboeking (zie CLAUDE.md). Wijst hij nergens
+  // naartoe, dan telt de voorraad niet meer op.
+  check('verplaatsingen', 'afvulling_id', 'afvullingen')
+  check('verplaatsingen', 'van_locatie_id', 'locaties')
+  check('verplaatsingen', 'naar_locatie_id', 'locaties')
+  check('uitleveringen', 'bron_locatie_id', 'locaties')
+  check('afboekingen', 'bron_locatie_id', 'locaties')
 
   return problemen
 }

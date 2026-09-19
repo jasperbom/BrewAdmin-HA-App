@@ -15,7 +15,7 @@ import {
   berekenVoorcalcVoorAfvulling, nextBatchNummer, berekenTanktijd, sumVergistingDagen,
   tankBezetter, tankReserveringen, tankClaimCheck, laatsteTankReiniging,
 } from '../utils/calculations'
-import { logAudit } from '../utils/audit'
+import { logAudit, logAuditVeld } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
 import { ingredientenVoorType } from '../utils/ingTypes'
 import { openstaandeBatchTaken } from '../utils/taken'
@@ -47,6 +47,13 @@ import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { actieveSessie, magAfvullingRegistreren } from '../utils/afvulsessie'
 import { metingWaarde, metingenMetFg } from '../utils/metingen'
 import Icon from '../components/ui/Icon'
+
+// Bijhoudwerk dat de app zelf zet en dat elders al zichtbaar is; daar is een
+// auditregel per wijziging alleen ruis.
+const GEEN_AUDIT_VELDEN = new Set([
+  'vergisting_stap_idx', 'vergisting_stap_start', 'cold_crash_laatste_stap',
+  'taken_checks', 'hygiene_checks', 'brouwdag_checks', 'botteldag_checks',
+])
 
 interface BatchFlowPageProps {
   bat: any[], setBat: any,
@@ -839,7 +846,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const newIng = {id: newId(ing || []), naam: row.ingredient_naam, type: row.ingredient_type || 'Overig', fabrikant: ''}
     setIng((prev: any[]) => [...(prev || []), newIng])
     setBi((prev: any[]) => prev.map((x: any) => x.id === row.id ? {...x, ingredient_id: newIng.id} : x))
-    logAudit(auditLog, setAuditLog, {entiteit: 'Ingredient', entiteit_id: newIng.id, actie: 'aangemaakt', omschrijving: newIng.naam})
+    logAudit(auditLog, setAuditLog, {entiteit: 'Ingrediënt', entiteit_id: newIng.id, actie: 'aangemaakt', omschrijving: newIng.naam})
   }
 
   // Regel verwijderen. Was hij al afgeboekt, dan gaat de hoeveelheid terug naar
@@ -1305,6 +1312,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // opgeslagen, lege strings blijven leeg (zodat checklist-checks weer afgaan).
   const updateBatch = (patch: any) => {
     if (!selB) return
+    // Deze velden slaan bij elke toetsaanslag op, dus de auditregel wordt
+    // samengevoegd tot één per veld zodra de gebruiker even stopt (zie
+    // logAuditVeld). Zonder dit stond een gewijzigde tank, brouwdatum of
+    // biernaam nergens in het logboek.
+    for (const [veld, waarde] of Object.entries(patch)) {
+      if (GEEN_AUDIT_VELDEN.has(veld)) continue
+      logAuditVeld(setAuditLog, {
+        entiteit: 'Batch', entiteit_id: selB.id, veld,
+        oud: (selB as any)[veld], nieuw: waarde, context: selB.naam || '',
+      })
+    }
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
   }
   const commitNum = (key: string) => (v: string) => {
@@ -1953,6 +1971,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           </div>
           {tijdlijnOpen && (
             <PlanningPage embedded bat={bat} setBat={setBat} bi={bi} recepten={recepten}
+              auditLog={auditLog} setAuditLog={setAuditLog}
               ing={ing} lots={lots} producten={producten} tanks={tanks} planningInst={planningInst} />
           )}
         </div>
@@ -3693,6 +3712,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 )}
               </FlowStap>
               <BrouwdagWizard batch={selB} setBat={setBat} bi={bi} setBi={setBi}
+                auditLog={auditLog} setAuditLog={setAuditLog}
                 stappen={brouwdagStappen} setStappen={setBrouwdagStappen}
                 tanks={tanks} batches={bat} tankStatussen={tankStatussen}
                 lots={lots} ingredienten={ing}
@@ -3746,7 +3766,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     </FlowStap>
                   )}
                   {dryHopVanToepassing && (
-                    <DryHopSection batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
+                    <DryHopSection auditLog={auditLog} setAuditLog={setAuditLog} batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
                   )}
                 </div>
                 <div className="space-y-3">

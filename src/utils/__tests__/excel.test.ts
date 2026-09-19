@@ -11,6 +11,55 @@ const roundTrip = (data: any): any => {
   return parseBackupWerkboek(XLSX.read(buf, {type: 'array'}))
 }
 
+describe('ontbrekend tabblad ≠ lege lijst (1.12.61)', () => {
+  // Een oudere backup kent bepaalde lijsten nog niet. Die tabbladen ontbreken
+  // dan in het werkboek. Tot 1.12.60 las de import zo'n ontbrekend tabblad als
+  // een lege lijst en schreef die weg: het terugzetten van een oude backup
+  // wiste dan alle producten, verplaatsingen, locaties en merch.
+  const zonderSheets = (data: any, weg: string[]): any => {
+    const wb = bouwBackupWerkboek(data)
+    for (const n of weg) { delete wb.Sheets[n]; wb.SheetNames = wb.SheetNames.filter(x => x !== n) }
+    const buf = XLSX.write(wb, {bookType: 'xlsx', type: 'array'})
+    return parseBackupWerkboek(XLSX.read(buf, {type: 'array'}))
+  }
+
+  it('geeft undefined voor een tabblad dat niet in de backup zit', () => {
+    const uit = zonderSheets({
+      producten: [{id: 1, naam: 'Blond'}],
+      verplaatsingen: [{id: 1, aantal: 3}],
+      merch_artikelen: [{id: 1, sku: 'M1', naam: 'Glas'}],
+      locaties: [{id: 1, naam: 'AGP', is_agp: true}],
+      klanten: [{id: 7, naam: 'Klant'}],
+    }, ['Producten', 'Verplaatsingen', 'MerchArtikelen', 'Locaties'])
+    for (const k of ['producten', 'verplaatsingen', 'merch_artikelen', 'locaties']) {
+      expect(uit[k], k).toBeUndefined()
+      // doImport schrijft alleen weg wat een array is — undefined slaat hij over
+      expect(Array.isArray(uit[k]), k).toBe(false)
+    }
+    // wat er wél in zat komt gewoon mee
+    expect(uit.klanten).toHaveLength(1)
+  })
+
+  it('houdt een léég tabblad wél als lege lijst', () => {
+    // "Ik heb geen producten meer" moet de producten juist wél leegmaken.
+    const wb = bouwBackupWerkboek({producten: [], klanten: [{id: 1, naam: 'K'}]})
+    const buf = XLSX.write(wb, {bookType: 'xlsx', type: 'array'})
+    const uit: any = parseBackupWerkboek(XLSX.read(buf, {type: 'array'}))
+    expect(uit.producten).toEqual([])
+    expect(Array.isArray(uit.producten)).toBe(true)
+  })
+
+  it('laat tank_statussen ongemoeid als dat tabblad ontbreekt', () => {
+    const uit = zonderSheets({tank_statussen: {1: {status: 'Ontsmet'}}}, ['TankStatussen'])
+    expect(uit.tank_statussen).toBeUndefined()
+  })
+
+  it('raakt de uitleveringen niet kwijt als beide tabbladen ontbreken', () => {
+    const uit = zonderSheets({uitleveringen: [{id: 1, aantal: 2}]}, ['Uitleveringen', 'Uitslagen'])
+    expect(uit.uitleveringen).toBeUndefined()
+  })
+})
+
 describe('Excel backup round-trip (ERP 0.8 / 3.1)', () => {
   it('bewaart arrays met geneste objecten exact', () => {
     const uit = roundTrip({

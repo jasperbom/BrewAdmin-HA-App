@@ -715,9 +715,36 @@ class TestSqliteOpslag:
         assert json.loads((dest / 'gn_codes.json').read_text()) == [{'id': 1, 'code': '2203'}]
         assert (dest / srv.DB_NAAM).exists()
 
+    def test_retentie_bewaart_altijd_de_nieuwste_backups(self, app):
+        """Het hele retentiebeleid hangt aan date.today(). Springt de klok van
+        de host vooruit, dan valt élke backup buiten de termijn en wist één
+        ronde alles — juist het vangnet dat dan overeind moet blijven."""
+        import datetime as _dt
+        for dag in range(1, 11):
+            (srv.BACKUP_DIR / f'2026-03-{dag:02d}').mkdir(parents=True, exist_ok=True)
+        (srv.AUDIT_DIR / 'audit_2026-03.jsonl').write_text('{}\n')
+        voor = sorted(d.name for d in srv.BACKUP_DIR.iterdir() if d.is_dir())
+        echt = _dt.date
+        class KlokVooruit(_dt.date):
+            @classmethod
+            def today(cls):
+                return echt(2046, 1, 1)  # twintig jaar vooruit
+        srv.datetime.date = KlokVooruit
+        try:
+            srv._cleanup_backups()
+            srv._cleanup_audit()
+        finally:
+            srv.datetime.date = echt
+        na = sorted(d.name for d in srv.BACKUP_DIR.iterdir() if d.is_dir())
+        # precies de nieuwste N blijven staan, de rest is opgeruimd
+        assert na == voor[-srv._MIN_BACKUPS_BEWAREN:]
+        assert len(na) == srv._MIN_BACKUPS_BEWAREN < len(voor)
+        # en het auditspoor blijft ook bestaan
+        assert (srv.AUDIT_DIR / 'audit_2026-03.jsonl').exists()
+
     def test_restore_zet_een_sleutel_terug_uit_backup(self, app):
-        origineel = [{'id': 1784291250757090, 'naam': 'Tripel A', 'status': 'actief'},
-                     {'id': 1786899478095447, 'naam': 'Witspace', 'status': 'actief'}]
+        origineel = [{'id': 1770000000000001, 'naam': 'Testtripel', 'status': 'actief'},
+                     {'id': 1770000000000002, 'naam': 'Testwit', 'status': 'actief'}]
         req(app, 'POST', '/api/data/producten', body=origineel)
         req(app, 'POST', '/api/data/water_addities', body=[{'id': 7}])
         status, body, _ = req(app, 'POST', '/api/backups/trigger', body={})
@@ -725,7 +752,7 @@ class TestSqliteOpslag:
         datum = body['date']
         # Daarna gaat het mis: de lijst wordt overschreven (het scenario van de
         # productmigratie in 1.12.58) en een andere sleutel verandert legitiem.
-        req(app, 'POST', '/api/data/producten', body=[{'id': 1, 'naam': 'QuadCore'}])
+        req(app, 'POST', '/api/data/producten', body=[{'id': 1, 'naam': 'Testblond'}])
         req(app, 'POST', '/api/data/water_addities', body=[{'id': 7}, {'id': 8}])
         status, body, hdrs = req(app, 'POST', '/api/backups/restore',
                                  body={'date': datum, 'key': 'producten'})
@@ -764,6 +791,68 @@ class TestSqliteOpslag:
         # Sleutel die in die backup niet voorkomt
         assert req(app, 'POST', '/api/backups/restore',
                    body={'date': datum, 'key': 'dry_hops'})[0] in (404, 200)
+
+
+class TestDeltaDubbeleIds:
+    """Twee records met dezelfde id in één upsert leverden twee rijen op (de
+    primaire sleutel is (key, seq), niet record_id). De key stond daarna met
+    een dubbel record in de opslag en verloor permanent delta-ondersteuning;
+    bij een append-only key was die dubbel niet meer weg te krijgen."""
+
+    def _versie(self, app, key):
+        return req(app, 'GET', f'/api/data/{key}')[2].get('X-Data-Version')
+
+    def test_dubbele_id_in_upsert_wordt_geweigerd(self, app):
+        req(app, 'POST', '/api/data/water_profielen', body=[{'id': 1, 'naam': 'start'}])
+        ver = self._versie(app, 'water_profielen')
+        status, body, _ = req(app, 'POST', '/api/delta/water_profielen',
+                              body={'upsert': [{'id': 9, 'naam': 'een'}, {'id': 9, 'naam': 'twee'}],
+                                    'delete': []},
+                              headers={'X-Data-Version': ver})
+        assert status == 400 and 'dubbele id' in body['error']
+        # niets geschreven, en delta blijft gewoon werken
+        assert req(app, 'GET', '/api/data/water_profielen')[1] == [{'id': 1, 'naam': 'start'}]
+        status, _, _ = req(app, 'POST', '/api/delta/water_profielen',
+                           body={'upsert': [{'id': 2, 'naam': 'normaal'}], 'delete': []},
+                           headers={'X-Data-Version': ver})
+        assert status == 200
+
+    def test_zelfde_id_in_upsert_en_delete_wordt_geweigerd(self, app):
+        req(app, 'POST', '/api/data/water_doelprofielen', body=[{'id': 1}])
+        ver = self._versie(app, 'water_doelprofielen')
+        status, body, _ = req(app, 'POST', '/api/delta/water_doelprofielen',
+                              body={'upsert': [{'id': 1, 'naam': 'x'}], 'delete': [1]},
+                              headers={'X-Data-Version': ver})
+        assert status == 400
+        assert req(app, 'GET', '/api/data/water_doelprofielen')[1] == [{'id': 1}]
+
+
+class TestBijlagen:
+    """Bijlagen bij een geboekte factuur vallen onder de bewaarplicht."""
+
+    def test_upload_overschrijft_geen_bestaande_bijlage(self, app):
+        import base64
+        eerste = base64.b64encode(b'factuur A').decode()
+        tweede = base64.b64encode(b'factuur B').decode()
+        assert req(app, 'POST', '/api/upload/bon.pdf', body={'data': eerste})[0] == 200
+        status, body, _ = req(app, 'POST', '/api/upload/bon.pdf', body={'data': tweede})
+        assert status == 200
+        assert body['bestand'] == 'bon-1.pdf'          # uitgeweken naar een vrije naam
+        assert (srv.UPLOAD_DIR / 'bon.pdf').read_bytes() == b'factuur A'
+        assert (srv.UPLOAD_DIR / 'bon-1.pdf').read_bytes() == b'factuur B'
+
+    def test_bijlage_van_een_geboekte_factuur_gaat_niet_weg(self, app):
+        import base64
+        req(app, 'POST', '/api/upload/bewijs.pdf', body={'data': base64.b64encode(b'x').decode()})
+        req(app, 'POST', '/api/data/inkoop_facturen',
+            body=[{'id': 1, 'leverancier': 'Mouterij', 'bijlage': {'naam': 'bon.pdf', 'bestand': 'bewijs.pdf'}}])
+        status, body, _ = req(app, 'POST', '/api/delete_upload/bewijs.pdf', body={})
+        assert status == 409 and body['key'] == 'inkoop_facturen'
+        assert (srv.UPLOAD_DIR / 'bewijs.pdf').exists()
+        # losgekoppeld van de factuur mag hij wél weg
+        req(app, 'POST', '/api/data/inkoop_facturen', body=[{'id': 1, 'leverancier': 'Mouterij'}])
+        assert req(app, 'POST', '/api/delete_upload/bewijs.pdf', body={})[0] == 200
+        assert not (srv.UPLOAD_DIR / 'bewijs.pdf').exists()
 
 
 class TestHealth:

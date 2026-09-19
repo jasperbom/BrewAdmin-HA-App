@@ -1881,6 +1881,7 @@
   "orders_btw_correctie_hint": "Vous modifiez la TVA d'une commande finalisée. La facture de vente liée est corrigée automatiquement afin que la déclaration de TVA reste exacte.",
   "lbl_product_toon_gearchiveerd": "Afficher archivés",
   "confirm_product_verwijderen": "Voulez-vous vraiment supprimer ce produit ?",
+  "confirm_product_verwijderen_voorraad": "Attention : il reste {n} unités de cette bière en stock. Elles subsistent, mais ne seront plus liées au produit.",
   "ph_product_naam": "Nom de la bière",
   "ph_product_stijl": "Ex. IPA, Tripel, Stout",
   "ph_product_categorie": "Ex. Saisonnière, Standard",

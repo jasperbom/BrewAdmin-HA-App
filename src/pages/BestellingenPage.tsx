@@ -561,6 +561,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     })
   }
 
+  // Volgend regelnummer binnen één bestelling. Het aantal regels als nummer
+  // gebruiken gaf na het verwijderen van een regel een nummer dat al bestond:
+  // de picking koppelt een pick via `regel_id` aan een regel, dus een dubbel
+  // nummer laat de gepickte aantallen bij de verkeerde regel belanden.
+  const volgendRegelId = (regels: any[]): number =>
+    (regels || []).reduce((m: number, r: any) => Math.max(m, Number(r?.id) || 0), 0) + 1
+
   // --- Handmatige order opslaan ---
   const saveManualOrder = async () => {
     if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
@@ -589,7 +596,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         if (bedrag <= 0) continue
         const oms = t('lbl_korting_pct').replace('{pct}', String(kortingPct))
         regels.push({
-          id: regels.length + 1,
+          id: volgendRegelId(regels),
           type: 'korting',
           bier_naam: oms,
           verpakking_type: '',
@@ -602,7 +609,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     if (manualVerzending.enabled && Number(manualVerzending.prijs) > 0) {
       regels.push({
-        id: regels.length + 1,
+        id: volgendRegelId(regels),
         type: 'verzending',
         bier_naam: manualVerzending.naam || t('lbl_verzendkosten'),
         verpakking_type: '',
@@ -639,7 +646,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     const artMatch = artikelVoorKeuze(regelForm.bier_naam, regelForm.verpakking_type)
     const regel = {
-      id: (manualForm.regels.length + 1),
+      id: volgendRegelId(manualForm.regels),
       type: 'bier',
       artikel_key: artMatch?.key || null,
       artikel_id: artMatch?.id || null,

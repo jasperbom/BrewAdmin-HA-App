@@ -9,7 +9,7 @@
  */
 import React from 'react'
 import { t, getLang } from '../i18n'
-import { newId } from '../utils/api'
+import { newId, _fetchedKeys } from '../utils/api'
 import { nextKlantnummer } from '../utils/klant'
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { fmt, fmtD } from '../utils/format'
@@ -88,11 +88,16 @@ const KlantenPage: React.FC<Props> = ({
   const [view, setView] = React.useState<'list'|'detail'>('list')
   const [selectedId, setSelectedId] = React.useState<number|null>(null)
   // Backfill: bij elke render waarin er klanten zonder klantnummer staan,
-  // kennen we die alsnog toe in aanmaakvolgorde. De `needsBackfill`-check
-  // is zelf de guard — zodra elke klant een nummer heeft is de effect-loop
-  // klaar. Geen ref nodig; werkt ook als server-data ná initiële render
-  // arriveert of als losse imports nieuwe nummer-loze klanten toevoegen.
+  // kennen we die alsnog toe in aanmaakvolgorde. Zodra elke klant een nummer
+  // heeft is de effect-loop klaar.
+  //
+  // Wachten tot béíde sleutels van de server zijn (1.12.62). Een niet-lege
+  // klantenlijst bewijst niets: die kan uit de browsercache komen terwijl de
+  // server nog aan het antwoorden is. En `logAudit` hieronder schrijft naar
+  // een ándere sleutel, die prima nog leeg kan zijn — dan ging er een
+  // auditlogboek van één regel naar de server, over de hele historie heen.
   React.useEffect(() => {
+    if (!_fetchedKeys.has('klanten') || !_fetchedKeys.has('audit_log')) return
     if (klanten.length === 0) return
     const needsBackfill = klanten.some((k: any) => !String(k.klantnummer || '').trim())
     if (!needsBackfill) return

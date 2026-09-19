@@ -119,6 +119,11 @@ function App() {
   const [ing, setIng] = useStore('ingredienten');
   const [lots, setLots] = useStore('lots');
   const [bat, setBat] = useStore('batches');
+  // Altijd de verse batchlijst, ook binnen een effect waarvan de deps `bat`
+  // niet noemen. De migraties hieronder draaien via een poller en zouden
+  // anders met de stand van hun eigen render rekenen (1.12.66).
+  const batRef = React.useRef<any[]>(bat);
+  batRef.current = bat;
   const [bi, setBi] = useStore('batch_ingredienten');
   const [av, setAv] = useStore('afvullingen');
   const [uit, setUit] = useStore('uitleveringen');
@@ -654,18 +659,24 @@ function App() {
         }
         return out;
       };
-      if (Array.isArray(bat)) {
-        const gemigreerdeBat = bat.map((b: any) => ({
-          ...b,
-          taken_checks: {
-            ...(b.taken_checks || {}),
-            ...remap(b.hygiene_checks, hygMap),
-            ...remap(b.brouwdag_checks, brwMap),
-            ...remap(b.botteldag_checks, botMap),
-          }
-        }));
-        setBat(gemigreerdeBat);
-      }
+      // Functionele vorm, en dat is hier essentieel (1.12.66). De deps van dit
+      // effect zijn alleen de migratievlag, dus `bat` in deze closure komt uit
+      // de render waarin het effect werd aangemaakt — bij een run via de
+      // poller is dat vrijwel altijd de lege beginstand, ook al is de
+      // serverdata intussen binnen (`_fetchedKeys` zegt alleen dat het
+      // ántwoord er is, niet dat React de state al bijgewerkt heeft).
+      // `setBat(gemigreerdeBat)` schreef die lege lijst dan over de batches
+      // heen, mét een geldige versie, dus zonder conflict. In een rooktest
+      // verdwenen zo alle tien de batches.
+      setBat((prev: any[]) => (Array.isArray(prev) ? prev : []).map((b: any) => ({
+        ...b,
+        taken_checks: {
+          ...(b.taken_checks || {}),
+          ...remap(b.hygiene_checks, hygMap),
+          ...remap(b.brouwdag_checks, brwMap),
+          ...remap(b.botteldag_checks, botMap),
+        }
+      })));
 
       // 4. CCP-metingen: voeg taak_id toe zodat het unified systeem ze kan vinden
       if (Array.isArray(haccpCcpMetingen) && haccpCcpMetingen.length > 0) {
@@ -856,7 +867,11 @@ function App() {
       verwachtGravityMigratieRef.current = true;
       const heeft = (v: any) => v !== '' && v != null && !isNaN(Number(v)) && Number(v) > 0;
       let changed = false;
-      const next = (bat || []).map((b: any) => {
+      // `batRef.current` in plaats van `bat`: zelfde reden als bij de
+      // takenmigratie hierboven — de closure van dit effect is bij een run via
+      // de poller verouderd. Zo blijft ook de regel "alleen schrijven als er
+      // werkelijk iets verschuift" overeind.
+      const next = (batRef.current || []).map((b: any) => {
         if (!b) return b;
         const status = b.status === 'Verpakt' ? 'Afgevuld' : b.status;
         const patch: any = {};
@@ -1051,9 +1066,13 @@ function App() {
             if (bfB.measuredFermentationPh != null) ch.product_ph = bfNumSafe(bfB.measuredFermentationPh);
             else if (bfB.measuredPh != null && !existing.product_ph) ch.product_ph = bfNumSafe(bfB.measuredPh);
             { const _rawN=bfB.notes||bfB.tasteNotes; if (_rawN && !existing.notities) { ch.notities = Array.isArray(_rawN)?_rawN.map((x: any)=>typeof x==='string'?x:(x?.note||x?.text||x?.message||'')).filter(Boolean).join('\n'):(typeof _rawN==='object'&&_rawN?String((_rawN as any).$string||(_rawN as any).text||(_rawN as any).note||''):String(_rawN||'')); } }
+            // Profielen alleen overnemen als Brewfather er werkelijk een
+            // heeft. Onvoorwaardelijk toekennen wiste een profiel dat hier
+            // was ingevuld zodra het recept in Brewfather er geen had — en
+            // deze sync draait vanzelf bij het openen van de app.
             const mapped = bfMapBatch(bfB);
-            ch.vergistingsprofiel = mapped.vergistingsprofiel;
-            ch.maischprofiel = mapped.maischprofiel;
+            if (mapped.vergistingsprofiel?.length) ch.vergistingsprofiel = mapped.vergistingsprofiel;
+            if (mapped.maischprofiel?.length) ch.maischprofiel = mapped.maischprofiel;
             updBatches.push({id: existing.id, ch});
           }
         }
@@ -1094,8 +1113,15 @@ function App() {
         return;
       }
     } catch (_) {}
-    // Wacht tot relevante stores geladen zijn (uit [] betekent: fetch klaar, leeg)
-    if (!uit || !acc || !afboekingen) return;
+    // Wachten tot de betrokken sleutels écht van de server zijn (1.12.62).
+    // De oude check `if (!uit || !acc || !afboekingen) return` deed niets: een
+    // lege array is truthy, dus de migratie draaide juist tijdens het laden.
+    // Dat is hier gevaarlijk, want hieronder staat `!(uit||[]).length` — las
+    // die "nog niet geladen" als "leeg", dan verving de oude uitslagen-sleutel
+    // de complete uitleveringenlijst, en een afboeking voor intern gebruik
+    // maakte er een lijst van uitsluitend de nieuw afgeleide regels van.
+    const migratieSleutels = ['uitleveringen', 'accijns', 'afboekingen', 'afvullingen', 'batches'];
+    if (!migratieSleutels.every(k => _fetchedKeys.has(k))) return;
     uitleveringMigrated.current = true;
     (async () => {
       try {
@@ -1114,6 +1140,8 @@ function App() {
           return out;
         });
         let nieuweUit: any[] = [...(uit||[])];
+        // `uit` is hier gegarandeerd van de server (zie de guard hierboven),
+        // dus leeg betekent nu echt leeg en de oude uitslagen mogen erin.
         if (gemigreerdeUitl.length && !(uit||[]).length) {
           nieuweUit = gemigreerdeUitl;
         }
@@ -1730,6 +1758,19 @@ function App() {
       if (d.factuur_logo !== undefined) setFactuurLogo(d.factuur_logo);
       if (d.app_name !== undefined) setAppName(d.app_name);
       if (d.nav_theme) setNavTheme(d.nav_theme);
+      // Een backup terugzetten vervangt de hele administratie en was tot
+      // 1.12.68 de enige ingrijpende handeling die géén spoor naliet. De
+      // regel wordt als láátste geschreven, ná `setAuditLog(d.audit_log)`,
+      // zodat hij niet door het teruggezette logboek wordt overschreven —
+      // en hij hoort juist bij dat teruggezette logboek thuis.
+      const teruggezet = Object.entries(d)
+        .filter(([, v]) => Array.isArray(v))
+        .map(([k, v]) => ({sleutel: k, n: (v as any[]).length}));
+      const records = teruggezet.reduce((n, x) => n + x.n, 0);
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd',
+        omschrijving: `Backup teruggezet uit "${f.name}" — ${teruggezet.length} gegevenssoorten, ${records} records`,
+      });
     }, (msg?: string) => alert(t('err_invalid_backup') + (msg ? `\n\n${msg}` : '')));
     e.target.value = '';
   };
@@ -1752,7 +1793,14 @@ function App() {
     setCarbSessies([]); setVerliesRegistraties([]);
     setBrouwdagStappen([]); setWaterAddities([]); setHopAddities([]); setDryHops([]); setKoelLogs([]); setBatchNotities([]);
     setKapitaalBoekingen([]);
-    setInventarisaties([]); setAuditLog([]); setAccijnsAangiftes([]); setBtwAangiftes([]);
+    setInventarisaties([]); setAccijnsAangiftes([]); setBtwAangiftes([]);
+    // Het logboek gaat zelf ook leeg, dus de regel erover komt ná het wissen:
+    // zo blijft in het verse logboek staan dát er gereset is, en wanneer.
+    setAuditLog([]);
+    logAudit([], setAuditLog, {
+      entiteit: 'Instelling', entiteit_id: 0, actie: 'verwijderd',
+      omschrijving: 'Alle gegevens gewist (fabrieksreset)',
+    });
     setLocaties([{id:1, naam:'AGP', is_agp:true}]); setVerplaatsingen([]);
     setProducten([]); setProductArtikelen([]);
     setBtwInst({periode: 'kwartaal'}); setBtwTarieven([0, 9, 21]);
@@ -2175,7 +2223,7 @@ function App() {
         {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsAangiftes={accijnsAangiftes} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} initialRapportTab={boekhoudingRapportTab} onInitialTabConsumed={() => { setBoekhoudingTab(null); setBoekhoudingRapportTab(null) }} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
-        {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten}} />}
+        {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten, producten, product_artikelen: productArtikelen, locaties, verplaatsingen, verpakkingen}} />}
         {page==='meer' && <MeerPage whoami={whoami} appName={appName} onInstellingen={()=>setPage('instellingen')} />}
       </main>
       </PageErrorBoundary>

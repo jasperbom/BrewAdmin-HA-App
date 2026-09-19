@@ -93,10 +93,22 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
     if (!locModal) return;
     const naam = String(locModal.naam||'').trim();
     if (!naam) { alert(t('agp_err_naam_verplicht')); return; }
+    // Een locatie is geen bijzaak: `bron_locatie_id` stuurt zowel de voorraad
+    // per locatie als de vraag of een afboeking accijnsplichtig is. Aanmaken,
+    // hernoemen en verwijderen hoort dus in het logboek te staan.
     if (locModal.id) {
+      const vorige = locById(locModal.id);
       setLocaties((prev: any[]) => prev.map((l: any) => l.id === locModal.id ? {...l, naam, adres: locModal.adres||'', opmerking: locModal.opmerking||''} : l));
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Locatie', entiteit_id: locModal.id, actie: 'gewijzigd',
+        omschrijving: vorige?.naam && vorige.naam !== naam ? `${vorige.naam} → ${naam}` : naam,
+      });
     } else {
-      setLocaties((prev: any[]) => [...(prev||[]), {id: newId(prev||[]), naam, is_agp: false, adres: locModal.adres||'', opmerking: locModal.opmerking||''}]);
+      const id = newId(locaties||[]);
+      setLocaties((prev: any[]) => [...(prev||[]), {id, naam, is_agp: false, adres: locModal.adres||'', opmerking: locModal.opmerking||''}]);
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Locatie', entiteit_id: id, actie: 'aangemaakt', omschrijving: naam,
+      });
     }
     setLocModal(null);
   };
@@ -111,6 +123,9 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
     if (heeftVoorraad) { alert(t('agp_err_locatie_in_gebruik')); return; }
     if (!confirm(t('agp_confirm_loc_verwijderen'))) return;
     setLocaties((prev: any[]) => prev.filter((l: any) => l.id !== id));
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Locatie', entiteit_id: id, actie: 'verwijderd', omschrijving: loc?.naam || '',
+    });
     setLocModal(null);
   };
 

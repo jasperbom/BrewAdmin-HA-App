@@ -4145,7 +4145,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                   })
                   if (fields.controle_status) {
                     logAudit(auditLog, setAuditLog, {
-                      entiteit: 'BtwAangifte',
+                      entiteit: 'BTW-aangifte',
                       entiteit_id: 0,
                       actie: 'gewijzigd',
                       omschrijving: `BTW-controle ${fields.controle_status} door ${fields.reviewer || 'reviewer'} — periode ${periodeKey}${fields.bevindingen ? ` (bevindingen: ${fields.bevindingen})` : ''}`,
@@ -4287,7 +4287,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
           onClose={() => setMailModal(null)}
           onSent={(sentTo) => {
             if (mailModal.factuurId) {
-              logAudit(auditLog, setAuditLog, {entiteit:'VerkoopFactuur', entiteit_id: mailModal.factuurId, actie:'gewijzigd', omschrijving: `Mail verstuurd: ${mailModal.subject}${sentTo ? ` (${sentTo})` : ''}`})
+              logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id: mailModal.factuurId, actie:'gewijzigd', omschrijving: `Mail verstuurd: ${mailModal.subject}${sentTo ? ` (${sentTo})` : ''}`})
             }
             mailModal.afterSent?.()
           }}

@@ -4,6 +4,291 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.70] — 2026-09-19
+
+### Neutrale testgegevens
+
+De tests en een voorbeeld in de changelog gebruikten namen en
+recordnummers die uit de echte administratie kwamen. De repository is
+openbaar, dus dat hoort er niet in. Vervangen door duidelijk verzonnen
+namen; de tests dekken exact hetzelfde af.
+
+---
+
+## [1.12.69] — 2026-09-19
+
+### De brouwdag en de recepten staan nu ook in het logboek
+
+De brouwdagwizard legde niets vast: metingen, OG, het volume naar het
+gistvat, de koellogs en het afronden van de brouwdag gebeurden allemaal
+ongemerkt. Hetzelfde gold voor recepten en voor de dryhops.
+
+Die velden slaan bij élke toetsaanslag op, dus een regel per wijziging zou
+het logboek onleesbaar maken. `logAuditVeld` voegt daarom een reeks samen:
+de oudste waarde van de reeks blijft het ijkpunt, de laatste wint, en pas als
+er anderhalve seconde niets meer verandert gaat er één regel in. Wordt een
+waarde binnen die tijd teruggedraaid, dan komt er helemaal geen regel.
+
+Nieuw vastgelegd:
+
+- **Brouwdag:** elke meting, de OG, het volume naar het gistvat, een koellog
+  toevoegen of verwijderen, en het afronden van de brouwdag.
+- **Batchpagina:** de velden die je rechtstreeks bewerkt (tank, brouwdatum,
+  biernaam, batchnummer, GN-code). Puur bijhoudwerk dat de app zelf zet
+  (stapindex, afvinklijsten) blijft erbuiten.
+- **Recepten:** wijzigingen aan het recept en aan een losse ingrediëntregel,
+  met de naam van het ingrediënt erbij. Het recept is de basis voor de
+  allergenenvergelijking bij de etiketcontrole.
+- **Dryhop:** toevoegen, uit de tank halen en verwijderen.
+
+Geverifieerd in de draaiende app: twee toetsaanslagen in een receptveld
+leveren precies één regel op ("Testblond — hop/Saaz/tijd: — → 37"), en een
+nieuwe locatie levert er ook één op.
+
+---
+
+## [1.12.68] — 2026-09-19
+
+### Backup terugzetten, resetten, locaties en planning laten nu een spoor na
+
+Het auditlogboek wordt met de hand per scherm geschreven, en juist de twee
+ingrijpendste handelingen ontbraken.
+
+- **Een backup terugzetten** vervangt de hele administratie en schreef niets.
+  Er komt nu een regel bij met de bestandsnaam, het aantal teruggezette
+  gegevenssoorten en het aantal records. Die regel wordt als laatste
+  geschreven, ná het teruggezette logboek, zodat hij niet meteen weer
+  verdwijnt.
+- **De fabrieksreset** wist ook het logboek zelf. De regel erover komt nu ná
+  het wissen, als eerste regel van het verse logboek, zodat zichtbaar blijft
+  dát er gereset is en wanneer.
+- **Locaties** aanmaken, hernoemen en verwijderen ging ongemerkt, terwijl
+  `bron_locatie_id` zowel de voorraad per locatie als de accijnsplicht bij een
+  afboeking stuurt.
+- **Een batch verslepen in de planning** (andere brouwdag of andere tank)
+  wordt vastgelegd met de oude en de nieuwe waarde.
+
+De inventarisatie bleef zoals hij was: het starten van een telling en de
+afboekingen die eruit volgen stonden al in het logboek, en elke getypte
+telregel erbij zou het logboek vollopen zonder iets toe te voegen.
+
+---
+
+## [1.12.67] — 2026-09-19
+
+### Dezelfde soort stond onder twee namen in het auditlogboek
+
+Vijf soorten werden door verschillende schermen anders gespeld:
+"Ingrediënt" naast "Ingredient", "Verkoopfactuur" naast "VerkoopFactuur",
+"Gistmeting" naast "Meting", "Accijnsaangifte" naast "AccijnsAangifte" en
+"BTW-aangifte" naast "BtwAangifte". Wie in het logboek op soort filtert mist
+dan een deel zonder dat hij het merkt.
+
+De canonieke namen staan nu op één plek (`AUDIT_SOORTEN` in `utils/audit.ts`)
+en de afwijkende schrijfwijzen zijn gelijkgetrokken. Een test leest de
+broncode en faalt zodra er een naam wordt gebruikt die niet in die lijst
+staat, zodat er geen nieuwe variant meer bij kan komen. Bestaande regels in
+het logboek houden hun oude spelling; die zijn historie.
+
+---
+
+## [1.12.66] — 2026-09-19
+
+### De batchlijst kon bij het opstarten leeggeschreven worden
+
+Gevonden met een draaitest op de echte gegevens: tien batches gingen bij het
+openen van de app verloren, en de server accepteerde dat zonder conflict.
+Twee dingen kwamen samen.
+
+- **De migraties lazen een verouderde momentopname.** De eenmalige
+  batchtaken-migratie en de verwacht-gravity-migratie draaien via een poller
+  die wacht tot de sleutels van de server zijn (`_fetchedKeys`). Hun
+  afhankelijkheden zijn alleen de migratievlag, dus de batchlijst in hun
+  closure komt uit de render waarin het effect werd aangemaakt — bij een
+  poller-run vrijwel altijd de lege beginstand. Dat het ántwoord binnen is
+  betekent immers niet dat React de state al heeft bijgewerkt. De
+  takenmigratie schreef die lege lijst vervolgens over de batches heen. Beide
+  rekenen nu met de verse stand.
+- **De versie werd overgenomen zonder de inhoud.** Was er intussen lokaal
+  geschreven, dan gooide de app het serverantwoord weg maar nam wél de
+  versie eruit over. De app zei daarmee "ik ben bij" bij een stand die ze
+  nooit gezien heeft, en de volgende schrijfactie ging met een geldige versie
+  de deur uit — dus zonder 409 en zonder samenvoeging. Versie en inhoud gaan
+  nu samen: allebei, of geen van beide.
+
+Na de fix overleeft dezelfde draaitest alle sleutels: batches, afvullingen,
+producten, uitleveringen, klanten, accijns en bestellingen staan er
+onveranderd.
+
+---
+
+## [1.12.65] — 2026-09-19
+
+### Dubbel regelnummer in een handmatige bestelling
+
+Een regel kreeg het aantal regels als nummer. Verwijder je regel twee van
+drie en voeg je er een toe, dan bestaat nummer drie twee keer. De picking
+koppelt een pick via het regelnummer aan een regel, dus de gepickte aantallen
+belandden bij de verkeerde regel. Het nummer telt nu door vanaf het hoogste
+dat al is uitgedeeld.
+
+### Brewfather-sync wiste een ingevuld vergistings- of maischprofiel
+
+De automatische sync nam beide profielen onvoorwaardelijk over. Had het
+recept in Brewfather er geen, dan werd het profiel dat hier was ingevuld
+leeggemaakt — en die sync draait vanzelf bij het openen van de app. Een leeg
+profiel uit Brewfather laat de eigen invulling nu staan.
+
+---
+
+## [1.12.64] — 2026-09-19
+
+### Drie vangnetten aan de serverkant
+
+- **De backupopruiming had geen ondergrens.** Het hele retentiebeleid hangt
+  aan de datum van vandaag. Springt de klok van de host vooruit — geen RTC,
+  een verkeerde tijdzone na een restore, een NTP-glitch — dan valt élke
+  backup ineens buiten de termijn en wist één ronde de lokale mappen, de
+  kopie op het andere volume én het auditspoor. Juist het vangnet dat dan
+  overeind moet blijven. De nieuwste zeven backups en de nieuwste drie
+  auditmaanden blijven nu altijd staan, wat de datumregel ook zegt. Een klok
+  die achterloopt was en blijft ongevaarlijk.
+- **De delta-synchronisatie liet dubbele records toe.** Twee records met
+  hetzelfde nummer in één verzoek leverden twee rijen op, want de primaire
+  sleutel is (sleutel, volgnummer) en niet het recordnummer. De lijst stond
+  daarna met een dubbel in de opslag, verloor permanent de snelle
+  synchronisatie, en bij het journaal of een HACCP-registratie was die dubbel
+  niet meer te verwijderen omdat daar alleen aangevuld mag worden. Een
+  dubbele id, of een id die zowel in `upsert` als in `delete` staat, wordt nu
+  geweigerd.
+- **Bijlagen van geboekte facturen waren niet beschermd.** Een upload met een
+  bestaande bestandsnaam verving stilzwijgend het bewijsstuk van een andere
+  factuur; de server wijkt nu uit naar een vrije naam en geeft die terug, en
+  de factuur bewaart díé naam. Verwijderen is geweigerd zolang een
+  inkoopfactuur, afboeking of verliesregistratie er nog naar verwijst.
+
+---
+
+## [1.12.63] — 2026-09-19
+
+### De gezondheidscontrole kende de producten niet
+
+De referentiële-integriteitscheck onder Instellingen → App controleerde
+ingrediënten, lots, batches, afvullingen, uitleveringen, accijns, picks,
+facturen en klanten — maar niet de productlaag. Juist daar zat de schade van
+1.12.58: elf van de zeventien afvullingen en acht van de vijftien artikelen
+wezen naar een product dat niet meer bestond, en de app zweeg erover. Je zag
+alleen overal nul voorraad.
+
+De controle kijkt nu ook naar de productverwijzingen (afvulling, artikel,
+batch, en de `product_ids`-lijst), naar de verpakking en naar de locaties —
+`bron_locatie_id` stuurt zowel de voorraad per locatie als de accijns bij een
+afboeking, dus een verwijzing die nergens naartoe wijst laat de voorraad niet
+meer optellen. Op de backup van 19 september meldt hij negentien
+productwezen, plus één lot dat al langer naar een verdwenen ingrediënt wees.
+
+### Een product verwijderen liet de afvullingen wees achter
+
+Bij het verwijderen werden de artikelen en de batchkoppelingen opgeruimd,
+maar de afvullingen niet: hun `product_id` bleef naar het verdwenen product
+wijzen. De productlijsten matchen op "eigen product_id óf (geen product_id
+én de batch hoort erbij)", dus zo'n afvulling viel daarna buiten élk product.
+Het bier stond er nog en was nergens meer te zien — met één klik hetzelfde
+beeld als de migratiefout veroorzaakte.
+
+De koppeling wordt nu losgemaakt in plaats van te blijven hangen, zodat de
+afvulling terugvalt op zijn batch. Staat er nog voorraad op het bier, dan
+zegt de bevestiging dat erbij, met het aantal.
+
+---
+
+## [1.12.62] — 2026-09-19
+
+### Drie plekken die schreven voordat hun gegevens binnen waren
+
+1.12.60 zorgt dat zo'n schrijfactie niets meer kan vernietigen. Deze drie
+plekken zouden er echter helemaal niet moeten zijn, want ze leveren een
+conflict op dat de gebruiker niets zegt.
+
+- **Klantnummers aanvullen.** De klantenpagina vult ontbrekende klantnummers
+  automatisch aan en schrijft daar een regel over in het auditlogboek. De
+  enige controle was of de klantenlijst niet leeg was, en dat bewijst niets:
+  die lijst kan uit de browsercache komen. Het logboek is bovendien een
+  ándere sleutel, die prima nog leeg kan zijn — dan ging er een logboek van
+  één regel naar de server, over de hele historie heen. Nu wacht de aanvulling
+  op beide sleutels.
+- **De brouwdagwizard** legde berekende waarden (rendement, IBU, verdamping)
+  uit zichzelf vast zodra ze afweken, zonder gebruikersactie en zonder te
+  wachten op de lots en de ingrediënten waaruit ze volgen. De eenmalige
+  hop-alfa-reparatie zette bovendien zijn "gedaan"-vlag vóórdat er iets
+  berekend was: draaide hij één keer op lege lijsten, dan liep de reparatie
+  nooit meer.
+- **De uitleveringsmigratie** had een controle die niets deed: `if (!uit)`
+  is nooit waar voor een lege lijst, dus de migratie draaide juist tijdens
+  het laden. Verderop staat `!(uit||[]).length`, en las die "nog niet geladen"
+  als "leeg", dan verving de oude uitslagen-sleutel de complete
+  uitleveringenlijst. Alle betrokken sleutels worden nu afgewacht.
+
+---
+
+## [1.12.61] — 2026-09-19
+
+### Een ontbrekend tabblad in een backup wiste de hele lijst
+
+De Excel-import las een tabblad dat niet in het werkboek zat als een lege
+lijst en schreef die weg. Het terugzetten van een oudere backup — gemaakt
+vóórdat een functie bestond — wiste daardoor stilzwijgend alle producten,
+verplaatsingen, locaties of merch. Juist wie aan het herstellen is loopt dat
+risico.
+
+Een ontbrekend tabblad geeft nu `undefined`, en `doImport` slaat dat over:
+die lijst blijft staan zoals hij is. Een tabblad dat er wél is maar leeg,
+betekent nog steeds "deze lijst is leeg" en maakt hem dus wel leeg — dat
+onderscheid was precies wat ontbrak. Hetzelfde geldt voor de
+tankreinigingsstatus en voor de uitleveringen (waar een oude backup het
+tabblad `Uitslagen` gebruikte).
+
+De logo's deden dit al goed; de rest van de sleutels volgt nu diezelfde lijn.
+
+---
+
+## [1.12.60] — 2026-09-19
+
+### Schrijven vóór het laden viel buiten het versieslot
+
+De structurele oorzaak achter de verdwenen producten van 1.12.58. Een
+schrijfactie stuurde alleen een `X-Data-Version` mee wanneer de app er al
+een kende. Vertrok een save vóórdat die sleutel ooit van de server was
+gelezen, dan ging hij dus zónder slot de deur uit en nam de server de stand
+van de client zonder tegenspraak over — ook als dat een lege lijst was of een
+verouderde browsercache.
+
+Dat venster is geen theorie: de cache van deze installatie is 4,1 MB op een
+browserlimiet van ongeveer 5 MB (de gistmetingen alleen al 3,0 MB), en
+`lsSet` slaat een sleutel die niet meer past stil over. Je houdt dan een
+cache waarin de ene lijst wél en de andere niet staat — precies de situatie
+waarin "nog niet geladen" eruitziet als "leeg".
+
+- **Er gaat nu altijd een versie mee.** Kent de app er geen, dan stuurt hij
+  `0` — exact wat de server teruggeeft voor een sleutel die nog niet bestaat.
+  Klopt dat, dan slaagt de eerste schrijfactie gewoon. Bestaat de sleutel wél,
+  dan volgt een 409 in plaats van een blinde overschrijving. De server hoefde
+  hier niet voor te veranderen.
+- **De 409 gooit niets weg.** `save` legt de stand van vlak vóór de wijziging
+  vast als ijkpunt (`_basisVoorOngeladenKey`), zodat de bestaande
+  conflict-samenvoeging de eigen wijziging per record over de verse
+  serverstand heen legt.
+- **Het seeden van een nieuwe sleutel wijkt terug** wanneer de server hem
+  tóch al blijkt te kennen: dan wordt de serverstand opgehaald in plaats van
+  overschreven.
+
+Nagespeeld in de browser, met een half gevulde cache en een trage verbinding:
+de klantnummer-aanvulling van de klantenpagina bracht een auditlogboek van
+drie serverregels terug tot één. Met deze wijziging staan er vier: de drie
+bestaande plus de nieuwe regel.
+
+---
+
 ## [1.12.59] — 2026-09-19
 
 ### Productenlijst overschreven door een oude migratie: nul voorraad, bieren weg
@@ -17,8 +302,8 @@ zag dan gecachte batches naast een lege productenlijst, maakte nieuwe
 producten met id 1, 2, 3 … uit de batchnamen en schreef die over de echte
 producten heen. Alle afvullingen, artikelen en batches wezen daarna naar
 product-id's die niet meer bestonden: elke productkaart toonde nul voorraad
-en de bieren van de omgedoopte producten (Witspace, Session found, Black
-Shorts Pilsner, …) waren nergens meer te vinden. De voorraadberekening zelf
+en de bieren waarvan het product tijdens de migratie was omgedoopt
+waren nergens meer te vinden. De voorraadberekening zelf
 (`voorraadPerLocatie`, 1.12.50–1.12.52) rekent goed — de backup van 19
 september laat 53 flesjes over vier afvullingen zien, precies afgevuld min
 uitgeleverd min afgeboekt.
