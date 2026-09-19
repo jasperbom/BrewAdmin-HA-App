@@ -1203,12 +1203,32 @@ function App() {
     })();
   }, [uit, acc, afboekingen, av, bat, accijnsInst]);
 
-  // Eenmalige migratie: maak Product-entiteiten aan uit bestaande biernamen en artikelen
+  // Eenmalige migratie: maak Product-entiteiten aan uit bestaande biernamen en
+  // artikelen — alléén op een installatie die nog nooit producten heeft gehad.
+  //
+  // Let op (1.12.59): `producten` begint als `[]` totdat de server heeft
+  // geantwoord, en de localStorage-cache kan voor de ene sleutel wél en de
+  // andere níét gevuld zijn (quota vol, nieuw apparaat). Deze migratie keek
+  // alleen naar `producten.length` en zag dan een lege lijst naast gecachte
+  // batches: ze maakte nieuwe producten met id 1, 2, 3 … uit de batchnamen en
+  // schreef die over de échte producten heen. Alle afvullingen, artikelen en
+  // batches wezen daarna naar product-id's die niet meer bestonden — nul
+  // voorraad en "vermiste" bieren. Daarom nu: wachten tot élke betrokken
+  // sleutel écht van de server is geladen (`_fetchedKeys`), en nooit draaien
+  // zolang er ook maar één afvulling of artikel naar een product verwijst.
+  // Geen time-out die de migratie tóch start: liever nooit dan verkeerd.
   const productMigrated = React.useRef(false);
   React.useEffect(() => {
     if (productMigrated.current) return;
-    if (!bat || !artikelen) return;
+    const needed = ['producten', 'product_artikelen', 'afvullingen', 'batches', 'artikelen'];
+    if (!needed.every(k => _fetchedKeys.has(k))) return;
     if ((producten||[]).length > 0) { productMigrated.current = true; return; }
+    // Er bestaan al productverwijzingen → er zíjn producten geweest. Niets
+    // aanmaken; de gebruiker herstelt de sleutel uit een backup.
+    const verwijst = (productArtikelen||[]).some((a: any) => a?.product_id != null)
+      || (av||[]).some((a: any) => a?.product_id != null)
+      || (bat||[]).some((b: any) => b?.product_id != null && b?.product_id !== '');
+    if (verwijst) { productMigrated.current = true; return; }
     // Verzamel unieke biernamen uit batches en artikelen
     const bierNamen = new Set<string>();
     for (const b of (bat||[])) { if (b.biernaam?.trim()) bierNamen.add(b.biernaam.trim()); else if (b.naam?.trim()) bierNamen.add(b.naam.trim()); }
@@ -1236,7 +1256,7 @@ function App() {
     }
     if (newProducten.length) setProducten(newProducten);
     if (newPAs.length) setProductArtikelen(newPAs);
-  }, [bat, artikelen, producten]);
+  }, [bat, artikelen, producten, productArtikelen, av]);
 
   React.useEffect(() => {
     if (!haInst?.enabled) return

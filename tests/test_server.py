@@ -715,6 +715,56 @@ class TestSqliteOpslag:
         assert json.loads((dest / 'gn_codes.json').read_text()) == [{'id': 1, 'code': '2203'}]
         assert (dest / srv.DB_NAAM).exists()
 
+    def test_restore_zet_een_sleutel_terug_uit_backup(self, app):
+        origineel = [{'id': 1784291250757090, 'naam': 'Tripel A', 'status': 'actief'},
+                     {'id': 1786899478095447, 'naam': 'Witspace', 'status': 'actief'}]
+        req(app, 'POST', '/api/data/producten', body=origineel)
+        req(app, 'POST', '/api/data/water_addities', body=[{'id': 7}])
+        status, body, _ = req(app, 'POST', '/api/backups/trigger', body={})
+        assert status == 200
+        datum = body['date']
+        # Daarna gaat het mis: de lijst wordt overschreven (het scenario van de
+        # productmigratie in 1.12.58) en een andere sleutel verandert legitiem.
+        req(app, 'POST', '/api/data/producten', body=[{'id': 1, 'naam': 'QuadCore'}])
+        req(app, 'POST', '/api/data/water_addities', body=[{'id': 7}, {'id': 8}])
+        status, body, hdrs = req(app, 'POST', '/api/backups/restore',
+                                 body={'date': datum, 'key': 'producten'})
+        assert status == 200 and body['ok'] and body['count'] == 2
+        status, terug, hdrs = req(app, 'GET', '/api/data/producten')
+        assert terug == origineel
+        # De versie-header hoort bij de teruggezette inhoud
+        assert hdrs.get('X-Data-Version') == body['version']
+        # Alleen díe sleutel: de rest blijft de huidige stand
+        assert req(app, 'GET', '/api/data/water_addities')[1] == [{'id': 7}, {'id': 8}]
+        # Audit-regel
+        regels = []
+        for f in sorted(srv.AUDIT_DIR.glob('audit_*.jsonl')):
+            regels += [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+        assert any(r.get('actie') == 'backup_restore' and r.get('key') == 'producten'
+                   and r.get('backup') == datum for r in regels)
+
+    def test_restore_weigert_wat_niet_terug_mag(self, app):
+        status, body, _ = req(app, 'POST', '/api/backups/trigger', body={})
+        datum = body['date']
+        # Onbekende datum / niet-bestaande backup
+        assert req(app, 'POST', '/api/backups/restore',
+                   body={'date': '1999-01-01', 'key': 'producten'})[0] == 404
+        assert req(app, 'POST', '/api/backups/restore',
+                   body={'date': 'gisteren', 'key': 'producten'})[0] == 400
+        # Ongeldige / onbekende sleutel
+        assert req(app, 'POST', '/api/backups/restore',
+                   body={'date': datum, 'key': '../etc/passwd'})[0] == 400
+        assert req(app, 'POST', '/api/backups/restore',
+                   body={'date': datum, 'key': 'bestaat_niet'})[0] == 400
+        # Append-only registraties en credentials nooit
+        for key in ('journaal', 'haccp_vrijgaven', 'woocommerce_creds'):
+            status, body, _ = req(app, 'POST', '/api/backups/restore',
+                                  body={'date': datum, 'key': key})
+            assert status == 422 and body['key'] == key
+        # Sleutel die in die backup niet voorkomt
+        assert req(app, 'POST', '/api/backups/restore',
+                   body={'date': datum, 'key': 'dry_hops'})[0] in (404, 200)
+
 
 class TestHealth:
     def test_health_zonder_threads(self, app):
@@ -911,6 +961,10 @@ class TestRollen:
             # backup-download is beheer-only
             assert req(app, 'GET', '/api/backups', headers=fien)[0] == 403
             assert req(app, 'GET', '/api/backups', headers=self.ADMIN)[0] == 200
+            # ... en één sleutel terugzetten uit een backup ook
+            status, body, _ = req(app, 'POST', '/api/backups/restore',
+                                  body={'date': '2026-01-01', 'key': 'producten'}, headers=fien)
+            assert status == 403 and body['reden'] == 'rol'
         finally:
             self._reset(app)
 

@@ -138,6 +138,7 @@ DELETE_UPLOAD_PREFIX     = '/api/delete_upload/'
 DOWNLOAD_BIJLAGEN_PREFIX = '/api/download_bijlagen/'
 BACKUPS_PREFIX           = '/api/backups'
 BACKUPS_TRIGGER_PATH     = '/api/backups/trigger'
+BACKUPS_RESTORE_PATH     = '/api/backups/restore'
 CLAUDE_PROXY_PREFIX      = '/api/claude/'
 ANTHROPIC_API_BASE       = 'https://api.anthropic.com'
 CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be large
@@ -4027,7 +4028,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
         if rol != 'beheer' and any(p in path for p in (
                 MAIL_TEST_PATH, BF_TEST_PATH, WC_TEST_PATH, MOLLIE_TEST_PATH,
-                BACKUPS_TRIGGER_PATH)):
+                BACKUPS_TRIGGER_PATH, BACKUPS_RESTORE_PATH)):
             self._rol_geweigerd(rol)
             return
         if rol not in ('beheer', 'boekhouding') and any(p in path for p in (
@@ -4097,6 +4098,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if BACKUPS_TRIGGER_PATH in path:
             self._handle_backup_trigger()
+            return
+
+        if BACKUPS_RESTORE_PATH in path:
+            self._handle_backup_restore()
             return
 
         if UPLOAD_PREFIX in path:
@@ -5251,6 +5256,66 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(200, {'ok': True, 'date': date_str})
         except Exception:
             self._json(500, {'error': 'backup failed'})
+
+    def _handle_backup_restore(self):
+        """POST /api/backups/restore — zet één data-key terug uit een
+        serverbackup. Body: {"date": "YYYY-MM-DD", "key": "producten"}.
+
+        Bewust één sleutel en niet de hele snapshot: wie één sleutel kwijt is
+        (zoals de producten na de migratiefout van 1.12.59) wil de rest van de
+        administratie — bestellingen, facturen, metingen van ná de backup —
+        houden. Beheer-only (gate in do_POST). Geweigerd voor append-only
+        keys (bewijs richting de NVWA/journaal wordt nooit teruggedraaid) en
+        voor credentials (die staan onmaskeerd in de backup). De schrijfweg is
+        dezelfde als /api/data: schemavalidatie, versie-hash, audit."""
+        body = self._read_body(max_len=1024)
+        if body is None:
+            return
+        try:
+            verzoek = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        datum = verzoek.get('date') if isinstance(verzoek, dict) else None
+        key = verzoek.get('key') if isinstance(verzoek, dict) else None
+        if not isinstance(datum, str) or not re.match(r'^\d{4}-\d{2}-\d{2}$', datum):
+            self._json(400, {'error': 'invalid date format, use YYYY-MM-DD'})
+            return
+        if not isinstance(key, str) or not _valid_key(key) or key not in _KEY_TYPES:
+            self._json(400, {'error': 'invalid key'})
+            return
+        if key in _APPEND_ONLY or key in _SECURE_FIELDS:
+            self._json(422, {'error': 'key not restorable', 'key': key})
+            return
+        bron = BACKUP_DIR / datum / f'{key}.json'
+        if not (BACKUP_DIR / datum).is_dir() or not bron.is_file():
+            self._json(404, {'error': 'backup not found'})
+            return
+        try:
+            parsed = json.loads(bron.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            self._json(422, {'error': 'invalid payload', 'key': key})
+            return
+        if not _payload_geldig(key, parsed):
+            self._json(422, {'error': 'invalid payload', 'key': key,
+                             'expected': _KEY_TYPES.get(key)})
+            return
+        with _data_lock:
+            conn = _db()
+            vorige = _data_version(key)
+            try:
+                with conn:
+                    nieuwe_versie, nbytes = _schrijf_key(conn, key, parsed)
+            except sqlite3.Error:
+                self._json(500, {'error': 'write failed'})
+                return
+        _audit_write('backup_restore', key, ip=self.client_address[0],
+                     bytes=nbytes, versie_van=vorige, versie_naar=nieuwe_versie,
+                     backup=datum, gebruiker=self._ingress_user())
+        _log('backup', f'key {key} teruggezet uit backup {datum}')
+        aantal = len(parsed) if isinstance(parsed, list) else None
+        self._json(200, {'ok': True, 'key': key, 'date': datum,
+                         'version': nieuwe_versie, 'count': aantal})
 
     def _serve_bijlagen_zip(self):
         """Serve a ZIP of all invoice attachments for the requested year."""

@@ -821,6 +821,9 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
 | POST | `/api/mollie/payment` | Maak een Mollie **betaallink** (Payment Links API, `/v2/payment-links`) aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl}` → `{checkoutUrl, id, expiresAt}`. Key wordt server-side toegevoegd. Bewust géén Payments API: die levert een kortlevende checkout die na verlopen naar de website doorstuurt |
+| GET | `/api/backups[/<datum>]` | Serverbackups (`/data/backups/JJJJ-MM-DD/`, dagelijks, elke key als `<key>.json` + db-kopie) opsommen of als ZIP downloaden — beheer-only |
+| POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
+| POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys en credentials, zelfde schrijfweg als `/api/data` (schemavalidatie, versie, audit `backup_restore`). De rest van de administratie blijft staan |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
