@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { kassaVoorraadNaReservering } from '../kassa'
+import { kassaVoorraadNaReservering, agpGereserveerdPerAfvulling } from '../kassa'
 
 describe('kassaVoorraadNaReservering', () => {
   it('trekt niets af zonder reservering en houdt de invariant voorraad = buitenAgp + agp', () => {
@@ -36,5 +36,61 @@ describe('kassaVoorraadNaReservering', () => {
 
   it('gaat veilig om met ongeldige (NaN) invoer', () => {
     expect(kassaVoorraadNaReservering(10, 4, NaN as any)).toEqual({ voorraad: 10, buitenAgp: 4, agp: 6 })
+  })
+})
+
+describe('agpGereserveerdPerAfvulling', () => {
+  const AGP = 1
+  const open = [{ id: 10, status: 'nieuw' }, { id: 11, status: 'bevestigd' }]
+
+  it('telt open picks per afvulling bij elkaar op', () => {
+    const picks = [
+      { bestelling_id: 10, afvulling_id: 301, aantal: 12 },
+      { bestelling_id: 11, afvulling_id: 301, aantal: 6 },
+      { bestelling_id: 10, afvulling_id: 302, aantal: 2 },
+    ]
+    expect(agpGereserveerdPerAfvulling(picks, open, AGP)).toEqual({ 301: 18, 302: 2 })
+  })
+
+  it('laat een pick die al uitgeslagen is buiten beschouwing', () => {
+    const picks = [
+      { bestelling_id: 10, afvulling_id: 301, aantal: 12, uitlevering_id: 900 },
+      { bestelling_id: 10, afvulling_id: 302, aantal: 3, uitlevering_ids: [901] },
+      { bestelling_id: 10, afvulling_id: 303, aantal: 4 },
+    ]
+    expect(agpGereserveerdPerAfvulling(picks, open, AGP)).toEqual({ 303: 4 })
+  })
+
+  it('telt een afgeronde of geannuleerde bestelling niet mee', () => {
+    const best = [{ id: 10, status: 'afgerond' }, { id: 11, status: 'geannuleerd' }, { id: 12, status: 'gepickt' }]
+    const picks = [
+      { bestelling_id: 10, afvulling_id: 301, aantal: 12 },
+      { bestelling_id: 11, afvulling_id: 301, aantal: 6 },
+      { bestelling_id: 12, afvulling_id: 301, aantal: 5 },
+    ]
+    expect(agpGereserveerdPerAfvulling(picks, best, AGP)).toEqual({ 301: 5 })
+  })
+
+  it('negeert een pick van een locatie buiten de AGP', () => {
+    const picks = [
+      { bestelling_id: 10, afvulling_id: 301, aantal: 12, bron_locatie_id: 2 },
+      { bestelling_id: 10, afvulling_id: 301, aantal: 3, bron_locatie_id: AGP },
+    ]
+    expect(agpGereserveerdPerAfvulling(picks, open, AGP)).toEqual({ 301: 3 })
+  })
+
+  it('rekent een pick zonder bron_locatie_id als AGP (records van voor v1.12.52)', () => {
+    const picks = [{ bestelling_id: 10, afvulling_id: 301, aantal: 9 }]
+    expect(agpGereserveerdPerAfvulling(picks, open, AGP)).toEqual({ 301: 9 })
+  })
+
+  it('negeert een pick zonder bekende bestelling', () => {
+    const picks = [{ bestelling_id: 99, afvulling_id: 301, aantal: 9 }]
+    expect(agpGereserveerdPerAfvulling(picks, open, AGP)).toEqual({})
+  })
+
+  it('geeft een leeg resultaat zonder picks', () => {
+    expect(agpGereserveerdPerAfvulling([], open, AGP)).toEqual({})
+    expect(agpGereserveerdPerAfvulling(undefined as any, undefined as any, AGP)).toEqual({})
   })
 })
