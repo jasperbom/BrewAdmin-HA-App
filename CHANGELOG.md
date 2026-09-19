@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.72] — 2026-09-19
+
+### README opnieuw geschreven, met schermafbeeldingen
+
+De oude README beschreef nog de Batches-pagina, de hygiënechecklist en de
+JSON-backup — alle drie al een tijd vervangen — en miste alles wat er sinds
+die tekst bij is gekomen: HACCP met de drie kritische beheerspunten,
+traceerbaarheid, de kassa, statiegeld, de planning, de e-factuur, Mollie,
+de rollen en de directe toegangspoort.
+
+De nieuwe tekst volgt de drie werkruimtes van de app, met per werkruimte een
+schermafbeelding en een korte lijst. De knop om de repository aan Home
+Assistant toe te voegen staat nu boven de vouw, met de handmatige weg
+eronder. Verder een kloppende optietabel, een stuk over waar je gegevens
+staan en hoe de backups werken, en een ontwikkelaarsblok.
+
+De schermafbeeldingen in `docs/screenshots/` komen uit de draaiende app met
+een verzonnen brouwerij: geen enkele naam of cijfer komt uit een echte
+administratie.
+
+Verder `.pytest_cache/` aan `.gitignore` toegevoegd.
+
+---
+
 ## [1.12.71] — 2026-09-19
 
 ### De badge in de onderbalk is te tikken
