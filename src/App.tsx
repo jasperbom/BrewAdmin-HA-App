@@ -119,6 +119,11 @@ function App() {
   const [ing, setIng] = useStore('ingredienten');
   const [lots, setLots] = useStore('lots');
   const [bat, setBat] = useStore('batches');
+  // Altijd de verse batchlijst, ook binnen een effect waarvan de deps `bat`
+  // niet noemen. De migraties hieronder draaien via een poller en zouden
+  // anders met de stand van hun eigen render rekenen (1.12.66).
+  const batRef = React.useRef<any[]>(bat);
+  batRef.current = bat;
   const [bi, setBi] = useStore('batch_ingredienten');
   const [av, setAv] = useStore('afvullingen');
   const [uit, setUit] = useStore('uitleveringen');
@@ -654,18 +659,24 @@ function App() {
         }
         return out;
       };
-      if (Array.isArray(bat)) {
-        const gemigreerdeBat = bat.map((b: any) => ({
-          ...b,
-          taken_checks: {
-            ...(b.taken_checks || {}),
-            ...remap(b.hygiene_checks, hygMap),
-            ...remap(b.brouwdag_checks, brwMap),
-            ...remap(b.botteldag_checks, botMap),
-          }
-        }));
-        setBat(gemigreerdeBat);
-      }
+      // Functionele vorm, en dat is hier essentieel (1.12.66). De deps van dit
+      // effect zijn alleen de migratievlag, dus `bat` in deze closure komt uit
+      // de render waarin het effect werd aangemaakt — bij een run via de
+      // poller is dat vrijwel altijd de lege beginstand, ook al is de
+      // serverdata intussen binnen (`_fetchedKeys` zegt alleen dat het
+      // ántwoord er is, niet dat React de state al bijgewerkt heeft).
+      // `setBat(gemigreerdeBat)` schreef die lege lijst dan over de batches
+      // heen, mét een geldige versie, dus zonder conflict. In een rooktest
+      // verdwenen zo alle tien de batches.
+      setBat((prev: any[]) => (Array.isArray(prev) ? prev : []).map((b: any) => ({
+        ...b,
+        taken_checks: {
+          ...(b.taken_checks || {}),
+          ...remap(b.hygiene_checks, hygMap),
+          ...remap(b.brouwdag_checks, brwMap),
+          ...remap(b.botteldag_checks, botMap),
+        }
+      })));
 
       // 4. CCP-metingen: voeg taak_id toe zodat het unified systeem ze kan vinden
       if (Array.isArray(haccpCcpMetingen) && haccpCcpMetingen.length > 0) {
@@ -856,7 +867,11 @@ function App() {
       verwachtGravityMigratieRef.current = true;
       const heeft = (v: any) => v !== '' && v != null && !isNaN(Number(v)) && Number(v) > 0;
       let changed = false;
-      const next = (bat || []).map((b: any) => {
+      // `batRef.current` in plaats van `bat`: zelfde reden als bij de
+      // takenmigratie hierboven — de closure van dit effect is bij een run via
+      // de poller verouderd. Zo blijft ook de regel "alleen schrijven als er
+      // werkelijk iets verschuift" overeind.
+      const next = (batRef.current || []).map((b: any) => {
         if (!b) return b;
         const status = b.status === 'Verpakt' ? 'Afgevuld' : b.status;
         const patch: any = {};

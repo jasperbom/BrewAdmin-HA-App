@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.66] — 2026-09-19
+
+### De batchlijst kon bij het opstarten leeggeschreven worden
+
+Gevonden met een draaitest op de echte gegevens: tien batches gingen bij het
+openen van de app verloren, en de server accepteerde dat zonder conflict.
+Twee dingen kwamen samen.
+
+- **De migraties lazen een verouderde momentopname.** De eenmalige
+  batchtaken-migratie en de verwacht-gravity-migratie draaien via een poller
+  die wacht tot de sleutels van de server zijn (`_fetchedKeys`). Hun
+  afhankelijkheden zijn alleen de migratievlag, dus de batchlijst in hun
+  closure komt uit de render waarin het effect werd aangemaakt — bij een
+  poller-run vrijwel altijd de lege beginstand. Dat het ántwoord binnen is
+  betekent immers niet dat React de state al heeft bijgewerkt. De
+  takenmigratie schreef die lege lijst vervolgens over de batches heen. Beide
+  rekenen nu met de verse stand.
+- **De versie werd overgenomen zonder de inhoud.** Was er intussen lokaal
+  geschreven, dan gooide de app het serverantwoord weg maar nam wél de
+  versie eruit over. De app zei daarmee "ik ben bij" bij een stand die ze
+  nooit gezien heeft, en de volgende schrijfactie ging met een geldige versie
+  de deur uit — dus zonder 409 en zonder samenvoeging. Versie en inhoud gaan
+  nu samen: allebei, of geen van beide.
+
+Na de fix overleeft dezelfde draaitest alle sleutels: batches, afvullingen,
+producten, uitleveringen, klanten, accijns en bestellingen staan er
+onveranderd.
+
+---
+
 ## [1.12.65] — 2026-09-19
 
 ### Dubbel regelnummer in een handmatige bestelling

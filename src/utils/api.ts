@@ -609,7 +609,12 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
         .then(r => {
           _serverReachable = true
-          _updateVersion(key, r, stempel)
+          // De versie hoort bij de ínhoud van dit antwoord. Nemen we die
+          // inhoud niet over (er is intussen lokaal geschreven), dan mogen we
+          // de versie ook niet overnemen — anders zegt de app "ik ben bij" bij
+          // een stand die ze nooit gezien heeft, en schrijft de volgende save
+          // die stand zonder tegenspraak over de serverdata heen.
+          if (!modified.current) _updateVersion(key, r, stempel)
           if (r.ok) {
             _syncErrors = 0
             if (secure) localStorage.removeItem('craftery_' + key)
@@ -646,12 +651,19 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
       if (!bulk || Date.now() - _bulkTijd > _BULK_VERS_MS) { perKeyFetch(); return }
       try {
         if (Object.prototype.hasOwnProperty.call(bulk.data, key)) {
-          const v = bulk.versions[key]
-          if (typeof v === 'string') _setVersion(key, v)
           const d = bulk.data[key]
           _fetchedKeys.add(key)
           if (secure) localStorage.removeItem('craftery_' + key)
+          // Versie én inhoud horen bij elkaar: allebei overnemen of geen van
+          // beide. Werd de versie los overgenomen terwijl de inhoud werd
+          // weggegooid (er was lokaal al geschreven), dan ging de volgende
+          // save met een geldige versie de deur uit terwijl hij een stand
+          // droeg die van vóór dit antwoord kwam — en overschreef hij de
+          // serverdata zonder conflict. Zo raakten bij een rooktest alle tien
+          // de batches kwijt.
           if (d !== null && d !== undefined && !modified.current) {
+            const v = bulk.versions[key]
+            if (typeof v === 'string') _setVersion(key, v)
             _rememberSynced(key, d)
             setData(d)
             if (!secure) lsSet(key, d)
