@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.59] — 2026-09-19
+
+### Productenlijst overschreven door een oude migratie: nul voorraad, bieren weg
+
+**Wat er misging.** De eenmalige migratie in `App.tsx` die ooit producten uit
+batchnamen maakte, keek alleen of `producten` leeg was. Maar `producten` is
+óók leeg zolang de server nog niet heeft geantwoord, en de localStorage-cache
+kan voor de ene sleutel wél gevuld zijn (batches) en voor de andere níét
+(producten — bijvoorbeeld een volle cache of een nieuw apparaat). De migratie
+zag dan gecachte batches naast een lege productenlijst, maakte nieuwe
+producten met id 1, 2, 3 … uit de batchnamen en schreef die over de echte
+producten heen. Alle afvullingen, artikelen en batches wezen daarna naar
+product-id's die niet meer bestonden: elke productkaart toonde nul voorraad
+en de bieren van de omgedoopte producten (Witspace, Session found, Black
+Shorts Pilsner, …) waren nergens meer te vinden. De voorraadberekening zelf
+(`voorraadPerLocatie`, 1.12.50–1.12.52) rekent goed — de backup van 19
+september laat 53 flesjes over vier afvullingen zien, precies afgevuld min
+uitgeleverd min afgeboekt.
+
+**Fix.** De migratie wacht tot `producten`, `product_artikelen`,
+`afvullingen`, `batches` en `artikelen` écht van de server zijn geladen
+(`_fetchedKeys`, zoals de andere migraties) en draait nooit zolang er ook maar
+één afvulling, artikel of batch naar een product verwijst. Geen time-out die
+haar toch start: liever nooit dan verkeerd.
+
+**Herstel.** De originele producten staan nog in de dagelijkse serverbackup.
+Instellingen → App → Automatische back-ups heeft daarom nu *Eén gegevenssoort
+terugzetten*: kies de backup van vóór 18 september en de sleutel `producten`.
+Alleen die sleutel wordt vervangen; bestellingen, facturen en metingen van
+daarna blijven staan. Nieuw endpoint `POST /api/backups/restore` (beheer-only,
+geweigerd voor append-only registraties en credentials, met audit-regel
+`backup_restore`), met pytest-dekking.
+
+---
+
 ## [1.12.58] — 2026-09-18
 
 ### De titel bovenin is de weg terug naar het dashboard

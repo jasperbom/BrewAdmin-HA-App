@@ -7,6 +7,8 @@ import { controleerTemplate } from '../utils/template'
 import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
+import Sel from '../components/ui/Sel'
+import BevestigKnop from '../components/ui/BevestigKnop'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
@@ -436,6 +438,43 @@ const BackupCard = () => {
     a.click();
   };
 
+  // Eén sleutel terugzetten uit een serverbackup (POST /api/backups/restore).
+  // De rest van de administratie blijft staan — dit is de weg terug wanneer
+  // één lijst is overschreven (zoals de producten in 1.12.58). Credentials en
+  // append-only registraties zet de server bewust niet terug; die staan hier
+  // dan ook niet in de keuzelijst.
+  const [herstelDatum, setHerstelDatum] = React.useState('');
+  const [herstelKey, setHerstelKey] = React.useState('');
+  const [herstelBezig, setHerstelBezig] = React.useState(false);
+  const [herstelMsg, setHerstelMsg] = React.useState('');
+  const herstelKeys = React.useMemo(() => {
+    const uit = new Set(['brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds', 'mollie_creds',
+      'journaal', 'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen']);
+    return [..._allKeys].filter(k => !uit.has(k)).sort();
+  }, []);
+  const herstelSleutel = async () => {
+    if (!herstelDatum || !herstelKey) return;
+    setHerstelBezig(true); setHerstelMsg('');
+    try {
+      const r = await fetch(ADDON_BASE + 'api/backups/restore', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date: herstelDatum, key: herstelKey}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.ok) {
+        setHerstelMsg(t('settings_backup_herstel_ok').replace('{key}', d.key).replace('{datum}', d.date).replace('{n}', String(d.count ?? '-')));
+        // De useStore-cache kent de oude stand nog: herladen haalt de
+        // teruggezette sleutel vers van de server.
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        setHerstelMsg(t('settings_backup_herstel_fout').replace('{fout}', d.error || String(r.status)));
+      }
+    } catch (e: any) {
+      setHerstelMsg(t('settings_backup_herstel_fout').replace('{fout}', e?.message || ''));
+    }
+    setHerstelBezig(false);
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid">
       <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_backup_titel')}</h2>
@@ -469,6 +508,27 @@ const BackupCard = () => {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {backups.length > 0 && (
+        <div className="mt-5 pt-4 border-t border-gray-200">
+          <div className="text-sm font-semibold text-gray-800">{t('settings_backup_herstel_titel')}</div>
+          <p className="text-sm text-gray-500 mt-1 mb-3">{t('settings_backup_herstel_uitleg')}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Sel label={t('settings_backup_herstel_backup')} value={herstelDatum} onChange={setHerstelDatum}
+              opts={backups.map(b => b.date)} />
+            <Sel label={t('settings_backup_herstel_sleutel')} value={herstelKey} onChange={setHerstelKey}
+              opts={herstelKeys} />
+          </div>
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            <BevestigKnop v="danger" s="sm" disabled={!herstelDatum || !herstelKey || herstelBezig}
+              vraag={t('settings_backup_herstel_vraag').replace('{key}', herstelKey).replace('{datum}', herstelDatum)}
+              onBevestig={herstelSleutel}>
+              {herstelBezig ? '...' : t('settings_backup_herstel_knop')}
+            </BevestigKnop>
+            {herstelMsg && <span className="text-sm text-gray-600">{herstelMsg}</span>}
+          </div>
         </div>
       )}
     </div>
