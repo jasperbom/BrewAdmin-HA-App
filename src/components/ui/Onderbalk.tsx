@@ -16,6 +16,8 @@ interface OnderbalkProps {
   actief: WerkruimteId
   pagina: string
   onKies: (w: WerkruimteId) => void
+  /** Tik op de badge: opent de lijst "Vraagt om aandacht" van die werkruimte. */
+  onBadge: (w: WerkruimteId) => void
   /** Het middelste, verhoogde vakje: altijd hetzelfde woord, altijd de meting. */
   onActie: () => void
   actieLabel: string
@@ -29,35 +31,38 @@ interface OnderbalkProps {
  * Verbergt zichzelf zodra het toetsenbord open is (`body.kb-open`, zie
  * index.css) en op een detailscherm (App.tsx).
  */
-const Onderbalk: React.FC<OnderbalkProps> = ({ items, actief, pagina, onKies, onActie, actieLabel, onMeer }) => {
-  const vakje = (aan: boolean, onClick: () => void, icoon: IconNaam, label: string, extra?: React.ReactNode, key?: string) => (
+const Onderbalk: React.FC<OnderbalkProps> = ({ items, actief, pagina, onKies, onBadge, onActie, actieLabel, onMeer }) => {
+  const vakje = (aan: boolean, onClick: () => void, icoon: IconNaam, label: string, key?: string) => (
     <button
       key={key || label}
       type="button"
       onClick={onClick}
       aria-current={aan ? 'page' : undefined}
-      className={`relative flex-1 min-w-0 min-h-[56px] flex flex-col items-center justify-center gap-0.5 px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--t-accent)] ${aan ? 'font-bold' : 'text-gray-500 font-semibold'}`}
+      className={`relative w-full min-w-0 min-h-[56px] flex flex-col items-center justify-center gap-0.5 px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--t-accent)] ${aan ? 'font-bold' : 'text-gray-500 font-semibold'}`}
       style={aan ? { color: 'var(--t-accent-text, var(--t-accent))' } : undefined}
     >
-      <span className="relative">
-        <Icon n={icoon} cls="text-[22px]" />
-        {extra}
-      </span>
+      <Icon n={icoon} cls="text-[22px]" />
       <span className="text-[11px] leading-tight truncate max-w-full">{label}</span>
     </button>
   )
   const links = items.slice(0, Math.ceil(items.length / 2))
   const rechts = items.slice(links.length)
-  const werkruimteVakje = (it: OnderbalkItem) => vakje(
-    actief === it.id && pagina !== 'meer' && pagina !== 'instellingen',
-    () => onKies(it.id), it.icoon, it.label,
-    it.aantal > 0 && (
-      <span
-        aria-label={t('attentie_aantal').replace('{n}', String(it.aantal))}
-        className="absolute -top-1.5 -right-2.5 bg-orange-700 text-white text-[10px] rounded-full px-1 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center leading-none font-bold ring-2 ring-white"
-      >{it.aantal}</span>
-    ),
-    it.id,
+  // De badge is een eigen knop náást het vakje (een knop in een knop is
+  // ongeldig): het cijfer zelf is klein, het tapdoel eromheen niet.
+  const werkruimteVakje = (it: OnderbalkItem) => (
+    <div key={it.id} className="relative flex-1 min-w-0 flex">
+      {vakje(actief === it.id && pagina !== 'meer' && pagina !== 'instellingen', () => onKies(it.id), it.icoon, it.label, it.id)}
+      {it.aantal > 0 && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onBadge(it.id) }}
+          aria-label={`${t('attentie_titel')} — ${it.label}: ${t('attentie_aantal').replace('{n}', String(it.aantal))}`}
+          className="absolute top-0 right-1/2 translate-x-[26px] w-9 h-9 flex items-start justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] rounded-full"
+        >
+          <span className="mt-1 bg-orange-700 text-white text-[10px] rounded-full px-1 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center leading-none font-bold ring-2 ring-white">{it.aantal}</span>
+        </button>
+      )}
+    </div>
   )
   return (
     <nav
@@ -80,7 +85,9 @@ const Onderbalk: React.FC<OnderbalkProps> = ({ items, actief, pagina, onKies, on
           <span className="text-[11px] leading-tight font-semibold mt-0.5" style={{ color: 'var(--t-accent-text, var(--t-accent))' }}>{actieLabel}</span>
         </div>
         {rechts.map(werkruimteVakje)}
-        {vakje(pagina === 'meer' || pagina === 'instellingen', onMeer, 'more', t('nav_meer'), undefined, 'meer')}
+        <div className="relative flex-1 min-w-0 flex">
+          {vakje(pagina === 'meer' || pagina === 'instellingen', onMeer, 'more', t('nav_meer'), 'meer')}
+        </div>
       </div>
     </nav>
   )
