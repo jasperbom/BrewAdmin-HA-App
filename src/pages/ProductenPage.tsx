@@ -424,10 +424,27 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   };
 
   const deleteProduct = () => {
-    if (!confirm(t('confirm_product_verwijderen'))) return;
+    // Afvullingen die aan dit product hangen. Die werden tot 1.12.63 níét
+    // opgeruimd: hun `product_id` bleef naar het verdwenen product wijzen, en
+    // omdat de productlijsten matchen op "eigen product_id óf (geen
+    // product_id én de batch hoort erbij)", vielen ze daarna buiten élk
+    // product. De flesjes stonden er nog, maar waren nergens meer te zien —
+    // precies het beeld van 1.12.58.
+    const eigenAv = ((av||[]) as any[]).filter((a: any) => Number(a.product_id) === Number(sel));
+    const nogVoorraad = eigenAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
+    const vraag = nogVoorraad > 0
+      ? `${t('confirm_product_verwijderen')}\n\n${t('confirm_product_verwijderen_voorraad').replace('{n}', String(nogVoorraad))}`
+      : t('confirm_product_verwijderen');
+    if (!confirm(vraag)) return;
     logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
     setProducten((prev: any[]) => prev.filter((p: any) => p.id !== sel));
     setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.product_id !== sel));
+    // De koppeling losmaken in plaats van hem laten hangen: de afvulling valt
+    // dan terug op de batch en blijft vindbaar.
+    if (eigenAv.length) {
+      setAv((prev: any[]) => (prev||[]).map((a: any) =>
+        Number(a.product_id) === Number(sel) ? {...a, product_id: undefined} : a));
+    }
     setBat((prev: any[]) => prev.map((b: any) => {
       const heeftExtra = (b.product_ids||[]).some((id: any) => Number(id) === Number(sel));
       if (Number(b.product_id) !== Number(sel) && !heeftExtra) return b;

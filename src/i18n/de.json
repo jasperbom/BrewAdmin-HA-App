@@ -1884,6 +1884,7 @@
   "orders_btw_correctie_hint": "Sie ändern die MwSt. einer abgeschlossenen Bestellung. Die verknüpfte Ausgangsrechnung wird automatisch mitkorrigiert, damit die MwSt.-Erklärung stimmt.",
   "lbl_product_toon_gearchiveerd": "Archivierte anzeigen",
   "confirm_product_verwijderen": "Möchten Sie dieses Produkt wirklich löschen?",
+  "confirm_product_verwijderen_voorraad": "Achtung: Von diesem Bier sind noch {n} Einheiten auf Lager. Sie bleiben erhalten, verlieren aber die Produktzuordnung.",
   "ph_product_naam": "Name des Bieres",
   "ph_product_stijl": "Z.B. IPA, Tripel, Stout",
   "ph_product_categorie": "Z.B. Saisonbier, Standard",

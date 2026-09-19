@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.63] — 2026-09-19
+
+### De gezondheidscontrole kende de producten niet
+
+De referentiële-integriteitscheck onder Instellingen → App controleerde
+ingrediënten, lots, batches, afvullingen, uitleveringen, accijns, picks,
+facturen en klanten — maar niet de productlaag. Juist daar zat de schade van
+1.12.58: elf van de zeventien afvullingen en acht van de vijftien artikelen
+wezen naar een product dat niet meer bestond, en de app zweeg erover. Je zag
+alleen overal nul voorraad.
+
+De controle kijkt nu ook naar de productverwijzingen (afvulling, artikel,
+batch, en de `product_ids`-lijst), naar de verpakking en naar de locaties —
+`bron_locatie_id` stuurt zowel de voorraad per locatie als de accijns bij een
+afboeking, dus een verwijzing die nergens naartoe wijst laat de voorraad niet
+meer optellen. Op de backup van 19 september meldt hij negentien
+productwezen, plus één lot dat al langer naar een verdwenen ingrediënt wees.
+
+### Een product verwijderen liet de afvullingen wees achter
+
+Bij het verwijderen werden de artikelen en de batchkoppelingen opgeruimd,
+maar de afvullingen niet: hun `product_id` bleef naar het verdwenen product
+wijzen. De productlijsten matchen op "eigen product_id óf (geen product_id
+én de batch hoort erbij)", dus zo'n afvulling viel daarna buiten élk product.
+Het bier stond er nog en was nergens meer te zien — met één klik hetzelfde
+beeld als de migratiefout veroorzaakte.
+
+De koppeling wordt nu losgemaakt in plaats van te blijven hangen, zodat de
+afvulling terugvalt op zijn batch. Staat er nog voorraad op het bier, dan
+zegt de bevestiging dat erbij, met het aantal.
+
+---
+
 ## [1.12.62] — 2026-09-19
 
 ### Drie plekken die schreven voordat hun gegevens binnen waren
