@@ -4,6 +4,43 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.60] — 2026-09-19
+
+### Schrijven vóór het laden viel buiten het versieslot
+
+De structurele oorzaak achter de verdwenen producten van 1.12.58. Een
+schrijfactie stuurde alleen een `X-Data-Version` mee wanneer de app er al
+een kende. Vertrok een save vóórdat die sleutel ooit van de server was
+gelezen, dan ging hij dus zónder slot de deur uit en nam de server de stand
+van de client zonder tegenspraak over — ook als dat een lege lijst was of een
+verouderde browsercache.
+
+Dat venster is geen theorie: de cache van deze installatie is 4,1 MB op een
+browserlimiet van ongeveer 5 MB (de gistmetingen alleen al 3,0 MB), en
+`lsSet` slaat een sleutel die niet meer past stil over. Je houdt dan een
+cache waarin de ene lijst wél en de andere niet staat — precies de situatie
+waarin "nog niet geladen" eruitziet als "leeg".
+
+- **Er gaat nu altijd een versie mee.** Kent de app er geen, dan stuurt hij
+  `0` — exact wat de server teruggeeft voor een sleutel die nog niet bestaat.
+  Klopt dat, dan slaagt de eerste schrijfactie gewoon. Bestaat de sleutel wél,
+  dan volgt een 409 in plaats van een blinde overschrijving. De server hoefde
+  hier niet voor te veranderen.
+- **De 409 gooit niets weg.** `save` legt de stand van vlak vóór de wijziging
+  vast als ijkpunt (`_basisVoorOngeladenKey`), zodat de bestaande
+  conflict-samenvoeging de eigen wijziging per record over de verse
+  serverstand heen legt.
+- **Het seeden van een nieuwe sleutel wijkt terug** wanneer de server hem
+  tóch al blijkt te kennen: dan wordt de serverstand opgehaald in plaats van
+  overschreven.
+
+Nagespeeld in de browser, met een half gevulde cache en een trage verbinding:
+de klantnummer-aanvulling van de klantenpagina bracht een auditlogboek van
+drie serverregels terug tot één. Met deze wijziging staan er vier: de drie
+bestaande plus de nieuwe regel.
+
+---
+
 ## [1.12.59] — 2026-09-19
 
 ### Productenlijst overschreven door een oude migratie: nul voorraad, bieren weg

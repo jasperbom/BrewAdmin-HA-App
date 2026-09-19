@@ -186,6 +186,21 @@ const _lastSynced = new Map<string, SyncSnapshot | null>()
 // voegen (scalars, records zonder id) — dan blijft het oude conflictgedrag.
 const _mergeBasis = new Map<string, MergeBasis | null>()
 
+// Wat de server als versie teruggeeft voor een key die nog niet bestaat.
+export const VERSIE_ONBEKEND = '0'
+
+// Leg het ijkpunt vast voor een schrijfactie die vertrekt vóórdat deze key
+// ooit van de server is gelezen. De stand van vlak vóór de wijziging is dan
+// precies wat we als basis nodig hebben: komt er een 409 (de key bestond wél
+// al), dan legt `_losConflictOp` onze wijziging per record over de verse
+// serverstand heen in plaats van hem weg te gooien of de server te
+// overschrijven. Een basis die al bestaat blijft staan — die komt van de
+// server en is beter.
+export const _basisVoorOngeladenKey = (key: string, prev: any): void => {
+  if (_fetchedKeys.has(key) || _mergeBasis.has(key)) return
+  _mergeBasis.set(key, bouwMergeBasis(prev))
+}
+
 // Export t.b.v. de vitest-suite (delta-integratie); intern gebruik verder.
 export const _rememberSynced = (key: string, data: any): void => {
   _lastSynced.set(key, bouwSyncSnapshot(data))
@@ -235,8 +250,17 @@ const _doPost = async (key: string, data: any): Promise<SaveResult> => {
 const _doFullPost = (key: string, data: any): Promise<SaveResult> => {
   _syncPending++
   const headers: Record<string, string> = {'Content-Type': 'application/json'}
-  const ver = _versions.get(key)
-  if (ver !== undefined) headers['X-Data-Version'] = ver
+  // Altijd een versie meesturen, ook wanneer we er geen kennen: `VERSIE_ONBEKEND`
+  // ('0') is precies wat de server teruggeeft voor een key die nog niet bestaat.
+  // Klopt dat, dan slaagt de eerste schrijfactie gewoon; bestaat de key wél,
+  // dan volgt een 409 in plaats van een blinde overschrijving.
+  //
+  // Zonder deze regel viel elke schrijfactie van vóór de eerste GET buiten de
+  // optimistic locking: de server nam de (mogelijk lege of verouderde) stand
+  // van de client dan zonder tegenspraak over. Zo verdwenen in 1.12.58 de
+  // producten en kon een automatisch effect het auditlogboek terugbrengen tot
+  // één regel.
+  headers['X-Data-Version'] = _versions.get(key) ?? VERSIE_ONBEKEND
   return _fetchWithRetry(API_BASE + key, {
     method: 'POST',
     headers,
@@ -490,8 +514,9 @@ const _doCommit = async (
   const versions: Record<string, string> = {}
   for (const [k, e] of entries) {
     data[k] = e.data
-    const v = _versions.get(k)
-    if (v !== undefined) versions[k] = v
+    // Zie _doFullPost: een key zonder bekende versie gaat als `0` mee, zodat
+    // ook een commit nooit buiten de optimistic locking om schrijft.
+    versions[k] = _versions.get(k) ?? VERSIE_ONBEKEND
   }
   try {
     const r = await _fetchWithRetry(ADDON_BASE + 'api/commit', {
@@ -594,7 +619,10 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
             const localRaw = localStorage.getItem('craftery_' + key)
             const toSync = localRaw !== null ? JSON.parse(localRaw) : initial
             if (secure && localRaw !== null) localStorage.removeItem('craftery_' + key)
-            try { _postToServer(key, toSync) } catch(e) {}
+            // Seeden van een key die de server nog niet kent. Blijkt hij er
+            // intussen tóch te zijn (409), dan is onze stand niet leidend:
+            // dan halen we die van de server op i.p.v. hem te overschrijven.
+            try { _postToServer(key, toSync).then(res => { if (res === 'conflict') perKeyFetch() }) } catch(e) {}
           }
           return null
         })
@@ -636,7 +664,10 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
         const localRaw = localStorage.getItem('craftery_' + key)
         const toSync = localRaw !== null ? JSON.parse(localRaw) : initial
         if (secure && localRaw !== null) localStorage.removeItem('craftery_' + key)
-        try { _postToServer(key, toSync) } catch(e) {}
+        // Zelfde voorzichtigheid als in het 404-pad: een key die niet in de
+        // bulk zat hóórt nieuw te zijn, maar de server heeft het laatste
+        // woord. Bij een 409 lezen we hem alsnog gewoon op.
+        try { _postToServer(key, toSync).then(res => { if (res === 'conflict') perKeyFetch() }) } catch(e) {}
       } catch (e) {
         _fetchedKeys.add(key)
       }
@@ -680,6 +711,10 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   const save = (val: any) => {
     modified.current = true
     setData((prev: any) => {
+      // Schrijven terwijl deze sleutel nog niet van de server binnen is: leg
+      // `prev` vast als ijkpunt, zodat de 409 die de server nu geeft per
+      // record samengevoegd kan worden (zie _basisVoorOngeladenKey).
+      _basisVoorOngeladenKey(key, prev)
       const next = typeof val === 'function' ? val(prev) : val
       if (!secure) lsSet(key, next)
       const seq = (_saveSeq.get(key) || 0) + 1
