@@ -743,8 +743,8 @@ class TestSqliteOpslag:
         assert (srv.AUDIT_DIR / 'audit_2026-03.jsonl').exists()
 
     def test_restore_zet_een_sleutel_terug_uit_backup(self, app):
-        origineel = [{'id': 1784291250757090, 'naam': 'Tripel A', 'status': 'actief'},
-                     {'id': 1786899478095447, 'naam': 'Witspace', 'status': 'actief'}]
+        origineel = [{'id': 1770000000000001, 'naam': 'Testtripel', 'status': 'actief'},
+                     {'id': 1770000000000002, 'naam': 'Testwit', 'status': 'actief'}]
         req(app, 'POST', '/api/data/producten', body=origineel)
         req(app, 'POST', '/api/data/water_addities', body=[{'id': 7}])
         status, body, _ = req(app, 'POST', '/api/backups/trigger', body={})
@@ -752,7 +752,7 @@ class TestSqliteOpslag:
         datum = body['date']
         # Daarna gaat het mis: de lijst wordt overschreven (het scenario van de
         # productmigratie in 1.12.58) en een andere sleutel verandert legitiem.
-        req(app, 'POST', '/api/data/producten', body=[{'id': 1, 'naam': 'QuadCore'}])
+        req(app, 'POST', '/api/data/producten', body=[{'id': 1, 'naam': 'Testblond'}])
         req(app, 'POST', '/api/data/water_addities', body=[{'id': 7}, {'id': 8}])
         status, body, hdrs = req(app, 'POST', '/api/backups/restore',
                                  body={'date': datum, 'key': 'producten'})

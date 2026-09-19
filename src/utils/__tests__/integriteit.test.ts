@@ -26,16 +26,16 @@ describe('checkIntegriteit', () => {
     // afvullingen wijzen nog naar de oude id's. Zonder deze controle zweeg de
     // app en toonde alleen overal nul voorraad.
     const problemen = checkIntegriteit({
-      producten: [{id: 1, naam: 'QuadCore'}],
-      afvullingen: [{id: 200, product_id: 1786899478095447}],
-      product_artikelen: [{id: 300, product_id: 1786899478095447}],
+      producten: [{id: 1, naam: 'Testblond'}],
+      afvullingen: [{id: 200, product_id: 1770000000000002}],
+      product_artikelen: [{id: 300, product_id: 1770000000000002}],
       batches: [{id: 100, product_id: 999}],
     })
     expect(problemen).toHaveLength(3)
     expect(problemen.map(p => `${p.entiteit}.${p.veld}`).sort()).toEqual([
       'afvullingen.product_id', 'batches.product_id', 'product_artikelen.product_id',
     ])
-    expect(problemen.find(p => p.entiteit === 'afvullingen')?.doel_id).toBe(1786899478095447)
+    expect(problemen.find(p => p.entiteit === 'afvullingen')?.doel_id).toBe(1770000000000002)
     expect(problemen.every(p => p.doel === 'producten')).toBe(true)
   })
 

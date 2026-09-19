@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.70] — 2026-09-19
+
+### Neutrale testgegevens
+
+De tests en een voorbeeld in de changelog gebruikten namen en
+recordnummers die uit de echte administratie kwamen. De repository is
+openbaar, dus dat hoort er niet in. Vervangen door duidelijk verzonnen
+namen; de tests dekken exact hetzelfde af.
+
+---
+
 ## [1.12.69] — 2026-09-19
 
 ### De brouwdag en de recepten staan nu ook in het logboek
@@ -291,8 +302,8 @@ zag dan gecachte batches naast een lege productenlijst, maakte nieuwe
 producten met id 1, 2, 3 … uit de batchnamen en schreef die over de echte
 producten heen. Alle afvullingen, artikelen en batches wezen daarna naar
 product-id's die niet meer bestonden: elke productkaart toonde nul voorraad
-en de bieren van de omgedoopte producten (Witspace, Session found, Black
-Shorts Pilsner, …) waren nergens meer te vinden. De voorraadberekening zelf
+en de bieren waarvan het product tijdens de migratie was omgedoopt
+waren nergens meer te vinden. De voorraadberekening zelf
 (`voorraadPerLocatie`, 1.12.50–1.12.52) rekent goed — de backup van 19
 september laat 53 flesjes over vier afvullingen zien, precies afgevuld min
 uitgeleverd min afgeboekt.
