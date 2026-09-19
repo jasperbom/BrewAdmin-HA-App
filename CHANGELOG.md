@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.69] — 2026-09-19
+
+### De brouwdag en de recepten staan nu ook in het logboek
+
+De brouwdagwizard legde niets vast: metingen, OG, het volume naar het
+gistvat, de koellogs en het afronden van de brouwdag gebeurden allemaal
+ongemerkt. Hetzelfde gold voor recepten en voor de dryhops.
+
+Die velden slaan bij élke toetsaanslag op, dus een regel per wijziging zou
+het logboek onleesbaar maken. `logAuditVeld` voegt daarom een reeks samen:
+de oudste waarde van de reeks blijft het ijkpunt, de laatste wint, en pas als
+er anderhalve seconde niets meer verandert gaat er één regel in. Wordt een
+waarde binnen die tijd teruggedraaid, dan komt er helemaal geen regel.
+
+Nieuw vastgelegd:
+
+- **Brouwdag:** elke meting, de OG, het volume naar het gistvat, een koellog
+  toevoegen of verwijderen, en het afronden van de brouwdag.
+- **Batchpagina:** de velden die je rechtstreeks bewerkt (tank, brouwdatum,
+  biernaam, batchnummer, GN-code). Puur bijhoudwerk dat de app zelf zet
+  (stapindex, afvinklijsten) blijft erbuiten.
+- **Recepten:** wijzigingen aan het recept en aan een losse ingrediëntregel,
+  met de naam van het ingrediënt erbij. Het recept is de basis voor de
+  allergenenvergelijking bij de etiketcontrole.
+- **Dryhop:** toevoegen, uit de tank halen en verwijderen.
+
+Geverifieerd in de draaiende app: twee toetsaanslagen in een receptveld
+leveren precies één regel op ("Testblond — hop/Saaz/tijd: — → 37"), en een
+nieuwe locatie levert er ook één op.
+
+---
+
 ## [1.12.68] — 2026-09-19
 
 ### Backup terugzetten, resetten, locaties en planning laten nu een spoor na

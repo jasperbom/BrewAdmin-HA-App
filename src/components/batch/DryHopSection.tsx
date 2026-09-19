@@ -1,19 +1,24 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { newId } from '../../utils/api'
+import { logAudit } from '../../utils/audit'
 import { tod, fmtD } from '../../utils/format'
 import Btn from '../ui/Btn'
 import SectionHeader from '../ui/SectionHeader'
 import type { DryHop, Batch } from '../../types'
 
 interface Props {
+  /** Optioneel: zonder deze twee blijft de sectie los bruikbaar, mét legt
+   *  hij het toevoegen, uithalen en verwijderen van een dryhop vast. */
+  auditLog?: any[]
+  setAuditLog?: (fn: (prev: any[]) => any[]) => void
   batch: Batch
   dryHops: DryHop[]
   setDryHops: any
   ingredienten?: any[]
 }
 
-const DryHopSection: React.FC<Props> = ({batch, dryHops, setDryHops, ingredienten = []}) => {
+const DryHopSection: React.FC<Props> = ({batch, dryHops, setDryHops, ingredienten = [], auditLog = [], setAuditLog}) => {
   const mine = (dryHops || []).filter(h => h.batch_id === batch.id)
     .sort((a, b) => (b.datum || '').localeCompare(a.datum || ''))
 
@@ -41,14 +46,28 @@ const DryHopSection: React.FC<Props> = ({batch, dryHops, setDryHops, ingrediente
       created_at: new Date().toISOString(),
     }
     setDryHops((prev: any[]) => [...(prev || []), nieuw])
+    if (setAuditLog) logAudit(auditLog, setAuditLog, {
+      entiteit: 'Dryhop', entiteit_id: nieuw.id, actie: 'aangemaakt',
+      omschrijving: `${batch.naam || ''}: ${nieuw.gram} g ${nieuw.ingredient_naam} op ${nieuw.datum}`,
+    })
     setForm({...form, ingredient_naam: '', gram: '', opmerking: ''})
   }
 
   const markVerwijderd = (id: number) => {
-    setDryHops((prev: any[]) => prev.map(h => h.id === id ? {...h, verwijderd: true} : h))
+    const h = (dryHops || []).find((x: any) => x.id === id)
+    setDryHops((prev: any[]) => prev.map(x => x.id === id ? {...x, verwijderd: true} : x))
+    if (setAuditLog) logAudit(auditLog, setAuditLog, {
+      entiteit: 'Dryhop', entiteit_id: id, actie: 'gewijzigd',
+      omschrijving: `${batch.naam || ''}: ${h?.ingredient_naam || ''} uit de tank gehaald`,
+    })
   }
   const deleteRij = (id: number) => {
-    setDryHops((prev: any[]) => prev.filter(h => h.id !== id))
+    const h = (dryHops || []).find((x: any) => x.id === id)
+    setDryHops((prev: any[]) => prev.filter(x => x.id !== id))
+    if (setAuditLog) logAudit(auditLog, setAuditLog, {
+      entiteit: 'Dryhop', entiteit_id: id, actie: 'verwijderd',
+      omschrijving: `${batch.naam || ''}: ${h?.gram ?? ''} g ${h?.ingredient_naam || ''}`,
+    })
   }
 
   const dagenSinds = (d: string): number => Math.floor((Date.now() - new Date(d).getTime()) / 86400000)

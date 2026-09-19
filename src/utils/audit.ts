@@ -45,3 +45,60 @@ export const logAudit = (
   const gebruiker = entry.gebruiker ?? _currentUser
   setAuditLog((prev: any[]) => [...prev, {id, timestamp, ...entry, gebruiker}])
 }
+
+
+// ── Velden die tijdens het typen al worden opgeslagen ───────────────────────
+// De batchpagina en de brouwdagwizard schrijven elke toetsaanslag meteen weg.
+// Daar één auditregel per aanslag van maken maakt het logboek onleesbaar, en
+// helemaal niets vastleggen betekent dat een gewijzigde meting of tank nergens
+// terug te zien is. Daarom voegen we per record+veld samen: de eerste oude
+// waarde van een reeks blijft bewaard, de laatste nieuwe waarde wint, en pas
+// als er even niets meer verandert gaat er één regel in.
+interface _VeldWijziging {
+  timer: ReturnType<typeof setTimeout>
+  oud: unknown
+}
+const _veldWijzigingen = new Map<string, _VeldWijziging>()
+
+const _toonWaarde = (v: unknown): string => {
+  if (v === null || v === undefined || v === '') return '—'
+  if (Array.isArray(v)) return `${v.length} regels`
+  if (typeof v === 'object') return 'aangepast'
+  return String(v)
+}
+
+export const VELD_WACHT_MS = 1500
+
+/** Leg een veldwijziging vast zodra de gebruiker even stopt met typen.
+ *  `veld` is het label dat in het logboek komt; `context` zet er een naam
+ *  voor (bijvoorbeeld de batchnaam). Wordt de waarde binnen de wachttijd
+ *  teruggedraaid naar het origineel, dan komt er geen regel. */
+export const logAuditVeld = (
+  setAuditLog: (fn: (prev: any[]) => any[]) => void,
+  opts: {
+    entiteit: string
+    entiteit_id: number
+    veld: string
+    oud: unknown
+    nieuw: unknown
+    context?: string
+    wachtMs?: number
+  },
+): void => {
+  const sleutel = `${opts.entiteit}:${opts.entiteit_id}:${opts.veld}`
+  const lopend = _veldWijzigingen.get(sleutel)
+  if (lopend) clearTimeout(lopend.timer)
+  // De oudste waarde van de reeks is het ijkpunt: die stond er vóór het typen.
+  const oud = lopend ? lopend.oud : opts.oud
+  const timer = setTimeout(() => {
+    _veldWijzigingen.delete(sleutel)
+    if (_toonWaarde(oud) === _toonWaarde(opts.nieuw)) return // per saldo niets veranderd
+    logAudit([], setAuditLog, {
+      entiteit: opts.entiteit,
+      entiteit_id: opts.entiteit_id,
+      actie: 'gewijzigd',
+      omschrijving: `${opts.context ? `${opts.context} — ` : ''}${opts.veld}: ${_toonWaarde(oud)} → ${_toonWaarde(opts.nieuw)}`,
+    })
+  }, opts.wachtMs ?? VELD_WACHT_MS)
+  _veldWijzigingen.set(sleutel, {timer, oud})
+}

@@ -5,7 +5,7 @@ import { bfGetRecipesWithVersions } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import SearchInput from '../components/ui/SearchInput'
 import ReceptKostprijs from '../components/ReceptKostprijs'
-import { logAudit } from '../utils/audit'
+import { logAudit, logAuditVeld } from '../utils/audit'
 import { ingredientenVoorType } from '../utils/ingTypes'
 import Icon from '../components/ui/Icon'
 
@@ -161,6 +161,15 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
   // brouw). Blijft bij een Brewfather-sync behouden — zie `runSync`.
   const updateRecept = (patch: any) => {
     if (!selRec) return;
+    // Het recept is de basis voor de allergenenvergelijking bij de
+    // etiketcontrole; wijzigingen horen dus terug te vinden te zijn. Deze
+    // velden slaan tijdens het typen op, dus samengevoegd tot één regel.
+    for (const [veld, waarde] of Object.entries(patch)) {
+      logAuditVeld(setAuditLog, {
+        entiteit: 'Recept', entiteit_id: selRec.id, veld,
+        oud: (selRec as any)[veld], nieuw: waarde, context: selRec.naam || '',
+      });
+    }
     setRecepten((prev: any[]) => prev.map((r: any) => r.id === selRec.id ? { ...r, ...patch } : r));
   };
 
@@ -168,6 +177,13 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
   // cat = 'mout'|'hop'|'gist'|'overig'; idx = index binnen die array.
   const updateReceptIng = (cat: string, idx: number, patch: any) => {
     if (!selRec) return;
+    const huidig = (selRec as any)[cat]?.[idx] || {};
+    for (const [veld, waarde] of Object.entries(patch)) {
+      logAuditVeld(setAuditLog, {
+        entiteit: 'Recept', entiteit_id: selRec.id, veld: `${cat}/${huidig.naam || idx}/${veld}`,
+        oud: huidig[veld], nieuw: waarde, context: selRec.naam || '',
+      });
+    }
     setRecepten((prev: any[]) => prev.map((r: any) => {
       if (r.id !== selRec.id) return r;
       const list = [...(r[cat] || [])];

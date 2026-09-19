@@ -38,6 +38,11 @@ BrewAdmin-HA-App/
 │   │   ├── merge.ts        # Conflict-samenvoeging bij een 409: lokale en serverwijziging op
 │   │   │                   # verschillende records gaan beide mee; alleen hetzelfde record aan
 │   │   │                   # beide kanten is een botsing (server wint). Arrays met `id` + objecten
+│   │   ├── audit.ts        # Auditlogboek: `logAudit` (losse gebeurtenis) en
+│   │   │                   # `logAuditVeld` (velden die tijdens het typen opslaan —
+│   │   │                   # voegt een reeks samen tot één regel per veld). `AUDIT_SOORTEN`
+│   │   │                   # is de enige plek voor soortnamen; een test faalt bij een
+│   │   │                   # naam die daar niet in staat
 │   │   ├── constants.ts    # Enums, mappings, defaults
 │   │   ├── format.ts       # Formatting utilities
 │   │   ├── calculations.ts # Business logic calculations
