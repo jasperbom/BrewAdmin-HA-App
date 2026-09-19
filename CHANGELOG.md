@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.74] — 2026-09-19
+
+### Losse bestanden uit `.claude/` gehaald
+
+In de werkmap van Claude Code stonden drie dingen die niet in een publieke
+repository horen: een meegestuurde PDF van 1,2 MB (een naslaggids over
+biertypen — andermans werk, dus niets om te herpubliceren) en drie
+`__pycache__`-bestanden die ooit langs de `.gitignore` zijn geglipt. Alle vier
+staan ze nu niet meer in de repository; op je eigen schijf blijven ze gewoon
+staan. `.claude/upload_*` staat voortaan in `.gitignore`, zodat een volgende
+upload er niet opnieuw in belandt.
+
+---
+
 ## [1.12.73] — 2026-09-19
 
 ### Mobiele schermafbeeldingen in de README

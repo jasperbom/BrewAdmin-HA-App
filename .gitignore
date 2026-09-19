@@ -2,3 +2,6 @@ node_modules/
 dist/
 __pycache__/
 .pytest_cache/
+
+# Losse uploads in de werkmap van Claude Code horen niet in de repo
+.claude/upload_*
