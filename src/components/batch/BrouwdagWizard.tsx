@@ -9,6 +9,10 @@ import {
 } from '../../utils/calculations'
 import { TANK_REINIGING_LABEL_KEY } from '../../utils/constants'
 import { getEffectiveBrewProp } from '../../utils/brewProps'
+
+// Sleutels waaruit de berekende brouwdagwaarden volgen; het effect dat ze
+// vastlegt wacht tot ze alle vier van de server zijn.
+const BEREKEN_SLEUTELS = ['batches', 'batch_ingredienten', 'lots', 'ingredienten']
 import Btn from '../ui/Btn'
 import SectionHeader from '../ui/SectionHeader'
 import type { BrouwdagStap, BrouwdagFase, Batch, BatchIngredient } from '../../types'
@@ -387,7 +391,14 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
 
   // Persisteer berekende waarden zodra de inputs aanwezig zijn — zo blijven ze
   // beschikbaar voor overzicht/print zonder steeds herberekenen.
+  //
+  // Dit effect schrijft uit zichzelf, zonder dat de gebruiker iets doet. Het
+  // mag dus pas draaien wanneer álles waaruit die waarden volgen echt van de
+  // server is (1.12.62): anders wordt er een rendement of IBU vastgelegd dat
+  // op halve gegevens is berekend, en wordt de batchlijst als "gewijzigd"
+  // gemarkeerd terwijl het serverantwoord nog onderweg is.
   React.useEffect(() => {
+    if (!BEREKEN_SLEUTELS.every(k => _fetchedKeys.has(k))) return
     const upd: Partial<Batch> = {}
     if (mashEff > 0 && Number(batch.mash_efficiency_pct) !== Math.round(mashEff * 10) / 10) {
       upd.mash_efficiency_pct = Math.round(mashEff * 10) / 10
@@ -416,6 +427,11 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const hopAlphaSyncRef = React.useRef<number | null>(null)
   React.useEffect(() => {
     if (!setBi) return
+    // Pas kijken als de lots en de ingrediënten binnen zijn (1.12.62). Deze
+    // ref werd eerder gezet vóórdat er iets was berekend: draaide het effect
+    // één keer op lege lijsten, dan was hij verbruikt en liep de reparatie
+    // nooit meer — terwijl de deps juist op een herkansing rekenen.
+    if (!_fetchedKeys.has('lots') || !_fetchedKeys.has('ingredienten')) return
     if (hopAlphaSyncRef.current === batch.id) return
     hopAlphaSyncRef.current = batch.id
     const updates = new Map<number, number>()

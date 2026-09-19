@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.62] — 2026-09-19
+
+### Drie plekken die schreven voordat hun gegevens binnen waren
+
+1.12.60 zorgt dat zo'n schrijfactie niets meer kan vernietigen. Deze drie
+plekken zouden er echter helemaal niet moeten zijn, want ze leveren een
+conflict op dat de gebruiker niets zegt.
+
+- **Klantnummers aanvullen.** De klantenpagina vult ontbrekende klantnummers
+  automatisch aan en schrijft daar een regel over in het auditlogboek. De
+  enige controle was of de klantenlijst niet leeg was, en dat bewijst niets:
+  die lijst kan uit de browsercache komen. Het logboek is bovendien een
+  ándere sleutel, die prima nog leeg kan zijn — dan ging er een logboek van
+  één regel naar de server, over de hele historie heen. Nu wacht de aanvulling
+  op beide sleutels.
+- **De brouwdagwizard** legde berekende waarden (rendement, IBU, verdamping)
+  uit zichzelf vast zodra ze afweken, zonder gebruikersactie en zonder te
+  wachten op de lots en de ingrediënten waaruit ze volgen. De eenmalige
+  hop-alfa-reparatie zette bovendien zijn "gedaan"-vlag vóórdat er iets
+  berekend was: draaide hij één keer op lege lijsten, dan liep de reparatie
+  nooit meer.
+- **De uitleveringsmigratie** had een controle die niets deed: `if (!uit)`
+  is nooit waar voor een lege lijst, dus de migratie draaide juist tijdens
+  het laden. Verderop staat `!(uit||[]).length`, en las die "nog niet geladen"
+  als "leeg", dan verving de oude uitslagen-sleutel de complete
+  uitleveringenlijst. Alle betrokken sleutels worden nu afgewacht.
+
+---
+
 ## [1.12.61] — 2026-09-19
 
 ### Een ontbrekend tabblad in een backup wiste de hele lijst

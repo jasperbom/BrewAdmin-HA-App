@@ -1094,8 +1094,15 @@ function App() {
         return;
       }
     } catch (_) {}
-    // Wacht tot relevante stores geladen zijn (uit [] betekent: fetch klaar, leeg)
-    if (!uit || !acc || !afboekingen) return;
+    // Wachten tot de betrokken sleutels écht van de server zijn (1.12.62).
+    // De oude check `if (!uit || !acc || !afboekingen) return` deed niets: een
+    // lege array is truthy, dus de migratie draaide juist tijdens het laden.
+    // Dat is hier gevaarlijk, want hieronder staat `!(uit||[]).length` — las
+    // die "nog niet geladen" als "leeg", dan verving de oude uitslagen-sleutel
+    // de complete uitleveringenlijst, en een afboeking voor intern gebruik
+    // maakte er een lijst van uitsluitend de nieuw afgeleide regels van.
+    const migratieSleutels = ['uitleveringen', 'accijns', 'afboekingen', 'afvullingen', 'batches'];
+    if (!migratieSleutels.every(k => _fetchedKeys.has(k))) return;
     uitleveringMigrated.current = true;
     (async () => {
       try {
@@ -1114,6 +1121,8 @@ function App() {
           return out;
         });
         let nieuweUit: any[] = [...(uit||[])];
+        // `uit` is hier gegarandeerd van de server (zie de guard hierboven),
+        // dus leeg betekent nu echt leeg en de oude uitslagen mogen erin.
         if (gemigreerdeUitl.length && !(uit||[]).length) {
           nieuweUit = gemigreerdeUitl;
         }
