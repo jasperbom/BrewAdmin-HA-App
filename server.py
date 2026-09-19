@@ -912,12 +912,16 @@ def _cleanup_offsite_backups() -> None:
     if not OFFSITE_BACKUP_DIR.is_dir():
         return
     today = datetime.date.today()
-    for f in OFFSITE_BACKUP_DIR.glob('brewadmin_backup_*.zip'):
+    bestanden = []
+    for f in sorted(OFFSITE_BACKUP_DIR.glob('brewadmin_backup_*.zip')):
         datum = f.name[len('brewadmin_backup_'):-len('.zip')]
         try:
-            backup_date = datetime.date.fromisoformat(datum)
+            bestanden.append((datetime.date.fromisoformat(datum), f))
         except ValueError:
             continue
+    # Zelfde ondergrens als lokaal: de nieuwste N blijven hoe dan ook staan.
+    te_beoordelen = bestanden[:-_MIN_BACKUPS_BEWAREN] if _MIN_BACKUPS_BEWAREN else bestanden
+    for backup_date, f in te_beoordelen:
         if not _should_keep_backup(backup_date, today):
             try:
                 f.unlink()
@@ -944,16 +948,35 @@ def _should_keep_backup(backup_date: datetime.date, today: datetime.date) -> boo
     return False
 
 
+# Ondergrens op de retentie: hoeveel van de nieuwste backups altijd blijven
+# staan, ongeacht wat de datumregel zegt. Het hele beleid hangt aan
+# `date.today()`, en springt de klok van de host vooruit (geen RTC, verkeerde
+# tijdzone na een restore, NTP-glitch), dan valt elke backup ineens buiten de
+# termijn en wist één ronde de lokale mappen, de kopie op het andere volume
+# én het auditspoor. Een klok die achterloopt is ongevaarlijk (negatieve
+# leeftijd valt binnen elke termijn); alleen vooruit is dodelijk, en juist
+# dit is het vangnet dat dan overeind moet blijven.
+_MIN_BACKUPS_BEWAREN = 7
+_MIN_AUDIT_BEWAREN = 3
+
+
 def _cleanup_backups() -> None:
     """Remove backup directories that no longer meet the retention policy."""
     today = datetime.date.today()
+    mappen = []
     for entry in sorted(BACKUP_DIR.iterdir()):
         if not entry.is_dir():
             continue
         try:
-            backup_date = datetime.date.fromisoformat(entry.name)
+            datetime.date.fromisoformat(entry.name)
         except ValueError:
             continue
+        mappen.append(entry)
+    # De nieuwste N blijven altijd staan (mapnamen zijn ISO-datums, dus
+    # alfabetisch sorteren is chronologisch sorteren).
+    te_beoordelen = mappen[:-_MIN_BACKUPS_BEWAREN] if _MIN_BACKUPS_BEWAREN else mappen
+    for entry in te_beoordelen:
+        backup_date = datetime.date.fromisoformat(entry.name)
         if not _should_keep_backup(backup_date, today):
             shutil.rmtree(entry, ignore_errors=True)
 
@@ -1218,11 +1241,16 @@ def _cleanup_audit() -> None:
     """Verwijder audit-maandbestanden ouder dan 7 jaar (zelfde AGP-horizon
     als de backups)."""
     grens = datetime.date.today() - datetime.timedelta(days=7 * 365)
-    for f in AUDIT_DIR.glob('audit_*.jsonl'):
+    maanden = []
+    for f in sorted(AUDIT_DIR.glob('audit_*.jsonl')):
         try:
-            maand = datetime.datetime.strptime(f.name[len('audit_'):-len('.jsonl')], '%Y-%m').date()
+            maanden.append((datetime.datetime.strptime(
+                f.name[len('audit_'):-len('.jsonl')], '%Y-%m').date(), f))
         except ValueError:
             continue
+    # Zelfde ondergrens: de nieuwste maanden blijven altijd staan.
+    te_beoordelen = maanden[:-_MIN_AUDIT_BEWAREN] if _MIN_AUDIT_BEWAREN else maanden
+    for maand, f in te_beoordelen:
         if maand < grens.replace(day=1):
             try:
                 f.unlink()
@@ -3588,6 +3616,26 @@ def _cold_crash_tick() -> None:
         _log('cold-crash', f"batch {u['id']}: setpoint → {u['new_sp']}°C ({u['steps']} stap(pen))")
 
 
+def _bijlage_in_gebruik(filename: str) -> str | None:
+    """Naam van de data-key die nog naar deze bijlage verwijst, of None.
+    Kijkt naar `bijlage.bestand` (inkoopfactuur) en `bijlagen[].bestand`
+    (afboeking, verliesregistratie, vernietiging)."""
+    for key in ('inkoop_facturen', 'afboekingen', 'verlies_registraties'):
+        rijen = _read_json(key, [])
+        if not isinstance(rijen, list):
+            continue
+        for rij in rijen:
+            if not isinstance(rij, dict):
+                continue
+            een = rij.get('bijlage')
+            if isinstance(een, dict) and een.get('bestand') == filename:
+                return key
+            for b in (rij.get('bijlagen') or []):
+                if isinstance(b, dict) and b.get('bestand') == filename:
+                    return key
+    return None
+
+
 def _list_backups() -> list[dict]:
     """Return list of available backups with date and file count."""
     result = []
@@ -4739,8 +4787,25 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             self._json(400, {'error': 'invalid data'})
             return
-        (UPLOAD_DIR / filename).write_bytes(content)
-        self._json(200, {'ok': True})
+        # Nooit stil over een bestaande bijlage heen schrijven: dat bestand
+        # hoort bij een geboekte factuur en valt onder de bewaarplicht. Bij
+        # een botsing wijken we uit naar een vrije naam en zeggen we welke;
+        # de client bewaart die naam op de factuur.
+        doel = UPLOAD_DIR / filename
+        if doel.exists():
+            stam, punt, ext = filename.rpartition('.')
+            stam = stam or filename
+            for n in range(1, 1000):
+                kandidaat = f'{stam}-{n}{punt}{ext}' if punt else f'{filename}-{n}'
+                doel = UPLOAD_DIR / kandidaat
+                if not doel.exists():
+                    filename = kandidaat
+                    break
+            else:
+                self._json(409, {'error': 'filename in use'})
+                return
+        doel.write_bytes(content)
+        self._json(200, {'ok': True, 'bestand': filename})
 
     def _handle_delete_upload(self):
         """Delete an uploaded attachment from UPLOAD_DIR."""
@@ -4750,6 +4815,14 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
         body = self._read_body(max_len=256)
         if body is None:
+            return
+        # Een bijlage waar nog een boeking naar verwijst is het bewijsstuk bij
+        # die boeking (7 jaar bewaarplicht). Weigeren i.p.v. verwijderen: de
+        # factuur zou anders zonder bewijsstuk achterblijven en de ZIP-export
+        # slaat een ontbrekend bestand stilzwijgend over.
+        gebruikt_door = _bijlage_in_gebruik(filename)
+        if gebruikt_door:
+            self._json(409, {'error': 'attachment in use', 'key': gebruikt_door})
             return
         filepath = UPLOAD_DIR / filename
         if filepath.exists():
@@ -5178,6 +5251,18 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 return
         if any(isinstance(d, (dict, list)) or d is None for d in deletes):
             self._json(400, {'error': 'invalid delta: ongeldige delete-id'})
+            return
+        # Twee records met dezelfde id in één upsert leverden twee rijen op
+        # (de primaire sleutel is (key, seq), niet record_id). De key stond
+        # daarna met een dubbel record in de opslag, verloor permanent
+        # delta-ondersteuning via de teller-check verderop, en bij een
+        # append-only key was die dubbel niet meer weg te krijgen.
+        upsert_ids = [str(rec['id']) for rec in upserts]
+        if len(set(upsert_ids)) != len(upsert_ids):
+            self._json(400, {'error': 'invalid delta: dubbele id in upsert'})
+            return
+        if set(upsert_ids) & {str(d) for d in deletes}:
+            self._json(400, {'error': 'invalid delta: id in upsert én delete'})
             return
         expected = self.headers.get('X-Data-Version')
         if expected is None:

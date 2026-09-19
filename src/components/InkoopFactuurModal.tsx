@@ -651,7 +651,13 @@ function InkoopFactuurModal({
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({data: b64}),
         })
-        if (resp.ok) bijlage = {naam: bijlageFile.name, bestand: filename}
+        if (resp.ok) {
+          // De server kan uitwijken naar een vrije naam wanneer die van ons
+          // al bezet is; dan is zíjn naam leidend, anders wijst de factuur
+          // naar het bestand van een andere boeking.
+          const gekozen = await resp.json().catch(() => ({}))
+          bijlage = {naam: bijlageFile.name, bestand: gekozen?.bestand || filename}
+        }
       } catch(e) { /* upload failed silently */ }
       setUploading(false)
     }

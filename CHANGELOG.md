@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.64] — 2026-09-19
+
+### Drie vangnetten aan de serverkant
+
+- **De backupopruiming had geen ondergrens.** Het hele retentiebeleid hangt
+  aan de datum van vandaag. Springt de klok van de host vooruit — geen RTC,
+  een verkeerde tijdzone na een restore, een NTP-glitch — dan valt élke
+  backup ineens buiten de termijn en wist één ronde de lokale mappen, de
+  kopie op het andere volume én het auditspoor. Juist het vangnet dat dan
+  overeind moet blijven. De nieuwste zeven backups en de nieuwste drie
+  auditmaanden blijven nu altijd staan, wat de datumregel ook zegt. Een klok
+  die achterloopt was en blijft ongevaarlijk.
+- **De delta-synchronisatie liet dubbele records toe.** Twee records met
+  hetzelfde nummer in één verzoek leverden twee rijen op, want de primaire
+  sleutel is (sleutel, volgnummer) en niet het recordnummer. De lijst stond
+  daarna met een dubbel in de opslag, verloor permanent de snelle
+  synchronisatie, en bij het journaal of een HACCP-registratie was die dubbel
+  niet meer te verwijderen omdat daar alleen aangevuld mag worden. Een
+  dubbele id, of een id die zowel in `upsert` als in `delete` staat, wordt nu
+  geweigerd.
+- **Bijlagen van geboekte facturen waren niet beschermd.** Een upload met een
+  bestaande bestandsnaam verving stilzwijgend het bewijsstuk van een andere
+  factuur; de server wijkt nu uit naar een vrije naam en geeft die terug, en
+  de factuur bewaart díé naam. Verwijderen is geweigerd zolang een
+  inkoopfactuur, afboeking of verliesregistratie er nog naar verwijst.
+
+---
+
 ## [1.12.63] — 2026-09-19
 
 ### De gezondheidscontrole kende de producten niet
