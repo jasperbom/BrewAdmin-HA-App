@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.65] — 2026-09-19
+
+### Dubbel regelnummer in een handmatige bestelling
+
+Een regel kreeg het aantal regels als nummer. Verwijder je regel twee van
+drie en voeg je er een toe, dan bestaat nummer drie twee keer. De picking
+koppelt een pick via het regelnummer aan een regel, dus de gepickte aantallen
+belandden bij de verkeerde regel. Het nummer telt nu door vanaf het hoogste
+dat al is uitgedeeld.
+
+### Brewfather-sync wiste een ingevuld vergistings- of maischprofiel
+
+De automatische sync nam beide profielen onvoorwaardelijk over. Had het
+recept in Brewfather er geen, dan werd het profiel dat hier was ingevuld
+leeggemaakt — en die sync draait vanzelf bij het openen van de app. Een leeg
+profiel uit Brewfather laat de eigen invulling nu staan.
+
+---
+
 ## [1.12.64] — 2026-09-19
 
 ### Drie vangnetten aan de serverkant

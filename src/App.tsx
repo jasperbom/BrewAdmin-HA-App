@@ -1051,9 +1051,13 @@ function App() {
             if (bfB.measuredFermentationPh != null) ch.product_ph = bfNumSafe(bfB.measuredFermentationPh);
             else if (bfB.measuredPh != null && !existing.product_ph) ch.product_ph = bfNumSafe(bfB.measuredPh);
             { const _rawN=bfB.notes||bfB.tasteNotes; if (_rawN && !existing.notities) { ch.notities = Array.isArray(_rawN)?_rawN.map((x: any)=>typeof x==='string'?x:(x?.note||x?.text||x?.message||'')).filter(Boolean).join('\n'):(typeof _rawN==='object'&&_rawN?String((_rawN as any).$string||(_rawN as any).text||(_rawN as any).note||''):String(_rawN||'')); } }
+            // Profielen alleen overnemen als Brewfather er werkelijk een
+            // heeft. Onvoorwaardelijk toekennen wiste een profiel dat hier
+            // was ingevuld zodra het recept in Brewfather er geen had — en
+            // deze sync draait vanzelf bij het openen van de app.
             const mapped = bfMapBatch(bfB);
-            ch.vergistingsprofiel = mapped.vergistingsprofiel;
-            ch.maischprofiel = mapped.maischprofiel;
+            if (mapped.vergistingsprofiel?.length) ch.vergistingsprofiel = mapped.vergistingsprofiel;
+            if (mapped.maischprofiel?.length) ch.maischprofiel = mapped.maischprofiel;
             updBatches.push({id: existing.id, ch});
           }
         }
