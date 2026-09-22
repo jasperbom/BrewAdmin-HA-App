@@ -21,6 +21,7 @@ import io
 import ipaddress
 import json
 import logging
+import math
 import os
 import sys
 import re
@@ -131,6 +132,15 @@ WC_POST_PREFIX  = '/api/woocommerce/create/'
 WC_TIMEOUT      = 20
 WC_POGINGEN     = 2
 WC_RETRY_PAUZE  = 1.0
+
+# Website-telemetrie: brouwerijcijfers naar de plugin Craftery Brouwerij op de
+# webshop (zie _website_tick). Zelfde sleutel als de WooCommerce-API; de route
+# begint met `wc-`, waardoor WooCommerce die sleutel zelf controleert.
+WEBSITE_API_PATH      = '/wp-json/wc-craftery/v1'
+WEBSITE_SUBPATH       = 'brouwerij'
+WEBSITE_VOORBEELD_PATH = '/api/website/voorbeeld'
+WEBSITE_TEST_PATH      = '/api/website/test'
+WEBSITE_VERSTUUR_PATH  = '/api/website/verstuur'
 
 UPLOAD_PREFIX            = '/api/upload/'
 FILE_PREFIX              = '/api/file/'
@@ -495,7 +505,7 @@ def _wc_oorzaak(exc: BaseException) -> str:
 
 
 def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = None,
-                herkansing: bool = True) -> tuple[int, bytes]:
+                herkansing: bool = True, api_pad: str = WC_API_PATH) -> tuple[int, bytes]:
     """Make a GET, PUT or POST request to the WooCommerce REST API.
 
     Netwerkfouten komen terug met een oorzaakscode (`oorzaak`) i.p.v. een kale
@@ -504,9 +514,13 @@ def _wc_request(creds: dict, method: str, subpath: str, body: bytes | None = Non
     herkansing bij een tijdelijke storing is veilig — WooCommerce op gedeelde
     hosting is regelmatig even traag of weigert kortstondig de verbinding.
     Een POST maakt iets áán: die mag nooit herhaald worden, anders staat er bij
-    een trage winkel zomaar twee keer hetzelfde product (`herkansing=False`)."""
+    een trage winkel zomaar twee keer hetzelfde product (`herkansing=False`).
+
+    `api_pad` is het REST-namespace-pad; standaard de WooCommerce-API. De
+    website-telemetrie gebruikt dezelfde sleutel op de route van de plugin
+    Craftery Brouwerij (`WEBSITE_API_PATH`)."""
     auth = base64.b64encode(f'{creds["key"]}:{creds["secret"]}'.encode()).decode()
-    url  = f'{creds["url"]}{WC_API_PATH}/{subpath}'
+    url  = f'{creds["url"]}{api_pad}/{subpath}'
     req  = urllib.request.Request(
         url,
         data=body,
@@ -1299,7 +1313,7 @@ _KEY_TYPES = {
         'accijns_instellingen', 'btw_instellingen', 'ing_type_btw',
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
-        'wc_import_status',
+        'wc_import_status', 'website_telemetrie', 'website_telemetrie_status',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
         'haccp_instellingen',
@@ -2116,6 +2130,9 @@ _BEHEER_KEYS = frozenset((
     'app_logo_icoon',
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
     'mollie_creds',
+    # Wat er publiek op de webshop komt: alleen beheer. De status schrijft
+    # alleen de server; zo kan ook geen andere rol hem vervalsen.
+    'website_telemetrie', 'website_telemetrie_status',
 ))
 
 # Financiële vastlegging: alleen `boekhouding` (en `beheer`).
@@ -2723,6 +2740,573 @@ def _wc_orders_loop(interval: float = 60.0) -> None:
             _wc_orders_tick()
         except Exception as exc:
             _log('wc-orders', f'error: {exc}', level=logging.ERROR)
+        time.sleep(interval)
+
+
+# ── Website-telemetrie ──────────────────────────────────────────────────────
+# Elk uur een momentopname met echte brouwerijcijfers naar de webshop, waar
+# de plugin Craftery Brouwerij (1.1.0+) ze in de telemetriestrip en in
+# `{brouwerij:…}`-plaatshouders toont. Het bericht vervangt telkens het vorige
+# helemaal. Optioneel en standaard uit: BrewAdmin is een openbare add-on, en
+# alleen een webshop met die plugin kent de route.
+#
+# Publiek, dus alleen wat de brouwer per onderdeel aanzet — en nooit klanten,
+# bestellingen, prijzen, recepten of financiën. Elk getal komt uit dezelfde
+# afleiding als in de app; wat de app niet weet, gaat niet mee (een geschat
+# getal op een publieke pagina is erger dan geen getal).
+
+WEBSITE_ONDERDELEN = ('gisting', 'sensoren', 'hop_kg', 'mout_kg',
+                      'liters_tank', 'liters_verpakt', 'batches_gebrouwen')
+WEBSITE_INTERVAL_DEFAULT_MIN = 60
+WEBSITE_INTERVAL_MIN = 15
+WEBSITE_INTERVAL_MAX = 240
+WEBSITE_MAX_BYTES = 8 * 1024
+# De plugin weigert een tweede bericht binnen 10 seconden (429).
+WEBSITE_MIN_TUSSENPOOS_S = 10.0
+# Een temperatuur uit `gist_metingen` die ouder is, gaat niet meer mee.
+WEBSITE_TEMP_MAX_LEEFTIJD_S = 2 * 3600.0
+# Grenzen van het contract (plugin Craftery Brouwerij 1.1.0).
+_WEBSITE_GRENZEN = {
+    'bron': 40, 'gisting_max': 8, 'tank': 12, 'bier': 60,
+    'temp': (-30.0, 120.0), 'sensoren': (0, 999),
+    'waarden_max': 20, 'waarde_tekst': 40,
+}
+_WEBSITE_WAARDE_NAAM = re.compile(r'^[a-z0-9_]{1,32}$')
+_WEBSITE_HA_ONBEREIKBAAR = ('unavailable', 'unknown')
+# Statussen waarin er bier in de tank zit (TANK_BEZET_STATUSSEN in
+# utils/calculations.ts) en waarin een batch gebrouwen is.
+_WEBSITE_IN_TANK = ('Vergisten', 'Conditioneren')
+_WEBSITE_GEBROUWEN = ('Vergisten', 'Conditioneren', 'Afgevuld', 'Verpakt', 'Gesloten')
+# Massa-eenheden van een lot → kilogram (UNIT_BASE in utils/constants.ts).
+_WEBSITE_KG = {'g': 0.001, 'kg': 1.0}
+
+_website_lock = threading.Lock()
+_website_laatste_poging: float = 0.0
+_website_laatste_verzending: float = 0.0
+_app_versie_cache: str | None = None
+
+
+def _app_versie() -> str:
+    """Versie uit config.yaml (die staat naast server.py, ook in de container);
+    leeg als hij niet te lezen is."""
+    global _app_versie_cache
+    if _app_versie_cache is None:
+        versie = ''
+        try:
+            tekst = (Path(__file__).resolve().parent / 'config.yaml').read_text(encoding='utf-8')
+            m = re.search(r'^version:\s*["\']?([0-9][0-9A-Za-z.\-+]*)', tekst, re.M)
+            versie = m.group(1) if m else ''
+        except OSError:
+            versie = ''
+        _app_versie_cache = versie
+    return _app_versie_cache
+
+
+def _website_instellingen(ruw) -> dict:
+    """`website_telemetrie`, gevalideerd: aan/uit, interval (15–240 min) en een
+    schakelaar per onderdeel. Alles staat uit tenzij het expliciet `true` is."""
+    r = ruw if isinstance(ruw, dict) else {}
+    try:
+        interval = int(float(r.get('interval_min')))
+    except (TypeError, ValueError):
+        interval = WEBSITE_INTERVAL_DEFAULT_MIN
+    interval = max(WEBSITE_INTERVAL_MIN, min(WEBSITE_INTERVAL_MAX, interval))
+    ond = r.get('onderdelen') if isinstance(r.get('onderdelen'), dict) else {}
+    return {
+        'enabled': r.get('enabled') is True,
+        'interval_min': interval,
+        'onderdelen': {k: ond.get(k) is True for k in WEBSITE_ONDERDELEN},
+    }
+
+
+def _website_tekst(waarde, maximum: int) -> str:
+    """Tekst zoals de site hem toont: geen HTML of stuurtekens, witruimte
+    samengevoegd, hooguit `maximum` tekens."""
+    s = re.sub(r'<[^>]*>', '', str(waarde if waarde is not None else ''))
+    s = re.sub(r'[\x00-\x1f\x7f]', ' ', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s[:maximum].rstrip()
+
+
+def _website_getal(waarde) -> float:
+    """Number(x) uit de app, met 0 voor wat geen eindig getal is."""
+    try:
+        v = float(waarde if waarde not in (None, '') else 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return v if math.isfinite(v) else 0.0
+
+
+def _afv_aantal(a: dict) -> float:
+    """afvAantal() in utils/calculations.ts."""
+    return _website_getal(a.get('hoeveelheid') if a.get('hoeveelheid') is not None else a.get('aantal'))
+
+
+def _afv_inhoud(a: dict) -> float:
+    """afvInhoud() in utils/calculations.ts."""
+    return _website_getal(a.get('inhoud_per_eenheid') if a.get('inhoud_per_eenheid') is not None
+                          else a.get('inhoud_liter'))
+
+
+def _tank_rest_volume(batch: dict, afvullingen: list, verliezen: list) -> float:
+    """Liters die nog in de tank staan. Spiegelt tankRestVolume() in
+    utils/calculations.ts: vergist volume min wat al is afgevuld en de
+    geregistreerde verliesposten."""
+    totaal = _website_getal(batch.get('liter_vergist') or batch.get('kook_volume'))
+    if not totaal:
+        return 0.0
+    bid = batch.get('id')
+    afgevuld = sum(_afv_aantal(a) * _afv_inhoud(a) for a in afvullingen
+                   if isinstance(a, dict) and a.get('batch_id') == bid)
+    verlies = sum(_website_getal(r.get('liter')) for r in verliezen
+                  if isinstance(r, dict) and r.get('batch_id') == bid)
+    return max(0.0, totaal - afgevuld - verlies)
+
+
+def _loc_sleutel(waarde) -> str:
+    """Locatiesleutel zoals JavaScript hem in een object zet (altijd tekst)."""
+    if isinstance(waarde, bool):
+        return 'true' if waarde else 'false'
+    if isinstance(waarde, float) and waarde.is_integer():
+        return str(int(waarde))
+    return 'null' if waarde is None else str(waarde)
+
+
+def _voorraad_per_locatie(afv: dict, locaties: list, uitleveringen: list,
+                          verplaatsingen: list, afboekingen: list) -> dict:
+    """Voorraad (in eenheden) van één afvulling per locatie. Python-spiegel van
+    voorraadPerLocatie() in utils/calculations.ts — wijzig je daar een regel,
+    wijzig hem hier ook. Alles begint op de AGP; verplaatsingen, uitleveringen
+    en afboekingen volgen op datum, elk gecapt op wat er op de bron staat; een
+    afboeking zonder locatie die niet op de AGP past, schuift door naar de
+    locaties die wél voorraad hebben."""
+    agp = next((l for l in locaties if isinstance(l, dict) and l.get('is_agp')), None)
+    if agp is None:
+        agp = next((l for l in locaties if isinstance(l, dict)), None) or {'id': 1}
+    agp_id = _loc_sleutel(agp.get('id'))
+    result: dict = {agp_id: _afv_aantal(afv)}
+    aid = afv.get('id')
+
+    bewegingen = []  # (datum, van, naar|None, aantal, bron_onbekend)
+    for v in verplaatsingen:
+        if isinstance(v, dict) and v.get('afvulling_id') == aid:
+            # Een ontbrekend doel is in JS `undefined` (niets erbij), een
+            # expliciete null wordt een sleutel 'null' — zelfde hier.
+            naar = _loc_sleutel(v['naar_locatie_id']) if 'naar_locatie_id' in v else None
+            bewegingen.append((str(v.get('datum') or ''), _loc_sleutel(v.get('van_locatie_id')),
+                               naar, _website_getal(v.get('aantal')), False))
+    for u in uitleveringen:
+        if isinstance(u, dict) and u.get('afvulling_id') == aid:
+            bron = u.get('bron_locatie_id')
+            bewegingen.append((str(u.get('datum') or ''),
+                               agp_id if bron is None else _loc_sleutel(bron),
+                               None, _website_getal(u.get('aantal')), False))
+    for a in afboekingen:
+        if isinstance(a, dict) and a.get('afvulling_id') == aid:
+            bron = a.get('bron_locatie_id')
+            bewegingen.append((str(a.get('datum') or ''),
+                               agp_id if bron is None else _loc_sleutel(bron),
+                               None, _website_getal(a.get('aantal')), bron is None))
+    bewegingen.sort(key=lambda b: b[0])  # stabiel, zoals Array.sort
+
+    def neem_af(loc: str, hoeveel: float) -> float:
+        werkelijk = min(hoeveel, max(0.0, result.get(loc, 0.0)))
+        if werkelijk > 0:
+            result[loc] = result.get(loc, 0.0) - werkelijk
+        return werkelijk
+
+    def num_sleutel(k: str):
+        try:
+            return (0, float(k))
+        except ValueError:
+            return (1, k)
+
+    for _datum, van, naar, aantal, onbekend in bewegingen:
+        if aantal <= 0:
+            continue
+        genomen = neem_af(van, aantal)
+        if onbekend and naar is None and genomen < aantal:
+            for loc in sorted((k for k in result if k != van and result.get(k, 0) > 0), key=num_sleutel):
+                if genomen >= aantal:
+                    break
+                genomen += neem_af(loc, aantal - genomen)
+        if naar is not None and genomen > 0:
+            result[naar] = result.get(naar, 0.0) + genomen
+    return {k: max(0.0, v) for k, v in result.items()}
+
+
+def _website_rond(waarde: float, decimalen: int):
+    """Afronden voor de site: een geheel getal wordt ook een int in de JSON."""
+    r = round(waarde, decimalen)
+    return int(r) if float(r).is_integer() else r
+
+
+def _website_temp_uit_ha(staat) -> float | None:
+    try:
+        v = float(staat)
+    except (TypeError, ValueError):
+        return None
+    laag, hoog = _WEBSITE_GRENZEN['temp']
+    return v if math.isfinite(v) and laag <= v <= hoog else None
+
+
+def _website_temp_uit_metingen(metingen: list, now: float) -> float | None:
+    """Laatste temperatuur uit `gist_metingen` van één batch, maar alleen als
+    die hooguit twee uur oud is."""
+    beste = None
+    for m in metingen:
+        if not isinstance(m, dict):
+            continue
+        temp = _website_temp_uit_ha(m.get('temp') if m.get('temp') not in (None, '') else None)
+        ts = _meting_epoch(m)
+        if temp is None or ts is None:
+            continue
+        if now - ts > WEBSITE_TEMP_MAX_LEEFTIJD_S or ts - now > 300:
+            continue
+        if beste is None or ts >= beste[0]:
+            beste = (ts, temp)
+    return beste[1] if beste else None
+
+
+def _website_sensoren(ha_inst: dict) -> list:
+    """Gekoppelde sensoren (entity + tank), één keer per entity. Staan de
+    HA-sensoren uit, dan zijn er geen."""
+    if not isinstance(ha_inst, dict) or not ha_inst.get('enabled'):
+        return []
+    uit, gezien = [], set()
+    for s in (ha_inst.get('sensors') or []):
+        if not isinstance(s, dict) or not s.get('entity'):
+            continue
+        entity = str(s['entity'])
+        tank = str(s.get('tank')) if s.get('tank') not in (None, '') else None
+        if entity in gezien:
+            for x in uit:
+                if x['entity'] == entity and tank:
+                    x['tanks'].add(tank)
+            continue
+        gezien.add(entity)
+        uit.append({'entity': entity, 'tanks': {tank} if tank else set()})
+    return uit
+
+
+def _website_actieve_batches(batches: list) -> list:
+    return [b for b in batches if isinstance(b, dict) and b.get('tank')
+            and b.get('status') in _WEBSITE_IN_TANK]
+
+
+def _website_nodige_entities(inst: dict, ha_inst: dict, batches: list) -> list:
+    """Welke HA-entities de loop live moet uitlezen voor dit bericht."""
+    ond = inst['onderdelen']
+    sensoren = _website_sensoren(ha_inst)
+    if ond.get('sensoren'):
+        return [s['entity'] for s in sensoren]
+    if ond.get('gisting'):
+        tanks = {str(b.get('tank')) for b in _website_actieve_batches(batches)}
+        return [s['entity'] for s in sensoren if s['tanks'] & tanks]
+    return []
+
+
+def _website_bericht(inst: dict, data: dict, live: dict, now: float, bron: str) -> dict:
+    """Het bericht voor de webshop — pure functie, data in, dict uit.
+
+    `inst` komt uit _website_instellingen, `data` bevat de gelezen keys
+    (batches, tanks, ha_instellingen, gist_metingen, tank_alarmen, lots,
+    ingredienten, afvullingen, verlies_registraties, uitleveringen,
+    verplaatsingen, afboekingen, locaties) en `live` de ruwe HA-staat per
+    entity (None = niet uit te lezen). Met alle onderdelen uit is het bericht
+    leeg. Alle grenzen van het contract worden hier gehaald, zodat het
+    voorbeeld in de app is wat er op de site komt."""
+    ond = inst.get('onderdelen') or {}
+    if not any(ond.get(k) for k in WEBSITE_ONDERDELEN):
+        return {}
+
+    def lijst(key: str) -> list:
+        v = data.get(key)
+        return v if isinstance(v, list) else []
+
+    ha_inst = data.get('ha_instellingen') if isinstance(data.get('ha_instellingen'), dict) else {}
+    batches = lijst('batches')
+    afvullingen = lijst('afvullingen')
+    verliezen = lijst('verlies_registraties')
+    sensoren = _website_sensoren(ha_inst)
+    bericht: dict = {'bron': _website_tekst(bron, _WEBSITE_GRENZEN['bron'])}
+
+    if ond.get('gisting'):
+        tanks = {str(t.get('id')): t for t in lijst('tanks') if isinstance(t, dict)}
+        entity_per_tank: dict = {}
+        for s in sensoren:
+            for tank in sorted(s['tanks']):
+                entity_per_tank.setdefault(tank, s['entity'])
+        metingen_per_batch: dict = {}
+        for m in lijst('gist_metingen'):
+            if isinstance(m, dict):
+                metingen_per_batch.setdefault(m.get('batch_id'), []).append(m)
+        regels = []
+        for b in _website_actieve_batches(batches):
+            # Een lege tank gaat niet mee: alles al afgevuld of als verlies
+            # geboekt. Zonder bekend volume weten we dat niet en telt hij mee.
+            if _website_getal(b.get('liter_vergist') or b.get('kook_volume')) > 0 \
+                    and _tank_rest_volume(b, afvullingen, verliezen) <= 0:
+                continue
+            tank_id = str(b.get('tank'))
+            tank = tanks.get(tank_id) or {}
+            naam = _website_tekst(tank.get('naam') or tank.get('id') or tank_id, _WEBSITE_GRENZEN['tank'])
+            biernaam = _website_tekst(b.get('naam') or b.get('biernaam') or '', 200)
+            nummer = _website_tekst(b.get('batch_nummer') or '', 20)
+            bier = _website_tekst(f'#{nummer} {biernaam}' if nummer else biernaam, _WEBSITE_GRENZEN['bier'])
+            if not naam or not bier:
+                continue  # zonder bier geen regel op de site
+            regel = {'tank': naam, 'bier': bier}
+            entity = entity_per_tank.get(tank_id)
+            temp = _website_temp_uit_ha(live.get(entity)) if entity else None
+            if temp is None:
+                temp = _website_temp_uit_metingen(metingen_per_batch.get(b.get('id'), []), now)
+            if temp is not None:
+                regel['temp'] = _website_rond(temp, 1)
+            regels.append(regel)
+        regels.sort(key=lambda r: (r['tank'].lower(), r['bier'].lower()))
+        if regels:
+            bericht['gisting'] = regels[:_WEBSITE_GRENZEN['gisting_max']]
+
+    if ond.get('sensoren') and sensoren:
+        stil = {str(a.get('tank')) for a in lijst('tank_alarmen')
+                if isinstance(a, dict) and not a.get('hersteld_op') and a.get('soort') == 'sensor_stil'}
+        online = 0
+        for s in sensoren:
+            staat = live.get(s['entity'])
+            bereikbaar = isinstance(staat, str) and staat.strip() != '' \
+                and staat.strip().lower() not in _WEBSITE_HA_ONBEREIKBAAR
+            if bereikbaar and not (s['tanks'] & stil):
+                online += 1
+        laag, hoog = _WEBSITE_GRENZEN['sensoren']
+        totaal = max(laag, min(hoog, len(sensoren)))
+        bericht['sensoren'] = {'online': max(laag, min(totaal, online)), 'totaal': totaal}
+
+    waarden: dict = {}
+    if ond.get('hop_kg') or ond.get('mout_kg'):
+        soort = {i.get('id'): i.get('type') for i in lijst('ingredienten') if isinstance(i, dict)}
+        kg = {'Hop': 0.0, 'Mout': 0.0}
+        for lot in lijst('lots'):
+            if not isinstance(lot, dict) or not lot.get('beschikbaar'):
+                continue
+            hoeveel = _website_getal(lot.get('hoeveelheid'))
+            factor = _WEBSITE_KG.get(str(lot.get('eenheid') or ''))
+            t = soort.get(lot.get('ingredient_id'))
+            if hoeveel > 0 and factor is not None and t in kg:
+                kg[t] += hoeveel * factor
+        if ond.get('hop_kg'):
+            waarden['hop_kg'] = _website_rond(kg['Hop'], 2)
+        if ond.get('mout_kg'):
+            waarden['mout_kg'] = _website_rond(kg['Mout'], 1)
+    if ond.get('liters_tank'):
+        waarden['liters_tank'] = _website_rond(
+            sum(_tank_rest_volume(b, afvullingen, verliezen) for b in _website_actieve_batches(batches)), 0)
+    if ond.get('liters_verpakt'):
+        locaties, uit = lijst('locaties'), lijst('uitleveringen')
+        verpl, afb = lijst('verplaatsingen'), lijst('afboekingen')
+        liters = sum(sum(_voorraad_per_locatie(a, locaties, uit, verpl, afb).values()) * _afv_inhoud(a)
+                     for a in afvullingen if isinstance(a, dict))
+        waarden['liters_verpakt'] = _website_rond(liters, 0)
+    if ond.get('batches_gebrouwen'):
+        waarden['batches_gebrouwen'] = sum(1 for b in batches if isinstance(b, dict)
+                                           and b.get('status') in _WEBSITE_GEBROUWEN)
+    waarden = {k: v for k, v in waarden.items() if _WEBSITE_WAARDE_NAAM.match(k)}
+    if waarden:
+        bericht['waarden'] = dict(list(waarden.items())[:_WEBSITE_GRENZEN['waarden_max']])
+
+    # Vangnet voor de 8 kB van de plugin (met deze grenzen haal je die niet).
+    while len(_website_json(bericht)) > WEBSITE_MAX_BYTES and bericht.get('gisting'):
+        bericht['gisting'] = bericht['gisting'][:-1]
+    return bericht
+
+
+def _website_json(bericht: dict) -> bytes:
+    return json.dumps(bericht, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+
+
+def _website_antwoord(ruw: bytes) -> dict:
+    """Het deel van het plugin-antwoord dat de app toont, begrensd: het komt
+    van buiten."""
+    try:
+        d = json.loads(ruw or b'{}')
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+
+    def tekstlijst(v, n: int, lengte: int) -> list:
+        return [_website_tekst(x, lengte) for x in (v if isinstance(v, list) else [])[:n]
+                if isinstance(x, (str, int, float))]
+
+    uit: dict = {
+        'versie': _website_tekst(d.get('versie') or '', 20),
+        'ontvangen': _website_tekst(d.get('ontvangen') or '', 40) or None,
+        'vers': d.get('vers') is True,
+        'regels': tekstlijst(d.get('regels'), 8, 200),
+        'plaatshouders': tekstlijst(d.get('plaatshouders'), 60, 40),
+    }
+    try:
+        uit['max_leeftijd'] = int(d.get('max_leeftijd'))
+    except (TypeError, ValueError):
+        uit['max_leeftijd'] = None
+    return uit
+
+
+def _website_fout(status: int, ruw: bytes) -> dict:
+    """Foutcode die de app naar gewone taal vertaalt (zie het contract)."""
+    code = {400: 'ongeldig', 401: 'sleutel', 403: 'rechten', 404: 'plugin',
+            413: 'te_groot', 429: 'te_snel'}.get(status)
+    fout: dict = {'http': status}
+    try:
+        d = json.loads(ruw or b'{}')
+    except (ValueError, TypeError):
+        d = {}
+    if not isinstance(d, dict):
+        d = {}
+    if code is None and status in (502, 504) and d.get('oorzaak'):
+        code = 'netwerk'
+        fout['oorzaak'] = _website_tekst(d.get('oorzaak'), 20)
+        if isinstance(d.get('timeout'), (int, float)):
+            fout['timeout'] = int(d['timeout'])
+    fout['code'] = code or 'http'
+    if d.get('code'):
+        fout['wp_code'] = _website_tekst(d.get('code'), 60)
+    return fout
+
+
+def _website_gegevens() -> dict:
+    """Leest alle keys die het bericht nodig heeft (onder het datalock)."""
+    keys = ('batches', 'tanks', 'ha_instellingen', 'gist_metingen', 'tank_alarmen', 'lots',
+            'ingredienten', 'afvullingen', 'verlies_registraties', 'uitleveringen',
+            'verplaatsingen', 'afboekingen', 'locaties')
+    with _data_lock:
+        return {k: _read_json(k, {} if k == 'ha_instellingen' else []) for k in keys}
+
+
+def _ha_fetch_ruwe_staat(entity_id: str) -> str | None:
+    """De ruwe `state` van een HA-entity (ook 'unavailable'/'unknown'); None
+    als de Supervisor niet te bereiken is."""
+    token = os.environ.get('SUPERVISOR_TOKEN', '')
+    if not token or not re.match(r'^[a-z_]+\.[a-z0-9_]+$', str(entity_id)):
+        return None
+    try:
+        req = urllib.request.Request(
+            f'{HA_SUPERVISOR_BASE}/states/{entity_id}',
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            staat = json.loads(r.read()).get('state')
+            return str(staat) if staat is not None else None
+    except (urllib.error.URLError, ValueError, TypeError, OSError, AttributeError):
+        return None
+
+
+def _website_bericht_nu(inst: dict) -> dict:
+    """Stelt het bericht van dit moment samen: keys lezen, sensoren live
+    uitlezen (buiten het datalock), en dan de pure functie."""
+    if not any(inst['onderdelen'].values()):
+        return {}
+    data = _website_gegevens()
+    ha_inst = data['ha_instellingen'] if isinstance(data['ha_instellingen'], dict) else {}
+    batches = data['batches'] if isinstance(data['batches'], list) else []
+    live = {e: _ha_fetch_ruwe_staat(e) for e in _website_nodige_entities(inst, ha_inst, batches)}
+    bron = f'BrewAdmin {_app_versie()}'.strip()
+    return _website_bericht(inst, data, live, time.time(), bron)
+
+
+def _website_status_bij(velden: dict) -> dict:
+    """Werk `website_telemetrie_status` bij (alleen de server schrijft hier)."""
+    with _data_lock:
+        st = _read_json('website_telemetrie_status', {}) or {}
+        if not isinstance(st, dict):
+            st = {}
+        st.update(velden)
+        _write_json('website_telemetrie_status', st)
+    return st
+
+
+def _website_verstuur(creds: dict, bericht: dict, handmatig: bool = False) -> dict:
+    """POST het bericht — zonder herkansing: de volgende ronde komt vanzelf en
+    de site verdraagt één gemist bericht. Legt de uitkomst vast in
+    `website_telemetrie_status`. Twee berichten binnen 10 seconden weigert
+    de plugin; dat houden we hier al tegen."""
+    global _website_laatste_verzending
+    with _website_lock:
+        nu = time.time()
+        if nu - _website_laatste_verzending < WEBSITE_MIN_TUSSENPOOS_S:
+            return {'ok': False, 'fout': {'code': 'te_snel', 'http': None}}
+        _website_laatste_verzending = nu
+        status, ruw = _wc_request(creds, 'POST', WEBSITE_SUBPATH, _website_json(bericht),
+                                  herkansing=False, api_pad=WEBSITE_API_PATH)
+    iso = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+    leeg = not bericht
+    velden: dict = {'laatste_poging': iso, 'handmatig': handmatig, 'leeg': leeg}
+    if 200 <= status < 300:
+        antwoord = _website_antwoord(ruw)
+        velden.update({'gelukt': True, 'laatst_gelukt': iso, 'fout': None,
+                       'antwoord': antwoord, 'op_site': not leeg})
+        _log('website', 'leeg bericht verstuurd' if leeg
+             else f"bericht verstuurd ({len(antwoord.get('regels') or [])} regels op de site)")
+        uitkomst = {'ok': True, 'antwoord': antwoord}
+    else:
+        fout = _website_fout(status, ruw)
+        velden.update({'gelukt': False, 'fout': fout})
+        # Een leeg bericht dat de site definitief weigert (sleutel, rechten,
+        # plugin weg) heeft geen zin om te herhalen: er staat dan ook niets
+        # (meer) dat we kunnen weghalen.
+        if leeg and fout['code'] in ('sleutel', 'rechten', 'plugin'):
+            velden['op_site'] = False
+        _log('website', f"versturen mislukt: {fout['code']}"
+             f"{' (' + fout['oorzaak'] + ')' if fout.get('oorzaak') else ''} — HTTP {status}",
+             level=logging.WARNING)
+        uitkomst = {'ok': False, 'fout': fout}
+    _website_status_bij(velden)
+    return uitkomst
+
+
+def _website_tick(now: float | None = None, force: bool = False) -> dict | None:
+    """Eén ronde. Verstuurt alleen als de koppeling aan staat, er minstens één
+    onderdeel aan staat, WooCommerce gekoppeld is en het interval verstreken is
+    (`force` slaat die wachttijd over — voor tests). Is de functie uitgezet
+    terwijl er nog cijfers op de site staan, dan gaat er één leeg bericht
+    heen, zodat de strip meteen verdwijnt en niet pas na drie uur. Verder
+    stil: niets te doen is geen logregel."""
+    global _website_laatste_poging
+    now = time.time() if now is None else now
+    with _data_lock:
+        inst = _website_instellingen(_read_json('website_telemetrie', {}))
+        wc_raw = _read_json('woocommerce_creds', {}) or {}
+        status = _read_json('website_telemetrie_status', {}) or {}
+    if not isinstance(status, dict):
+        status = {}
+    creds = _load_wc_creds()
+    if not creds:
+        return None
+    wacht = not force and now - _website_laatste_poging < inst['interval_min'] * 60
+    if not (inst['enabled'] and any(inst['onderdelen'].values())):
+        if not status.get('op_site'):
+            return None
+        # De eerste poging meteen; een mislukte pas na het interval opnieuw.
+        if status.get('leeg') and status.get('gelukt') is False and wacht:
+            return None
+        _website_laatste_poging = now
+        return _website_verstuur(creds, {})
+    if not (isinstance(wc_raw, dict) and wc_raw.get('enabled')) or wacht:
+        return None
+    _website_laatste_poging = now
+    return _website_verstuur(creds, _website_bericht_nu(inst))
+
+
+def _website_loop(interval: float = 60.0) -> None:
+    """Achtergrondloop: elke minuut kijken of de telemetrie aan de beurt is;
+    het ingestelde interval zit in de tick zelf, zodat een gewijzigde
+    instelling zonder herstart meetelt. Eerste ronde zo'n twee minuten na de
+    start."""
+    time.sleep(120)
+    while True:
+        try:
+            _website_tick()
+        except Exception as exc:
+            _log('website', f'error: {exc}', level=logging.ERROR)
         time.sleep(interval)
 
 
@@ -4076,7 +4660,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
         if rol != 'beheer' and any(p in path for p in (
                 MAIL_TEST_PATH, BF_TEST_PATH, WC_TEST_PATH, MOLLIE_TEST_PATH,
-                BACKUPS_TRIGGER_PATH, BACKUPS_RESTORE_PATH)):
+                BACKUPS_TRIGGER_PATH, BACKUPS_RESTORE_PATH,
+                WEBSITE_VOORBEELD_PATH, WEBSITE_TEST_PATH, WEBSITE_VERSTUUR_PATH)):
             self._rol_geweigerd(rol)
             return
         if rol not in ('beheer', 'boekhouding') and any(p in path for p in (
@@ -4101,6 +4686,19 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if WC_PUT_PREFIX in path:
             self._wc_proxy_put()
+            return
+
+        # Website-telemetrie (beheer): voorbeeld, verbindingstest, nu versturen
+        if WEBSITE_VOORBEELD_PATH in path:
+            self._website_voorbeeld()
+            return
+
+        if WEBSITE_TEST_PATH in path:
+            self._website_test()
+            return
+
+        if WEBSITE_VERSTUUR_PATH in path:
+            self._website_nu_versturen()
             return
 
         if WC_POST_PREFIX in path:
@@ -4403,6 +5001,83 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             pass
         self._json(200, {'ok': status in (200, 201), 'status': status, 'detail': detail})
+
+    # ── Website-telemetrie ─────────────────────────────────────────────────
+
+    def _website_body_instellingen(self) -> dict | None:
+        """Instellingen voor voorbeeld/versturen: die van het scherm als de app
+        ze meestuurt (zo loopt het voorbeeld niet achter op een schakelaar die
+        net is omgezet), anders de opgeslagen. Altijd door dezelfde validatie.
+        None = het antwoord is al verstuurd (fout in de invoer)."""
+        raw = self._read_body(max_len=4096)
+        if raw is None:
+            return None
+        body: dict = {}
+        if raw.strip():
+            try:
+                body = json.loads(raw)
+            except (ValueError, UnicodeDecodeError):
+                self._json(400, {'error': 'invalid json'})
+                return None
+            if not isinstance(body, dict):
+                self._json(400, {'error': 'invalid json'})
+                return None
+        ruw = body.get('instellingen')
+        if ruw is None:
+            with _data_lock:
+                ruw = _read_json('website_telemetrie', {})
+        elif not isinstance(ruw, dict):
+            self._json(400, {'error': 'invalid instellingen'})
+            return None
+        return _website_instellingen(ruw)
+
+    def _website_voorbeeld(self):
+        """POST /api/website/voorbeeld — het bericht dat er nu verstuurd zou
+        worden, opgebouwd door dezelfde code als de echte verzending."""
+        inst = self._website_body_instellingen()
+        if inst is None:
+            return
+        bericht = _website_bericht_nu(inst)
+        self._json(200, {'bericht': bericht, 'bytes': len(_website_json(bericht)),
+                         'max_bytes': WEBSITE_MAX_BYTES})
+
+    def _website_test(self):
+        """POST /api/website/test — GET op de plugin-route: versie, laatst
+        ontvangen en of het vers is. Verandert niets op de site."""
+        if self._read_body(max_len=4096) is None:
+            return
+        creds = _load_wc_creds()
+        if not creds:
+            self._json(200, {'ok': False, 'fout': {'code': 'geen_wc', 'http': None}})
+            return
+        status, ruw = _wc_request(creds, 'GET', WEBSITE_SUBPATH, api_pad=WEBSITE_API_PATH)
+        if 200 <= status < 300:
+            self._json(200, {'ok': True, 'antwoord': _website_antwoord(ruw)})
+        else:
+            fout = _website_fout(status, ruw)
+            _log('website', f"verbindingstest mislukt: {fout['code']} — HTTP {status}",
+                 level=logging.WARNING)
+            self._json(200, {'ok': False, 'fout': fout})
+
+    def _website_nu_versturen(self):
+        """POST /api/website/verstuur — meteen versturen, buiten het interval
+        om. Alleen als de koppeling aan staat en er iets aan staat."""
+        inst = self._website_body_instellingen()
+        if inst is None:
+            return
+        if not (inst['enabled'] and any(inst['onderdelen'].values())):
+            self._json(409, {'error': 'uit'})
+            return
+        creds = _load_wc_creds()
+        if not creds:
+            self._json(200, {'ok': False, 'fout': {'code': 'geen_wc', 'http': None}})
+            return
+        bericht = _website_bericht_nu(inst)
+        uitkomst = _website_verstuur(creds, bericht, handmatig=True)
+        _audit_write('website_verstuur', 'website_telemetrie', ip=self.client_address[0],
+                     gebruiker=self._ingress_user(), ok=uitkomst.get('ok'),
+                     bytes=len(_website_json(bericht)))
+        self._json(200, {**uitkomst, 'bericht': bericht})
 
     # ── Bijlagen (file uploads) ────────────────────────────────────────────
 
@@ -5516,6 +6191,11 @@ if __name__ == '__main__':
     _threads['wc_orders'] = threading.Thread(target=_wc_orders_loop, daemon=True)
     _threads['wc_orders'].start()
     _log('server', 'WooCommerce-ordercontrole-thread gestart (interval uit woocommerce_creds.importInterval)')
+
+    # Website-telemetrie: elk uur brouwerijcijfers naar de plugin Craftery
+    # Brouwerij op de webshop. Standaard uit; de tick doet dan niets.
+    _threads['website'] = threading.Thread(target=_website_loop, daemon=True)
+    _threads['website'].start()
 
     # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
     # van buitenaf wanneer de gebruiker de poort bewust publiceert in de

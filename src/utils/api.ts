@@ -939,6 +939,42 @@ export const wcTestCreds = async (body: any) => {
   } catch(e: any) { return {ok: false, status: 0, detail: e.message} }
 }
 
+// ── Website-telemetrie (plugin Craftery Brouwerij) ──────────────────────────
+// Alle drie beheer-only. De server stelt het bericht samen — ook voor het
+// voorbeeld — en vertaalt fouten naar een `code` (zie utils/websiteTelemetrie).
+const _websitePost = async (pad: string, body: any): Promise<any> => {
+  try {
+    const r = await fetch(`${ADDON_BASE}api/website/${pad}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body ?? {}),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (r.status === 409) return {ok: false, fout: {code: 'uit', http: 409}}
+    if (!r.ok) return {ok: false, fout: {code: r.status === 403 ? 'rol' : 'http', http: r.status}}
+    return d
+  } catch (e: any) {
+    return {ok: false, fout: {code: 'netwerk', http: null}}
+  }
+}
+
+// `website_telemetrie_status` schrijft alleen de server. Bewust geen useStore:
+// die zou een ontbrekende key vanuit de app aanmaken.
+export const websiteStatus = async (): Promise<any> => {
+  try {
+    const r = await fetch(API_BASE + 'website_telemetrie_status', {headers: {'Cache-Control': 'no-cache'}})
+    if (!r.ok) return {}
+    const d = await r.json()
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch (e) {
+    return {}
+  }
+}
+
+export const websiteVoorbeeld = (instellingen: any) => _websitePost('voorbeeld', {instellingen})
+export const websiteTest = () => _websitePost('test', {})
+export const websiteVerstuur = (instellingen: any) => _websitePost('verstuur', {instellingen})
+
 export const bfFetch = (path: string, opts: RequestInit = {}) =>
   _fetchWithRetry(_BF_PROXY + path.replace(/^\//, ''), opts, 1)
 

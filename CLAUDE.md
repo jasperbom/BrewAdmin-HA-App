@@ -117,6 +117,11 @@ BrewAdmin-HA-App/
 │   │   ├── wcOrderImport.ts # WooCommerce-orderimport (ophalen, order → bestelling, bekende orders
 │   │   │                   # verversen, dedup bij toepassen, lease voor de automatische import) —
 │   │   │                   # gedeeld door de bestellingenknop en de periodieke import in App.tsx
+│   │   ├── websiteTelemetrie.ts # Website-telemetrie (plugin Craftery Brouwerij): opslagvorm
+│   │   │                   # `website_telemetrie`, standaard alles uit, foutcode → i18n,
+│   │   │                   # houdbaarheidswaarschuwing. Het bericht zelf bouwt server.py
+│   │   │                   # (`_website_bericht`), ook voor het voorbeeld in de app.
+│   │   │                   # UI: components/WebsiteTelemetrie.tsx
 │   │   ├── wcTerugschrijven.ts # Orderstatus terug naar WooCommerce (completed/cancelled + privé-
 │   │   │                   # notitie); annuleren alleen zolang er niets is uitgeslagen (voorraad)
 │   │   ├── levering.ts     # Afhalen of verzenden per bestelling: uit de WooCommerce-verzendregel
@@ -314,7 +319,11 @@ onder parallelle clients), rate-limiting (429), secrets-maskering, de
 server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export), de
 HACCP-sluitcontrole-herinnering, de WooCommerce-ordercontrole (`_wc_orders_tick`:
 nieuwe webshoporders eenmalig melden, `wc_import_status` alleen bij verandering
-schrijven, de import-lease van de app ongemoeid laten) en de tanktemperatuurbewaking (het oordeel
+schrijven, de import-lease van de app ongemoeid laten), de website-telemetrie
+(het bericht: schakelaars, lege tanks, sensorstatus, temperatuurleeftijd,
+contractgrenzen, geen vreemde velden; `_voorraad_per_locatie`; `_wc_request`
+zonder `api_pad` ongewijzigd; de loop verstuurt niets als hij uit staat of
+WooCommerce ontbreekt, en ruimt de site op bij uitzetten) en de tanktemperatuurbewaking (het oordeel
 zelf, het uitlezen van het werkelijke climate-setpoint én de
 alarmadministratie; tests bewaken dat de drempel-defaults en de
 setpoint-leeftijd in server.py en tankbewaking.ts gelijk blijven).
@@ -718,6 +727,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `gist_metingen` | array | Gistingsmetingen per batch |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
 | `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |
+| `website_telemetrie` | object | Website-telemetrie naar de plugin Craftery Brouwerij: `{enabled, interval_min (15–240, default 60), onderdelen: {gisting, sensoren, hop_kg, mout_kg, liters_tank, liters_verpakt, batches_gebrouwen}}` — alles standaard uit, alleen een echte `true` telt. **Beheer-only**; wel in de Excel-backup |
+| `website_telemetrie_status` | object | Stand van de website-telemetrie, alleen door de server geschreven (`_website_verstuur`): `laatste_poging`, `laatst_gelukt`, `gelukt`, `fout` (`{code, http, oorzaak?}`), `antwoord` (begrensd plugin-antwoord: versie, ontvangen, vers, max_leeftijd, regels, plaatshouders), `op_site` (staan er cijfers op de site — stuurt het ene lege bericht bij uitzetten), `leeg`, `handmatig`. Beheer-only, de app leest hem met een gewone GET (geen useStore: die zou de key vanuit de client aanmaken). Niet in de backup (regenereert) |
 | `tank_alarmen` | array | Temperatuurstoringen per tank/batch, geopend en gesloten door de server-tick `_tank_bewaking_tick` (soort `waarschuwing`/`alarm`/`sensor_stil`, reden, piekafwijking, hersteltijdstip). De app leest ze voor de banner en zet `bevestigd` bij wegklikken — nooit zelf openen of sluiten |
 | `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
 | `verlies_registraties` | array | Verliesposten per batch (tankrest, leiding, schuim, monster, afgekeurd, overig) |
@@ -765,7 +776,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de backup
-- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`) staat bewust niet in de backup — die regenereert vanzelf
+- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
 
@@ -837,6 +848,9 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/nextnr` | Volgend factuur-/creditnotanummer, atomair per reeks/jaar (`{reeks, jaar}` → `{jaar, nr, nummer}`) |
 | POST | `/api/commit` | Meerdere data-keys atomair opslaan (`{data:{key:waarde}, versions:{key:versie}}`), 409 bij versieconflict |
 | POST | `/api/delta/<key>` | Delta-sync per record (ERP 4.3): `{upsert:[records], delete:[ids]}` met verplichte `X-Data-Version` (en unieke id's: een dubbele id binnen één upsert, of een id in zowel `upsert` als `delete`, geeft 400 — anders komt hetzelfde record twee keer in de opslag en verliest de key permanent delta-ondersteuning); client valt bij 400/404 automatisch terug op de volledige POST |
+| POST | `/api/website/voorbeeld` | Het telemetriebericht dat er nu verstuurd zou worden (`{instellingen?}` → `{bericht, bytes, max_bytes}`), met dezelfde code als de echte verzending — beheer-only |
+| POST | `/api/website/test` | GET op de plugin-route (`/wp-json/wc-craftery/v1/brouwerij`): versie, laatst ontvangen, vers — verandert niets; beheer-only |
+| POST | `/api/website/verstuur` | Telemetrie nu versturen, buiten het interval (`{instellingen?}`); 409 als de koppeling of alle onderdelen uit staan, `te_snel` binnen 10 s na het vorige bericht. Beheer-only, audit `website_verstuur` |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
@@ -1002,6 +1016,25 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   zelf). Wijzigt het thema, dan wijzigt `CRAFTERY_META` mee; de app schrijft
   nooit een meta-sleutel die daar niet in staat en laat meta van andere plugins
   ongemoeid. Uit te zetten met `woocommerce_creds.themaVelden = false`
+- **Website-telemetrie** (server: `_website_tick`/`_website_loop`, thread
+  `website`; UI: `components/WebsiteTelemetrie.tsx`; standaard uit): elk
+  interval (default 60 min, 15–240) een momentopname naar de plugin
+  **Craftery Brouwerij 1.1.0+** op `{storeUrl}/wp-json/wc-craftery/v1/brouwerij`,
+  met dezelfde consumer key via `_wc_request(..., api_pad=WEBSITE_API_PATH)`.
+  Een POST vervangt het vorige bericht helemaal; zonder herkansing (de volgende
+  ronde komt vanzelf). `_website_bericht` is een pure functie (data + live
+  HA-staat in, dict uit) en haalt alle grenzen van het contract (8 tanks,
+  tank 12 / bier 60 tekens, temp −30…120, sensoren 0…999, 20 waarden met naam
+  `[a-z0-9_]{1,32}`, 8 kB). Alleen wat per onderdeel aan staat gaat mee, en
+  alleen afgeleide échte getallen: temperatuur live van de sensor, anders een
+  `gist_metingen`-rij van hooguit twee uur oud, anders niets; koeling/
+  verwarming gaat niet mee (de app kent geen percentage). `liters_verpakt`
+  gebruikt `_voorraad_per_locatie`, de **Python-spiegel van
+  `voorraadPerLocatie`** — wijzig je die in `calculations.ts`, wijzig hem daar
+  ook (idem `_tank_rest_volume` ↔ `tankRestVolume`). Uitgezet terwijl er
+  cijfers op de site staan (`op_site`) → één leeg bericht `{}`.
+  **Nooit** klanten, bestellingen, prijzen, recepten of financiële data in het
+  bericht zetten
 - Afbeeldingen zijn verwijzingen, geen uploads: de WC REST API accepteert een
   media-`id` of een publieke `src`-URL. Base64 uit deze app kan er niet in —
   uploaden blijft WordPress-werk
