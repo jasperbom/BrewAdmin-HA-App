@@ -4,6 +4,83 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.77] — 2026-09-22
+
+### Batchdossier: regels liepen tegen de scheidingslijn aan
+
+In de PDF van het batchdossier raakte de onderkant van de letters de
+scheidingslijn van de rij eronder — het leek alsof de regels elkaar
+overlapten. De HTML zelf was in orde; html2canvas, dat het document in beeld
+omzet, zet tekst een paar pixels lager dan de browser, en de rijen van de
+pakbon-/factuurstijl staan daar te krap voor.
+
+Het dossier heeft nu zijn eigen, ruimere rijen (`th`/`td` met meer
+regelhoogte en padding) in plaats van die van de pakbon. Die vangen het
+verschil op, en een archiefstuk van meerdere pagina's leest er toch prettiger
+door. Pakbon en factuur blijven ongemoeid.
+
+Meteen de afbrekingen meegenomen die dit zichtbaar maakten:
+
+- Lotcodes, datums en houdbaarheidsdatums breken niet meer af (`L2614-\nB1`
+  werd `L2614-B1`).
+- Een afvulsessie die op één dag begint en eindigt noemt die dag nog één keer:
+  "20-06-2026 09:00 – 16:00" in plaats van de volledige datum aan beide kanten.
+- De kolomkop "pH" staat niet langer in klein-kapitaal — "PH" betekent iets
+  anders.
+
+---
+
+## [1.12.76] — 2026-09-22
+
+### Batchdossier: een afgeronde batch als PDF
+
+Alles wat over een brouwsel bekend is stond verspreid over de batchpagina, de
+HACCP-pagina en de boekhouding. Handig zolang je zelf achter het scherm zit —
+onbruikbaar zodra iemand anders ernaar vraagt. En dat gebeurt: de NVWA vraagt
+naar de traceerbaarheid en de CCP-registraties, de Douane naar wat er is
+afgevuld, de boekhouder naar de kostprijs, en jijzelf naar wat er de vorige
+keer ook alweer gebeurde.
+
+Een batch die afgerond is (Afgevuld of Gesloten) heeft daarom een knop
+**Batchdossier ↓ PDF** in de kop van de batchpagina. Die zet het hele verhaal
+op papier: kerncijfers, de tijdlijn van brouwdag tot verpakdag, de
+ingrediënten mét leverancierslot en houdbaarheid (één stap terug), de
+gistingsmetingen, de vrijgave voor afvullen (CCP 1), de afvulsessies met hun
+lotcodes en de tellingen van CCP 2 en CCP 3, de afvullingen, de verliesposten,
+de afwijkingen, het financiële resultaat en de notities. De printerknop
+ernaast opent hetzelfde document in het printvenster — daar levert "Opslaan
+als PDF" scherpere, doorzoekbare tekst op.
+
+Twee dingen die het dossier bewust *niet* doet:
+
+- **Niets bijrekenen.** Elk cijfer komt uit dezelfde afleiding als het scherm
+  dat het al toont: de tijdlijn uit `vergisting.ts`, de verpakkingskosten uit
+  `verpakkingKosten.ts`, de lotcode via `trace.ts`. Een dossier dat andere
+  getallen noemt dan het scherm is erger dan geen dossier.
+- **Niets verzwijgen.** Een ingrediënt zonder leverancierslotnummer blijft in
+  de tabel staan met een leeg veld, en de afwijkingen — elke keer dat er langs
+  een harde CCP-blokkade is gewerkt — staan er met onderbouwing en paraaf in.
+
+Een hoofdstuk zonder inhoud komt er niet in, dus een batch met weinig
+registratie levert gewoon een korter dossier op in plaats van pagina's "geen
+gegevens".
+
+Verder:
+
+- Nieuwe `utils/batchRapport.ts` verzamelt het dossier (i18n-sleutels, geen
+  tekst, net als `haccp.ts` en `trace.ts`); `components/BatchRapportExport.tsx`
+  maakt er het document van. Beide met tests.
+- De PDF-generator knipt niet langer blind per paginahoogte. Nieuwe
+  `utils/pdfPaginering.ts` bepaalt waar geknipt mag worden, zodat een
+  tabelregel niet half op twee pagina's staat en een kopje niet als weesregel
+  onderaan een pagina achterblijft. Pakbon, factuur en herinnering gebruiken de
+  optie niet en zijn dus ongewijzigd.
+- `PakbonExport.tsx` deelt zijn documentopmaak (`DOC_CSS`, `esc`,
+  `breweryBlock`, `openPrint`) nu met het dossier, zodat pakbon, factuur en
+  dossier uit dezelfde brouwerij er ook als één brouwerij uitzien.
+
+---
+
 ## [1.12.75] — 2026-09-19
 
 ### Uitslaan uit de AGP kan nu vanaf de kassa

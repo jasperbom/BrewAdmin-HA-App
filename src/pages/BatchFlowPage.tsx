@@ -44,6 +44,8 @@ import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
 import TankReinigingForm from '../components/TankReinigingForm'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
+import { batchIsAfgerond, bouwBatchRapport } from '../utils/batchRapport'
+import { downloadBatchDossierPdf, printBatchDossier } from '../components/BatchRapportExport'
 import { actieveSessie, magAfvullingRegistreren } from '../utils/afvulsessie'
 import { metingWaarde, metingenMetFg } from '../utils/metingen'
 import Icon from '../components/ui/Icon'
@@ -98,6 +100,11 @@ interface BatchFlowPageProps {
   // uitvoering op de bijbehorende schoonmaaktaak te loggen.
   schoonmaakTaken?: any[], schoonmaakLog?: any[], setSchoonmaakLog?: any,
   capa: any[], setCapa: any,
+  // Briefhoofd van het batchdossier (zelfde bron als pakbon en factuur).
+  breweryDetails?: any,
+  appName?: string,
+  factuurLogo?: string | null,
+  logo?: string | null,
   whoami: {gebruiker?: string, rol?: string} | null,
   setPage: (p: string) => void,
   setNavBatchId: (id: number | null) => void,
@@ -390,6 +397,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpAfwijkingen, setHaccpAfwijkingen, haccpInst,
   schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
   capa, setCapa, whoami,
+  breweryDetails, appName = '', factuurLogo, logo,
   setPage, setNavBatchId, openBatchId,
   preNieuwBatch, setPreNieuwBatch,
   ccpMetingen, setCcpMetingen,
@@ -426,6 +434,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [gegevensOpen, setGegevensOpen] = useState(false)
   const [logIngeklapt, setLogIngeklapt] = useState(true)
   const [receptPickerOpen, setReceptPickerOpen] = useState(false)
+  // Het batchdossier renderen duurt even (html2canvas + jsPDF); de knop zegt
+  // dat en blokkeert een tweede klik.
+  const [dossierBezig, setDossierBezig] = useState(false)
   // Planning-tijdlijn in het overzicht (samengevoegd met de vroegere losse
   // Planning-pagina). Sinds de brouwzaal de lopende batches toont, is dit
   // overzicht de planningspagina en staat de tijdlijn standaard open.
@@ -2069,6 +2080,36 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     s + (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0), 0)
   const afgevuldStuks = mijnAv.reduce((s: number, a: any) => s + (Number(a.hoeveelheid) || 0), 0)
   const verliesL = mijnVerlies.reduce((s: number, v: any) => s + (Number(v.liter) || 0), 0)
+
+  // ── Batchdossier (PDF) ────────────────────────────────────────────────────
+  // Beschikbaar zodra het bier in de verpakking zit: vanaf dat moment ligt
+  // alles vast waar het dossier over gaat. Het rekenwerk staat in
+  // utils/batchRapport.ts, de opmaak in components/BatchRapportExport.tsx —
+  // hier alleen het verzamelen van de data en het afvangen van een fout.
+  const dossierRapport = () => bouwBatchRapport({
+    batch: selB,
+    batchIngredienten: bi, ingredienten: ing, lots,
+    metingen: gistMetingen, afvullingen: av, verliesRegistraties,
+    sessies: afvulSessies, sluitcontroles: haccpSluitcontroles,
+    etiketcontroles: haccpEtiketcontroles, vrijgaven: haccpVrijgaven,
+    afwijkingen: haccpAfwijkingen, notities: batchNotities,
+    verpakkingen, onderdelen, producten, productArtikelen, artikelen,
+    recepten, accijns: acc, log,
+  })
+  const dossierBriefhoofd = (): [any, string, string | null | undefined] =>
+    [breweryDetails || {}, appName, factuurLogo || logo]
+
+  const dossierPdf = async () => {
+    if (dossierBezig) return
+    setDossierBezig(true)
+    try {
+      await downloadBatchDossierPdf(dossierRapport(), ...dossierBriefhoofd())
+    } catch (e: any) {
+      alert(t('batchdossier_fout').replace('{msg}', e?.message || String(e)))
+    } finally {
+      setDossierBezig(false)
+    }
+  }
 
   const laatsteSg = (() => {
     const ms = mijnMetingen.filter((m: any) => Number(m.sg) > 0)
@@ -4001,6 +4042,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             <div className="flex items-center gap-2">
               {selB.status === 'Gepland' && (
                 <Btn v="secondary" s="sm" onClick={() => setReceptPickerOpen(true)}>{t('batch_sync_recept')}</Btn>
+              )}
+              {batchIsAfgerond(selB) && (
+                <>
+                  <Btn v="secondary" s="sm" onClick={dossierPdf} disabled={dossierBezig}
+                    title={t('batchdossier_uitleg')}>
+                    {dossierBezig ? t('mail_generating_pdf') : `${t('batchdossier_knop')} ${t('btn_pdf')}`}
+                  </Btn>
+                  <Btn v="ghost" s="sm" title={t('batchdossier_print_uitleg')}
+                    onClick={() => printBatchDossier(dossierRapport(), ...dossierBriefhoofd())}>
+                    <Icon n="printer" />
+                  </Btn>
+                </>
               )}
               <Btn v="danger" s="sm" onClick={() => removeBatch(selB.id)}>{t('btn_delete')}</Btn>
             </div>

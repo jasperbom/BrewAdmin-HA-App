@@ -15,7 +15,10 @@ import {
   eigenFactuurTemplate,
 } from '../utils/factuurTemplate'
 
-const CSS = `
+// Basisopmaak van elk document dat deze app uitprint. Gedeeld met het
+// batchdossier (`BatchRapportExport.tsx`), zodat een pakbon, een factuur en een
+// dossier uit dezelfde brouwerij er ook als één brouwerij uitzien.
+export const DOC_CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #222; background: #fff; }
   .page { max-width: 210mm; margin: 0 auto; padding: 14mm 16mm 12mm; }
@@ -82,7 +85,7 @@ const CSS = `
 // Klant-/ordervelden komen rechtstreeks uit WooCommerce; zonder escaping zou
 // een kwaadwillende bedrijfsnaam of opmerking scripts kunnen uitvoeren in de
 // app-origin zodra het printvenster opent (document.write erft de origin).
-const esc = (v: any): string => String(v ?? '')
+export const esc = (v: any): string => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
@@ -91,7 +94,7 @@ const esc = (v: any): string => String(v ?? '')
 const fmtEuro = fmtEuroDoc
 const fmtDate = fmtDatumDoc
 
-function openPrint(html: string, filename: string, css: string = CSS): void {
+export function openPrint(html: string, filename: string, css: string = DOC_CSS): void {
   const w = window.open('', '_blank', 'width=900,height=700')
   if (!w) { alert(t('err_popup_blocked')); return }
   w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${css}</style></head><body>${html}</body></html>`)
@@ -102,7 +105,7 @@ function openPrint(html: string, filename: string, css: string = CSS): void {
   setTimeout(() => { w.print() }, 400)
 }
 
-function breweryBlock(brewery: any, appName: string, logo: string | null | undefined): string {
+export function breweryBlock(brewery: any, appName: string, logo: string | null | undefined): string {
   const fv = brewery?.factuur_velden || {}
   const showLogo = fv.logo !== false
   const logoHtml = showLogo && logo ? `<img src="${esc(logo)}" class="logo" alt="logo" />` : ''
@@ -361,7 +364,7 @@ export function buildPakbonHTML(
   factuurLogo: string | null | undefined
 ): {html: string, filename: string} {
   const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo)
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
 
@@ -486,7 +489,7 @@ export function buildPicklijstHTML(
   factuurLogo: string | null | undefined
 ): {html: string, filename: string} {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo)
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
 
@@ -681,7 +684,7 @@ export function buildHerinneringHTML(
 ): string {
   const r = buildHerinneringBody(factuur, brewery, appName, factuurLogo, niveau, payInfo)
   if (!r) return ''
-  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
 }
 
 // Opent printvenster met de herinnering/aanmaning.
