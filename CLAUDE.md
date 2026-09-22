@@ -28,7 +28,9 @@ BrewAdmin-HA-App/
 │   ├── components/
 │   │   ├── ui/             # Reusable UI primitives
 │   │   ├── InkoopFactuurModal.tsx
-│   │   └── PakbonExport.tsx
+│   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
+│   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
+│   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier
 │   ├── pages/              # Feature pages (one per domain)
 │   ├── utils/
 │   │   ├── api.ts          # API client & state management
@@ -66,6 +68,17 @@ BrewAdmin-HA-App/
 │   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
+│   │   ├── batchRapport.ts # Batchdossier van een afgeronde batch (`batchIsAfgerond` =
+│   │   │                   # Afgevuld/Verpakt/Gesloten): kerncijfers, tijdlijn,
+│   │   │                   # ingrediënten mét leverancierslot, metingen, CCP 1/2/3,
+│   │   │                   # afvullingen, verlies, afwijkingen, kostprijs. Rekent zelf
+│   │   │                   # niets uit wat een scherm al toont — het leent de bestaande
+│   │   │                   # afleidingen, anders krijgt het dossier eigen getallen.
+│   │   │                   # Geeft i18n-sleutels terug; opmaak in
+│   │   │                   # `components/BatchRapportExport.tsx`
+│   │   ├── pdfPaginering.ts # Waar een lang document geknipt mag worden: `paginaIndeling`
+│   │   │                   # houdt blokken (tabelrijen, kaarten) heel en laat een kopje
+│   │   │                   # niet als weesregel achter. Gebruikt door `pdf.ts`
 │   │   ├── batchStats.ts   # Wat de batches over een bier zeggen: aantal, gebrouwen liters,
 │   │   │                   # gemeten ABV/OG/FG/kleur/rendement/kostprijs-per-liter (gemiddelde,
 │   │   │                   # spreiding, trend t.o.v. de vorige brouw, reeks voor een lijntje) en
@@ -233,7 +246,7 @@ werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
 | Build tool | Vite 5.4.10 with `vite-plugin-singlefile` |
 | Styling | Tailwind CSS 3.4.14 |
 | Excel | SheetJS (xlsx 0.20.3) |
-| PDF | pdfjs-dist 3.11.174 (lezen, factuur-scan); jsPDF 3 + html2canvas (genereren — mail-bijlagen) |
+| PDF | pdfjs-dist 3.11.174 (lezen, factuur-scan); jsPDF 3 + html2canvas (genereren — mail-bijlagen en het batchdossier) |
 | Backend | Python 3.12 (stdlib only, no pip dependencies) |
 | Container | Docker, multi-stage (node:20-alpine → python:3.12-alpine) |
 | Deployment | Home Assistant addon via ingress (port 8099) |
@@ -290,7 +303,9 @@ allergenenvergelijking, lotcode en THT), de traceerbaarheid
 (één stap terug/vooruit, massabalans, traceergaten, oefeningstatus) en de
 conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`), de hash-routing
 van de schil (`route.ts`), het themacontrast (`kleurContrast.ts`, alle zeven
-thema's) en de undo-planner (`undo.ts`).
+thema's), de undo-planner (`undo.ts`), het batchdossier (`batchRapport.ts`:
+afbakening op de batch, kerncijfers, traceerregels, CCP-registraties,
+kostprijs) en de pagina-indeling van de PDF-export (`pdfPaginering.ts`).
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
