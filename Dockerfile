@@ -21,6 +21,8 @@ FROM python:3.12-alpine
 WORKDIR /app
 
 COPY server.py .
+# config.yaml: server.py leest er de versie uit (`bron` van de website-telemetrie)
+COPY config.yaml .
 COPY --from=frontend-builder /build/dist/index.html ./static/index.html
 COPY entrypoint.sh /entrypoint.sh
 
@@ -30,7 +32,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN apk add --no-cache su-exec \
  && adduser -D -H -s /sbin/nologin appuser \
  && mkdir -p /data \
- && chmod 644 /app/server.py /app/static/index.html \
+ && chmod 644 /app/server.py /app/config.yaml /app/static/index.html \
  && chmod +x /entrypoint.sh
 
 EXPOSE 8099

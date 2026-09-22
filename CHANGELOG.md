@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.78] — 2026-09-22
+
+### Website-telemetrie: echte brouwerijcijfers op je webshop
+
+BrewAdmin kan nu op een vast interval (standaard elk uur) een klein bericht met
+brouwerijcijfers naar je WooCommerce-webshop sturen. De webshop toont die in
+de telemetriestrip onder de menubalk en in `{brouwerij:…}`-plaatshouders in
+Elementor, in plaats van verzonnen getallen.
+
+- **Staat standaard uit.** Aanzetten gaat bij Instellingen → Koppelingen →
+  *Website-telemetrie*. Werkt alleen met een webshop waarop de
+  WordPress-plugin **Craftery Brouwerij 1.1.0 of nieuwer** staat; er is geen
+  nieuw geheim nodig, de WooCommerce-sleutel wordt gebruikt.
+- **Jij kiest wat er mee gaat**, per onderdeel (alles standaard uit): gisting
+  en temperatuur per tank, sensorstatus, hop- en moutvoorraad in kilo's,
+  liters bier in de tanks, liters verpakt bier op voorraad en het aantal
+  gebrouwen batches. Klanten, bestellingen, prijzen, recepten en financiële
+  gegevens gaan nooit mee.
+- **De server verstuurt zelf**, ook als de app dicht is. Interval 15–240
+  minuten. Zet je de functie uit, dan gaat er één leeg bericht heen, zodat de
+  cijfers meteen van de site verdwijnen.
+- **Alleen echte getallen.** De temperatuur komt live van de HA-sensor van de
+  tank; is die onbereikbaar, dan de laatste meting als die hooguit twee uur oud
+  is — anders geen temperatuur. Voorraad en liters worden berekend zoals de app
+  dat elders doet. Koel- en verwarmingspercentages gaan niet mee: die weet de
+  app niet.
+- Op het instelscherm: een voorbeeld van het exacte bericht, *Test verbinding*
+  (pluginversie en of er een vers bericht staat), *Nu versturen*, de laatste
+  poging met de reden als het misging, en wat er nu op de site staat.
+  Alleen de rol beheer kan dit instellen en versturen.
+
+---
+
 ## [1.12.77] — 2026-09-22
 
 ### Batchdossier: regels liepen tegen de scheidingslijn aan

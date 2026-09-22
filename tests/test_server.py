@@ -2720,3 +2720,443 @@ class TestThemaInjectie:
     def test_build_zonder_plaatshouders_blijft_ongewijzigd(self):
         html = b'<html><body>zonder plaatshouders</body></html>'
         assert srv._pas_thema_toe(html, 'sand') == html
+
+
+class TestWebsiteTelemetrie:
+    """Website-telemetrie: elk uur een momentopname met brouwerijcijfers naar
+    de plugin Craftery Brouwerij. Het bericht is een pure functie; de tick
+    verstuurt alleen als alles aan staat, en ruimt de site op als hij uitgaat."""
+
+    NU = datetime.datetime(2026, 9, 22, 21, 0).timestamp()
+    CREDS = {'storeUrl': 'https://winkel.example', 'consumerKey': 'ck', 'consumerSecret': 'cs',
+             'enabled': True}
+    TOEGESTAAN = {'bron', 'gisting', 'sensoren', 'waarden', 'regels'}
+    TANKREGEL = {'tank', 'bier', 'temp', 'koeling', 'verwarming'}
+
+    @staticmethod
+    def _inst(*aan, enabled=True, interval=60):
+        return srv._website_instellingen({'enabled': enabled, 'interval_min': interval,
+                                          'onderdelen': {k: True for k in aan}})
+
+    @classmethod
+    def _meting(cls, batch_id, temp, uren_geleden):
+        t = datetime.datetime.fromtimestamp(cls.NU - uren_geleden * 3600)
+        return {'batch_id': batch_id, 'datum': t.strftime('%Y-%m-%d'), 'tijd': t.strftime('%H:%M'), 'temp': temp}
+
+    @classmethod
+    def _data(cls, **extra):
+        d = {
+            'tanks': [{'id': 't1', 'naam': 'F1'}, {'id': 't2', 'naam': 'F2'}, {'id': 't3', 'naam': 'F3'}],
+            'batches': [
+                {'id': 1, 'naam': 'Session NEIPA', 'batch_nummer': '123', 'status': 'Vergisten',
+                 'tank': 't2', 'liter_vergist': 500},
+                {'id': 2, 'naam': 'Stout', 'batch_nummer': '124', 'status': 'Gepland', 'tank': 't1'},
+                {'id': 3, 'naam': 'Pils', 'batch_nummer': '120', 'status': 'Afgevuld'},
+                {'id': 4, 'naam': 'Blond', 'batch_nummer': '121', 'status': 'Gesloten'},
+            ],
+            'ha_instellingen': {'enabled': True, 'sensors': [
+                {'id': 1, 'tank': 't1', 'entity': 'sensor.f1'},
+                {'id': 2, 'tank': 't2', 'entity': 'sensor.f2'},
+                {'id': 3, 'tank': 't3', 'entity': ''},
+            ]},
+            'gist_metingen': [],
+            'tank_alarmen': [],
+            'ingredienten': [{'id': 10, 'type': 'Hop'}, {'id': 11, 'type': 'Mout'}, {'id': 12, 'type': 'Gist'}],
+            'lots': [
+                {'id': 1, 'ingredient_id': 10, 'hoeveelheid': 2400, 'eenheid': 'g', 'beschikbaar': True},
+                {'id': 2, 'ingredient_id': 10, 'hoeveelheid': 10, 'eenheid': 'kg', 'beschikbaar': True},
+                {'id': 3, 'ingredient_id': 10, 'hoeveelheid': 5, 'eenheid': 'kg', 'beschikbaar': False},
+                {'id': 4, 'ingredient_id': 10, 'hoeveelheid': 3, 'eenheid': 'pkg', 'beschikbaar': True},
+                {'id': 5, 'ingredient_id': 11, 'hoeveelheid': 125, 'eenheid': 'kg', 'beschikbaar': True},
+                {'id': 6, 'ingredient_id': 12, 'hoeveelheid': 1, 'eenheid': 'kg', 'beschikbaar': True},
+            ],
+            'afvullingen': [
+                {'id': 50, 'batch_id': 1, 'hoeveelheid': 60, 'inhoud_per_eenheid': 0.33},
+                {'id': 51, 'batch_id': 3, 'aantal': 10, 'inhoud_liter': 20},
+            ],
+            'verlies_registraties': [{'batch_id': 1, 'liter': 50.2}],
+            'uitleveringen': [{'afvulling_id': 51, 'aantal': 4, 'datum': '2026-09-01'}],
+            'verplaatsingen': [],
+            'afboekingen': [],
+            'locaties': [{'id': 1, 'naam': 'AGP', 'is_agp': True}],
+            # Dit mag er nooit in terechtkomen.
+            'klanten': [{'id': 1, 'naam': 'Geheim BV'}],
+            'bestellingen': [{'id': 1, 'totaal': 999}],
+        }
+        d.update(extra)
+        return d
+
+    def _bericht(self, inst, data=None, live=None, bron='BrewAdmin 1.12.78'):
+        return srv._website_bericht(inst, data or self._data(),
+                                    {'sensor.f1': '4.0', 'sensor.f2': '2.44'} if live is None else live,
+                                    self.NU, bron)
+
+    # ── Instellingen ──────────────────────────────────────────────────────
+    def test_instellingen_standaard_uit_en_interval_begrensd(self):
+        leeg = srv._website_instellingen(None)
+        assert leeg['enabled'] is False and leeg['interval_min'] == 60
+        assert set(leeg['onderdelen']) == set(srv.WEBSITE_ONDERDELEN)
+        assert not any(leeg['onderdelen'].values())
+        assert srv._website_instellingen({'interval_min': 5})['interval_min'] == 15
+        assert srv._website_instellingen({'interval_min': '999'})['interval_min'] == 240
+        # Alleen een echte true zet iets aan.
+        inst = srv._website_instellingen({'enabled': 'ja', 'onderdelen': {'gisting': 1, 'hop_kg': True, 'x': True}})
+        assert inst['enabled'] is False and inst['onderdelen']['gisting'] is False
+        assert inst['onderdelen']['hop_kg'] is True and 'x' not in inst['onderdelen']
+
+    # ── Het bericht ───────────────────────────────────────────────────────
+    def test_alles_uit_is_leeg_bericht(self):
+        assert self._bericht(self._inst()) == {}
+        # De hoofdschakelaar zelf zit niet in de pure functie: die kijkt naar
+        # de onderdelen.
+        assert self._bericht(self._inst(enabled=False)) == {}
+
+    def test_schakelaars_worden_gerespecteerd(self):
+        b = self._bericht(self._inst('hop_kg'))
+        assert set(b) == {'bron', 'waarden'} and set(b['waarden']) == {'hop_kg'}
+        b = self._bericht(self._inst('sensoren'))
+        assert set(b) == {'bron', 'sensoren'}
+        b = self._bericht(self._inst('gisting'))
+        assert set(b) == {'bron', 'gisting'}
+        b = self._bericht(self._inst('batches_gebrouwen', 'mout_kg'))
+        assert set(b['waarden']) == {'batches_gebrouwen', 'mout_kg'}
+
+    def test_gisting_alleen_volle_tanks_met_bier(self):
+        b = self._bericht(self._inst('gisting'))
+        assert b['gisting'] == [{'tank': 'F2', 'bier': '#123 Session NEIPA', 'temp': 2.4}]
+        # Alles uit de tank (afgevuld + verlies) → lege tank, niet meesturen.
+        data = self._data()
+        data['afvullingen'].append({'id': 52, 'batch_id': 1, 'hoeveelheid': 1, 'inhoud_per_eenheid': 500})
+        assert 'gisting' not in self._bericht(self._inst('gisting'), data)
+        # Zonder naam en nummer is er geen bier → geen regel.
+        data = self._data()
+        data['batches'][0].update({'naam': '', 'batch_nummer': ''})
+        assert 'gisting' not in self._bericht(self._inst('gisting'), data)
+        # Zonder batchnummer alleen de naam; tank zonder naam → zijn id.
+        data = self._data(tanks=[{'id': 't2'}])
+        data['batches'][0]['batch_nummer'] = ''
+        assert self._bericht(self._inst('gisting'), data)['gisting'][0] == \
+            {'tank': 't2', 'bier': 'Session NEIPA', 'temp': 2.4}
+
+    def test_temperatuur_live_dan_meting_hooguit_twee_uur_oud(self):
+        data = self._data(gist_metingen=[self._meting(1, 18.24, 1.5), self._meting(1, 30, 5)])
+        # Sensor onbereikbaar → laatste meting (anderhalf uur oud).
+        b = self._bericht(self._inst('gisting'), data, live={'sensor.f2': 'unavailable'})
+        assert b['gisting'][0]['temp'] == 18.2
+        # Supervisor niet te bereiken → idem.
+        assert 'temp' in self._bericht(self._inst('gisting'), data, live={})['gisting'][0]
+        # Alleen een meting van drie uur oud → geen temperatuur.
+        data = self._data(gist_metingen=[self._meting(1, 18.0, 3)])
+        regel = self._bericht(self._inst('gisting'), data, live={'sensor.f2': 'unknown'})['gisting'][0]
+        assert 'temp' not in regel
+        # Een onzinwaarde van de sensor telt niet als temperatuur.
+        regel = self._bericht(self._inst('gisting'), self._data(), live={'sensor.f2': '250'})['gisting'][0]
+        assert 'temp' not in regel
+
+    def test_sensorstatus(self):
+        b = self._bericht(self._inst('sensoren'))
+        assert b['sensoren'] == {'online': 2, 'totaal': 2}  # de lege entity telt niet mee
+        b = self._bericht(self._inst('sensoren'), live={'sensor.f1': 'unavailable', 'sensor.f2': '3.1'})
+        assert b['sensoren'] == {'online': 1, 'totaal': 2}
+        b = self._bericht(self._inst('sensoren'), live={'sensor.f2': '3.1'})  # f1 niet te lezen
+        assert b['sensoren'] == {'online': 1, 'totaal': 2}
+        # Een open sensor_stil-alarm op de tank → niet online; een gesloten wel.
+        alarmen = [{'tank': 't1', 'soort': 'sensor_stil', 'hersteld_op': None},
+                   {'tank': 't2', 'soort': 'sensor_stil', 'hersteld_op': '2026-09-22T10:00:00+00:00'},
+                   {'tank': 't2', 'soort': 'alarm', 'hersteld_op': None}]
+        b = self._bericht(self._inst('sensoren'), self._data(tank_alarmen=alarmen))
+        assert b['sensoren'] == {'online': 1, 'totaal': 2}
+        # HA-sensoren uit → geen sensorblok (0/0 zegt niets).
+        data = self._data()
+        data['ha_instellingen']['enabled'] = False
+        assert 'sensoren' not in self._bericht(self._inst('sensoren'), data)
+
+    def test_voorraadwaarden(self):
+        b = self._bericht(self._inst('hop_kg', 'mout_kg', 'liters_tank', 'liters_verpakt', 'batches_gebrouwen'))
+        # Hop: 2400 g + 10 kg; niet beschikbaar en 'pkg' tellen niet.
+        assert b['waarden']['hop_kg'] == 12.4
+        assert b['waarden']['mout_kg'] == 125
+        # Tank: 500 − 60 × 0,33 − 50,2 = 430.
+        assert b['waarden']['liters_tank'] == 430
+        # Verpakt: 60 × 0,33 (batch 1) + (10 − 4) × 20 (batch 3) = 139,8 → 140.
+        assert b['waarden']['liters_verpakt'] == 140
+        # Gebrouwen: Vergisten, Afgevuld, Gesloten — niet Gepland.
+        assert b['waarden']['batches_gebrouwen'] == 3
+
+    def test_grenzen_uit_het_contract(self):
+        tanks = [{'id': f't{i}', 'naam': f'Fermentor nummer {i}'} for i in range(12)]
+        batches = [{'id': 100 + i, 'naam': '<b>Heel</b> lange naam ' * 6, 'batch_nummer': str(i),
+                    'status': 'Conditioneren', 'tank': f't{i}'} for i in range(12)]
+        sensors = [{'id': i, 'tank': f't{i % 12}', 'entity': f'sensor.s{i}'} for i in range(1200)]
+        data = self._data(tanks=tanks, batches=batches,
+                          ha_instellingen={'enabled': True, 'sensors': sensors})
+        live = {f'sensor.s{i}': '-45' for i in range(1200)}
+        inst = self._inst(*srv.WEBSITE_ONDERDELEN)
+        b = self._bericht(inst, data, live=live, bron='BrewAdmin ' + 'x' * 80)
+        assert set(b) <= self.TOEGESTAAN
+        assert len(b['bron']) <= 40
+        assert len(b['gisting']) == 8
+        for regel in b['gisting']:
+            assert set(regel) <= self.TANKREGEL
+            assert 0 < len(regel['tank']) <= 12 and 0 < len(regel['bier']) <= 60
+            assert '<' not in regel['bier']
+            assert 'temp' not in regel  # −45 °C ligt buiten −30…120
+        s = b['sensoren']
+        assert isinstance(s['online'], int) and isinstance(s['totaal'], int)
+        assert 0 <= s['online'] <= s['totaal'] <= 999
+        assert len(b['waarden']) <= 20
+        for naam, waarde in b['waarden'].items():
+            assert re.match(r'^[a-z0-9_]{1,32}$', naam)
+            assert isinstance(waarde, (int, float)) or (isinstance(waarde, str) and len(waarde) <= 40)
+        assert len(srv._website_json(b)) <= srv.WEBSITE_MAX_BYTES
+
+    def test_nooit_andere_velden(self):
+        b = self._bericht(self._inst(*srv.WEBSITE_ONDERDELEN))
+        assert set(b) <= self.TOEGESTAAN
+        assert set(b['waarden']) <= {'hop_kg', 'mout_kg', 'liters_tank', 'liters_verpakt', 'batches_gebrouwen'}
+        assert set(b['sensoren']) == {'online', 'totaal'}
+        for regel in b['gisting']:
+            assert set(regel) <= self.TANKREGEL
+        tekst = json.dumps(b)
+        assert 'Geheim' not in tekst and '999' not in tekst
+
+    # ── Voorraad per locatie (spiegel van voorraadPerLocatie) ─────────────
+    def test_voorraad_per_locatie(self):
+        locs = [{'id': 1, 'is_agp': True}, {'id': 2}]
+        afv = {'id': 7, 'hoeveelheid': 10}
+        vpl = srv._voorraad_per_locatie
+        assert vpl(afv, locs, [], [], []) == {'1': 10}
+        verpl = [{'afvulling_id': 7, 'van_locatie_id': 1, 'naar_locatie_id': 2, 'aantal': 4, 'datum': '2026-01-02'}]
+        uit = [{'afvulling_id': 7, 'aantal': 3, 'datum': '2026-01-03', 'bron_locatie_id': 2}]
+        assert vpl(afv, locs, uit, verpl, []) == {'1': 6, '2': 1}
+        # Een verplaatsing wordt gecapt op wat er op de bron staat.
+        verpl2 = [{'afvulling_id': 7, 'van_locatie_id': 1, 'naar_locatie_id': 2, 'aantal': 50, 'datum': '2026-01-02'}]
+        assert vpl(afv, locs, [], verpl2, []) == {'1': 0, '2': 10}
+        # Afboeking zonder locatie die niet op de AGP past → schuift door.
+        afb = [{'afvulling_id': 7, 'aantal': 8, 'datum': '2026-01-05'}]
+        assert vpl(afv, locs, [], verpl, afb) == {'1': 0, '2': 2}
+        # Met locatie: alleen van die locatie, geen doorschuif.
+        afb2 = [{'afvulling_id': 7, 'aantal': 8, 'datum': '2026-01-05', 'bron_locatie_id': 2}]
+        assert vpl(afv, locs, [], verpl, afb2) == {'1': 6, '2': 0}
+        # Chronologisch: een uitlevering vóór de verplaatsing gaat eerst.
+        uit_vroeg = [{'afvulling_id': 7, 'aantal': 8, 'datum': '2026-01-01'}]
+        assert vpl(afv, locs, uit_vroeg, verpl, []) == {'1': 0, '2': 2}
+        # Andere afvullingen tellen niet; geen locaties → synthetische AGP.
+        assert vpl(afv, [], [{'afvulling_id': 8, 'aantal': 5}], [], []) == {'1': 10}
+
+    # ── _wc_request ───────────────────────────────────────────────────────
+    def test_wc_request_bouwt_zonder_api_pad_hetzelfde_adres(self, monkeypatch):
+        gezien = []
+
+        class _Resp:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def read(self):
+                return b'{}'
+
+        def fake(req, timeout=None):
+            gezien.append((req.full_url, req.get_method()))
+            return _Resp()
+
+        monkeypatch.setattr(srv.urllib.request, 'urlopen', fake)
+        creds = {'url': 'https://winkel.example', 'key': 'ck', 'secret': 'cs'}
+        srv._wc_request(creds, 'GET', 'products?per_page=1')
+        srv._wc_request(creds, 'POST', 'products', b'{}', herkansing=False)
+        srv._wc_request(creds, 'POST', 'brouwerij', b'{}', herkansing=False, api_pad=srv.WEBSITE_API_PATH)
+        assert gezien == [
+            ('https://winkel.example/wp-json/wc/v3/products?per_page=1', 'GET'),
+            ('https://winkel.example/wp-json/wc/v3/products', 'POST'),
+            ('https://winkel.example/wp-json/wc-craftery/v1/brouwerij', 'POST'),
+        ]
+
+    def test_foutcodes(self):
+        assert srv._website_fout(401, b'{"code":"woocommerce_rest_authentication_error"}')['code'] == 'sleutel'
+        assert srv._website_fout(403, b'{"code":"crfb_geen_toegang"}')['code'] == 'rechten'
+        assert srv._website_fout(404, b'{"code":"rest_no_route"}')['code'] == 'plugin'
+        assert srv._website_fout(413, b'')['code'] == 'te_groot'
+        assert srv._website_fout(429, b'')['code'] == 'te_snel'
+        assert srv._website_fout(400, b'')['code'] == 'ongeldig'
+        f = srv._website_fout(504, b'{"oorzaak":"timeout"}')
+        assert f['code'] == 'netwerk' and f['oorzaak'] == 'timeout'
+        assert srv._website_fout(500, b'<html>')['code'] == 'http'
+        a = srv._website_antwoord(json.dumps({
+            'ok': True, 'versie': '1.1.0', 'ontvangen': '2026-09-22T19:06:18+00:00', 'vers': True,
+            'max_leeftijd': 10800, 'regels': ['<i>gisting</i> · F2'] * 20, 'plaatshouders': ['hop_kg']}).encode())
+        assert a['versie'] == '1.1.0' and a['max_leeftijd'] == 10800 and a['vers'] is True
+        assert len(a['regels']) == 8 and a['regels'][0] == 'gisting · F2'
+        assert srv._website_antwoord(b'[]') == {}
+
+    # ── De loop ───────────────────────────────────────────────────────────
+    @staticmethod
+    def _seed(inst=None, creds=None, status=None):
+        for k in ('website_telemetrie', 'woocommerce_creds', 'website_telemetrie_status'):
+            TestWebsiteTelemetrie._wis(k)
+        if inst is not None:
+            srv._write_json('website_telemetrie', inst)
+        if creds is not None:
+            srv._write_json('woocommerce_creds', creds)
+        if status is not None:
+            srv._write_json('website_telemetrie_status', status)
+        srv._website_laatste_poging = 0.0
+        srv._website_laatste_verzending = 0.0
+
+    @staticmethod
+    def _wis(key):
+        conn = srv._db()
+        with conn:
+            conn.execute('DELETE FROM kv WHERE key=?', (key,))
+            conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    def _nep_winkel(self, monkeypatch, status=200, antwoord=None):
+        verzonden = []
+
+        def fake(creds, method, subpath, body=None, herkansing=True, api_pad=srv.WC_API_PATH):
+            verzonden.append({'method': method, 'subpath': subpath, 'api_pad': api_pad,
+                              'herkansing': herkansing, 'body': json.loads(body) if body else None})
+            return status, json.dumps(antwoord if antwoord is not None else
+                                      {'ok': True, 'versie': '1.1.0', 'max_leeftijd': 10800,
+                                       'regels': ['sensoren online: 2/2']}).encode()
+
+        monkeypatch.setattr(srv, '_wc_request', fake)
+        monkeypatch.setattr(srv, '_website_bericht_nu',
+                            lambda inst: {'bron': 'BrewAdmin t', 'waarden': {'hop_kg': 1}}
+                            if any(inst['onderdelen'].values()) else {})
+        return verzonden
+
+    def test_loop_verstuurt_niets_als_hij_uit_staat(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        try:
+            # Uit, maar met onderdelen en WooCommerce.
+            self._seed(inst={'enabled': False, 'onderdelen': {'hop_kg': True}}, creds=self.CREDS)
+            srv._website_tick(force=True)
+            # Aan, maar geen enkel onderdeel.
+            self._seed(inst={'enabled': True, 'onderdelen': {}}, creds=self.CREDS)
+            srv._website_tick(force=True)
+            # Nooit ingesteld.
+            self._seed(creds=self.CREDS)
+            srv._website_tick(force=True)
+            assert verzonden == []
+            assert srv._read_json('website_telemetrie_status') is None
+        finally:
+            self._seed()
+
+    def test_loop_verstuurt_niets_zonder_woocommerce(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        inst = {'enabled': True, 'onderdelen': {'hop_kg': True}}
+        try:
+            self._seed(inst=inst)
+            srv._website_tick(force=True)
+            self._seed(inst=inst, creds=dict(self.CREDS, consumerSecret=''))
+            srv._website_tick(force=True)
+            self._seed(inst=inst, creds=dict(self.CREDS, storeUrl='http://winkel.example'))
+            srv._website_tick(force=True)
+            self._seed(inst=inst, creds=dict(self.CREDS, enabled=False))
+            srv._website_tick(force=True)
+            assert verzonden == []
+        finally:
+            self._seed()
+
+    def test_loop_verstuurt_eenmaal_per_interval_en_ruimt_op(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        try:
+            self._seed(inst={'enabled': True, 'interval_min': 60, 'onderdelen': {'hop_kg': True}},
+                       creds=self.CREDS)
+            srv._website_tick(now=1_000_000)
+            assert len(verzonden) == 1
+            v = verzonden[0]
+            assert v['method'] == 'POST' and v['subpath'] == 'brouwerij'
+            assert v['api_pad'] == '/wp-json/wc-craftery/v1' and v['herkansing'] is False
+            assert v['body'] == {'bron': 'BrewAdmin t', 'waarden': {'hop_kg': 1}}
+            st = srv._read_json('website_telemetrie_status')
+            assert st['gelukt'] is True and st['op_site'] is True and st['fout'] is None
+            assert st['antwoord']['regels'] == ['sensoren online: 2/2']
+            # Binnen het interval: niets.
+            srv._website_laatste_verzending = 0.0
+            srv._website_tick(now=1_000_000 + 30 * 60)
+            assert len(verzonden) == 1
+            # Uitgezet terwijl er iets op de site staat → één leeg bericht.
+            srv._write_json('website_telemetrie', {'enabled': False, 'onderdelen': {'hop_kg': True}})
+            srv._website_tick(now=1_000_000 + 31 * 60)
+            assert len(verzonden) == 2 and verzonden[1]['body'] == {}
+            assert srv._read_json('website_telemetrie_status')['op_site'] is False
+            # Daarna blijft hij stil.
+            srv._website_laatste_verzending = 0.0
+            srv._website_tick(force=True)
+            assert len(verzonden) == 2
+        finally:
+            self._seed()
+
+    def test_mislukte_poging_legt_de_reden_vast(self, app, monkeypatch):
+        self._nep_winkel(monkeypatch, status=404, antwoord={'code': 'rest_no_route'})
+        try:
+            self._seed(inst={'enabled': True, 'onderdelen': {'hop_kg': True}}, creds=self.CREDS)
+            uitkomst = srv._website_tick(force=True)
+            assert uitkomst['ok'] is False and uitkomst['fout']['code'] == 'plugin'
+            st = srv._read_json('website_telemetrie_status')
+            assert st['gelukt'] is False and st['fout']['code'] == 'plugin' and 'laatst_gelukt' not in st
+        finally:
+            self._seed()
+
+    # ── Endpoints ─────────────────────────────────────────────────────────
+    def test_endpoints_voorbeeld_en_versturen(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        try:
+            self._seed(creds=self.CREDS)
+            status, body, _ = req(app, 'POST', '/api/website/voorbeeld', body={})
+            assert status == 200 and body['bericht'] == {} and body['max_bytes'] == 8192
+            status, body, _ = req(app, 'POST', '/api/website/voorbeeld',
+                                  body={'instellingen': {'onderdelen': {'hop_kg': True}}})
+            assert status == 200 and body['bericht']['waarden'] == {'hop_kg': 1}
+            # Versturen terwijl hij uit staat → 409, niets verstuurd.
+            status, body, _ = req(app, 'POST', '/api/website/verstuur', body={})
+            assert status == 409 and verzonden == []
+            status, body, _ = req(app, 'POST', '/api/website/verstuur',
+                                  body={'instellingen': {'enabled': True, 'onderdelen': {'hop_kg': True}}})
+            assert status == 200 and body['ok'] is True and len(verzonden) == 1
+            # Nog eens binnen tien seconden → de app houdt hem zelf tegen.
+            status, body, _ = req(app, 'POST', '/api/website/verstuur',
+                                  body={'instellingen': {'enabled': True, 'onderdelen': {'hop_kg': True}}})
+            assert body['ok'] is False and body['fout']['code'] == 'te_snel' and len(verzonden) == 1
+            assert req(app, 'POST', '/api/website/voorbeeld', body=b'[1]')[0] == 400
+        finally:
+            self._seed()
+
+    def test_endpoint_test_leest_alleen(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch, antwoord={'versie': '1.1.0', 'ontvangen': None,
+                                                            'vers': False, 'max_leeftijd': 10800})
+        try:
+            self._seed(creds=self.CREDS)
+            status, body, _ = req(app, 'POST', '/api/website/test', body={})
+            assert status == 200 and body['ok'] is True and body['antwoord']['versie'] == '1.1.0'
+            assert [v['method'] for v in verzonden] == ['GET']
+            assert srv._read_json('website_telemetrie_status') is None
+            self._seed()
+            status, body, _ = req(app, 'POST', '/api/website/test', body={})
+            assert body['ok'] is False and body['fout']['code'] == 'geen_wc'
+        finally:
+            self._seed()
+
+    def test_alleen_beheer(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        admin = {'X-Remote-User-Name': 'admin'}
+        assert req(app, 'POST', '/api/data/gebruikers_rollen',
+                   body={'gebruikers': {'admin': 'beheer', 'piet': 'productie'}}, headers=admin)[0] == 200
+        try:
+            self._seed(creds=self.CREDS)
+            piet = {'X-Remote-User-Name': 'piet'}
+            for pad in ('/api/website/voorbeeld', '/api/website/test', '/api/website/verstuur'):
+                assert req(app, 'POST', pad, body={}, headers=piet)[0] == 403
+            for key in ('website_telemetrie', 'website_telemetrie_status'):
+                assert req(app, 'POST', f'/api/data/{key}', body={}, headers=piet)[0] == 403
+                assert req(app, 'POST', f'/api/data/{key}', body=[], headers=admin)[0] == 422
+            assert verzonden == []
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={}, headers=admin)[0] == 200
+            self._seed()
+
+    def test_bron_uit_config_yaml(self):
+        versie = re.search(r'^version:\s*"([^"]+)"', (Path(srv.__file__).parent / 'config.yaml').read_text(), re.M)
+        assert srv._app_versie() == versie.group(1)

@@ -22,6 +22,7 @@ import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport
 import { taakReinigingStatus } from '../utils/ontsmetting'
 import { BEWAKING_DEFAULTS } from '../utils/tankbewaking'
 import Icon from '../components/ui/Icon'
+import WebsiteTelemetrie from '../components/WebsiteTelemetrie'
 
 // Instelbare drempels van de temperatuurbewaking. De volgorde is die van het
 // oordeel zelf: eerst wat "normaal" is, dan wanneer het meldenswaardig wordt,
@@ -535,7 +536,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -2248,6 +2249,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         {wcCreds?.lastSync && <p className="text-xs text-gray-400 mt-4">{t('lbl_last_sync')}{fmtTs(wcCreds.lastSync)}</p>}
       </div>
+
+      {/* Website-telemetrie: brouwerijcijfers naar de plugin Craftery
+          Brouwerij op de webshop. De server verstuurt zelf (_website_tick). */}
+      <WebsiteTelemetrie inst={websiteTelemetrie} setInst={setWebsiteTelemetrie} fmtTs={fmtTs}
+        wcIngesteld={!!(wcCreds?.enabled && String(wcCreds?.storeUrl || '').trim().startsWith('https://')
+          && wcCreds?.consumerKey && wcCreds?.consumerSecret)} />
 
       {/* WooCommerce Sync Log */}
       <div className={card}>
