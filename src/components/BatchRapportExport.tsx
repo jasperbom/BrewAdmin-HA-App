@@ -27,6 +27,20 @@ import type {
 // is een archiefstuk, geen folder. `.blok` markeert wat bij het knippen van
 // de PDF heel moet blijven.
 const DOSSIER_CSS = `${DOC_CSS}
+  /* Ruimere rijen dan de pakbon/factuur. Die zijn één pagina en gaan naar de
+     printer; het dossier wordt door html2canvas in beeld omgezet, en die zet
+     tekst een paar pixels lager dan de browser. Met de krappe regelhoogte van
+     de documentstijl loopt de onderkant van de letters dan tegen de
+     scheidingslijn van de volgende rij aan. Deze lucht vangt dat verschil op —
+     en een dossier van meerdere pagina's leest er toch prettiger door. */
+  th { padding: 6px 6px 7px; line-height: 1.35; }
+  td { padding: 6px 6px 7px; line-height: 1.5; }
+  /* Kolommen die nooit mogen afbreken: een lotcode of een datum over twee
+     regels is in een archiefstuk onleesbaar. */
+  .nw { white-space: nowrap; }
+  /* Kolomkoppen staan in klein-kapitaal; "pH" is geen afkorting en wordt daar
+     "PH", wat iets anders betekent. */
+  .kk-uit { text-transform: none; }
   .sec { margin: 0 0 6mm; }
   .sec-title { font-size: 11pt; font-weight: bold; color: #111; border-bottom: 1px solid #d1d5db;
     padding-bottom: 1.5mm; margin-bottom: 3mm; }
@@ -69,6 +83,17 @@ const fmtMoment = (iso: string): string => {
   return s.length <= 10 ? datum : `${datum} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+/** Begin en eind van een afvulsessie op één regel. Een sessie loopt bijna
+ *  altijd binnen één dag; de datum twee keer noemen ("20-06-2026 09:00 –
+ *  20-06-2026 16:00") maakt de kolom onnodig breed en breekt hem af. */
+const fmtPeriode = (start: string, eind: string): string => {
+  const van = fmtMoment(start)
+  if (!eind) return van
+  const zelfdeDag = start.slice(0, 10) === eind.slice(0, 10)
+  const tot = zelfdeDag && eind.length > 10 ? fmtMoment(eind).split(' ').slice(1).join(' ') : fmtMoment(eind)
+  return `${van} – ${tot}`
+}
+
 const getalOfLeeg = (v: number | null | undefined, achtervoegsel = ''): string =>
   v == null ? LEEG : `${fmtQty(v)}${achtervoegsel}`
 
@@ -83,9 +108,12 @@ const sectie = (titel: string, inhoud: string): string =>
 
 /** Tabel met kop; elke rij is een `.blok` zodat de PDF hem niet doormidden
  *  knipt. Een lege body levert geen tabel op — de sectie verdwijnt dan. */
-const tabel = (koppen: Array<{label: string, r?: boolean}>, rijen: string[]): string =>
+const tabel = (koppen: Array<{label: string, r?: boolean, cls?: string}>, rijen: string[]): string =>
   rijen.length
-    ? `<table><thead><tr>${koppen.map(k => `<th${k.r ? ' class="r"' : ''}>${k.label}</th>`).join('')}</tr></thead>
+    ? `<table><thead><tr>${koppen.map(k => {
+        const cls = [k.r ? 'r' : '', k.cls || ''].filter(Boolean).join(' ')
+        return `<th${cls ? ` class="${cls}"` : ''}>${k.label}</th>`
+      }).join('')}</tr></thead>
        <tbody>${rijen.join('')}</tbody></table>`
     : ''
 
@@ -138,19 +166,19 @@ const ingredientenBlok = (rijen: RapportIngredient[]): string => tabel(
   rijen.map(i => `<tr class="blok">
     <td>${esc(i.naam || LEEG)}</td>
     <td>${esc(i.typeKey ? t(i.typeKey, i.type) : (i.type || LEEG))}</td>
-    <td class="r">${fmtQty(i.hoeveelheid)} ${esc(i.eenheid)}</td>
+    <td class="r nw">${fmtQty(i.hoeveelheid)} ${esc(i.eenheid)}</td>
     <td>${i.lotnummer ? esc(i.lotnummer) : `<span class="muted">${LEEG}</span>`}</td>
     <td>${i.leverancier ? esc(i.leverancier) : `<span class="muted">${LEEG}</span>`}</td>
-    <td>${i.houdbaarheid ? fmtDate(i.houdbaarheid) : LEEG}</td>
+    <td class="nw">${i.houdbaarheid ? fmtDate(i.houdbaarheid) : LEEG}</td>
   </tr>`))
 
 const metingenBlok = (rijen: RapportMeting[]): string => tabel(
   [
     {label: t('lbl_date')}, {label: 'SG', r: true}, {label: '°C', r: true},
-    {label: 'pH', r: true}, {label: t('lbl_opmerking')},
+    {label: 'pH', r: true, cls: 'kk-uit'}, {label: t('lbl_opmerking')},
   ],
   rijen.map(m => `<tr class="blok">
-    <td>${fmtDate(m.datum)}${m.tijd ? ` ${esc(m.tijd)}` : ''}</td>
+    <td class="nw">${fmtDate(m.datum)}${m.tijd ? ` ${esc(m.tijd)}` : ''}</td>
     <td class="r">${getalOfLeeg(m.sg)}</td>
     <td class="r">${getalOfLeeg(m.temp)}</td>
     <td class="r">${getalOfLeeg(m.ph)}</td>
@@ -185,10 +213,10 @@ const sessieBlok = (rijen: RapportSessie[]): string => {
       {label: t('haccp_ccp2_titel')}, {label: t('haccp_ccp3_titel')},
     ],
     rijen.map(s => `<tr class="blok">
-      <td><strong>${esc(s.lotcode || LEEG)}</strong></td>
+      <td class="nw"><strong>${esc(s.lotcode || LEEG)}</strong></td>
       <td>${esc(s.verpakking || LEEG)}</td>
-      <td>${fmtMoment(s.start)}${s.eind ? ` – ${fmtMoment(s.eind)}` : ''}</td>
-      <td>${s.tht ? fmtDate(s.tht) : LEEG}</td>
+      <td class="nw">${fmtPeriode(s.start, s.eind)}</td>
+      <td class="nw">${s.tht ? fmtDate(s.tht) : LEEG}</td>
       <td>${esc(t(s.statusKey, s.statusKey))}</td>
       <td>${telling(s.sluitcontroles)}</td>
       <td>${telling(s.etiketcontroles)}</td>
@@ -202,12 +230,12 @@ const afvullingenBlok = (rijen: RapportAfvulling[]): string => tabel(
     {label: t('haccp_sessie_lotcode')}, {label: t('lbl_tht')}, {label: t('lbl_product_sku')},
   ],
   rijen.map(a => `<tr class="blok">
-    <td>${fmtDate(a.datum)}</td>
+    <td class="nw">${fmtDate(a.datum)}</td>
     <td>${esc(a.verpakking || LEEG)}${a.geblokkeerd ? ` <span class="nok">${esc(t('haccp_geblokkeerd'))}</span>` : ''}</td>
     <td class="r">${a.inhoudPerEenheid != null ? `${fmtQty(a.inhoudPerEenheid)} L` : LEEG}</td>
     <td class="r">${esc(String(a.aantal))}</td>
-    <td>${esc(a.lotcode || LEEG)}</td>
-    <td>${a.tht ? fmtDate(a.tht) : LEEG}</td>
+    <td class="nw">${esc(a.lotcode || LEEG)}</td>
+    <td class="nw">${a.tht ? fmtDate(a.tht) : LEEG}</td>
     <td>${esc(a.sku || LEEG)}</td>
   </tr>`))
 
@@ -282,7 +310,7 @@ function bouwDossierBody(
     ${sectie(esc(t('batchdossier_sec_verlies')), tabel(
       [{label: t('lbl_date')}, {label: t('lbl_bron')}, {label: t('lbl_liter_kort'), r: true}, {label: t('lbl_opmerking')}],
       rapport.verliezen.map(v => `<tr class="blok">
-        <td>${fmtDate(v.datum)}</td>
+        <td class="nw">${fmtDate(v.datum)}</td>
         <td>${esc(t(v.bronKey, v.bronKey))}</td>
         <td class="r">${fmtQty(v.liter)}</td>
         <td>${esc(v.notitie)}</td>

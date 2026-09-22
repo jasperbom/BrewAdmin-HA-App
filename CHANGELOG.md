@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.77] — 2026-09-22
+
+### Batchdossier: regels liepen tegen de scheidingslijn aan
+
+In de PDF van het batchdossier raakte de onderkant van de letters de
+scheidingslijn van de rij eronder — het leek alsof de regels elkaar
+overlapten. De HTML zelf was in orde; html2canvas, dat het document in beeld
+omzet, zet tekst een paar pixels lager dan de browser, en de rijen van de
+pakbon-/factuurstijl staan daar te krap voor.
+
+Het dossier heeft nu zijn eigen, ruimere rijen (`th`/`td` met meer
+regelhoogte en padding) in plaats van die van de pakbon. Die vangen het
+verschil op, en een archiefstuk van meerdere pagina's leest er toch prettiger
+door. Pakbon en factuur blijven ongemoeid.
+
+Meteen de afbrekingen meegenomen die dit zichtbaar maakten:
+
+- Lotcodes, datums en houdbaarheidsdatums breken niet meer af (`L2614-\nB1`
+  werd `L2614-B1`).
+- Een afvulsessie die op één dag begint en eindigt noemt die dag nog één keer:
+  "20-06-2026 09:00 – 16:00" in plaats van de volledige datum aan beide kanten.
+- De kolomkop "pH" staat niet langer in klein-kapitaal — "PH" betekent iets
+  anders.
+
+---
+
 ## [1.12.76] — 2026-09-22
 
 ### Batchdossier: een afgeronde batch als PDF
