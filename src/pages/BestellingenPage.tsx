@@ -4,7 +4,11 @@ import { newId, wcGet, wcPut, wcPost, volgendFactuurNummer, volgendBestelNummer 
 import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
 import { fmt, fmtD, tod } from '../utils/format'
-import { accijnsCalc, tariefVoorDatum, voorraadPerLocatie, getAgpLocatie, pickUitgeslagen } from '../utils/calculations'
+import { voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
+import { verkoopUitAgpToegestaan, uitTeSlaan, bouwUitslagBoekingen } from '../utils/agp'
+import { bouwVerkoopUitleveringen } from '../utils/uitlevering'
+import { agpGereserveerdPerAfvulling } from '../utils/kassa'
+import UitslagModal from '../components/UitslagModal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
@@ -74,6 +78,9 @@ interface BestellingenPageProps {
   productArtikelen?: any[]
   locaties?: any[]
   verplaatsingen?: any[]
+  /** Voor uitslaan vanuit de bestelflow (verplaatsing AGP → vrije voorraad). */
+  setVerplaatsingen?: any
+  accijnsAangiftes?: any[]
   afboekingen?: any[]
   smtpCreds?: any
   mollieCreds?: any
@@ -135,6 +142,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   auditLog=[], setAuditLog=()=>{},
   producten=[], productArtikelen=[],
   locaties=[], verplaatsingen=[], afboekingen=[],
+  setVerplaatsingen=()=>{}, accijnsAangiftes=[],
   smtpCreds={enabled:false},
   mollieCreds={enabled:false},
   mailTemplates={},
@@ -181,7 +189,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [showManualModal, setShowManualModal] = useState(false)
   const [showPickModal, setShowPickModal] = useState(false)
   const [showAfrondModal, setShowAfrondModal] = useState(false)
-  // Leeg = "neem de klant van de order over" (zie bouwUitslagRecords). Het
+  // Leeg = "neem de klant van de order over" (zie bouwVerkoopRecords). Het
   // formulier wordt bij het wisselen van order teruggezet: een geadresseerde
   // die bij een exportorder is ingevuld mag niet blijven hangen en de volgende
   // uitlevering op de verkeerde afnemer boeken.
@@ -385,8 +393,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return res
   }
 
-  // Beschikbaar voor een afvulling exclusief AGP-voorraad. Gebruikt voor
-  // privé-orders die wettelijk niet uit AGP geleverd mogen worden.
+  // Beschikbaar voor een afvulling exclusief AGP-voorraad: wat verkocht kan
+  // worden. Een verkoop komt nooit rechtstreeks uit de AGP (behalve export /
+  // intra-EU) — eerst uitslaan, zie utils/agp.ts.
   const beschikbaarBuitenAgpVoorAfvulling = (a: any, excludeBestellingId?: number): number => {
     const perLoc = beschikbaarPerLocatieVoorAfvulling(a, excludeBestellingId)
     const agp = getAgpLocatie(locaties as any)
@@ -433,13 +442,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // Verzamelpicklijst: alle bestellingen "om te picken" in één ronde door de
   // koeling (utils/picking.ts → verzamelPicklijst). De batchsuggestie rekent
-  // met de totale vrije voorraad (alle locaties); privéorders — die niet uit
-  // AGP mogen — staan op de lijst gemarkeerd, en de pickmodal bewaakt die
-  // regel bij het registreren. Registreren blijft per order.
+  // met de vrije voorraad buiten de AGP — daaruit wordt verkocht; wat nog in
+  // de AGP ligt verschijnt als tekort (eerst uitslaan). Registreren blijft per
+  // order.
   const printVerzamelPicklijst = () => {
     const lijst = verzamelPicklijst(bestellingen as any, bestellingPicks as any, {
       afvullingen: av || [],
-      beschikbaar: (a: any) => beschikbaarVoorAfvulling(a),
+      beschikbaar: (a: any) => Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a)),
       data: {bat, artikelen, producten, productArtikelen, verpakkingen},
       orderRef: orderNummer,
       isPrive: (b: any) => effectiveKlantType(b) === 'prive',
@@ -662,129 +671,123 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setRegelForm(emptyRegel)
   }
 
-  // --- Helper: bouw uitlevering- en accijnsrecords uit picks (Douane v2.4 §10.2) ---
-  // Wordt aangeroepen op moment van picking (belastbaar feit) zodat de uitslag-
-  // en accijnsrecords ontstaan zodra het bier de AGP verlaat. rondeAf gebruikt
-  // deze helper alleen als fallback voor picks die nog geen ids hebben.
-  const bouwUitslagRecords = (
-    picksIn: any[],
-    isPriveOrder: boolean,
-    formData: typeof uitleveringForm,
-    lokaleUitleveringenStart: any[],
-  ) => {
-    const nieuweUitleveringen: any[] = []
-    const nieuweAccijns: any[] = []
-    const pickResult: Record<number, {uitlevering_ids: number[], accijns_ids: number[]}> = {}
-    let uitId = newId(uit||[])
-    let accId = newId(acc||[])
-    const lokaleUitleveringen: any[] = [...lokaleUitleveringenStart]
-    const agpLocLocal = getAgpLocatie(locaties as any)
-    const vandaag = tod()
-    // Bestemming: het invulveld wint (bij export vult de gebruiker een
-    // afwijkende geadresseerde in), maar bij een binnenlandse levering is dat
-    // veld niet eens zichtbaar. Val dan terug op de klant van de order —
-    // die is bekend, en zonder afnemer op de uitlevering is de partij bij een
-    // terugroepactie niet naar een klant te herleiden (handboek hoofdstuk 11).
-    const orderAfnemer = afnemerVanOrder
-    const orderAdres = adresVanOrder
+  // --- Helper: uitleveringen uit picks — de verkoop zelf ---
+  // Uitslaan (AGP → vrije voorraad, accijns) is een aparte, eerdere stap; een
+  // verkoop levert alleen uit vrije voorraad en boekt geen accijns. Alleen
+  // export/intra-EU mag onder schorsing rechtstreeks uit de AGP
+  // (utils/uitlevering.ts, utils/agp.ts → verkoopUitAgpToegestaan).
+  // Bestemming: het invulveld wint (bij export vult de gebruiker een
+  // afwijkende geadresseerde in), maar bij een binnenlandse levering is dat
+  // veld niet eens zichtbaar. Val dan terug op de klant van de order —
+  // die is bekend, en zonder afnemer op de uitlevering is de partij bij een
+  // terugroepactie niet naar een klant te herleiden (handboek hoofdstuk 11).
+  const bouwVerkoopRecords = (picksIn: any[], formData: typeof uitleveringForm) =>
+    bouwVerkoopUitleveringen(
+      picksIn,
+      {
+        type_uitlevering: formData.type_uitlevering || 'binnenland',
+        bestemming_naam: String(formData.bestemming_naam || '').trim() || afnemerVanOrder,
+        bestemming_adres: String(formData.bestemming_adres || '').trim() || adresVanOrder,
+        bestemming_land: formData.bestemming_land || '',
+        vervoerder: formData.vervoerder || '',
+      },
+      {afvullingen: av || [], batches: bat || [], locaties: locaties || [], uit: uit || [],
+        verplaatsingen: verplaatsingen || [], afboekingen: afboekingen || [], datum: tod()},
+      newId(uit || []),
+    )
 
-    for (const pick of picksIn) {
-      const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
-      if (!avItem) continue
-      const batch = bat.find((b: any) => b.id === pick.batch_id)
-      const inhoud = Number(avItem.inhoud_per_eenheid||0)
-      const abv = Number(batch?.ABV || 0)
-      const plato = Number(batch?.platogehalte || 0)
-      pickResult[pick.id] = {uitlevering_ids: [], accijns_ids: []}
+  // --- Uitslaan vanuit de bestelflow (zoals de kassa) ---
+  // Ligt er te weinig vrij en nog wel iets in de AGP, dan hoef je de bestelling
+  // niet te verlaten: eerst uitslaan (verplaatsing + accijns, dezelfde boeking
+  // als de AGP-pagina en de kassa), daarna picken/verkopen. Het scherm waar je
+  // vandaan kwam gaat even dicht (twee modals vechten om de focus) en daarna
+  // weer open; de invoer blijft staan.
+  const [uitslagDoel, setUitslagDoel] = useState<{naam: string, afvullingen: any[], aantal: number, terug: 'pick' | 'manual'} | null>(null)
 
-      const voorraad = voorraadPerLocatie(avItem, locaties, lokaleUitleveringen, verplaatsingen, afboekingen)
-      const locOrder: number[] = []
-      if (pick.bron_locatie_id != null) {
-        locOrder.push(pick.bron_locatie_id)
-      } else {
-        for (const l of (locaties||[])) {
-          if (!l.is_agp && (voorraad[l.id]||0) > 0) locOrder.push(l.id)
-        }
-        if (!isPriveOrder) {
-          if ((voorraad[agpLocLocal.id]||0) > 0) locOrder.push(agpLocLocal.id)
-          for (const k of Object.keys(voorraad)) {
-            const id = Number(k)
-            if (!locOrder.includes(id) && (voorraad[id]||0) > 0) locOrder.push(id)
-          }
-          if (locOrder.length === 0) locOrder.push(agpLocLocal.id)
-        }
-      }
+  const openUitslagVanuit = (terug: 'pick' | 'manual', naam: string, afvullingen: any[], aantal: number) => {
+    // Periode-lock (ERP-plan 0.4): een uitslag boekt accijns op de uitslagdatum.
+    if (accijnsMaandGesloten(tod(), accijnsAangiftes || [])) {
+      alert(t('err_accijns_maand_gesloten_boeking')); return
+    }
+    if (!(locaties || []).some((l: any) => !l.is_agp)) {
+      alert(t('pos_uitslag_geen_locatie')); return
+    }
+    if (terug === 'pick') setShowPickModal(false)
+    else setShowManualModal(false)
+    setUitslagDoel({naam, afvullingen, aantal, terug})
+  }
 
-      let resterend = Number(pick.aantal||0)
-      for (const locId of locOrder) {
-        if (resterend <= 0) break
-        const beschikbaar = voorraad[locId] || 0
-        if (beschikbaar <= 0 && locId !== agpLocLocal.id) continue
-        const aantalDeel = locId === agpLocLocal.id ? resterend : Math.min(resterend, beschikbaar)
-        if (aantalDeel <= 0) continue
-        const liter = aantalDeel * inhoud
-        const isAgp = locId === agpLocLocal.id
-        const uitleveringRec: any = {
-          id: uitId++,
-          batch_id: pick.batch_id,
-          afvulling_id: pick.afvulling_id,
-          batch_naam: batch?.naam || '',
-          verpakking_naam: avItem.verpakking_type || '',
-          verpakking_type: avItem.verpakking_type || '',
-          inhoud_per_eenheid: inhoud,
-          inhoud_liter: liter,
-          aantal: aantalDeel,
-          verkocht_stuks: aantalDeel,
-          datum: vandaag,
-          tht: avItem.tht||null,
-          accijns_betaald: !isAgp,
-          type_uitlevering: formData.type_uitlevering || 'binnenland',
-          bestemming_naam: String(formData.bestemming_naam || '').trim() || orderAfnemer,
-          bestemming_adres: String(formData.bestemming_adres || '').trim() || orderAdres,
-          bestemming_land: formData.bestemming_land || '',
-          vervoerder: formData.vervoerder || '',
-          created_at: new Date().toISOString(),
-          bron_locatie_id: locId,
-        }
-        nieuweUitleveringen.push(uitleveringRec)
-        lokaleUitleveringen.push(uitleveringRec)
-        pickResult[pick.id].uitlevering_ids.push(uitleveringRec.id)
+  const sluitUitslag = () => {
+    if (uitslagDoel?.terug === 'pick') setShowPickModal(true)
+    if (uitslagDoel?.terug === 'manual') setShowManualModal(true)
+    setUitslagDoel(null)
+  }
 
-        if (isAgp) {
-          // Tarief van de uitslagdatum: de accijns wordt pas verschuldigd op
-          // het moment dat het bier de AGP verlaat, niet bij het brouwen.
-          const _t = tariefVoorDatum(accijnsInst, vandaag)
-          const _eff = {...(accijnsInst || {}), tarief_per_hl_plato: _t.r3}
-          const accBed = accijnsCalc(liter, abv, _t.r1, _t.r2, _eff, plato)
-          const accRec = {
-            id: accId++,
-            batch_id: pick.batch_id,
-            batch_naam: batch?.naam || '',
-            batch_nummer: batch?.batch_nummer||'',
-            uitlevering_id: uitleveringRec.id,
-            verpakking_type: avItem.verpakking_type || '',
-            datum: vandaag,
-            aantal: aantalDeel,
-            liter,
-            abv,
-            accijns: accBed,
-            betaald: false,
-            betaal_datum: null,
-            bron: 'uitlevering' as const,
-          }
-          nieuweAccijns.push(accRec)
-          pickResult[pick.id].accijns_ids.push(accRec.id)
-        }
+  const saveUitslag = ({allocaties, naar_locatie_id, datum, opmerking}: any) => {
+    const naar = (locaties || []).find((l: any) => l.id === naar_locatie_id)
+    const r = bouwUitslagBoekingen(
+      {allocaties, naar_locatie_id, datum, opmerking},
+      {locaties, uit, verplaatsingen, afboekingen, accijnsInst},
+      () => ({verplaatsing_id: newId(verplaatsingen || []), accijns_id: newId(acc || []), log_id: newId(log || [])}),
+      {logTitel: t('agp_verplaats_titel')}
+    )
+    if (r.verplaatsingen.length) setVerplaatsingen((prev: any[]) => [...(prev || []), ...r.verplaatsingen])
+    if (r.accijns.length) setAcc((prev: any[]) => [...(prev || []), ...r.accijns])
+    if (r.log.length) setLog((prev: any[]) => [...(prev || []), ...r.log])
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Verplaatsing', entiteit_id: r.verplaatsingen[0]?.id, actie: 'aangemaakt',
+      omschrijving: `${t('orders_uitslag_audit')}: ${r.totaal}\u00d7 ${uitslagDoel?.naam || ''} \u2192 ${naar?.naam || ''}${r.totaalAccijns ? ` (accijns ${fmt(r.totaalAccijns)})` : ''}`,
+    })
+    sluitUitslag()
+  }
 
-        resterend -= aantalDeel
+  // Uitslaan uit de AGP vanuit pickmodal of nieuwe bestelling. De pickmodal
+  // leeft in de detailweergave, het formulier in de lijst — beide renderen dit.
+  const uitslagModal = uitslagDoel && (
+    <UitslagModal
+      productNaam={uitslagDoel.naam}
+      afvullingen={uitslagDoel.afvullingen}
+      startAantal={uitslagDoel.aantal}
+      batches={bat || []}
+      locaties={locaties}
+      uit={uit}
+      verplaatsingen={verplaatsingen}
+      afboekingen={afboekingen}
+      accijnsInst={accijnsInst}
+      gereserveerd={agpGereserveerdPerAfvulling(
+        bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id)}
+      onClose={sluitUitslag}
+      onOpslaan={saveUitslag}
+    />
+  )
+
+  // Vrije voorraad en AGP-voorraad van een set afvullingen (harde picks van
+  // andere orders eraf) — voor de hint en de uitslaan-knop.
+  const vrijEnAgp = (afvs: any[], excludeBestellingId?: number): {vrij: number, agp: number} => {
+    const agpId = getAgpLocatie(locaties as any).id
+    let vrij = 0, agp = 0
+    for (const a of afvs || []) {
+      const perLoc = beschikbaarPerLocatieVoorAfvulling(a, excludeBestellingId)
+      for (const k of Object.keys(perLoc)) {
+        if (Number(k) === agpId) agp += Number(perLoc[Number(k)] || 0)
+        else vrij += Number(perLoc[Number(k)] || 0)
       }
     }
-    return {nieuweUitleveringen, nieuweAccijns, pickResult}
+    return {vrij, agp}
+  }
+
+  // Voorraad voor een bier+verpakking in het formulier "nieuwe bestelling":
+  // hoeveel ligt er vrij (verkoopbaar), hoeveel nog in de AGP (eerst uitslaan).
+  const voorraadVoorKeuze = (bier: string, vp: string) => {
+    const art = artikelVoorKeuze(bier, vp)
+    const afvs = getAvailableAfvullingen(bier, vp, undefined, null, art?.key || undefined, art?.artikelnummer || undefined)
+    return {afvs, ...vrijEnAgp(afvs)}
   }
 
   // --- Klanttype (privé/zakelijk) van een bestaande order corrigeren ---
-  // Alleen vóór het picken: de pick-logica (wel/niet uit AGP leveren) leest
-  // dit veld. Handig om een verkeerd gedetecteerde WooCommerce-import recht
+  // Alleen vóór het picken. Het klanttype bepaalt prijs (B2B) en factuur, niet
+  // meer waar het bier vandaan komt: elke binnenlandse verkoop gaat uit vrije
+  // voorraad. Handig om een verkeerd gedetecteerde WooCommerce-import recht
   // te zetten.
   const wijzigKlantType = (kt: 'prive' | 'zakelijk') => {
     if (!selectedOrder) return
@@ -802,16 +805,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Picking opslaan ---
   const savePicks = () => {
     if (!selectedOrder) return
-    const klantType = effectiveKlantType(selectedOrder)
-    const isPriveOrder = klantType === 'prive'
+    // Verkopen gaat uit vrije voorraad — voor privé én zakelijk. Wat nog in de
+    // AGP ligt moet eerst uitgeslagen worden (knop in de pickmodal); alleen
+    // export/intra-EU mag onder schorsing rechtstreeks uit de AGP.
+    const zonderAgp = !verkoopUitAgpToegestaan(uitleveringForm.type_uitlevering)
     const agpLoc = getAgpLocatie(locaties as any)
-    // Privé-orders mogen hard niet uit AGP geleverd worden
-    if (isPriveOrder) {
+    if (zonderAgp) {
       for (const picks of Object.values(draftPicks)) {
         for (const p of picks as any[]) {
           if (!p.aantal || p.aantal <= 0) continue
           if (p.bron_locatie_id != null && p.bron_locatie_id === agpLoc.id) {
-            alert(t('err_prive_geen_agp'))
+            alert(t('err_verkoop_geen_agp'))
             return
           }
         }
@@ -828,11 +832,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     for (const [afvIdStr, totaal] of Object.entries(pickTotals)) {
       const afvItem = (av||[]).find((a: any) => a.id === Number(afvIdStr))
       if (!afvItem) continue
-      const beschik = isPriveOrder
+      const beschik = zonderAgp
         ? beschikbaarBuitenAgpVoorAfvulling(afvItem, selectedOrder.id)
         : beschikbaarVoorAfvulling(afvItem, selectedOrder.id)
       if (totaal > beschik) {
-        const errKey = isPriveOrder ? 'err_prive_buiten_agp_ontoereikend' : 'agp_voorraad_ontoereikend'
+        const errKey = zonderAgp ? 'err_verkoop_vrij_ontoereikend' : 'agp_voorraad_ontoereikend'
         alert(t(errKey).replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
         return
       }
@@ -890,10 +894,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     })
 
     if (allFull) {
-      // Belastbaar feit (Douane v2.4 §10.2): bij volledige picking maken we
-      // direct de uitslag- en accijnsrecords aan. Het bier verlaat de AGP.
-      const {nieuweUitleveringen, nieuweAccijns, pickResult} =
-        bouwUitslagRecords(newPicks, isPriveOrder, uitleveringForm, uit||[])
+      // Bij volledige picking ontstaan direct de uitleveringen: het bier
+      // verlaat de vrije voorraad. Accijns ontstaat hier niet — die is bij het
+      // uitslaan uit de AGP al geboekt (export/intra-EU: onder schorsing).
+      const {uitleveringen: nieuweUitleveringen, pickResult, tekort} =
+        bouwVerkoopRecords(newPicks, uitleveringForm)
+      if (tekort > 0) { alert(t('err_verkoop_vrij_tekort')); return }
 
       const picksWithIds = newPicks.map((p: any) => {
         const res = pickResult[p.id]
@@ -912,17 +918,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         ...picksWithIds,
       ])
       setUit((prev: any[]) => [...(prev||[]), ...nieuweUitleveringen])
-      setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
       setBestellingen((prev: any[]) => prev.map((b: any) =>
         b.id === selectedOrder.id ? {...b, status: 'gepickt', pick_datum: tod()} : b
       ))
-      // Eén log-regel per uitlevering (uitslag uit AGP)
+      // Eén log-regel per uitlevering (verkoop; het uitslaan had een eigen regel)
       setLog((prev: any[]) => {
         let logId = newId(prev||[])
         const nieuweLogEntries = nieuweUitleveringen.map((u: any) => ({
           id: logId++,
           datum: tod(),
-          type: 'uitslaan',
+          type: 'verkoop',
           batch_id: u.batch_id,
           batch_naam: u.batch_naam || '',
           afvulling_id: u.afvulling_id,
@@ -930,7 +935,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           hoeveelheid: u.aantal,
           eenheid: 'stuks',
           referentie: '',
-          omschrijving: `Picking — ${selectedOrder.klant_naam} (uitslag uit AGP)`,
+          omschrijving: `Picking — ${selectedOrder.klant_naam}`,
         }))
         return [...(prev||[]), ...nieuweLogEntries]
       })
@@ -938,7 +943,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         entiteit: 'Bestelling',
         entiteit_id: selectedOrder.id,
         actie: 'gewijzigd',
-        omschrijving: `Picks bevestigd — ${selectedOrder.klant_naam} (uitslag uit AGP, ${nieuweUitleveringen.length} uitleveringen, ${nieuweAccijns.length} accijnsregels)`,
+        omschrijving: `Picks bevestigd — ${selectedOrder.klant_naam} (${nieuweUitleveringen.length} uitleveringen)`,
       })
     } else {
       // Deels gepickt: alleen draft-picks bewaren, nog geen records.
@@ -1039,38 +1044,28 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!selectedOrder) return
     const picks = picksVoorOrder(selectedOrder.id)
     if (heeftPickRegels(selectedOrder) && !picks.length) { alert(t('err_order_no_picks')); return }
-    const klantType = effectiveKlantType(selectedOrder)
-    const isPriveOrder = klantType === 'prive'
-    const r1 = Number(accijnsInst?.tarief_per_hl_abv||7.51)
-    const r2 = Number(accijnsInst?.tarief_per_hl||24.17)
     const vandaag = tod()
     const pakbonNummer = genPakbonNummer()
-
-    // 1+2. Uitlevering- en AccijnsRecord-records, gesplitst per bron-locatie.
-    //   - Voorraad buiten AGP wordt eerst aangesproken (al accijns betaald).
-    //   - Voorraad in AGP genereert nieuwe AccijnsRecord-boekingen.
-    // Per pick kunnen er meerdere Uitleveringen ontstaan wanneer voorraad gemengd is.
     const agpLoc = getAgpLocatie(locaties)
 
-    // Records bestaan normaliter al uit savePicks (Douane v2.4 §10.2 — belastbaar
-    // feit op moment van picken). Alleen wanneer een pick (legacy/back-compat)
-    // nog geen uitlevering_ids heeft, maken we de records hier alsnog aan.
+    // Uitleveringen bestaan normaliter al uit savePicks (bij volledige
+    // picking). Alleen wanneer een pick (legacy/back-compat) nog geen
+    // uitlevering_ids heeft, maken we ze hier alsnog aan — met dezelfde regel:
+    // verkopen uit vrije voorraad, de AGP alleen bij export/intra-EU.
     const picksZonderRecords = picks.filter((p: any) => !((p.uitlevering_ids||[]).length > 0 || p.uitlevering_id))
 
-    // Privé-orders: hard pre-flight. AGP mag in geen enkel scenario gebruikt
-    // worden. Controleer alléén picks die nog géén uitslagrecords hebben — picks
-    // die bij het picken al uit de voorraad zijn gehaald (en daar al gevalideerd
+    // Pre-flight op alléén picks die nog géén uitlevering hebben — picks die
+    // bij het picken al uit de voorraad zijn gehaald (en daar al gevalideerd
     // werden) zouden anders dubbel afgetrokken worden: hun uitlevering staat al
-    // in `uit`, waardoor de voorraad-buiten-AGP onterecht als ontoereikend telt
+    // in `uit`, waardoor de vrije voorraad onterecht als ontoereikend telt
     // en het sluiten van de order ten onrechte geblokkeerd wordt.
-    if (isPriveOrder) {
+    if (!verkoopUitAgpToegestaan(uitleveringForm.type_uitlevering)) {
       for (const pick of picksZonderRecords) {
         const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
         if (!avItem) continue
         if (pick.bron_locatie_id != null && pick.bron_locatie_id === agpLoc.id) {
-          alert(t('err_prive_geen_agp')); return
+          alert(t('err_verkoop_geen_agp')); return
         }
-        // Auto-allocatie: voorraad buiten AGP moet voldoende zijn
         if (pick.bron_locatie_id == null) {
           const voorraad = voorraadPerLocatie(avItem, locaties as any, uit as any, verplaatsingen as any, afboekingen as any)
           let buitenAgp = 0
@@ -1078,7 +1073,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             if (!l.is_agp) buitenAgp += Number(voorraad[l.id] || 0)
           }
           if (buitenAgp < Number(pick.aantal || 0)) {
-            alert(t('err_prive_buiten_agp_ontoereikend').replace('{beschikbaar}', `${buitenAgp}× ${avItem.verpakking_type||''}`))
+            alert(t('err_verkoop_vrij_ontoereikend').replace('{beschikbaar}', `${buitenAgp}× ${avItem.verpakking_type||''}`))
             return
           }
         }
@@ -1101,12 +1096,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     catch (e) { alert(t('err_factuurnummer_ophalen')); return }
 
     let nieuweUitleveringen: any[] = []
-    let nieuweAccijns: any[] = []
     let pickResult: Record<number, {uitlevering_ids: number[], accijns_ids: number[]}> = {}
     if (picksZonderRecords.length > 0) {
-      const built = bouwUitslagRecords(picksZonderRecords, isPriveOrder, uitleveringForm, uit||[])
-      nieuweUitleveringen = built.nieuweUitleveringen
-      nieuweAccijns = built.nieuweAccijns
+      const built = bouwVerkoopRecords(picksZonderRecords, uitleveringForm)
+      nieuweUitleveringen = built.uitleveringen
       pickResult = built.pickResult
     }
     // Voor de factuur-/auditcontext: alle uitleveringen die bij deze order horen.
@@ -1120,10 +1113,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // Plus eventuele nieuwe uit de fallback
       ...nieuweUitleveringen,
     ]
-
-    // (variabelen r1/r2 hierboven zijn niet meer nodig sinds bouwUitslagRecords
-    //  het tarief per batch zelf bepaalt — laat ze staan voor back-compat als
-    //  andere code in deze functie ze in de toekomst nodig heeft.)
 
     // 3. VerkoopFactuur
     const rnd2 = (n: number) => Math.round(n * 100) / 100
@@ -1252,9 +1241,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (nieuweUitleveringen.length > 0) {
       setUit((prev: any[]) => [...(prev||[]), ...nieuweUitleveringen])
     }
-    if (nieuweAccijns.length > 0) {
-      setAcc((prev: any[]) => [...(prev||[]), ...nieuweAccijns])
-    }
     setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
     // Merch-voorraad afboeken, met het factuurnummer als referentie.
     if (merchMutaties.length) {
@@ -1276,22 +1262,15 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // Winkel op voltooid — een no-op als dat bij "verzonden" al gebeurd is;
     // een afhaalorder wordt nooit verzonden en gaat hier pas op voltooid.
     void schrijfTerugNaarWc({...selectedOrder, status: 'afgerond'}, 'afgerond')
-    // Log:
-    //  - bestaande "uitslaan"-loggregels (van savePicks) krijgen nu het factuurnummer
-    //  - eventuele fallback-uitleveringen worden alsnog gelogd
-    //  - één samenvattende factuur-entry
+    // Log: eventuele fallback-uitleveringen worden alsnog als verkoop gelogd
+    // (de picks zelf loggen al bij savePicks).
     setLog((prev: any[]) => {
-      const orderUitlIds = new Set<number>(alleUitleveringenVoorOrder.map((u: any) => u.id))
-      const updated = (prev||[]).map((l: any) =>
-        l.type === 'uitslaan' && orderUitlIds.has(l.afvulling_id ?? -1)
-          ? l // afvulling_id != uitlevering_id; we matchen liever via batch+order, daarom een eenvoudiger criterium hieronder
-          : l
-      )
+      const updated = prev || []
       let logId = newId(updated)
       const fallbackLog = nieuweUitleveringen.map((u: any) => ({
         id: logId++,
         datum: vandaag,
-        type: 'uitslaan',
+        type: 'verkoop',
         batch_id: u.batch_id,
         batch_naam: u.batch_naam || '',
         afvulling_id: u.afvulling_id,
@@ -2318,6 +2297,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <div>
                     <select value={uitleveringForm.type_uitlevering} onChange={e => setUitleveringForm(f => ({...f, type_uitlevering: e.target.value}))} className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
                       <option value="binnenland">{t('opt_binnenland')}</option>
+                      <option value="intra_eu">{t('opt_intra_eu')}</option>
                       <option value="export">{t('opt_export')}</option>
                     </select>
                   </div>
@@ -2350,26 +2330,62 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Picking Modal */}
         {showPickModal && (() => {
-          const klantTypeOrder = effectiveKlantType(selectedOrder)
-          const isPriveOrder = klantTypeOrder === 'prive'
+          // Verkopen gaat uit vrije voorraad, voor privé én zakelijk; alleen
+          // export/intra-EU mag rechtstreeks uit de AGP (utils/agp.ts).
+          const zonderAgp = !verkoopUitAgpToegestaan(uitleveringForm.type_uitlevering)
           return (
           <Modal title={t('picking_title')} onClose={() => setShowPickModal(false)} wide>
-            {isPriveOrder && (
-              <div className="mb-3 p-2.5 rounded-lg bg-orange-50 border border-orange-200 text-xs text-orange-800">
-                <strong>{t('lbl_prive')}:</strong> {t('info_prive_buiten_agp')}
+            {/* Levering: soort, bestemming en vervoerder. Bovenaan, want de soort
+                bepaalt waar het bier vandaan mag komen: binnenland alleen uit
+                vrije voorraad (eerst uitslaan), export/intra-EU onder schorsing
+                rechtstreeks uit de AGP. Bij volledige picking ontstaan de
+                uitleveringen. */}
+            <div className="mb-3 border border-gray-200 rounded-lg p-3 space-y-3">
+              <div className="text-xs font-semibold text-gray-800">{t('picking_levering_titel')}</div>
+              <div className="text-[11px] text-gray-500">{t('picking_levering_uitleg')}</div>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  value={uitleveringForm.type_uitlevering}
+                  onChange={e => setUitleveringForm(f => ({...f, type_uitlevering: e.target.value}))}
+                  className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
+                  <option value="binnenland">{t('opt_binnenland')}</option>
+                  <option value="intra_eu">{t('opt_intra_eu')}</option>
+                  <option value="export">{t('opt_export')}</option>
+                </select>
+                <input
+                  className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200"
+                  placeholder={t('lbl_vervoerder')}
+                  value={uitleveringForm.vervoerder}
+                  onChange={e => setUitleveringForm(f => ({...f, vervoerder: e.target.value}))} />
               </div>
-            )}
+              {uitleveringForm.type_uitlevering === 'binnenland' && (
+                <div className="text-xs text-gray-500">
+                  {t('lbl_bestemming_naam')}: <span className="font-medium text-gray-700">{afnemerVanOrder || t('lbl_onbekend')}</span>
+                </div>
+              )}
+              {uitleveringForm.type_uitlevering !== 'binnenland' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_naam')} value={uitleveringForm.bestemming_naam} onChange={e => setUitleveringForm(f => ({...f, bestemming_naam: e.target.value}))} />
+                  <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_land')} value={uitleveringForm.bestemming_land} onChange={e => setUitleveringForm(f => ({...f, bestemming_land: e.target.value}))} />
+                  <input className="t-input col-span-2 w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_adres')} value={uitleveringForm.bestemming_adres} onChange={e => setUitleveringForm(f => ({...f, bestemming_adres: e.target.value}))} />
+                </div>
+              )}
+            </div>
+
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
               {(selectedOrder.regels||[]).filter(isPickRegel).map((r: any) => {
                 const draftVoorRegel = draftPicks[r.id] || []
                 const totaalGepickt = draftVoorRegel.reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
                 const resterend = r.aantal - totaalGepickt
                 const allAfvullingen = getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, null, r.artikel_key, r.sku)
-                // Privé-orders mogen niet uit AGP geleverd worden — filter
-                // afvullingen die alleen AGP-voorraad hebben weg.
-                const afvullingen = isPriveOrder
+                // Binnenland: alleen afvullingen met vrije voorraad buiten de
+                // AGP. Wat alleen nog in de AGP ligt, moet eerst uitgeslagen.
+                const afvullingen = zonderAgp
                   ? allAfvullingen.filter((a: any) => beschikbaarBuitenAgpVoorAfvulling(a, selectedOrder.id) > 0)
                   : allAfvullingen
+                const {vrij: vrijRegel, agp: agpRegel} = zonderAgp ? vrijEnAgp(allAfvullingen, selectedOrder.id) : {vrij: 0, agp: 0}
+                const uitslaanNodig = zonderAgp ? uitTeSlaan(resterend, Math.max(0, vrijRegel - totaalGepickt), agpRegel) : 0
+                const alleenInAgp = zonderAgp && afvullingen.length === 0 && agpRegel > 0
 
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
@@ -2394,15 +2410,15 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       const avArt = avItem?.artikel_sku
                         ? (artikelen||[]).find((a: any) => a.artikelnummer === avItem.artikel_sku)
                         : avBatch ? (artikelen||[]).find((a: any) => a.key?.toLowerCase() === `${avBatch.biernaam||avBatch.naam}|||${avItem?.verpakking_type}`.toLowerCase()) : null
-                      const maxBeschik = (isPriveOrder
+                      const maxBeschik = (zonderAgp
                         ? beschikbaarBuitenAgpVoorAfvulling(avItem||{}, selectedOrder.id)
                         : beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id)) + Number(dp.aantal||0)
                       const locLabel = avItem ? voorraadPerLocLabel(avItem) : ''
                       const perLoc = avItem ? beschikbaarPerLocatieVoorAfvulling(avItem, selectedOrder.id) : {}
                       const locOpties = (locaties||[])
                         .filter((l: any) => (perLoc[l.id] || 0) + (dp.bron_locatie_id === l.id ? Number(dp.aantal||0) : 0) > 0)
-                        // Privé-orders: AGP-locatie is uitgesloten
-                        .filter((l: any) => !isPriveOrder || !l.is_agp)
+                        // Binnenland: de AGP-locatie is uitgesloten
+                        .filter((l: any) => !zonderAgp || !l.is_agp)
                       return (
                         <div key={idx} className="mt-1 text-sm">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -2461,7 +2477,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                           const avId = Number(e.target.value)
                           if (!avId) return
                           const avAvItem = (av||[]).find((a: any) => a.id === avId)||{}
-                          const avail = isPriveOrder
+                          const avail = zonderAgp
                             ? beschikbaarBuitenAgpVoorAfvulling(avAvItem, selectedOrder.id)
                             : beschikbaarVoorAfvulling(avAvItem, selectedOrder.id)
                           const aantal = Math.min(resterend, avail)
@@ -2477,7 +2493,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             const avArt = a.artikel_sku
                               ? (artikelen||[]).find((art: any) => art.artikelnummer === a.artikel_sku)
                               : avBatch ? (artikelen||[]).find((art: any) => art.key === `${avBatch.naam}|||${a.verpakking_type}`) : null
-                            const beschik = isPriveOrder
+                            const beschik = zonderAgp
                               ? beschikbaarBuitenAgpVoorAfvulling(a, selectedOrder.id)
                               : beschikbaarVoorAfvulling(a, selectedOrder.id)
                             const locLabel = voorraadPerLocLabel(a)
@@ -2490,14 +2506,25 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         </select>
                       </div>
                     )}
-                    {resterend > 0 && afvullingen.length === 0 && (
+                    {/* Te weinig vrij, wel iets in de AGP: eerst uitslaan, dan picken. */}
+                    {uitslaanNodig > 0 && (
+                      <div className="mt-2 flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2">
+                        <div className="flex-1 text-[11px] text-orange-800">
+                          {t('picking_uitslaan_hint').replace('{agp}', String(agpRegel)).replace('{n}', String(uitslaanNodig))}
+                        </div>
+                        <Btn s="sm" onClick={() => openUitslagVanuit('pick', `${r.bier_naam} \u2014 ${r.verpakking_type}`, allAfvullingen, uitslaanNodig)}>
+                          {t('uitslag_knop')}
+                        </Btn>
+                      </div>
+                    )}
+                    {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && (
                       <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}{r.artikel_key ? '' : ''}</div>
                     )}
                     {/* Uitweg voor merch: dit artikel komt niet uit
                         de eigen voorraad, dus picken kan nooit lukken. Eén klik
                         zet de regel om naar een vrije (factuur-)regel én
                         onthoudt het artikel voor volgende imports. */}
-                    {resterend > 0 && afvullingen.length === 0 && gepicktVoorRegel(selectedOrder.id, r.id) === 0 && (
+                    {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && gepicktVoorRegel(selectedOrder.id, r.id) === 0 && (
                       <div className="mt-2 flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-2">
                         <div className="flex-1 text-[11px] text-purple-800">
                           <div className="font-semibold">{t('picking_merch_titel')}</div>
@@ -2513,7 +2540,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         </button>
                       </div>
                     )}
-                    {resterend > 0 && afvullingen.length === 0 && (() => {
+                    {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && (() => {
                       // ── Tijdelijke diagnose (bieren-picken-visibility) ──
                       // Toont waarom geen enkele voorraad-afvulling aan deze
                       // orderregel koppelt. Mag weg zodra de oorzaak vaststaat.
@@ -2542,44 +2569,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               })}
             </div>
 
-            {/* AGP / uitleveringsgegevens — gebruikt zodra alle picks compleet zijn
-                (Douane v2.4 §10.2: belastbaar feit op moment van picken). */}
-            <div className="mt-4 border border-orange-200 rounded-lg p-3 bg-orange-50/40 space-y-3">
-              <div className="text-xs font-semibold t-accent-text">
-                Uitslag uit AGP — bestemming &amp; vervoerder
-              </div>
-              <div className="text-[11px] t-accent-text">
-                Bij volledige picking ontstaat het belastbaar feit. Vul hier het type uitlevering en (voor intra-EU/export) de bestemming in.
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <select
-                  value={uitleveringForm.type_uitlevering}
-                  onChange={e => setUitleveringForm(f => ({...f, type_uitlevering: e.target.value}))}
-                  className="t-input w-full px-2.5 py-1.5 rounded text-sm bg-white border border-gray-200">
-                  <option value="binnenland">{t('opt_binnenland')}</option>
-                  <option value="intra_eu">Intra-EU</option>
-                  <option value="export">{t('opt_export')}</option>
-                </select>
-                <input
-                  className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200"
-                  placeholder={t('lbl_vervoerder')}
-                  value={uitleveringForm.vervoerder}
-                  onChange={e => setUitleveringForm(f => ({...f, vervoerder: e.target.value}))} />
-              </div>
-              {uitleveringForm.type_uitlevering === 'binnenland' && (
-                <div className="text-xs text-gray-500">
-                  {t('lbl_bestemming_naam')}: <span className="font-medium text-gray-700">{afnemerVanOrder || t('lbl_onbekend')}</span>
-                </div>
-              )}
-              {uitleveringForm.type_uitlevering !== 'binnenland' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_naam')} value={uitleveringForm.bestemming_naam} onChange={e => setUitleveringForm(f => ({...f, bestemming_naam: e.target.value}))} />
-                  <input className="t-input w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_land')} value={uitleveringForm.bestemming_land} onChange={e => setUitleveringForm(f => ({...f, bestemming_land: e.target.value}))} />
-                  <input className="t-input col-span-2 w-full px-2.5 py-1.5 rounded text-sm border border-gray-200" placeholder={t('lbl_bestemming_adres')} value={uitleveringForm.bestemming_adres} onChange={e => setUitleveringForm(f => ({...f, bestemming_adres: e.target.value}))} />
-                </div>
-              )}
-            </div>
-
             <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
               <Btn v="secondary" onClick={() => setShowPickModal(false)}>{t('btn_cancel')}</Btn>
               <Btn onClick={savePicks}>{t('picking_confirm')}</Btn>
@@ -2587,6 +2576,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           </Modal>
           )
         })()}
+
+        {uitslagModal}
 
         {/* Markeer verzonden: track & trace + verzendbevestiging meteen mailen */}
         {verzondenModal && (() => {
@@ -3016,9 +3007,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {t('lbl_zakelijk')}
                   </button>
                 </div>
-                {manualForm.klant_type === 'prive' && (
-                  <div className="mt-1.5 text-xs text-gray-500 italic">{t('info_prive_buiten_agp')}</div>
-                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Inp label={t('manual_order_klant_naam') + ' *'} value={manualForm.klant_naam} onChange={handleManualNaamChange} placeholder="Jan Janssen" list="manual-order-klanten" />
@@ -3050,11 +3038,21 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
             {/* Regels */}
             <div>
-              <div className="text-xs font-semibold text-gray-500 mb-2">{t('orders_lines')}</div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">{t('orders_lines')}</div>
+              <div className="text-xs text-gray-500 mb-2">{t('info_verkoop_vrije_voorraad')}</div>
               {manualForm.regels.length > 0 && (
                 <div className="mb-3 divide-y divide-gray-100 border rounded-lg overflow-hidden">
-                  {manualForm.regels.map((r: any, idx: number) => (
-                    <div key={idx} className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-50">
+                  {manualForm.regels.map((r: any, idx: number) => {
+                    // Meer besteld dan er vrij ligt, maar wel in de AGP: nu al
+                    // uitslaan kan, dan is de order meteen te picken.
+                    const somBesteld = manualForm.regels
+                      .filter((x: any) => x.type === 'bier' && x.bier_naam === r.bier_naam && x.verpakking_type === r.verpakking_type)
+                      .reduce((sum: number, x: any) => sum + Number(x.aantal || 0), 0)
+                    const vr = r.type === 'bier' ? voorraadVoorKeuze(r.bier_naam, r.verpakking_type) : null
+                    const nUit = vr ? uitTeSlaan(somBesteld, vr.vrij, vr.agp) : 0
+                    return (
+                    <div key={idx} className="px-3 py-2 text-sm bg-gray-50">
+                    <div className="flex items-center gap-2">
                       <span className="flex-1 font-medium">{r.bier_naam} – {r.verpakking_type}</span>
                       {r.prijsType === 'b2b' && <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">B2B</span>}
                       <span className="text-gray-500">{r.aantal}× à {fmt(r.prijs_per_stuk)}</span>
@@ -3062,7 +3060,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       <button onClick={() => setManualForm((f: any) => ({...f, regels: f.regels.filter((_: any, i: number) => i !== idx)}))}
                         className="text-red-400 hover:text-red-600 text-xs">✕</button>
                     </div>
-                  ))}
+                    {vr && nUit > 0 && (
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-orange-800">
+                        <span className="flex-1">{t('manual_order_uitslaan_hint').replace('{vrij}', String(vr.vrij)).replace('{agp}', String(vr.agp))}</span>
+                        <Btn s="sm" v="secondary" onClick={() => openUitslagVanuit('manual', `${r.bier_naam} \u2014 ${r.verpakking_type}`, vr.afvs, nUit)}>
+                          {t('uitslag_knop')}
+                        </Btn>
+                      </div>
+                    )}
+                    </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -3123,6 +3131,28 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     </select>
                   </div>
                 </div>
+                {regelForm.bier_naam && regelForm.verpakking_type && (() => {
+                  // Wat er te verkopen is (vrij) en wat nog in de AGP ligt —
+                  // uitslaan is een aparte stap die vóór de verkoop komt.
+                  const vr = voorraadVoorKeuze(regelForm.bier_naam, regelForm.verpakking_type)
+                  const alInOrder = manualForm.regels
+                    .filter((x: any) => x.type === 'bier' && x.bier_naam === regelForm.bier_naam && x.verpakking_type === regelForm.verpakking_type)
+                    .reduce((sum: number, x: any) => sum + Number(x.aantal || 0), 0)
+                  const nUit = uitTeSlaan(alInOrder + Number(regelForm.aantal || 0), vr.vrij, vr.agp)
+                  return (
+                    <div className={`flex items-center gap-2 text-xs ${nUit > 0 ? 'text-orange-800' : 'text-gray-500'}`}>
+                      <span className="flex-1">
+                        {t('manual_order_voorraad').replace('{vrij}', String(vr.vrij))}
+                        {vr.agp > 0 && ` · ${t('pos_agp_info').replace('{n}', String(vr.agp))}`}
+                      </span>
+                      {vr.agp > 0 && (
+                        <Btn s="sm" v="secondary" onClick={() => openUitslagVanuit('manual', `${regelForm.bier_naam} \u2014 ${regelForm.verpakking_type}`, vr.afvs, nUit || Math.min(vr.agp, Number(regelForm.aantal || 0)) || 0)}>
+                          {t('uitslag_knop')}
+                        </Btn>
+                      )}
+                    </div>
+                  )
+                })()}
                 <div className="grid grid-cols-3 gap-2">
                   <Inp label={t('manual_order_qty') + ' *'} type="number" value={regelForm.aantal} onChange={(v: string) => setRegelForm((f: any) => ({...f, aantal: v}))} placeholder="1" />
                   <Inp label={t('manual_order_price')} type="number" value={regelForm.prijs_per_stuk} onChange={(v: string) => setRegelForm((f: any) => ({...f, prijs_per_stuk: v}))} placeholder="0.00" />
@@ -3169,6 +3199,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           </div>
         </Modal>
       )}
+
+      {uitslagModal}
     </div>
   )
 }

@@ -285,3 +285,74 @@ export const verdeelUitslag = (
     totaalAccijns: allocaties.reduce((s, a) => s + a.accijns, 0),
   }
 }
+
+// ── Uitslaan en verkopen zijn twee stappen ─────────────────────────────────
+// Uitslaan = het bier verlaat de AGP (schorsingsregeling) naar een vrije
+// voorraadlocatie; op dát moment ontstaat de accijns (verplaatsing +
+// accijnsrecord, `bouwVerplaatsing`). Verkopen = een klant koopt bier dat al
+// buiten de AGP ligt (kassa, bestelling, webshop): een uitlevering zónder
+// nieuwe accijns. Een verkoop pakt dus nooit zelf bier uit de AGP — ligt er
+// te weinig vrij, dan eerst uitslaan (UitslagModal), daarna verkopen.
+//
+// Enige uitzondering: export en intra-EU gaan onder schorsing de grens over.
+// Dat is geen binnenlandse uitslag tot verbruik, dus die levering mag
+// rechtstreeks uit de AGP.
+
+/** Mag een levering van dit type rechtstreeks uit de AGP? Alleen export en
+ * intra-EU; binnenland (privé én zakelijk, kassa én bestelling) niet. */
+export const verkoopUitAgpToegestaan = (typeUitlevering?: string | null): boolean =>
+  typeUitlevering === 'export' || typeUitlevering === 'intra_eu'
+
+/** Hoeveel er uitgeslagen moet worden om `nodig` te kunnen verkopen, gegeven
+ * wat er al vrij ligt en wat er in de AGP ligt. 0 = er ligt genoeg vrij. */
+export const uitTeSlaan = (nodig: number, vrij: number, inAgp: number): number =>
+  Math.max(0, Math.min(Math.max(0, Number(inAgp) || 0), (Number(nodig) || 0) - Math.max(0, Number(vrij) || 0)))
+
+export interface UitslagBoekingInvoer {
+  allocaties: UitslagAllocatie[]
+  naar_locatie_id: number
+  datum: string
+  opmerking?: string
+}
+
+export interface UitslagBoekingen {
+  verplaatsingen: Verplaatsing[]
+  accijns: AccijnsRecord[]
+  log: UitslagLogRegel[]
+  totaal: number
+  totaalAccijns: number
+}
+
+/** Alle records van één uitslag op productniveau (de verdeling uit
+ * `verdeelUitslag`): per afvulling een verplaatsing AGP → vrije locatie met
+ * accijnsrecord en voorraadlogregel. Gedeeld door de kassa en de
+ * bestellingen, zodat een uitslag overal precies dezelfde boeking is.
+ * `volgendeIds` levert per allocatie verse id's (de pagina's gebruiken
+ * `newId`, dat ook binnen één lus uniek blijft). */
+export const bouwUitslagBoekingen = (
+  invoer: UitslagBoekingInvoer,
+  ctx: Omit<VerplaatsContext, 'afv' | 'batch'>,
+  volgendeIds: () => VerplaatsIds,
+  opts: { logTitel: string; nu?: string }
+): UitslagBoekingen => {
+  const agpId = getAgpLocatie(ctx.locaties).id
+  const uit: UitslagBoekingen = { verplaatsingen: [], accijns: [], log: [], totaal: 0, totaalAccijns: 0 }
+  for (const alloc of invoer.allocaties || []) {
+    const r = bouwVerplaatsing(
+      {
+        afvulling_id: alloc.afv.id, batch_id: alloc.afv.batch_id, datum: invoer.datum,
+        aantal: alloc.aantal, van_locatie_id: agpId, naar_locatie_id: invoer.naar_locatie_id,
+        opmerking: invoer.opmerking || '',
+      },
+      { ...ctx, afv: alloc.afv, batch: alloc.batch },
+      volgendeIds(),
+      opts
+    )
+    uit.verplaatsingen.push(r.verplaatsing)
+    if (r.accijnsRecord) uit.accijns.push(r.accijnsRecord)
+    if (r.logRegel) uit.log.push(r.logRegel)
+    uit.totaal += Number(alloc.aantal || 0)
+    uit.totaalAccijns += r.accijns
+  }
+  return uit
+}

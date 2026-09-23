@@ -8,17 +8,18 @@
 //     verlaagt zodra een order binnenkomt. Dat gereserveerde deel mag de kassa
 //     niet nóg eens verkopen (anders wordt dubbel over dezelfde voorraad
 //     beschikt). De harde picks zitten al in de bruto-beschikbaarheid.
-//  2. Privé-/balieklanten mogen wettelijk niet uit de AGP (accijnsgoederen-
-//     plaats) geleverd worden; voor hen telt alleen de voorraad búiten AGP.
-//     De AGP-voorraad zelf tonen we wel — puur ter info.
+//  2. Verkopen gaat alleen uit voorraad búiten de AGP (accijnsgoederenplaats),
+//     voor élke klant: uitslaan is een aparte stap die eraan voorafgaat
+//     (utils/agp.ts). De AGP-voorraad tonen we wel — met de knop om uit te
+//     slaan.
 //
 // Deze helper rekent de bruto-beschikbaarheid (fysiek minus harde picks) om
 // naar de netto-verkoopbare aantallen na aftrek van de zachte reservering, met
 // de invariant: voorraad = buitenAgp + agp.
 export interface KassaVoorraadSplit {
-  voorraad: number   // totaal netto verkoopbaar (zakelijk: buiten AGP + AGP)
-  buitenAgp: number  // netto verkoopbaar buiten AGP (privé/balie)
-  agp: number        // netto voorraad in AGP (info; voor privé niet verkoopbaar)
+  voorraad: number   // totaal netto voorraad (buiten AGP + AGP)
+  buitenAgp: number  // netto verkoopbaar: vrije voorraad buiten de AGP
+  agp: number        // netto voorraad in de AGP — eerst uitslaan
 }
 
 // `voorraadBruto`  — totaal beschikbaar (fysiek − harde picks)
@@ -41,9 +42,9 @@ export const kassaVoorraadNaReservering = (
 }
 
 // ── Uitslaan vanuit de kassa ────────────────────────────────────────────────
-// De vergunning staat geen directe verkoop aan particulieren vanuit de AGP
-// toe: het bier moet eerst de schorsingsregeling verlaten. De kassa biedt die
-// uitslag daarom ter plekke aan, met dezelfde boeking als de AGP-pagina.
+// Er wordt nooit rechtstreeks uit de AGP verkocht: het bier moet eerst de
+// schorsingsregeling verlaten. De kassa biedt die uitslag daarom ter plekke
+// aan, met dezelfde boeking als de AGP-pagina.
 //
 // Wat al voor een open bestelling gepickt is, mag níét mee-uitgeslagen worden:
 // dat bier is al aan een order toegezegd. Deze helper telt per afvulling hoe

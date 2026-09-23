@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.80] — 2026-09-23
+
+### Uitslaan en verkopen: twee aparte stappen
+
+Uitslaan uit de AGP en verkopen waren tot nu toe bij een zakelijke klant één
+stap: kwam er vrije voorraad tekort, dan leverde de app de rest stil uit de AGP
+en boekte daar accijns bij. Dat is nu gescheiden, voor élke klant.
+
+- **Eerst uitslaan, dan verkopen.** Bij het uitslaan verlaat het bier de AGP en
+  wordt de accijns geboekt; het gaat naar vrije voorraad. De verkoop — kassa,
+  bestelling of webshop, privé én zakelijk — gaat daarna altijd uit die vrije
+  voorraad en boekt zelf geen accijns meer. Het logboek toont ze apart:
+  *Uitgeslagen* en *Verkocht*.
+- **Uitslaan waar je verkoopt.** De kassa bood het al voor privéklanten, nu
+  voor iedereen. Nieuw: in het pickscherm (bij te weinig vrije voorraad) en bij
+  het aanmaken van een bestelling (per regel zie je hoeveel er vrij is en
+  hoeveel nog in de AGP) staat de knop *Uitslaan voor verkoop*. Na het
+  uitslaan kom je terug in het scherm waar je was, met je invoer.
+- **Export en intra-EU** gaan onder schorsing rechtstreeks uit de AGP, zonder
+  Nederlandse accijns. De soort levering staat daarom nu bovenaan het
+  pickscherm; *Intra-EU* is ook bij het afronden te kiezen.
+- **Instellingen → Goederenstroom AGP** laat de stappen nu zo zien: opslag
+  gereed product (AGP) → uitslaan (accijns) → vrije voorraad → verkoop, met
+  export/intra-EU als aparte tak.
+- De verzamelpicklijst rekent met vrije voorraad; wat nog in de AGP ligt
+  verschijnt als tekort.
+
+### Kassa: klantkorting per bon aanpassen
+
+Heeft een klant een standaard kortingspercentage, dan kun je dat bij de kassa
+nu voor één bon aanpassen (ook naar 0%): klik op het groene kortingslabel bij
+de klant. De klantkaart blijft ongewijzigd; bij een nieuwe klant of een lege
+bon geldt weer de standaard.
+
+---
+
 ## [1.12.79] — 2026-09-23
 
 ### Huisnummer bij webshopbestellingen

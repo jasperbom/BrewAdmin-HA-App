@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   valideerVerplaatsing, bouwVerplaatsing, uitslagAccijns,
   uitslagKandidaten, verdeelUitslag,
+  verkoopUitAgpToegestaan, uitTeSlaan, bouwUitslagBoekingen,
 } from '../agp'
 import type { Afvulling, Batch, Locatie, AccijnsInst } from '../../types'
 
@@ -215,5 +216,43 @@ describe('verdeelUitslag', () => {
   it('levert niets bij een leeg of ongeldig aantal', () => {
     expect(verdeelUitslag(kandidaten, 0, INST).allocaties).toEqual([])
     expect(verdeelUitslag([], 5, INST)).toMatchObject({ allocaties: [], tekort: 5, totaalBeschikbaar: 0 })
+  })
+})
+
+describe('uitslaan en verkopen zijn twee stappen', () => {
+  it('alleen export en intra-EU mogen rechtstreeks uit de AGP', () => {
+    expect(verkoopUitAgpToegestaan('binnenland')).toBe(false)
+    expect(verkoopUitAgpToegestaan(undefined)).toBe(false)
+    expect(verkoopUitAgpToegestaan('')).toBe(false)
+    expect(verkoopUitAgpToegestaan('intern')).toBe(false)
+    expect(verkoopUitAgpToegestaan('export')).toBe(true)
+    expect(verkoopUitAgpToegestaan('intra_eu')).toBe(true)
+  })
+
+  it('uitTeSlaan: het tekort aan vrije voorraad, hooguit wat er in de AGP ligt', () => {
+    expect(uitTeSlaan(10, 4, 20)).toBe(6)
+    expect(uitTeSlaan(10, 12, 20)).toBe(0)
+    expect(uitTeSlaan(10, 0, 3)).toBe(3)
+    expect(uitTeSlaan(10, -2, 20)).toBe(10)
+    expect(uitTeSlaan(0, 0, 5)).toBe(0)
+  })
+
+  it('bouwUitslagBoekingen: per allocatie een verplaatsing AGP → vrij met accijns en logregel', () => {
+    let n = 0
+    const ids = () => { n++; return { verplaatsing_id: 100 + n, accijns_id: 200 + n, log_id: 300 + n } }
+    const allocaties = [
+      { afv: afvulling({ id: 10 }), batch: batch(), aantal: 12, accijns: 0 },
+      { afv: afvulling({ id: 11 }), batch: batch(), aantal: 6, accijns: 0 },
+    ]
+    const r = bouwUitslagBoekingen(
+      { allocaties, naar_locatie_id: 2, datum: '2026-03-01', opmerking: 'kassa' },
+      { locaties: LOCATIES, accijnsInst: INST },
+      ids, { logTitel: 'Uitslaan', nu: '2026-03-01T10:00:00.000Z' })
+    expect(r.verplaatsingen.map(v => [v.id, v.afvulling_id, v.van_locatie_id, v.naar_locatie_id, v.aantal]))
+      .toEqual([[101, 10, 1, 2, 12], [102, 11, 1, 2, 6]])
+    expect(r.accijns.map(a => a.id)).toEqual([201, 202])
+    expect(r.log.map(l => l.type)).toEqual(['uitslaan', 'uitslaan'])
+    expect(r.totaal).toBe(18)
+    expect(r.totaalAccijns).toBeCloseTo(1.7844 * 1.5, 3)
   })
 })
