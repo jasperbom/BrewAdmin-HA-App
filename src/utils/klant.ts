@@ -1,6 +1,7 @@
 /**
  * klant.ts — helpers voor klantnummering en klantgegevens-resolutie.
  */
+import { splitsAdresRegel } from './adres'
 
 /** Genereer het volgende klantnummer op basis van bestaande klanten.
  *
@@ -72,8 +73,6 @@ export const resolveKlantSnapshot = (snapshot: any, klanten: any[] = []): any =>
     ['naam',       'klant_naam'],
     ['bedrijf',    'klant_bedrijf'],
     ['email',      'klant_email'],
-    ['straat',     'klant_straat'],
-    ['huisnummer', 'klant_huisnummer'],
     ['postcode',   'klant_postcode'],
     ['stad',       'klant_stad'],
     ['land',       'klant_land'],
@@ -85,6 +84,17 @@ export const resolveKlantSnapshot = (snapshot: any, klanten: any[] = []): any =>
     const v = (live[klantKey] ?? '').toString().trim()
     if (v) overlay[snapKey] = v
   }
+  // Straat en huisnummer horen bij elkaar. Een klantkaart van vóór de
+  // adressplitsing heeft vaak "Dorp 1" als straat en geen huisnummer; los
+  // over een order met "Dorp" + "1" gelegd gaf dat "Dorp 1 1". Staat het
+  // nummer al in de straat van de kaart, dan geldt de kaart als geheel.
+  const straat = (live.straat ?? '').toString().trim()
+  const huisnr = (live.huisnummer ?? '').toString().trim()
+  if (straat) {
+    overlay.klant_straat = straat
+    if (huisnr) overlay.klant_huisnummer = huisnr
+    else if (splitsAdresRegel(straat).huisnummer) overlay.klant_huisnummer = ''
+  } else if (huisnr) overlay.klant_huisnummer = huisnr
   // Schrijf klant_id terug zodat opvolgende resolves direct via id matchen
   // (en niet meer via de mogelijk verouderde email-snapshot hoeven).
   if (live.id != null) overlay.klant_id = live.id

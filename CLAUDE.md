@@ -57,6 +57,12 @@ BrewAdmin-HA-App/
 │   │   │                   # server.py spiegelt deze regels in Python
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
+│   │   ├── agp.ts          # Verplaatsen/uitslaan uit de AGP (verplaatsing + accijns), uitslag op
+│   │   │                   # productniveau (FEFO) en `bouwUitslagBoekingen` (gedeeld door kassa en
+│   │   │                   # bestellingen); `verkoopUitAgpToegestaan` = de regel "verkoop nooit
+│   │   │                   # rechtstreeks uit de AGP, behalve export/intra-EU"
+│   │   ├── uitlevering.ts  # Verkoop → uitleveringen (kassa én bestellingen): vrije voorraad eerst,
+│   │   │                   # nooit uit de AGP (behalve export/intra-EU), nooit accijns
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
 │   │   ├── merch.ts        # Merch-artikelen: herkenning op SKU/naam (onthouden vanuit een orderregel) + eigen voorraad (mutaties, tekorten, waardering) voor merch die je zélf op voorraad hebt
 │   │   ├── sku.ts          # SKU-identiteit: één SKU hoort bij één artikel. Spoort dubbele
@@ -114,6 +120,9 @@ BrewAdmin-HA-App/
 │   │   │                   # webshopthema. Bewaart zelf niets; alleen deze sleutels worden
 │   │   │                   # gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
+│   │   ├── adres.ts        # Straat + huisnummer uit een WooCommerce-order: losse velden van een
+│   │   │                   # NL-checkoutplugin (`_billing_house_number`/`_suffix`/`_street_name`)
+│   │   │                   # eerst, anders `address_1` gesplitst; `address_2` achter het nummer
 │   │   ├── wcOrderImport.ts # WooCommerce-orderimport (ophalen, order → bestelling, bekende orders
 │   │   │                   # verversen, dedup bij toepassen, lease voor de automatische import) —
 │   │   │                   # gedeeld door de bestellingenknop en de periodieke import in App.tsx
@@ -659,6 +668,27 @@ De inventarisatie (`InventarisatiePage`) telt bewust locatieloos: een geteld
 tekort is daar een AGP-discrepantie, dus die afboekingen krijgen geen locatie
 en blijven accijnsplichtig.
 
+### Uitslaan ≠ verkopen (v1.12.80)
+
+Twee aparte stappen, in deze volgorde:
+
+1. **Uitslaan** — het bier verlaat de AGP naar een vrije voorraadlocatie. Dát
+   is het belastbare feit: verplaatsing + accijnsrecord + logregel `uitslaan`
+   (`bouwVerplaatsing` / `bouwUitslagBoekingen` in `utils/agp.ts`). Kan op de
+   AGP-pagina, de productpagina, in de kassa (tegel met AGP-voorraad), in de
+   pickmodal en bij het aanmaken van een bestelling (`UitslagModal`).
+2. **Verkopen** — kassa, bestelling of webshop, privé én zakelijk: altijd uit
+   vrije voorraad buiten de AGP (`bouwVerkoopUitleveringen` in
+   `utils/uitlevering.ts`). Een verkoop boekt **nooit** accijns en pakt nooit
+   zelf bier uit de AGP; logregel `verkoop`. Te weinig vrij = eerst uitslaan.
+
+Enige uitzondering: `type_uitlevering` `export`/`intra_eu`
+(`verkoopUitAgpToegestaan`) gaat onder schorsing rechtstreeks uit de AGP, zonder
+Nederlandse accijns. Het klanttype (privé/zakelijk) bepaalt alleen nog prijs en
+factuur, niet meer waar het bier vandaan komt. Vóór v1.12.80 leverde een
+zakelijke order zijn tekort stil uit de AGP en boekte daarbij accijns (bron
+`uitlevering`) — die oude records blijven geldig, er komen er alleen geen bij.
+
 ### Tankbezetting: gereserveerd ≠ bezet
 
 Een tank is pas **bezet** als er bier in zit (`Vergisten`/`Conditioneren` —
@@ -688,7 +718,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `accijns` | array | Accijnsrecords |
 | `verpakkingen` | array | Verpakkingstypen |
 | `onderdelen` | array | Apparatuur-onderdelen |
-| `voorraad_log` | array | Mutatielog ingrediënten |
+| `voorraad_log` | array | Mutatielog ingrediënten én bier: `afvullen`, `uitslaan` (AGP → vrije voorraad, met accijns), `verkoop` (uitlevering aan een klant; vóór v1.12.80 stond een verkoop óók als `uitslaan` gelogd), `afboeking`, `rebrand` |
 | `voorraad_archief` | array | Gearchiveerde voorraadmutaties |
 | `voorraad_gesloten_bieren` | array | Afgesloten biersoorten |
 | `recepten` | array | Recepten (lokaal + Brewfather). Eigen velden van de app (`kostprijs_overig` = vaste kosten per brouw, `kostprijs_verlies_pct` = handmatig verliespercentage) blijven bij een Brewfather-sync behouden — zie `EIGEN_VELDEN` in `runSync` |

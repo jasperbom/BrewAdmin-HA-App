@@ -3191,10 +3191,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* Goederenstroom AGP diagram — volle breedte vanwege horizontale flow */}
       <div className={`${card} [column-span:all]`}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('agp_goederenstroom')}</h2>
-        <p className="text-sm text-gray-500 mb-4">{t('agp_goederenstroom_diagram')}</p>
+        <p className="text-sm text-gray-500 mb-1">{t('agp_goederenstroom_diagram')}</p>
+        <p className="text-sm text-gray-600 mb-4">{t('agp_stroom_uitleg')}</p>
 
         <div className="overflow-x-auto print:overflow-visible">
-          <div className="flex items-start gap-2 min-w-[700px]">
+          <div className="flex items-start gap-2 min-w-[960px]">
             {/* Stap 1: Inkoop */}
             <div className="flex flex-col items-center">
               <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_inkoop')}</div>
@@ -3225,17 +3226,33 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </div>
             <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
 
-            {/* Stap 6: Uitslag met vertakkingen */}
-            <div className="flex flex-col items-start gap-1">
-              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24 mb-1" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_uitslag')}</div>
-              <div className="flex items-center gap-1 ml-1">
-                <span className="text-gray-400 text-xs">&rarr;</span>
-                <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">{t('agp_stroom_binnenland')}</span>
-              </div>
-              <div className="flex items-center gap-1 ml-1">
-                <span className="text-gray-400 text-xs">&rarr;</span>
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">{t('agp_stroom_export')}</span>
-              </div>
+            {/* Stap 6: Uitslaan — het bier verlaat de AGP, hier ontstaat de accijns */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_uitslag')}</div>
+              <span className="mt-1 text-[10px] text-purple-700 text-center w-24">{t('agp_stroom_uitslag_sub')}</span>
+            </div>
+            <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
+
+            {/* Stap 7: Vrije voorraad buiten de AGP */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-center w-24 bg-green-100 text-green-800">{t('agp_stroom_vrije_voorraad')}</div>
+            </div>
+            <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
+
+            {/* Stap 8: Verkoop — altijd uit vrije voorraad, nooit rechtstreeks uit de AGP */}
+            <div className="flex flex-col items-center">
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-center w-24 bg-green-100 text-green-800">{t('agp_stroom_verkoop')}</div>
+              <span className="mt-1 text-[10px] text-gray-500 text-center w-24">{t('agp_stroom_verkoop_sub')}</span>
+            </div>
+          </div>
+
+          {/* Export / intra-EU: onder schorsing rechtstreeks uit de AGP */}
+          <div className="mt-4 pt-3 border-t border-dashed border-gray-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{t('agp_stroom_opslag_gereed')}</span>
+              <span className="text-gray-400 text-xs">&darr;</span>
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">{t('agp_stroom_export')}</span>
+              <span className="text-xs text-gray-500">{t('agp_stroom_export_sub')}</span>
             </div>
           </div>
 

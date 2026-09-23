@@ -27,6 +27,8 @@ interface UitslagModalProps {
   accijnsInst?: AccijnsInst | null
   /** Al gepickte aantallen per afvulling_id — die zijn niet meer vrij. */
   gereserveerd?: Record<number, number>
+  /** Voorgesteld aantal (bijv. het tekort aan vrije voorraad voor een order). */
+  startAantal?: number
   onClose: () => void
   onOpslaan: (opslag: UitslagOpslag) => void
 }
@@ -36,11 +38,11 @@ interface UitslagModalProps {
  * juiste afvulling op de AGP-pagina. */
 const UitslagModal: React.FC<UitslagModalProps> = ({
   productNaam, afvullingen, batches, locaties, uit = [], verplaatsingen = [],
-  afboekingen = [], accijnsInst, gereserveerd = {}, onClose, onOpslaan,
+  afboekingen = [], accijnsInst, gereserveerd = {}, startAantal, onClose, onOpslaan,
 }) => {
   const vrijeLocaties = (locaties || []).filter(l => !l.is_agp)
   const [verpakking, setVerpakking] = useState('')
-  const [aantal, setAantal] = useState('')
+  const [aantal, setAantal] = useState(startAantal && startAantal > 0 ? String(startAantal) : '')
   const [naarLocatieId, setNaarLocatieId] = useState<number>(vrijeLocaties.length === 1 ? vrijeLocaties[0].id : 0)
   const [datum, setDatum] = useState(tod())
   const [opmerking, setOpmerking] = useState('')

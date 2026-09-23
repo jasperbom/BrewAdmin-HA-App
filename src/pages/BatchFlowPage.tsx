@@ -1446,6 +1446,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       terugboeking: {icon: '↩',  label: t('batch_log_type_return'),  cls: 'text-orange-700 bg-orange-50'},
       afvullen:     {icon: <Icon n="beer" />, label: t('log_type_afvullen'),      cls: 'text-green-700 bg-green-50'},
       uitslaan:     {icon: <Icon n="truck" />, label: t('log_type_uitslaan'),      cls: 'text-purple-700 bg-purple-50'},
+      verkoop:      {icon: <Icon n="receipt" />, label: t('log_type_verkoop'),     cls: 'text-emerald-700 bg-emerald-50'},
       afboeking:    {icon: <Icon n="trash" />, label: t('log_type_afboeking'),     cls: 'text-red-700 bg-red-50'},
       rebrand:      {icon: '↪',  label: t('log_type_rebrand'),       cls: 'text-blue-700 bg-blue-50'},
       status:       {icon: <Icon n="refresh" />, label: t('lbl_status'),             cls: 'text-gray-700 bg-gray-100'},

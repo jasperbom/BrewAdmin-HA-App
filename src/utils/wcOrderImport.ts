@@ -22,6 +22,7 @@
 import { newId } from './api'
 import { tod } from './format'
 import { findKlantVoorOrder } from './klant'
+import { wcAdres } from './adres'
 import {
   WcRefs, WC_IMPORT_STATUSSEN_DEFAULT, wcOrdersPad, mapWcOrderRegels,
   wcBetaalVelden, betaalVeldenGewijzigd, BETAAL_KEYS,
@@ -130,6 +131,9 @@ export function wcOrderNaarBestelling(
   const regels = mapWcOrderRegels(o, refs)
   const company = String(o?.billing?.company || '').trim()
   const klantType: 'prive' | 'zakelijk' = (company || wcBtwNummer(o)) ? 'zakelijk' : 'prive'
+  // Straat en huisnummer apart (utils/adres.ts): WooCommerce heeft één
+  // adresregel, een NL-checkoutplugin losse velden.
+  const adres = wcAdres(o)
   const nb: any = {
     id: newId(bestaand),
     status: 'nieuw',
@@ -145,8 +149,8 @@ export function wcOrderNaarBestelling(
     ...wcLeveringVelden(o, link),
     klant_naam: `${o?.billing?.first_name || ''} ${o?.billing?.last_name || ''}`.trim() || t('lbl_onbekend'),
     klant_email: o?.billing?.email || '',
-    klant_straat: o?.billing?.address_1 || '',
-    klant_huisnummer: '',
+    klant_straat: adres.straat,
+    klant_huisnummer: adres.huisnummer,
     klant_postcode: o?.billing?.postcode || '',
     klant_stad: o?.billing?.city || '',
     klant_bedrijf: company,
@@ -160,6 +164,22 @@ export function wcOrderNaarBestelling(
   const klant = findKlantVoorOrder(nb, klanten)
   if (klant) nb.klant_id = klant.id
   return nb
+}
+
+/**
+ * Adres van een order die vóór v1.12.79 binnenkwam: toen ging `address_1`
+ * ongesplitst naar de straat en bleef het huisnummer leeg — bij een
+ * checkoutplugin met een los huisnummerveld viel het nummer zo helemaal weg.
+ * Alleen zolang de straat nog precies die ruwe regel is en er geen huisnummer
+ * staat; een adres dat iemand zelf heeft aangepast blijft staan.
+ */
+function adresHerstel(bestaand: any, o: any): Record<string, string> | null {
+  if (String(bestaand?.klant_huisnummer || '').trim()) return null
+  const ruw = String(o?.billing?.address_1 ?? '').replace(/\s+/g, ' ').trim()
+  if (String(bestaand?.klant_straat ?? '').replace(/\s+/g, ' ').trim() !== ruw) return null
+  const adres = wcAdres(o)
+  if (!adres.huisnummer) return null
+  return {klant_straat: adres.straat, klant_huisnummer: adres.huisnummer}
 }
 
 /**
@@ -180,6 +200,7 @@ export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}): 
   const upd = {
     ...(betaalVeldenGewijzigd(bestaand, velden) ? {...leeg(BETAAL_KEYS), ...velden} : {}),
     ...(leveringVeldenGewijzigd(bestaand, levering) ? {...leeg(LEVERING_KEYS), ...levering} : {}),
+    ...(adresHerstel(bestaand, o) || {}),
   }
   return Object.keys(upd).length ? upd : null
 }
@@ -240,6 +261,7 @@ export function importAuditRegels(r: WcImportResultaat): ImportAuditRegel[] {
     const delen = [
       'wc_betaald' in upd ? `betaalstatus ${upd.wc_betaald ? 'betaald' : 'open'}` : '',
       'wc_levering' in upd ? `levering ${leveringOmschrijving(upd)}` : '',
+      'klant_huisnummer' in upd ? `adres ${upd.klant_straat} ${upd.klant_huisnummer}` : '',
     ].filter(Boolean)
     uit.push({entiteit_id: Number(id), actie: 'gewijzigd', omschrijving: `WC bijgewerkt — ${delen.join(' · ')}`})
   }

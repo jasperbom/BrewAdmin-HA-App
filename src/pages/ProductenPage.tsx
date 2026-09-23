@@ -1333,12 +1333,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
 
   // --- Logboek data ---
   const beerLogEntries = [...(log||[])]
-    .filter((l: any) => ['afvullen','uitslaan','afboeking','rebrand'].includes(l.type))
+    .filter((l: any) => ['afvullen','uitslaan','verkoop','afboeking','rebrand'].includes(l.type))
     .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''));
 
   const LOG_TYPE_STYLES: Record<string, {icon: React.ReactNode, cls: string, label: string}> = {
     afvullen:  {icon: <Icon n="beer" />, cls:'text-green-700 bg-green-50',  label: t('log_type_afvullen')},
+    // Uitslaan = AGP → vrije voorraad (accijns); verkoop = de stap daarna.
     uitslaan:  {icon: <Icon n="truck" />, cls:'text-purple-700 bg-purple-50', label: t('log_type_uitslaan')},
+    verkoop:   {icon: <Icon n="receipt" />, cls:'text-emerald-700 bg-emerald-50', label: t('log_type_verkoop')},
     afboeking: {icon: <Icon n="trash" />, cls:'text-red-700 bg-red-50',      label: t('log_type_afboeking')},
     rebrand:   {icon:'↪', cls:'text-blue-700 bg-blue-50',     label: t('log_type_rebrand')},
   };
@@ -2397,7 +2399,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     }
                     const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
                     const qty = l.hoeveelheid != null
-                      ? `${l.type === 'afboeking' ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${l.eenheid || t('unit_stuks')}`
+                      ? `${l.type === 'afboeking' || l.type === 'verkoop' ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${l.eenheid || t('unit_stuks')}`
                       : '—';
                     return (
                       <tr key={`v-${l.id}`} className="hover:bg-gray-50">
@@ -2407,7 +2409,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                           <div className="font-medium text-gray-700 truncate">{l.batch_naam || '—'}{l.verpakking_type ? ` · ${l.verpakking_type}` : ''}</div>
                           {(l.omschrijving || l.referentie) && <div className="text-gray-400 truncate" title={l.omschrijving || l.referentie}>{l.omschrijving || l.referentie}</div>}
                         </td>
-                        <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : 'text-green-600'}`}>{qty}</td>
+                        <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : l.type === 'verkoop' ? 'text-emerald-700' : 'text-green-600'}`}>{qty}</td>
                       </tr>
                     );
                   })}
