@@ -78,6 +78,12 @@ describe('wcOrderNaarBestelling', () => {
     expect(wcOrderNaarBestelling(order(1, {meta_data: [{key: '_billing_vat_number', value: 'NL1B01'}]}), refs, [], [], t).klant_type).toBe('zakelijk')
     expect(wcOrderNaarBestelling(order(1), refs, [], [], t).klant_type).toBe('prive')
   })
+  it('straat en huisnummer apart, ook uit de velden van een checkoutplugin', () => {
+    expect(wcOrderNaarBestelling(order(1), refs, [], [], t)).toMatchObject({klant_straat: 'Dorp', klant_huisnummer: '1'})
+    const plugin = order(1, {billing: {...order(1).billing, address_1: 'Dorp'},
+      meta_data: [{key: '_billing_house_number', value: '7'}, {key: '_billing_house_number_suffix', value: 'a'}]})
+    expect(wcOrderNaarBestelling(plugin, refs, [], [], t)).toMatchObject({klant_straat: 'Dorp', klant_huisnummer: '7a'})
+  })
   it('naamloze klant krijgt de i18n-terugval', () => {
     expect(wcOrderNaarBestelling(order(1, {billing: {}}), refs, [], [], t).klant_naam).toBe('lbl_onbekend')
   })
@@ -95,6 +101,16 @@ describe('wcOrderUpdate', () => {
     const upd2 = wcOrderUpdate(bestaand, order(1, {meta_data: [{key: '_craftery_afhaalmoment', value: '2026-09-12 10:00'}],
       shipping_lines: [{method_id: 'pickup_location', method_title: 'Afhalen', total: '0'}]}))
     expect(upd2).toMatchObject({wc_levering: 'afhalen', wc_afhaalmoment: '2026-09-12 10:00'})
+  })
+  it('herstelt het adres van een order van vóór de splitsing, niet een zelf aangepast adres', () => {
+    const plugin = order(1, {billing: {...order(1).billing, address_1: 'Dorp'}, meta_data: [{key: '_billing_house_number', value: '7'}]})
+    const oud = {...bestaand, klant_straat: 'Dorp', klant_huisnummer: ''}
+    expect(wcOrderUpdate(oud, plugin)).toEqual({klant_straat: 'Dorp', klant_huisnummer: '7'})
+    expect(wcOrderUpdate({...bestaand, klant_straat: 'Dorp 1', klant_huisnummer: ''}, order(1))).toEqual({klant_straat: 'Dorp', klant_huisnummer: '1'})
+    expect(wcOrderUpdate({...bestaand, klant_straat: 'Kerkstraat 4', klant_huisnummer: ''}, order(1))).toBeNull()
+    expect(wcOrderUpdate({...oud, klant_straat: 'Dorp', klant_huisnummer: '7'}, plugin)).toBeNull()
+    const audit = importAuditRegels({nieuw: [], updates: {5: {klant_straat: 'Dorp', klant_huisnummer: '7'}}, onbekendeRegels: 0})
+    expect(audit[0].omschrijving).toContain('adres Dorp 7')
   })
   it('een verdwenen veld wordt gewist, zodat de order daarna niet elke ronde "gewijzigd" is', () => {
     const afhaal = {...bestaand, wc_levering: 'afhalen', wc_afhaal_locatie: 'Brouwerij', wc_afhaalmoment: '2026-09-12 10:00'}

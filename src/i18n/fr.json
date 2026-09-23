@@ -1110,7 +1110,7 @@
   "lbl_opmerking_required": "Remarque",
   "msg_wc_orders_imported": "✓ {n} commande(s) importée(s)",
   "msg_wc_regels_onbekend": "{n} ligne(s) non reconnue(s) comme bière maison — importée(s) comme ligne libre, à vérifier",
-  "msg_wc_betaalstatus_bijgewerkt": "{n} commande(s) mise(s) à jour : paiement dans WooCommerce",
+  "msg_wc_betaalstatus_bijgewerkt": "{n} commande(s) mise(s) à jour depuis WooCommerce",
   "settings_wc_import_title": "Import des commandes",
   "settings_wc_import_desc": "Quels statuts WooCommerce sont récupérés. Les commandes terminées sont incluses par défaut — le merch est souvent marqué terminé immédiatement.",
   "settings_wc_import_vanaf": "Uniquement les commandes à partir du",

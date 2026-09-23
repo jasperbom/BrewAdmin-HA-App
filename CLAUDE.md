@@ -114,6 +114,9 @@ BrewAdmin-HA-App/
 │   │   │                   # webshopthema. Bewaart zelf niets; alleen deze sleutels worden
 │   │   │                   # gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
+│   │   ├── adres.ts        # Straat + huisnummer uit een WooCommerce-order: losse velden van een
+│   │   │                   # NL-checkoutplugin (`_billing_house_number`/`_suffix`/`_street_name`)
+│   │   │                   # eerst, anders `address_1` gesplitst; `address_2` achter het nummer
 │   │   ├── wcOrderImport.ts # WooCommerce-orderimport (ophalen, order → bestelling, bekende orders
 │   │   │                   # verversen, dedup bij toepassen, lease voor de automatische import) —
 │   │   │                   # gedeeld door de bestellingenknop en de periodieke import in App.tsx

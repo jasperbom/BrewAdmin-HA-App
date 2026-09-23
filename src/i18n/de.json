@@ -1113,7 +1113,7 @@
   "lbl_opmerking_required": "Bemerkung",
   "msg_wc_orders_imported": "✓ {n} Bestellung(en) importiert",
   "msg_wc_regels_onbekend": "{n} Position(en) nicht als eigenes Bier erkannt — als freie Position importiert, bitte prüfen",
-  "msg_wc_betaalstatus_bijgewerkt": "{n} Bestellung(en) aktualisiert: Zahlung in WooCommerce",
+  "msg_wc_betaalstatus_bijgewerkt": "{n} Bestellung(en) aus WooCommerce aktualisiert",
   "settings_wc_import_title": "Bestellungen importieren",
   "settings_wc_import_desc": "Welche WooCommerce-Status abgerufen werden. Abgeschlossene Bestellungen sind standardmäßig dabei — Merch wird oft sofort als abgeschlossen markiert.",
   "settings_wc_import_vanaf": "Nur Bestellungen ab",

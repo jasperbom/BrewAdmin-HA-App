@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.79] — 2026-09-23
+
+### Huisnummer bij webshopbestellingen
+
+Bij het importeren van een WooCommerce-order kwam de hele adresregel in het
+straatveld terecht en bleef het huisnummer leeg. Gebruikt de webshop een
+checkout met een los huisnummerveld (PostNL, MyParcel e.d.), dan viel het
+nummer zo helemaal weg — op de bestelling, de pakbon en de factuur.
+
+- **Straat en huisnummer apart.** De losse huisnummervelden van een
+  checkoutplugin (`_billing_house_number` + toevoeging) gaan voor; anders wordt
+  de adresregel gesplitst ("Dorpsstraat 12A", "12-3", "7 bus 3", "12 Rue de
+  Rivoli").
+- **Tweede adresregel gaat niet meer verloren.** Een toevoeging in
+  `address_2` ("A", "2 hoog") komt achter het huisnummer.
+- **Bestaande orders worden hersteld** bij de volgende import, zolang het adres
+  op de bestelling nog niet met de hand is aangepast.
+- Een klantkaart met het nummer nog in de straat ("Dorp 1", geen huisnummer)
+  geeft op pakbon en factuur geen dubbel nummer meer.
+
+---
+
 ## [1.12.78] — 2026-09-22
 
 ### Website-telemetrie: echte brouwerijcijfers op je webshop

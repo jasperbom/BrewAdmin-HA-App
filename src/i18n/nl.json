@@ -1113,7 +1113,7 @@
   "lbl_opmerking_required": "Opmerking",
   "msg_wc_orders_imported": "✓ {n} bestelling(en) geïmporteerd",
   "msg_wc_regels_onbekend": "{n} regel(s) niet herkend als eigen bier — als vrije regel geïmporteerd, controleer ze",
-  "msg_wc_betaalstatus_bijgewerkt": "{n} order(s) bijgewerkt: betaling in WooCommerce",
+  "msg_wc_betaalstatus_bijgewerkt": "{n} order(s) bijgewerkt vanuit WooCommerce",
   "settings_wc_import_title": "Orders importeren",
   "settings_wc_import_desc": "Welke WooCommerce-statussen worden opgehaald. Afgeronde orders staan standaard aan — merch wordt in de webshop vaak direct als afgerond gemarkeerd.",
   "settings_wc_import_vanaf": "Alleen orders vanaf",

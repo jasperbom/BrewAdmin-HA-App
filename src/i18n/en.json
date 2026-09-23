@@ -1113,7 +1113,7 @@
   "lbl_opmerking_required": "Remark",
   "msg_wc_orders_imported": "✓ {n} order(s) imported",
   "msg_wc_regels_onbekend": "{n} line(s) not recognised as your own beer — imported as free lines, please check",
-  "msg_wc_betaalstatus_bijgewerkt": "{n} order(s) updated: payment in WooCommerce",
+  "msg_wc_betaalstatus_bijgewerkt": "{n} order(s) updated from WooCommerce",
   "settings_wc_import_title": "Order import",
   "settings_wc_import_desc": "Which WooCommerce statuses are fetched. Completed orders are included by default — merch is often marked completed straight away.",
   "settings_wc_import_vanaf": "Only orders from",

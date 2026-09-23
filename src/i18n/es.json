@@ -1110,7 +1110,7 @@
   "lbl_opmerking_required": "Observación",
   "msg_wc_orders_imported": "✓ {n} pedido(s) importado(s)",
   "msg_wc_regels_onbekend": "{n} línea(s) no reconocida(s) como cerveza propia — importadas como línea libre, revíselas",
-  "msg_wc_betaalstatus_bijgewerkt": "{n} pedido(s) actualizado(s): pago en WooCommerce",
+  "msg_wc_betaalstatus_bijgewerkt": "{n} pedido(s) actualizado(s) desde WooCommerce",
   "settings_wc_import_title": "Importar pedidos",
   "settings_wc_import_desc": "Qué estados de WooCommerce se recuperan. Los pedidos completados se incluyen por defecto — el merchandising suele marcarse como completado de inmediato.",
   "settings_wc_import_vanaf": "Solo pedidos desde",
