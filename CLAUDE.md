@@ -43,6 +43,11 @@ BrewAdmin-HA-App/
 │   │   │                   # SMTP-host/-poort/-gebruiker/-beveiliging) — spiegel van `_SECRET_BESTEMMING`
 │   │   ├── bijlage.ts      # `uploadBijlage` (afboeking/vernietiging): servernaam bewaren, mislukte
 │   │   │                   # upload melden (`uploadFoutSleutel`) i.p.v. stil laten vallen
+│   │   ├── integriteitHerstel.ts # Herstel van kapotte verwijzingen uit `integriteit.ts` (Instellingen →
+│   │   │                   # App → Data-gezondheid): alleen stamgegevens-koppelingen (lot → ingrediënt,
+│   │   │                   # batch/afvulling/artikel → product, → verpakking), met een voorstel op naam
+│   │   │                   # uit het record of het ontvangstlog; boekingen (accijns, uitleveringen,
+│   │   │                   # picks, facturen) nooit
 │   │   ├── merge.ts        # Conflict-samenvoeging bij een 409: lokale en serverwijziging op
 │   │   │                   # verschillende records gaan beide mee; alleen hetzelfde record aan
 │   │   │                   # beide kanten is een botsing (server wint). Arrays met `id` + objecten

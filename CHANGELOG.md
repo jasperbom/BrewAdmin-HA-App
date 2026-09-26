@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.84] — 2026-09-26
+
+### Data-gezondheid: kapotte verwijzingen zelf herstellen
+
+De controle onder Instellingen → App → Data-gezondheid meldde verwijzingen die
+nergens meer naartoe wijzen (bijvoorbeeld een lot waarvan het ingrediënt weg is,
+of een batch die aan een verwijderd product hangt), maar je kon er niets mee.
+
+- **Herstel per regel.** Bij een lot, batch, afvulling of artikel kies je nu
+  het juiste ingrediënt, product of de juiste verpakking en klik je *Koppel*.
+  De app stelt er zelf een voor op grond van de naam op het record of in het
+  ontvangstlog. Een batch of afvulling kun je ook *Ontkoppelen*: die valt dan
+  terug op zijn naam of batch. Elke correctie komt in het auditlog.
+- **Herkenbaar.** Elke regel toont naast het nummer ook het lotnummer, de
+  hoeveelheid en de leverancier, of de batchnaam, het batchnummer en de
+  brouwdatum.
+- **Boekingen blijven staan.** Verwijzingen in accijns, uitleveringen, picks en
+  facturen herstelt het paneel bewust niet: dat zou de administratie
+  herschrijven.
+- **Voorkomen.** Een ingrediënt verwijderen liet een lot achter als het
+  ingredient-id op dat lot als tekst was opgeslagen; de vergelijking kijkt nu
+  naar het getal. Een ingrediënt waarvan een lot in een batch is gebruikt, kun
+  je niet meer verwijderen: dat lot is de herkomst van die batch.
+
+---
+
 ## [1.12.83] — 2026-09-26
 
 ### Wachtwoorden en API-sleutels versleuteld in de serverbackup
