@@ -16,6 +16,7 @@ import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
 import { checkIntegriteit } from '../utils/integriteit'
+import { herstelOpties, pasHerstelToe, HERSTEL_AUDIT_SOORT } from '../utils/integriteitHerstel'
 import { fmt, fmtAmt, fmtD, tod } from '../utils/format'
 import { standaardBtwPct } from '../utils/btw'
 import { csvTekst } from '../utils/csv'
@@ -563,7 +564,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null, integriteitSetters={}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -726,6 +727,21 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
   // Resultaat van de laatste integriteitscheck (null = nog niet uitgevoerd)
   const [integriteitResultaat, setIntegriteitResultaat] = React.useState<any[]|null>(null);
+  // Gekozen doel per kapotte verwijzing (sleutel = entiteit|id|veld|doel_id).
+  const [herstelKeuze, setHerstelKeuze] = React.useState<Record<string, string>>({});
+  // Het ontvangstlog geeft de naam van een ingrediënt bij een wees-lot.
+  const herstelData = {...(integriteitData || {}), voorraad_log: log || []};
+  // Een kapotte verwijzing opnieuw koppelen (of leegmaken): alleen
+  // stamgegevens, via utils/integriteitHerstel.ts; boekingen blijven staan.
+  const herstelIntegriteit = (p: any, nieuwId: any) => {
+    const setter = integriteitSetters?.[p.entiteit];
+    if (!setter) return;
+    setter((prev: any[]) => pasHerstelToe(prev, p, nieuwId));
+    const soort = HERSTEL_AUDIT_SOORT[p.entiteit];
+    if (soort) logAudit(auditLog, setAuditLog, {entiteit: soort, entiteit_id: p.id, actie: 'gewijzigd',
+      omschrijving: `Data-gezondheid: ${p.veld} ${p.doel} #${p.doel_id} → ${nieuwId == null ? 'ontkoppeld' : `#${nieuwId}`}`});
+    setIntegriteitResultaat((prev: any[]|null) => (prev || []).filter((x: any) => x !== p));
+  };
 
   const [bfForm, setBfForm]   = React.useState({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false});
   const [bfTesting, setBfTesting] = React.useState(false);
@@ -3872,6 +3888,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <p className="text-sm text-red-600 font-medium mb-2">
                 {t('settings_gezondheid_problemen').replace('{n}', String(integriteitResultaat.length))}
               </p>
+              <p className="text-sm text-gray-500 mb-3">{t('settings_gezondheid_herstel_uitleg')}</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -3879,16 +3896,53 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                       <th className="py-1 pr-3">{t('gezondheid_col_record')}</th>
                       <th className="py-1 pr-3">{t('gezondheid_col_veld')}</th>
                       <th className="py-1 pr-3">{t('gezondheid_col_doel')}</th>
+                      <th className="py-1 pr-3">{t('gezondheid_col_herstel')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {integriteitResultaat.slice(0, 100).map((p: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-100">
-                        <td className="py-1 pr-3 font-mono">{p.entiteit} #{String(p.id)}</td>
-                        <td className="py-1 pr-3 font-mono">{p.veld}</td>
-                        <td className="py-1 pr-3 font-mono">{p.doel} #{String(p.doel_id)}</td>
-                      </tr>
-                    ))}
+                    {integriteitResultaat.slice(0, 100).map((p: any) => {
+                      const rk = `${p.entiteit}|${String(p.id)}|${p.veld}|${String(p.doel_id)}`;
+                      const opt = herstelOpties(p, herstelData);
+                      const keuze = herstelKeuze[rk] ?? (opt.suggestie != null ? String(opt.suggestie) : '');
+                      const kanHerstellen = opt.herstelbaar && !!integriteitSetters?.[p.entiteit] && opt.kandidaten.length > 0;
+                      return (
+                        <tr key={rk} className="border-b border-gray-100 align-top">
+                          <td className="py-1.5 pr-3">
+                            <div className="font-mono">{p.entiteit} #{String(p.id)}</div>
+                            {opt.omschrijving && <div className="text-gray-500">{opt.omschrijving}</div>}
+                          </td>
+                          <td className="py-1.5 pr-3 font-mono">{p.veld}</td>
+                          <td className="py-1.5 pr-3 font-mono">{p.doel} #{String(p.doel_id)}</td>
+                          <td className="py-1.5 pr-3">
+                            {kanHerstellen ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select value={keuze} onChange={(e: any) => setHerstelKeuze(k => ({...k, [rk]: e.target.value}))}
+                                  className="border border-gray-200 rounded px-2 py-1 text-xs t-input focus:outline-none max-w-[220px] bg-white">
+                                  <option value="">{t('settings_gezondheid_kies')}</option>
+                                  {opt.kandidaten.map(k => (
+                                    <option key={String(k.id)} value={String(k.id)}>
+                                      {k.label}{String(k.id) === String(opt.suggestie) ? ` (${t('settings_gezondheid_voorstel')})` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Btn s="sm" disabled={!keuze}
+                                  onClick={() => herstelIntegriteit(p, opt.kandidaten.find(k => String(k.id) === keuze)?.id)}>
+                                  {t('settings_gezondheid_koppel')}
+                                </Btn>
+                                {opt.ontkoppelen && (
+                                  <BevestigKnop v="secondary" s="sm" vraag={t('settings_gezondheid_ontkoppel_vraag')}
+                                    onBevestig={() => herstelIntegriteit(p, null)}>
+                                    {t('settings_gezondheid_ontkoppel')}
+                                  </BevestigKnop>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">{t('settings_gezondheid_handmatig')}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

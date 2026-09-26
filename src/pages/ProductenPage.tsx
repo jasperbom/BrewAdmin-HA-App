@@ -411,7 +411,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     if (!confirm(vraag)) return;
     logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
     setProducten((prev: any[]) => prev.filter((p: any) => p.id !== sel));
-    setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.product_id !== sel));
+    setProductArtikelen((prev: any[]) => prev.filter((a: any) => Number(a.product_id) !== Number(sel)));
     // De koppeling losmaken in plaats van hem laten hangen: de afvulling valt
     // dan terug op de batch en blijft vindbaar.
     if (eigenAv.length) {

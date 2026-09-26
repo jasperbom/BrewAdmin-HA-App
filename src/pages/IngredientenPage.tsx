@@ -156,8 +156,12 @@ const IngredientenPage: React.FC<Props> = ({
 
   const addLog = (entry: any) => setLog((prev: any[]) => [...prev, { id: newId(prev || []), datum: tod(), ...entry }])
 
-  const activeLots = (iid: number) => lots.filter((l: any) => l.ingredient_id === iid && l.beschikbaar && Number(l.hoeveelheid || 0) > 0)
-  const archiefLots = (iid: number) => lots.filter((l: any) => l.ingredient_id === iid && (!l.beschikbaar || Number(l.hoeveelheid || 0) === 0))
+  // Id's vergelijken als getal: een lot uit een import of oudere versie kan
+  // ingredient_id als tekst dragen ("15"), en dan viel hij hier buiten — ook
+  // buiten de controle bij verwijderen, waardoor hij als wees achterbleef.
+  const vanIng = (l: any, iid: any) => Number(l.ingredient_id) === Number(iid)
+  const activeLots = (iid: number) => lots.filter((l: any) => vanIng(l, iid) && l.beschikbaar && Number(l.hoeveelheid || 0) > 0)
+  const archiefLots = (iid: number) => lots.filter((l: any) => vanIng(l, iid) && (!l.beschikbaar || Number(l.hoeveelheid || 0) === 0))
   // Lots van één ingrediënt kunnen in verschillende eenheden staan (kg naast
   // g): eerst omrekenen, nooit rauw optellen (utils/ingredientVoorraad.ts).
   const voorraadTotaal = (iid: number) => lotVoorraadTotaal(activeLots(iid))
@@ -430,10 +434,16 @@ const IngredientenPage: React.FC<Props> = ({
   const deleteIng = () => {
     if (!selIng) return
     if (activeLots(sel!).length > 0) { alert(t('err_cannot_delete_active_lots')); return }
+    // Een lot dat in een batch is gebruikt is de herkomst van die batch
+    // (traceerbaarheid, één stap terug): het ingrediënt verwijderen zou die
+    // lot meenemen en de batchregel laten wijzen naar een lot dat niet meer
+    // bestaat.
+    const gebruikt = lots.some((l: any) => vanIng(l, sel) && (bi || []).some((b: any) => b?.lot_id != null && String(b.lot_id) === String(l.id)))
+    if (gebruikt) { alert(t('err_ingredient_lot_in_batch')); return }
     if (!confirm(t('confirm_delete_ingredient').replace('{naam}', selIng.naam))) return
     logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: sel!, actie: 'verwijderd', omschrijving: selIng.naam })
     setIng((prev: any[]) => prev.filter((i: any) => i.id !== sel))
-    setLots((prev: any[]) => prev.filter((l: any) => l.ingredient_id !== sel))
+    setLots((prev: any[]) => prev.filter((l: any) => !vanIng(l, sel)))
     setSel(null)
   }
 
