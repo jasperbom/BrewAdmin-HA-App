@@ -87,6 +87,84 @@ describe('bierIngredienten', () => {
     expect(bierIngredienten(null)).toBe('')
     expect(bierIngredienten([{mout: [], hop: [], gist: []}])).toBe('')
   })
+
+  // Brewfather zet suikers in de moutlijst (ingredient_type 'Suiker'), lactose
+  // soms bij de overige toevoegingen. Een suiker is geen gerst, en melk mag
+  // niet ontbreken: dit gaat als `_cf_ingredienten` naar de webshop.
+  it('milk stout: lactose (type Suiker) in de moutlijst → lactose (melk)', () => {
+    expect(bierIngredienten([{
+      mout: [{naam: 'Pale Ale Malt', ingredient_type: 'Mout'}, {naam: 'Chocolate Malt', ingredient_type: 'Mout'},
+        {naam: 'Lactose', ingredient_type: 'Suiker'}],
+      hop: [{naam: 'EKG'}], gist: [{naam: 'S-04'}],
+    }])).toBe('water, gerstemout, lactose (melk), hop, gist')
+  })
+  it('lactose bij de overige toevoegingen telt ook mee', () => {
+    expect(bierIngredienten([{
+      mout: [{naam: 'Pale Ale Malt'}], hop: [{naam: 'EKG'}], gist: [{naam: 'S-04'}],
+      overig: [{naam: 'Lactose'}, {naam: 'Irish Moss'}],
+    }])).toBe('water, gerstemout, lactose (melk), hop, gist')
+  })
+  it('alleen tarwemout + lactose: geen gerstemout die er niet in zit', () => {
+    expect(bierIngredienten([{
+      mout: [{naam: 'Tarwemout', ingredient_type: 'Mout'}, {naam: 'Lactose', ingredient_type: 'Suiker'}],
+      hop: [{naam: 'Citra'}], gist: [{naam: 'US-05'}],
+    }])).toBe('water, tarwemout, lactose (melk), hop, gist')
+  })
+  it('pilsner + kandijsuiker: suiker, geen tweede gerst', () => {
+    expect(bierIngredienten([{
+      mout: [{naam: 'Pilsner', ingredient_type: 'Mout'}, {naam: 'Candi Sugar', ingredient_type: 'Suiker'}],
+      hop: [{naam: 'Saaz'}], gist: [{naam: 'WLP500'}],
+    }])).toBe('water, gerstemout, suiker, hop, gist')
+    // Ook een oud recept waar de suikerregel nog als Mout staat, herkent de naam.
+    expect(bierIngredienten([{mout: [{naam: 'Tarwemout'}, {naam: 'Dextrose', ingredient_type: 'Mout'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, tarwemout, suiker, hop')
+  })
+  it('honing is honing, maar Honey Malt is gewoon gerstemout', () => {
+    expect(bierIngredienten([{mout: [{naam: 'Tarwemout'}, {naam: 'Honey', ingredient_type: 'Suiker'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, tarwemout, honing, hop')
+    expect(bierIngredienten([{mout: [{naam: 'Honey Malt', ingredient_type: 'Mout'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, gerstemout, hop')
+  })
+  it('een toevoeging van type Overig is alleen gerst als de naam dat zegt', () => {
+    expect(bierIngredienten([{mout: [{naam: 'Flaked Barley', ingredient_type: 'Overig'}, {naam: 'Cacao Nibs', ingredient_type: 'Overig'}], hop: [{naam: 'EKG'}]}]))
+      .toBe('water, gerstemout, hop')
+    expect(bierIngredienten([{mout: [{naam: 'Cacao Nibs', ingredient_type: 'Overig'}], hop: [{naam: 'EKG'}]}]))
+      .toBe('water, hop')
+  })
+  it('boekweit is geen tarwe; glutenvrije granen worden nooit gerstemout', () => {
+    expect(bierIngredienten([{
+      mout: [{naam: 'Buckwheat Malt'}, {naam: 'Sorghum Syrup', ingredient_type: 'Suiker'}, {naam: 'Flaked Rice'}, {naam: 'Rice Hulls', ingredient_type: 'Overig'}],
+      hop: [{naam: 'Saaz'}], gist: [{naam: 'US-05'}],
+    }])).toBe('water, boekweit, rijst, suiker, hop, gist')
+  })
+  it('Duitse boekweit (Buchweizen) is ook geen tarwe, echte Weizen wel', () => {
+    expect(bierIngredienten([{mout: [{naam: 'Buchweizenmalz'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, boekweit, hop')
+    expect(bierIngredienten([{mout: [{naam: 'Weizenmalz hell'}, {naam: 'Buck Wheat'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, tarwemout, boekweit, hop')
+  })
+  it('de app-code gebruikt geen regex-lookbehind (Safari/iOS < 16.4 laadt de bundel dan niet)', async () => {
+    const {readFileSync, readdirSync, statSync} = await import('node:fs')
+    const {join} = await import('node:path')
+    const bestanden = (map: string): string[] =>
+      readdirSync(map).flatMap(naam => {
+        const pad = join(map, naam)
+        if (statSync(pad).isDirectory()) return naam === '__tests__' ? [] : bestanden(pad)
+        return /\.tsx?$/.test(naam) ? [pad] : []
+      })
+    const metLookbehind = bestanden('src').filter(pad => /\(\?<[!=]/.test(readFileSync(pad, 'utf8')))
+    expect(metLookbehind).toEqual([])
+  })
+  it('een toevoeging zonder naam-herkenning komt erbij via de allergenen van het gekoppelde ingrediënt', () => {
+    const ingredienten = [{id: 7, naam: 'Hazelnoot', allergenen: ['noten']}, {id: 8, naam: 'Koriander', allergenen: []}]
+    expect(bierIngredienten([{
+      mout: [{naam: 'Pale Ale Malt'}], hop: [{naam: 'EKG'}], gist: [{naam: 'S-04'}],
+      overig: [{naam: 'Hazelnoot', ingredient_id: 7}, {naam: 'Koriander', ingredient_id: 8}],
+    }], ingredienten)).toBe('water, gerstemout, hazelnoot (noten), hop, gist')
+    // Zonder catalogus blijft de lijst zoals hij was.
+    expect(bierIngredienten([{mout: [{naam: 'Pale Ale Malt'}], overig: [{naam: 'Hazelnoot', ingredient_id: 7}]}]))
+      .toBe('water, gerstemout')
+  })
 })
 
 describe('afgeleideBierInfo', () => {

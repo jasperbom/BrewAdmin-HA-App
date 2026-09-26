@@ -5,6 +5,12 @@ let _currentUser: string | undefined
 
 export const setAuditUser = (name: string | undefined) => { _currentUser = name }
 
+// Naam in het auditlogboek: de door de server bevestigde gebruiker (whoami —
+// ingress-header of sessie op de directe poort), getrimd. Leeg = geen naam
+// (buiten HA); nooit terugvallen op een ingevuld instellingsveld.
+export const auditGebruiker = (w: { gebruiker?: string | null } | null | undefined): string | undefined =>
+  String(w?.gebruiker ?? '').trim() || undefined
+
 // Canonieke soortnamen voor het auditlogboek. Dezelfde soort onder twee
 // spellingen wegschrijven (`Ingredient` naast `Ingrediënt`, `VerkoopFactuur`
 // naast `Verkoopfactuur`) maakt het logboek onbetrouwbaar om op te filteren:

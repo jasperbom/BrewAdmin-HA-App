@@ -77,6 +77,13 @@ describe('risicoclassificatie', () => {
     expect(r.klasse).toBe('standaard')
   })
 
+  it('ziet vers fruit ook als de regel alleen op naam gekoppeld is', () => {
+    const rij = regel(1, 3, {ingredient_id: null, ingredient_naam: 'verse aardbei'})
+    const r = risicoVoorBatch({id: 1}, [regel(1, 1), rij], ingredienten)
+    expect(r.klasse).toBe('verhoogd')
+    expect(vereisteStabiliteitsdagen(r.klasse)).toBe(7)
+  })
+
   it('gebruikt de default van het ingredienttype als het ingredient niets zegt', () => {
     const inst = {toevoeging_per_ing_type: {Fruit: 'ongekookt' as const}}
     const rij = {id: 9, batch_id: 1, ingredient_id: 99, ingredient_naam: 'Framboos',
@@ -417,6 +424,44 @@ describe('magSessieAfsluiten', () => {
         sluitcontrole_id: 2}] as any)
     expect(afgerond.toegestaan).toBe(true)
   })
+
+  // Een etiketcontrole op 'Milkshake IPA' mag de flessen die als 'IPA' zijn
+  // afgevuld niet dekken — ook niet als ze al vóór deze eis geregistreerd waren.
+  describe('met de afvullingen van de sessie', () => {
+    const controles = [ctrl(1, 'start'), ctrl(2, 'einde')]
+    const producten = [{id: 5, naam: 'IPA'}, {id: 6, naam: 'Milkshake IPA'}]
+
+    it('blokkeert zolang een afgevuld product geen eigen etiketcontrole heeft', () => {
+      const r = magSessieAfsluiten(sessie, controles,
+        [{sessie_id: 1, resultaat: 'goedgekeurd', product_id: 6}], [],
+        [{sessie_id: 1, product_id: 5}, {sessie_id: 1, product_id: 6}], producten)
+      expect(codes(r)).toEqual(['etiket_product_ontbreekt'])
+      expect(r.redenen[0].params).toEqual({producten: 'IPA'})
+    })
+
+    it('staat afsluiten toe als elk product gedekt is (goedgekeurd of met afwijking)', () => {
+      const r = magSessieAfsluiten(sessie, controles,
+        [{sessie_id: 1, resultaat: 'goedgekeurd', product_id: 5},
+         {sessie_id: 1, resultaat: 'afgekeurd', product_id: 6, afwijking_id: 3}], [],
+        [{sessie_id: 1, product_id: 5}, {sessie_id: 1, product_id: 6},
+         {sessie_id: 2, product_id: 7}], producten)
+      expect(r.toegestaan).toBe(true)
+    })
+
+    it('telt een gerebrande afvulling als het product waarmee hij is afgevuld', () => {
+      const r = magSessieAfsluiten(sessie, controles,
+        [{sessie_id: 1, resultaat: 'goedgekeurd', product_id: 5}], [],
+        [{sessie_id: 1, product_id: 6, rebrand_van_product_id: 5}], producten)
+      expect(r.toegestaan).toBe(true)
+    })
+
+    it('noemt een onbekend product bij zijn nummer', () => {
+      const r = magSessieAfsluiten(sessie, controles,
+        [{sessie_id: 1, resultaat: 'goedgekeurd', product_id: 5}], [],
+        [{sessie_id: 1, product_id: 42}], producten)
+      expect(r.redenen[0].params).toEqual({producten: '#42'})
+    })
+  })
 })
 
 describe('sluitcontroleHerinnering', () => {
@@ -450,6 +495,21 @@ describe('allergenen (CCP 3)', () => {
   it('ontdubbelt allergenen die uit meerdere ingredienten komen', () => {
     const a = allergenenUitBatch(1, [regel(1, 1), regel(1, 6)], ingredienten)
     expect(a).toEqual(['gerst', 'gluten', 'tarwe'])
+  })
+
+  // Een batch die gepland werd vóórdat Lactose in de catalogus stond, heeft
+  // een regel zonder ingredient_id. De batchpagina boekt hem op naam af; dan
+  // moet CCP 3 de melk ook zien.
+  it('ziet ook een regel die alleen op naam aan het ingredient hangt', () => {
+    const a = allergenenUitBatch(1,
+      [regel(1, 1), regel(1, 5, {ingredient_id: null, ingredient_naam: 'lactose'})], ingredienten)
+    expect(a).toEqual(['gerst', 'gluten', 'lactose'])
+  })
+
+  it('laat een gezet id winnen van een afwijkende naam en negeert een onbekende naam', () => {
+    expect(allergenenUitBatch(1, [regel(1, 2, {ingredient_naam: 'Lactose'})], ingredienten)).toEqual([])
+    expect(allergenenUitBatch(1,
+      [regel(1, 5, {ingredient_id: null, ingredient_naam: 'Onbekend spul'})], ingredienten)).toEqual([])
   })
 
   it('onderscheidt een leeg etiket van een niet-ingevuld etiket', () => {

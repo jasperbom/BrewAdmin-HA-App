@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   wcOrdersPad, vindWcArtikel, mapWcOrderRegels, WC_IMPORT_STATUSSEN_DEFAULT,
   wcBetaalStatus, wcBetaalVelden, betaalVeldenGewijzigd,
+  betaalVeldenNaEigenSync, wcRekentBtw, wcOrderBtwVrijgesteld,
 } from '../wcImport'
+import { regelBedrag } from '../orderRegel'
 
 const refs = {
   producten: [{id: 7, naam: 'Witbier'}],
@@ -197,5 +199,86 @@ describe('wcBetaalVelden / betaalVeldenGewijzigd', () => {
 
   it('behandelt een oude order zonder betaalvelden als onbetaald', () => {
     expect(betaalVeldenGewijzigd({}, {wc_betaald: false})).toBe(false)
+  })
+})
+
+// Bevinding #47: een regel zonder BTW in een winkel die wél BTW rekent is een
+// bewuste 0 — niet de prijslijstprijs plus Nederlandse BTW.
+describe('mapWcOrderRegels — regels zonder BTW', () => {
+  it('gratis regel (coupon 100%) in een order met BTW: nul euro, niet de prijslijst', () => {
+    const r = mapWcOrderRegels({
+      total_tax: '2.15',
+      line_items: [
+        {sku: 'WIT-033', name: 'Witbier 33cl', quantity: 6, total: '10.26', total_tax: '2.15'},
+        {sku: 'WIT-033', name: 'Witbier 33cl', quantity: 1, total: '0.00', total_tax: '0.00'},
+      ],
+    }, refs)
+    expect(r[1]).toMatchObject({wc_netto: 0, wc_btw: 0, btw_pct: 21})
+    expect(regelBedrag(r[1]).bruto).toBe(0)
+  })
+
+  it('vrijgestelde order (EU-BTW-nummer): betaald bedrag, 0%', () => {
+    const r = mapWcOrderRegels({
+      total_tax: '0.00',
+      meta_data: [{key: 'is_vat_exempt', value: 'yes'}],
+      line_items: [{sku: 'BLOND-F20', name: 'Fust Blond', quantity: 12, total: '21.60', total_tax: '0.00'}],
+      shipping_lines: [{method_title: 'Verzending BE', total: '12.00', total_tax: '0.00'}],
+    }, refs)
+    expect(r[0]).toMatchObject({wc_netto: 21.6, wc_btw: 0, btw_pct: 0})
+    expect(r[1]).toMatchObject({wc_netto: 12, wc_btw: 0, btw_pct: 0})
+    expect(regelBedrag(r[0]).bruto).toBe(21.6)
+    // is_vat_exempt: "no" (standaard op elke order) verandert niets.
+    const nee = mapWcOrderRegels({meta_data: [{key: 'is_vat_exempt', value: 'no'}],
+      line_items: [{name: 'Iets', quantity: 1, total: '10.00'}]}, refs)
+    expect(nee[0].wc_netto).toBeUndefined()
+  })
+
+  it('winkel zonder BTW-berekening (geen tax_lines, nergens BTW): ongewijzigd gedrag', () => {
+    expect(wcRekentBtw({line_items: [{name: 'Iets', quantity: 1, total: '10.00'}]})).toBe(false)
+    expect(wcRekentBtw({tax_lines: [{rate_code: 'NL-BTW-1'}]})).toBe(true)
+    expect(wcOrderBtwVrijgesteld({meta_data: [{key: 'is_vat_exempt', value: 'yes'}]})).toBe(true)
+  })
+
+  it('een paar cent zonder BTW houdt het gewone tarief (de BTW rondde naar nul)', () => {
+    const r = mapWcOrderRegels({
+      total_tax: '1.00',
+      line_items: [{name: 'Sticker', quantity: 1, total: '0.02', total_tax: '0.00'}],
+    }, {...refs, standaardBtw: 21})
+    expect(r[0]).toMatchObject({btw_pct: 21, wc_netto: 0.02, wc_btw: 0})
+  })
+})
+
+// Bevinding #10: onze eigen `completed` is geen betaling.
+describe('betaalVeldenNaEigenSync', () => {
+  const sync = {status: 'completed', datum: '2026-09-25T10:00:00.000Z', fout: null, note: true, onbetaald: true}
+  const bestaand = {wc_betaald: false, wc_betaal_methode: 'Bankoverschrijving', wc_sync: sync}
+  const completed = {status: 'completed', date_paid: '2026-09-25T12:00:03', date_paid_gmt: '2026-09-25T10:00:03',
+    payment_method_title: 'Bankoverschrijving'}
+
+  it('houdt de order onbetaald en zonder betaaldatum', () => {
+    const v = betaalVeldenNaEigenSync(bestaand, completed, wcBetaalVelden(completed))
+    expect(v).toEqual({wc_betaald: false, wc_betaal_methode: 'Bankoverschrijving'})
+    expect(betaalVeldenGewijzigd(bestaand, v)).toBe(false)
+  })
+
+  it('laat alles ongemoeid zonder eigen onbetaalde sync, of als de winkel iets anders zegt', () => {
+    const velden = wcBetaalVelden(completed)
+    expect(betaalVeldenNaEigenSync({...bestaand, wc_sync: {...sync, onbetaald: undefined}}, completed, velden)).toBe(velden)
+    expect(betaalVeldenNaEigenSync({...bestaand, wc_sync: undefined}, completed, velden)).toBe(velden)
+    expect(betaalVeldenNaEigenSync({...bestaand, wc_betaald: true}, completed, velden)).toBe(velden)
+    const processing = {...completed, status: 'processing'}
+    expect(betaalVeldenNaEigenSync(bestaand, processing, wcBetaalVelden(processing)).wc_betaald).toBe(true)
+  })
+
+  it('een nieuwe transactie of een betaling ruim vóór de wissel is een echte betaling', () => {
+    const metTx = {...completed, transaction_id: 'tr_9'}
+    expect(betaalVeldenNaEigenSync(bestaand, metTx, wcBetaalVelden(metTx)).wc_betaald).toBe(true)
+    // Dezelfde transactie als we al kenden (van vóór de betaling) telt niet.
+    expect(betaalVeldenNaEigenSync({...bestaand, wc_transactie_id: 'tr_9'}, metTx, wcBetaalVelden(metTx)).wc_betaald).toBe(false)
+    const eerder = {...completed, date_paid_gmt: '2026-09-25T09:30:00'}
+    expect(betaalVeldenNaEigenSync(bestaand, eerder, wcBetaalVelden(eerder)).wc_betaald).toBe(true)
+    // Binnen de klokspeling: onze eigen wissel.
+    const vlak = {...completed, date_paid_gmt: '2026-09-25T09:55:00'}
+    expect(betaalVeldenNaEigenSync(bestaand, vlak, wcBetaalVelden(vlak)).wc_betaald).toBe(false)
   })
 })

@@ -74,4 +74,21 @@ describe('wcSyncVelden / wcSyncTeHerhalen', () => {
     expect(wcSyncTeHerhalen(order({status: 'verzonden', wc_sync: {status: 'completed', datum: 'x', fout: 'boem'}}), aan)).toBe(true)
     expect(wcSyncTeHerhalen(order({status: 'verzonden'}), {enabled: false})).toBe(false)
   })
+  it('completed op een onbetaalde order wordt gemarkeerd (de import leest het niet als betaling)', () => {
+    const plan = wcTerugschrijfPlan(order({verzend_datum: '2026-09-10'}), 'verzonden', aan, t)!
+    expect(wcSyncVelden(plan, {ok: true}, 'nu', order({wc_betaald: false})).wc_sync.onbetaald).toBe(true)
+    expect(wcSyncVelden(plan, {ok: true}, 'nu', order({wc_betaald: true})).wc_sync).not.toHaveProperty('onbetaald')
+    const annuleer = wcTerugschrijfPlan(order({status: 'geannuleerd'}), 'geannuleerd', aan, t)!
+    expect(wcSyncVelden(annuleer, {ok: true}, 'nu', order()).wc_sync).not.toHaveProperty('onbetaald')
+  })
+  it('in de winkel al geannuleerd of terugbetaald → niets terug te schrijven, geen herhaalknop', () => {
+    for (const wc_status of ['cancelled', 'refunded']) {
+      const o = order({status: 'geannuleerd', wc_status})
+      expect(wcTerugschrijfPlan(o, 'geannuleerd', aan, t)).toBeNull()
+      expect(wcTerugschrijfPlan(o, 'geannuleerd', {enabled: true, uitgeslagen: true}, t)).toBeNull()
+      expect(wcSyncTeHerhalen(o, aan)).toBe(false)
+    }
+    // Een mislukte betaling die je hier annuleert gaat wél als cancelled naar de winkel.
+    expect(wcTerugschrijfPlan(order({status: 'geannuleerd', wc_status: 'failed'}), 'geannuleerd', aan, t)?.put).toEqual({status: 'cancelled'})
+  })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { attentiePosten, attentieTotalen, attentieTotaal, attentieDoel, AttentieBron } from '../attentie'
+import { attentiePosten, attentieTotalen, attentieTotaal, attentieDoel, attentieVoorPagina, AttentieBron } from '../attentie'
 
 const leegBron = (): AttentieBron => ({
   batches: [], batchTakenItems: [], batchTakenGroepen: [],
@@ -104,6 +104,17 @@ describe('attentiePosten', () => {
     expect(posten).toEqual([{ id: 'webshop_nieuw', sleutel: 'attentie_webshop_nieuw', pagina: 'bestellingen', aantal: 2 }])
   })
 
+  it('telt open orders die in de webshop geannuleerd, mislukt of terugbetaald zijn', () => {
+    const bron = leegBron()
+    bron.bestellingen = [
+      { id: 1, status: 'gepickt', wc_order_id: 5, wc_status: 'cancelled', regels: [] },
+      { id: 2, status: 'geannuleerd', wc_order_id: 6, wc_status: 'cancelled', regels: [] },
+      { id: 3, status: 'verzonden', wc_order_id: 7, wc_status: 'refunded', regels: [] },
+    ]
+    const posten = attentiePosten(bron).verkoop
+    expect(posten).toEqual([{ id: 'webshop_afgebroken', sleutel: 'attentie_webshop_afgebroken', pagina: 'bestellingen', aantal: 2 }])
+  })
+
   it('telt openstaande BTW-perioden onder Administratie, over huidig + vorig jaar', () => {
     const bron = leegBron()
     // Betaald/credit telt niet als vervallen, maar de datum telt wél als
@@ -184,5 +195,23 @@ describe('attentiePosten', () => {
       { id: 'b', sleutel: 'y', pagina: 'q', aantal: 3 },
     ])).toBe(5)
     expect(attentieTotaal([{ id: 'a', sleutel: 'x', pagina: 'p', aantal: NaN }])).toBe(0)
+  })
+
+  it('attentieVoorPagina: tabblad-badge en werkruimte-badge uit dezelfde bron', () => {
+    // Een bevestigde, nog niet gepickte order telt in de Verkoop-badge; het
+    // tabblad Bestellingen hoort hetzelfde getal te tonen (tot 1.12.80 telde
+    // het los "nieuw of gepickt" en sprak het de werkruimte-badge tegen).
+    const bron = leegBron()
+    bron.bestellingen = [
+      { id: 1, status: 'bevestigd', regels: [{ id: 1, type: 'bier', aantal: 2 }] },
+      { id: 2, status: 'nieuw', regels: [{ id: 1, type: 'bier', aantal: 1 }] },
+    ]
+    bron.wcImportStatus = { nieuw: [{ id: 501 }] }
+    const verkoop = attentiePosten(bron).verkoop
+    const tab = attentieVoorPagina(verkoop, 'bestellingen')
+    expect(tab.map(p => p.id)).toEqual(['bestellingen', 'webshop_nieuw'])
+    expect(attentieTotaal(tab)).toBe(attentieTotaal(verkoop))
+    expect(attentieVoorPagina(verkoop, 'kassa')).toEqual([])
+    expect(attentieVoorPagina(undefined as any, 'bestellingen')).toEqual([])
   })
 })

@@ -3,7 +3,10 @@ import {
   haalWcOrders, wcOrderNaarBestelling, wcOrderUpdate, importeerWcOrders, pasImportToe,
   importAuditRegels, importMelding, telNieuweWebshopOrders, importLeaseVrij, wcBtwNummer,
   wcImportSelectie, verwijderDubbeleWcOrders, WC_PER_PAGE, WC_IMPORT_LEASE_MS,
+  teVerversenWcIds, haalBekendeWcOrders, telWebshopAfgebroken, wcOrderAfgebroken,
 } from '../wcOrderImport'
+import { openBestellingReserveringen } from '../calculations'
+import { wcTerugschrijfPlan, wcSyncVelden } from '../wcTerugschrijven'
 
 const t = (k: string) => k
 
@@ -210,6 +213,213 @@ describe('verwijderDubbeleWcOrders', () => {
   })
   it('handmatige orders zonder wc_order_id tellen nooit als dubbel', () => {
     expect(verwijderDubbeleWcOrders([{id: 1, status: 'nieuw'}, {id: 2, status: 'nieuw'}])).toBeNull()
+  })
+})
+
+// ── In de winkel geannuleerd / terugbetaald (bevinding #9) ─────────────────
+describe('bekende orders in elke status verversen', () => {
+  const includePad = (ids: number[]) => `orders?include=${ids.join(',')}&status=any&per_page=100`
+  // Een afgebroken iDEAL-checkout: binnengekomen als `pending`.
+  const pendingOrder = order(7, {status: 'pending', date_paid: null})
+  const alsBestelling = (o: any, id: number, extra: any = {}) => ({...wcOrderNaarBestelling(o, refs, [], [], t), id, ...extra})
+
+  it('teVerversenWcIds: alleen open webshoporders die nog niet opgehaald zijn', () => {
+    const lijst = [
+      {id: 1, wc_order_id: 7, status: 'nieuw'},
+      {id: 2, wc_order_id: 8, status: 'gepickt'},
+      {id: 3, wc_order_id: 9, status: 'afgerond'},
+      {id: 4, wc_order_id: 10, status: 'geannuleerd'},
+      {id: 5, status: 'nieuw'},
+      {id: 6, wc_order_id: 11, status: 'verzonden'},
+    ]
+    expect(teVerversenWcIds(lijst, [8])).toEqual([7, 11])
+  })
+
+  it('pending → cancelled zonder picks: bestelling geannuleerd, reservering weg', async () => {
+    const b = alsBestelling(pendingOrder, 21)
+    expect(b.wc_betaald).toBe(false)
+    expect(openBestellingReserveringen([b], []).length).toBe(1)
+    const paden: string[] = []
+    const get = async (pad: string) => {
+      paden.push(pad)
+      return fakeGet({[pad1]: [order(99)], [includePad([7])]: [{...pendingOrder, status: 'cancelled'}],
+        'settings/advanced': []})(pad)
+    }
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [b], klanten: [], wcCreds: null, t, bestellingPicks: []})
+    // Het include-pad vraagt alléén de bekende open order op.
+    expect(paden).toContain(includePad([7]))
+    expect(r.nieuw.map(n => n.wc_order_id)).toEqual([99])
+    expect(r.updates[21]).toMatchObject({status: 'geannuleerd', wc_status: 'cancelled'})
+    const na = pasImportToe([b], r).filter((x: any) => x.id === 21)
+    expect(na[0].status).toBe('geannuleerd')
+    expect(openBestellingReserveringen(na, [])).toEqual([])
+    expect(telWebshopAfgebroken(na)).toBe(0)
+    expect(importAuditRegels(r).find(a => a.entiteit_id === 21)?.omschrijving).toContain('status geannuleerd')
+    expect(importMelding(r, t)).toContain('msg_wc_afgebroken')
+  })
+
+  it('geannuleerd terwijl er al gepickt is: status blijft, wel het signaal', async () => {
+    const b = alsBestelling(pendingOrder, 21)
+    const get = fakeGet({[pad1]: [], [includePad([7])]: [{...pendingOrder, status: 'cancelled'}], 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [b], klanten: [], wcCreds: null, t,
+      bestellingPicks: [{bestelling_id: 21, regel_id: 1, aantal: 2}]})
+    expect(r.updates[21]).toEqual({wc_status: 'cancelled'})
+    const na = pasImportToe([b], r)
+    expect(na[0].status).toBe('nieuw')
+    expect(telWebshopAfgebroken(na)).toBe(1)
+    expect(wcOrderAfgebroken(na[0])).toBe(true)
+  })
+
+  it('intussen gepickt (tijdens het ophalen): de annulering vervalt, het signaal blijft', async () => {
+    // De import zag de order nog zonder picks; vóór het toepassen pickte de
+    // gebruiker hem volledig (uitleveringen gemaakt, status gepickt).
+    const b = alsBestelling(pendingOrder, 21)
+    const get = fakeGet({[pad1]: [], [includePad([7])]: [{...pendingOrder, status: 'cancelled'}], 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [b], klanten: [], wcCreds: null, t, bestellingPicks: []})
+    expect(r.updates[21]).toMatchObject({status: 'geannuleerd'})
+    const gepickt = pasImportToe([{...b, status: 'gepickt'}], r)
+    expect(gepickt[0].status).toBe('gepickt')
+    expect(gepickt[0].wc_status).toBe('cancelled')
+    expect(telWebshopAfgebroken(gepickt)).toBe(1)
+    // Intussen gefactureerd: ook dan niet.
+    expect(pasImportToe([{...b, factuur_id: 5}], r)[0].status).toBe('nieuw')
+    // Nog steeds onaangeroerd: wel annuleren.
+    expect(pasImportToe([b], r)[0].status).toBe('geannuleerd')
+  })
+
+  it('zonder picklijst weet de import niet of er gepickt is: niet zelf annuleren', async () => {
+    const b = alsBestelling(pendingOrder, 21)
+    const get = fakeGet({[pad1]: [], [includePad([7])]: [{...pendingOrder, status: 'cancelled'}], 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [b], klanten: [], wcCreds: null, t})
+    expect(r.updates[21]).toEqual({wc_status: 'cancelled'})
+  })
+
+  it('refunded: niet meer betaald, en een mislukte betaling annuleert niet', async () => {
+    const betaald = alsBestelling(order(7), 21)
+    expect(betaald.wc_betaald).toBe(true)
+    const get = fakeGet({[pad1]: [], [includePad([7])]: [order(7, {status: 'refunded'})], 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [betaald], klanten: [], wcCreds: null, t, bestellingPicks: []})
+    expect(r.updates[21]).toMatchObject({wc_betaald: false, wc_betaald_datum: null, wc_status: 'refunded', status: 'geannuleerd'})
+    // failed: de klant kan nog opnieuw betalen — alleen het signaal.
+    const upd = wcOrderUpdate(alsBestelling(pendingOrder, 22), {...pendingOrder, status: 'failed'}, {}, {heeftPicks: false})
+    expect(upd).toEqual({wc_status: 'failed'})
+    // Alsnog betaald: de webshopstatus schuift mee en het signaal verdwijnt.
+    const mislukt = {...alsBestelling(pendingOrder, 22), wc_status: 'failed'}
+    const later = wcOrderUpdate(mislukt, order(7, {status: 'processing'}), {}, {heeftPicks: false})
+    expect(later).toMatchObject({wc_status: 'processing', wc_betaald: true})
+    expect(telWebshopAfgebroken([{...mislukt, ...later}])).toBe(0)
+  })
+
+  it('een gewone bekende order krijgt geen webshopstatus (geen eenmalige update van alles)', () => {
+    const b = alsBestelling(order(7), 21)
+    expect(wcOrderUpdate(b, order(7, {status: 'completed'}))).toBeNull()
+  })
+
+  it('een fout bij het ophalen per id breekt de import niet', async () => {
+    const b = alsBestelling(pendingOrder, 21)
+    const get = fakeGet({[pad1]: [order(99)], [includePad([7])]: new Error('WC 500'), 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [b], klanten: [], wcCreds: null, t, bestellingPicks: []})
+    expect(r.nieuw.map(n => n.wc_order_id)).toEqual([99])
+    expect(r.updates).toEqual({})
+  })
+
+  it('haalBekendeWcOrders: nooit iets anders dan de gevraagde id\'s, 100 per verzoek', async () => {
+    const paden: string[] = []
+    const ids = Array.from({length: 150}, (_, i) => i + 1)
+    const get = async (pad: string) => { paden.push(pad); return [{id: 1, status: 'cancelled'}, {id: 5000, status: 'processing'}] }
+    const uit = await haalBekendeWcOrders(get, ids)
+    expect(paden.length).toBe(2)
+    expect(paden[0]).toBe(includePad(ids.slice(0, 100)))
+    expect(uit.map(o => o.id)).toEqual([1, 1])
+    // Een order die de winkel ongevraagd meestuurt, wordt ook in de import nooit nieuw.
+    const b = alsBestelling(pendingOrder, 21)
+    const get2 = fakeGet({[pad1]: [], [includePad([7])]: [{...pendingOrder, status: 'cancelled'}, order(5000)], 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get2, refs, bestellingen: [b], klanten: [], wcCreds: null, t, bestellingPicks: []})
+    expect(r.nieuw).toEqual([])
+  })
+
+  it('attentie telt alleen open orders met een afgebroken webshopstatus', () => {
+    expect(telWebshopAfgebroken([
+      {id: 1, status: 'gepickt', wc_status: 'refunded'},
+      {id: 2, status: 'nieuw', wc_status: 'failed'},
+      {id: 3, status: 'geannuleerd', wc_status: 'cancelled'},
+      {id: 4, status: 'afgerond', wc_status: 'refunded'},
+      {id: 5, status: 'nieuw', wc_status: 'processing'},
+      {id: 6, status: 'nieuw'},
+    ])).toBe(2)
+  })
+})
+
+// ── Eigen `completed` (terugschrijven) is geen betaling (bevinding #10) ────
+describe('eigen statuswissel naar completed', () => {
+  // Zakelijke klant, bankoverschrijving: on-hold, onbetaald.
+  const bacs = order(8, {status: 'on-hold', date_paid: null, date_paid_gmt: null, payment_method_title: 'Bankoverschrijving'})
+  const onbetaald = {...wcOrderNaarBestelling(bacs, refs, [], [], t), id: 31, status: 'verzonden'}
+
+  it('na "Markeer verzonden" leest de import completed + date_paid niet terug als betaald', async () => {
+    const plan = wcTerugschrijfPlan(onbetaald, 'verzonden', {enabled: true}, t)!
+    const na = {...onbetaald, ...wcSyncVelden(plan, {ok: true}, '2026-09-25T10:00:00.000Z', onbetaald)}
+    expect(na.wc_sync.onbetaald).toBe(true)
+    const completed = {...bacs, status: 'completed', date_paid: '2026-09-25T12:00:05', date_paid_gmt: '2026-09-25T10:00:05'}
+    const get = fakeGet({[pad1]: [completed], 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [na], klanten: [], wcCreds: null, t, bestellingPicks: []})
+    expect(r.updates[31]).toBeUndefined()
+    // Ook zonder date_paid (completed telt normaal als betaald).
+    expect(wcOrderUpdate(na, {...bacs, status: 'completed'})).toBeNull()
+  })
+
+  it('een nieuwe gateway-transactie of een betaling ruim vóór onze wissel telt wél', () => {
+    const plan = wcTerugschrijfPlan(onbetaald, 'verzonden', {enabled: true}, t)!
+    const na = {...onbetaald, ...wcSyncVelden(plan, {ok: true}, '2026-09-25T10:00:00.000Z', onbetaald)}
+    expect(wcOrderUpdate(na, {...bacs, status: 'completed', transaction_id: 'tr_123'})).toMatchObject({wc_betaald: true})
+    expect(wcOrderUpdate(na, {...bacs, status: 'completed', date_paid: '2026-09-24T09:00:00', date_paid_gmt: '2026-09-24T07:00:00'}))
+      .toMatchObject({wc_betaald: true, wc_betaald_datum: '2026-09-24'})
+  })
+
+  it('al betaald vóór de sync, of completed gezet door de winkelier zelf: gewoon betaald', () => {
+    const betaald = {...wcOrderNaarBestelling(order(9), refs, [], [], t), id: 32}
+    const plan = wcTerugschrijfPlan(betaald, 'verzonden', {enabled: true}, t)!
+    const sync = wcSyncVelden(plan, {ok: true}, '2026-09-25T10:00:00.000Z', betaald)
+    expect(sync.wc_sync.onbetaald).toBeUndefined()
+    expect(wcOrderUpdate(onbetaald, {...bacs, status: 'completed'})).toMatchObject({wc_betaald: true})
+  })
+})
+
+// ── Directe import na een servermelding (bevinding #98) ────────────────────
+describe('importLeaseVrij na een melding van de server', () => {
+  const nu = Date.parse('2026-09-10T10:00:00Z')
+  it('gemelde order die hier ontbreekt: niet op het interval wachten', () => {
+    expect(importLeaseVrij({laatste_import: '2026-09-10T09:55:00Z'}, nu, 'ik', 15, 1)).toBe(true)
+    expect(importLeaseVrij({laatste_import: '2026-09-10T09:55:00Z'}, nu, 'ik', 15, 0)).toBe(false)
+  })
+  it('wel een korte ondergrens, en de lease van een ander tabblad blijft gelden', () => {
+    expect(importLeaseVrij({laatste_import: '2026-09-10T09:59:30Z'}, nu, 'ik', 15, 1)).toBe(false)
+    expect(importLeaseVrij({bezig_tot: nu + 1000, door: 'ander', laatste_import: '2026-09-10T09:50:00Z'}, nu, 'ik', 15, 1)).toBe(false)
+  })
+})
+
+// ── Haperende winkelinstellingen (bevinding #100) ──────────────────────────
+describe('bestellink bij een fout op settings/advanced', () => {
+  const settings = [{id: 'woocommerce_myaccount_page_id', value: '8'}]
+  const accountOrder = order(1, {customer_id: 42, order_key: 'wc_order_A', payment_url: 'https://craftery.nl/afrekenen/order-pay/1/?pay_for_order=true&key=wc_order_A'})
+  const creds = {storeUrl: 'https://craftery.nl'}
+
+  it('houdt de eerder bepaalde link vast: geen update, geen auditregel', async () => {
+    const r0 = await importeerWcOrders({wcGet: fakeGet({[pad1]: [accountOrder], 'settings/advanced': settings}), refs, bestellingen: [], klanten: [], wcCreds: creds, t})
+    const bestaand = {...r0.nieuw[0], id: 11}
+    expect(bestaand.wc_bestel_url).toBe('https://craftery.nl/?page_id=8&view-order=1')
+    const r = await importeerWcOrders({wcGet: fakeGet({[pad1]: [accountOrder], 'settings/advanced': new Error('WC 503')}),
+      refs, bestellingen: [bestaand], klanten: [], wcCreds: creds, t})
+    expect(r.updates).toEqual({})
+  })
+
+  it('wijzigt de betaalstatus wél, dan blijft de link toch staan', async () => {
+    const r0 = await importeerWcOrders({wcGet: fakeGet({[pad1]: [accountOrder], 'settings/advanced': settings}), refs, bestellingen: [], klanten: [], wcCreds: creds, t})
+    const bestaand = {...r0.nieuw[0], id: 11, wc_betaald: false, wc_betaald_datum: undefined}
+    const r = await importeerWcOrders({wcGet: fakeGet({[pad1]: [accountOrder], 'settings/advanced': new Error('WC 503')}),
+      refs, bestellingen: [bestaand], klanten: [], wcCreds: creds, t})
+    expect(r.updates[11]).toMatchObject({wc_betaald: true})
+    expect(r.updates[11].wc_bestel_url ?? bestaand.wc_bestel_url).toBe('https://craftery.nl/?page_id=8&view-order=1')
   })
 })
 

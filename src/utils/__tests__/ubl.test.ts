@@ -218,7 +218,21 @@ describe('bouwUbl — creditnota', () => {
     expect(el(xml, 'cbc:LineExtensionAmount')[0]).toBe('30.00')
     expect(el(xml, 'cbc:TaxAmount')[0]).toBe('6.30')
     expect(el(xml, 'cbc:PayableAmount')[0]).toBe('36.30')
+    expect(el(xml, 'cbc:CreditedQuantity')[0]).toBe('1')
     expect(xml).not.toContain('>-')
+  })
+
+  it('statiegeldretour (−3 × € 30): hoeveelheid × prijs = regelbedrag (R120)', () => {
+    // Zo slaat StatiegeldPage.saveRetour een retour op: negatieve hoeveelheid,
+    // positieve prijs, negatief netto.
+    const {xml: x} = bouwUbl({...credit, regels: [
+      {omschrijving: 'Statiegeld retour Fust', hoeveelheid: -3, prijs_per_stuk: 30, btw_pct: 0, netto: -90, btw_bedrag: 0},
+    ]}, verkoper, koper)
+    expect(el(x, 'cbc:CreditedQuantity')[0]).toBe('3')
+    expect(el(x, 'cbc:LineExtensionAmount')[0]).toBe('90.00')
+    expect(el(x, 'cbc:PriceAmount')[0]).toBe('30.00')
+    expect(el(x, 'cbc:PayableAmount')[0]).toBe('90.00')
+    expect(x).not.toContain('>-')
   })
 
   it('verwijst naar de gecrediteerde factuur en heeft geen vervaldatum', () => {

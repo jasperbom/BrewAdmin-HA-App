@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react'
 import { t } from '../i18n'
 import { newId, haGetState, haCallService } from '../utils/api'
 import { tod, fmtD, fmt, r3 } from '../utils/format'
-import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import {
   STATUSSEN, TANK_REINIGING_LABEL_KEY, VERLIES_BRONNEN, convertEenheid,
   DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, groepFase,
@@ -14,6 +13,7 @@ import {
   carbRangeForStyle, CARB_STYLE_OPTIONS,
   berekenVoorcalcVoorAfvulling, nextBatchNummer, berekenTanktijd, sumVergistingDagen,
   tankBezetter, tankReserveringen, tankClaimCheck, laatsteTankReiniging,
+  lotKostenVoorRegel, batchRegelKosten, berekenBatchKostprijs,
 } from '../utils/calculations'
 import { logAudit, logAuditVeld } from '../utils/audit'
 import { getEffectiveBrewProp } from '../utils/brewProps'
@@ -46,8 +46,19 @@ import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/Blokkad
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
 import { batchIsAfgerond, bouwBatchRapport } from '../utils/batchRapport'
 import { downloadBatchDossierPdf, printBatchDossier } from '../components/BatchRapportExport'
-import { actieveSessie, magAfvullingRegistreren } from '../utils/afvulsessie'
+import { actieveSessie, magAfvullingRegistreren, productVanLaatsteEtiketcontrole } from '../utils/afvulsessie'
+import { ingredientVoorBatchRegel, afgeboekteRegels } from '../utils/batchIngredienten'
+import { afvullingVerwijderBlokkade, batchVerwijderBlokkade, isFiscaleReden } from '../utils/afvullingVerwijderen'
+import type { VerwijderReden } from '../utils/afvullingVerwijderen'
+import {
+  verpakkingVoorraad, onderdelenNaMutatie, verpakkingenNaMutatie, verpakkingGebruiktOnderdelen,
+} from '../utils/verpakkingVoorraad'
+import { useUndo } from '../components/ui/UndoBar'
+import BevestigKnop from '../components/ui/BevestigKnop'
+import PrimingSugarCalc from '../components/batch/PrimingSugarCalc'
 import { metingWaarde, metingenMetFg } from '../utils/metingen'
+import { standaardBtwPct } from '../utils/btw'
+import { skuConflicten, vrijeSku } from '../utils/sku'
 import Icon from '../components/ui/Icon'
 
 // Bijhoudwerk dat de app zelf zet en dat elders al zichtbaar is; daar is een
@@ -64,11 +75,23 @@ interface BatchFlowPageProps {
   lots: any[], setLots: any,
   av: any[], setAv: any,
   uit: any[],
+  /** Wat er nog aan een afvulling hangt en haar dus niet laat verwijderen:
+   *  uitslagen (verplaatsingen), afboekingen en picks van open bestellingen
+   *  (utils/afvullingVerwijderen.ts). */
+  verplaatsingen?: any[],
+  afboekingen?: any[],
+  bestellingPicks?: any[],
+  bestellingen?: any[],
   verpakkingen: any[], setVerpakkingen: any,
   onderdelen: any[], setOnderdelen: any,
   producten: any[], setProducten: any,
   productArtikelen: any[], setProductArtikelen?: any,
   artikelen: any[],
+  /** Voor de SKU-controle van het snel-SKU-formulier (utils/sku.ts). */
+  merchArtikelen?: any[],
+  /** Standaard-BTW van een nieuw artikel (utils/btw.ts → standaardBtwPct). */
+  btwInst?: any,
+  btwTarieven?: Array<number | string>,
   accijnsInst: any,
   acc: any[],
   recepten: any[],
@@ -92,6 +115,8 @@ interface BatchFlowPageProps {
   // HACCP — kritische beheerspunten
   haccpVrijgaven: any[], setHaccpVrijgaven: any,
   afvulSessies: any[], setAfvulSessies: any,
+  /** Verse serverstand van de afvulsessies vóór een lotcode wordt uitgegeven. */
+  refreshAfvulSessies?: () => Promise<any>,
   haccpSluitcontroles: any[], setHaccpSluitcontroles: any,
   haccpEtiketcontroles: any[], setHaccpEtiketcontroles: any,
   haccpAfwijkingen: any[], setHaccpAfwijkingen: any,
@@ -382,8 +407,11 @@ const TempControl: React.FC<{
 
 const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   bat, setBat, bi, setBi, ing, setIng, lots, setLots, av, setAv, uit,
+  verplaatsingen = [], afboekingen = [], bestellingPicks = [], bestellingen = [],
   verpakkingen, setVerpakkingen, onderdelen, setOnderdelen,
-  producten, setProducten, productArtikelen, setProductArtikelen, artikelen, accijnsInst, acc,
+  producten, setProducten, productArtikelen, setProductArtikelen, artikelen,
+  merchArtikelen = [], btwInst, btwTarieven,
+  accijnsInst, acc,
   recepten, gistMetingen, setGistMetingen, carbSessies, setCarbSessies,
   verliesRegistraties, setVerliesRegistraties, dryHops, setDryHops,
   brouwdagStappen, setBrouwdagStappen, waterAddities, setWaterAddities,
@@ -391,7 +419,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, planningInst, haInst, haTankTemps,
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
   log, setLog, auditLog, setAuditLog,
-  haccpVrijgaven, setHaccpVrijgaven, afvulSessies, setAfvulSessies,
+  haccpVrijgaven, setHaccpVrijgaven, afvulSessies, setAfvulSessies, refreshAfvulSessies,
   haccpSluitcontroles, setHaccpSluitcontroles,
   haccpEtiketcontroles, setHaccpEtiketcontroles,
   haccpAfwijkingen, setHaccpAfwijkingen, haccpInst,
@@ -405,6 +433,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   embedded = false, onSluit, onTerug,
 }) => {
   const [sel, setSel] = useState<number | null>(openBatchId ?? null)
+  // Terugweg van vijf seconden voor destructieve acties (UndoBar in App.tsx).
+  const undo = useUndo()
   // Paneel-modus: valt de selectie weg (batch verwijderd, of "terug" vanuit
   // een sub-actie), dan sluit het paneel — de brouwzaal weet anders van niets.
   React.useEffect(() => {
@@ -561,6 +591,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       inhoud_per_eenheid: vp.inhoud_liter || '',
     }))
   }, [openAvSessie?.id, openAvSessie?.verpakking_id, verpakkingen])
+  // Het product volgt de etiketcontrole (CCP 3) van de sessie: afvullen mag
+  // alleen voor het product waarvan het etiket is gecontroleerd. Nog geen
+  // keuze gemaakt? Dan het product van de laatste geldige controle.
+  const etiketProduct = openAvSessie
+    ? productVanLaatsteEtiketcontrole(haccpEtiketcontroles || [], openAvSessie.id) : null
+  React.useEffect(() => {
+    if (!etiketProduct) return
+    setAvF((f: any) => f.product_id ? f : ({...f, product_id: etiketProduct}))
+  }, [openAvSessie?.id, etiketProduct])
 
   const actieveBatches = useMemo(() =>
     (bat || []).filter((b: any) => b.status !== 'Gesloten')
@@ -603,8 +642,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const addLog = (entry: any) => setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), ...entry}])
 
   // ── Nieuwe batch plannen (plus-kaart in het overzicht) ────────────────────
-  // Zelfde recept→batch-vertaling als de Recepten- en Batches-pagina: doelen
-  // komen in verwacht_* (geen metingen), ingrediënten worden batch-regels.
+  // De enige recept→batch-vertaling (maakNieuweBatch): doelen komen in
+  // verwacht_* (geen metingen), ingrediënten worden batch-regels. De knop
+  // 'Brouwen' op de receptenpagina geeft alleen het recept mee.
   const beschikbareRecepten = useMemo(() =>
     (recepten || []).filter((r: any) => r.is_huidige !== false)
       .sort((a: any, b: any) => String(a.naam || '').localeCompare(String(b.naam || ''))),
@@ -804,11 +844,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   }
 
   // Catalogus-ingredient bij een batch-regel: expliciet via ingredient_id, of
-  // anders via naam-match (zoals op de Batches-pagina). De voorraadcheck en de
-  // lot-keuze volgen deze match.
-  const ingMatchVoor = (row: any): any => row.ingredient_id
-    ? (ing || []).find((i: any) => i.id === row.ingredient_id)
-    : (ing || []).find((i: any) => String(i.naam).toLowerCase() === String(row.ingredient_naam || '').toLowerCase())
+  // anders via naam-match. De voorraadcheck en de lot-keuze volgen deze match —
+  // en de HACCP-regels (allergenen, risicoklasse) gebruiken dezelfde helper,
+  // zodat wat hier wordt afgeboekt daar ook meetelt.
+  const ingMatchVoor = (row: any): any => ingredientVoorBatchRegel(row, ing)
 
   // Beschikbare voorraad (alle lots samen) voor een batch-ingredient-regel,
   // omgerekend naar de eenheid van de regel. null = niet aan voorraad gekoppeld.
@@ -968,6 +1007,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       const useQty = availBi
       const remainQ = r3(qty - useQty)
       const useInLotEenh = r3(convertEenheid(useQty, biRow.eenheid, lot.eenheid) ?? useQty)
+      // Kosten van het afgeboekte deel: lotprijs omgerekend naar de eenheid
+      // van de regel (hop in g uit een lot in kg).
+      const deelKosten = lotKostenVoorRegel({hoeveelheid: useQty, eenheid: biRow.eenheid}, lot)
       setLots((prev: any[]) => prev.map((l: any) => l.id !== biRow.lot_id ? l : {...l,
         hoeveelheid: r3(Math.max(0, Number(l.hoeveelheid || 0) - useInLotEenh)),
         beschikbaar: false,
@@ -977,7 +1019,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         return [
           ...prev.map((x: any) => x.id === biRow.id
             ? {...x, hoeveelheid: useQty, afgeboekt: true,
-                kosten: lot.prijs_per_eenheid ? r3(lot.prijs_per_eenheid * useQty) : x.kosten}
+                kosten: deelKosten != null ? r3(deelKosten) : x.kosten}
             : x),
           // Restregel: neem de brouwkundige velden (α, tijdstip, temp, extract)
           // mee zodat het hop-/moutschema van de restregel blijft kloppen.
@@ -1233,35 +1275,73 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setGistMetingen((prev: any[]) => (prev || []).filter((m: any) => m.id !== id))
   }
 
+  // Wat er aan een afvulling of batch hangt en het verwijderen tegenhoudt
+  // (utils/afvullingVerwijderen.ts), als leesbare opsomming.
+  const verwijderData = {uit, verplaatsingen, afboekingen, picks: bestellingPicks, bestellingen, acc}
+  const verwijderRedenTekst = (redenen: VerwijderReden[]): string =>
+    redenen.map(r => t(`verwijder_gekoppeld_${r}`)).join(', ')
+
+  // De verpakkingsvoorraad die afvullingen verbruikten weer terug — het
+  // spiegelbeeld van de afboeking in boekAfvulling. Een afvulling zonder
+  // verpakking-id (van vóór die koppeling) boekt niets terug: niet gokken.
+  const boekVerpakkingTerug = (afvullingen: any[]) => {
+    const terug = (afvullingen || [])
+      .map((a: any) => ({
+        vp: (verpakkingen || []).find((v: any) => a.verpakking_id != null && v.id === Number(a.verpakking_id)),
+        n: Number(a.hoeveelheid ?? a.aantal ?? 0) || 0,
+      }))
+      .filter(x => x.vp && x.n > 0)
+    if (terug.some(x => verpakkingGebruiktOnderdelen(x.vp))) {
+      setOnderdelen((prev: any[]) => terug.reduce((lijst: any[], x) => onderdelenNaMutatie(lijst, x.vp, x.n), prev || []))
+    }
+    if (terug.some(x => !verpakkingGebruiktOnderdelen(x.vp))) {
+      setVerpakkingen((prev: any[]) => terug.reduce((lijst: any[], x) => verpakkingenNaMutatie(lijst, x.vp, x.n), prev || []))
+    }
+  }
+
   // Batch verwijderen — 1-op-1 overgenomen van de oude Batches-pagina, incl.
   // de fiscale integriteitsguard (blokkeert bij uitleveringen/accijns) en de
   // cascade-cleanup van alle gekoppelde records (anders plakken verweesde
-  // records via hergebruikte id's aan een volgende batch).
+  // records via hergebruikte id's aan een volgende batch). Daarbovenop: geen
+  // verwijdering zolang uitslagen, afboekingen of picks van open orders aan
+  // een afvulling hangen, en de verpakkingsvoorraad komt terug. De
+  // bevestiging zit in de knop (BevestigKnop).
   const removeBatch = (id: number) => {
-    if ((uit || []).some((u: any) => u.batch_id === id) || (acc || []).some((a: any) => a.batch_id === id)) {
+    const eigenAv = (av || []).filter((a: any) => a.batch_id === id)
+    const redenen = batchVerwijderBlokkade(id, eigenAv.map((a: any) => a.id), verwijderData)
+    if (redenen.some(isFiscaleReden)) {
       alert(t('err_batch_delete_fiscaal'))
       return
     }
-    if (confirm(t('error_confirm_delete_batch'))) {
-      const batch = bat.find((b: any) => b.id === id)
-      const naam = batch?.naam || ''
-      logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: id, actie: 'verwijderd', omschrijving: naam })
-      // Zat er bier in de tank (Vergisten/Conditioneren), dan verlaat het die
-      // tank nu zonder afvulling: tank op Vuil, net als bij Afgevuld/Gesloten
-      // en bij een verplaatsing (HACCP). Gepland/Brouwen = alleen gereserveerd,
-      // nog leeg — die tank blijft met rust.
-      const tankRes = markTankVuilBijVerwijderen(batch, tankStatussen, tankLog, tod())
-      if (tankRes.changed) { setTankStatussen(tankRes.statussen); setTankLog(tankRes.log) }
-      setBat((prev: any[]) => prev.filter((b: any) => b.id !== id))
-      setBi((prev: any[]) => prev.filter((x: any) => x.batch_id !== id))
-      setAv((prev: any[]) => (prev || []).filter((x: any) => x.batch_id !== id))
-      setGistMetingen((prev: any[]) => (prev || []).filter((m: any) => m.batch_id !== id))
-      setCarbSessies((prev: any[]) => (prev || []).filter((s: any) => s.batch_id !== id))
-      setVerliesRegistraties((prev: any[]) => (prev || []).filter((r: any) => r.batch_id !== id))
-      setCcpMetingen && setCcpMetingen((prev: any[]) => (prev || []).filter((m: any) => m.batch_id !== id))
-      setLog((prev: any[]) => (prev || []).filter((l: any) => l.batch_id !== id))
-      setSel(null)
+    if (redenen.length) {
+      alert(t('err_batch_verwijder_gekoppeld').replace('{redenen}', verwijderRedenTekst(redenen)))
+      return
     }
+    // Wacht een verwijderde afvulling van deze batch nog op haar terugweg
+    // (UndoBar), voer die dan nu uit: zij boekt haar eigen verpakking terug.
+    // Anders kwam dezelfde verpakking twee keer terug — hier én vijf seconden
+    // later als haar geplande actie alsnog liep.
+    const wachtend = eigenAv.find((a: any) => undo.actie?.id === afvullingUndoId(a.id))
+    if (wachtend) undo.flush()
+    boekVerpakkingTerug(eigenAv.filter((a: any) => a !== wachtend))
+    const batch = bat.find((b: any) => b.id === id)
+    const naam = batch?.naam || ''
+    logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: id, actie: 'verwijderd', omschrijving: naam })
+    // Zat er bier in de tank (Vergisten/Conditioneren), dan verlaat het die
+    // tank nu zonder afvulling: tank op Vuil, net als bij Afgevuld/Gesloten
+    // en bij een verplaatsing (HACCP). Gepland/Brouwen = alleen gereserveerd,
+    // nog leeg — die tank blijft met rust.
+    const tankRes = markTankVuilBijVerwijderen(batch, tankStatussen, tankLog, tod())
+    if (tankRes.changed) { setTankStatussen(tankRes.statussen); setTankLog(tankRes.log) }
+    setBat((prev: any[]) => prev.filter((b: any) => b.id !== id))
+    setBi((prev: any[]) => prev.filter((x: any) => x.batch_id !== id))
+    setAv((prev: any[]) => (prev || []).filter((x: any) => x.batch_id !== id))
+    setGistMetingen((prev: any[]) => (prev || []).filter((m: any) => m.batch_id !== id))
+    setCarbSessies((prev: any[]) => (prev || []).filter((s: any) => s.batch_id !== id))
+    setVerliesRegistraties((prev: any[]) => (prev || []).filter((r: any) => r.batch_id !== id))
+    setCcpMetingen && setCcpMetingen((prev: any[]) => (prev || []).filter((m: any) => m.batch_id !== id))
+    setLog((prev: any[]) => (prev || []).filter((l: any) => l.batch_id !== id))
+    setSel(null)
   }
 
   // Recept opnieuw toepassen op een geplande batch — vervangt velden +
@@ -1269,6 +1349,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const applyReceptToBatch = (r: any) => {
     if (!selB || !r) return
     if (selB.status !== 'Gepland') { alert(t('batch_sync_recept_not_planned')); return }
+    // Ook in Gepland kan er al afgeboekt zijn (terug van Brouwen, of vooraf
+    // afgewogen). Die regels vervangen zou de lots verlaagd laten zonder regel
+    // die ernaar wijst: dubbel afgeboekt bij de volgende afboeking, en het lot
+    // niet meer aan de batch te koppelen. Eerst terugboeken via ✕.
+    const geboekt = afgeboekteRegels(bi || [], selB.id)
+    if (geboekt.length) {
+      alert(t('batch_sync_recept_afgeboekt').replace('{n}', String(geboekt.length)))
+      return
+    }
     if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', r.naam || ''))) return
     const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
     const abv2 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 100) / 100
@@ -1600,20 +1689,29 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: 'Cold-crash gestopt'})
   }
 
-  // ── Tankverplaatsing (zelfde regels als BatchesPage) ───────────────────────
+  // ── Tankverplaatsing ───────────────────────────────────────────────────────
+  // Bier gaat een andere tank in: dezelfde claimregel als de stap naar
+  // Vergisten (tankClaimCheck) — een tank zonder geregistreerde status is niet
+  // aantoonbaar ontsmet. Anders dan daar blijft het bij een verplaatsing een
+  // harde blokkade: er zit al bier in, en dat gaat alleen een ontsmette tank in.
   const verplaatsTank = () => {
     if (!selB || !moveTankTarget) return
     const doelTank = (tanks || []).find((tk: any) => tk.id === moveTankTarget)
     if (!doelTank) return
     if (moveTankTarget !== selB.tank) {
-      const doelStatus = tankStatussen?.[moveTankTarget]?.status || 'Ontsmet'
-      if (doelStatus !== 'Ontsmet') {
-        alert(t('err_tank_not_sanitized').replace('{tank}', doelTank.naam || moveTankTarget).replace('{status}', t(TANK_REINIGING_LABEL_KEY[doelStatus] || '')))
+      const claim = tankClaimCheck(moveTankTarget, selB.id, bat, tankStatussen)
+      if (claim.reden === 'bezet') {
+        alert(t('err_tank_occupied').replace('{tank}', moveTankTarget).replace('{name}', claim.bezetter?.naam || ''))
+        return
+      }
+      if (claim.reden === 'niet_ontsmet') {
+        const stLabel = claim.status
+          ? (t(TANK_REINIGING_LABEL_KEY[claim.status] || '') || claim.status)
+          : t('dash_tank_status_onbekend')
+        alert(t('err_tank_not_sanitized').replace('{tank}', doelTank.naam || moveTankTarget).replace('{status}', stLabel))
         return
       }
     }
-    const bezet = tankBezetter(moveTankTarget, bat, selB.id)
-    if (bezet) { alert(t('err_tank_occupied').replace('{tank}', moveTankTarget).replace('{name}', bezet.naam)); return }
     const oudeTank = selB.tank || '—'
     const oudeStatus = selB.status
     const nieuweStatus = (doelTank.soort === 'bright' || doelTank.soort === 'barrel') && oudeStatus === 'Vergisten'
@@ -1738,21 +1836,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   }
 
   // ── Afvulregistratie (zelfde voorraad/voorcalc-gedrag als BatchesPage) ────
-  const vpVoorraad = (vp: any) => {
-    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad || 0)
-    const stocks = vp.onderdelen.map((o: any) => {
-      const od = (onderdelen || []).find((d: any) => d.id === o.onderdeel_id)
-      return Math.floor(Number(od?.voorraad || 0) / Number(o.aantal || 1))
-    })
-    return stocks.length ? Math.min(...stocks) : 0
-  }
+  const vpVoorraad = (vp: any) => verpakkingVoorraad(vp, onderdelen)
 
-  /** Schrijft één afvulling weg: verpakkingsvoorraad af, accijns-voorcalculatie
-   *  bevriezen, log- en auditregels. Gedeeld door de live-registratie en het
-   *  achteraf vastleggen van een hele sessie — die laatste levert zijn eigen
-   *  sessie, datum en tijd aan, want dan is het afvullen al gebeurd.
-   *  Geeft false terug als er niets is weggeschreven. */
-  const schrijfAfvulling = (velden: any, sessie: any): boolean => {
+  /** Alle controles vóór een afvulling — product, verpakking en aantal,
+   *  verpakkingsvoorraad, tankvolume en de ABV-bevestiging — zonder iets weg
+   *  te schrijven. Het achteraf vastleggen roept dit aan vóórdat het de sessie
+   *  en de (append-only) CCP-registraties wegschrijft. False = geweigerd of
+   *  een bevestiging geannuleerd. */
+  const controleerAfvulling = (velden: any): boolean => {
     if (!selB) return false
     if (!velden.product_id) { alert(t('err_select_product')); return false }
     if (!velden.verpakking_id || !velden.hoeveelheid) { alert(t('err_select_packaging_qty')); return false }
@@ -1785,13 +1876,25 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         if (!confirm(t('warn_afvullen_abv_estimate').replace('{abv}', abvVal.toFixed(1)))) return false
       }
     }
-    if (Array.isArray(vp.onderdelen) && vp.onderdelen.length) {
-      setOnderdelen((prev: any[]) => prev.map((od: any) => {
-        const usage = vp.onderdelen.find((o: any) => o.onderdeel_id === od.id)
-        return usage ? {...od, voorraad: Math.max(0, Number(od.voorraad || 0) - n * Number(usage.aantal || 1))} : od
-      }))
+    return true
+  }
+
+  /** Schrijft één afvulling weg: verpakkingsvoorraad af, accijns-voorcalculatie
+   *  bevriezen, log- en auditregels. Gedeeld door de live-registratie en het
+   *  achteraf vastleggen van een hele sessie — die laatste levert zijn eigen
+   *  sessie, datum en tijd aan, want dan is het afvullen al gebeurd. Vraagt
+   *  zelf niets: de controles zitten in controleerAfvulling.
+   *  Geeft false terug als er niets is weggeschreven. */
+  const boekAfvulling = (velden: any, sessie: any): boolean => {
+    if (!selB) return false
+    const n = Number(velden.hoeveelheid)
+    const vp = (verpakkingen || []).find((v: any) => v.id === Number(velden.verpakking_id))
+    if (!vp || !(n > 0)) return false
+    // Verpakkingsvoorraad af; verwijderen boekt met dezelfde helpers terug.
+    if (verpakkingGebruiktOnderdelen(vp)) {
+      setOnderdelen((prev: any[]) => onderdelenNaMutatie(prev, vp, -n))
     } else {
-      setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === Number(velden.verpakking_id) ? {...v, voorraad: Number(v.voorraad || 0) - n} : v))
+      setVerpakkingen((prev: any[]) => verpakkingenNaMutatie(prev, vp, -n))
     }
     const avId = newId(av || [])
     const prodId = Number(velden.product_id)
@@ -1833,6 +1936,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return true
   }
 
+  const schrijfAfvulling = (velden: any, sessie: any): boolean =>
+    controleerAfvulling(velden) && boekAfvulling(velden, sessie)
+
   const doAfvullen = () => {
     if (!selB) return
     // CCP 1 — geen verpakking zonder vrijgave. Batches die al afgevuld waren
@@ -1844,9 +1950,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       return
     }
     // Verpakken gebeurt binnen een sessie: die draagt de lotcode en de
-    // sluitcontroles waaraan de verpakkingen straks te koppelen zijn.
+    // sluitcontroles waaraan de verpakkingen straks te koppelen zijn — en de
+    // etiketcontrole (CCP 3) van precies het product dat je nu afvult.
     const sessie = actieveSessie(afvulSessies || [], selB.id, actieveSessieId)
-    const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [])
+    const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [],
+      haccpEtiketcontroles || [], avF.product_id)
     if (!sessieBlok.toegestaan && !legacy) {
       alert(`${t('haccp_sessie_titel')}\n\n${blokkadeSamenvatting(sessieBlok)}`)
       return
@@ -1860,10 +1968,32 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     } : {})})
   }
 
+  // Afvulling verwijderen — de enige correctieweg (een afvulling is niet te
+  // bewerken). Niet zolang er uitleveringen, uitslagen, afboekingen of picks
+  // van open orders aan hangen: dan verdween uitgeslagen bier uit de voorraad
+  // terwijl de accijns bleef staan, of wees een pick naar niets. Geen vraag
+  // vooraf maar vijf seconden terugweg (UndoBar); pas bij uitvoeren gaat de
+  // afvulling weg, komt de verpakkingsvoorraad terug en verdwijnt de
+  // 'afvullen'-regel uit het voorraadlog.
+  const afvullingUndoId = (id: number) => `afvulling-${id}`
   const delAv = (id: number) => {
-    if ((uit || []).some((u: any) => u.afvulling_id === id)) { alert(t('err_cannot_delete_filling')); return }
-    logAudit(auditLog, setAuditLog, {entiteit: 'Afvulling', entiteit_id: id, actie: 'verwijderd', omschrijving: `Batch ${selB?.naam || ''}`})
-    setAv((prev: any[]) => (prev || []).filter((a: any) => a.id !== id))
+    const redenen = afvullingVerwijderBlokkade(id, verwijderData)
+    if (redenen.length) {
+      alert(t('err_afvulling_verwijder_gekoppeld').replace('{redenen}', verwijderRedenTekst(redenen)))
+      return
+    }
+    const afv = (av || []).find((a: any) => a.id === id)
+    if (!afv) return
+    const batchNaam = selB?.naam || ''
+    const label = t('undo_afvulling_verwijderd')
+      .replace('{n}', String(afv.hoeveelheid ?? afv.aantal ?? ''))
+      .replace('{verpakking}', afv.verpakking_naam || afv.verpakking_type || '')
+    undo.plan(afvullingUndoId(id), label, () => {
+      boekVerpakkingTerug([afv])
+      setLog((prev: any[]) => (prev || []).filter((l: any) => !(l.type === 'afvullen' && l.afvulling_id === id)))
+      logAudit(auditLog, setAuditLog, {entiteit: 'Afvulling', entiteit_id: id, actie: 'verwijderd', omschrijving: `Batch ${batchNaam}`})
+      setAv((prev: any[]) => (prev || []).filter((a: any) => a.id !== id))
+    })
   }
 
   // ── Batch-kaart in het overzicht ──────────────────────────────────────────
@@ -2348,11 +2478,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const ingMatch = ingMatchVoor(row)
     const rowLots = lotsVoor(row, ingMatch)
     const rowLot = (lots || []).find((l: any) => l.id === row.lot_id)
-    // Kosten: vastgelegde kosten van de regel, of anders de lotprijs ×
-    // hoeveelheid van het gekozen lot — zelfde als op de Batches-pagina.
-    const kosten = row.kosten
-      ? Number(row.kosten)
-      : (rowLot?.prijs_per_eenheid ? rowLot.prijs_per_eenheid * Number(row.hoeveelheid || 0) : null)
+    // Kosten: vastgelegde kosten van de regel, of anders de lotprijs
+    // (omgerekend naar de eenheid van de regel) × hoeveelheid.
+    const kosten = batchRegelKosten(row, lots)
     // Dekt het gekozen lot de hele hoeveelheid? Zo niet: afboeken boekt het lot
     // leeg en laat een restregel achter voor een volgend lot.
     const selLotAvailBi = rowLot
@@ -2439,11 +2567,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // i.p.v. een brede tabel, zodat alles ook op smalle schermen past.
   const renderAfboekTabel = (rows: any[], metToevoegen = false) => {
     // Totaal: som van bekende kosten over de getoonde regels.
-    const totaal = rows.reduce((s: number, r: any) => {
-      if (r.kosten) return s + Number(r.kosten)
-      const l = (lots || []).find((ll: any) => ll.id === r.lot_id)
-      return s + (l?.prijs_per_eenheid ? l.prijs_per_eenheid * Number(r.hoeveelheid || 0) : 0)
-    }, 0)
+    const totaal = rows.reduce((s: number, r: any) => s + (batchRegelKosten(r, lots) || 0), 0)
     return (
       <div>
         {rows.length === 0 && !metToevoegen ? (
@@ -2459,11 +2583,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               const volledig = remainQty <= 0.001
               const multi = g.rows.length > 1
               if (!multi) return renderAfboekRij(g.rows[0], g, false, afwijkend, receptQty)
-              const totalKost = g.rows.reduce((s: number, r: any) => {
-                if (r.kosten) return s + Number(r.kosten)
-                const l = (lots || []).find((ll: any) => ll.id === r.lot_id)
-                return s + (l?.prijs_per_eenheid ? l.prijs_per_eenheid * Number(r.hoeveelheid || 0) : 0)
-              }, 0)
+              const totalKost = g.rows.reduce((s: number, r: any) => s + (batchRegelKosten(r, lots) || 0), 0)
               return (
                 <div key={g.key} className="rounded border border-orange-200 bg-orange-50/50">
                   <div className="px-2 pt-1.5 flex items-center gap-2 text-sm">
@@ -3143,8 +3263,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           opts={[{v: '', l: t('batch_move_tank_choose')}, ...(tanks || []).filter((tk: any) => tk.id !== selB.tank).map((tk: any) => {
             const bezet = tankBezetter(tk.id, bat, selB.id)
             const st = tankStatussen?.[tk.id]?.status
-            const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : null
-            const extra = bezet ? ` — ${t('tank_bezet')} ${bezet.naam || ''}` : stLabel ? ` — ${stLabel}` : ''
+            // Geen status = niet aantoonbaar ontsmet; dat zie je vóór het kiezen.
+            const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : t('dash_tank_status_onbekend')
+            const extra = bezet ? ` — ${t('tank_bezet')} ${bezet.naam || ''}` : ` — ${stLabel}`
             return {v: tk.id, l: `${tk.naam || tk.id}${tk.soort ? ` (${tk.soort})` : ''}${extra}`, d: !!bezet}
           })]} />
         <Btn s="sm" disabled={!moveTankTarget} onClick={verplaatsTank}>{t('batch_move_tank_confirm')}</Btn>
@@ -3166,7 +3287,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     // Legacy-batches (afgevuld vóór dit systeem) mogen zonder sessie door.
     const legacy = isLegacyBatch(selB.id, av || [])
     const sessie = actieveSessie(afvulSessies || [], selB.id, actieveSessieId)
-    const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [])
+    // Ook CCP 3: het gekozen product moet in deze sessie een eigen
+    // etiketcontrole hebben (zie magAfvullingRegistreren).
+    const sessieBlok = magAfvullingRegistreren(sessie, haccpSluitcontroles || [],
+      haccpEtiketcontroles || [], avF.product_id)
     const geblokkeerd = !sessieBlok.toegestaan && !legacy
     return (
       <div className="space-y-3">
@@ -3230,7 +3354,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   <option value="">{t('batch_filling_select_ph')}</option>
                   {(verpakkingen || []).map((vp: any) => (
                     <option key={vp.id} value={vp.id} disabled={vpVoorraad(vp) === 0}>
-                      {vp.naam} — {vpVoorraad(vp)} stuks
+                      {vp.naam} — {vpVoorraad(vp)} {t('unit_stuks')}
                     </option>
                   ))}
                 </select>
@@ -3285,22 +3409,48 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               )
             }
             if (avSkuForm) {
+              // Eén SKU hoort bij één artikel — dezelfde controle als het
+              // artikelformulier op de productenpagina (utils/sku.ts).
+              const skuData = {producten, productArtikelen, artikelen, merchArtikelen}
+              const skuEigen = {soort: 'artikel' as const, id: avSkuForm.id, product_id: avSkuForm.product_id}
+              const conflicten = skuConflicten(avSkuForm.artikelnummer, skuEigen, skuData)
+              const vrij = conflicten.length ? vrijeSku(avSkuForm.artikelnummer, skuEigen, skuData) : ''
               return (
                 <div className="px-2.5 py-2 bg-orange-50 border border-orange-200 rounded space-y-2">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <input type="text" value={avSkuForm.artikelnummer || ''} onChange={e => setAvSkuForm((f: any) => ({...f, artikelnummer: e.target.value}))} placeholder={t('ph_artikelnummer')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
+                    <input type="text" value={avSkuForm.artikelnummer || ''} onChange={e => setAvSkuForm((f: any) => ({...f, artikelnummer: e.target.value}))} placeholder={t('ph_artikelnummer')} className={`border rounded px-2 py-1.5 text-sm t-input ${conflicten.length ? 'border-red-300 bg-red-50' : 'border-gray-300'}`} autoFocus />
                     <input type="text" value={avSkuForm.ean || ''} onChange={e => setAvSkuForm((f: any) => ({...f, ean: e.target.value}))} placeholder={t('ph_ean_optioneel')} className="border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                     <div className="flex gap-1">
-                      <Btn s="sm" onClick={() => {
-                        if (!avSkuForm.artikelnummer?.trim()) return
+                      <Btn s="sm" disabled={conflicten.length > 0} onClick={() => {
+                        if (!avSkuForm.artikelnummer?.trim() || conflicten.length) return
                         const vp = (verpakkingen || []).find((v: any) => v.id === Number(avF.verpakking_id))
-                        const newArt = {...avSkuForm, artikelnummer: avSkuForm.artikelnummer.trim(), ean: avSkuForm.ean?.trim() || '', verpakking_naam: vp?.naam || '', verpakking_type: vp?.type || vp?.naam || '', inhoud_liter: vp?.inhoud_liter || ''}
-                        setProductArtikelen && setProductArtikelen((prev: any[]) => [...(prev || []), newArt])
+                        const sku = avSkuForm.artikelnummer.trim()
+                        const ean = avSkuForm.ean?.trim() || ''
+                        const newArt = {...avSkuForm, artikelnummer: sku, ean, verpakking_naam: vp?.naam || '', verpakking_type: vp?.type || vp?.naam || '', inhoud_liter: vp?.inhoud_liter || ''}
+                        // Bestaat het artikel voor dit product + deze verpakking
+                        // al (zonder SKU), dan krijgt dát de SKU — geen tweede.
+                        setProductArtikelen && setProductArtikelen((prev: any[]) =>
+                          (prev || []).some((a: any) => a.id === avSkuForm.id)
+                            ? (prev || []).map((a: any) => a.id === avSkuForm.id ? {...a, artikelnummer: sku, ean: ean || a.ean || ''} : a)
+                            : [...(prev || []), newArt])
                         setAvSkuForm(null)
                       }}>{t('btn_sku_opslaan')}</Btn>
                       <button type="button" onClick={() => setAvSkuForm(null)} className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>
                     </div>
                   </div>
+                  {conflicten.length > 0 && (
+                    <div className="text-[11px] text-red-600">
+                      {t('msg_sku_dubbel')
+                        .replace('{sku}', String(avSkuForm.artikelnummer || ''))
+                        .replace('{naam}', conflicten[0].naam || t('lbl_naamloos'))}
+                      {vrij && (
+                        <button type="button" onClick={() => setAvSkuForm((f: any) => ({...f, artikelnummer: vrij}))}
+                          className="ml-1 font-medium underline t-accent-text">
+                          {t('btn_sku_gebruik_vrij').replace('{sku}', vrij)}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             }
@@ -3308,7 +3458,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <div className="flex items-center gap-2 px-2.5 py-1.5 bg-orange-50 border border-orange-200 rounded text-sm">
                 <span className="t-accent-text">{t('lbl_geen_sku')}</span>
                 <button type="button" onClick={() => {
-                  setAvSkuForm({id: newId(productArtikelen || []), product_id: Number(avF.product_id), verpakking_id: Number(avF.verpakking_id), artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: 9, omschrijving: '', gn_code: avF.gn_code || ''})
+                  // Nieuw artikel: het standaard-BTW-tarief uit de instellingen
+                  // (was hard 9% — bier is in NL 21%, en het formulier toont
+                  // het tarief niet eens).
+                  setAvSkuForm(matchedArt
+                    ? {...matchedArt, artikelnummer: '', ean: matchedArt.ean || ''}
+                    : {id: newId(productArtikelen || []), product_id: Number(avF.product_id), verpakking_id: Number(avF.verpakking_id), artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: standaardBtwPct(btwInst, btwTarieven), omschrijving: '', gn_code: avF.gn_code || ''})
                 }} className="text-xs font-medium underline" style={{color: 'var(--t-accent)'}}>{t('btn_sku_toevoegen')}</button>
               </div>
             )
@@ -3339,7 +3494,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           <div className="text-sm text-gray-400 italic">{t('flow_afvul_geen')}</div>
         ) : (
           <div className="space-y-1">
-            {mijnAv.slice().sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || ''))).map((a: any) => {
+            {mijnAv.slice()
+              // Wacht een verwijdering op zijn terugweg, dan is hij in beeld al weg.
+              .filter((a: any) => undo.actie?.id !== afvullingUndoId(a.id))
+              .sort((a: any, b: any) => String(b.datum || '').localeCompare(String(a.datum || ''))).map((a: any) => {
               const liters = (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0)
               const prod = (producten || []).find((p: any) => p.id === a.product_id)
               return (
@@ -3360,7 +3518,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                       {t('haccp_geblokkeerd')}
                     </span>
                   )}
-                  <button onClick={() => delAv(a.id)} className="ml-auto text-gray-300 hover:text-red-500">✕</button>
+                  <button type="button" onClick={() => delAv(a.id)} title={t('btn_delete')} aria-label={t('btn_delete')}
+                    className="ml-auto text-gray-300 hover:text-red-500">✕</button>
                 </div>
               )
             })}
@@ -3372,27 +3531,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
   // Financieel resultaat (Gereed): kosten + potentiële opbrengst + marge.
   const renderFinancieel = () => {
-    const ingK = mijnBi.reduce((s: number, x: any) => {
-      if (x.kosten) return s + Number(x.kosten)
-      const lot = (lots || []).find((l: any) => l.id === x.lot_id)
-      return s + (lot?.prijs_per_eenheid ? lot.prijs_per_eenheid * Number(x.hoeveelheid || 0) : 0)
-    }, 0)
-    const overhead = Number(selB.electra_kosten || 0) + Number(selB.water_kosten || 0) + Number(selB.schoonmaak_kosten || 0) + Number(selB.overige_kosten || 0)
-    const totBrouw = ingK + overhead
-    // Verpakkingskosten per afvulling (onderdelen-opbouw of legacy-velden)
-    const verpK = mijnAv.reduce((s: number, a: any) => {
-      const vp = (verpakkingen || []).find((v: any) => v.id === a.verpakking_id) || (verpakkingen || []).find((v: any) => v.naam === a.verpakking_type)
-      if (!vp) return s
-      const kPerStuk = verpakkingKostenPerStuk(vp, onderdelen)
-      return s + kPerStuk * Number(a.hoeveelheid || 0)
-    }, 0)
-    // Accijns: daadwerkelijk geboekt (uitslagen) als die er zijn, anders voorcalc.
-    const accActueel = (acc || []).filter((a: any) => a.batch_id === selB.id)
-      .reduce((s: number, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0)
-    const accVoorcalc = mijnAv.reduce((s: number, a: any) => s + Number(a.voorcalc_accijns_totaal || 0), 0)
-    const accijnsK = accActueel > 0 ? accActueel : accVoorcalc
-    const accIsVoorcalc = accActueel === 0 && accVoorcalc > 0
-    const totaalKost = totBrouw + verpK + accijnsK
+    // Kosten uit dezelfde afleiding als het dossier, de productmarges en de
+    // COGS: ingrediënten (lotprijs omgerekend), vaste kosten, verpakking per
+    // afvulling en accijns — geboekt voor wat is uitgeslagen, voorcalc voor
+    // wat nog in de AGP ligt.
+    const k = berekenBatchKostprijs(selB, mijnBi, lots, mijnAv, verpakkingen, onderdelen, acc)
+    const totBrouw = (k.ingredienten_kosten || 0) + (k.overhead_kosten || 0)
+    const verpK = k.verpakking_kosten || 0
+    const accijnsK = k.accijns || 0
+    const accIsVoorcalc = k.accijns_bron === 'voorcalc'
+    const totaalKost = k.totaal_kosten
     // Potentiële opbrengst: afgevulde aantallen × verkoopprijs van het artikel.
     let opbrengst = 0
     let zonderPrijs = 0
@@ -3850,9 +3998,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     const reached = ccActive && tankTemp != null && tankTemp <= ccTarget + 0.5
                     return ccActive ? (
                       <div className="flex items-center gap-2 flex-wrap text-xs">
-                        <span className={`px-2 py-0.5 rounded-full font-medium ${
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
                           reached ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'}`}>
-                          ❄ {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
+                          <Icon n="snowflake" /> {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
                         </span>
                         <span className="text-gray-500">→ {ccTarget}°C @ {ccRamp}°C/{t('lbl_uur')}</span>
                         <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
@@ -3860,7 +4008,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Btn s="sm" onClick={startColdCrash}>❄ {t('dashboard_coldcrash_btn')}</Btn>
+                        <Btn s="sm" onClick={startColdCrash}><Icon n="snowflake" /> {t('dashboard_coldcrash_btn')}</Btn>
                         {coldcrashInst?.enabled && (
                           <span className="text-xs text-gray-400">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
                         )}
@@ -3929,7 +4077,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             haccpInstellingen={haccpInst} whoami={whoami}
             auditLog={auditLog} setAuditLog={setAuditLog}
             actieveSessieId={actieveSessieId} setActieveSessieId={setActieveSessieId}
-            onAchterafAfvullen={schrijfAfvulling}
+            onAchterafControleren={controleerAfvulling}
+            onAchterafAfvullen={boekAfvulling}
+            refreshSessies={refreshAfvulSessies}
+            onderdelen={onderdelen}
             registratie={renderAfvulForm()}
             registratieZonderSessie={isLegacyBatch(selB.id, av || [])}
             lijst={renderAfvulLijst()}
@@ -3938,6 +4089,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             verlies={renderVerlies('tankrest')}
             verliesDone={!!clMap.restvolume?.done} verliesDetail={clMap.restvolume?.detail}
           />
+        )}
+        {/* Priming sugar — alleen als de brouwerij hem in Instellingen aanzet
+            (hergisting op fles); de schakelaar deed sinds de oude Batches-
+            pagina niets meer. */}
+        {faseStatus === 'Afgevuld' && brouwprocesInst?.priming_sugar_enabled && (
+          <PrimingSugarCalc batch={selB} afvullingen={mijnAv} verliesRegistraties={mijnVerlies} />
         )}
 
         {/* ── Gereed: afsluitende taken ────────────────────────────────────── */}
@@ -4056,7 +4213,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   </Btn>
                 </>
               )}
-              <Btn v="danger" s="sm" onClick={() => removeBatch(selB.id)}>{t('btn_delete')}</Btn>
+              <BevestigKnop v="danger" s="sm" vraag={t('error_confirm_delete_batch')}
+                onBevestig={() => removeBatch(selB.id)}>{t('btn_delete')}</BevestigKnop>
             </div>
           </div>
 

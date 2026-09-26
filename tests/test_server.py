@@ -279,6 +279,65 @@ class TestDataApi:
         conn.close()
 
 
+class TestContentLength:
+    """Content-Length wordt strikt gelezen. Een negatieve waarde liet
+    rfile.read(-1) tot het einde van de stream lezen: geen limiet meer, ook
+    vóór het inloggen op de directe poort."""
+
+    @staticmethod
+    def _statusregel(base, verzoek: bytes) -> bytes:
+        host, poort = base.replace('http://', '').split(':')
+        # Schrijfkant blijft open: een server die tot EOF leest antwoordt
+        # nooit en de recv loopt in de timeout.
+        s = socket.create_connection((host, int(poort)), timeout=5)
+        try:
+            s.sendall(verzoek)
+            data = b''
+            while b'\r\n' not in data:
+                deel = s.recv(4096)
+                if not deel:
+                    break
+                data += deel
+            return data.split(b'\r\n')[0]
+        finally:
+            s.close()
+
+    def test_negatieve_lengte_op_login_geeft_meteen_400(self, app_direct):
+        regel = self._statusregel(app_direct, (
+            b'POST /api/login HTTP/1.1\r\nHost: x\r\n'
+            b'Content-Type: application/json\r\nContent-Length: -1\r\n\r\n'
+            b'{"username":'))
+        assert b' 400 ' in regel
+
+    def test_ongeldige_lengte_geeft_400(self, app):
+        for waarde in (b'-2', b'abc', b'+5', b'1e3'):
+            regel = self._statusregel(app, (
+                b'POST /api/data/water_addities HTTP/1.1\r\nHost: x\r\n'
+                b'Content-Type: application/json\r\nContent-Length: ' + waarde +
+                b'\r\n\r\n[]'))
+            assert b' 400 ' in regel, waarde
+
+    def test_backup_trigger_antwoordt_eenmaal_bij_te_grote_body(self, app):
+        # _handle_backup_trigger negeerde de None van _read_body en stuurde
+        # na de 413 nog een tweede antwoord.
+        host, poort = app.replace('http://', '').split(':')
+        s = socket.create_connection((host, int(poort)), timeout=10)
+        try:
+            s.sendall(b'POST /api/backups/trigger HTTP/1.1\r\nHost: x\r\n'
+                      b'Content-Length: 1000\r\n\r\n')
+            s.shutdown(socket.SHUT_WR)
+            data = b''
+            while True:
+                deel = s.recv(65536)
+                if not deel:
+                    break
+                data += deel
+        finally:
+            s.close()
+        assert data.startswith(b'HTTP/1.0 413') or data.startswith(b'HTTP/1.1 413')
+        assert data.count(b'HTTP/1.') == 1
+
+
 class TestBulk:
     """GET /api/bulk — alle keys + versies in één antwoord (snelle app-start)."""
 
@@ -448,6 +507,29 @@ class TestCommit:
         status, _, _ = req(app, 'POST', '/api/commit', body={'data': data})
         assert status == 400
 
+    def test_app_knipt_commits_op_dezelfde_grenzen(self):
+        # De app deelt een bundel (backup terugzetten, fabrieksreset) op in
+        # commits van hooguit COMMIT_MAX_KEYS keys en COMMIT_MAX_BYTES bytes
+        # (src/utils/commit.ts). Loopt dat uiteen met de server, dan weigert
+        # die elke groep met een 400 zonder key.
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'commit.ts').read_text(encoding='utf-8')
+        keys = re.search(r'export const COMMIT_MAX_KEYS\s*=\s*([\d_]+)', bron)
+        byts = re.search(r'export const COMMIT_MAX_BYTES\s*=\s*([\d_]+)', bron)
+        assert keys and byts, 'COMMIT_MAX_KEYS/COMMIT_MAX_BYTES niet gevonden in commit.ts'
+        assert int(keys.group(1).replace('_', '')) == srv.COMMIT_MAX_KEYS
+        assert int(byts.group(1).replace('_', '')) < srv.MAX_CONTENT_LENGTH
+
+    def test_backup_import_kent_de_append_only_keys(self):
+        # Een backup terugzetten voegt op append-only keys alleen ontbrekende
+        # regels toe (APPEND_ONLY_KEYS in src/utils/excel.ts). Een key die de
+        # server append-only maakt maar de app niet kent, zou de import met
+        # een 422 laten weigeren.
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'excel.ts').read_text(encoding='utf-8')
+        blok = bron.split('export const APPEND_ONLY_KEYS')[1].split(']')[0]
+        assert set(re.findall(r"'(\w+)'", blok)) == set(srv._APPEND_ONLY)
+
 
 class TestNextNr:
     def test_reeksen_zijn_gescheiden_en_oplopend(self, app):
@@ -554,12 +636,86 @@ class TestSecureKeysHttp:
         assert status == 200
         assert body['password'] == srv._SECRET_SENTINEL
         assert body['host'] == 'mail.x'
-        # POST met sentinel + gewijzigde host → geheim blijft opgeslagen
+        # POST met sentinel + zelfde bestemming → geheim blijft opgeslagen
         status, _, _ = req(app, 'POST', '/api/data/smtp_creds',
-                           body={'host': 'nieuw.x', 'password': srv._SECRET_SENTINEL})
+                           body={'host': 'Mail.X', 'password': srv._SECRET_SENTINEL,
+                                 'fromName': 'Brouwerij'})
         assert status == 200
         opgeslagen = srv._read_json('smtp_creds')
-        assert opgeslagen == {'host': 'nieuw.x', 'password': 'supergeheim'}
+        assert opgeslagen == {'host': 'Mail.X', 'password': 'supergeheim',
+                              'fromName': 'Brouwerij'}
+        # POST met sentinel + gewijzigde host → 400: het opgeslagen wachtwoord
+        # gaat nooit mee naar een nieuw adres (ERP-plan 5.1), niets gewijzigd
+        status, body, _ = req(app, 'POST', '/api/data/smtp_creds',
+                              body={'host': 'nieuw.x', 'password': srv._SECRET_SENTINEL})
+        assert status == 400 and body['error'] == 'secret_opnieuw_invoeren'
+        assert srv._read_json('smtp_creds') == opgeslagen
+        # Met een opnieuw ingevuld wachtwoord mag het adres wél wijzigen
+        status, _, _ = req(app, 'POST', '/api/data/smtp_creds',
+                           body={'host': 'nieuw.x', 'password': 'nieuwgeheim'})
+        assert status == 200
+        assert srv._read_json('smtp_creds') == {'host': 'nieuw.x', 'password': 'nieuwgeheim'}
+
+    def test_sentinel_gaat_niet_naar_een_ander_adres(self, app):
+        """/api/mail/test, /api/woocommerce/test en /api/commit vulden de
+        sentinel in, ook bij een host/storeUrl uit het verzoek: het opgeslagen
+        geheim ging zo naar een willekeurig adres."""
+        assert req(app, 'POST', '/api/data/smtp_creds', body={
+            'host': 'mail.legit', 'port': 587, 'username': 'u',
+            'password': 'supergeheim', 'security': 'starttls'})[0] == 200
+        luisteraar = socket.socket()
+        luisteraar.bind(('127.0.0.1', 0))
+        luisteraar.listen(1)
+        luisteraar.settimeout(0.5)
+        try:
+            poort = luisteraar.getsockname()[1]
+            status, body, _ = req(app, 'POST', '/api/mail/test', body={
+                'host': '127.0.0.1', 'port': poort, 'username': 'u',
+                'password': srv._SECRET_SENTINEL, 'security': 'none'})
+            assert status == 400 and body['error'] == 'secret_opnieuw_invoeren'
+            with pytest.raises(socket.timeout):
+                luisteraar.accept()  # er is niet eens verbonden
+        finally:
+            luisteraar.close()
+        # Beveiliging omlaag naar 'none' op dezelfde host telt ook
+        status, body, _ = req(app, 'POST', '/api/mail/test', body={
+            'host': 'mail.legit', 'port': 587, 'username': 'u',
+            'password': srv._SECRET_SENTINEL, 'security': 'none'})
+        assert status == 400 and body['error'] == 'secret_opnieuw_invoeren'
+
+        wc = {'storeUrl': 'https://shop.example', 'consumerKey': 'ck_echt',
+              'consumerSecret': 'cs_echt'}
+        assert req(app, 'POST', '/api/data/woocommerce_creds', body=wc)[0] == 200
+        try:
+            self._wc_deel(app, wc)
+        finally:
+            req(app, 'POST', '/api/data/woocommerce_creds', body={})
+            req(app, 'POST', '/api/data/smtp_creds', body={})
+
+    @staticmethod
+    def _wc_deel(app, wc):
+        status, body, _ = req(app, 'POST', '/api/woocommerce/test', body={
+            'storeUrl': 'https://kwaadaardig.example',
+            'consumerKey': srv._SECRET_SENTINEL, 'consumerSecret': srv._SECRET_SENTINEL})
+        assert status == 400 and body['error'] == 'secret_opnieuw_invoeren'
+        # Commit: hele commit geweigerd, niets geschreven — ook de andere key niet
+        req(app, 'POST', '/api/data/gn_codes', body=[{'id': 1, 'code': '2203'}])
+        status, body, _ = req(app, 'POST', '/api/commit', body={'data': {
+            'gn_codes': [],
+            'woocommerce_creds': {'storeUrl': 'https://kwaadaardig.example',
+                                  'consumerKey': srv._SECRET_SENTINEL,
+                                  'consumerSecret': srv._SECRET_SENTINEL}}})
+        assert status == 400 and body['key'] == 'woocommerce_creds'
+        assert srv._read_json('woocommerce_creds') == wc
+        assert srv._read_json('gn_codes') == [{'id': 1, 'code': '2203'}]
+        # Zelfde winkel (andere schrijfwijze) met sentinel: gewoon opslaan
+        status, _, _ = req(app, 'POST', '/api/commit', body={'data': {
+            'woocommerce_creds': {'storeUrl': 'https://Shop.example/',
+                                  'consumerKey': srv._SECRET_SENTINEL,
+                                  'consumerSecret': srv._SECRET_SENTINEL,
+                                  'importInterval': 30}}})
+        assert status == 200
+        assert srv._read_json('woocommerce_creds')['consumerSecret'] == 'cs_echt'
 
     def test_audit_log_wordt_server_side_geschreven(self, app):
         req(app, 'POST', '/api/data/recepten', body=[{'id': 1}])
@@ -715,6 +871,39 @@ class TestSqliteOpslag:
         assert json.loads((dest / 'gn_codes.json').read_text()) == [{'id': 1, 'code': '2203'}]
         assert (dest / srv.DB_NAAM).exists()
 
+    def test_backup_download_zonder_ongemaskeerde_geheimen(self, app):
+        """De download-ZIP (naar de browser) bevatte de credentials
+        onversleuteld plus een db-kopie. De backup op schijf blijft volledig
+        (restore leest daaruit), maar alleen voor de addon-gebruiker leesbaar."""
+        import zipfile as _zipfile
+        req(app, 'POST', '/api/data/gn_codes', body=[{'id': 1, 'code': '2203'}])
+        assert req(app, 'POST', '/api/data/mollie_creds',
+                   body={'apiKey': 'live_SUPERGEHEIM', 'enabled': True})[0] == 200
+        try:
+            status, body, _ = req(app, 'POST', '/api/backups/trigger', body={})
+            assert status == 200
+            datum = body['date']
+            with urllib.request.urlopen(app + f'/api/backups/{datum}') as r:
+                data = r.read()
+            with _zipfile.ZipFile(io.BytesIO(data)) as zf:
+                namen = zf.namelist()
+                assert srv.DB_NAAM not in namen
+                assert 'gn_codes.json' in namen
+                mollie = json.loads(zf.read('mollie_creds.json'))
+                assert mollie == {'apiKey': srv._SECRET_SENTINEL, 'enabled': True}
+                assert all(b'live_SUPERGEHEIM' not in zf.read(n) for n in namen)
+            dest = srv.BACKUP_DIR / datum
+            # Op schijf versleuteld (ERP 5.8), maar wel volledig herstelbaar.
+            envelop = json.loads((dest / 'mollie_creds.json').read_text())
+            assert srv._is_versleuteld(envelop)
+            assert b'live_SUPERGEHEIM' not in (dest / 'mollie_creds.json').read_bytes()
+            assert srv._ontsleutel_waarde(envelop)['apiKey'] == 'live_SUPERGEHEIM'
+            assert (dest / srv.DB_NAAM).exists()
+            assert (dest / 'mollie_creds.json').stat().st_mode & 0o777 == 0o600
+            assert dest.stat().st_mode & 0o777 == 0o700
+        finally:
+            req(app, 'POST', '/api/data/mollie_creds', body={})
+
     def test_retentie_bewaart_altijd_de_nieuwste_backups(self, app):
         """Het hele retentiebeleid hangt aan date.today(). Springt de klok van
         de host vooruit, dan valt élke backup buiten de termijn en wist één
@@ -783,8 +972,10 @@ class TestSqliteOpslag:
                    body={'date': datum, 'key': '../etc/passwd'})[0] == 400
         assert req(app, 'POST', '/api/backups/restore',
                    body={'date': datum, 'key': 'bestaat_niet'})[0] == 400
-        # Append-only registraties en credentials nooit
-        for key in ('journaal', 'haccp_vrijgaven', 'woocommerce_creds'):
+        # Append-only registraties, credentials en server-beheerde keys nooit
+        # (een nummerreeks mag niet teruglopen)
+        for key in ('journaal', 'haccp_vrijgaven', 'woocommerce_creds',
+                    'nummer_reeksen', 'tank_setpoints', 'wc_import_status'):
             status, body, _ = req(app, 'POST', '/api/backups/restore',
                                   body={'date': datum, 'key': key})
             assert status == 422 and body['key'] == key
@@ -825,6 +1016,184 @@ class TestDeltaDubbeleIds:
                               headers={'X-Data-Version': ver})
         assert status == 400
         assert req(app, 'GET', '/api/data/water_doelprofielen')[1] == [{'id': 1}]
+
+
+class TestAppendOnlyDubbeleIds:
+    """De append-only-guard vergeleek per id via een dict: bij een dubbele id
+    bleef alleen de laatste over. `[vervalsing_X, origineel_X]` kwam zo door de
+    controle, beide records werden opgeslagen (vervalsing vooraan, dus die
+    vond de app) en daarna kon geen enkele payload meer voldoen — journaal of
+    CCP-key voorgoed op slot. Nu een vergelijking per id als multiset, in élke
+    schrijfweg (/api/data en /api/commit gaan allebei via _append_only_ok)."""
+
+    @staticmethod
+    def _reset(*keys):
+        conn = srv._db()
+        with conn:
+            for key in keys:
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    def test_dubbele_id_via_data_wordt_geweigerd(self, app):
+        key = 'haccp_sluitcontroles'
+        orig = {'id': 1, 'oordeel': 'goedgekeurd'}
+        vals = {'id': 1, 'oordeel': 'afgekeurd'}
+        self._reset(key)
+        try:
+            assert req(app, 'POST', f'/api/data/{key}', body=[orig])[0] == 200
+            status, body, _ = req(app, 'POST', f'/api/data/{key}', body=[vals, orig])
+            assert status == 422 and body['error'] == 'append-only'
+            assert req(app, 'GET', f'/api/data/{key}')[1] == [orig]
+            # Gewoon aanvullen blijft kunnen: de key zit niet op slot.
+            status, _, _ = req(app, 'POST', f'/api/data/{key}', body=[orig, {'id': 2}])
+            assert status == 200
+        finally:
+            self._reset(key)
+
+    def test_dubbele_id_via_commit_wordt_geweigerd(self, app):
+        self._reset('journaal', 'onderdelen')
+        try:
+            status, body, _ = req(app, 'POST', '/api/commit', body={'data': {
+                'journaal': [{'id': 5, 'debet_cent': 999}, {'id': 5, 'debet_cent': 100}],
+                'onderdelen': [{'id': 1}],
+            }})
+            assert status == 422 and body['key'] == 'journaal'
+            # Alles-of-niets: ook de andere key is niet geschreven.
+            assert req(app, 'GET', '/api/data/journaal')[0] == 404
+            assert req(app, 'GET', '/api/data/onderdelen')[0] == 404
+        finally:
+            self._reset('journaal', 'onderdelen')
+
+    def test_eerste_write_valt_ook_onder_de_controle(self, app):
+        self._reset('haccp_vrijgaven')
+        assert not srv._append_only_ok('haccp_vrijgaven', [{'id': 1, 'a': 1}, {'id': 1, 'a': 2}])
+        assert srv._append_only_ok('haccp_vrijgaven', [{'id': 1}, {'id': 2}])
+
+    def test_nieuwe_regel_zonder_id_en_losse_waarden_worden_geweigerd(self, app):
+        key = 'haccp_afwijkingen'
+        self._reset(key)
+        srv._write_json(key, [{'id': 1}])
+        try:
+            assert not srv._append_only_ok(key, [{'id': 1}, {'omschrijving': 'zonder id'}])
+            assert not srv._append_only_ok(key, [{'id': 1}, 'geen object'])
+            # Id 1 en '1' zijn voor de opslag dezelfde record-id.
+            assert not srv._append_only_ok(key, [{'id': 1}, {'id': '1'}])
+            assert not srv._append_only_ok(key, [{'id': 1}, {'id': 2}, {'id': '2'}])
+        finally:
+            self._reset(key)
+
+    def test_bestaande_dubbel_zet_de_key_niet_op_slot(self, app):
+        """Een key die van vóór de controle al een dubbel bevat, blijft
+        beschrijfbaar zolang beide varianten ongewijzigd meekomen."""
+        key = 'haccp_etiketcontroles'
+        a = {'id': 1, 'oordeel': 'goedgekeurd'}
+        b = {'id': 1, 'oordeel': 'afgekeurd'}
+        self._reset(key)
+        srv._write_json(key, [b, a])
+        try:
+            # Wat de client terugstuurt (de GET-stand) plus een nieuw record.
+            status, _, _ = req(app, 'POST', f'/api/data/{key}', body=[b, a, {'id': 2}])
+            assert status == 200
+            # Eén variant weglaten of er een derde naast zetten mag niet.
+            assert not srv._append_only_ok(key, [a, {'id': 2}])
+            assert not srv._append_only_ok(key, [b, a, {'id': 1, 'oordeel': 'x'}, {'id': 2}])
+        finally:
+            self._reset(key)
+
+
+class TestLotcodeUniek:
+    """Eén lotcode hoort bij één afvulsessie (HACCP-handboek §11.1). Twee
+    apparaten met een verouderde stand kozen allebei L2431-B1, en de
+    conflict-samenvoeging van de client nam beide records over: een recall op
+    de fust-sessie raakte dan ook alle flessen. De server weigert zo'n
+    schrijfactie in elke schrijfweg."""
+
+    s1 = {'id': 1, 'batch_id': 7, 'sessie_nr': 1, 'lotcode': 'L2431-B1', 'status': 'open'}
+    s2 = {'id': 2, 'batch_id': 7, 'sessie_nr': 1, 'lotcode': 'L2431-B1', 'status': 'open'}
+
+    @staticmethod
+    def _reset():
+        conn = srv._db()
+        with conn:
+            for key in ('afvul_sessies', 'batch_notities'):
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    def _versie(self, app):
+        return req(app, 'GET', '/api/data/afvul_sessies')[2].get('X-Data-Version')
+
+    def test_helper_telt_alleen_nieuw_ontstane_dubbelen(self):
+        assert srv._lotcode_dubbel([], [{'lotcode': 'L1-B1'}, {'lotcode': ' l1-b1'}]) == ['L1-B1']
+        # Een dubbel die er al stond, blijft niet steken.
+        oud = [{'lotcode': 'L1-B1'}, {'lotcode': 'L1-B1'}]
+        assert srv._lotcode_dubbel(oud, oud + [{'lotcode': 'L1-B2'}]) == []
+        # Lege codes en rommel tellen niet.
+        assert srv._lotcode_dubbel([], [{'lotcode': ''}, {}, {'lotcode': None}, 'x']) == []
+        assert srv._lotcode_guard_fout('batches', [self.s1, self.s2], []) is None
+
+    def test_tweede_sessie_met_zelfde_lotcode_via_data(self, app):
+        self._reset()
+        try:
+            assert req(app, 'POST', '/api/data/afvul_sessies', body=[self.s1])[0] == 200
+            status, body, _ = req(app, 'POST', '/api/data/afvul_sessies', body=[self.s1, self.s2])
+            assert status == 422
+            assert body['reden'] == 'lotcode_dubbel' and body['lotcodes'] == ['L2431-B1']
+            assert req(app, 'GET', '/api/data/afvul_sessies')[1] == [self.s1]
+            # Met het volgende sessienummer gaat het wel.
+            s2b = {**self.s2, 'sessie_nr': 2, 'lotcode': 'L2431-B2'}
+            assert req(app, 'POST', '/api/data/afvul_sessies', body=[self.s1, s2b])[0] == 200
+        finally:
+            self._reset()
+
+    def test_tweede_sessie_met_zelfde_lotcode_via_delta(self, app):
+        self._reset()
+        try:
+            assert req(app, 'POST', '/api/data/afvul_sessies', body=[self.s1])[0] == 200
+            status, body, _ = req(app, 'POST', '/api/delta/afvul_sessies',
+                                  body={'upsert': [self.s2], 'delete': []},
+                                  headers={'X-Data-Version': self._versie(app)})
+            assert status == 422 and body['reden'] == 'lotcode_dubbel'
+            assert req(app, 'GET', '/api/data/afvul_sessies')[1] == [self.s1]
+        finally:
+            self._reset()
+
+    def test_commit_met_dubbele_lotcode_schrijft_niets(self, app):
+        self._reset()
+        try:
+            assert req(app, 'POST', '/api/data/afvul_sessies', body=[self.s1])[0] == 200
+            status, body, _ = req(app, 'POST', '/api/commit', body={
+                'data': {'afvul_sessies': [self.s1, self.s2],
+                         'batch_notities': [{'id': 1, 'tekst': 'mag niet landen'}]},
+            })
+            assert status == 422 and body['key'] == 'afvul_sessies'
+            assert req(app, 'GET', '/api/data/afvul_sessies')[1] == [self.s1]
+            assert req(app, 'GET', '/api/data/batch_notities')[0] == 404
+        finally:
+            self._reset()
+
+    def test_bestaande_dubbel_blokkeert_afsluiten_niet(self, app):
+        """Een dubbele code van vóór deze controle mag een andere sessie niet
+        vastzetten: afsluiten (status + eindtijd) moet altijd kunnen."""
+        self._reset()
+        try:
+            s3 = {'id': 3, 'batch_id': 8, 'sessie_nr': 1, 'lotcode': 'L2432-B1', 'status': 'open'}
+            srv._write_json('afvul_sessies', [self.s1, self.s2, s3])
+            dicht = {**s3, 'status': 'afgesloten', 'eind': '2026-09-25T12:00:00Z'}
+            assert req(app, 'POST', '/api/data/afvul_sessies',
+                       body=[self.s1, self.s2, dicht])[0] == 200
+            ook_dicht = {**self.s1, 'status': 'afgesloten'}
+            status, _, _ = req(app, 'POST', '/api/delta/afvul_sessies',
+                               body={'upsert': [ook_dicht], 'delete': []},
+                               headers={'X-Data-Version': self._versie(app)})
+            assert status == 200
+            # Een dérde sessie met die code is wél nieuw en wordt geweigerd.
+            s4 = {**self.s2, 'id': 4}
+            status, _, _ = req(app, 'POST', '/api/delta/afvul_sessies',
+                               body={'upsert': [s4], 'delete': []},
+                               headers={'X-Data-Version': self._versie(app)})
+            assert status == 422
+        finally:
+            self._reset()
 
 
 class TestBijlagen:
@@ -1004,6 +1373,31 @@ class TestRollen:
         assert not srv._rollen_lockout('admin', {'gebruikers': {'admin': 'beheer'},
                                                  'standaard_rol': 'alleen_lezen'})
         assert not srv._rollen_lockout('', {'standaard_rol': 'alleen_lezen'})
+        # Namen hoofdletterongevoelig, zoals HA ze vergelijkt
+        assert not srv._rollen_lockout('Admin', {'gebruikers': {'admin': 'beheer'},
+                                                 'standaard_rol': 'alleen_lezen'})
+        assert srv._rollen_lockout('ADMIN', {'gebruikers': {'admin': 'productie'}})
+        # Twee schrijfwijzen van één naam zijn dubbelzinnig → ongeldig
+        assert not srv._rollen_config_geldig({'gebruikers': {'jan': 'productie',
+                                                             'Jan': 'beheer'}})
+        assert srv._rol_uit_tabel({'Jan': 'productie'}, 'jan') == 'productie'
+        assert srv._rol_uit_tabel({'Jan': 'productie', 'JAN': 'beheer'}, 'jan') == 'alleen_lezen'
+        assert srv._rol_uit_tabel({'Jan': 'productie', 'JAN': 'beheer'}, 'JAN') == 'beheer'
+        assert srv._rol_uit_tabel({'jan': 'productie'}, 'piet') is None
+
+    def test_app_kent_dezelfde_rolsleutels(self):
+        # De app slaat automatische schrijfacties (Brewfather-sync, klant-
+        # koppeling, login-auditregel) over voor een rol die ze niet mag —
+        # met een spiegel van deze lijsten in src/utils/rollen.ts. Lopen ze
+        # uit elkaar, dan krijgt een gebruiker weer 'geen rechten'-meldingen.
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'rollen.ts').read_text(encoding='utf-8')
+
+        def lijst(naam):
+            blok = bron.split(f'export const {naam}')[1].split('= [', 1)[1].split(']')[0]
+            return set(re.findall(r"'(\w+)'", blok))
+        assert lijst('BEHEER_KEYS') == set(srv._BEHEER_KEYS)
+        assert lijst('FINANCIELE_KEYS') == set(srv._FINANCIELE_KEYS)
 
     def test_zonder_config_is_iedereen_beheer(self, app):
         status, body, _ = req(app, 'GET', '/api/whoami',
@@ -1018,6 +1412,11 @@ class TestRollen:
             _, body, _ = req(app, 'GET', '/api/whoami',
                              headers={'X-Remote-User-Name': 'kees'})
             assert body == {'gebruiker': 'kees', 'rol': 'alleen_lezen', 'sessie': False}
+            # Andere schrijfwijze = zelfde HA-account = zelfde rol (geen
+            # terugval op de standaardrol beheer)
+            _, body, _ = req(app, 'GET', '/api/whoami',
+                             headers={'X-Remote-User-Name': 'KEES'})
+            assert body['rol'] == 'alleen_lezen'
             # alleen_lezen: GET ok, elke POST 403
             assert req(app, 'GET', '/api/data/batches',
                        headers={'X-Remote-User-Name': 'kees'})[0] in (200, 404)
@@ -1039,6 +1438,27 @@ class TestRollen:
                        headers=piet)[0] == 403
             assert req(app, 'POST', '/api/nextnr',
                        body={'reeks': 'factuur', 'jaar': 2026}, headers=piet)[0] == 403
+            # ... maar een bestelnummer (handmatige bestelling) en de bijlagen
+            # bij een afboeking/vernietiging (Douane §7.2.3) mag productie wél
+            assert req(app, 'POST', '/api/nextnr',
+                       body={'reeks': 'bestelling', 'jaar': 2026}, headers=piet)[0] == 200
+            pdf = {'data': base64.b64encode(b'%PDF-1.4 verklaring').decode()}
+            status, body, _ = req(app, 'POST', '/api/upload/verlies_rol_1.pdf',
+                                  body=pdf, headers=piet)
+            assert status == 200
+            assert req(app, 'POST', '/api/delete_upload/' + body['bestand'],
+                       body={}, headers=piet)[0] == 200
+            status, body, _ = req(app, 'POST', '/api/upload/afboek_rol_1.pdf',
+                                  body=pdf, headers=piet)
+            assert status == 200
+            # Factuurbijlagen blijven bij boekhouding
+            status, body, _ = req(app, 'POST', '/api/upload/123_factuur.pdf',
+                                  body=pdf, headers=piet)
+            assert status == 403 and body['reden'] == 'rol'
+            (srv.UPLOAD_DIR / 'ontvangst_rol.pdf').write_bytes(b'x')
+            assert req(app, 'POST', '/api/delete_upload/ontvangst_rol.pdf',
+                       body={}, headers=piet)[0] == 403
+            assert (srv.UPLOAD_DIR / 'ontvangst_rol.pdf').exists()
             # boekhouding: financiële key ok, beheer-key en mail-test 403
             fien = {'X-Remote-User-Name': 'fien'}
             assert req(app, 'POST', '/api/data/verkoop_facturen', body=[],
@@ -1090,6 +1510,39 @@ class TestRollen:
                        headers={'X-Remote-User-Name': 'onbekend'})[0] == 403
         finally:
             self._reset(app)
+
+    def test_restore_rollen_respecteert_lockout(self, app):
+        """/api/backups/restore schreef gebruikers_rollen terug zonder de
+        rollenvalidatie en de lockout-guard van /api/data: een beheerder kon
+        zichzelf zo uit beheer zetten, zonder weg terug in de app."""
+        jan = {'X-Remote-User-Name': 'jan'}
+        assert self._zet_config(app, {'gebruikers': {'admin': 'beheer', 'jan': 'beheer'}}) == 200
+        # Stand in de backup: admin is (door jan) productie gemaakt
+        assert req(app, 'POST', '/api/data/gebruikers_rollen',
+                   body={'gebruikers': {'admin': 'productie', 'jan': 'beheer'}},
+                   headers=jan)[0] == 200
+        status, body, _ = req(app, 'POST', '/api/backups/trigger', body={}, headers=jan)
+        assert status == 200
+        datum = body['date']
+        try:
+            huidig = {'gebruikers': {'admin': 'beheer', 'jan': 'beheer'}}
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body=huidig,
+                       headers=jan)[0] == 200
+            status, body, _ = req(app, 'POST', '/api/backups/restore',
+                                  body={'date': datum, 'key': 'gebruikers_rollen'},
+                                  headers=self.ADMIN)
+            assert status == 422 and body['error'] == 'rollen-lockout'
+            assert req(app, 'GET', '/api/data/gebruikers_rollen')[1] == huidig
+            assert req(app, 'GET', '/api/whoami', headers=self.ADMIN)[1]['rol'] == 'beheer'
+            # Wie in die backup zelf beheer houdt, kan hem gewoon terugzetten
+            status, body, _ = req(app, 'POST', '/api/backups/restore',
+                                  body={'date': datum, 'key': 'gebruikers_rollen'},
+                                  headers=jan)
+            assert status == 200 and body['ok']
+            assert req(app, 'GET', '/api/whoami', headers=self.ADMIN)[1]['rol'] == 'productie'
+        finally:
+            # Zonder ingress-gebruiker (buiten HA) is er geen lockout-risico
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={})[0] == 200
 
 
 class TestDirectLogin:
@@ -1186,6 +1639,60 @@ class TestDirectLogin:
             assert status == 429
             assert int(headers.get('Retry-After', '0')) >= 1
         finally:
+            herstel()
+
+    def test_gelijktijdige_pogingen_tellen_meteen_mee(self, app_direct):
+        """De limiet telde alleen afgeronde mislukkingen: een burst
+        gelijktijdige pogingen kwam helemaal langs de controle voordat de
+        (trage) wachtwoordcontrole er één had afgewezen."""
+        from concurrent.futures import ThreadPoolExecutor
+        herstel = self._met_mock_auth()
+        aanroepen = []
+        teller_lock = threading.Lock()
+
+        def trage_auth(u, w):
+            with teller_lock:
+                aanroepen.append(u)
+            time.sleep(0.2)
+            return 'ongeldig'
+        srv._ha_auth_check = trage_auth
+        srv._login_pogingen.clear()
+        try:
+            def poging(_):
+                return req(app_direct, 'POST', '/api/login',
+                           body={'username': 'jasper', 'password': 'fout'})[0]
+            with ThreadPoolExecutor(max_workers=30) as pool:
+                statussen = list(pool.map(poging, range(30)))
+            assert len(aanroepen) <= srv._LOGIN_RATE_MAX
+            assert statussen.count(401) == len(aanroepen)
+            assert statussen.count(429) == 30 - len(aanroepen)
+        finally:
+            herstel()
+
+    def test_login_hoofdletterongevoelig_houdt_eigen_rol(self, app_direct, app):
+        """HA vergelijkt gebruikersnamen met strip + casefold: 'Jasper' logt
+        in op het account 'jasper'. Die sessie hoort bij 'jasper' en krijgt
+        diens rol — niet de standaardrol (beheer) van een onbekende naam."""
+        herstel = self._met_mock_auth()
+        srv._ha_auth_check = (lambda u, w: 'ok'
+                              if (u.strip().casefold(), w) == ('jasper', 'geheim')
+                              else 'ongeldig')
+        assert req(app, 'POST', '/api/data/gebruikers_rollen',
+                   body={'gebruikers': {'jasper': 'productie'}})[0] == 200
+        try:
+            for schrijfwijze in ('Jasper', 'JASPER'):
+                status, cookie = self._login(app_direct, gebruiker=schrijfwijze)
+                assert status == 200
+                _, wie, _ = req(app_direct, 'GET', '/api/whoami',
+                                headers={'Cookie': cookie})
+                assert wie == {'gebruiker': 'jasper', 'rol': 'productie', 'sessie': True}
+                assert req(app_direct, 'POST', '/api/data/verkoop_facturen', body=[],
+                           headers={'Cookie': cookie})[0] == 403
+                assert req(app_direct, 'POST', '/api/data/gebruikers_rollen', body={},
+                           headers={'Cookie': cookie})[0] == 403
+                req(app_direct, 'POST', '/api/logout', headers={'Cookie': cookie})
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={})[0] == 200
             herstel()
 
     def test_loginpagina_styling_en_escaping(self, app_direct, app):
@@ -1419,7 +1926,7 @@ class TestDirectSsl:
             httpd = srv.BrouwerijServer(('127.0.0.1', 0), srv.BrouwerijHandler)
             httpd.brewadmin_direct = True
             httpd.brewadmin_ssl = True
-            httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+            httpd.tls_context = ctx  # zoals __main__ het doet
             poort = httpd.server_address[1]
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
@@ -1432,6 +1939,50 @@ class TestDirectSsl:
                     assert r.status == 200
                     assert 'Inloggen' in r.read().decode('utf-8')
             finally:
+                httpd.shutdown()
+        finally:
+            srv.SSL_DIR = oud
+
+    def test_stille_verbinding_legt_de_poort_niet_stil(self, app, tmp_path):
+        """Een TCP-verbinding die de TLS-handshake nooit afmaakt (stille
+        client, telefoon die van netwerk wisselt) hield de accept-lus vast:
+        tot die verbinding sloot kon niemand inloggen. De handshake hoort per
+        verbinding in de worker te lopen, met een timeout."""
+        import shutil as _shutil
+        import ssl as _ssl
+        if not _shutil.which('openssl'):
+            pytest.skip('openssl niet beschikbaar')
+        self._maak_cert(tmp_path)
+        oud = srv.SSL_DIR
+        srv.SSL_DIR = tmp_path
+        try:
+            ctx = srv._ssl_context('fullchain.pem', 'privkey.pem')
+            httpd = srv.BrouwerijServer(('127.0.0.1', 0), srv.BrouwerijHandler)
+            httpd.brewadmin_direct = True
+            httpd.brewadmin_ssl = True
+            httpd.tls_context = ctx
+            httpd.tls_handshake_timeout = 1.0
+            poort = httpd.server_address[1]
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            stil = socket.create_connection(('127.0.0.1', poort))
+            try:
+                client_ctx = _ssl.create_default_context()
+                client_ctx.check_hostname = False
+                client_ctx.verify_mode = _ssl.CERT_NONE
+                # Terwijl de stille verbinding openstaat werkt de poort gewoon
+                with urllib.request.urlopen(f'https://127.0.0.1:{poort}/',
+                                            context=client_ctx, timeout=5) as r:
+                    assert r.status == 200
+                    assert 'Inloggen' in r.read().decode('utf-8')
+                # ... en de server sluit de stille verbinding na de timeout
+                stil.settimeout(5)
+                try:
+                    assert stil.recv(1) == b''
+                except ConnectionResetError:
+                    pass
+            finally:
+                stil.close()
                 httpd.shutdown()
         finally:
             srv.SSL_DIR = oud
@@ -2128,6 +2679,30 @@ class TestWooCommerceProxy:
         status, _, _ = req(app, 'POST', '/api/woocommerce/create/products', b'{}')
         assert status == 401
 
+    def test_verbindingstest_geeft_oorzaak_door(self, app, monkeypatch):
+        """De verbindingstest in Instellingen toonde bij een netwerkfout alleen
+        'HTTP 502'; de oorzaakscode van _wc_request gaat nu mee, zodat de app
+        een vertaalde oorzaak kan tonen (utils/wcFout.ts)."""
+        monkeypatch.setattr(srv, '_is_private_url', lambda url: False)
+        monkeypatch.setattr(srv, '_wc_request', lambda *a, **k: (
+            504, json.dumps({'error': 'upstream request failed', 'oorzaak': 'timeout', 'timeout': 20}).encode()))
+        creds = {'storeUrl': 'https://winkel.example', 'consumerKey': 'ck_x', 'consumerSecret': 'cs_y'}
+        status, body, _ = req(app, 'POST', '/api/woocommerce/test', creds)
+        assert status == 200
+        assert body['ok'] is False and body['status'] == 504
+        assert body['oorzaak'] == 'timeout' and body['timeout'] == srv.WC_TIMEOUT
+
+    def test_verbindingstest_neemt_geen_onbekende_oorzaak_over(self, app, monkeypatch):
+        # Een antwoord van de winkel zelf (401) heeft geen oorzaakscode; een
+        # vreemde waarde in de body gaat nooit mee naar de app.
+        monkeypatch.setattr(srv, '_is_private_url', lambda url: False)
+        monkeypatch.setattr(srv, '_wc_request', lambda *a, **k: (
+            401, json.dumps({'message': 'Sorry', 'oorzaak': '<script>'}).encode()))
+        creds = {'storeUrl': 'https://winkel.example', 'consumerKey': 'ck_x', 'consumerSecret': 'cs_y'}
+        status, body, _ = req(app, 'POST', '/api/woocommerce/test', creds)
+        assert status == 200
+        assert body == {'ok': False, 'status': 401, 'detail': 'Sorry'}
+
 
 class TestTankBewaking:
     """Temperatuurbewaking van de gisttanks: het oordeel zelf (spiegel van
@@ -2533,6 +3108,360 @@ class TestTankBewaking:
             srv._tank_bewaking_tick()
             assert gelezen == []            # niets te lezen zonder koppeling
             assert len(srv._read_json('tank_alarmen', [])) == 1
+        finally:
+            self._clean()
+
+
+# ── Lokale tijd zoals de app (dag-datums, wintertijd) ───────────────────────
+
+# POSIX-notatie van Europe/Amsterdam: werkt ook zonder tzdata in de container.
+_TZ_AMSTERDAM = 'CET-1CEST,M3.5.0,M10.5.0/3'
+
+
+@pytest.fixture()
+def amsterdam(monkeypatch):
+    """Draai de test in Nederlandse tijd (de Supervisor geeft TZ mee aan de
+    addon). Na afloop de oude tijdzone terug."""
+    monkeypatch.setenv('TZ', _TZ_AMSTERDAM)
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+class TestLokaleTijd:
+    """`_iso_naar_epoch` zette een dag-datum op middernacht UTC, de app
+    (`new Date(`${iso}T00:00`)`, vergisting.ts) op lokale middernacht: bij de
+    start van stap 1 liepen server en app een (winter) tot twee (zomer) uur
+    uiteen. En `_meting_epoch` las de lokale kloktijd van een automatische
+    meting terug; in het herhaalde uur van de wintertijdwissel koos dat het
+    eerdere moment, zodat de bewaking elk jaar vals 'sensor stil' meldde."""
+
+    def test_dag_datum_is_lokale_middernacht(self, amsterdam):
+        # Gelijk aan wat de browser geeft voor new Date('…T00:00').
+        assert srv._iso_naar_epoch('2026-07-05') == 1783202400    # zomer, UTC+2
+        assert srv._iso_naar_epoch('2026-01-05') == 1767567600    # winter, UTC+1
+        # Tijdstip zonder tijdzone: ook lokaal, net als new Date('…T10:00').
+        assert srv._iso_naar_epoch('2026-07-05T10:00') == 1783202400 + 10 * 3600
+        # Met Z of offset telt die, ongeacht de tijdzone van de server.
+        assert srv._iso_naar_epoch('2026-07-05T00:00:00Z') == 1783209600
+        assert srv._iso_naar_epoch('2026-07-05T00:00:00+00:00') == 1783209600
+        assert srv._iso_naar_epoch('onzin') is None
+        assert srv._iso_naar_epoch(None) is None
+
+    def test_stap_1_start_op_lokale_middernacht(self, amsterdam):
+        batch = {'status': 'Vergisten', 'vergistingsprofiel': [{'temp': 18, 'tijd': 5}],
+                 'tank_historie': [{'status': 'Vergisten', 'from': '2026-07-05'}]}
+        assert srv._tank_doel(batch)[1] == 1783202400
+
+    def test_meting_epoch_geeft_ts_voorrang(self, amsterdam):
+        # 02:30 lokaal komt op 25 oktober twee keer voor; `ts` zegt welke.
+        rij = {'datum': '2026-10-25', 'tijd': '02:30', 'ts': '2026-10-25T01:30:00+00:00'}
+        assert srv._meting_epoch(rij) == datetime.datetime(
+            2026, 10, 25, 1, 30, tzinfo=datetime.timezone.utc).timestamp()
+        # Zonder (bruikbare) `ts` precies zoals voorheen: lokaal teruggeparst.
+        oud = {'datum': '2026-03-10', 'tijd': '08:30'}
+        verwacht = datetime.datetime(2026, 3, 10, 8, 30).timestamp()
+        assert srv._meting_epoch(oud) == verwacht
+        assert srv._meting_epoch({**oud, 'ts': 'kapot'}) == verwacht
+        assert srv._meting_epoch({**oud, 'ts': None}) == verwacht
+
+    @staticmethod
+    def _wintertijd_metingen(met_ts):
+        """Automatische metingen elke tien minuten rond de wintertijdwissel,
+        zoals _auto_metingen_tick ze wegschrijft (lokale datum/tijd)."""
+        start = datetime.datetime(2026, 10, 24, 22, 0, tzinfo=datetime.timezone.utc)
+        rijen = []
+        for i in range(6 * 6):  # zes uur
+            moment = start + datetime.timedelta(minutes=10 * i)
+            lokaal = datetime.datetime.fromtimestamp(moment.timestamp())
+            rij = {'datum': lokaal.strftime('%Y-%m-%d'), 'tijd': lokaal.strftime('%H:%M'),
+                   'temp': 18.0, 'auto': True}
+            if met_ts:
+                rij['ts'] = moment.isoformat(timespec='seconds')
+            rijen.append(rij)
+        return rijen
+
+    def test_wintertijdwissel_geeft_geen_vals_sensor_stil(self, amsterdam):
+        cfg = srv._bewaking_cfg({})
+        begin = datetime.datetime(2026, 10, 25, 0, 0, tzinfo=datetime.timezone.utc).timestamp()
+        start = datetime.datetime(2026, 10, 24, 22, 0, tzinfo=datetime.timezone.utc).timestamp()
+
+        def oordelen(met_ts):
+            rijen = self._wintertijd_metingen(met_ts)
+            statussen = []
+            for stap in range(0, 181, 5):
+                nu = begin + stap * 60
+                # Alleen de metingen die op `nu` al geschreven waren.
+                bestaand = [r for i, r in enumerate(rijen) if start + i * 600 <= nu]
+                punten = [(srv._meting_epoch(r), r['temp']) for r in bestaand]
+                statussen.append(srv._beoordeel_tank(18.0, None, None, punten, nu, cfg)['status'])
+            return statussen
+
+        # Met `ts` (zoals de tick nu schrijft): de hele nacht in orde.
+        assert set(oordelen(met_ts=True)) == {'ok'}
+        # Zonder `ts` — het oude gedrag — zou het herhaalde uur 'sensor stil'
+        # geven; die rijen blijven zo gerekend worden (terugval).
+        assert 'sensor_stil' in oordelen(met_ts=False)
+
+
+# ── Niet-eindige getallen (NaN/Infinity) ────────────────────────────────────
+
+class _NepAntwoord:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+class TestNietEindigeGetallen:
+    """Een HA-sensor die bij een leesfout 'nan' meldt kwam als float NaN in de
+    opslag; Python schreef letterlijk `NaN`, wat geen JSON is. De app kon de
+    key (en /api/bulk) daarna niet meer lezen, en voor de bewaking leek een
+    kapotte sensor 'ok'."""
+
+    @staticmethod
+    def _reset(*keys):
+        conn = srv._db()
+        with conn:
+            for key in keys:
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM kv WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    def _ha(self, monkeypatch, body: bytes):
+        monkeypatch.setenv('SUPERVISOR_TOKEN', 'test')
+        monkeypatch.setattr(srv.urllib.request, 'urlopen',
+                            lambda *a, **k: _NepAntwoord(body))
+
+    @pytest.mark.parametrize('staat', ['nan', 'NaN', 'inf', '-inf', '1e999', 'unavailable', ''])
+    def test_ha_state_zonder_eindig_getal_is_niet_te_lezen(self, monkeypatch, staat):
+        self._ha(monkeypatch, json.dumps({'state': staat}).encode())
+        assert srv._ha_fetch_state('sensor.t1') is None
+
+    def test_ha_state_met_getal(self, monkeypatch):
+        self._ha(monkeypatch, b'{"state": "18.4"}')
+        assert srv._ha_fetch_state('sensor.t1') == 18.4
+
+    @pytest.mark.parametrize('temperatuur', ['"nan"', '"inf"', '1e999', 'NaN'])
+    def test_climate_setpoint_zonder_eindig_getal(self, monkeypatch, temperatuur):
+        self._ha(monkeypatch, f'{{"attributes": {{"temperature": {temperatuur}}}}}'.encode())
+        assert srv._ha_fetch_climate_setpoint('climate.t1') is None
+
+    def test_climate_setpoint_met_getal(self, monkeypatch):
+        self._ha(monkeypatch, b'{"attributes": {"temperature": 18.5}}')
+        assert srv._ha_fetch_climate_setpoint('climate.t1') == 18.5
+
+    @pytest.mark.parametrize('waarde', [b'NaN', b'Infinity', b'-Infinity', b'1e999'])
+    def test_schrijfwegen_weigeren_niet_eindige_getallen(self, app, waarde):
+        key = 'carbonatie_sessies'
+        self._reset(key)
+        try:
+            assert req(app, 'POST', f'/api/data/{key}', body=[{'id': 1, 'druk': 1.2}])[0] == 200
+            status, _, headers = req(app, 'GET', f'/api/data/{key}')
+            versie = headers.get('X-Data-Version')
+            rec = b'{"id":2,"druk":' + waarde + b'}'
+            assert req(app, 'POST', f'/api/data/{key}', body=b'[' + rec + b']')[0] == 400
+            assert req(app, 'POST', '/api/commit',
+                       body=b'{"data":{"' + key.encode() + b'":[' + rec + b']}}')[0] == 400
+            assert req(app, 'POST', f'/api/delta/{key}',
+                       body=b'{"upsert":[' + rec + b'],"delete":[]}',
+                       headers={'X-Data-Version': versie})[0] == 400
+            # Niets geschreven.
+            status, body, headers = req(app, 'GET', f'/api/data/{key}')
+            assert body == [{'id': 1, 'druk': 1.2}]
+            assert headers.get('X-Data-Version') == versie
+        finally:
+            self._reset(key)
+
+    def test_opslag_schrijft_nooit_nan(self, app):
+        # Vangnet voor een servertick: zoals JSON.stringify wordt het null.
+        assert srv._json_compact({'a': float('nan'), 'b': [float('inf'), 1.5]}) \
+            == '{"a":null,"b":[null,1.5]}'
+        key = 'carbonatie_sessies'
+        self._reset(key)
+        try:
+            srv._write_json(key, [{'id': 1, 'co2': float('nan')}])
+            status, body, _ = req(app, 'GET', f'/api/data/{key}')
+            assert status == 200 and body == [{'id': 1, 'co2': None}]
+        finally:
+            self._reset(key)
+
+    def test_opschoning_bij_start_herstelt_een_besmette_key(self, app):
+        conn = srv._db()
+        self._reset('gist_metingen', 'batch_notities', 'brewery_details')
+        try:
+            with conn:
+                # Zoals een versie van vóór de filter hem wegschreef.
+                conn.execute("INSERT INTO records(key, seq, record_id, data) VALUES "
+                             "('gist_metingen', 0, '1', '{\"id\":1,\"temp\":18.0}'), "
+                             "('gist_metingen', 1, '2', '{\"id\":2,\"temp\":NaN}')")
+                conn.execute("INSERT INTO versies(key, versie, soort) "
+                             "VALUES ('gist_metingen', 'oud', 'array')")
+                conn.execute("INSERT INTO kv(key, data) VALUES "
+                             "('brewery_details', '{\"x\":Infinity}')")
+                conn.execute("INSERT INTO versies(key, versie, soort) "
+                             "VALUES ('brewery_details', 'oud', 'kv')")
+            # 'NaN' in een tekst is gewoon data en blijft ongemoeid.
+            srv._write_json('batch_notities', [{'id': 1, 'tekst': 'NaN-bier, Infinity IPA'}])
+            notitie_versie = srv._data_version('batch_notities')
+
+            srv._herstel_niet_eindige_getallen(conn)
+
+            status, body, _ = req(app, 'GET', '/api/data/gist_metingen')
+            assert status == 200 and body == [{'id': 1, 'temp': 18.0}, {'id': 2, 'temp': None}]
+            assert req(app, 'GET', '/api/data/brewery_details')[1] == {'x': None}
+            assert srv._data_version('batch_notities') == notitie_versie
+            # Het herstel staat in de server-audit.
+            regels = [json.loads(r) for f in srv.AUDIT_DIR.glob('audit_*.jsonl')
+                      for r in f.read_text(encoding='utf-8').splitlines()]
+            hersteld = {r['key'] for r in regels if r.get('actie') == 'nan_herstel'}
+            assert {'gist_metingen', 'brewery_details'} <= hersteld
+        finally:
+            self._reset('gist_metingen', 'batch_notities', 'brewery_details')
+
+    def test_bewaking_laat_zich_niet_maskeren_door_een_nan_meting(self, app, monkeypatch):
+        """Een tank ver boven z'n doel met als laatste rij een 'nan' (van een
+        kapotte sensor) moet alarm blijven — niet 'ok'."""
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: True)
+        tb = TestTankBewaking()
+        tb._seed([24.0] * 37)
+        try:
+            metingen = srv._read_json('gist_metingen', [])
+            metingen[-1]['temp'] = 'nan'
+            srv._write_json('gist_metingen', metingen)
+            srv._tank_bewaking_tick()
+            alarmen = srv._read_json('tank_alarmen', [])
+            assert len(alarmen) == 1 and alarmen[0]['hersteld_op'] is None
+            # Nog een ronde met de NaN-rij: het alarm blijft open.
+            srv._tank_bewaking_tick()
+            assert srv._read_json('tank_alarmen', [])[0]['hersteld_op'] is None
+        finally:
+            TestTankBewaking._clean()
+
+
+# ── Uitdunnen van automatische metingen ─────────────────────────────────────
+
+class TestAutoMetingenUitdunnen:
+    """`gist_metingen` groeide met één rij per bewaakte tank per tien minuten,
+    zonder grens. Boven de 10 MB die een request mag zijn werd elke handmatige
+    meting geweigerd. De server dunt automatische metingen van ouder dan 48 u
+    nu uit tot één per batch per uur; handmatige rijen blijven altijd."""
+
+    NU = 1_800_000_000.0
+
+    @classmethod
+    def _auto(cls, batch_id, uren, start_id=1):
+        """Auto-metingen elke tien minuten over `uren`, eindigend op NU."""
+        rijen = []
+        n = uren * 6
+        for i in range(n + 1):
+            ts = cls.NU - (n - i) * 600
+            rijen.append({'id': start_id + i, 'batch_id': batch_id, 'temp': 18.0,
+                          'auto': True,
+                          'ts': datetime.datetime.fromtimestamp(
+                              ts, datetime.timezone.utc).isoformat(timespec='seconds')})
+        return rijen
+
+    def test_dunt_alleen_oude_automatische_rijen_uit(self):
+        oud_handmatig = {'id': 1, 'batch_id': 7, 'datum': '2020-01-01', 'tijd': '09:00', 'sg': 1.050}
+        fg = {'id': 2, 'batch_id': 7, 'datum': '2020-01-02', 'sg': 1.010, 'bron': 'fg'}
+        onleesbaar = {'id': 3, 'batch_id': 7, 'auto': True, 'temp': 18.0}
+        metingen = [oud_handmatig, fg, onleesbaar] + self._auto(7, 72, 100) + self._auto(8, 72, 1000)
+        uit = srv._dun_auto_metingen(metingen, self.NU, 48)
+
+        # Handmatige rijen (ook bron 'fg') en rijen zonder tijdstip blijven.
+        for rij in (oud_handmatig, fg, onleesbaar):
+            assert rij in uit
+        grens = self.NU - 48 * 3600
+        for batch in (7, 8):
+            eigen = [r for r in uit if r.get('batch_id') == batch and r.get('ts')]
+            recent = [r for r in eigen if srv._meting_epoch(r) >= grens]
+            oud = [r for r in eigen if srv._meting_epoch(r) < grens]
+            # De laatste 48 u volledig (elke tien minuten), ouder één per uur:
+            # van de 144 oude rijen (24 u × 6) blijven er ~24 over.
+            assert len(recent) == 48 * 6 + 1
+            uren = [int(srv._meting_epoch(r) // 3600) for r in oud]
+            assert len(uren) == len(set(uren)) and 23 <= len(uren) <= 25
+            # Per uur de laatste meting van dat uur.
+            for r in oud:
+                epoch = srv._meting_epoch(r)
+                assert epoch % 3600 >= 3000 or epoch // 3600 == grens // 3600
+        # Volgorde blijft gelijk, en een tweede ronde verandert niets.
+        assert [r['id'] for r in uit] == sorted(r['id'] for r in uit)
+        assert srv._dun_auto_metingen(uit, self.NU, 48) == uit
+
+    def test_vers_venster_blijft_ruim_boven_de_bewaking(self):
+        assert srv._auto_metingen_vers_uren({}) == 48
+        # Een ruim ingestelde trendperiode: de bewaking kijkt 60 u terug.
+        assert srv._auto_metingen_vers_uren({'bewaking': {'trend_uren': 20}}) >= 60 + 24
+
+    @staticmethod
+    def _clean():
+        conn = srv._db()
+        with conn:
+            for key in ('batches', 'gist_metingen'):
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+            conn.execute("DELETE FROM kv WHERE key='ha_instellingen'")
+            conn.execute("DELETE FROM versies WHERE key='ha_instellingen'")
+
+    def test_tick_schrijft_ts_en_dunt_eens_per_dag(self, app, monkeypatch):
+        nu = time.time()
+        srv._write_json('ha_instellingen', {
+            'enabled': True, 'sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.t1'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Vergisten'}])
+        oud = []
+        for i in range(3 * 24 * 6):  # drie dagen, van zes tot drie dagen geleden
+            ts = nu - 6 * 86400 + i * 600
+            oud.append({'id': i + 1, 'batch_id': 7, 'temp': 18.0, 'auto': True,
+                        'ts': datetime.datetime.fromtimestamp(
+                            ts, datetime.timezone.utc).isoformat(timespec='seconds')})
+        handmatig = {'id': 5000, 'batch_id': 7, 'datum': '2020-01-01', 'sg': 1.05}
+        srv._write_json('gist_metingen', oud + [handmatig])
+        monkeypatch.setattr(srv, '_ha_fetch_state', lambda e: 18.5)
+        monkeypatch.setattr(srv, '_auto_metingen_gedund_op', 0.0)
+        try:
+            srv._auto_metingen_tick()
+            metingen = srv._read_json('gist_metingen', [])
+            assert handmatig in metingen
+            # Alles was ouder dan 48 u: één rij per uur (72 ± 1), plus de
+            # handmatige en de nieuwe meting.
+            assert len([m for m in metingen if m.get('auto')]) <= 3 * 24 + 2
+            nieuw = metingen[-1]
+            assert nieuw['temp'] == 18.5 and nieuw['auto'] is True
+            assert nieuw['id'] == 5001
+            # Absoluut tijdstip naast de lokale datum/tijd.
+            assert abs(datetime.datetime.fromisoformat(nieuw['ts']).timestamp() - time.time()) < 60
+            assert nieuw['ts'].endswith('+00:00') and nieuw['datum'] and nieuw['tijd']
+
+            # Binnen een dag niet opnieuw: nieuwe oude rijen blijven dan staan.
+            srv._write_json('gist_metingen', metingen + oud[:12])
+            srv._auto_metingen_tick()
+            assert len(srv._read_json('gist_metingen', [])) == len(metingen) + 12 + 1
+        finally:
+            self._clean()
+
+    def test_onleesbare_sensor_schrijft_niets(self, app, monkeypatch):
+        srv._write_json('ha_instellingen', {
+            'enabled': True, 'sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.t1'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Vergisten'}])
+        srv._write_json('gist_metingen', [])
+        monkeypatch.setenv('SUPERVISOR_TOKEN', 'test')
+        monkeypatch.setattr(srv.urllib.request, 'urlopen',
+                            lambda *a, **k: _NepAntwoord(b'{"state": "nan"}'))
+        try:
+            versie = srv._data_version('gist_metingen')
+            srv._auto_metingen_tick()
+            assert srv._read_json('gist_metingen', []) == []
+            assert srv._data_version('gist_metingen') == versie
         finally:
             self._clean()
 
@@ -2944,6 +3873,24 @@ class TestWebsiteTelemetrie:
         # Andere afvullingen tellen niet; geen locaties → synthetische AGP.
         assert vpl(afv, [], [{'afvulling_id': 8, 'aantal': 5}], [], []) == {'1': 10}
 
+    def test_voorraad_per_locatie_bijboeking(self):
+        # Inventarisatie-overschot = afboeking met negatief aantal: die flesjes
+        # komen erbij (net als voorraadPerLocatie in calculations.ts), anders
+        # zijn ze nooit uit te slaan of te verkopen.
+        locs = [{'id': 1, 'is_agp': True}, {'id': 2}]
+        afv = {'id': 7, 'hoeveelheid': 24}
+        vpl = srv._voorraad_per_locatie
+        assert vpl(afv, locs, [], [], [{'afvulling_id': 7, 'aantal': -2, 'datum': '2026-01-05'}]) == {'1': 26}
+        # Mét locatie: op die locatie erbij.
+        afb = [{'afvulling_id': 7, 'aantal': -3, 'datum': '2026-01-05', 'bron_locatie_id': 2}]
+        assert vpl(afv, locs, [], [], afb) == {'1': 24, '2': 3}
+        # Daarna is alles verplaatsbaar.
+        verpl = [{'afvulling_id': 7, 'van_locatie_id': 1, 'naar_locatie_id': 2, 'aantal': 26, 'datum': '2026-01-06'}]
+        assert vpl(afv, locs, [], verpl, [{'afvulling_id': 7, 'aantal': -2, 'datum': '2026-01-05'}]) == {'1': 0, '2': 26}
+        # Een negatieve verplaatsing of uitlevering blijft genegeerd.
+        verpl_neg = [{'afvulling_id': 7, 'van_locatie_id': 1, 'naar_locatie_id': 2, 'aantal': -5, 'datum': '2026-01-06'}]
+        assert vpl(afv, locs, [{'afvulling_id': 7, 'aantal': -4, 'datum': '2026-01-06'}], verpl_neg, []) == {'1': 24}
+
     # ── _wc_request ───────────────────────────────────────────────────────
     def test_wc_request_bouwt_zonder_api_pad_hetzelfde_adres(self, monkeypatch):
         gezien = []
@@ -3160,3 +4107,206 @@ class TestWebsiteTelemetrie:
     def test_bron_uit_config_yaml(self):
         versie = re.search(r'^version:\s*"([^"]+)"', (Path(srv.__file__).parent / 'config.yaml').read_text(), re.M)
         assert srv._app_versie() == versie.group(1)
+
+
+# ── Versleutelde credentials in de serverbackup (ERP-plan 5.8) ───────────────
+
+class TestBackupVersleuteling:
+    """Wachtwoorden en API-sleutels staan in de serverbackup alleen als
+    versleutelde envelop: in de dagmap, in de db-kopie en in de offsite-ZIP.
+    De backup blijft volledig herstelbaar met het sleutelbestand of het
+    backup-wachtwoord uit de addon-opties."""
+
+    GEHEIM = 'cs_ZEERGEHEIM_4711'
+
+    @pytest.fixture()
+    def offsite(self, tmp_path, monkeypatch):
+        doel = tmp_path / 'backup' / 'brewadmin'
+        doel.mkdir(parents=True)
+        monkeypatch.setattr(srv, 'OFFSITE_BACKUP_DIR', doel)
+        return doel
+
+    @pytest.fixture()
+    def creds(self, app):
+        body = {'storeUrl': 'https://shop.example', 'consumerKey': 'ck_1', 'consumerSecret': self.GEHEIM}
+        assert req(app, 'POST', '/api/data/woocommerce_creds', body=body)[0] == 200
+        yield body
+        with srv._data_lock:
+            conn = srv._db()
+            with conn:
+                srv._schrijf_key(conn, 'woocommerce_creds', {})
+
+    @pytest.fixture()
+    def opties(self):
+        pad = srv.DATA_DIR / 'options.json'
+        yield pad
+        pad.unlink(missing_ok=True)
+        srv._wachtwoord_sleutel_cache.clear()
+
+    def _bevat_geheim(self, data: bytes) -> bool:
+        return self.GEHEIM.encode() in data
+
+    def test_envelop_roundtrip_en_manipulatie(self, app):
+        bs = srv._backup_sleutel_voor_versleutelen()
+        env = srv._versleutel_waarde({'apiKey': 'geheim', 'n': 1}, bs)
+        assert srv._is_versleuteld(env) and 'geheim' not in json.dumps(env)
+        assert srv._ontsleutel_waarde(env) == {'apiKey': 'geheim', 'n': 1}
+        # Verse nonce per envelop: dezelfde tekst geeft een andere envelop.
+        env2 = srv._versleutel_waarde({'apiKey': 'geheim', 'n': 1}, bs)
+        assert env2['nonce'] != env['nonce'] and env2['data'] != env['data']
+        # Eén bit omgedraaid in de versleutelde tekst → geweigerd.
+        data = bytearray(base64.b64decode(env['data']))
+        data[0] ^= 1
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde({**env, 'data': base64.b64encode(bytes(data)).decode()})
+        assert fout.value.reden == 'beschadigd'
+        # De kop is ook geauthenticeerd.
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde({**env, 'extra': 'x'})
+        assert fout.value.reden == 'beschadigd'
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde({**env, 'sleutel_id': '0' * 16})
+        assert fout.value.reden == 'andere_sleutel'
+
+    def test_dagmap_dbkopie_en_offsite_zonder_leesbaar_geheim(self, app, offsite, creds):
+        import sqlite3
+        import zipfile
+        datum = srv._run_backup()
+        dest = srv.BACKUP_DIR / datum
+        assert not self._bevat_geheim((dest / 'woocommerce_creds.json').read_bytes())
+        # Ook niet in vrije pagina's van de db-kopie (VACUUM) en zonder sidecars.
+        assert not self._bevat_geheim((dest / srv.DB_NAAM).read_bytes())
+        assert not any((dest / (srv.DB_NAAM + s)).exists() for s in ('-wal', '-shm', '-journal'))
+        conn = sqlite3.connect(str(dest / srv.DB_NAAM))
+        try:
+            rij = conn.execute("SELECT data FROM kv WHERE key='woocommerce_creds'").fetchone()
+        finally:
+            conn.close()
+        assert srv._ontsleutel_waarde(json.loads(rij[0])) == creds
+        with zipfile.ZipFile(offsite / f'brewadmin_backup_{datum}.zip') as zf:
+            assert zf.comment == srv._OFFSITE_ZIP_COMMENTAAR
+            assert not any(self._bevat_geheim(zf.read(n)) for n in zf.namelist())
+        # Het sleutelbestand: 0600 en nooit zelf in de backup.
+        sleutel = srv._backup_sleutel_bestand()
+        assert sleutel.stat().st_mode & 0o777 == 0o600
+        assert not any(p.name == sleutel.name for p in dest.rglob('*'))
+        status, body, _ = req(app, 'GET', '/api/health')
+        assert body['backup_versleuteling'] == {'methode': 'sleutelbestand', 'sleutel_aanwezig': True}
+
+    def test_oude_backups_worden_eenmalig_omgezet(self, app, offsite):
+        import sqlite3
+        import zipfile
+        oud = srv.BACKUP_DIR / '2026-01-01'
+        oud.mkdir(parents=True, exist_ok=True)
+        (oud / 'woocommerce_creds.json').write_text(json.dumps({'storeUrl': 'x', 'consumerSecret': self.GEHEIM}))
+        (oud / 'gn_codes.json').write_text('[{"id": 1}]')
+        conn = sqlite3.connect(str(oud / srv.DB_NAAM))
+        srv._maak_schema(conn)
+        with conn:
+            srv._schrijf_key(conn, 'woocommerce_creds', {'consumerSecret': self.GEHEIM})
+            srv._schrijf_key(conn, 'gn_codes', [{'id': 1}])
+        conn.close()
+        zip_pad = offsite / 'brewadmin_backup_2026-01-01.zip'
+        with zipfile.ZipFile(zip_pad, 'w') as zf:
+            for f in sorted(oud.iterdir()):
+                zf.write(f, f.name)
+            zf.writestr('inkoop_facturen/factuur.pdf', b'%PDF-1.4 bijlage')
+        assert srv._versleutel_bestaande_backups() >= 2
+        assert not self._bevat_geheim((oud / 'woocommerce_creds.json').read_bytes())
+        assert not self._bevat_geheim((oud / srv.DB_NAAM).read_bytes())
+        assert json.loads((oud / 'gn_codes.json').read_text()) == [{'id': 1}]
+        with zipfile.ZipFile(zip_pad) as zf:
+            assert zf.comment == srv._OFFSITE_ZIP_COMMENTAAR
+            assert zf.read('inkoop_facturen/factuur.pdf') == b'%PDF-1.4 bijlage'
+            assert not any(self._bevat_geheim(zf.read(n)) for n in zf.namelist())
+            envelop = json.loads(zf.read('woocommerce_creds.json'))
+        assert srv._ontsleutel_waarde(envelop)['consumerSecret'] == self.GEHEIM
+        assert zip_pad.stat().st_mode & 0o777 == 0o600
+        # Idempotent, en geen uitgepakte db-kopie achtergebleven in /data.
+        assert srv._versleutel_bestaande_backups() == 0
+        assert not list(srv.DATA_DIR.glob('.backup_db_*'))
+
+    def test_backup_wachtwoord(self, app, offsite, creds, opties):
+        opties.write_text(json.dumps({'backup_password': 'correct paard batterij niet'}))
+        status, body, _ = req(app, 'GET', '/api/health')
+        assert body['backup_versleuteling'] == {'methode': 'wachtwoord'}
+        datum = srv._run_backup()
+        env = json.loads((srv.BACKUP_DIR / datum / 'woocommerce_creds.json').read_text())
+        assert env['methode'] == 'wachtwoord'
+        assert env['kdf']['naam'] in ('scrypt', 'pbkdf2_sha256') and env['kdf']['salt']
+        assert srv._ontsleutel_waarde(env) == creds
+        # Ook zonder sleutelbestand (ander volume verloren) te openen.
+        sleutel = srv._backup_sleutel_bestand()
+        bewaard = sleutel.read_bytes()
+        sleutel.unlink()
+        try:
+            srv._wachtwoord_sleutel_cache.clear()
+            assert srv._ontsleutel_waarde(env) == creds
+        finally:
+            sleutel.write_bytes(bewaard)
+            os.chmod(sleutel, 0o600)
+        opties.write_text(json.dumps({'backup_password': 'fout'}))
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde(env)
+        assert fout.value.reden == 'andere_sleutel'
+        opties.write_text('{}')
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde(env)
+        assert fout.value.reden == 'geen_wachtwoord'
+
+    def test_teruggezette_db_wordt_bij_de_start_ontsleuteld(self, app, creds):
+        bs = srv._backup_sleutel_voor_versleutelen()
+        with srv._data_lock:
+            conn = srv._db()
+            with conn:
+                srv._schrijf_key(conn, 'woocommerce_creds', srv._versleutel_waarde(creds, bs))
+        # Vóór het herstel: lege credentials in de app, geen ciphertext.
+        assert req(app, 'GET', '/api/data/woocommerce_creds')[1] == {}
+        srv._herstel_versleutelde_geheimen()
+        assert srv._read_json('woocommerce_creds') == creds
+        body = req(app, 'GET', '/api/data/woocommerce_creds')[1]
+        assert body['consumerSecret'] == srv._SECRET_SENTINEL and body['storeUrl'] == creds['storeUrl']
+
+    def test_niet_te_openen_envelop_blijft_staan(self, app, opties):
+        opties.write_text(json.dumps({'backup_password': 'eerder'}))
+        bs = srv._backup_sleutel_voor_versleutelen()
+        env = srv._versleutel_waarde({'apiKey': 'sk_x'}, bs)
+        opties.write_text('{}')
+        with srv._data_lock:
+            conn = srv._db()
+            with conn:
+                srv._schrijf_key(conn, 'claude_creds', env)
+        try:
+            srv._herstel_versleutelde_geheimen()
+            assert srv._read_json('claude_creds') == env  # een later ingesteld wachtwoord opent hem alsnog
+            assert req(app, 'GET', '/api/data/claude_creds')[1] == {}
+            opties.write_text(json.dumps({'backup_password': 'eerder'}))
+            srv._herstel_versleutelde_geheimen()
+            assert srv._read_json('claude_creds') == {'apiKey': 'sk_x'}
+        finally:
+            with srv._data_lock:
+                conn = srv._db()
+                with conn:
+                    srv._schrijf_key(conn, 'claude_creds', {})
+
+    def test_onleesbaar_sleutelbestand_faalt_dicht(self, app, offsite, creds):
+        import sqlite3
+        sleutel = srv._backup_sleutel_voor_versleutelen() and srv._backup_sleutel_bestand()
+        bewaard = sleutel.read_bytes()
+        sleutel.write_text('kapot')
+        try:
+            datum = srv._run_backup()
+            dest = srv.BACKUP_DIR / datum
+            # Liever geen credentials in de backup dan leesbare.
+            assert not (dest / 'woocommerce_creds.json').exists()
+            assert not self._bevat_geheim((dest / srv.DB_NAAM).read_bytes())
+            conn = sqlite3.connect(str(dest / srv.DB_NAAM))
+            try:
+                assert conn.execute("SELECT 1 FROM kv WHERE key='woocommerce_creds'").fetchone() is None
+            finally:
+                conn.close()
+            # En het kapotte bestand wordt nooit stil vervangen.
+            assert sleutel.read_text() == 'kapot'
+        finally:
+            sleutel.write_bytes(bewaard)
+            os.chmod(sleutel, 0o600)

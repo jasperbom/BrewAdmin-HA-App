@@ -115,12 +115,17 @@ const datumVan = (x: any): string => String(x?.datum || '')
 
 /**
  * Telt deze batch als brouwsel? Een geplande brouw is nog geen brouwsel: die
- * mee laten tellen zou de kosten per brouw verwateren. Vergiste liters of
- * genoteerde kosten maken er een echt brouwsel van.
+ * mee laten tellen zou de kosten per brouw verwateren én het venster naar de
+ * toekomst schuiven. Alleen de status zegt dat: bij het plannen staat
+ * `liter_vergist` al vooraf ingevuld uit het recept (maakNieuweBatch, de knop
+ * op de receptenpagina, bfMapBatch voor een Brewfather-'Planning'). Voor de
+ * rest — ook oude batches zonder status — maken vergiste liters of genoteerde
+ * kosten er een echt brouwsel van.
  */
 const isBrouwsel = (b: any): boolean =>
-  (getal(b?.liter_vergist) ?? 0) > 0 ||
-  KOSTEN_POSTEN.some(p => (getal(b?.[p.batchVeld]) ?? 0) > 0)
+  String(b?.status || '').trim() !== 'Gepland' && (
+    (getal(b?.liter_vergist) ?? 0) > 0 ||
+    KOSTEN_POSTEN.some(p => (getal(b?.[p.batchVeld]) ?? 0) > 0))
 
 /** Datum `dagen` eerder, als yyyy-mm-dd. */
 const datumMin = (datum: string, dagen: number): string => {

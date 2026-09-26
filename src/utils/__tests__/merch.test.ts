@@ -3,6 +3,7 @@ import {
   MerchArtikel, merchLabel, isMerch, onthoudMerch, vergeetMerch,
   verwijderMerch, vindMerch, boekMerchMutaties, merchTekorten,
   merchAfboekingenVoorRegels, merchVoorraadWaarde, merchLogVoorArtikel,
+  merchGereserveerd, merchBeschikbaarVoorWc,
 } from '../merch'
 
 const lijst: MerchArtikel[] = [
@@ -230,5 +231,44 @@ describe('merchLogVoorArtikel', () => {
       {id: 3, merch_id: 1, datum: '2026-08-19', aantal: -2, reden: 'verkoop' as const},
     ]
     expect(merchLogVoorArtikel(log, 1).map(r => r.id)).toEqual([3, 1])
+  })
+})
+
+// Bevinding #50: de voorraadpush naar de webshop trekt merch af die voor open
+// orders klaarligt (die gaat pas bij het afronden van de voorraad af).
+describe('merchGereserveerd / merchBeschikbaarVoorWc', () => {
+  const artikelen: MerchArtikel[] = [
+    {id: 1, sku: 'GLAS01', naam: 'Proefglas', voorraad_volgen: true, voorraad: 5},
+    {id: 2, sku: 'SHIRT-L', naam: 'T-shirt L', voorraad_volgen: false},
+  ]
+  const regel = (sku: string, aantal: number, type = 'vrij') => ({type, sku, omschrijving: sku, aantal, merch: true})
+
+  it('een open order met 3 glazen: van 5 naar 2', () => {
+    const g = merchGereserveerd([{status: 'nieuw', regels: [regel('GLAS01', 3)]}], artikelen)
+    expect(g.get(1)).toBe(3)
+    expect(merchBeschikbaarVoorWc(artikelen[0], g)).toBe(2)
+  })
+
+  it('afgeronde en geannuleerde orders tellen niet, verzonden wel', () => {
+    const g = merchGereserveerd([
+      {status: 'afgerond', regels: [regel('GLAS01', 1)]},
+      {status: 'geannuleerd', regels: [regel('GLAS01', 1)]},
+      {status: 'verzonden', regels: [regel('GLAS01', 2)]},
+      {status: 'gepickt', regels: [regel('GLAS01', 1)]},
+    ], artikelen)
+    expect(g.get(1)).toBe(3)
+  })
+
+  it('bierregels en dropship-merch tellen niet', () => {
+    const g = merchGereserveerd([{status: 'nieuw', regels: [regel('GLAS01', 4, 'bier'), regel('SHIRT-L', 2)]}], artikelen)
+    expect(g.size).toBe(0)
+    expect(merchBeschikbaarVoorWc(artikelen[0], g)).toBe(5)
+  })
+
+  it('nooit onder nul, ook zonder reserveringen', () => {
+    const g = merchGereserveerd([{status: 'bevestigd', regels: [regel('GLAS01', 9)]}], artikelen)
+    expect(merchBeschikbaarVoorWc(artikelen[0], g)).toBe(0)
+    expect(merchBeschikbaarVoorWc({id: 3, voorraad: -2}, null)).toBe(0)
+    expect(merchBeschikbaarVoorWc(artikelen[0])).toBe(5)
   })
 })

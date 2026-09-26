@@ -1,21 +1,27 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, wcPut, wcPost, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
-import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct } from '../utils/btw'
+import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct, artikelBtwPct } from '../utils/btw'
+import { orderIsGefactureerd, breweryMetTermijn, vervaldatumTekst } from '../utils/facturen'
+import { statiegeldFactuurRegels } from '../utils/statiegeld'
 import { fmt, fmtD, tod } from '../utils/format'
 import { voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
-import { verkoopUitAgpToegestaan, uitTeSlaan, bouwUitslagBoekingen } from '../utils/agp'
-import { bouwVerkoopUitleveringen } from '../utils/uitlevering'
+import { verkoopUitAgpToegestaan, uitTeSlaan, bouwUitslagBoekingen, uitslagDatumFout, laatsteAfvulDatum, VERPLAATS_FOUT_KEYS } from '../utils/agp'
+import { bouwVerkoopUitleveringen, orderUitgeleverd, pickZonderUitlevering, bouwPickTerugdraaiing, PickTerugdraaiing } from '../utils/uitlevering'
 import { agpGereserveerdPerAfvulling } from '../utils/kassa'
+import { beschikbaarVoorAfvulling as beschikbaarNaPicks, beschikbaarPerLocatieNaPicks, beschikbaarBuitenAgpNaPicks } from '../utils/beschikbaarheid'
+import { verkoopbareAfvullingen } from '../utils/haccp'
 import UitslagModal from '../components/UitslagModal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
+import BevestigKnop from '../components/ui/BevestigKnop'
 import SectionHeader from '../components/ui/SectionHeader'
 import { printPakbon, printFactuur, printPicklijst, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
+import { herbruikbareBetaallink, betaallinkRecord } from '../utils/mollieLink'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden } from '../utils/wcProduct'
 import { crafteryMeta } from '../utils/craftery'
@@ -23,7 +29,7 @@ import { bierInvulVelden, bierInfoVoorArtikel } from '../utils/bierinfo'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { factuurMailBetaalVars } from '../utils/factuurMail'
-import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
+import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding, wcOrderAfgebroken } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, wcSyncTeHerhalen, wcSyncDoelVoorStatus, WcSyncDoel } from '../utils/wcTerugschrijven'
 import {
   leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, afhaalMailKnop, afhaalGemistMailKnop, MailKnop,
@@ -32,13 +38,13 @@ import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
-import { regelBedrag, heeftAutoritair } from '../utils/orderRegel'
-import { matchAfvullingenVoorRegel, diagnosePickMatch, bestellingenOmTePicken, verzamelPicklijst } from '../utils/picking'
+import { regelBedrag, heeftAutoritair, corrigeerRegelBtw } from '../utils/orderRegel'
+import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst } from '../utils/picking'
 import type { AttentieDoel } from '../utils/attentie'
 import {
   MerchArtikel, MerchMutatie, merchLabel, onthoudMerch, vergeetMerch, verwijderMerch,
   volgtVoorraad, merchVoorraad, merchVoorraadWaarde, merchLogVoorArtikel,
-  boekMerchMutaties, merchAfboekingenVoorRegels, merchTekorten,
+  boekMerchMutaties, merchAfboekingenVoorRegels, merchTekorten, merchGereserveerd, merchBeschikbaarVoorWc,
 } from '../utils/merch'
 import BierKleur from '../components/ui/BierKleur'
 import Icon from '../components/ui/Icon'
@@ -281,7 +287,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     b.wc_betaal_methode || '',
   ].filter(Boolean).join(' · ')
 
-  const BetaaldBadge = ({b}: {b: any}) => b?.wc_betaald ? (
+  // In de winkel geannuleerd, mislukt of terugbetaald (utils/wcOrderImport):
+  // dat gaat vóór "betaald" — zo'n order telt nooit als betaald.
+  const BetaaldBadge = ({b}: {b: any}) => wcOrderAfgebroken(b) ? (
+    <span title={t('orders_wc_afgebroken_tip')}
+      className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+      {t('orders_wc_sync_ok').replace('{status}', t(`wc_status_${b.wc_status}`, b.wc_status))}
+    </span>
+  ) : b?.wc_betaald ? (
     <span title={betaaldTip(b)}
       className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
       ✓ {t('orders_betaald')}
@@ -351,60 +364,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return (b.klant_bedrijf || '').trim() ? 'zakelijk' : 'prive'
   }
 
-  // Beschikbaar voor een afvulling (exclusief open orders picks, inclusief deze bestelling)
-  const beschikbaarVoorAfvulling = (a: any, excludeBestellingId?: number): number => {
-    const gepickt = (bestellingPicks||[])
-      .filter((p: any) => {
-        if (p.afvulling_id !== a.id) return false
-        if (excludeBestellingId && p.bestelling_id === excludeBestellingId) return false
-        // Picks met uitslag-records tellen al mee via `uitgeleverd` hieronder
-        if (pickUitgeslagen(p)) return false
-        const b = (bestellingen||[]).find((bs: any) => bs.id === p.bestelling_id)
-        return b && b.status !== 'afgerond' && b.status !== 'geannuleerd'
-      })
-      .reduce((s: number, p: any) => s + Number(p.aantal||0), 0)
-    const uitgeleverd = (uit||[])
-      .filter((u: any) => u.afvulling_id === a.id)
-      .reduce((s: number, u: any) => s + Number(u.aantal||0), 0)
-    return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeleverd)
-  }
+  // Voorraadtelling gedeeld met de kassa en de productpagina
+  // (utils/beschikbaarheid.ts): afgevuld min open picks, uitleveringen en
+  // afboekingen. `excludeBestellingId` laat de picks van de order die je nu
+  // pickt buiten beschouwing.
+  const voorraadData = {bestellingPicks, bestellingen, uit, afboekingen, locaties, verplaatsingen} as any
 
-  // Beschikbaar per locatie voor een afvulling: fysieke voorraad per locatie
-  // (voorraadPerLocatie) minus actieve picks per locatie (van andere orders).
-  const beschikbaarPerLocatieVoorAfvulling = (a: any, excludeBestellingId?: number): Record<number, number> => {
-    if (!a || !(locaties||[]).length) return {}
-    const fysiek = voorraadPerLocatie(a, locaties as any, uit as any, verplaatsingen as any, afboekingen as any)
-    const res: Record<number, number> = {...fysiek}
-    const agp = getAgpLocatie(locaties as any)
-    for (const p of ((bestellingPicks||[]) as any[])) {
-      if (p.afvulling_id !== a.id) continue
-      if (excludeBestellingId && p.bestelling_id === excludeBestellingId) continue
-      // Picks met uitslag-records zitten al in voorraadPerLocatie (uitleveringen)
-      if (pickUitgeslagen(p)) continue
-      const b = (bestellingen||[]).find((bs: any) => bs.id === p.bestelling_id)
-      if (!b || b.status === 'afgerond' || b.status === 'geannuleerd') continue
-      const locId = p.bron_locatie_id ?? agp.id
-      res[locId] = (res[locId] || 0) - Number(p.aantal || 0)
-    }
-    for (const k of Object.keys(res)) {
-      const id = Number(k)
-      if (res[id] < 0) res[id] = 0
-    }
-    return res
-  }
+  // Beschikbaar voor een afvulling (exclusief open orders picks, inclusief deze bestelling)
+  const beschikbaarVoorAfvulling = (a: any, excludeBestellingId?: number): number =>
+    beschikbaarNaPicks(a, voorraadData, excludeBestellingId)
+
+  // Beschikbaar per locatie: fysieke voorraad per locatie min de picks van
+  // andere orders. Een pick zonder bronlocatie legt eerst vrije voorraad vast
+  // (daar haalt de uitlevering hem ook vandaan), alleen de rest de AGP.
+  const beschikbaarPerLocatieVoorAfvulling = (a: any, excludeBestellingId?: number): Record<number, number> =>
+    beschikbaarPerLocatieNaPicks(a, voorraadData, excludeBestellingId)
 
   // Beschikbaar voor een afvulling exclusief AGP-voorraad: wat verkocht kan
   // worden. Een verkoop komt nooit rechtstreeks uit de AGP (behalve export /
   // intra-EU) — eerst uitslaan, zie utils/agp.ts.
-  const beschikbaarBuitenAgpVoorAfvulling = (a: any, excludeBestellingId?: number): number => {
-    const perLoc = beschikbaarPerLocatieVoorAfvulling(a, excludeBestellingId)
-    const agp = getAgpLocatie(locaties as any)
-    let total = 0
-    for (const k of Object.keys(perLoc)) {
-      if (Number(k) !== agp.id) total += Number(perLoc[Number(k)] || 0)
-    }
-    return total
-  }
+  const beschikbaarBuitenAgpVoorAfvulling = (a: any, excludeBestellingId?: number): number =>
+    beschikbaarBuitenAgpNaPicks(a, voorraadData, excludeBestellingId)
 
   // Compact label met voorraad per locatie voor één afvulling, bv. "AGP: 20, Magazijn: 10".
   // Geeft lege string terug als slechts één locatie voorraad heeft (info niet nuttig).
@@ -435,7 +415,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // Geblokkeerd na een afgekeurde sluitcontrole (CCP 2): niet leverbaar
     // tot de afwijking is afgehandeld. Het bier blijft wel fysiek aanwezig
     // en telt dus door in de accijnsvoorraad.
-    const filtered = (av||[]).filter((a: any) => !a.geblokkeerd && beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
+    const filtered = verkoopbareAfvullingen(av).filter((a: any) => beschikbaarVoorAfvulling(a, excludeBestellingId) > 0)
     return matchAfvullingenVoorRegel(filtered, regelBierNaam, regelVerpakking, orderSku,
       {bat, artikelen, producten, productArtikelen, verpakkingen})
   }
@@ -509,7 +489,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     try {
       const refs = {artikelen, productArtikelen, producten, bat, standaardBtw: stdBtw, btwTarieven,
         merch: merchArtikelen}
-      const r = await importeerWcOrders({wcGet, refs, bestellingen: bestellingen || [], klanten: klanten || [], wcCreds, t})
+      // Met de picks: een order die in de winkel geannuleerd is en hier nog
+      // niet gepickt, annuleert de import zelf (utils/wcOrderImport).
+      const r = await importeerWcOrders({wcGet, refs, bestellingen: bestellingen || [], klanten: klanten || [], wcCreds, t,
+        bestellingPicks: bestellingPicks || []})
       if (r.nieuw.length || Object.keys(r.updates).length) {
         setBestellingen((prev: any[]) => pasImportToe(prev, r))
         importAuditRegels(r).forEach(a => logAudit(auditLog, setAuditLog, {entiteit: 'Bestelling', ...a}))
@@ -578,7 +561,34 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     (regels || []).reduce((m: number, r: any) => Math.max(m, Number(r?.id) || 0), 0) + 1
 
   // --- Handmatige order opslaan ---
+  // Dubbelklikgrendel, zoals bij afronden: tussen de klik en het sluiten van
+  // het formulier zit een netwerkronde (het bestelnummer). Een tweede klik in
+  // dat venster maakte een tweede order en verbruikte een tweede M-nummer. Na
+  // een geslaagde opslag blijft de grendel dicht tot het formulier opnieuw
+  // opent.
+  const manualOpslaanRef = useRef(false)
+  const [manualOpslaanBezig, setManualOpslaanBezig] = useState(false)
+  const openManualOrder = () => {
+    manualOpslaanRef.current = false
+    setManualOpslaanBezig(false)
+    setManualForm(emptyManual)
+    setShowManualModal(true)
+  }
   const saveManualOrder = async () => {
+    if (manualOpslaanRef.current) return
+    manualOpslaanRef.current = true
+    setManualOpslaanBezig(true)
+    let gelukt = false
+    try {
+      gelukt = (await slaManualOrderOp()) === true
+    } finally {
+      if (!gelukt) {
+        manualOpslaanRef.current = false
+        setManualOpslaanBezig(false)
+      }
+    }
+  }
+  const slaManualOrderOp = async (): Promise<boolean | undefined> => {
     if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
     if (manualForm.klant_type === 'zakelijk' && !manualForm.klant_bedrijf?.trim()) {
       alert(t('err_order_company_required')); return
@@ -647,6 +657,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setShowManualModal(false)
     setManualForm(emptyManual)
     setManualVerzending({enabled: false, naam: '', prijs: '', btw_pct: '21'})
+    return true
   }
 
   const addRegel = () => {
@@ -663,7 +674,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       verpakking_type: regelForm.verpakking_type,
       aantal: Number(regelForm.aantal),
       prijs_per_stuk: regelForm.prijs_per_stuk !== '' ? Number(regelForm.prijs_per_stuk) : 0,
-      btw_pct: Number(regelForm.btw_pct||9),
+      // Leeg = het standaardtarief; 0% blijft 0% (was: `||9`).
+      btw_pct: artikelBtwPct({btw_pct: regelForm.btw_pct}, stdBtw),
       omschrijving: regelForm.omschrijving || `${regelForm.bier_naam} ${regelForm.verpakking_type}`,
       prijsType: regelForm.prijsType || 'normaal',
     }
@@ -724,6 +736,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   const saveUitslag = ({allocaties, naar_locatie_id, datum, opmerking}: any) => {
+    // De gekozen datum wordt de accijnsdatum: periode-lock en datumregels
+    // gelden daarop (tweede slot naast de modal).
+    const datumFout = uitslagDatumFout(datum, allocaties, {accijnsAangiftes: accijnsAangiftes || []})
+    if (datumFout) {
+      alert(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties)))); return
+    }
     const naar = (locaties || []).find((l: any) => l.id === naar_locatie_id)
     const r = bouwUitslagBoekingen(
       {allocaties, naar_locatie_id, datum, opmerking},
@@ -754,8 +772,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       verplaatsingen={verplaatsingen}
       afboekingen={afboekingen}
       accijnsInst={accijnsInst}
+      accijnsAangiftes={accijnsAangiftes || []}
       gereserveerd={agpGereserveerdPerAfvulling(
-        bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id)}
+        bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id,
+        {afvullingen: av || [], locaties: locaties || [], uit, verplaatsingen, afboekingen})}
       onClose={sluitUitslag}
       onOpslaan={saveUitslag}
     />
@@ -805,6 +825,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Picking opslaan ---
   const savePicks = () => {
     if (!selectedOrder) return
+    // Al uitgeleverd (de modal stond nog open, of een tweede tabblad pickte
+    // al): opnieuw picken zou een tweede uitlevering maken terwijl de eerste
+    // blijft staan — de voorraad dubbel afgeboekt. Eerst terugdraaien.
+    if (orderUitgeleverd(bestellingPicks, selectedOrder.id)) {
+      alert(t('err_picks_al_uitgeleverd'))
+      setShowPickModal(false)
+      return
+    }
     // Verkopen gaat uit vrije voorraad — voor privé én zakelijk. Wat nog in de
     // AGP ligt moet eerst uitgeslagen worden (knop in de pickmodal); alleen
     // export/intra-EU mag onder schorsing rechtstreeks uit de AGP.
@@ -977,8 +1005,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // `cancelled` voorraad terug die er niet meer is — zie de util.
     uitgeslagen: picksVoorOrder(order?.id).some((p: any) => pickUitgeslagen(p)),
   })
-  const schrijfTerugNaarWc = async (order: any, doel: WcSyncDoel) => {
-    const plan = wcTerugschrijfPlan(order, doel, wcTerugschrijfOpties(order), t)
+  // `opties` overschrijft de afgeleide stand — bij annuleren zijn de picks net
+  // teruggedraaid, maar de state van deze render kent dat nog niet.
+  const schrijfTerugNaarWc = async (order: any, doel: WcSyncDoel, opties?: {uitgeslagen?: boolean}) => {
+    const plan = wcTerugschrijfPlan(order, doel, {...wcTerugschrijfOpties(order), ...opties}, t)
     if (!plan) return
     let uitkomst: {ok: true} | {ok: false, fout: string} = {ok: true}
     try {
@@ -987,7 +1017,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     } catch (e: any) {
       uitkomst = {ok: false, fout: wcFoutMelding(e, t)}
     }
-    const velden = wcSyncVelden(plan, uitkomst, new Date().toISOString())
+    // Met de order erbij: `completed` op een onbetaalde order wordt gemarkeerd,
+    // zodat de import hem niet als betaling terugleest (utils/wcImport).
+    const velden = wcSyncVelden(plan, uitkomst, new Date().toISOString(), order)
     setBestellingen((prev: any[]) => prev.map((b: any) => b.id === order.id ? {...b, ...velden} : b))
     logAudit(auditLog, setAuditLog, {
       entiteit: 'Bestelling', entiteit_id: order.id, actie: 'gewijzigd',
@@ -1040,8 +1072,39 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const heeftPickRegels = (order: any): boolean =>
     (order?.regels || []).some(isPickRegel)
 
+  // Dubbelklikgrendel (zie ook de kassa). Tussen de klik en het sluiten van
+  // de modal zit een netwerkronde (het factuurnummer); een tweede klik in dat
+  // venster maakte een tweede factuur en een tweede journaalboeking. De ref is
+  // de echte grendel, de state zet de knop uit. Na een geslaagde afronding
+  // blijft hij dicht tot de modal opnieuw opent.
+  const afrondBezigRef = useRef(false)
+  const [afrondBezig, setAfrondBezig] = useState(false)
+  const openAfronden = () => {
+    afrondBezigRef.current = false
+    setAfrondBezig(false)
+    setShowAfrondModal(true)
+  }
   const rondeAf = async () => {
+    if (afrondBezigRef.current) return
+    afrondBezigRef.current = true
+    setAfrondBezig(true)
+    let gelukt = false
+    try {
+      gelukt = (await voerAfrondingUit()) === true
+    } finally {
+      if (!gelukt) {
+        afrondBezigRef.current = false
+        setAfrondBezig(false)
+      }
+    }
+  }
+
+  const voerAfrondingUit = async (): Promise<boolean | undefined> => {
     if (!selectedOrder) return
+    // Al afgerond of al gefactureerd (bijv. een klik uit een verouderde
+    // weergave, of een tweede tabblad dat de factuur al maakte): nooit een
+    // tweede factuur. Kijkt ook naar de facturen zelf (utils/facturen.ts).
+    if (orderIsGefactureerd(selectedOrder, verkoopFacturen)) { setShowAfrondModal(false); return }
     const picks = picksVoorOrder(selectedOrder.id)
     if (heeftPickRegels(selectedOrder) && !picks.length) { alert(t('err_order_no_picks')); return }
     const vandaag = tod()
@@ -1131,41 +1194,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         ...(heeftAutoritair(r) ? { wc_netto: Number(r.wc_netto), wc_btw: Number(r.wc_btw) } : {}),
       }
     })
-    // Statiegeld auto-pass: voor elke bier-regel met een verpakking die statiegeld
-    // heeft, één extra factuurregel toevoegen (BTW altijd 0%). WooCommerce-orders
-    // mogen al een statiegeldregel meesturen — in dat geval slaan we de auto-pass
-    // over om dubbele boeking te voorkomen.
-    const wcHasOwnDeposit = !!selectedOrder.wc_order_id && (selectedOrder.regels||[]).some((r: any) => {
-      const oms = String(r.omschrijving||'').toLowerCase()
-      return oms.includes('statiegeld') || oms.includes('deposit') || oms.includes('borg')
-    })
-    if (!wcHasOwnDeposit) {
-      ;(selectedOrder.regels||[]).forEach((r: any) => {
-        if (r.type && r.type !== 'bier') return
-        const vp = (verpakkingen||[]).find((v: any) =>
-          (r.verpakking_id && v.id === r.verpakking_id) ||
-          (v.naam && r.verpakking_type && String(v.naam).toLowerCase() === String(r.verpakking_type).toLowerCase()) ||
-          (v.type && r.verpakking_type && String(v.type).toLowerCase() === String(r.verpakking_type).toLowerCase())
-        )
-        const bedrag = Number(vp?.statiegeld_bedrag || 0)
-        const soort = vp?.statiegeld_soort
-        if (!vp || bedrag <= 0 || (soort !== 'snd' && soort !== 'fust')) return
-        const aantal = Number(r.aantal||0)
-        if (aantal === 0) return
-        const netto = rnd2(aantal * bedrag)
-        regelsList.push({
-          omschrijving: `${t(soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${vp.naam}`,
-          hoeveelheid: aantal,
-          prijs_per_stuk: bedrag,
-          btw_pct: 0,
-          netto,
-          btw_bedrag: 0,
-          bruto: netto,
-          statiegeld_soort: soort,
-          verpakking_id: vp.id,
-        })
-      })
-    }
+    // Statiegeld: per bierregel met een SND-/fustverpakking één extra
+    // factuurregel (0% BTW) — alleen bij een handmatige order. Bij een
+    // webshoporder zijn de WooCommerce-bedragen leidend: wat de klant betaalde
+    // is wat de winkel rekende (utils/statiegeld.ts).
+    regelsList.push(...statiegeldFactuurRegels(selectedOrder, verpakkingen || [],
+      (soort, vp) => `${t(soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${vp.naam}`))
     const btwTarieven = [...new Set(regelsList.map((r: any) => Number(r.btw_pct||0)))] as number[]
     const btw_overzicht = btwTarieven.map(tarief => {
       const regelsVanTarief = regelsList.filter((r: any) => Number(r.btw_pct||0) === tarief)
@@ -1289,15 +1323,80 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       omschrijving: `${selectedOrder.klant_naam} — afgerond, factuur ${factuurNummer} (${alleUitleveringenVoorOrder.length} uitleveringen)`,
     })
     setShowAfrondModal(false)
+    return true
+  }
+
+  // --- Picks terugdraaien (utils/uitlevering.ts) ---
+  // Een volledig gepickte order heeft zijn uitleveringen al: het bier telt als
+  // verkocht. Zolang het de deur niet uit is (niet 'verzonden'), draaien
+  // annuleren en "picks terugdraaien" dat terug: de uitleveringen vervallen,
+  // de picks blijven als concept staan en het log krijgt een tegenregel.
+  // `null` = er valt niets terug te draaien.
+  const pickTerugdraaiing = (order: any): PickTerugdraaiing | null => {
+    if (!order || order.status === 'verzonden' || order.status === 'afgerond' || order.status === 'geannuleerd') return null
+    if (!orderUitgeleverd(bestellingPicks, order.id)) return null
+    // Een levering onder schorsing uit de AGP (export/intra-EU) staat in het
+    // AGP-voorraadverloop van de accijnsaangifte; is die maand al ingediend,
+    // dan blijft hij staan. Levering uit vrije voorraad raakt de AGP niet.
+    const agpId = getAgpLocatie(locaties as any).id
+    return bouwPickTerugdraaiing(order.id, bestellingPicks, uit, {
+      datum: tod(),
+      omschrijving: `${t('log_pick_teruggedraaid')} — ${order.klant_naam || ''}`,
+      referentie: orderNummer(order),
+      vergrendeld: (u: any) => (u.bron_locatie_id ?? agpId) === agpId
+        && !!u.datum && accijnsMaandGesloten(u.datum, accijnsAangiftes || []),
+    })
+  }
+  const blokkadeTekst = (r: PickTerugdraaiing | null): string =>
+    r?.blokkade ? t(r.blokkade === 'accijns' ? 'err_terugdraaien_accijns' : 'err_terugdraaien_periode') : ''
+  // Alle drie de schrijfacties in dezelfde tick: de client bundelt ze tot één
+  // commit, dus uitlevering, pick en log lopen nooit uit de pas.
+  const voerTerugdraaiingUit = (orderId: number, r: PickTerugdraaiing) => {
+    const ids = new Set(r.uitleveringIds)
+    if (ids.size) setUit((prev: any[]) => (prev || []).filter((u: any) => !ids.has(u.id)))
+    setBestellingPicks((prev: any[]) => (prev || []).map((p: any) =>
+      p.bestelling_id === orderId ? pickZonderUitlevering(p) : p))
+    if (r.tegenregels.length) {
+      setLog((prev: any[]) => {
+        let logId = newId(prev || [])
+        return [...(prev || []), ...r.tegenregels.map((l: any) => ({id: logId++, ...l}))]
+      })
+    }
+  }
+
+  // Terug naar een concept: de pick klopte niet (verkeerde batch of aantal).
+  // De order gaat terug naar 'nieuw' en kan opnieuw gepickt worden.
+  const draaiPicksTerug = () => {
+    if (!selectedOrder) return
+    const r = pickTerugdraaiing(selectedOrder)
+    if (!r) return
+    if (r.blokkade) { alert(blokkadeTekst(r)); return }
+    voerTerugdraaiingUit(selectedOrder.id, r)
+    setBestellingen((prev: any[]) => prev.map((b: any) =>
+      b.id === selectedOrder.id ? {...b, status: 'nieuw'} : b
+    ))
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Bestelling', entiteit_id: selectedOrder.id, actie: 'gewijzigd',
+      omschrijving: `Picks teruggedraaid — ${selectedOrder.klant_naam} (${r.uitleveringIds.length} uitleveringen, ${r.stuks} st. terug in voorraad)`,
+    })
   }
 
   const annuleerOrder = () => {
     if (!selectedOrder) return
+    // Gepickt maar nog niet verzonden: het bier ligt er nog, dus terug naar de
+    // voorraad. Verzonden bier is echt weg (alleen een notitie in de winkel).
+    const terug = pickTerugdraaiing(selectedOrder)
+    const teruggeboekt = !!terug && !terug.blokkade
+    if (teruggeboekt) voerTerugdraaiingUit(selectedOrder.id, terug!)
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, status: 'geannuleerd'} : b
     ))
-    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Geannuleerd — ${selectedOrder.klant_naam}`})
-    void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd')
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd',
+      omschrijving:`Geannuleerd — ${selectedOrder.klant_naam}${teruggeboekt ? ` (${terug!.uitleveringIds.length} uitleveringen teruggedraaid, ${terug!.stuks} st. terug in voorraad)` : ''}`})
+    // Teruggedraaid = niets meer uitgeslagen, dus de winkel mag naar
+    // `cancelled` en zijn voorraad terugboeken — net als BrewAdmin nu doet.
+    void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd',
+      teruggeboekt ? {uitgeslagen: false} : undefined)
     setShowAnnuleerModal(false)
     setView('list')
   }
@@ -1411,16 +1510,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const orderRegels = selectedOrder.regels||[]
     const regelIdx = orderRegels.findIndex((r: any) => r.id === regelId)
     const regel = orderRegels[regelIdx]
-    // Bij een expliciete tariefwijziging vervallen de autoritatieve
-    // WooCommerce-bedragen van déze regel: het nieuwe tarief moet leidend zijn,
-    // dus de BTW wordt weer uit netto × btw% herberekend.
+    // Bij een expliciete tariefwijziging blijft het netto van déze regel staan
+    // (bij een webshopregel wat WooCommerce ex-BTW rekende, ná korting) en
+    // wordt alleen de BTW opnieuw uit netto × btw% berekend (utils/orderRegel).
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id
-        ? {...b, regels: (b.regels||[]).map((r: any) => {
-            if (r.id !== regelId) return r
-            const {wc_netto, wc_btw, ...rest} = r
-            return {...rest, btw_pct: nieuwBtw}
-          })}
+        ? {...b, regels: (b.regels||[]).map((r: any) => r.id === regelId ? corrigeerRegelBtw(r, nieuwBtw) : r)}
         : b
     ))
     // Gekoppelde verkoopfactuur meecorrigeren. De factuurregels zijn 1-op-1 in
@@ -1429,11 +1524,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (selectedOrder.factuur_id != null && regelIdx >= 0) {
       const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
       if (fact) {
-        const regels = (fact.regels||[]).map((fr: any, i: number) => {
-          if (i !== regelIdx) return fr
-          const {wc_netto, wc_btw, ...rest} = fr
-          return {...rest, btw_pct: nieuwBtw}
-        })
+        const regels = (fact.regels||[]).map((fr: any, i: number) => i === regelIdx ? corrigeerRegelBtw(fr, nieuwBtw) : fr)
         const nieuweFactuur = herberekenFactuur({...fact, regels})
         setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => f.id === fact.id ? nieuweFactuur : f))
         // Journaal (ERP-plan 2.1): correctie op een al geboekte factuur =
@@ -1538,11 +1629,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const openPickModal = () => {
     if (!selectedOrder) return
-    // Initialiseer draft picks vanuit bestaande picks
-    const bestaand: Record<number, Array<{afvulling_id: number, aantal: number}>> = {}
+    // Initialiseer draft picks vanuit bestaande picks (concepten; een order
+    // met uitgeleverde picks komt hier niet — die moet eerst terug). De
+    // gekozen bronlocatie gaat mee, anders viel een deels opgeslagen concept
+    // stil terug op "automatisch".
+    const bestaand: Record<number, Array<{afvulling_id: number, aantal: number, bron_locatie_id?: number | null}>> = {}
     picksVoorOrder(selectedOrder.id).forEach((p: any) => {
       if (!bestaand[p.regel_id]) bestaand[p.regel_id] = []
-      bestaand[p.regel_id].push({afvulling_id: p.afvulling_id, aantal: p.aantal})
+      bestaand[p.regel_id].push({afvulling_id: p.afvulling_id, aantal: p.aantal, bron_locatie_id: p.bron_locatie_id ?? undefined})
     })
     setDraftPicks(bestaand)
     setShowPickModal(true)
@@ -1580,7 +1674,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!selectedOrder) return
     const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
-    printFactuur(resolvedSelectedOrder!, factuur, breweryDetails||{}, appName, factuurLogo||logo)
+    // Termijn van de klantkaart (anders de brouwerij): dezelfde vervaldatum
+    // als vanuit Boekhouding en als waarmee de te-laat-badge rekent.
+    printFactuur(resolvedSelectedOrder!, factuur, breweryMetTermijn(factuur, klanten, breweryDetails), appName, factuurLogo||logo)
   }
 
   // ── Mail-modal state ────────────────────────────────────────────────────
@@ -1595,7 +1691,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
      * 'verzending' wordt de datum van de verzendbevestiging op de order gezet,
      * bij 'afhaal_gemist' die van de afspraak-gemist-mail. */
     kind?: 'pakbon' | 'factuur' | 'bevestiging' | 'verzending' | 'afhaal_gemist'
-    mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string} | null
+    mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string,
+      bestaandeLink?: {url: string} | null, onLinkAangemaakt?: (l: {id: string, url: string}) => void} | null
     regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
     /** Knoppen onder de mail: afhaalmoment kiezen/verzetten en "Bekijk je
      * bestelling" (utils/levering → afhaalMailKnop, bestelLink). */
@@ -1650,17 +1747,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
     setMailGenerating(true)
     try {
-      const html = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryDetails||{}, appName, factuurLogo||logo)
+      // Termijn van de klantkaart (anders de brouwerij) — PDF, {vervaldatum}
+      // en te-laat-badge rekenen zo met dezelfde datum (utils/facturen.ts).
+      const breweryMet = breweryMetTermijn(factuur, klanten, breweryDetails)
+      const html = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryMet, appName, factuurLogo||logo)
       const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
       const pdfBase64 = await htmlToPdfBase64(html)
       const bedrag = fmt(factuur.bruto || 0)
-      const termijn = (breweryDetails as any)?.betalingstermijn ?? 14
-      const verval = (() => {
-        try {
-          const d = new Date(factuur.datum); d.setDate(d.getDate() + Number(termijn))
-          return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
-        } catch { return '' }
-      })()
+      const verval = vervaldatumTekst(factuur, klanten, breweryDetails)
       const inst = (breweryDetails as any) || {}
       // Een webshoporder is meestal al afgerekend (iDEAL, creditcard …) vóór
       // hij hier wordt afgerond; de factuur staat dan op betaald. Die klant
@@ -1698,12 +1792,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             description: `${t('mollie_desc_factuur')} ${factuurNr}${inst.naam ? ' · ' + inst.naam : ''}`,
             redirectUrl: normUrl((mollieCreds as any)?.redirectUrl || inst.website || ''),
             factuurnummer: factuurNr,
+            // Eén betaallink per factuur (utils/mollieLink.ts): een eerder
+            // meegestuurde link gaat opnieuw mee, een nieuwe komt op de factuur.
+            bestaandeLink: herbruikbareBetaallink(factuur, amountCent),
+            onLinkAangemaakt: (l: {id: string, url: string}) =>
+              setVerkoopFacturen((prev: any[]) => (prev || []).map((f: any) =>
+                f.id === factuur.id ? {...f, mollie_link: betaallinkRecord(l, amountCent)} : f)),
           }
         : null
       // Bij een Mollie-betaallink de PDF opnieuw bouwen mét QR-code + link erin.
       const regenerateAttachments = mollieCtx ? async (payUrl: string) => {
         const qr = await qrDataUrl(payUrl)
-        const html2 = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryDetails||{}, appName, factuurLogo||logo, {url: payUrl, qrDataUrl: qr})
+        const html2 = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryMet, appName, factuurLogo||logo, {url: payUrl, qrDataUrl: qr})
         const pdf2 = await htmlToPdfBase64(html2)
         return [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdf2, mimeType: 'application/pdf'}]
       } : undefined
@@ -1819,6 +1919,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const nietsTePicken = !heeftPickRegels(selectedOrder)
     const magAfronden = (selectedOrder.status === 'gepickt' && allPicked)
       || (nietsTePicken && (selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd'))
+    // Al bier uitgeleverd? Dan geen "Picken" meer, wel terugdraaien zolang
+    // het niet verzonden is (null = niets terug te draaien).
+    const uitgeleverd = orderUitgeleverd(bestellingPicks, selectedOrder.id)
+    const terugdraaiing = pickTerugdraaiing(selectedOrder)
 
     return (
       <div>
@@ -2128,8 +2232,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Actieknoppen */}
         <div className="flex flex-wrap gap-2">
-          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && !nietsTePicken && (
+          {/* Opnieuw picken over een uitgeleverde pick heen maakte een tweede
+              uitlevering (de voorraad dubbel af). Is er al uitgeleverd, dan
+              eerst terugdraaien — daarna is het weer een concept. */}
+          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && !nietsTePicken && !uitgeleverd && (
             <Btn v="blue" onClick={openPickModal}>{t('order_pick')}</Btn>
+          )}
+          {terugdraaiing && (
+            <BevestigKnop v="secondary" vraag={t('order_picks_terugdraaien_vraag')} onBevestig={draaiPicksTerug}
+              disabled={!!terugdraaiing.blokkade} title={blokkadeTekst(terugdraaiing)}>
+              {t('order_picks_terugdraaien')}
+            </BevestigKnop>
           )}
           {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (<>
             <Btn v="secondary" onClick={() => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setShowVrijeRegelModal(true) }}>
@@ -2146,10 +2259,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
             </Btn>
             <Btn v="secondary" onClick={markVerzonden} title={t('tooltip_logistical_status')}><Icon n="package" /> {t('order_mark_shipped')}</Btn>
-            <Btn v="green" onClick={() => setShowAfrondModal(true)}>{t('order_complete')}</Btn>
+            <Btn v="green" onClick={openAfronden}>{t('order_complete')}</Btn>
           </>)}
           {selectedOrder.status === 'verzonden' && (
-            <Btn v="green" onClick={() => setShowAfrondModal(true)}>{t('order_complete')}</Btn>
+            <Btn v="green" onClick={openAfronden}>{t('order_complete')}</Btn>
           )}
           {(selectedOrder.status === 'afgerond' || selectedOrder.status === 'verzonden') && (<>
             <Btn v="secondary" onClick={printOrderPakbon}><Icon n="printer" /> {t('order_print_pakbon')}</Btn>
@@ -2279,7 +2392,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Afronden bevestiging */}
         {showAfrondModal && (
-          <Modal title={t('order_complete')} onClose={() => setShowAfrondModal(false)}>
+          <Modal title={t('order_complete')} onClose={() => { if (!afrondBezig) setShowAfrondModal(false) }}>
             <div className="space-y-4">
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
                 <p>{t('order_afrond_intro')}</p>
@@ -2321,8 +2434,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 )}
               </div>
               <div className="flex justify-end gap-2">
-                <Btn v="secondary" onClick={() => setShowAfrondModal(false)}>{t('btn_cancel')}</Btn>
-                <Btn v="green" onClick={rondeAf}>{t('order_complete')}</Btn>
+                <Btn v="secondary" onClick={() => setShowAfrondModal(false)} disabled={afrondBezig}>{t('btn_cancel')}</Btn>
+                <Btn v="green" onClick={rondeAf} disabled={afrondBezig}>{t('order_complete')}</Btn>
               </div>
             </div>
           </Modal>
@@ -2427,7 +2540,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                               {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
                               {' · '}{avItem?.verpakking_type}
                               {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
-                              {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · Lot {avBatch.batch_nummer}</span>}
+                              {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · {t('lbl_lot')} {avBatch.batch_nummer}</span>}
                             </span>
                             {(locaties||[]).length > 1 && (
                               <select value={dp.bron_locatie_id ?? ''}
@@ -2487,7 +2600,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                           }))
                           e.target.value = ''
                         }} className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white" defaultValue="">
-                          <option value="">+ {t('picking_afvulling')} toevoegen...</option>
+                          <option value="">+ {t('picking_afvulling_toevoegen')}</option>
                           {afvullingen.map((a: any) => {
                             const avBatch = bat.find((b: any) => b.id === a.batch_id)
                             const avArt = a.artikel_sku
@@ -2499,7 +2612,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             const locLabel = voorraadPerLocLabel(a)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · Lot ${avBatch.batch_nummer}` : ''} · {beschik}× beschikbaar{locLabel ? ` · ${locLabel}` : ''}
+                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · ${t('lbl_lot')} ${avBatch.batch_nummer}` : ''} · {t('picking_x_beschikbaar').replace('{n}', String(beschik))}{locLabel ? ` · ${locLabel}` : ''}
                               </option>
                             )
                           })}
@@ -2518,7 +2631,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       </div>
                     )}
                     {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && (
-                      <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}{r.artikel_key ? '' : ''}</div>
+                      <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}</div>
                     )}
                     {/* Uitweg voor merch: dit artikel komt niet uit
                         de eigen voorraad, dus picken kan nooit lukken. Eén klik
@@ -2540,30 +2653,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         </button>
                       </div>
                     )}
-                    {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && (() => {
-                      // ── Tijdelijke diagnose (bieren-picken-visibility) ──
-                      // Toont waarom geen enkele voorraad-afvulling aan deze
-                      // orderregel koppelt. Mag weg zodra de oorzaak vaststaat.
-                      const orderSku = r.sku || (r.artikel_key ? (artikelen||[]).find((a: any) => a.key === r.artikel_key)?.artikelnummer : null) || null
-                      const metVoorraad = (av||[]).filter((a: any) => beschikbaarVoorAfvulling(a, selectedOrder.id) > 0)
-                      const diag = diagnosePickMatch(metVoorraad, r.bier_naam, r.verpakking_type, orderSku, {bat, artikelen, producten, productArtikelen, verpakkingen})
-                      const kandidaten = diag.regels.filter((d: any) => d.gerelateerd)
-                      const toon = kandidaten.length ? kandidaten : diag.regels.slice(0, 8)
-                      return (
-                        <details className="mt-1 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded p-2">
-                          <summary className="cursor-pointer font-semibold text-gray-600">Diagnose koppeling (tijdelijk)</summary>
-                          <div className="mt-1 font-mono whitespace-pre-wrap break-all leading-snug">
-                            {`order: bier="${diag.regel_bier}" verpakking="${diag.regel_verpakking}" sku=${diag.orderSku ?? '—'} → product_id=${diag.order_product_id ?? '—'}`}
-                            {`\nvoorraad-afvullingen bekeken: ${diag.regels.length}, gerelateerd getoond: ${toon.length}`}
-                            {toon.map((d: any) => (
-                              `\n\n#${d.id} batch=${d.batch_id} "${d.batch_naam}"${d.batch_biernaam ? ` (bier="${d.batch_biernaam}")` : ''}`
-                              + `\n  av.product_id=${d.product_id ?? '—'} batch.product_id=${d.batch_product_id ?? '—'} av.sku=${d.artikel_sku ?? '—'} verp="${d.verpakking_type ?? '—'}"`
-                              + `\n  tier1(sku)=${d.tier1_sku_exact?'✓':'✗'} tier2(geen-sku)=${d.tier2_geen_sku?'✓':'✗'} tier3(product)=${d.tier3_product?'✓':'✗'} naam-fb=${d.naam_fallback?'✓':'✗'} verp-match=${d.verpakking_matcht?'✓':'✗'}`
-                            )).join('')}
-                          </div>
-                        </details>
-                      )
-                    })()}
                   </div>
                 )
               })}
@@ -2618,7 +2707,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         {showAnnuleerModal && (
           <Modal title={t('order_cancel')} onClose={() => setShowAnnuleerModal(false)}>
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">{t('msg_order_cancel_confirm')}</p>
+              {/* Wat er met het bier gebeurt: gepickt = terug naar de voorraad;
+                  verzonden (of niet automatisch terug te draaien) = blijft
+                  als geleverd geboekt. */}
+              <p className="text-sm text-gray-600">
+                {selectedOrder.status === 'verzonden' && uitgeleverd
+                  ? t('msg_order_cancel_confirm_verzonden')
+                  : terugdraaiing?.blokkade
+                    ? `${blokkadeTekst(terugdraaiing)} ${t('msg_order_cancel_niet_terug')}`
+                    : t('msg_order_cancel_confirm')}
+              </p>
               <div className="flex justify-end gap-2">
                 <Btn v="secondary" onClick={() => setShowAnnuleerModal(false)}>{t('btn_cancel')}</Btn>
                 <Btn v="danger" onClick={annuleerOrder}>{t('order_cancel_bevestig')}</Btn>
@@ -2716,7 +2814,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               <Icon n="printer" /> {t('order_print_picklijst')} ({omTePickenIds.size})
             </Btn>
           )}
-          <Btn onClick={() => { setManualForm(emptyManual); setShowManualModal(true) }}>{t('orders_new')}</Btn>
+          <Btn onClick={openManualOrder}>{t('orders_new')}</Btn>
         </div>
       </div>
 
@@ -2884,7 +2982,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           naamFallback={wcMerchModal.naam || wcMerchModal.sku || ''}
           prijsExcl={wcMerchModal.verkoopprijs}
           btwPct={wcMerchModal.btw_pct ?? stdBtw}
-          voorraad={volgtVoorraad(wcMerchModal) ? Math.max(0, merchVoorraad(wcMerchModal)) : null}
+          voorraad={volgtVoorraad(wcMerchModal) ? merchBeschikbaarVoorWc(wcMerchModal, merchGereserveerd(bestellingen, merchArtikelen)) : null}
           prijzenInclBtw={wcCreds?.prijzenInclBtw !== false}
           bierInfo={bierInfoVoorArtikel({artikel: wcMerchModal})}
           themaMeta={wcCreds?.themaVelden === false ? null : crafteryMeta({artikel: wcMerchModal})}
@@ -2987,7 +3085,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
       {/* Handmatige order modal */}
       {showManualModal && (
-        <Modal title={t('manual_order_title')} onClose={() => setShowManualModal(false)} wide>
+        <Modal title={t('manual_order_title')} onClose={() => { if (!manualOpslaanBezig) setShowManualModal(false) }} wide>
           <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
             {/* Klantgegevens */}
             <div>
@@ -3107,7 +3205,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         const prijs = art ? (regelForm.prijsType === 'b2b' && art.b2b_prijs ? String(art.b2b_prijs) : String(art.verkoopprijs||'')) : ''
                         setRegelForm((f: any) => ({...f, bier_naam: bier, verpakking_type: '',
                           prijs_per_stuk: prijs,
-                          btw_pct: art ? String(art.btw||art.btw_pct||'9') : '9'}))
+                          btw_pct: String(artikelBtwPct(art, stdBtw))}))
                       }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
                       <option value="">{t('opt_select_beer')}</option>
@@ -3123,7 +3221,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         const prijs = art ? (regelForm.prijsType === 'b2b' && art.b2b_prijs ? String(art.b2b_prijs) : String(art.verkoopprijs||'')) : ''
                         setRegelForm((f: any) => ({...f, verpakking_type: vp,
                           prijs_per_stuk: prijs,
-                          btw_pct: art ? String(art.btw||art.btw_pct||'9') : '9'}))
+                          btw_pct: String(artikelBtwPct(art, stdBtw))}))
                       }}
                       className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
                       <option value="">{t('opt_select_packaging')}</option>
@@ -3194,8 +3292,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
-            <Btn v="secondary" onClick={() => setShowManualModal(false)}>{t('btn_cancel')}</Btn>
-            <Btn onClick={saveManualOrder}>{t('btn_save')}</Btn>
+            <Btn v="secondary" onClick={() => setShowManualModal(false)} disabled={manualOpslaanBezig}>{t('btn_cancel')}</Btn>
+            <Btn onClick={saveManualOrder} disabled={manualOpslaanBezig}>{manualOpslaanBezig ? t('lbl_bezig') : t('btn_save')}</Btn>
           </div>
         </Modal>
       )}

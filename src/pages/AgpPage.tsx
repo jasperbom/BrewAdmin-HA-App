@@ -9,12 +9,21 @@ import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import VerplaatsModal from '../components/VerplaatsModal'
 import { logAudit } from '../utils/audit'
-import { bouwVerplaatsing } from '../utils/agp'
+import { bouwVerplaatsing, valideerVerplaatsing, verplaatsingVerwijderBlokkade, VERPLAATS_FOUT_KEYS } from '../utils/agp'
 import { agpOverzicht, getAgpLocatie, voorraadPerLocatie, gemAgpInPeriode, accijnsMaandGesloten } from '../utils/calculations'
 import { productNaam } from '../utils/product'
+import { agpGereserveerdPerAfvulling } from '../utils/kassa'
 
-function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog, accijnsAangiftes=[]}: any) {
+function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties, verplaatsingen, setVerplaatsingen, afboekingen, accijnsInst, log, setLog, auditLog, setAuditLog, accijnsAangiftes=[], verliezen=[], bestellingen=[], bestellingPicks=[]}: any) {
   const {useState, useMemo} = React;
+
+  // Wat op de AGP al voor een open bestelling gepickt is, mag niet via een
+  // verplaatsing alsnog uitgeslagen worden — dezelfde regel als de
+  // uitslagmodal (utils/kassa.ts, utils/agp.ts).
+  const agpGereserveerd = useMemo(() => agpGereserveerdPerAfvulling(
+    bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties).id,
+    {afvullingen: av || [], locaties: locaties || [], uit, verplaatsingen, afboekingen}),
+    [bestellingPicks, bestellingen, av, locaties, uit, verplaatsingen, afboekingen]);
 
   // Toon de PRODUCTnaam (etiket) per regel i.p.v. de recept-/batchnaam. Twee
   // afvullingen van dezelfde batch met verschillende etiketten zijn verschillende
@@ -23,8 +32,11 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
   const bierNaam = (batch: any, afv?: any): string =>
     productNaam(afv, batch, producten) || t('lbl_onbekend');
 
-  const ovz = useMemo(() => agpOverzicht(bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst),
-    [bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst]);
+  // De verliesposten (tankrest, schuim …) horen in het tankvolume, zowel in de
+  // actuele stand als in de gemiddelden eronder — anders rekenen tegel en
+  // gemiddelde met verschillende regels.
+  const ovz = useMemo(() => agpOverzicht(bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst, verliezen),
+    [bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst, verliezen]);
 
   // Historische gemiddelden van AGP-waarde
   const histAvg = useMemo(() => {
@@ -34,23 +46,23 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
     // Vorige maand: hele kalendermaand
     const vmStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const vmEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-    const vorigeMaand = gemAgpInPeriode(vmStart, vmEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst);
+    const vorigeMaand = gemAgpInPeriode(vmStart, vmEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst, verliezen);
 
     // Dit jaar: 1 jan tot vandaag
     const djStart = new Date(now.getFullYear(), 0, 1);
     const djEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const ditJaar = gemAgpInPeriode(djStart, djEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst);
+    const ditJaar = gemAgpInPeriode(djStart, djEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst, verliezen);
 
     // In januari: ook vorig jaar tonen
     let vorigJaar = null as null | { tank: number; verpakt: number; totaal: number };
     if (isJanuari) {
       const vjStart = new Date(now.getFullYear() - 1, 0, 1);
       const vjEnd = new Date(now.getFullYear() - 1, 11, 31);
-      vorigJaar = gemAgpInPeriode(vjStart, vjEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst);
+      vorigJaar = gemAgpInPeriode(vjStart, vjEnd, bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst, verliezen);
     }
 
     return { vorigeMaand, ditJaar, vorigJaar, isJanuari, year: now.getFullYear(), prevYear: now.getFullYear() - 1 };
-  }, [bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst]);
+  }, [bat, av, uit, verplaatsingen, afboekingen, locaties, accijnsInst, verliezen]);
 
   const totaal_accijns_agp = ovz.totaal_accijns_agp + ovz.totaal_accijns_tank;
 
@@ -69,7 +81,14 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
   const saveVerplaats = (invoer: any) => {
     const afv = (av||[]).find((a: any) => a.id === invoer.afvulling_id);
     const batch = batById(invoer.batch_id);
-    const ctx = {afv, batch, locaties, uit, verplaatsingen, afboekingen, accijnsInst};
+    const ctx = {afv, batch, locaties, uit, verplaatsingen, afboekingen, accijnsInst, accijnsAangiftes, gereserveerd: agpGereserveerd};
+    // Tweede slot naast de modal: niets boeken in een al aangegeven
+    // accijnsmaand, in de toekomst of op te weinig voorraad.
+    const oordeel = valideerVerplaatsing(invoer, ctx);
+    if (!oordeel.ok) {
+      alert(t(VERPLAATS_FOUT_KEYS[oordeel.fout]).replace('{n}', String(oordeel.beschikbaar)).replace('{datum}', fmtD(afv?.datum)));
+      return;
+    }
     const r = bouwVerplaatsing(invoer, ctx, {
       verplaatsing_id: newId(verplaatsingen||[]),
       accijns_id: newId(acc||[]),
@@ -165,6 +184,17 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
     }
     const van = locById(v.van_locatie_id).naam;
     const naar = locById(v.naar_locatie_id).naam;
+    // Is het bier op de bestemming al verkocht, afgeboekt of verder
+    // verplaatst, dan zou het na verwijderen weer in de AGP opduiken terwijl
+    // de accijns van de uitslag verdwijnt.
+    const blokkade = verplaatsingVerwijderBlokkade(
+      v, (av||[]).find((a: any) => a.id === v.afvulling_id), locaties, uit, verplaatsingen, afboekingen);
+    if (blokkade) {
+      alert(t('agp_err_verplaats_al_verbruikt')
+        .replace('{tekort}', String(blokkade.tekort))
+        .replace('{naar}', locById(blokkade.locatie_id).naam));
+      return;
+    }
     const msg = heeftAcc
       ? t('agp_verplaats_delete_confirm_acc')
           .replace('{aantal}', String(v.aantal))
@@ -177,6 +207,11 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
     setVerplaatsingen((prev: any[]) => (prev||[]).filter((x: any) => x.id !== v.id));
     if (heeftAcc) {
       setAcc((prev: any[]) => (prev||[]).filter((a: any) => a.id !== v.accijns_record_id));
+    }
+    // De 'uitslaan'-regel in het voorraadverloop hoort bij deze verplaatsing.
+    // Oudere regels zonder verplaatsing_id blijven staan: niet gokken.
+    if (setLog && (log||[]).some((l: any) => l.verplaatsing_id === v.id)) {
+      setLog((prev: any[]) => (prev||[]).filter((l: any) => !(l.type === 'uitslaan' && l.verplaatsing_id === v.id)));
     }
     logAudit(auditLog, setAuditLog, {
       entiteit: 'Verplaatsing', entiteit_id: v.id, actie: 'verwijderd',
@@ -428,7 +463,7 @@ function AgpPage({bat, av, uit, acc, setAcc, producten=[], locaties, setLocaties
           batch={batById(vplModal.afv.batch_id)}
           naam={bierNaam(batById(vplModal.afv.batch_id), vplModal.afv)}
           vanLocatieId={vplModal.vanLocatieId}
-          ctx={{locaties, uit, verplaatsingen, afboekingen, accijnsInst}}
+          ctx={{locaties, uit, verplaatsingen, afboekingen, accijnsInst, accijnsAangiftes, gereserveerd: agpGereserveerd}}
           onClose={()=>setVplModal(null)}
           onOpslaan={saveVerplaats}
         />

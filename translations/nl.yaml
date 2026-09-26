@@ -1,0 +1,13 @@
+configuration:
+  ssl:
+    name: "HTTPS op de directe poort"
+    description: "Gebruik de certificaten uit /ssl (bijv. van de Let's Encrypt-addon). Bij een onbruikbaar certificaat start de directe poort niet."
+  certfile:
+    name: "Certificaatbestand"
+    description: "Bestandsnaam in /ssl, meestal fullchain.pem."
+  keyfile:
+    name: "Sleutelbestand"
+    description: "Bestandsnaam in /ssl, meestal privkey.pem."
+  backup_password:
+    name: "Backup-wachtwoord"
+    description: "Versleutelt de wachtwoorden en API-sleutels in de serverbackup. Leeg laten gebruikt een sleutel die alleen in deze installatie staat; met een wachtwoord haal je ze ook na verlies van de addon-data terug uit de backup. Bewaar het goed, want zonder dit wachtwoord zijn ze uit de backup niet te openen."

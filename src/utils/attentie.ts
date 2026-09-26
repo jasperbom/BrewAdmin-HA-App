@@ -8,7 +8,7 @@
 // picking.ts, btw.ts) — hier worden ze alleen gelabeld en gebundeld.
 
 import { telThtAlerts, telOpenAccijnsMaanden } from './calculations'
-import { telNieuweWebshopOrders } from './wcOrderImport'
+import { telNieuweWebshopOrders, telWebshopAfgebroken } from './wcOrderImport'
 import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
 import { telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
@@ -114,6 +114,12 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         id: 'webshop_nieuw', sleutel: 'attentie_webshop_nieuw', pagina: 'bestellingen',
         aantal: telNieuweWebshopOrders(bron.wcImportStatus, bron.bestellingen),
       },
+      {
+        // Hier nog open, in de winkel geannuleerd, mislukt of terugbetaald
+        // (utils/wcOrderImport → telWebshopAfgebroken): annuleren of afhandelen.
+        id: 'webshop_afgebroken', sleutel: 'attentie_webshop_afgebroken', pagina: 'bestellingen',
+        aantal: telWebshopAfgebroken(bron.bestellingen),
+      },
     ]),
     // Administratie: eerst wat geld kost als je het laat liggen (vervallen
     // facturen), dan de aangiftes, dan de eigen betalingen. Elke post landt
@@ -152,6 +158,12 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
 
 export const attentieTotaal = (posten: AttentiePost[]): number =>
   (posten || []).reduce((s, p) => s + (Number(p?.aantal) || 0), 0)
+
+// De posten die op één pagina landen — voor de badge op het tabblad van die
+// pagina. Zo tellen werkruimte-badge en tabblad-badge uit dezelfde bron en
+// spreken ze elkaar niet tegen.
+export const attentieVoorPagina = (posten: AttentiePost[], pagina: string): AttentiePost[] =>
+  (posten || []).filter(p => p?.pagina === pagina)
 
 export function attentieTotalen(
   posten: Record<WerkruimteId, AttentiePost[]>,

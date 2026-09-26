@@ -20,10 +20,11 @@ import {
   vergelijkAllergenen, magEtiketterenDoorgaan, bouwAfwijking, capaUitAfwijking,
 } from '../../utils/haccp'
 import {
-  volgendSessieNr, lotcodeVoorSessie, lotcodeIsUniek, thtKlasseVoorBatch,
+  nieuweLotcode, thtKlasseVoorBatch, thtHandmatigBlokkade,
   berekenTht, openSessiesVoorBatch, actieveSessie, magSessieStarten,
   verwachteControleMomenten, controleDekking,
 } from '../../utils/afvulsessie'
+import { verpakkingVoorraad } from '../../utils/verpakkingVoorraad'
 import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
@@ -77,8 +78,20 @@ interface Props {
   /** Lijst met geregistreerde afvullingen; altijd zichtbaar. */
   lijst?: React.ReactNode
   /** Schrijft één afvulling weg binnen de meegegeven sessie (voorraad, accijns-
-   *  voorcalculatie, logregels). Gebruikt door het achteraf vastleggen. */
+   *  voorcalculatie, logregels). Gebruikt door het achteraf vastleggen, pas
+   *  nadat `onAchterafControleren` akkoord gaf — zelf vraagt hij niets meer. */
   onAchterafAfvullen?: (velden: any, sessie: AfvulSessie) => boolean
+  /** Alle controles van de afvulling (verpakkingsvoorraad, tankvolume, ABV-
+   *  bevestiging) zónder iets weg te schrijven. Het achteraf vastleggen
+   *  schrijft sessie en CCP-registraties (append-only) pas als dit akkoord is:
+   *  anders bleef er bij onvoldoende voorraad een spooksessie achter. */
+  onAchterafControleren?: (velden: any) => boolean
+  /** Verse serverstand van de afvulsessies ophalen vóór er een lotcode wordt
+   *  uitgegeven — een tweede apparaat met een oude stand kiest anders
+   *  hetzelfde sessienummer. Geeft de verse lijst terug, of null. */
+  refreshSessies?: () => Promise<any>
+  /** Voor de voorraad per verpakking in het achteraf-formulier. */
+  onderdelen?: any[]
   /** Hygiënetaken van de fase — als regel in dezelfde checklist. */
   taken?: React.ReactNode
   takenDone?: boolean
@@ -165,6 +178,20 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // Eén regel tegelijk open. Zonder eigen keuze staat de regel open die aan de
   // beurt is (zie `autoRegel` hieronder); '' betekent: alles dicht.
   const [openRegel, setOpenRegel] = React.useState<string | null>(null)
+  // Er wordt een sessie aangemaakt (de verse stand wordt opgehaald): een
+  // tweede klik zou anders een tweede sessie beginnen.
+  const [bezig, setBezig] = React.useState(false)
+
+  // Sessienummer en lotcode tegen de verse serverstand, zodat twee apparaten
+  // niet allebei B1 uitgeven. Lukt het ophalen niet, dan de eigen stand — de
+  // server weigert een dubbele code alsnog.
+  const verseSessies = async (): Promise<AfvulSessie[]> => {
+    try {
+      const vers = await p.refreshSessies?.()
+      if (Array.isArray(vers)) return vers
+    } catch { /* eigen stand gebruiken */ }
+    return p.sessies || []
+  }
 
   // Klok voor de halfuur-herinnering tijdens een lopende sessie.
   React.useEffect(() => {
@@ -193,20 +220,20 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     reiniging_bevestigd: start.reiniging_bevestigd,
     verpakking_id: start.verpakking_id ? Number(start.verpakking_id) : null,
   }, p.sessies || [])
-  const thtRedenNodig = start.tht_handmatig && !start.tht_reden.trim()
+  // Handmatige THT: altijd met reden, en onder de alcoholgrens ook met een
+  // datum — anders start de sessie zonder THT en erven alle afvullingen dat.
+  const thtBlok = thtHandmatigBlokkade(start.tht_handmatig, start.tht, start.tht_reden, thtKlasse)
 
-  const startSessie = () => {
-    if (!startBlok.toegestaan || thtRedenNodig) return
-    const nr = volgendSessieNr(p.sessies || [], p.batch.id)
-    let code = lotcodeVoorSessie(p.batch, nr)
-    // Twee tabbladen kunnen tegelijk starten; de lotcode moet uniek blijven.
-    let extra = nr
-    while (!lotcodeIsUniek(code, p.sessies || [])) {
-      extra += 1
-      code = lotcodeVoorSessie(p.batch, extra)
-    }
+  const startSessie = async () => {
+    if (!startBlok.toegestaan || thtBlok || bezig) return
+    setBezig(true)
+    let sessiesNu: AfvulSessie[]
+    try { sessiesNu = await verseSessies() } finally { setBezig(false) }
+    // Twee tabbladen of apparaten kunnen tegelijk starten; de lotcode moet
+    // uniek blijven (de server bewaakt het ook).
+    const {sessie_nr: extra, lotcode: code} = nieuweLotcode(sessiesNu, p.batch)
     const paraaf = maakParaaf(p.whoami)
-    const id = newId(p.sessies || [])
+    const id = newId(sessiesNu)
     const record: AfvulSessie = {
       id,
       batch_id: p.batch.id,
@@ -410,8 +437,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   }, [sessie?.id])
 
   // ── Sessie afsluiten ─────────────────────────────────────────────────────
+  // Met de afvullingen erbij: elk afgevuld product moet zijn eigen
+  // etiketcontrole hebben — ook wat al vóór die eis geregistreerd was.
   const afsluitBlok = sessie
-    ? magSessieAfsluiten(sessie, eigenControles, eigenEtiket, p.capa || [])
+    ? magSessieAfsluiten(sessie, eigenControles, eigenEtiket, p.capa || [],
+        p.av || [], p.producten || [])
     : {toegestaan: false, redenen: []}
 
   const sluitSessie = () => {
@@ -474,7 +504,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           <div>
             <Label>{t('haccp_sessie_lotcode')}</Label>
             <div className="font-mono text-sm text-gray-800 py-2">
-              {lotcodeVoorSessie(p.batch, volgendSessieNr(p.sessies || [], p.batch?.id))}
+              {p.batch ? nieuweLotcode(p.sessies || [], p.batch).lotcode : ''}
             </div>
           </div>
         </div>
@@ -498,13 +528,15 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           {start.tht_handmatig && (
             <div className="grid sm:grid-cols-2 gap-2">
               <Inp label={t('haccp_sessie_tht')} type="date" value={start.tht}
-                onChange={v => setStart({...start, tht: v})} />
+                onChange={v => setStart({...start, tht: v})} req={thtKlasse !== 'geen'} />
               <Inp label={t('haccp_sessie_tht_reden')} value={start.tht_reden}
                 onChange={v => setStart({...start, tht_reden: v})} req />
             </div>
           )}
-          {thtRedenNodig && (
-            <div className="text-xs text-red-600">{t('haccp_sessie_tht_reden_verplicht')}</div>
+          {thtBlok && (
+            <div className="text-xs text-red-600">
+              {t(thtBlok === 'reden' ? 'haccp_sessie_tht_reden_verplicht' : 'haccp_sessie_tht_datum_verplicht')}
+            </div>
           )}
         </div>
 
@@ -517,7 +549,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         <BlokkadeKaart blok={startBlok} compact />
 
         <div className="flex justify-end">
-          <Btn s="sm" disabled={!startBlok.toegestaan || thtRedenNodig} onClick={startSessie}>
+          <Btn s="sm" disabled={!startBlok.toegestaan || !!thtBlok || bezig} onClick={startSessie}>
             {t('haccp_sessie_starten')}
           </Btn>
         </div>
@@ -566,22 +598,39 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     && na.lotcode_ok && na.tht_ok && na.alcohol_ok
   const naToegestaan = naBlok.toegestaan && naCompleet && naEtiketBlok.toegestaan
 
-  const legAchterafVast = () => {
-    if (!naToegestaan || !naVp) return
-    const paraaf = maakParaaf(p.whoami)
+  const legAchterafVast = async () => {
+    if (!naToegestaan || !naVp || bezig) return
     const datum = na.datum || tod()
     const startMoment = `${datum}T${na.van || '12:00'}:00`
     const eindMoment = `${datum}T${na.tot || na.van || '12:00'}:00`
 
-    // Sessie — meteen afgesloten: het afvullen is al gebeurd.
-    const nr = volgendSessieNr(p.sessies || [], p.batch.id)
-    let code = lotcodeVoorSessie(p.batch, nr)
-    let extra = nr
-    while (!lotcodeIsUniek(code, p.sessies || [])) {
-      extra += 1
-      code = lotcodeVoorSessie(p.batch, extra)
+    // De afvulling zelf loopt via de pagina: die kent voorraad, accijns en logs.
+    const velden = {
+      product_id: Number(na.product_id),
+      verpakking_id: Number(na.verpakking_id),
+      verpakking_type: naVp.naam,
+      inhoud_per_eenheid: Number(naVp.inhoud_liter || 0),
+      hoeveelheid: Number(na.hoeveelheid),
+      datum,
+      tijd: na.tot || na.van || '',
+      tht: naTht.tht,
+      gn_code: '',
     }
-    const sessieId = newId(p.sessies || [])
+    // Eerst alle controles van de afvulling (verpakkingsvoorraad, tankvolume,
+    // ABV-bevestiging). De sessie en de CCP-registraties hieronder zijn
+    // append-only bewijs: die gaan pas weg als de afvulling er ook komt —
+    // anders bleef er bij te weinig voorraad een spooksessie met controles
+    // maar zonder verpakkingen achter, en kreeg de volgende poging B2.
+    if (p.onAchterafControleren && !p.onAchterafControleren(velden)) return
+
+    setBezig(true)
+    let sessiesNu: AfvulSessie[]
+    try { sessiesNu = await verseSessies() } finally { setBezig(false) }
+    const paraaf = maakParaaf(p.whoami)
+
+    // Sessie — meteen afgesloten: het afvullen is al gebeurd.
+    const {sessie_nr: extra, lotcode: code} = nieuweLotcode(sessiesNu, p.batch)
+    const sessieId = newId(sessiesNu)
     const sessieRec: AfvulSessie = {
       id: sessieId,
       batch_id: p.batch.id,
@@ -650,18 +699,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       paraaf,
     }])
 
-    // De afvulling zelf loopt via de pagina: die kent voorraad, accijns en logs.
-    p.onAchterafAfvullen?.({
-      product_id: Number(na.product_id),
-      verpakking_id: Number(na.verpakking_id),
-      verpakking_type: naVp.naam,
-      inhoud_per_eenheid: Number(naVp.inhoud_liter || 0),
-      hoeveelheid: Number(na.hoeveelheid),
-      datum,
-      tijd: na.tot || na.van || '',
-      tht: naTht.tht,
-      gn_code: '',
-    }, sessieRec)
+    // De afvulling zelf — in dezelfde handeling, dus in dezelfde atomaire
+    // commit als de sessie en de controles.
+    p.onAchterafAfvullen?.(velden, sessieRec)
     logAudit(p.auditLog, p.setAuditLog, {
       entiteit: 'AfvulSessie', entiteit_id: sessieId, actie: 'aangemaakt',
       omschrijving: `${p.batch?.naam || ''}: ${code} — ${t('haccp_achteraf_titel')}`,
@@ -680,9 +720,15 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           opts={(p.producten || [])
             .filter((x: any) => x.status !== 'gearchiveerd')
             .map((x: any) => ({v: String(x.id), l: x.naam}))} />
+        {/* Met voorraad erbij, net als het live-formulier: zonder voorraad
+            kan er niets worden afgevuld. */}
         <Sel label={t('lbl_packaging')} value={String(na.verpakking_id)}
           onChange={(v: string) => setNa({...na, verpakking_id: v})}
-          opts={(p.verpakkingen || []).map((v: any) => ({v: String(v.id), l: v.naam}))} />
+          opts={(p.verpakkingen || []).map((v: any) => {
+            const voorraad = verpakkingVoorraad(v, p.onderdelen || [])
+            return {v: String(v.id), l: `${v.naam} — ${voorraad} ${t('unit_stuks')}`,
+                    d: voorraad <= 0 && String(v.id) !== String(na.verpakking_id)}
+          })} />
         <Inp label={t('batch_filling_units')} type="number" value={na.hoeveelheid}
           onChange={v => setNa({...na, hoeveelheid: v})} />
         <Inp label={t('batch_filling_date')} type="date" value={na.datum}
@@ -697,7 +743,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         <div>
           <Label>{t('haccp_sessie_lotcode')}</Label>
           <div className="font-mono text-sm text-gray-800 py-2">
-            {lotcodeVoorSessie(p.batch, volgendSessieNr(p.sessies || [], p.batch?.id))}
+            {p.batch ? nieuweLotcode(p.sessies || [], p.batch).lotcode : ''}
           </div>
         </div>
         <div>
@@ -844,7 +890,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       )}
 
       <div className="flex justify-end">
-        <Btn s="sm" disabled={!naToegestaan} onClick={legAchterafVast}>
+        <Btn s="sm" disabled={!naToegestaan || bezig} onClick={legAchterafVast}>
           {t('haccp_achteraf_vastleggen')}
         </Btn>
       </div>

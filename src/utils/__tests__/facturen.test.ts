@@ -3,6 +3,7 @@ import {
   betalingstermijnVoor, vervaldatumVerkoopFactuur, dagenTeLaat, vervallenVerkoopFacturen,
   isVerkoopFactuurOpen, openInkoopFacturen, dagenOpen, isInkoopFactuurAchterstallig,
   achterstalligeInkoopFacturen, isoDag, STANDAARD_BETALINGSTERMIJN, INKOOP_ACHTERSTALLIG_DAGEN,
+  breweryMetTermijn, vervaldatumTekst,
 } from '../facturen'
 
 const klanten = [
@@ -27,6 +28,39 @@ describe('betalingstermijnVoor', () => {
   it('negeert lege of onzinnige termijnen', () => {
     expect(betalingstermijnVoor({ klant_id: 3 }, [{ id: 3, betalingstermijn: '' }], { betalingstermijn: 0 })).toBe(14)
     expect(betalingstermijnVoor({ klant_id: 3 }, [{ id: 3, betalingstermijn: 'x' }], { betalingstermijn: '10' })).toBe(10)
+  })
+})
+
+describe('breweryMetTermijn / vervaldatumTekst (factuur-PDF en mail)', () => {
+  const brouwerijVol = { naam: 'Brouwerij', iban: 'NL91ABNA0417164300', betalingstermijn: 21 }
+
+  it('de klanttermijn gaat voor; overige brouwerijvelden blijven staan', () => {
+    const b = breweryMetTermijn({ klant_id: 1 }, klanten, brouwerijVol)
+    expect(b.betalingstermijn).toBe(30)
+    expect(b.naam).toBe('Brouwerij')
+    expect(b.iban).toBe('NL91ABNA0417164300')
+    expect(brouwerijVol.betalingstermijn).toBe(21) // origineel ongemoeid
+  })
+
+  it('zonder klantkaart de brouwerijtermijn; leeg of 0 valt terug op de brouwerij, dan op 14', () => {
+    expect(breweryMetTermijn({ klant_id: 2 }, klanten, brouwerijVol).betalingstermijn).toBe(21)
+    expect(breweryMetTermijn({ klant_id: 3 }, [{ id: 3, betalingstermijn: 0 }], brouwerijVol).betalingstermijn).toBe(21)
+    expect(breweryMetTermijn({ klant_id: 3 }, [{ id: 3, betalingstermijn: '' }], { betalingstermijn: 0 }).betalingstermijn).toBe(14)
+    expect(breweryMetTermijn({}, [], null).betalingstermijn).toBe(STANDAARD_BETALINGSTERMIJN)
+  })
+
+  it('vervaldatumTekst: dd-mm-jjjj uit dezelfde rekening als de te-laat-badge', () => {
+    const f = { datum: '2026-09-01', klant_id: 1 }
+    expect(vervaldatumVerkoopFactuur(f, klanten, brouwerijVol)).toBe('2026-10-01')
+    expect(vervaldatumTekst(f, klanten, brouwerijVol)).toBe('01-10-2026')
+    expect(vervaldatumTekst({ datum: '2026-09-01' }, klanten, brouwerijVol)).toBe('22-09-2026')
+    expect(vervaldatumTekst({}, klanten, brouwerijVol)).toBe('')
+  })
+
+  it('de termijn in breweryMetTermijn geeft dezelfde vervaldatum als de badge', () => {
+    const f = { datum: '2026-03-20', klant_id: 1 }
+    const b = breweryMetTermijn(f, klanten, brouwerijVol)
+    expect(vervaldatumVerkoopFactuur({ datum: f.datum }, [], b)).toBe(vervaldatumVerkoopFactuur(f, klanten, brouwerijVol))
   })
 })
 

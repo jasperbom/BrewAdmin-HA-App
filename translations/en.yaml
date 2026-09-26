@@ -1,0 +1,13 @@
+configuration:
+  ssl:
+    name: "HTTPS on the direct port"
+    description: "Use the certificates in /ssl (e.g. from the Let's Encrypt add-on). If the certificate is unusable, the direct port does not start."
+  certfile:
+    name: "Certificate file"
+    description: "File name in /ssl, usually fullchain.pem."
+  keyfile:
+    name: "Key file"
+    description: "File name in /ssl, usually privkey.pem."
+  backup_password:
+    name: "Backup password"
+    description: "Encrypts the passwords and API keys in the server backup. Left empty, a key that only exists in this installation is used; with a password you can also recover them from the backup after losing the add-on data. Keep it safe — without it they cannot be opened from the backup."

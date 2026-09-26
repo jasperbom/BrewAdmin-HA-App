@@ -10,7 +10,7 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
 import { newId, _fetchedKeys } from '../utils/api'
-import { nextKlantnummer } from '../utils/klant'
+import { nextKlantnummer, ordersTeKoppelenBijOpslaan, koppelOrderAanKlant, KLANT_SYNC_STATUSSEN } from '../utils/klant'
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { fmt, fmtD } from '../utils/format'
 import Btn from '../components/ui/Btn'
@@ -381,20 +381,15 @@ const KlantenPage: React.FC<Props> = ({
     //
     //   4. Naam-match: bestellingen met exact dezelfde klantnaam maar
     //      zonder (matchend) e-mailadres — bv. een WC-gastbestelling met
-    //      een ander adres — horen ook bij deze klant. De hint-banner in
-    //      de detailweergave toont vooraf hoeveel er gekoppeld worden.
-    const newEmailLc = (payload.email || '').toLowerCase()
-    const oldEmailLc = oldEmail.toLowerCase()
-    const newNaamLc = payload.naam.toLowerCase()
-    const toLink = bestellingen.filter((b: any) => {
-      if (b.klant_id != null) return false
-      const beLc = (b.klant_email || '').toLowerCase()
-      const beNameKey = (b.klant_naam || '').trim().toLowerCase()
-      if (newEmailLc && beLc === newEmailLc) return true
-      if (oldEmailLc && oldEmailLc !== newEmailLc && beLc === oldEmailLc) return true
-      if (newNaamLc && beNameKey === newNaamLc) return true
-      if (synthSourceKey && (beLc || beNameKey) === synthSourceKey) return true
-      return false
+    //      een ander adres — horen ook bij deze klant. Alléén als er na het
+    //      opslaan precies één kaart met die naam is (zelfde regel als
+    //      findKlantVoorOrder): bij naamgenoten koppelt opslaan niet
+    //      stilzwijgend, daar is de koppelknop (met bevestiging) voor.
+    //      De hint-banner in de detailweergave toont vooraf hoeveel er
+    //      gekoppeld worden.
+    const toLink = ordersTeKoppelenBijOpslaan(bestellingen, klanten, {
+      klantId: selectedId, email: payload.email, oudEmail: oldEmail,
+      naam: payload.naam, synthKey: synthSourceKey,
     })
 
     // Snapshot van klantgegevens om naar gekoppelde bestellingen te schrijven.
@@ -417,16 +412,16 @@ const KlantenPage: React.FC<Props> = ({
     // pakbon en moeten historisch correct blijven. Wel: nieuw / bevestigd /
     // gepickt — daar zit de wijziging nog in het systeem en kan de klant nog
     // bijgewerkt worden zonder reeds-uitgegeven documenten te verbreken.
-    const SYNCABLE: string[] = ['nieuw','bevestigd','gepickt']
+    // Dat geldt ook voor een order die nú pas gekoppeld wordt.
     const toLinkIds = new Set(toLink.map((b: any) => b.id))
     let propagated = 0
     setBestellingen((prev: any[]) => prev.map((b: any) => {
       if (toLinkIds.has(b.id)) {
-        // Nieuwe koppeling: zet klant_id én sync de snapshot.
-        return {...b, ...snap, klant_id: savedKlantId}
+        // Nieuwe koppeling: klant_id altijd, de snapshot alleen als de order nog open is.
+        return koppelOrderAanKlant(b, snap, savedKlantId)
       }
       // Bestaande koppeling én bewerkbaar? Sync de snapshot.
-      if (b.klant_id === savedKlantId && SYNCABLE.includes(b.status)) {
+      if (b.klant_id === savedKlantId && KLANT_SYNC_STATUSSEN.includes(b.status)) {
         propagated++
         return {...b, ...snap}
       }
@@ -490,9 +485,14 @@ const KlantenPage: React.FC<Props> = ({
     // gebruiker direct hoeveel orders straks gekoppeld worden op opslaan.
     const checkEmail = (selectedId !== null ? selected?.email : form.email.trim()) || ''
     const checkNaam = (selectedId !== null ? selected?.naam : form.naam.trim()) || ''
-    const ongekoppeldeOrders = (checkEmail || checkNaam)
-      ? bestellingen.filter((b: any) => matchOngekoppeldeOrder(b, checkEmail, checkNaam)).length
-      : 0
+    // Nieuwe kaart: precies wat opslaan gaat koppelen (bij naamgenoten niet
+    // op naam). Bestaande kaart: wat de koppelknop hieronder aanbiedt.
+    const ongekoppeldeOrders = !(checkEmail || checkNaam) ? 0
+      : selectedId === null
+        ? ordersTeKoppelenBijOpslaan(bestellingen, klanten, {
+            klantId: null, email: checkEmail, naam: checkNaam, synthKey: synthSourceKey,
+          }).length
+        : bestellingen.filter((b: any) => matchOngekoppeldeOrder(b, checkEmail, checkNaam)).length
 
     return (
       <div>

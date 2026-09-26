@@ -62,6 +62,25 @@ export const wcFoutTekst = (f: WcFout, t: (k: string) => string): string => {
 }
 
 /**
+ * Uitkomst van de verbindingstest in Instellingen (`wcTestCreds`) als melding.
+ * ✓/⚠ staan vóór de tekst en horen niet bij de vertaling: de pagina kleurt de
+ * melding op dat eerste teken. Een 400 komt van onze eigen server (gegevens
+ * onvolledig, geen http(s)-adres of een intern adres) en niet van de winkel.
+ */
+export const wcTestMelding = (
+  res: {ok: boolean, status?: number, detail?: string, oorzaak?: string, timeout?: number},
+  t: (k: string) => string,
+): string => {
+  if (res.ok) return '✓ ' + t('settings_wc_test_ok')
+  const status = Number(res.status) || 0
+  if (status === 400 && !res.oorzaak) return '⚠ ' + t('settings_wc_test_onvolledig')
+  if (status === 0 && !res.oorzaak) return '⚠ ' + t('wc_fout_netwerk')
+  return '⚠ ' + wcFoutTekst(parseWcFout(status, {
+    message: res.detail, oorzaak: res.oorzaak, timeout: res.timeout,
+  }), t)
+}
+
+/**
  * Melding voor een fout uit `wcGet`/`wcPut`. Bevat de fout een `wc`-veld
  * (door api.ts aangehecht), dan wordt die vertaald; anders valt hij terug op
  * de foutmelding zelf (bv. een afgebroken fetch).

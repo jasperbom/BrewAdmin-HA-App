@@ -311,6 +311,38 @@ export const merchAfboekingenVoorRegels = (
   return uit
 }
 
+// Merch gaat pas bij het afronden van een order van de voorraad af (met het
+// factuurnummer als referentie). Tot die tijd ligt hij voor de klant klaar.
+const MERCH_AFGEBOEKT = new Set(['afgerond', 'geannuleerd'])
+
+/**
+ * Merch die voor openstaande orders klaarligt maar nog niet is afgeboekt:
+ * per merch-id het aantal stuks. Dezelfde regels als bij het afboeken
+ * (`merchAfboekingenVoorRegels`): bierregels en dropship-merch tellen niet.
+ * Nodig voor de WooCommerce-voorraadpush: de winkel verlaagt zijn voorraad al
+ * bij het bestellen, dus een push van de kale stand zou die verlaging weer
+ * ongedaan maken (oversell) — net als `openBestellingReserveringen` bij bier.
+ */
+export const merchGereserveerd = (
+  bestellingen: Array<{status?: any, regels?: any[] | null, [k: string]: any}> | null | undefined,
+  artikelen: MerchArtikel[] | null | undefined,
+): Map<number, number> => {
+  const uit = new Map<number, number>()
+  for (const b of (bestellingen || [])) {
+    if (!b || MERCH_AFGEBOEKT.has(String(b.status ?? ''))) continue
+    for (const mut of merchAfboekingenVoorRegels(b.regels, artikelen, {datum: ''})) {
+      uit.set(mut.merch_id, rnd2(getal(uit.get(mut.merch_id)) - mut.aantal))
+    }
+  }
+  return uit
+}
+
+/** Wat er van dit merch-artikel naar de webshop mag: stand min wat klaarligt, nooit onder nul. */
+export const merchBeschikbaarVoorWc = (
+  m: MerchArtikel | null | undefined,
+  gereserveerd?: Map<number, number> | null,
+): number => Math.max(0, merchVoorraad(m) - getal(m ? gereserveerd?.get(m.id) : 0))
+
 /** Mutaties van één artikel, nieuwste eerst (voor het logje in de UI). */
 export const merchLogVoorArtikel = (
   log: MerchMutatie[] | null | undefined,

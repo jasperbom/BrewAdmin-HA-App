@@ -196,9 +196,12 @@ export const berekenAangepastProfiel = (basis: WaterIonen, a: WaterAanpassing): 
 //  1. melkzuur neutraliseert een HCO₃⁻-overschot,
 //  2. epsomzout vult magnesium aan (en levert alvast sulfaat),
 //  3. gips vult het resterende sulfaattekort,
-//  4. calciumchloride vult het chloridetekort,
-//  5. keukenzout alleen bij een duidelijk natriumtekort én resterend
-//     chloridetekort.
+//  4. keukenzout bij een duidelijk natriumtekort (dekt een deel van het
+//     chloride, nooit meer dan het chloridetekort),
+//  5. calciumchloride vult het resterende chloridetekort.
+// Keukenzout komt vóór calciumchloride: andersom dekte CaCl₂ al het chloride
+// en bleef er voor keukenzout nooit een tekort over — een natriumtekort bleef
+// dan altijd open.
 // Er wordt nooit iets "weggehaald" behalve HCO₃⁻ — ionen boven het doel
 // blijven zichtbaar als positieve delta in de resultaattabel (dan is
 // verdunnen met RO-water de enige remedie).
@@ -234,16 +237,15 @@ export const stelDoseringVoor = (
   }
 
   let clTekort = (doel.cl || 0) - (basisNaVerdunning.cl || 0)
-  if (clTekort > 10) {
-    const gPerL = clTekort / 482.3
-    zoutGram.cacl2 = rond(gPerL * vol, 0.1)
-    clTekort = 0
-  }
-
   const naTekort = (doel.na || 0) - (basisNaVerdunning.na || 0)
   if (naTekort > 15 && clTekort > 10) {
     const gPerL = Math.min(naTekort / 393.4, clTekort / 606.6)
     zoutGram.keukenzout = rond(gPerL * vol, 0.1)
+    clTekort -= gPerL * 606.6
+  }
+
+  if (clTekort > 10) {
+    zoutGram.cacl2 = rond((clTekort / 482.3) * vol, 0.1)
   }
 
   for (const k of Object.keys(zoutGram)) if (!(zoutGram[k] > 0)) delete zoutGram[k]

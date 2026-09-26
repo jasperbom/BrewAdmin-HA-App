@@ -3,6 +3,7 @@ import { t } from '../i18n'
 import { newId } from '../utils/api'
 import { fmtD, tod } from '../utils/format'
 import { logAudit } from '../utils/audit'
+import { escapeHtml } from '../utils/template'
 import { ALLERGENEN_LIJST, TOEVOEGING_SOORTEN } from '../utils/constants'
 import { telAchterstalligeSchoonmaakTaken } from '../utils/taken'
 import Btn from '../components/ui/Btn'
@@ -13,6 +14,7 @@ import TraceTab from '../components/haccp/TraceTab'
 import ReinigingTab from '../components/haccp/ReinigingTab'
 import RegistersTab from '../components/haccp/RegistersTab'
 import { oefeningStatus, geldigeOefeningen, oefeningenNieuwsteEerst } from '../utils/trace'
+import { allergenenUitBatch } from '../utils/haccp'
 
 // HACCP-borging. De pagina is een register: registreren gebeurt daar waar de
 // handeling plaatsvindt (vrijgave, sluit- en etiketcontrole in de batchflow,
@@ -182,15 +184,10 @@ function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, a
   const {useState} = React
   const [selBatch, setSelBatch] = useState<number>(0)
 
-  const batchAllergenen = (batchId:number) => {
-    const bis = (bi||[]).filter((b:any)=>b.batch_id===batchId)
-    const allergs = new Set<string>()
-    bis.forEach((b:any)=>{
-      const ingredient = (ing||[]).find((i:any)=>i.id===b.ingredient_id)
-      if(ingredient?.allergenen) ingredient.allergenen.forEach((a:string)=>allergs.add(a))
-    })
-    return Array.from(allergs)
-  }
+  // Dezelfde afleiding als CCP 3 (ook regels die alleen op naam aan een
+  // ingrediënt hangen) — anders toont dit overzicht iets anders dan de
+  // etiketcontrole toetst.
+  const batchAllergenen = (batchId:number): string[] => allergenenUitBatch(batchId, bi || [], ing || [])
 
   const selAllergs = selBatch ? batchAllergenen(selBatch) : []
   const selBatchObj = selBatch ? (bat||[]).find((b:any)=>b.id===selBatch) : null
@@ -403,8 +400,8 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
   const printRapport = () => {
     const w = window.open('','_blank')
     if(!w) return
-    const esc = (x:any) => String(x ?? '').replace(/[&<>]/g, (c:string) =>
-      ({'&':'&amp;','<':'&lt;','>':'&gt;'} as Record<string,string>)[c])
+    // Eén HTML-escaper voor de hele app (& < > " '), ook veilig in een attribuut.
+    const esc = escapeHtml
     const periode = fVan || fTot
       ? `${fVan ? fmtD(fVan) : '…'} — ${fTot ? fmtD(fTot) : '…'}`
       : t('haccp_rap_alle_data')
@@ -422,7 +419,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       return `<tr>
         <td>${esc(x.lotcode)}</td><td>${esc(batchNaam(x.batch_id))}</td>
         <td>${esc(tijd(x.start))}</td><td>${esc(x.eind?tijd(x.eind):'—')}</td>
-        <td>${esc(x.tht?fmtD(x.tht):t('haccp_tht_klasse_geen'))}</td>
+        <td>${esc(x.tht?fmtD(x.tht):(x.tht_klasse&&x.tht_klasse!=='geen'?'—':t('haccp_tht_klasse_geen')))}</td>
         <td>${sc.length}${afgekeurd?` <span class="nok">(${afgekeurd} ${esc(t('haccp_ccp2_afgekeurd'))})</span>`:''}</td>
         <td>${ec.length}</td>
         <td>${esc(t(`haccp_sessie_${x.status}`))}</td></tr>`
@@ -537,7 +534,11 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                       </span>
                     </div>
                     <span className="text-xs text-gray-400">
-                      {x.tht ? `${t('haccp_sessie_tht')} ${fmtD(x.tht)}` : t('haccp_tht_klasse_geen')}
+                      {/* Zonder THT maar onder de alcoholgrens: geen bewering
+                          dat er geen THT nodig is (die sessie mist er één). */}
+                      {x.tht ? `${t('haccp_sessie_tht')} ${fmtD(x.tht)}`
+                        : x.tht_klasse && x.tht_klasse !== 'geen' ? `${t('haccp_sessie_tht')} —`
+                        : t('haccp_tht_klasse_geen')}
                     </span>
                   </div>
                   <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-2">

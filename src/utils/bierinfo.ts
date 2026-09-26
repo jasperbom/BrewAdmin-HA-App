@@ -158,36 +158,113 @@ export const bierInhoud = (liter: any): string => {
   return `${Number.isInteger(l) ? l : Number(l.toFixed(2))}L`
 }
 
+// Graansoorten die niet "gewoon gerst" zijn: ze horen apart op het etiket.
+// Boekweit is geen tarwe, maar heet in het Engels en Duits wel zo
+// ("buckwheat", "Buchweizen"): die namen worden vóór de toets naar 'boekweit'
+// gezet (`zonderBoekweit`). Bewust geen lookbehind in de regex: Safari/iOS
+// vóór 16.4 kan die niet parsen, en dan laadt de hele app niet.
+const BOEKWEIT_NAMEN = /buck\s*wheat|buch\s*weizen/gi
+const zonderBoekweit = (naam: string): string => naam.replace(BOEKWEIT_NAMEN, 'boekweit')
+const GRAAN_SOORTEN: {toets: RegExp, label: string}[] = [
+  {toets: /tarwe|wheat|weizen|froment/i,          label: 'tarwemout'},
+  {toets: /rogge|\brye\b|roggen/i,                label: 'roggemout'},
+  {toets: /haver|\boat/i,                         label: 'havermout'},
+  {toets: /spelt|dinkel/i,                        label: 'speltmout'},
+]
+// Glutenvrije granen: wel een ingrediënt, maar nooit "gerstemout".
+const GLUTENVRIJE_GRANEN: {toets: RegExp, label: string}[] = [
+  {toets: /rijst|\brice\b|\breis\b/i,             label: 'rijst'},
+  {toets: /\bma[iï]s\b|maize|\bcorn\b/i,          label: 'maïs'},
+  {toets: /sorghum/i,                             label: 'sorghum'},
+  {toets: /boekweit|buckwheat|buchweizen/i,       label: 'boekweit'},
+  {toets: /gierst|millet|hirse/i,                 label: 'gierst'},
+]
+const LACTOSE = /lactose|melksuiker|milk\s*sugar|milchzucker/i
+const HONING = /honing|honey|honig|\bmiel\b/i
+const SUIKER = /suiker|sugar|zucker|sucre|az[uú]car|kandij|candi|dextrose|glucose|sucrose|sacharose|maltodextrin|melasse|molasses|stroop|syrup|invert/i
+// "Honey Malt" is gewoon gerstemout: een moutnaam is nooit een zoetstof.
+const MOUT_WOORD = /\b(malt|mout|malz)\b/i
+const GERST = /gerst|barley|\borge\b|cebada/i
+// Filterhulp (rijstkaf, haverkaf) gaat er bij het klaren weer uit — geen ingrediënt.
+const HULPSTOF = /hulls?\b|\bkaf\b|spelzen/i
+
 /**
  * De ingrediëntenlijst zoals hij op een etiket hoort: water, de graansoorten
- * die erin zitten, hop en gist. Afgeleid uit de gekoppelde recepten —
- * merknamen ("Cara 50", "Citra") zeggen een klant niets en horen er niet in;
- * de graansoort wel, want die bepaalt ook de allergenen.
+ * die erin zitten, suiker/honing/lactose, hop en gist. Afgeleid uit de
+ * gekoppelde recepten — merknamen ("Cara 50", "Citra") zeggen een klant niets
+ * en horen er niet in; de graansoort wel, want die bepaalt ook de allergenen.
+ *
+ * Brewfather zet suikers (kandij, dextrose, honing, lactose) in dezelfde
+ * moutlijst, met `ingredient_type` 'Suiker'. Alleen een regel van type Mout
+ * (of zonder type) die geen andere graansoort noemt telt als gerst — een
+ * suikerregel levert dus nooit een allergeen op dat er niet in zit. Lactose
+ * (melk) wordt herkend in de moutlijst én bij de overige toevoegingen.
+ *
+ * Met `ingredienten` erbij krijgt een verder onbenoemde toevoeging waarvan het
+ * gekoppelde ingrediënt allergenen heeft (dezelfde bron als CCP 3) een plek op
+ * de lijst, met het allergeen erachter: "hazelnoot (noten)".
  */
-export function bierIngredienten(recepten?: any[] | null): string {
+export function bierIngredienten(
+  recepten?: any[] | null,
+  ingredienten?: {id?: any, naam?: string, allergenen?: string[] | null}[] | null,
+): string {
   const lijst = (recepten || []).filter(Boolean)
   if (!lijst.length) return ''
 
-  const graanSoorten: {toets: RegExp, label: string}[] = [
-    {toets: /tarwe|wheat|weizen|froment/i, label: 'tarwemout'},
-    {toets: /rogge|\brye\b|roggen/i,       label: 'roggemout'},
-    {toets: /haver|\boat/i,                label: 'havermout'},
-    {toets: /spelt|dinkel/i,               label: 'speltmout'},
-  ]
-
   const granen: string[] = []
+  const toevoegingen: string[] = []
+  const voegToe = (xs: string[], x: string) => { if (x && !xs.includes(x)) xs.push(x) }
   let heeftGerst = false, heeftHop = false, heeftGist = false
+
+  const gekoppeld = (regel: any) => {
+    const ing = ingredienten || []
+    if (regel?.ingredient_id != null) {
+      const opId = ing.find(i => i?.id === regel.ingredient_id)
+      if (opId) return opId
+    }
+    const naam = String(regel?.naam || '').trim().toLowerCase()
+    return naam ? ing.find(i => String(i?.naam || '').trim().toLowerCase() === naam) : undefined
+  }
+
+  // Suiker, honing en lactose herkennen; `true` als de regel daarmee benoemd is.
+  const zoetstof = (naam: string, isSuikerType: boolean): boolean => {
+    if (LACTOSE.test(naam)) { voegToe(toevoegingen, 'lactose (melk)'); return true }
+    if (!isSuikerType && MOUT_WOORD.test(naam)) return false
+    if (HONING.test(naam)) { voegToe(toevoegingen, 'honing'); return true }
+    if (isSuikerType || SUIKER.test(naam)) { voegToe(toevoegingen, 'suiker'); return true }
+    return false
+  }
+
+  // Een regel die verder nergens onder valt: alleen op de lijst als het
+  // gekoppelde ingrediënt allergenen heeft.
+  const metAllergeen = (regel: any, naam: string) => {
+    const allergenen = (gekoppeld(regel)?.allergenen || []).map(a => String(a))
+    if (!allergenen.length) return
+    if (allergenen.includes('lactose')) voegToe(toevoegingen, 'lactose (melk)')
+    const rest = allergenen.filter(a => a !== 'lactose' && a !== 'overig')
+    if (rest.length) voegToe(toevoegingen, `${naam.toLowerCase()} (${rest.join(', ')})`)
+    else if (allergenen.includes('overig')) voegToe(toevoegingen, naam.toLowerCase())
+  }
 
   for (const r of lijst) {
     for (const m of (r.mout || [])) {
-      const naam = String(m?.naam || '')
-      const bijzonder = graanSoorten.find(g => g.toets.test(naam))
-      if (bijzonder) {
-        if (!granen.includes(bijzonder.label)) granen.push(bijzonder.label)
-      } else if (naam.trim()) {
-        // Alles wat geen andere graansoort noemt is in de praktijk gerst.
-        heeftGerst = true
-      }
+      const naam = String(m?.naam || '').trim()
+      if (!naam || HULPSTOF.test(naam)) continue
+      const type = String(m?.ingredient_type || '').trim().toLowerCase()
+      if (zoetstof(naam, type === 'suiker')) continue
+      const graanNaam = zonderBoekweit(naam)
+      const graan = GRAAN_SOORTEN.find(g => g.toets.test(graanNaam)) || GLUTENVRIJE_GRANEN.find(g => g.toets.test(graanNaam))
+      if (graan) { voegToe(granen, graan.label); continue }
+      // Een mout zonder andere graansoort in de naam is in de praktijk gerst;
+      // bij een toevoeging van een ander type (Overig) alleen als de naam
+      // mout of gerst noemt (flaked barley, moutextract) — verder raden we niet.
+      if (!type || type === 'mout' || MOUT_WOORD.test(naam) || GERST.test(naam)) heeftGerst = true
+      else metAllergeen(m, naam)
+    }
+    for (const o of (r.overig || [])) {
+      const naam = String(o?.naam || '').trim()
+      if (!naam || HULPSTOF.test(naam) || zoetstof(naam, false)) continue
+      metAllergeen(o, naam)
     }
     if ((r.hop || []).length) heeftHop = true
     if ((r.gist || []).length) heeftGist = true
@@ -195,7 +272,7 @@ export function bierIngredienten(recepten?: any[] | null): string {
 
   const delen = ['water']
   if (heeftGerst) delen.push('gerstemout')
-  delen.push(...granen)
+  delen.push(...granen, ...toevoegingen)
   if (heeftHop) delen.push('hop')
   if (heeftGist) delen.push('gist')
 
@@ -212,6 +289,8 @@ export interface BierInfoBron {
   inhoudLiter?: any
   /** De gekoppelde recepten — bepalen de ingrediëntenlijst. */
   recepten?: any[] | null
+  /** De ingrediëntencatalogus — voegt allergenen van gekoppelde toevoegingen toe aan de lijst. */
+  ingredienten?: {id?: any, naam?: string, allergenen?: string[] | null}[] | null
 }
 
 /**
@@ -239,7 +318,7 @@ export function afgeleideBierInfo(bron: BierInfoBron): Record<string, string> {
 
   // De ingrediëntenlijst is afgeleid én overschrijfbaar: staat er een eigen
   // tekst bij het product, dan wint die.
-  const ingredienten = bierIngredienten(bron.recepten)
+  const ingredienten = bierIngredienten(bron.recepten, bron.ingredienten)
   if (ingredienten) uit.ingredienten = ingredienten
 
   return uit

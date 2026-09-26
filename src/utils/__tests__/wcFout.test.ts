@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseWcFout, wcFoutTekst, wcFoutMelding } from '../wcFout'
+import { parseWcFout, wcFoutTekst, wcFoutMelding, wcTestMelding } from '../wcFout'
 
 // Vertaalstub: geeft de sleutel terug met de placeholders erin, zodat de test
 // de mapping toetst en niet de Nederlandse zinnen.
@@ -66,5 +66,32 @@ describe('wcFoutMelding', () => {
 
   it('geeft een nette melding bij een fout zonder tekst', () => {
     expect(wcFoutMelding(null, t)).toBe('[wc_fout_netwerk:{n}:{status}]')
+  })
+})
+
+describe('wcTestMelding', () => {
+  it('gelukt: vinkje + vertaalde melding', () => {
+    expect(wcTestMelding({ok: true, status: 200}, t)).toBe('✓ [settings_wc_test_ok:{n}:{status}]')
+  })
+
+  it('401: de API-sleutels, met de tekst van de winkel erachter', () => {
+    expect(wcTestMelding({ok: false, status: 401, detail: 'Sorry'}, t))
+      .toBe('⚠ [wc_fout_auth::401] — Sorry')
+  })
+
+  it('netwerkfout: de oorzaak van de proxy, niet alleen de status', () => {
+    expect(wcTestMelding({ok: false, status: 502, oorzaak: 'dns'}, t)).toBe('⚠ [wc_fout_dns::502]')
+    expect(wcTestMelding({ok: false, status: 504, oorzaak: 'timeout', timeout: 20}, t))
+      .toBe('⚠ [wc_fout_timeout:20:504]')
+  })
+
+  it('400 van de eigen server: gegevens onvolledig of ongeldig adres', () => {
+    expect(wcTestMelding({ok: false, status: 400, detail: 'missing credentials'}, t))
+      .toBe('⚠ [settings_wc_test_onvolledig:{n}:{status}]')
+  })
+
+  it('server onbereikbaar (geen status): netwerkfout', () => {
+    expect(wcTestMelding({ok: false, status: 0, detail: 'Failed to fetch'}, t))
+      .toBe('⚠ [wc_fout_netwerk:{n}:{status}]')
   })
 })

@@ -1,0 +1,13 @@
+configuration:
+  ssl:
+    name: "HTTPS en el puerto directo"
+    description: "Usa los certificados de /ssl (p. ej. del complemento Let's Encrypt). Si el certificado no sirve, el puerto directo no se inicia."
+  certfile:
+    name: "Archivo de certificado"
+    description: "Nombre de archivo en /ssl, normalmente fullchain.pem."
+  keyfile:
+    name: "Archivo de clave"
+    description: "Nombre de archivo en /ssl, normalmente privkey.pem."
+  backup_password:
+    name: "Contraseña de copia de seguridad"
+    description: "Cifra las contraseñas y claves API en la copia de seguridad del servidor. Si se deja vacía, se usa una clave que solo existe en esta instalación; con una contraseña también puedes recuperarlas de la copia tras perder los datos del complemento. Guárdala bien: sin ella no se pueden abrir desde la copia."

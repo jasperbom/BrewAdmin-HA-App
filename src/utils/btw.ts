@@ -173,6 +173,60 @@ export function omzetBtwOpGrondslag(verkoopFacturen: any[], wcOrders: any[]): Om
   }
 }
 
+// ── Eén bron per verkoop: webshoporder óf verkoopfactuur ────────────────────
+// Een geïmporteerde webshoporder die in Bestellingen wordt afgerond krijgt
+// een eigen verkoopfactuur (met `bestelling_id`). Diezelfde order komt via
+// "Verkoop ophalen" op de BTW-tab nog eens binnen als WooCommerce-order. Tel
+// je beide mee, dan staat de omzet-BTW van het hele webshopkanaal er dubbel.
+// De verkoopfactuur is het fiscale document en daarmee de enige bron: een
+// order telt alleen nog mee zolang er in de app geen factuur voor bestaat.
+//
+// Bewust zonder datumfilter: een factuur uit een andere periode (afgerond in
+// het volgende kwartaal) sluit de order ook uit, anders verspreidt dezelfde
+// omzet zich over twee periodes. Id's worden als string vergeleken — de
+// WooCommerce-API geeft getallen, oudere data soms strings.
+export function wcOrdersNogNietGefactureerd(
+  wcOrders: any[],
+  bestellingen: any[],
+  verkoopFacturen: any[],
+): any[] {
+  const bestellingMetFactuur = new Set<string>()
+  ;(verkoopFacturen || []).forEach((f: any) => {
+    if (f?.bestelling_id != null) bestellingMetFactuur.add(String(f.bestelling_id))
+  })
+  const gefactureerd = new Set<string>()
+  ;(bestellingen || []).forEach((b: any) => {
+    if (b?.wc_order_id == null || b.wc_order_id === '') return
+    if (b.factuur_id != null || (b.id != null && bestellingMetFactuur.has(String(b.id)))) {
+      gefactureerd.add(String(b.wc_order_id))
+    }
+  })
+  return (wcOrders || []).filter((o: any) => !gefactureerd.has(String(o?.id)))
+}
+
+// ── Periodetoets per factuur ────────────────────────────────────────────────
+// Telt de BTW van deze factuur mee in periode `key`? Kijkt naar de effectieve
+// periode (incl. rollover via `btw_periode`), niet naar de kale datum — zo
+// valt een teruggedateerde factuur in een al ingediende periode in de lopende
+// aangifte in plaats van stil in de al ingediende. Geldt voor inkoop én
+// verkoop; zonder `btw_periode` is het precies de oude datumtoets.
+export function inBtwPeriode(
+  factuur: Pick<InkoopFactuur, 'datum' | 'btw_periode'>,
+  periode: BtwPeriodeType,
+  key: string,
+): boolean {
+  return !!key && effectievePeriodeKey(factuur, periode) === key
+}
+
+// Zelfde toets voor een heel aangiftejaar (het jaartotaal op de BTW-tab).
+export function inBtwJaar(
+  factuur: Pick<InkoopFactuur, 'datum' | 'btw_periode'>,
+  periode: BtwPeriodeType,
+  jaar: number | string,
+): boolean {
+  return effectievePeriodeKey(factuur, periode).startsWith(`${jaar}-`)
+}
+
 // Bepaalt of een factuur met deze datum naar de huidige periode moet rollen,
 // en zo ja: naar welke periodeKey. Geeft `null` terug wanneer geen rollover
 // nodig is (datum valt in een open of toekomstige periode).
@@ -274,4 +328,27 @@ export function standaardBtwPct(
   }
   if (actief.includes(STANDAARD_BTW_FALLBACK) || actief.length === 0) return STANDAARD_BTW_FALLBACK
   return Math.max(...actief)
+}
+
+// Het eigen BTW-tarief van een artikel: `btw_pct`, anders het oude veld `btw`
+// (legacy artikelen); leeg of geen getal = geen eigen tarief (null). 0% is een
+// echt tarief en blijft 0 — een `||`-terugval maakte er eerder 9% van.
+export function artikelEigenBtwPct(
+  art?: { btw_pct?: number | string | null; btw?: number | string | null } | null,
+): number | null {
+  for (const rauw of [art?.btw_pct, art?.btw]) {
+    if (rauw === null || rauw === undefined || rauw === '') continue
+    const n = Number(rauw)
+    if (Number.isFinite(n)) return n
+  }
+  return null
+}
+
+// Het tarief van een artikel op een nieuwe kassabon- of orderregel: het eigen
+// tarief, anders het standaardtarief (`standaardBtwPct`).
+export function artikelBtwPct(
+  art: { btw_pct?: number | string | null; btw?: number | string | null } | null | undefined,
+  standaard: number,
+): number {
+  return artikelEigenBtwPct(art) ?? standaard
 }

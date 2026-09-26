@@ -55,9 +55,46 @@ export function vervaldatumVerkoopFactuur(factuur: any, klanten: any[] = [], bre
   return isoVanMs(start + betalingstermijnVoor(factuur, klanten, breweryDetails) * DAG_MS)
 }
 
+/**
+ * De brouwerijgegevens met de betalingstermijn die voor déze factuur geldt
+ * (klantkaart → brouwerij → 14). Geef dit mee aan de factuur-, herinnerings-
+ * en UBL-opbouw: dan noemt elk document — vanuit Boekhouding, Bestellingen of
+ * de kassa — dezelfde vervaldatum als waarmee de te-laat-badge rekent.
+ */
+export function breweryMetTermijn(factuur: any, klanten: any[] = [], breweryDetails: any = null): any {
+  return {...(breweryDetails || {}), betalingstermijn: betalingstermijnVoor(factuur, klanten, breweryDetails)}
+}
+
+/** Vervaldatum als dd-mm-jjjj voor de mailtekst ({vervaldatum}); leeg zonder factuurdatum. */
+export function vervaldatumTekst(factuur: any, klanten: any[] = [], breweryDetails: any = null): string {
+  const iso = vervaldatumVerkoopFactuur(factuur, klanten, breweryDetails)
+  return iso ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : ''
+}
+
 /** Nog te innen: niet betaald en geen creditnota. */
 export const isVerkoopFactuurOpen = (f: any): boolean =>
   !!f && f.status !== 'betaald' && f.status !== 'credit'
+
+/**
+ * Heeft deze bestelling al een verkoopfactuur? Ja bij status `afgerond`, een
+ * `factuur_id` op de order, of een factuur met dit `bestelling_id` die zelf
+ * geen creditnota is en niet door een creditnota is tenietgedaan. Afronden
+ * vraagt het vóór het een factuurnummer ophaalt: een tweede klik (of een
+ * tweede tabblad) mag nooit een tweede definitieve factuur en journaalboeking
+ * voor dezelfde order maken.
+ */
+export function orderIsGefactureerd(order: any, verkoopFacturen: any[] | null | undefined): boolean {
+  if (!order) return false
+  if (order.status === 'afgerond' || order.factuur_id != null) return true
+  const lijst = verkoopFacturen || []
+  const gecrediteerd = new Set(lijst
+    .filter(f => f?.status === 'credit' && f.credit_van_factuur_id != null)
+    .map(f => String(f.credit_van_factuur_id)))
+  return lijst.some(f => f
+    && f.bestelling_id != null && String(f.bestelling_id) === String(order.id)
+    && f.status !== 'credit'
+    && !gecrediteerd.has(String(f.id)))
+}
 
 /** Dagen voorbij de vervaldatum (negatief = nog niet vervallen; 0 zonder datum). */
 export function dagenTeLaat(factuur: any, klanten: any[], breweryDetails: any, vandaag: string): number {

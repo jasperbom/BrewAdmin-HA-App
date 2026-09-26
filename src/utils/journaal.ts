@@ -36,6 +36,9 @@ export const verkoopFactuurBoeking = (f: any): JournaalRegelData[] => {
     relatie: f?.klant_naam || undefined,
     omschrijving: [f?.factuurnummer, f?.klant_naam].filter(Boolean).join(' — ')
       || String(f?.factuurnummer || f?.id || ''),
+    // Alleen bij een doorgerolde factuur (datum in een al ingediende periode):
+    // dan hoort de omzet-BTW bij de lopende aangifte, niet bij de datum.
+    ...(f?.btw_periode ? { btw_periode: String(f.btw_periode) } : {}),
   }
   let ovz: Array<{ tarief: number; netto: number; btw: number }> =
     Array.isArray(f?.btw_overzicht) && f.btw_overzicht.length ? f.btw_overzicht : []

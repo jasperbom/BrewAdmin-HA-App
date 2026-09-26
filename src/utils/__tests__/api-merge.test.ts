@@ -1,7 +1,12 @@
 // Conflictafhandeling in api.ts: een 409 wordt niet meer blind een
 // schrikmelding, maar eerst een samenvoeging per record.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { _postToServer, _losConflictOp, _updateVersion, _rememberSynced } from '../api'
+
+// Voor de useStore-scenario's onderaan (net genoeg React buiten een renderer).
+vi.mock('react', async () => (await import('./syncNep')).reactNep)
+
+import { staten, NepServer, geheugenOpslag } from './syncNep'
+import { _postToServer, _losConflictOp, _updateVersion, _rememberSynced, useStore, _wachtOpVerzending } from '../api'
 
 const rec = (id: number, n: string) => ({id, n})
 const BASIS = [rec(1, 'a'), rec(2, 'b'), rec(3, 'c')]
@@ -127,5 +132,86 @@ describe('_postToServer bij een 409', () => {
   it('geeft nog steeds "conflict" terug — het samenvoegen zit in de afhandeling', async () => {
     mockFetch([respons(409, {error: 'conflict', version: 'v9'})])
     expect(await _postToServer('mergetest', [...BASIS, rec(4, 'd')])).toBe('conflict')
+  })
+})
+
+describe('doortypen tijdens het samenvoegen', () => {
+  // Batchvelden slaan per toetsaanslag op, terwijl de servertick en andere
+  // tabbladen in dezelfde key schrijven. Kwam er een toetsaanslag binnen
+  // tijdens de her-POST na een samenvoeging, dan zette de app daarna de
+  // samengevoegde stand in beeld (de toetsaanslag verdween) en ging de
+  // nieuwere save met de verse versie de deur uit: die draaide de
+  // overgenomen serverwijzigingen weer terug.
+  it('houdt de toetsaanslag én de serverwijzigingen, op de server en in beeld', async () => {
+    const server = new NepServer()
+    const meldingen: string[] = []
+    vi.stubGlobal('fetch', server.fetch)
+    vi.stubGlobal('localStorage', geheugenOpslag())
+    vi.stubGlobal('alert', (m: string) => { meldingen.push(m) })
+
+    const key = 'doortypen'
+    const basis = [rec(1, 'a'), rec(2, 'b'), rec(3, 'c')]
+    server.zet(key, basis)
+    _updateVersion(key, new Response(null, {headers: {'X-Data-Version': server.versie(key)}}))
+    _rememberSynced(key, basis)
+    const [, save] = useStore(key, basis)
+    const cel = staten[staten.length - 1]
+
+    // Intussen: de server wijzigt record 3 en maakt record 4 aan.
+    server.zet(key, [rec(1, 'a'), rec(2, 'b'), rec(3, 'SERVER'), rec(4, 'AUTO')])
+
+    // De tweede schrijfactie is de her-POST na de samenvoeging; precies dan
+    // typt de gebruiker verder.
+    let schrijf = 0
+    server.wacht = v => {
+      if (v.methode === 'POST' && v.pad.endsWith(`/${key}`) && ++schrijf === 2) {
+        save((p: any[]) => p.map(r => (r.id === 1 ? {...r, n: 'L2'} : r)))
+      }
+    }
+    save((p: any[]) => p.map(r => (r.id === 1 ? {...r, n: 'L1'} : r)))
+    for (let i = 0; i < 4; i++) await _wachtOpVerzending()
+
+    const verwacht = [rec(1, 'L2'), rec(2, 'b'), rec(3, 'SERVER'), rec(4, 'AUTO')]
+    expect(server.lees(key)).toEqual(verwacht)
+    expect(cel.waarde).toEqual(verwacht)
+    expect(meldingen).toEqual([])
+  })
+})
+
+describe('netwerkfout tijdens het samenvoegen', () => {
+  // Mislukte de her-POST na een samenvoeging, dan stonden ijkpunt en versie
+  // al op de verse serverstand, terwijl de herkansing (en elke volgende save)
+  // de lokale stand zónder de serverwijzigingen droeg. Die ging dan als delta
+  // met een geldige versie de deur uit en wiste stil wat een ander net had
+  // toegevoegd.
+  it('wist het record van een ander apparaat niet bij de volgende save', async () => {
+    const server = new NepServer()
+    vi.stubGlobal('fetch', server.fetch)
+    vi.stubGlobal('localStorage', geheugenOpslag())
+    vi.stubGlobal('alert', () => {})
+
+    const key = 'mergefout'
+    const basis = [rec(1, 'a'), rec(2, 'b'), rec(3, 'c')]
+    server.zet(key, basis)
+    _updateVersion(key, new Response(null, {headers: {'X-Data-Version': server.versie(key)}}))
+    _rememberSynced(key, basis)
+    const [, save] = useStore(key, basis)
+
+    // Een ander apparaat voegt record 4 toe.
+    server.zet(key, [...basis, rec(4, 'ANDER')])
+
+    // De eerste POST botst (409); de her-POST na het samenvoegen valt weg.
+    let schrijf = 0
+    server.netwerkFout = v => v.methode === 'POST' && v.pad.endsWith(`/${key}`) && ++schrijf === 2
+    save((p: any[]) => [...p, rec(5, 'L1')])
+    for (let i = 0; i < 4; i++) await _wachtOpVerzending()
+    expect(server.lees(key)).toEqual([...basis, rec(4, 'ANDER')])
+
+    // De gebruiker werkt gewoon verder op zijn (oude) stand.
+    server.netwerkFout = null
+    save((p: any[]) => p.map(r => (r.id === 5 ? {...r, n: 'L2'} : r)))
+    for (let i = 0; i < 4; i++) await _wachtOpVerzending()
+
+    expect(server.lees(key)).toEqual([...basis, rec(4, 'ANDER'), rec(5, 'L2')])
   })
 })

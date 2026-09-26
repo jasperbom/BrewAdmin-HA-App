@@ -6,8 +6,11 @@
  * moet dezelfde import op twee plekken draaien — vandaar hier, zonder React.
  *
  *  - `haalWcOrders`      — alle pagina's ophalen (fout op pagina > 1 = klaar)
+ *  - `haalBekendeWcOrders` — de openstaande orders die we al hebben, per id en
+ *                          in elke status: ook een annulering of terugbetaling
+ *                          in de winkel moet hier aankomen
  *  - `wcOrderNaarBestelling` / `wcOrderUpdate` — één order omzetten resp. de
- *                          betaal-/leveringsvelden van een bekende order verversen
+ *                          betaal-/leverings-/statusvelden van een bekende order verversen
  *  - `importeerWcOrders` — het geheel: geeft `{nieuw, updates, onbekendeRegels}`
  *  - `pasImportToe`      — het resultaat in de bestellingenlijst verwerken; laat
  *                          een order vallen die intussen al bestaat (twee tabs)
@@ -15,6 +18,8 @@
  *  - `telNieuweWebshopOrders` / `importLeaseVrij` — voor de automatische import:
  *                          hoeveel orders meldt de server die hier nog niet zijn,
  *                          en mag dít tabblad nu importeren (lease)
+ *  - `telWebshopAfgebroken` — open orders die in de winkel geannuleerd,
+ *                          mislukt of terugbetaald zijn (attentiepost)
  *
  * De mapping van orderregels (`mapWcOrderRegels`), betaalstatus en levering
  * blijft in utils/wcImport.ts resp. utils/levering.ts.
@@ -25,7 +30,8 @@ import { findKlantVoorOrder } from './klant'
 import { wcAdres } from './adres'
 import {
   WcRefs, WC_IMPORT_STATUSSEN_DEFAULT, wcOrdersPad, mapWcOrderRegels,
-  wcBetaalVelden, betaalVeldenGewijzigd, BETAAL_KEYS,
+  wcBetaalVelden, betaalVeldenGewijzigd, BETAAL_KEYS, betaalVeldenNaEigenSync,
+  wcOrderStatus, WC_NIET_BETAALD_STATUSSEN, WC_AFGEBROKEN_STATUSSEN,
 } from './wcImport'
 import { wcLeveringVelden, leveringVeldenGewijzigd, leveringOmschrijving, LEVERING_KEYS, leesWcPaginas, WcPaginas, WcLinkContext } from './levering'
 
@@ -36,6 +42,9 @@ export const WC_MAX_PAGINAS = 10
 
 /** Zo lang houdt een tabblad de import-lease vast (ruim boven een import). */
 export const WC_IMPORT_LEASE_MS = 2 * 60_000
+
+/** Minimale tijd tussen twee imports die door een servermelding komen. */
+export const WC_IMPORT_MELDING_MIN_MS = 60_000
 
 export type WcGet = (pad: string) => Promise<any>
 type Vertaal = (key: string) => string
@@ -55,6 +64,12 @@ export interface WcImportInvoer {
   t: Vertaal
   /** Vandaag (yyyy-mm-dd), voor een order zonder aanmaakdatum. */
   vandaag?: string
+  /**
+   * De picks (`bestelling_picks`). Alleen mét deze lijst annuleert de import
+   * een order die in de winkel geannuleerd of terugbetaald is: zonder weten we
+   * niet of er al bier voor klaarligt, en dan blijft het bij een signaal.
+   */
+  bestellingPicks?: any[]
 }
 
 export interface WcImportResultaat {
@@ -92,6 +107,53 @@ export async function haalWcOrders(wcGet: WcGet, opts: {statussen: string[], van
     if (pagina.length < WC_PER_PAGE) break
   }
   return orders
+}
+
+/** Bestelstatussen waarin een webshoporder hier nog openstaat. */
+export const WC_OPEN_BESTELSTATUSSEN: string[] = ['nieuw', 'bevestigd', 'gepickt', 'verzonden']
+
+/**
+ * De webshoporders die hier nog openstaan maar niet in de gewone selectie
+ * zaten (`haalWcOrders` vraagt alleen de ingestelde statussen op). Een order
+ * die in de winkel geannuleerd, mislukt of terugbetaald is, valt daar juist
+ * uit — zonder deze tweede ronde bleef hij hier eeuwig 'nieuw', reserveerde
+ * hij voorraad en bleef hij 'betaald'.
+ */
+export function teVerversenWcIds(bestellingen: any[], alOpgehaald: Iterable<any> = []): number[] {
+  const gezien = new Set(Array.from(alOpgehaald, (id: any) => String(id)))
+  const ids: number[] = []
+  for (const b of (bestellingen || [])) {
+    if (b?.wc_order_id == null || !WC_OPEN_BESTELSTATUSSEN.includes(b.status)) continue
+    const id = Number(b.wc_order_id)
+    if (!Number.isInteger(id) || id <= 0 || gezien.has(String(id))) continue
+    gezien.add(String(id))
+    ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * Bekende orders per id ophalen, in elke status (`include` + `status=any`),
+ * 100 per verzoek. Alleen de gevraagde id's komen terug — een winkel die
+ * `include` negeert levert zo nooit een nieuwe order op. Een fout slaat de
+ * rest stil over (zoals `haalWcPaginas`): dit is een verversing, nooit een
+ * reden om de import te laten mislukken.
+ */
+export async function haalBekendeWcOrders(wcGet: WcGet, ids: number[]): Promise<any[]> {
+  const gevraagd = new Set(ids.map(id => String(id)))
+  const uniek = Array.from(gevraagd).slice(0, WC_PER_PAGE * WC_MAX_PAGINAS)
+  const uit: any[] = []
+  for (let i = 0; i < uniek.length; i += WC_PER_PAGE) {
+    const deel = uniek.slice(i, i + WC_PER_PAGE)
+    let antwoord: any
+    try {
+      antwoord = await wcGet(`orders?include=${deel.join(',')}&status=any&per_page=${WC_PER_PAGE}`)
+    } catch {
+      break
+    }
+    if (Array.isArray(antwoord)) uit.push(...antwoord.filter((o: any) => o && gevraagd.has(String(o.id))))
+  }
+  return uit
 }
 
 // BTW-nummer alléén uit échte BTW-nummervelden (bijv. _billing_vat_number,
@@ -158,6 +220,8 @@ export function wcOrderNaarBestelling(
     regels,
     wc_order_id: o?.id,
     wc_order_nummer: String(o?.number || o?.id),
+    // Webshopstatus alleen als hij om aandacht vraagt (zie wcOrderUpdate).
+    ...(WC_NIET_BETAALD_STATUSSEN.includes(wcOrderStatus(o)) ? {wc_status: wcOrderStatus(o)} : {}),
   }
   // Koppel direct aan een bestaande klantkaart (e-mail, of uniek op naam)
   // zodat de order niet eerst als "ongekoppeld" binnenkomt.
@@ -188,19 +252,42 @@ function adresHerstel(bestaand: any, o: any): Record<string, string> | null {
  * betaald; zonder deze verversing bleef de app voor altijd denken dat er nog
  * geld moest komen — en zei de factuurmail dat ook. Het afhaalmoment kiest (of
  * verzet) de klant vaak pas ná het bestellen, dus dat gaat op dezelfde manier.
+ *
+ * Is de order in de winkel geannuleerd, mislukt of terugbetaald, dan komt de
+ * webshopstatus als `wc_status` op de bestelling (badge en attentiepost).
+ * Geannuleerd of terugbetaald terwijl hij hier nog `nieuw` of `bevestigd` is,
+ * zonder picks en zonder factuur: dan annuleert de import hem zelf, zodat de
+ * reservering vrijvalt. Is er al gepickt, dan blijft de status staan — daar
+ * beslist de gebruiker. `heeftPicks` onbekend = niet annuleren. Een mislukte
+ * betaling (`failed`) kan de klant nog opnieuw doen: alleen het signaal.
  * Geeft `null` als er niets veranderd is.
  */
-export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}): Record<string, any> | null {
-  const velden = wcBetaalVelden(o)
+export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}, opts: {heeftPicks?: boolean} = {}): Record<string, any> | null {
+  // Onze eigen `completed` (terugschrijven) telt niet als betaling.
+  const velden = betaalVeldenNaEigenSync(bestaand, o, wcBetaalVelden(o))
   const levering = wcLeveringVelden(o, link)
+  // Zonder winkelpagina's (settings/advanced mislukte, tijdelijk of blijvend)
+  // blijft de eerder bepaalde bestellink staan en telt hij niet als wijziging;
+  // anders klapte een haperende winkel de link van élke order om en weer terug.
+  if (!link.paginas && String(bestaand?.wc_bestel_url ?? '').trim()) levering.wc_bestel_url = bestaand.wc_bestel_url
   // Een veld dat in de winkel verdwenen is (afhaallocatie na een wissel naar
   // bezorgen, betaaldatum na een terugboeking) moet hier ook weg — anders
   // blijft de order elke ronde opnieuw als "gewijzigd" gelden.
   const leeg = (keys: string[]) => Object.fromEntries(keys.map(k => [k, null]))
-  const upd = {
+  const upd: Record<string, any> = {
     ...(betaalVeldenGewijzigd(bestaand, velden) ? {...leeg(BETAAL_KEYS), ...velden} : {}),
     ...(leveringVeldenGewijzigd(bestaand, levering) ? {...leeg(LEVERING_KEYS), ...levering} : {}),
     ...(adresHerstel(bestaand, o) || {}),
+  }
+  // Webshopstatus: alleen bewaren zodra het ertoe doet (of als hij er al
+  // stond, zodat een mislukte order die alsnog betaald wordt weer schoon is);
+  // anders kreeg élke bekende order bij de eerste import een update.
+  const status = wcOrderStatus(o)
+  const oud = String(bestaand?.wc_status ?? '').trim()
+  if (status && status !== oud && (oud || WC_NIET_BETAALD_STATUSSEN.includes(status))) upd.wc_status = status
+  if (WC_AFGEBROKEN_STATUSSEN.includes(status) && (bestaand?.status === 'nieuw' || bestaand?.status === 'bevestigd')
+    && opts.heeftPicks === false && bestaand?.factuur_id == null) {
+    upd.status = 'geannuleerd'
   }
   return Object.keys(upd).length ? upd : null
 }
@@ -208,19 +295,27 @@ export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}): 
 /** De hele import: ophalen, nieuwe orders omzetten, bekende orders verversen. */
 export async function importeerWcOrders(invoer: WcImportInvoer): Promise<WcImportResultaat> {
   const orders = await haalWcOrders(invoer.wcGet, wcImportSelectie(invoer.wcCreds))
+  const bestellingen = invoer.bestellingen || []
+  // Openstaande orders die niet in de selectie zaten (geannuleerd, mislukt,
+  // terugbetaald …) apart per id ophalen; die leveren alleen verversingen op.
+  const teVerversen = teVerversenWcIds(bestellingen, orders.map((o: any) => o?.id))
+  const bekend = teVerversen.length ? await haalBekendeWcOrders(invoer.wcGet, teVerversen) : []
   // De winkelpagina's voor de bestellink per order; één klein verzoek per
   // import, en bij een bestaande order alleen een update als de link wijzigt.
-  const link: WcLinkContext = {storeUrl: invoer.wcCreds?.storeUrl || '', paginas: orders.length ? await haalWcPaginas(invoer.wcGet) : null}
-  const bestellingen = invoer.bestellingen || []
+  const link: WcLinkContext = {storeUrl: invoer.wcCreds?.storeUrl || '',
+    paginas: orders.length || bekend.length ? await haalWcPaginas(invoer.wcGet) : null}
   const opWcId = new Map<any, any>()
   for (const b of bestellingen) if (b?.wc_order_id != null) opWcId.set(b.wc_order_id, b)
+  const metPicks = Array.isArray(invoer.bestellingPicks)
+    ? new Set(invoer.bestellingPicks.map((p: any) => p?.bestelling_id)) : null
+  const verversOpties = (b: any) => ({heeftPicks: metPicks ? metPicks.has(b.id) : undefined})
   const nieuw: any[] = []
   const updates: Record<number, any> = {}
   let onbekendeRegels = 0
   for (const o of orders) {
     const bestaand = opWcId.get(o?.id)
     if (bestaand) {
-      const upd = wcOrderUpdate(bestaand, o, link)
+      const upd = wcOrderUpdate(bestaand, o, link, verversOpties(bestaand))
       if (upd) updates[bestaand.id] = upd
       continue
     }
@@ -229,19 +324,47 @@ export async function importeerWcOrders(invoer: WcImportInvoer): Promise<WcImpor
     onbekendeRegels += (nb.regels || []).filter((r: any) => r.wc_onbekend).length
     nieuw.push(nb)
   }
+  // De apart opgehaalde bekende orders: alleen verversen, nooit iets nieuws.
+  const opWcIdTekst = new Map<string, any>()
+  for (const b of bestellingen) if (b?.wc_order_id != null) opWcIdTekst.set(String(b.wc_order_id), b)
+  for (const o of bekend) {
+    const bestaand = opWcIdTekst.get(String(o?.id))
+    if (!bestaand || updates[bestaand.id]) continue
+    const upd = wcOrderUpdate(bestaand, o, link, verversOpties(bestaand))
+    if (upd) updates[bestaand.id] = upd
+  }
   return {nieuw, updates, onbekendeRegels}
 }
+
+/** Statussen waarin de import een order zelf mag annuleren (zie `wcOrderUpdate`). */
+const IMPORT_MAG_ANNULEREN = new Set(['nieuw', 'bevestigd'])
 
 /**
  * Het resultaat in de bestellingenlijst verwerken. Een nieuwe order waarvan
  * de `wc_order_id` intussen al in de lijst zit (een ander tabblad was eerder)
  * gaat niet nog een keer mee.
+ *
+ * Een statuswissel (de import annuleert een in de winkel geannuleerde order)
+ * is beslist op de stand van vóór het ophalen. Is de order intussen gepickt
+ * (uitleveringen gemaakt), verzonden of gefactureerd, dan vervalt alleen die
+ * wissel: anders stond een gepickte order op 'geannuleerd' terwijl zijn
+ * uitleveringen bleven staan — voorraad weg, en niet meer terug te draaien.
+ * De webshopstatus komt wel mee, zodat de order als afgebroken opvalt.
  */
 export function pasImportToe(prev: any[], r: WcImportResultaat): any[] {
   const lijst = prev || []
   const bekend = new Set(lijst.map((b: any) => b?.wc_order_id).filter((id: any) => id != null))
+  const pasToe = (b: any): any => {
+    const upd = r.updates[b?.id]
+    if (!upd) return b
+    if ('status' in upd && (!IMPORT_MAG_ANNULEREN.has(String(b?.status ?? '')) || b?.factuur_id != null)) {
+      const {status: _vervallen, ...rest} = upd
+      return {...b, ...rest}
+    }
+    return {...b, ...upd}
+  }
   return [
-    ...lijst.map((b: any) => r.updates[b.id] ? {...b, ...r.updates[b.id]} : b),
+    ...lijst.map(pasToe),
     ...r.nieuw.filter(n => !bekend.has(n.wc_order_id)),
   ]
 }
@@ -262,6 +385,8 @@ export function importAuditRegels(r: WcImportResultaat): ImportAuditRegel[] {
       'wc_betaald' in upd ? `betaalstatus ${upd.wc_betaald ? 'betaald' : 'open'}` : '',
       'wc_levering' in upd ? `levering ${leveringOmschrijving(upd)}` : '',
       'klant_huisnummer' in upd ? `adres ${upd.klant_straat} ${upd.klant_huisnummer}` : '',
+      'wc_status' in upd ? `webshopstatus ${upd.wc_status}` : '',
+      'status' in upd ? `status ${upd.status}` : '',
     ].filter(Boolean)
     uit.push({entiteit_id: Number(id), actie: 'gewijzigd', omschrijving: `WC bijgewerkt — ${delen.join(' · ')}`})
   }
@@ -274,11 +399,32 @@ export function importMelding(r: WcImportResultaat, t: Vertaal): string {
   const melding = t('msg_wc_orders_imported').replace('{n}', String(r.nieuw.length))
   // Niet-herkende regels expliciet melden: die komen als vrije regel binnen
   // (geen picking) en horen gecontroleerd te worden.
+  // In de winkel geannuleerd, mislukt of terugbetaald: apart noemen, want
+  // daar hoort (bij een order met picks) de gebruiker iets mee te doen.
+  const afgebroken = Object.values(r.updates)
+    .filter((u: any) => WC_NIET_BETAALD_STATUSSEN.includes(String(u?.wc_status ?? ''))).length
   const delen = [
     r.onbekendeRegels > 0 ? t('msg_wc_regels_onbekend').replace('{n}', String(r.onbekendeRegels)) : '',
     bijgewerkt > 0 ? t('msg_wc_betaalstatus_bijgewerkt').replace('{n}', String(bijgewerkt)) : '',
+    afgebroken > 0 ? t('msg_wc_afgebroken').replace('{n}', String(afgebroken)) : '',
   ].filter(Boolean)
   return delen.length ? `${melding} — ${delen.join(' · ')}` : melding
+}
+
+/** Is deze webshoporder in de winkel geannuleerd, mislukt of terugbetaald? */
+export const wcOrderAfgebroken = (b: any): boolean =>
+  WC_NIET_BETAALD_STATUSSEN.includes(String(b?.wc_status ?? '').trim().toLowerCase())
+
+/**
+ * Webshoporders die in de winkel geannuleerd, mislukt of terugbetaald zijn
+ * terwijl ze hier nog openstaan (attentiepost). Een order zonder picks die
+ * geannuleerd of terugbetaald is annuleert de import zelf; wat hier overblijft
+ * vraagt een beslissing: al gepickt, of een mislukte betaling die de klant
+ * misschien nog opnieuw doet.
+ */
+export function telWebshopAfgebroken(bestellingen: any[]): number {
+  return (bestellingen || []).filter((b: any) =>
+    b && wcOrderAfgebroken(b) && b.status !== 'afgerond' && b.status !== 'geannuleerd').length
 }
 
 // ── Automatische import ─────────────────────────────────────────────────────
@@ -309,13 +455,22 @@ export function telNieuweWebshopOrders(status: WcImportStatus | null | undefined
  * vasthoudt, en niet als er korter dan het interval geleden al geïmporteerd is
  * (op een minuut speling na, zodat twee tabbladen met dezelfde klok elkaar
  * niet allebei overslaan). Een eigen lease telt niet als blokkade.
+ * `gemeldOntbrekend` = hoeveel door de server gemelde orders hier nog
+ * ontbreken (`telNieuweWebshopOrders`): dan geldt in plaats van het interval
+ * alleen een ondergrens van een minuut. De lease van een ander tabblad blijft
+ * altijd gelden.
  */
-export function importLeaseVrij(status: WcImportStatus | null | undefined, nu: number, tabId: string, intervalMin: number): boolean {
+export function importLeaseVrij(
+  status: WcImportStatus | null | undefined, nu: number, tabId: string, intervalMin: number, gemeldOntbrekend: number = 0,
+): boolean {
   const bezigTot = Number(status?.bezig_tot) || 0
   if (bezigTot > nu && status?.door && status.door !== tabId) return false
   const laatste = status?.laatste_import ? new Date(status.laatste_import).getTime() : 0
   if (Number.isFinite(laatste) && laatste > 0 && intervalMin > 0) {
-    const grens = Math.max(0, intervalMin - 1) * 60_000
+    // Meldt de server een order die hier nog ontbreekt, dan niet wachten op
+    // het interval (de HA-melding staat al op de telefoon) — alleen een korte
+    // ondergrens tegen herhaalde imports achter elkaar.
+    const grens = gemeldOntbrekend > 0 ? WC_IMPORT_MELDING_MIN_MS : Math.max(0, intervalMin - 1) * 60_000
     if (nu - laatste < grens) return false
   }
   return true

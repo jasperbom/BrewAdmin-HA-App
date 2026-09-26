@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId, diagnosePickMatch, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -97,24 +97,20 @@ describe('matchAfvullingenVoorRegel — geen SKU (fallback op naam)', () => {
   })
 })
 
-describe('diagnosePickMatch — tijdelijke diagnose', () => {
-  it('legt uit waarom een gerebrande afvulling (sku=null) niet via sku matcht maar wel via product', () => {
-    // Rebrand-scenario: afvulling hoort nu bij product 1, maar artikel_sku is
-    // null geworden en batch.biernaam draagt nog de oude naam.
+describe('matchAfvullingenVoorRegel — gerebrande afvulling zonder SKU', () => {
+  // Rebrand-scenario (voorheen de tijdelijke pickdiagnose): de afvulling hoort
+  // nu bij product 1, maar artikel_sku is null geworden en batch.biernaam
+  // draagt nog de oude naam. Tier 1 faalt, de product-fallback (tier 3) vindt hem.
+  it('vindt hem via het product (tier 3)', () => {
     const av = [{ id: 20, batch_id: 10, product_id: 1, artikel_sku: null, verpakking_type: '033 fles' }]
-    const diag = diagnosePickMatch(av, 'Tripel Phase', '033 fles', 'TAFL033-1', data)
-    expect(diag.order_product_id).toBe(1)
-    const d = diag.regels[0]
-    expect(d.gerelateerd).toBe(true)
-    expect(d.tier1_sku_exact).toBe(false)
-    expect(d.tier3_product).toBe(true)
-    expect(d.verpakking_matcht).toBe(true)
+    const r = matchAfvullingenVoorRegel(av, 'Tripel Phase', '033 fles', 'TAFL033-1', data)
+    expect(r.map(a => a.id)).toEqual([20])
   })
 
-  it('markeert niet-gerelateerde voorraad van een ander product als niet-gerelateerd', () => {
+  it('koppelt voorraad van een ander product niet', () => {
     const av = [{ id: 21, batch_id: 99, product_id: 999, artikel_sku: 'XX-1', verpakking_type: '033 fles' }]
-    const diag = diagnosePickMatch(av, 'Tripel Phase', '033 fles', 'TAFL033-1', data)
-    expect(diag.regels[0].gerelateerd).toBe(false)
+    const r = matchAfvullingenVoorRegel(av, 'Tripel Phase', '033 fles', 'TAFL033-1', data)
+    expect(r).toEqual([])
   })
 })
 
@@ -177,13 +173,16 @@ describe('orderProductId', () => {
 })
 
 describe('telOpenstaandeBestellingen', () => {
-  it('telt alleen bestellingen met een bierregel die nog niet volledig gepickt is', () => {
+  it('telt elke nieuwe/bevestigde bestelling met een bierregel, ook met concept-picks die alles dekken', () => {
+    // Volledig picken zet een order meteen op 'gepickt'; 'nieuw' met volledige
+    // (concept-)picks ontstaat alleen na "Picks terugdraaien" — die moet
+    // opnieuw bevestigd worden en telt dus mee.
     const bestellingen = [
       { id: 1, status: 'nieuw', regels: [{ id: 10, aantal: 24, type: 'bier' }] },
       { id: 2, status: 'bevestigd', regels: [{ id: 20, aantal: 12, type: 'bier' }] },
     ]
-    const picks = [{ bestelling_id: 1, regel_id: 10, aantal: 24 }] // #1 al volledig gepickt
-    expect(telOpenstaandeBestellingen(bestellingen, picks)).toBe(1)
+    const picks = [{ bestelling_id: 1, regel_id: 10, aantal: 24 }]
+    expect(telOpenstaandeBestellingen(bestellingen, picks)).toBe(2)
   })
 
   it('telt bestellingen met status gepickt/verzonden niet mee, ook al is er geen pick geregistreerd', () => {
@@ -227,6 +226,18 @@ describe('bestellingenOmTePicken', () => {
     const lijst = bestellingenOmTePicken(bestellingen, [])
     expect(telOpenstaandeBestellingen(bestellingen, [])).toBe(lijst.length)
     expect(lijst.map((b: any) => b.id)).toEqual([1])
+  })
+
+  it('na "Picks terugdraaien" (nieuw, concept-picks dekken alles) blijft de order in beeld, maar niet op de verzamelpicklijst', () => {
+    const bestellingen = [{ id: 1, status: 'nieuw', datum: '2026-07-10', regels: [{ id: 10, aantal: 24, type: 'bier', bier_naam: 'Blond', verpakking_type: 'fles' }] }]
+    const picks = [{ id: 100, bestelling_id: 1, regel_id: 10, aantal: 24, uitlevering_id: null, uitlevering_ids: [] }]
+    expect(bestellingenOmTePicken(bestellingen, picks).map((b: any) => b.id)).toEqual([1])
+    expect(verzamelPicklijst(bestellingen, picks, { afvullingen: [], beschikbaar: () => 0, data }).orders).toEqual([])
+  })
+
+  it('een order met alleen merch of vrije regels hoort er niet bij', () => {
+    const bestellingen = [{ id: 1, status: 'nieuw', regels: [{ id: 10, aantal: 1, type: 'vrij', merch: true }] }]
+    expect(bestellingenOmTePicken(bestellingen, [])).toEqual([])
   })
 })
 

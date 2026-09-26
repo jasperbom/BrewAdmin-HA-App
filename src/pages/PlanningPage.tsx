@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { fmtD } from '../utils/format'
 import {
   aggregateBatchNeeds,
@@ -261,7 +261,8 @@ function PlanningPage({
     while (cur <= timelineRange.end) {
       const offset = dagOffset(cur)
       if (offset >= 0 && offset <= totaalDagen) {
-        out.push({ offset, label: cur.toLocaleDateString('nl-NL', { month: 'short', year: '2-digit' }) })
+        // Maandnaam in de gekozen taal van de app, niet vast Nederlands.
+        out.push({ offset, label: cur.toLocaleDateString(getLang(), { month: 'short', year: '2-digit' }) })
       }
       cur.setMonth(cur.getMonth() + 1)
     }

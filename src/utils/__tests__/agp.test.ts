@@ -5,6 +5,7 @@ import {
   verkoopUitAgpToegestaan, uitTeSlaan, bouwUitslagBoekingen,
 } from '../agp'
 import type { Afvulling, Batch, Locatie, AccijnsInst } from '../../types'
+import { afvullingVerkoopbaar, verkoopbareAfvullingen } from '../haccp'
 
 const LOCATIES: Locatie[] = [
   { id: 1, naam: 'AGP', is_agp: true },
@@ -175,6 +176,62 @@ describe('uitslagKandidaten', () => {
     const verplaatsingen = [{ id: 1, afvulling_id: 2, batch_id: 100, datum: '2026-02-01', aantal: 48, van_locatie_id: 1, naar_locatie_id: 2 }]
     const k = uitslagKandidaten([a1, a2], [batch()], LOCATIES, [], verplaatsingen)
     expect(k.map(x => x.afv.id)).toEqual([1])
+  })
+
+  it('laat een door CCP 2 geblokkeerde afvulling weg, ook met de oudste THT', () => {
+    const geblokkeerd = afvulling({ id: 4, tht: '2026-01-01', geblokkeerd: true, geblokkeerd_reden: 'ccp2_afgekeurd' })
+    const k = uitslagKandidaten([a1, geblokkeerd], [batch()], LOCATIES)
+    expect(k.map(x => x.afv.id)).toEqual([1])
+    // FEFO kiest dus nooit de geblokkeerde blikken
+    const v = verdeelUitslag(k, 24, INST)
+    expect(v.allocaties.map(a => a.afv.id)).toEqual([1])
+  })
+})
+
+describe('verkoopbare afvullingen (CCP 2)', () => {
+  it('een geblokkeerde afvulling is niet verkoopbaar, de rest wel', () => {
+    expect(afvullingVerkoopbaar(afvulling())).toBe(true)
+    expect(afvullingVerkoopbaar(afvulling({ geblokkeerd: false }))).toBe(true)
+    expect(afvullingVerkoopbaar(afvulling({ geblokkeerd: true }))).toBe(false)
+    expect(afvullingVerkoopbaar(null)).toBe(false)
+  })
+
+  it('filtert geblokkeerde en lege records weg en verdraagt een lege lijst', () => {
+    const lijst = [afvulling({ id: 1 }), afvulling({ id: 2, geblokkeerd: true }), null as any, afvulling({ id: 3 })]
+    expect(verkoopbareAfvullingen(lijst).map(a => a.id)).toEqual([1, 3])
+    expect(verkoopbareAfvullingen(undefined)).toEqual([])
+  })
+})
+
+describe('valideerVerplaatsing — CCP 2 en reserveringen', () => {
+  it('weigert een uitslag van een geblokkeerde afvulling', () => {
+    const r = valideerVerplaatsing(invoer(), ctx({ afv: afvulling({ geblokkeerd: true }) }))
+    expect(r).toMatchObject({ ok: false, fout: 'geblokkeerd', isUitslag: true })
+  })
+
+  it('laat een geblokkeerde afvulling wel tussen vrije locaties verplaatsen', () => {
+    const verplaatsingen = [{ id: 1, afvulling_id: 10, batch_id: 100, datum: '2026-02-01', aantal: 24, van_locatie_id: 1, naar_locatie_id: 2 }]
+    const r = valideerVerplaatsing(invoer({ van_locatie_id: 2, naar_locatie_id: 3 }),
+      ctx({ afv: afvulling({ geblokkeerd: true }), verplaatsingen }))
+    expect(r.ok).toBe(true)
+  })
+
+  it('trekt wat op de AGP voor een open bestelling gepickt is af — net als de uitslagmodal', () => {
+    const r = valideerVerplaatsing(invoer({ aantal: 48 }), ctx({ gereserveerd: { 10: 48 } }))
+    expect(r).toMatchObject({ ok: false, fout: 'te_weinig', beschikbaar: 0 })
+    const deel = valideerVerplaatsing(invoer({ aantal: 24 }), ctx({ gereserveerd: { 10: 24 } }))
+    expect(deel).toMatchObject({ ok: true, beschikbaar: 24 })
+  })
+
+  it('laat de reservering buiten beschouwing bij een verplaatsing tussen vrije locaties', () => {
+    const verplaatsingen = [{ id: 1, afvulling_id: 10, batch_id: 100, datum: '2026-02-01', aantal: 24, van_locatie_id: 1, naar_locatie_id: 2 }]
+    const r = valideerVerplaatsing(invoer({ van_locatie_id: 2, naar_locatie_id: 3, aantal: 24 }),
+      ctx({ verplaatsingen, gereserveerd: { 10: 24 } }))
+    expect(r).toMatchObject({ ok: true, beschikbaar: 24 })
+  })
+
+  it('zonder reservering blijft het gedrag gelijk', () => {
+    expect(valideerVerplaatsing(invoer({ aantal: 48 }), ctx())).toMatchObject({ ok: true, beschikbaar: 48 })
   })
 })
 

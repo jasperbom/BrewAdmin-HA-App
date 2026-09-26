@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, volgendFactuurNummer } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, openBestellingReserveringen, gereserveerdVoorArtikel, accijnsMaandGesloten } from '../utils/calculations'
-import { kassaVoorraadNaReservering, agpGereserveerdPerAfvulling } from '../utils/kassa'
-import { bouwUitslagBoekingen } from '../utils/agp'
+import { getAgpLocatie, openBestellingReserveringen, gereserveerdVoorArtikel, accijnsMaandGesloten } from '../utils/calculations'
+import { kassaVoorraadNaReservering, agpGereserveerdPerAfvulling, kassaBonTotalen } from '../utils/kassa'
+import { beschikbaarVoorAfvulling as beschikbaarNaPicks, beschikbaarBuitenAgpNaPicks } from '../utils/beschikbaarheid'
+import { afvullingVerkoopbaar } from '../utils/haccp'
+import { bouwUitslagBoekingen, uitslagDatumFout, laatsteAfvulDatum, VERPLAATS_FOUT_KEYS } from '../utils/agp'
 import { bouwVerkoopUitleveringen } from '../utils/uitlevering'
 import UitslagModal from '../components/UitslagModal'
 import Btn from '../components/ui/Btn'
@@ -16,6 +18,7 @@ import SearchInput from '../components/ui/SearchInput'
 import { printFactuur } from '../components/PakbonExport'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
+import { breweryMetTermijn } from '../utils/facturen'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 import {
   MerchArtikel, MerchMutatie, merchLabel, merchVoorraad, volgtVoorraad,
@@ -23,7 +26,7 @@ import {
 } from '../utils/merch'
 import { totaliseerRegels } from '../utils/centen'
 import { afvullingHoortBijBierNaam } from '../utils/picking'
-import { standaardBtwPct } from '../utils/btw'
+import { standaardBtwPct, artikelBtwPct } from '../utils/btw'
 import BierKleur from '../components/ui/BierKleur'
 
 interface KassaPageProps {
@@ -150,52 +153,16 @@ const KassaPage: React.FC<KassaPageProps> = ({
   const isZakelijk = !!selectedKlant && (selectedKlant.klant_type === 'zakelijk' ||
     (!selectedKlant.klant_type && String(selectedKlant.bedrijf || '').trim() !== ''))
 
-  // ── Voorraadhelpers (zelfde semantiek als BestellingenPage) ─────────────────
+  // ── Voorraadhelpers ──────────────────────────────────────────────────────────
+  // Dezelfde telling als de bestellingen en de productpagina
+  // (utils/beschikbaarheid.ts): afgevuld min open picks, uitleveringen en
+  // afboekingen; een pick zonder bronlocatie legt eerst vrije voorraad vast.
 
-  const beschikbaarVoorAfvulling = (a: any): number => {
-    const gepickt = (bestellingPicks || [])
-      .filter((p: any) => {
-        if (p.afvulling_id !== a.id) return false
-        if (pickUitgeslagen(p)) return false
-        const b = (bestellingen || []).find((bs: any) => bs.id === p.bestelling_id)
-        return b && b.status !== 'afgerond' && b.status !== 'geannuleerd'
-      })
-      .reduce((s: number, p: any) => s + Number(p.aantal || 0), 0)
-    const uitgeleverd = (uit || [])
-      .filter((u: any) => u.afvulling_id === a.id)
-      .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-    return Math.max(0, Number(a.hoeveelheid || 0) - gepickt - uitgeleverd)
-  }
+  const voorraadData = {bestellingPicks, bestellingen, uit, afboekingen, locaties, verplaatsingen} as any
 
-  const beschikbaarPerLocatieVoorAfvulling = (a: any): Record<number, number> => {
-    if (!a || !(locaties || []).length) return {}
-    const fysiek = voorraadPerLocatie(a, locaties as any, uit as any, verplaatsingen as any, afboekingen as any)
-    const res: Record<number, number> = {...fysiek}
-    const agp = getAgpLocatie(locaties as any)
-    for (const p of ((bestellingPicks || []) as any[])) {
-      if (p.afvulling_id !== a.id) continue
-      if (pickUitgeslagen(p)) continue
-      const b = (bestellingen || []).find((bs: any) => bs.id === p.bestelling_id)
-      if (!b || b.status === 'afgerond' || b.status === 'geannuleerd') continue
-      const locId = p.bron_locatie_id ?? agp.id
-      res[locId] = (res[locId] || 0) - Number(p.aantal || 0)
-    }
-    for (const k of Object.keys(res)) {
-      const id = Number(k)
-      if (res[id] < 0) res[id] = 0
-    }
-    return res
-  }
+  const beschikbaarVoorAfvulling = (a: any): number => beschikbaarNaPicks(a, voorraadData)
 
-  const beschikbaarBuitenAgpVoorAfvulling = (a: any): number => {
-    const perLoc = beschikbaarPerLocatieVoorAfvulling(a)
-    const agp = getAgpLocatie(locaties as any)
-    let total = 0
-    for (const k of Object.keys(perLoc)) {
-      if (Number(k) !== agp.id) total += Number(perLoc[Number(k)] || 0)
-    }
-    return total
-  }
+  const beschikbaarBuitenAgpVoorAfvulling = (a: any): number => beschikbaarBuitenAgpNaPicks(a, voorraadData)
 
   // FEFO: eerst-verlopende afvulling eerst
   const fefo = (a: any, b: any) => {
@@ -213,6 +180,9 @@ const KassaPage: React.FC<KassaPageProps> = ({
     // voorraad onder de oude biernaam nadat een bier is omgehangen/hernoemd.
     const prodVoorNaam = (producten || []).find((p: any) => p.naam.toLowerCase() === bierNaam.toLowerCase())
     const filtered = (av || []).filter((a: any) => {
+      // Geblokkeerd na een afgekeurde sluitcontrole (CCP 2): niet verkoopbaar
+      // en niet uit te slaan — telt dus ook niet mee op de tegel.
+      if (!afvullingVerkoopbaar(a)) return false
       if (beschikbaarVoorAfvulling(a) <= 0) return false
       if (a.product_id) return !!prodVoorNaam && a.product_id === prodVoorNaam.id
       return true
@@ -275,6 +245,12 @@ const KassaPage: React.FC<KassaPageProps> = ({
   // De modal heeft de afvullingen al gekozen (oudste THT eerst); hier worden ze
   // in één keer geboekt: verplaatsing + accijnsrecord + voorraadlogregel.
   const saveUitslag = ({allocaties, naar_locatie_id, datum, opmerking}: any) => {
+    // De modal kan een andere datum dan vandaag kiezen: die datum wordt de
+    // accijnsdatum, dus daar geldt de periode-lock (tweede slot naast de modal).
+    const datumFout = uitslagDatumFout(datum, allocaties, {accijnsAangiftes: accijnsAangiftes || []})
+    if (datumFout) {
+      alert(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties)))); return
+    }
     const naar = (locaties || []).find((l: any) => l.id === naar_locatie_id)
     // newId() loopt globaal monotoon op, dus ook binnen de lus in
     // bouwUitslagBoekingen — waar de vorige records nog niet in de state
@@ -360,7 +336,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
           ebc: prod?.ebc ?? null,
           prijs: art?.verkoopprijs != null && art.verkoopprijs !== '' ? Number(art.verkoopprijs) : null,
           b2bPrijs: art?.b2b_prijs != null && art.b2b_prijs !== '' ? Number(art.b2b_prijs) : null,
-          btw_pct: art?.btw_pct != null && art.btw_pct !== '' ? Number(art.btw_pct) : stdBtw,
+          btw_pct: artikelBtwPct(art, stdBtw),
           voorraad,
           buitenAgp,
           agp,
@@ -602,86 +578,12 @@ const KassaPage: React.FC<KassaPageProps> = ({
     setKlantKortingForm(null)
   }
 
-  const bonTotalen = useMemo(() => {
-    const kortingPerBtw: Record<string, number> = {}
-    if (kortingPct > 0) {
-      for (const r of cart) {
-        if (r.type !== 'bier') continue
-        const netto = r.aantal * r.prijs_per_stuk
-        if (netto <= 0) continue
-        const k = String(Number(r.btw_pct || 0))
-        kortingPerBtw[k] = (kortingPerBtw[k] || 0) + netto
-      }
-    }
-    const kortingRegels = Object.entries(kortingPerBtw)
-      .map(([btwPct, som]) => ({btw_pct: Number(btwPct), bedrag: Math.round(som * kortingPct) / 100}))
-      .filter(k => k.bedrag > 0)
-
-    // Handmatige bonkorting: basis = alle bonregels minus klantkorting, per
-    // BTW-tarief (statiegeld valt buiten de korting).
-    const basisPerBtw: Record<string, number> = {}
-    for (const r of cart) {
-      const netto = r.aantal * r.prijs_per_stuk
-      if (netto <= 0) continue
-      const k = String(Number(r.btw_pct || 0))
-      basisPerBtw[k] = (basisPerBtw[k] || 0) + netto
-    }
-    for (const k of kortingRegels) {
-      const key = String(k.btw_pct)
-      basisPerBtw[key] = Math.max(0, (basisPerBtw[key] || 0) - k.bedrag)
-    }
-
-    let bonKortingRegels: Array<{btw_pct: number, bedrag: number}> = []
-    if (bonKorting && bonKorting.waarde > 0) {
-      const groepen = Object.entries(basisPerBtw).filter(([, som]) => som > 0)
-      if (bonKorting.soort === 'pct') {
-        const pct = Math.min(bonKorting.waarde, 100)
-        bonKortingRegels = groepen
-          .map(([btwPct, som]) => ({btw_pct: Number(btwPct), bedrag: rnd2(som * pct / 100)}))
-          .filter(x => x.bedrag > 0)
-      } else {
-        // Bedrag is incl. BTW (wat de klant minder betaalt): proportioneel
-        // verdelen over de BTW-groepen en per groep terugrekenen naar netto.
-        const brutoPerGroep = groepen.map(([btwPct, som]) =>
-          ({btw_pct: Number(btwPct), bruto: som * (1 + Number(btwPct) / 100)}))
-        const brutoTotaal = brutoPerGroep.reduce((s, g) => s + g.bruto, 0)
-        if (brutoTotaal > 0) {
-          const doel = Math.min(bonKorting.waarde, rnd2(brutoTotaal))
-          let rest = doel
-          bonKortingRegels = brutoPerGroep.map((g, i) => {
-            const deel = i === brutoPerGroep.length - 1 ? rest : rnd2(doel * g.bruto / brutoTotaal)
-            rest = rnd2(rest - deel)
-            return {btw_pct: g.btw_pct, bedrag: rnd2(deel / (1 + g.btw_pct / 100))}
-          }).filter(x => x.bedrag > 0)
-        }
-      }
-    }
-
-    const statiegeldRegels: Array<{vp: any, aantal: number, bedrag: number, soort: string}> = []
-    for (const r of cart) {
-      if (r.type !== 'bier') continue
-      const vp = (verpakkingen || []).find((v: any) =>
-        (v.naam && r.verpakking_type && String(v.naam).toLowerCase() === String(r.verpakking_type).toLowerCase()) ||
-        (v.type && r.verpakking_type && String(v.type).toLowerCase() === String(r.verpakking_type).toLowerCase())
-      )
-      const bedrag = Number(vp?.statiegeld_bedrag || 0)
-      const soort = vp?.statiegeld_soort
-      if (!vp || bedrag <= 0 || (soort !== 'snd' && soort !== 'fust')) continue
-      statiegeldRegels.push({vp, aantal: r.aantal, bedrag: rnd2(r.aantal * bedrag), soort})
-    }
-
-    const nettoRegels = rnd2(cart.reduce((s, r) => s + r.aantal * r.prijs_per_stuk, 0))
-    const kortingTotaal = rnd2(kortingRegels.reduce((s, k) => s + k.bedrag, 0))
-    const bonKortingTotaal = rnd2(bonKortingRegels.reduce((s, k) => s + k.bedrag, 0))
-    const statiegeldTotaal = rnd2(statiegeldRegels.reduce((s, x) => s + x.bedrag, 0))
-    const btwTotaal = rnd2(
-      cart.reduce((s, r) => s + rnd2(r.aantal * r.prijs_per_stuk) * Number(r.btw_pct || 0) / 100, 0)
-      - kortingRegels.reduce((s, k) => s + k.bedrag * k.btw_pct / 100, 0)
-      - bonKortingRegels.reduce((s, k) => s + k.bedrag * k.btw_pct / 100, 0)
-    )
-    const netto = rnd2(nettoRegels - kortingTotaal - bonKortingTotaal + statiegeldTotaal)
-    return {kortingRegels, bonKortingRegels, statiegeldRegels, nettoRegels, kortingTotaal, bonKortingTotaal, statiegeldTotaal, btwTotaal, netto, bruto: rnd2(netto + btwTotaal)}
-  }, [cart, kortingPct, bonKorting, verpakkingen])
+  // Eén berekening voor scherm, afrekenknop, factuur en journaal: BTW per
+  // regel afgerond, daarna cent-exact opgeteld (utils/kassa.ts). Anders pint de
+  // klant een ander bedrag dan de factuur noemt.
+  const bonTotalen = useMemo(
+    () => kassaBonTotalen(cart, {kortingPct, bonKorting, verpakkingen: verpakkingen || []}),
+    [cart, kortingPct, bonKorting, verpakkingen])
 
   // Factuurnummering: server-side via volgendFactuurNummer() (ERP-plan 0.2) —
   // de client nummert nooit zelf (races/hergebruik).
@@ -690,7 +592,36 @@ const KassaPage: React.FC<KassaPageProps> = ({
   // Een verkoop boekt geen accijns: het bier ligt al buiten de AGP en de
   // accijns is bij het uitslaan geboekt (utils/uitlevering.ts).
 
+  // Dubbelklikgrendel. Tussen de klik en het sluiten van de modal zit een
+  // netwerkronde (het factuurnummer); een tweede klik in dat venster draaide
+  // dezelfde bon nog eens: twee facturen, twee journaalboekingen, dubbele
+  // uitleveringen. De ref is de echte grendel — een tweede klik in dezelfde
+  // tick ziet de state nog niet — en de state zet de knop uit. Na een
+  // geslaagde verkoop blijft de grendel dicht tot de modal opnieuw opent: een
+  // klik die nog vóór het sluiten binnenkomt, ziet anders de oude bon.
+  const verwerkBezigRef = useRef(false)
+  const [verwerkBezig, setVerwerkBezig] = useState(false)
+  const openAfrekenen = () => {
+    verwerkBezigRef.current = false
+    setVerwerkBezig(false)
+    setShowAfrekenen(true)
+  }
   const verwerkVerkoop = async () => {
+    if (verwerkBezigRef.current) return
+    verwerkBezigRef.current = true
+    setVerwerkBezig(true)
+    let gelukt = false
+    try {
+      gelukt = (await voerVerkoopUit()) === true
+    } finally {
+      if (!gelukt) {
+        verwerkBezigRef.current = false
+        setVerwerkBezig(false)
+      }
+    }
+  }
+
+  const voerVerkoopUit = async (): Promise<boolean | undefined> => {
     if (!cart.length) { alert(t('err_pos_bon_leeg')); return }
     if (betaalwijze === 'rekening' && !selectedKlant) { alert(t('err_pos_rekening_klant')); return }
     const vandaag = tod()
@@ -809,32 +740,30 @@ const KassaPage: React.FC<KassaPageProps> = ({
     let factuurNummer: string
     try { factuurNummer = await volgendFactuurNummer('factuur') }
     catch (e) { alert(t('err_factuurnummer_ophalen')); return }
-    const regelsList: any[] = regels.map((r: any) => {
-      const netto = rnd2(Number(r.aantal || 0) * Number(r.prijs_per_stuk || 0))
-      const btw_bedrag = rnd2(netto * Number(r.btw_pct || 0) / 100)
-      return {
-        omschrijving: r.omschrijving || `${r.bier_naam} – ${r.verpakking_type}`,
-        hoeveelheid: Number(r.aantal || 0),
-        prijs_per_stuk: Number(r.prijs_per_stuk || 0),
-        btw_pct: Number(r.btw_pct || 0),
-        netto,
-        btw_bedrag,
-        bruto: rnd2(netto + btw_bedrag),
+    // De bedragen komen uit `bonTotalen` — dezelfde regels waarmee het scherm
+    // het afrekenbedrag toont. `regels` staat in dezelfde volgorde (bon,
+    // klantkorting, bonkorting); statiegeld komt daarachter.
+    const regelsList: any[] = bonTotalen.geldRegels.map((g, i) => {
+      const bedragen = {
+        hoeveelheid: g.aantal,
+        prijs_per_stuk: g.prijs_per_stuk,
+        btw_pct: g.btw_pct,
+        netto: g.netto,
+        btw_bedrag: g.btw_bedrag,
+        bruto: g.bruto,
       }
+      if (g.bron === 'statiegeld') {
+        const st = bonTotalen.statiegeldRegels[g.index]
+        return {
+          omschrijving: `${t(st.soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${st.vp.naam}`,
+          ...bedragen,
+          statiegeld_soort: st.soort,
+          verpakking_id: st.vp.id,
+        }
+      }
+      const r = regels[i]
+      return {omschrijving: r.omschrijving || `${r.bier_naam} – ${r.verpakking_type}`, ...bedragen}
     })
-    for (const st of bonTotalen.statiegeldRegels) {
-      regelsList.push({
-        omschrijving: `${t(st.soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${st.vp.naam}`,
-        hoeveelheid: st.aantal,
-        prijs_per_stuk: Number(st.vp.statiegeld_bedrag || 0),
-        btw_pct: 0,
-        netto: st.bedrag,
-        btw_bedrag: 0,
-        bruto: st.bedrag,
-        statiegeld_soort: st.soort,
-        verpakking_id: st.vp.id,
-      })
-    }
     const btwTarievenLijst = [...new Set(regelsList.map((r: any) => Number(r.btw_pct || 0)))] as number[]
     const btw_overzicht = btwTarievenLijst.map(tarief => {
       const rv = regelsList.filter((r: any) => Number(r.btw_pct || 0) === tarief)
@@ -951,6 +880,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
     setBonKorting(null)
     setKlantKortingBon(null)
     setLaatsteVerkoop({bestelling, factuur})
+    return true
   }
 
   const saveNieuweKlant = () => {
@@ -1195,7 +1125,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                 {laatsteVerkoop.factuur.factuurnummer} · {laatsteVerkoop.bestelling.klant_naam} · {fmt(laatsteVerkoop.factuur.bruto)}
               </div>
               <div className="flex gap-2">
-                <Btn v="green" s="sm" onClick={() => printFactuur(laatsteVerkoop.bestelling, laatsteVerkoop.factuur, breweryDetails, appName, factuurLogo)}>
+                <Btn v="green" s="sm" onClick={() => printFactuur(laatsteVerkoop.bestelling, laatsteVerkoop.factuur, breweryMetTermijn(laatsteVerkoop.factuur, klanten, breweryDetails), appName, factuurLogo)}>
                   {t('pos_print_bon')}
                 </Btn>
                 <Btn v="secondary" s="sm" onClick={() => { setLaatsteVerkoop(null); selectKlant(null) }}>{t('pos_nieuwe_verkoop')}</Btn>
@@ -1227,7 +1157,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                     <span className="text-xs text-gray-400">×</span>
                     <span className="text-sm text-gray-600">{fmt(r.prijs_per_stuk)}</span>
                     <span className="text-[10px] text-gray-400">{r.btw_pct}%</span>
-                    <span className="ml-auto text-sm font-semibold text-gray-700">{fmt(r.aantal * r.prijs_per_stuk)}</span>
+                    <span className="ml-auto text-sm font-semibold text-gray-700">{fmt(bonTotalen.geldRegels[idx]?.netto ?? r.aantal * r.prijs_per_stuk)}</span>
                   </div>
                 </div>
               ))}
@@ -1270,7 +1200,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                   <span>{t('pos_totaal')}</span><span>{fmt(bonTotalen.bruto)}</span>
                 </div>
               </div>
-              <Btn v="green" s="lg" cls="w-full text-base" onClick={() => setShowAfrekenen(true)}>
+              <Btn v="green" s="lg" cls="w-full text-base" onClick={openAfrekenen}>
                 {t('pos_afrekenen')} · {fmt(bonTotalen.bruto)}
               </Btn>
             </>
@@ -1280,7 +1210,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
       {/* ── Afreken-modal ── */}
       {showAfrekenen && (
-        <Modal title={t('pos_afrekenen')} onClose={() => setShowAfrekenen(false)}>
+        <Modal title={t('pos_afrekenen')} onClose={() => { if (!verwerkBezig) setShowAfrekenen(false) }}>
           <div className="space-y-4">
             <div className="text-sm text-gray-600">
               {selectedKlant ? selectedKlant.naam : t('pos_walkin_naam')}
@@ -1304,8 +1234,8 @@ const KassaPage: React.FC<KassaPageProps> = ({
               )}
             </div>
             <div className="flex justify-end gap-2 pt-3 border-t">
-              <Btn v="secondary" onClick={() => setShowAfrekenen(false)}>{t('btn_cancel')}</Btn>
-              <Btn v="green" onClick={verwerkVerkoop} disabled={betaalwijze === 'rekening' && !selectedKlant}>
+              <Btn v="secondary" onClick={() => setShowAfrekenen(false)} disabled={verwerkBezig}>{t('btn_cancel')}</Btn>
+              <Btn v="green" onClick={verwerkVerkoop} disabled={verwerkBezig || (betaalwijze === 'rekening' && !selectedKlant)}>
                 {t('pos_bevestig_verkoop')}
               </Btn>
             </div>
@@ -1410,8 +1340,10 @@ const KassaPage: React.FC<KassaPageProps> = ({
           verplaatsingen={verplaatsingen}
           afboekingen={afboekingen}
           accijnsInst={accijnsInst}
+          accijnsAangiftes={accijnsAangiftes || []}
           gereserveerd={agpGereserveerdPerAfvulling(
-            bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id)}
+            bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id,
+            {afvullingen: av || [], locaties: locaties || [], uit, verplaatsingen, afboekingen})}
           onClose={() => setUitslagItem(null)}
           onOpslaan={saveUitslag}
         />

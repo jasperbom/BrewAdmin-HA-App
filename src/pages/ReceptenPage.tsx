@@ -7,6 +7,8 @@ import SearchInput from '../components/ui/SearchInput'
 import ReceptKostprijs from '../components/ReceptKostprijs'
 import { logAudit, logAuditVeld } from '../utils/audit'
 import { ingredientenVoorType } from '../utils/ingTypes'
+import { receptRegelVoorraad } from '../utils/ingredientVoorraad'
+import { voegReceptSyncSamen, pasReceptRegelAan, wisLokaal } from '../utils/receptSync'
 import Icon from '../components/ui/Icon'
 
 function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], accijnsInst=null, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
@@ -51,43 +53,21 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
     setSyncing(true); setMsg('');
     try {
       const { recepten: recs, versionsSupported, totalVersions } = await bfGetRecipesWithVersions();
-      // Preserveer gebruikersgekoppelingen (ingredient_id) bij re-sync: voor elk
-      // nieuw recept kijken of er een bestaand recept met hetzelfde id is, en
-      // per sectie (mout/hop/gist/overig) per item op naam de ingredient_id
-      // overnemen als die er was.
-      const byId = new Map<string, any>(recepten.map((r: any) => [r.id, r]));
-      const SECTIES = ['mout', 'hop', 'gist', 'overig'];
-      const EIGEN_VELDEN = ['kostprijs_overig', 'kostprijs_verlies_pct'];
-      const merged = recs.map((nw: any) => {
-        const oud = byId.get(nw.id);
-        if (!oud) return nw;
-        // Eigen velden van de app (niet uit Brewfather) blijven staan: de
-        // vaste kosten per brouw en een handmatig verliespercentage zijn
-        // brouwerijgegevens, geen receptgegevens.
-        const out: any = { ...nw };
-        for (const veld of EIGEN_VELDEN) {
-          if (oud[veld] !== undefined && oud[veld] !== '') out[veld] = oud[veld];
-        }
-        for (const s of SECTIES) {
-          const oudeLijst = oud[s] || [];
-          out[s] = (nw[s] || []).map((it: any) => {
-            if (it.ingredient_id != null) return it;
-            const match = oudeLijst.find((o: any) =>
-              o.ingredient_id != null && String(o.naam).toLowerCase().trim() === String(it.naam).toLowerCase().trim()
-            );
-            return match ? { ...it, ingredient_id: match.ingredient_id } : it;
-          });
-        }
-        return out;
-      });
+      // Brewfather is leidend, maar de eigen velden (vaste kosten, verlies-%),
+      // de koppeling aan een voorraadingrediënt (ingredient_id) en een in de
+      // app gecorrigeerd hopschema (`_lokaal`) blijven staan — zie
+      // utils/receptSync.ts.
+      const { recepten: merged, behouden } = voegReceptSyncSamen(recepten, recs);
       setRecepten(merged);
       const parentCount = recs.filter((r: any) => r.is_huidige !== false).length;
-      const auditMsg = versionsSupported
+      const auditMsg = (versionsSupported
         ? `Brewfather sync: ${parentCount} recepten (+${totalVersions} versies)`
-        : `Brewfather sync: ${parentCount} recepten`;
+        : `Brewfather sync: ${parentCount} recepten`)
+        + (behouden > 0 ? `, ${behouden} lokale aanpassingen behouden` : '');
       logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving: auditMsg})
       const key = versionsSupported ? 'msg_bf_sync_with_versions' : 'msg_bf_sync_no_versions';
-      setMsg(t(key).replace('{n}', String(parentCount)).replace('{v}', String(totalVersions)));
+      setMsg(t(key).replace('{n}', String(parentCount)).replace('{v}', String(totalVersions))
+        + (behouden > 0 ? ' ' + t('msg_bf_sync_lokaal_behouden').replace('{n}', String(behouden)) : ''));
     } catch(e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e))); }
     setSyncing(false);
   };
@@ -123,39 +103,12 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
     return null;
   };
 
-  // Voorraadcheck per receptregel. Wanneer `recept` is meegegeven sommeren we
-  // alle regels in dat recept die naar hetzelfde ingredient verwijzen, zodat
-  // een ingredient over meerdere regels gespreid niet vals groen wordt.
-  const checkStock = (item: any, recept?: any) => {
-    const benodigd = Number(item?.hoeveelheid||0);
-    const ingMatch = findIngMatch(item);
-    if (!ingMatch) return {ok:null, totaal:0, ingLots:[], ingMatch:null, benodigd, totaalNodig:benodigd, gedeeld:false};
-    const ingLots = lots
-      .filter((l: any) => l.ingredient_id===ingMatch.id && l.beschikbaar && Number(l.hoeveelheid||0)>0)
-      .sort((a: any,b: any)=>(a.houdbaarheid||'9999')<(b.houdbaarheid||'9999')?-1:1);
-    const totaal = ingLots.reduce((s: any,l: any)=>s+Number(l.hoeveelheid||0),0);
-    let totaalNodig = benodigd;
-    let regels = 1;
-    if (recept) {
-      let som = 0; let n = 0;
-      for (const cat of ['mout','hop','gist','overig']) {
-        for (const it of ((recept as any)[cat] || [])) {
-          const q = Number(it?.hoeveelheid || 0);
-          if (q <= 0) continue;
-          const m = findIngMatch(it);
-          if (m && m.id === ingMatch.id) { som += q; n += 1; }
-        }
-      }
-      if (n > 0) { totaalNodig = som; regels = n; }
-    }
-    return {
-      ok: totaal>=totaalNodig,
-      bijna: totaal>0 && totaal<totaalNodig,
-      totaal, ingLots, ingMatch,
-      benodigd, totaalNodig,
-      gedeeld: regels > 1,
-    };
-  };
+  // Voorraadcheck per receptregel (utils/ingredientVoorraad.ts): elk lot wordt
+  // omgerekend naar de eenheid van de regel (hop in het recept in g, het lot
+  // in kg), en met `recept` erbij tellen alle regels die naar hetzelfde
+  // ingredient verwijzen samen, zodat een ingredient over meerdere regels
+  // gespreid niet vals groen wordt.
+  const checkStock = (item: any, recept?: any) => receptRegelVoorraad(item, recept, lots, findIngMatch);
 
   // Wijzig eigen velden op het geselecteerde recept (bijv. de vaste kosten per
   // brouw). Blijft bij een Brewfather-sync behouden — zie `runSync`.
@@ -188,7 +141,25 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
       if (r.id !== selRec.id) return r;
       const list = [...(r[cat] || [])];
       if (!list[idx]) return r;
-      list[idx] = { ...list[idx], ...patch };
+      // Gebruik/tijd die hier gecorrigeerd worden, blijven bij een
+      // Brewfather-sync staan (`_lokaal`, utils/receptSync.ts).
+      list[idx] = pasReceptRegelAan(list[idx], patch);
+      return { ...r, [cat]: list };
+    }));
+  };
+
+  // Brewfather weer leidend maken voor deze regel: de lokale markering weg,
+  // de volgende sync zet gebruik/tijd terug naar de waarde uit Brewfather.
+  const wisLokaleAanpassing = (cat: string, idx: number) => {
+    if (!selRec) return;
+    const huidig = (selRec as any)[cat]?.[idx] || {};
+    logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:selRec.id, actie:'gewijzigd',
+      omschrijving:`${selRec.naam || ''}: ${cat}/${huidig.naam || idx} volgt Brewfather weer`});
+    setRecepten((prev: any[]) => prev.map((r: any) => {
+      if (r.id !== selRec.id) return r;
+      const list = [...(r[cat] || [])];
+      if (!list[idx]) return r;
+      list[idx] = wisLokaal(list[idx]);
       return { ...r, [cat]: list };
     }));
   };
@@ -202,7 +173,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
     ingredientenVoorType(ing, item?.ingredient_type || CAT_TO_TYPE[cat]);
 
   const IngRow = ({item, cat, idx, readOnly}: any) => {
-    const {ok, bijna, totaal, ingLots, ingMatch, totaalNodig, gedeeld} = checkStock(item, selRec);
+    const {ok, bijna, totaal, ingLots, ingMatch, totaalNodig, gedeeld, eenheidMismatch} = checkStock(item, selRec);
     const [open, setOpen] = useState(false);
     const [editKoppel, setEditKoppel] = useState(false);
     const dot = ok===null ? <span className="text-gray-300">●</span>
@@ -276,6 +247,11 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                   className="w-14 border border-gray-200 rounded px-1 py-0.5 text-right t-input"
                   placeholder="—" />
                 <span className="text-gray-300">{String(item.gebruik || '').toLowerCase() === 'dry hop' ? t('lbl_dagen') : t('lbl_minuten')}</span>
+                {Array.isArray(item._lokaal) && item._lokaal.length > 0 && (
+                  <button type="button" onClick={() => wisLokaleAanpassing('hop', idx)}
+                    className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
+                    title={t('recipe_lokaal_title')}>{t('recipe_lokaal')}</button>
+                )}
               </div>
             ) : (
               <>
@@ -290,10 +266,15 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
           </td>
           <td className="px-3 py-2 text-sm text-right whitespace-nowrap">
             {ok!==null
-              ? <span className={ok?'text-green-600':bijna?'text-yellow-600':'text-red-600'}>
-                  {totaal.toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
+              ? <span className={ok?'text-green-600':bijna?'text-yellow-600':'text-red-600'}
+                  title={eenheidMismatch ? t('recipe_unit_mismatch') : undefined}>
+                  {eenheidMismatch && '⚠ '}{totaal.toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
                 </span>
-              : <span className="text-gray-300 text-xs">—</span>}
+              : eenheidMismatch
+                ? <span className="text-gray-500 text-xs" title={t('recipe_unit_mismatch')}>
+                    ⚠ {totaal.toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
+                  </span>
+                : <span className="text-gray-300 text-xs">—</span>}
           </td>
           <td className="px-3 py-2 text-center">{dot}</td>
           <td className="px-3 py-2 text-xs text-gray-300 text-center">{ingLots.length>0?(open?'▲':'▼'):''}</td>
@@ -326,9 +307,9 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
     const anyRed = stocks.some((s: any)=>s.ok===false&&!s.bijna);
     const anyYellow = stocks.some((s: any)=>s.bijna);
     const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-    const badge = anyRed   ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">tekort</span>
-                : anyYellow? <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">bijna genoeg</span>
-                : allGreen ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">✓ beschikbaar</span>
+    const badge = anyRed   ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('recipe_badge_tekort')}</span>
+                : anyYellow? <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">{t('recipe_badge_bijna')}</span>
+                : allGreen ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">{t('recipe_badge_beschikbaar')}</span>
                 : null;
     const readOnly = selRec?.is_huidige === false;
     return (
@@ -550,7 +531,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                   ))}
                 </h3>
                 {selRec.stijl&&<div className="text-sm text-gray-500 mt-0.5">{selRec.stijl}</div>}
-                {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">Door {selRec.auteur}</div>}
+                {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">{t('recipe_door').replace('{auteur}', selRec.auteur)}</div>}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
@@ -561,40 +542,10 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                 )}
                 {setPage && setPreNieuwBatch && selRec.is_huidige !== false && (
                   <Btn s="sm" v="primary" onClick={() => {
-                    setPreNieuwBatch({
-                      naam: selRec.naam,
-                      stijl: selRec.stijl || '',
-                      // OG/FG/ABV uit het recept zijn doelen (verwacht), geen
-                      // metingen — ze komen in verwacht_* en tonen in de flow als
-                      // placeholder tot de gebruiker de echte waarde invult.
-                      OG: '',
-                      FG: '',
-                      ABV: '',
-                      verwacht_og: selRec.OG || '',
-                      verwacht_fg: selRec.FG || '',
-                      verwacht_abv: selRec.ABV || '',
-                      liter_vergist: selRec.batch_size || '',
-                      recept_id: selRec.id,
-                      // Brouwkundige eigenschappen overnemen zodat het Dashboard
-                      // de bierkleur en het vergistingsschema kan tonen — net
-                      // zoals bij een Brewfather-import (bfMapBatch).
-                      kleur: selRec.kleur || '',
-                      kooktijd: selRec.kooktijd || '',
-                      kook_volume: selRec.kook_volume || '',
-                      vergistingsprofiel: selRec.vergistingsprofiel || [],
-                      maischprofiel: selRec.maischprofiel || [],
-                      _receptIngredienten: [
-                        // Mout: extract_pct (yield) wordt overgenomen voor
-                        // de efficiency-berekeningen in de Brouwdag-wizard.
-                        ...(selRec.mout   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: i.ingredient_type || 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
-                        // Hop: tijd → tijdstip_min, gebruik (boil/whirlpool/
-                        // dry-hop/mash), alpha_pct voor IBU, temp_c voor
-                        // whirlpool-additions.
-                        ...(selRec.hop    ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
-                        ...(selRec.gist   ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'pkg', ingredient_id: i.ingredient_id ?? null })),
-                        ...(selRec.overig ||[]).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid||'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
-                      ],
-                    })
+                    // Alleen het recept voorselecteren: maakNieuweBatch in
+                    // BatchFlowPage bouwt de batch (verwacht_*, liters, kleur,
+                    // profielen) en de ingrediëntregels zelf uit het recept op.
+                    setPreNieuwBatch({ recept_id: selRec.id, naam: selRec.naam })
                     setPage('batchflow')
                   }}>{t('btn_brouwen')}</Btn>
                 )}

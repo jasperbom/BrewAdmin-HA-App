@@ -4,6 +4,7 @@ import { newId } from '../../utils/api'
 import { fmtD, tod } from '../../utils/format'
 import { logAudit } from '../../utils/audit'
 import { maakParaaf } from '../../utils/haccp'
+import { escapeHtml } from '../../utils/template'
 import {
   traceZoek, oefeningStatus, beoordeelOefening, oefeningVanResultaat,
   capaUitOefening, geldigeOefeningen, oefeningenNieuwsteEerst, lotLabel, gatI18nKey,
@@ -37,8 +38,8 @@ const paramTekst = (
 const gatTekst = (gat: TraceGat): string =>
   t(gat.i18nKey).split('{n}').join(String(gat.aantal))
 
-const esc = (v: unknown): string => String(v ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+// Eén HTML-escaper voor de hele app (& < > " '), ook veilig in een attribuut.
+const esc = escapeHtml
 
 const TraceTab: React.FC<any> = (p) => {
   const {useState, useMemo} = React

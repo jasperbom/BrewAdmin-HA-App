@@ -4,9 +4,9 @@ import { fmt, fmtD, tod } from '../utils/format'
 import Btn from './ui/Btn'
 import Modal from './ui/Modal'
 import Inp from './ui/Inp'
-import { uitslagKandidaten, verdeelUitslag } from '../utils/agp'
+import { uitslagKandidaten, verdeelUitslag, uitslagDatumFout, laatsteAfvulDatum, VERPLAATS_FOUT_KEYS } from '../utils/agp'
 import type { UitslagAllocatie } from '../utils/agp'
-import type { Afvulling, Batch, Locatie, Uitlevering, Verplaatsing, Afboeking, AccijnsInst } from '../types'
+import type { Afvulling, Batch, Locatie, Uitlevering, Verplaatsing, Afboeking, AccijnsInst, AccijnsAangifte } from '../types'
 
 export interface UitslagOpslag {
   allocaties: UitslagAllocatie[]
@@ -25,6 +25,9 @@ interface UitslagModalProps {
   verplaatsingen?: Verplaatsing[]
   afboekingen?: Afboeking[]
   accijnsInst?: AccijnsInst | null
+  /** Periode-lock: in een al ingediende/betaalde accijnsmaand mag geen
+   * uitslag meer geboekt worden (de gekozen datum telt, niet vandaag). */
+  accijnsAangiftes?: AccijnsAangifte[]
   /** Al gepickte aantallen per afvulling_id — die zijn niet meer vrij. */
   gereserveerd?: Record<number, number>
   /** Voorgesteld aantal (bijv. het tekort aan vrije voorraad voor een order). */
@@ -38,7 +41,7 @@ interface UitslagModalProps {
  * juiste afvulling op de AGP-pagina. */
 const UitslagModal: React.FC<UitslagModalProps> = ({
   productNaam, afvullingen, batches, locaties, uit = [], verplaatsingen = [],
-  afboekingen = [], accijnsInst, gereserveerd = {}, startAantal, onClose, onOpslaan,
+  afboekingen = [], accijnsInst, accijnsAangiftes = [], gereserveerd = {}, startAantal, onClose, onOpslaan,
 }) => {
   const vrijeLocaties = (locaties || []).filter(l => !l.is_agp)
   const [verpakking, setVerpakking] = useState('')
@@ -74,6 +77,13 @@ const UitslagModal: React.FC<UitslagModalProps> = ({
     if (!naarLocatieId) { setFout(t('agp_err_locatie_verplicht')); return }
     if (verdeling.tekort > 0) {
       setFout(t('uitslag_err_tekort').replace('{n}', String(verdeling.totaalBeschikbaar)))
+      return
+    }
+    // De gekozen datum wordt de datum van het accijnsrecord: niet in de
+    // toekomst, niet vóór de afvulling en niet in een al aangegeven maand.
+    const datumFout = uitslagDatumFout(datum, verdeling.allocaties, { accijnsAangiftes })
+    if (datumFout) {
+      setFout(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(verdeling.allocaties))))
       return
     }
     onOpslaan({ allocaties: verdeling.allocaties, naar_locatie_id: naarLocatieId, datum, opmerking })
@@ -115,7 +125,8 @@ const UitslagModal: React.FC<UitslagModalProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <Inp label={`${t('agp_aantal')} (${t('agp_max')} ${verdeling.totaalBeschikbaar})`} type="number" value={aantal}
                 onChange={(v: string) => { setFout(''); setAantal(v) }} />
-              <Inp label={t('lbl_datum')} type="date" value={datum} onChange={setDatum} />
+              <Inp label={t('lbl_datum')} type="date" value={datum} max={tod()}
+                onChange={(v: string) => { setFout(''); setDatum(v) }} />
             </div>
             <Inp label={t('lbl_opmerking')} value={opmerking} onChange={setOpmerking} />
 

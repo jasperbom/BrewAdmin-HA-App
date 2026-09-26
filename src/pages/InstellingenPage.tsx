@@ -18,9 +18,13 @@ import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '.
 import { checkIntegriteit } from '../utils/integriteit'
 import { fmt, fmtAmt, fmtD, tod } from '../utils/format'
 import { standaardBtwPct } from '../utils/btw'
+import { csvTekst } from '../utils/csv'
 import { WC_STATUS_OPTIES, WC_IMPORT_STATUSSEN_DEFAULT } from '../utils/wcImport'
+import { wcTestMelding } from '../utils/wcFout'
 import { taakReinigingStatus } from '../utils/ontsmetting'
 import { BEWAKING_DEFAULTS } from '../utils/tankbewaking'
+import { rolVanGebruiker, metGebruiker, normaliseerGebruiker } from '../utils/rollen'
+import { geheimOpnieuwNodig } from '../utils/geheimen'
 import Icon from '../components/ui/Icon'
 import WebsiteTelemetrie from '../components/WebsiteTelemetrie'
 
@@ -212,7 +216,8 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
   // zetten (de server weigert dat ook, met 422 — dit vangt het eerder af).
   const opslaan = (next: any) => {
     if (wie?.gebruiker) {
-      const eigen = (next.gebruikers || {})[wie.gebruiker] || next.standaard_rol || 'beheer';
+      // Hoofdletterongevoelig, net als de server en HA zelf.
+      const eigen = rolVanGebruiker(next, wie.gebruiker);
       if (eigen !== 'beheer') { alert(t('settings_rollen_lockout')); return; }
     }
     setRollen(next);
@@ -266,7 +271,8 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none t-input shadow-sm" />
         <datalist id="ha-gebruikers-lijst">
           {haGebruikers
-            .filter(g => (g.gebruikersnaam || g.naam) && !gebruikers[g.gebruikersnaam || g.naam])
+            .filter(g => (g.gebruikersnaam || g.naam)
+              && !namen.some(n => normaliseerGebruiker(n) === normaliseerGebruiker(g.gebruikersnaam || g.naam)))
             .map(g => (
               <option key={g.gebruikersnaam || g.naam} value={g.gebruikersnaam || g.naam}>
                 {g.naam && g.gebruikersnaam && g.naam !== g.gebruikersnaam ? g.naam : undefined}
@@ -277,7 +283,7 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
           {rolOpties.map(r => <option key={r} value={r}>{t('rol_' + r)}</option>)}
         </select>
         <Btn disabled={!naam.trim()} onClick={() => {
-          opslaan({...conf, gebruikers: {...gebruikers, [naam.trim()]: rol}});
+          opslaan({...conf, gebruikers: metGebruiker(gebruikers, naam, rol)});
           setNaam('');
         }}>{t('settings_rollen_toevoegen')}</Btn>
       </div>
@@ -415,6 +421,16 @@ const BackupCard = () => {
 
   React.useEffect(() => { fetchBackups(); }, []);
 
+  // Hoe de credentials in de serverbackup versleuteld zijn (server.py
+  // _backup_versleuteling_status): backup-wachtwoord of sleutelbestand.
+  const [versleuteling, setVersleuteling] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    fetch(ADDON_BASE + 'api/health')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setVersleuteling(d?.backup_versleuteling?.methode || null))
+      .catch(() => setVersleuteling(null));
+  }, []);
+
   const triggerBackup = async () => {
     setTriggering(true); setMsg('');
     try {
@@ -450,7 +466,9 @@ const BackupCard = () => {
   const [herstelMsg, setHerstelMsg] = React.useState('');
   const herstelKeys = React.useMemo(() => {
     const uit = new Set(['brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds', 'mollie_creds',
-      'journaal', 'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen']);
+      'journaal', 'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
+      // Server-beheerd (nummerreeks, afgeleide serverdata) — de server weigert ze ook
+      'nummer_reeksen', 'tank_setpoints', 'wc_import_status', 'website_telemetrie_status', 'app_logo_icoon']);
     return [..._allKeys].filter(k => !uit.has(k)).sort();
   }, []);
   const herstelSleutel = async () => {
@@ -467,6 +485,9 @@ const BackupCard = () => {
         // De useStore-cache kent de oude stand nog: herladen haalt de
         // teruggezette sleutel vers van de server.
         setTimeout(() => window.location.reload(), 2000);
+      } else if (d.error === 'rollen-lockout') {
+        // Die rollentabel zou de eigen beheerrol afpakken — de server weigert hem.
+        setHerstelMsg(t('settings_rollen_lockout'));
       } else {
         setHerstelMsg(t('settings_backup_herstel_fout').replace('{fout}', d.error || String(r.status)));
       }
@@ -488,6 +509,12 @@ const BackupCard = () => {
         {msg && <span className="text-sm text-gray-600">{msg}</span>}
       </div>
 
+      {versleuteling && (
+        <p className="text-sm text-gray-600 mb-4">
+          {t(versleuteling === 'wachtwoord' ? 'settings_backup_versleuteld_wachtwoord' : 'settings_backup_versleuteld_sleutel')}
+        </p>
+      )}
+
       <div className="text-xs font-semibold text-gray-500 mb-2">{t('settings_backup_geschiedenis')}</div>
 
       {loading ? (
@@ -500,7 +527,7 @@ const BackupCard = () => {
             <div key={b.date} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
               <div>
                 <span className="text-sm font-medium text-gray-700">{b.date}</span>
-                <span className="text-xs text-gray-400 ml-2">{b.file_count} {b.file_count === 1 ? 'file' : 'files'}</span>
+                <span className="text-xs text-gray-400 ml-2">{b.file_count === 1 ? t('settings_backup_bestand') : t('settings_backup_bestanden').replace('{n}', String(b.file_count))}</span>
               </div>
               <button onClick={() => downloadBackup(b.date)}
                 className="text-xs font-medium px-2.5 py-1 rounded transition-colors"
@@ -659,7 +686,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       ]),
       ['', '', '', 'TOTAAL', '', '', '', '', '', impactModal.resultaat.totaalOud.toFixed(2), impactModal.resultaat.totaalNieuw.toFixed(2), impactModal.resultaat.totaalVerschil.toFixed(2)],
     ];
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+    // Formule-veilig (utils/csv.ts), zoals alle CSV-exports.
+    const csv = csvTekst(rows, ';');
     const blob = new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -668,7 +696,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const clearLog = () => {
-    if (!window.confirm(t('error_confirm_clear_log') + ` (${(log||[]).length} regels)`)) return;
+    if (!window.confirm(`${t('error_confirm_clear_log')} (${t('lbl_n_regels_n').replace('{n}', String((log||[]).length))})`)) return;
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Foutlog gewist (${(log||[]).length} regels)`});
     setLog([]);
   };
@@ -714,13 +742,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const saveBf = () => {
     setBfCreds((prev: any) => ({...prev, ...bfForm}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Brewfather credentials ${bfForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
-    setBfMsg('✓ Opgeslagen');
+    setBfMsg('✓ ' + t('lbl_saved'));
     setTimeout(() => setBfMsg(''), 2000);
   };
   const testBf = async () => {
     setBfTesting(true); setBfMsg('');
     const ok = await bfTest(bfForm.userId, bfForm.apiKey);
-    setBfMsg(ok ? '✓ Verbinding gelukt!' : '⚠ Verbinding mislukt — controleer je User ID en API-sleutel');
+    setBfMsg(ok ? '✓ ' + t('settings_bf_test_ok') : '⚠ ' + t('settings_bf_test_fail'));
     setBfTesting(false);
   };
 
@@ -735,31 +763,33 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     }
   }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
   const saveWc = () => {
+    // Ander winkeladres: de opgeslagen sleutels gaan daar niet mee naartoe.
+    if (geheimOpnieuwNodig('woocommerce_creds', wcCreds, wcForm)) { setWcMsg('⚠ ' + t('settings_geheim_opnieuw')); return; }
     setWcCreds((prev: any) => ({...prev, ...wcForm, importInterval: Math.max(0, Math.round(Number(wcForm.importInterval) || 0)), bestelUrl: String(wcForm.bestelUrl || '').trim()}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`WooCommerce credentials ${wcForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setWcMsg(`✓ ${t('btn_save')}`);
     setTimeout(() => setWcMsg(''), 2000);
   };
   const testWc = async () => {
+    if (geheimOpnieuwNodig('woocommerce_creds', wcCreds, wcForm)) { setWcMsg('⚠ ' + t('settings_geheim_opnieuw')); return; }
     setWcTesting(true); setWcMsg('');
     try {
       const ping = await fetch(_WC_PING, {signal: AbortSignal.timeout(4000)});
       const pd = await ping.json().catch(()=>({}));
       if (!ping.ok || (pd as any).server !== 'wc-ready') {
-        setWcMsg('⚠ Server niet bereikbaar of verouderd — herstart de addon');
+        setWcMsg('⚠ ' + t('settings_wc_server_verouderd'));
         setWcTesting(false); return;
       }
     } catch(e) {
-      setWcMsg('⚠ Server niet bereikbaar — herstart de addon en probeer opnieuw');
+      setWcMsg('⚠ ' + t('settings_wc_server_onbereikbaar'));
       setWcTesting(false); return;
     }
     const res = await wcTestCreds({storeUrl: wcForm.storeUrl, consumerKey: wcForm.consumerKey, consumerSecret: wcForm.consumerSecret});
-    if (res.ok) {
-      setWcMsg('✓ Verbinding gelukt!');
+    if (!res.ok && res.detail === 'secret_opnieuw_invoeren') {
+      setWcMsg('⚠ ' + t('settings_geheim_opnieuw'));
     } else {
-      const code = res.status ? ` (HTTP ${res.status})` : '';
-      const detail = res.detail ? ` — ${res.detail}` : '';
-      setWcMsg(`⚠ Verbinding mislukt${code}${detail}`);
+      // Vertaalde oorzaak (sleutels, DNS, certificaat, time-out …) — utils/wcFout.ts.
+      setWcMsg(wcTestMelding(res, t));
     }
     setWcTesting(false);
   };
@@ -1049,7 +1079,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const saveClaude = () => {
     setClaudeCreds((prev: any) => ({...prev, ...claudeForm}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Claude AI ${claudeForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
-    setClaudeMsg('✓ Opgeslagen');
+    setClaudeMsg('✓ ' + t('lbl_saved'));
     setTimeout(() => setClaudeMsg(''), 2000);
   };
 
@@ -1125,6 +1155,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [smtpSending, setSmtpSending] = React.useState(false);
 
   const saveSmtp = () => {
+    // Andere server/poort/gebruiker/beveiliging: het opgeslagen wachtwoord gaat niet mee.
+    if (geheimOpnieuwNodig('smtp_creds', smtpCreds, {...smtpForm, port: Number(smtpForm.port) || 587})) { setSmtpMsg('⚠ ' + t('settings_geheim_opnieuw')); return; }
     setSmtpCreds((prev: any) => ({...prev, ...smtpForm, port: Number(smtpForm.port) || 587}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`SMTP ${smtpForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
     setSmtpMsg('✓ ' + t('lbl_saved'));
@@ -1132,16 +1164,20 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const testSmtp = async () => {
-    setSmtpTesting(true); setSmtpMsg('');
-    const res = await mailTestApi({
+    const testBody = {
       host: smtpForm.host.trim(),
       port: Number(smtpForm.port) || 0,
       username: smtpForm.username,
       password: smtpForm.password,
       security: smtpForm.security as any,
-    });
+    };
+    if (geheimOpnieuwNodig('smtp_creds', smtpCreds, testBody)) { setSmtpMsg('⚠ ' + t('settings_geheim_opnieuw')); return; }
+    setSmtpTesting(true); setSmtpMsg('');
+    const res = await mailTestApi(testBody);
     if (res.ok) {
       setSmtpMsg('✓ ' + t('settings_smtp_test_ok'));
+    } else if (res.detail === 'secret_opnieuw_invoeren') {
+      setSmtpMsg('⚠ ' + t('settings_geheim_opnieuw'));
     } else {
       const det = res.detail ? ` (${res.detail})` : '';
       setSmtpMsg('⚠ ' + t('settings_smtp_test_fail') + det);
@@ -1648,7 +1684,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_payment_term')}</label>
               <div className="flex items-center gap-2">
-                <input type="number" min="1" max="365" value={breweryDetails?.betalingstermijn??14} onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,betalingstermijn:Number(e.target.value)}))}
+                {/* Leeg blijft leeg (geen 0 = "vervalt op de factuurdatum"): dan
+                    geldt de standaard van 14 dagen, net als voor de te-laat-badge. */}
+                <input type="number" min="1" max="365" value={breweryDetails?.betalingstermijn??14} placeholder="14"
+                  onChange={(e: any)=>setBreweryDetails((p: any)=>({...p,betalingstermijn:e.target.value === '' ? '' : Number(e.target.value)}))}
                   className="border border-gray-300 rounded px-3 py-1.5 text-sm w-24 t-input" />
                 <span className="text-sm text-gray-500">{t('settings_payment_term_days')}</span>
               </div>
@@ -3906,7 +3945,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               }
             }}
             className="flex items-center gap-2 px-4 py-2 tbtn text-white rounded text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            {bijlagenStatus==='busy' ? t('lbl_bezig') : t('btn_zip_download')}
+            {bijlagenStatus==='busy' ? t('lbl_bezig') : <><Icon n="download" /> {t('btn_zip_download')}</>}
           </button>
           {bijlagenStatus && bijlagenStatus!=='busy' && <span className="text-sm text-gray-500">{bijlagenStatus}</span>}
         </div>

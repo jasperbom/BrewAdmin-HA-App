@@ -26,6 +26,7 @@ import type {
   TraceOefening, TraceRichting, Uitlevering,
 } from '../types'
 import { haccpInst } from './haccp'
+import { datumPlusMaanden } from './afvulsessie'
 
 // ── Veldnamen van een lot ───────────────────────────────────────────────────
 // De inkoopflow schrijft `lotnummer`/`aankoop_datum`, oudere en geïmporteerde
@@ -396,8 +397,12 @@ const bouwResultaat = (
 export const traceVooruit = (zoekRuw: string, d: TraceData): TraceResultaat => {
   const zoek = norm(zoekRuw)
   if (!zoek) return leegResultaat('vooruit', String(zoekRuw || ''))
-  const gevondenLots = (d.lots || []).filter(l =>
-    norm(lotNummer(l)).includes(zoek) || `#${l.id}` === zoek)
+  // Een volledig lotnummer gaat voor: 'MO-1' mag niet ook 'MO-10' meenemen.
+  // Pas als niets exact klopt, zoekt een deel van het nummer.
+  const exacteLots = (d.lots || []).filter(l =>
+    norm(lotNummer(l)) === zoek || `#${l.id}` === zoek)
+  const gevondenLots = exacteLots.length ? exacteLots : (d.lots || []).filter(l =>
+    norm(lotNummer(l)).includes(zoek))
   if (!gevondenLots.length) return leegResultaat('vooruit', String(zoekRuw))
 
   const lotIds = gevondenLots.map(l => l.id)
@@ -427,8 +432,14 @@ export const traceTerug = (zoekRuw: string, d: TraceData): TraceResultaat => {
 
   // Bij een terugroepactie heb je een verpakking in handen met een lotcode
   // erop; die moet net zo goed als ingang werken als de batchnaam.
-  const sessies = (d.sessies || []).filter(s => norm(s.lotcode).includes(zoek))
-  const viaLotcode = new Set(sessies.map(s => s.batch_id))
+  // Alleen een volledige lotcode beperkt de omvang tot die sessie: 'L2431-B1'
+  // mag niet ook B10–B19 meenemen, en een batchnummer ('2431') of een deel
+  // van een code vindt de batch wel, maar dan in zijn geheel — ook de
+  // afvullingen en uitleveringen van vóór de sessies.
+  const alleSessies = d.sessies || []
+  const exact = alleSessies.filter(s => norm(s.lotcode) === zoek)
+  const deel = exact.length ? exact : alleSessies.filter(s => norm(s.lotcode).includes(zoek))
+  const viaLotcode = new Set(deel.map(s => s.batch_id))
   const batches = (d.batches || []).filter(b =>
     viaLotcode.has(b.id)
     || norm(b.naam).includes(zoek)
@@ -441,7 +452,7 @@ export const traceTerug = (zoekRuw: string, d: TraceData): TraceResultaat => {
   const lotRegels = (d.lots || [])
     .filter(l => gebruikt.some(b => zelfdeId(l.id, b.lot_id)))
     .map(l => lotRegel(l, d.ingredienten || []))
-  return bouwResultaat('terug', String(zoekRuw), batches, sessies, lotRegels, d)
+  return bouwResultaat('terug', String(zoekRuw), batches, exact.length ? exact : null, lotRegels, d)
 }
 
 export const traceZoek = (
@@ -495,13 +506,11 @@ export const oefeningStatus = (
   if (!laatste) {
     return {laatste: null, maanden_geleden: null, volgende_voor: null, verlopen: true}
   }
-  const basis = new Date(`${String(laatste.datum).slice(0, 10)}T00:00:00`)
-  let volgende_voor: string | null = null
-  if (!isNaN(basis.getTime())) {
-    const v = new Date(basis.getTime())
-    v.setMonth(v.getMonth() + inst.trace_oefening_maanden)
-    volgende_voor = v.toISOString().slice(0, 10)
-  }
+  // Zelfde kalenderdag N maanden later, in lokale tijd en afgekapt op het
+  // maandeinde (31 augustus + 6 = 28 februari) — dezelfde rekenregel als de
+  // THT. Via toISOString kwam er in NL-tijd een dag te vroeg uit.
+  const volgende_voor = datumPlusMaanden(String(laatste.datum).slice(0, 10),
+    inst.trace_oefening_maanden) || null
   const maanden = maandenTussen(laatste.datum, nu)
   return {
     laatste,
